@@ -97,12 +97,16 @@ def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
 
     qtbot.keyClick(window, Qt.Key.Key_L)
     assert window._viewer._linear_roi is not None
+    assert window._viewer._measurement_label.text().startswith("LVEDD:")
     assert "mm (" in window._viewer._measurement_label.text()
     assert window._viewer._measurement_label.text().endswith("px)")
 
+    qtbot.keyClick(window, Qt.Key.Key_Tab)
+    assert window._viewer._measurement_label.text().startswith("LVESD:")
+
     qtbot.keyClick(window, Qt.Key.Key_Escape)
     assert window._viewer._linear_roi is None
-    assert window._viewer._measurement_label.text() == "Length: —"
+    assert window._viewer._measurement_label.text() == "LVESD: —"
 
 
 def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
@@ -128,9 +132,9 @@ def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
 
     qtbot.keyClick(window, Qt.Key.Key_Return)
     assert not window._viewer.is_contour_mode_active
-    assert len(window._viewer.contours) == 1
-    assert window._viewer.contours[0].phase == "ED"
-    assert window._viewer.contours[0].points == [
+    assert len(window._viewer.contours()) == 1
+    assert window._viewer.contours()[0].phase == "ED"
+    assert window._viewer.contours()[0].points == [
         (10.0, 10.0),
         (20.0, 10.0),
         (20.0, 20.0),
@@ -141,7 +145,7 @@ def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
     window._viewer.handle_contour_click((5.0, 5.0))
     qtbot.keyClick(window, Qt.Key.Key_Escape)
     assert not window._viewer.is_contour_mode_active
-    assert len(window._viewer.contours) == 1
+    assert len(window._viewer.contours()) == 1
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -23,7 +23,9 @@ def test_viewer_widget_finishes_closed_contour(qtbot) -> None:
     viewer.show_frame(np.zeros((32, 32), dtype=np.uint8))
 
     completed: list[Contour] = []
+    contour_sets: list[list[Contour]] = []
     viewer.contour_completed.connect(completed.append)
+    viewer.contours_changed.connect(contour_sets.append)
 
     viewer.start_contour()
     viewer.handle_contour_click((3.0, 4.0))
@@ -37,4 +39,24 @@ def test_viewer_widget_finishes_closed_contour(qtbot) -> None:
         (8.0, 4.0),
         (8.0, 9.0),
     ]
-    assert viewer.contours[-1] == completed[0]
+    assert viewer.contours()[-1] == completed[0]
+    assert contour_sets[-1] == viewer.contours()
+
+
+def test_viewer_widget_clears_contours_signal(qtbot) -> None:
+    viewer = ViewerWidget()
+    qtbot.addWidget(viewer)
+    viewer.show_frame(np.zeros((32, 32), dtype=np.uint8))
+
+    cleared: list[list[Contour]] = []
+    viewer.contours_changed.connect(cleared.append)
+
+    viewer.start_contour()
+    viewer.handle_contour_click((1.0, 1.0))
+    viewer.handle_contour_click((2.0, 1.0))
+    viewer.handle_contour_click((2.0, 2.0))
+    viewer.finish_contour()
+
+    viewer.clear()
+
+    assert cleared[-1] == []

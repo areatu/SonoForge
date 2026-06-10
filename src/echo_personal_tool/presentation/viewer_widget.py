@@ -45,6 +45,8 @@ class ViewerWidget(QWidget):
     play_pause_requested = Signal()
     frame_selected = Signal(int)
     contour_completed = Signal(object)
+    contours_changed = Signal(object)
+    linear_measurements_changed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -60,6 +62,8 @@ class ViewerWidget(QWidget):
         self._linear_roi: pg.LineROI | None = None
         self._contours: list[Contour] = []
         self._contour_items: list[pg.PlotDataItem] = []
+        self._caliper_labels = ("LVEDD", "LVESD", "IVSd", "LVPWd", "LVOT")
+        self._caliper_label_index = 0
         self._contour_mode_active = False
         self._active_contour_points: list[tuple[float, float]] = []
         self._active_contour_item: pg.PlotDataItem | None = None
@@ -79,7 +83,7 @@ class ViewerWidget(QWidget):
         self._source_label = QLabel("Frame: —")
         self._ed_label = QLabel("ED: —")
         self._es_label = QLabel("ES: —")
-        self._measurement_label = QLabel("Length: —")
+        self._measurement_label = QLabel(f"{self._current_caliper_label()}: —")
 
         self._window_slider = QSlider(Qt.Orientation.Horizontal)
         self._window_slider.setRange(1, 400)
@@ -137,12 +141,14 @@ class ViewerWidget(QWidget):
         self._clear_contours()
 
     def set_state(self, viewer_state: ViewerState) -> None:
+        if self._syncing_state:
+            return
+        self._syncing_state = True
         previous_instance = self._current_state.instance if self._current_state else None
         if previous_instance != viewer_state.instance:
             self._clear_linear_caliper()
             self._clear_contours()
         self._current_state = viewer_state
-        self._syncing_state = True
         try:
             maximum = max(0, viewer_state.total_frames - 1)
             self._timeline_slider.setEnabled(viewer_state.total_frames > 1)
@@ -187,6 +193,7 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return
 
+        label = self._current_caliper_label()
         height, width = self._current_frame.shape[:2]
         line_length = max(float(min(width, height)) * 0.35, 20.0)
         line_width = max(float(min(width, height)) * 0.02, 4.0)
@@ -202,7 +209,17 @@ class ViewerWidget(QWidget):
         roi.sigRegionChangeFinished.connect(self._update_linear_measurement)
         self._view.addItem(roi)
         self._linear_roi = roi
+        self._measurement_label.setText(f"{label}: —")
         self._update_linear_measurement()
+
+    def cycle_caliper_label(self) -> None:
+        self._caliper_label_index = (self._caliper_label_index + 1) % len(
+            self._caliper_labels
+        )
+        if self._linear_roi is None:
+            self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+        if self._linear_roi is not None:
+            self._update_linear_measurement()
 
     def start_contour(self) -> None:
         if self._current_frame is None or self._active_contour_item is not None:
@@ -244,6 +261,7 @@ class ViewerWidget(QWidget):
         self._contours.append(contour)
         self._contour_items.append(self._active_contour_item)
         self.contour_completed.emit(contour)
+        self.contours_changed.emit(self.contours())
         self._active_contour_item = None
         self._active_contour_points = []
         self._active_contour_phase = None
@@ -260,7 +278,6 @@ class ViewerWidget(QWidget):
             return
         self._clear_linear_caliper()
 
-    @property
     def contours(self) -> list[Contour]:
         return list(self._contours)
 
@@ -295,7 +312,9 @@ class ViewerWidget(QWidget):
         if self._linear_roi is not None:
             self._view.removeItem(self._linear_roi)
             self._linear_roi = None
-        self._measurement_label.setText("Length: —")
+        self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+        if not self._syncing_state:
+            self.linear_measurements_changed.emit([])
 
     def _clear_contours(self) -> None:
         if self._active_contour_item is not None:
@@ -308,6 +327,8 @@ class ViewerWidget(QWidget):
         self._active_contour_points = []
         self._active_contour_phase = None
         self._contour_mode_active = False
+        if not self._syncing_state:
+            self.contours_changed.emit([])
 
     def _resolve_contour_phase(self) -> str:
         if self._current_state is None:
@@ -357,7 +378,8 @@ class ViewerWidget(QWidget):
 
     def _update_linear_measurement(self, *_args) -> None:
         if self._linear_roi is None:
-            self._measurement_label.setText("Length: —")
+            self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+            self.linear_measurements_changed.emit([])
             return
 
         pixel_length = float(self._linear_roi.size().x())
@@ -371,11 +393,13 @@ class ViewerWidget(QWidget):
             else None
         )
         measurement = LinearMeasurement(
-            label="Length",
+            label=self._current_caliper_label(),
             pixel_length=pixel_length,
             millimeter_length=millimeter_length,
         )
         self._measurement_label.setText(measurement.display_text())
+        if not self._syncing_state:
+            self.linear_measurements_changed.emit([measurement])
 
     def _on_timeline_changed(self, value: int) -> None:
         if self._syncing_state:
@@ -400,3 +424,6 @@ class ViewerWidget(QWidget):
         low = center - window / 2.0
         high = center + window / 2.0
         self._image_item.setLevels((low, high))
+
+    def _current_caliper_label(self) -> str:
+        return self._caliper_labels[self._caliper_label_index]

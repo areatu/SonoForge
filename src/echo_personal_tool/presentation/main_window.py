@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
@@ -90,6 +90,13 @@ class MainWindow(QMainWindow):
         self._viewer = ViewerWidget()
         self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
         self._viewer.frame_selected.connect(self._controller.state_manager.set_frame)
+        self._viewer.contour_completed.connect(
+            lambda *_args: self._controller.on_contours_changed(self._viewer.contours())
+        )
+        self._viewer.contours_changed.connect(self._controller.on_contours_changed)
+        self._viewer.linear_measurements_changed.connect(
+            self._controller.on_linear_measurements_changed
+        )
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._view_stack.addWidget(self._viewer)
 
@@ -154,6 +161,17 @@ class MainWindow(QMainWindow):
         if self.statusBar():
             self.statusBar().showMessage(message)
 
+    def event(self, event) -> bool:  # type: ignore[override]
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and event.key() == Qt.Key.Key_Tab
+            and self._view_mode == "2d"
+        ):
+            self._viewer.cycle_caliper_label()
+            event.accept()
+            return True
+        return super().event(event)
+
     def set_view_mode(self, mode: str) -> None:
         mode_name = mode.strip().lower()
         if mode_name not in {"2d", "doppler"}:
@@ -191,6 +209,10 @@ class MainWindow(QMainWindow):
             return
         if event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             self._viewer.toggle_linear_caliper()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Tab and self._view_mode == "2d":
+            self._viewer.cycle_caliper_label()
             event.accept()
             return
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
