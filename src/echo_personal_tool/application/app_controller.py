@@ -13,8 +13,17 @@ from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
-from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
+from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.calculations.lvef_simpson import calculate
+from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
+from echo_personal_tool.domain.models import (
+    Contour,
+    InstanceMetadata,
+    LinearMeasurement,
+    StudyMetadata,
+)
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
+from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
@@ -167,7 +176,26 @@ class AppController(QObject):
             raise TypeError("Expected DopplerMeasurementDTO")
 
         self._state_manager.set_doppler_measurement(dto)
+        self._recompute_measurements()
         self.status_message.emit(self._format_doppler_summary(dto))
+
+    def on_contours_changed(self, contours: object) -> None:
+        if not isinstance(contours, list) or not all(
+            isinstance(contour, Contour) for contour in contours
+        ):
+            raise TypeError("Expected a list of Contour objects")
+
+        self._state_manager.set_contours(tuple(contours))
+        self._recompute_measurements()
+
+    def on_linear_measurements_changed(self, measurements: object) -> None:
+        if not isinstance(measurements, list) or not all(
+            isinstance(measurement, LinearMeasurement) for measurement in measurements
+        ):
+            raise TypeError("Expected a list of LinearMeasurement objects")
+
+        self._state_manager.set_linear_measurements(tuple(measurements))
+        self._recompute_measurements()
 
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
@@ -179,6 +207,20 @@ class AppController(QObject):
         elif not state.is_playing and self._timer.isActive():
             self._timer.stop()
         self._request_frame_if_needed(state)
+
+    def _recompute_measurements(self) -> None:
+        state = self._state_manager.snapshot
+        doppler = compute(state.doppler_measurement) if state.doppler_measurement else None
+        pixel_spacing = state.instance.pixel_spacing if state.instance is not None else None
+        lvef = calculate(state.contours, pixel_spacing)
+        teichholz = from_linear_measurements(state.linear_measurements)
+        snapshot = MeasurementSnapshot(
+            doppler=doppler,
+            lvef=lvef,
+            teichholz=teichholz,
+            linear_measurements=state.linear_measurements,
+        )
+        self._state_manager.set_measurement_snapshot(snapshot)
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
         if self._current_instance is None or self._current_instance.path is None:
