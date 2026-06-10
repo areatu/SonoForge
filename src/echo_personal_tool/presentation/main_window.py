@@ -111,4 +111,12 @@ class MainWindow(QMainWindow):
             self._controller.toggle_playback()
             event.accept()
             return
+        if event.key() == Qt.Key.Key_D and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self._controller.mark_ed()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_S and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self._controller.mark_es()
+            event.accept()
+            return
         super().keyPressEvent(event)

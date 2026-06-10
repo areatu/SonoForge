@@ -58,3 +58,26 @@ def test_app_controller_steps_via_state_manager(qtbot) -> None:
 
     controller.toggle_playback()
     assert controller.state_manager.snapshot.is_playing is True
+
+
+def test_app_controller_mark_ed_and_es(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=4,
+        frame_time_ms=40.0,
+    )
+    controller.state_manager.set_frame(1)
+
+    status_messages: list[str] = []
+    controller.status_message.connect(status_messages.append)
+
+    controller.mark_ed()
+    assert controller.state_manager.snapshot.ed_frame_index == 1
+    assert controller.state_manager.snapshot.es_frame_index is None
+    assert status_messages[-1] == "ED marked at frame 2"
+
+    controller.state_manager.set_frame(3)
+    controller.mark_es()
+    assert controller.state_manager.snapshot.es_frame_index == 3
+    assert status_messages[-1] == "ES marked at frame 4"

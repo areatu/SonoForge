@@ -121,6 +121,18 @@ class AppController(QObject):
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)
 
+    def mark_ed(self) -> None:
+        self._state_manager.mark_ed()
+        frame = self._state_manager.snapshot.ed_frame_index
+        if frame is not None:
+            self.status_message.emit(f"ED marked at frame {frame + 1}")
+
+    def mark_es(self) -> None:
+        self._state_manager.mark_es()
+        frame = self._state_manager.snapshot.es_frame_index
+        if frame is not None:
+            self.status_message.emit(f"ES marked at frame {frame + 1}")
+
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return

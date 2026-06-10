@@ -109,18 +109,46 @@ class ViewerWidget(QWidget):
                 self._source_label.setText(f"Frame: {current}/{viewer_state.total_frames}")
             else:
                 self._source_label.setText("Frame: —")
+            ed_index = viewer_state.ed_frame_index
+            es_index = viewer_state.es_frame_index
             self._ed_label.setText(
-                f"ED: {viewer_state.ed_frame_index}"
-                if viewer_state.ed_frame_index is not None
-                else "ED: —"
+                f"ED: {ed_index + 1}" if ed_index is not None else "ED: —"
             )
             self._es_label.setText(
-                f"ES: {viewer_state.es_frame_index}"
-                if viewer_state.es_frame_index is not None
-                else "ES: —"
+                f"ES: {es_index + 1}" if es_index is not None else "ES: —"
             )
+            self._ed_label.setStyleSheet(
+                "color: #2e7d32; font-weight: bold;" if ed_index is not None else ""
+            )
+            self._es_label.setStyleSheet(
+                "color: #c62828; font-weight: bold;" if es_index is not None else ""
+            )
+            self._update_timeline_indicator(viewer_state)
         finally:
             self._syncing_state = False
+
+    def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
+        ed_index = viewer_state.ed_frame_index
+        es_index = viewer_state.es_frame_index
+        markers: list[str] = []
+        if ed_index is not None:
+            markers.append(f"ED @ {ed_index + 1}")
+        if es_index is not None:
+            markers.append(f"ES @ {es_index + 1}")
+        self._timeline_slider.setToolTip(
+            "Phase markers: " + ", ".join(markers) if markers else ""
+        )
+        current = viewer_state.current_frame_index
+        if current == ed_index:
+            self._timeline_slider.setStyleSheet(
+                "QSlider::handle:horizontal { background: #2e7d32; }"
+            )
+        elif current == es_index:
+            self._timeline_slider.setStyleSheet(
+                "QSlider::handle:horizontal { background: #c62828; }"
+            )
+        else:
+            self._timeline_slider.setStyleSheet("")
 
     def _on_timeline_changed(self, value: int) -> None:
         if self._syncing_state:
