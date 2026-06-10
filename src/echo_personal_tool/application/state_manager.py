@@ -41,6 +41,8 @@ class StateManager(QObject):
         total_frames: int,
         frame_time_ms: float | None,
     ) -> None:
+        if total_frames < 1:
+            raise ValueError(f"total_frames must be >= 1, got {total_frames}")
         self._instance = metadata
         self._total_frames = total_frames
         self._frame_time_ms = frame_time_ms
@@ -51,7 +53,9 @@ class StateManager(QObject):
         self._emit_state()
 
     def set_frame(self, index: int) -> None:
-        if index < 0 or (self._total_frames > 0 and index >= self._total_frames):
+        if self._instance is None or self._total_frames < 1:
+            raise RuntimeError("Cannot set frame without a loaded instance")
+        if index < 0 or index >= self._total_frames:
             raise IndexError(
                 f"Frame index {index} out of range [0, {self._total_frames})"
             )

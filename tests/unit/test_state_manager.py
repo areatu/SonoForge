@@ -79,6 +79,48 @@ def test_set_frame_out_of_range_raises(
     with pytest.raises(IndexError):
         manager.set_frame(10)
 
+    with pytest.raises(IndexError):
+        manager.set_frame(-1)
+
+
+def test_set_frame_without_instance_raises() -> None:
+    manager = StateManager()
+
+    with pytest.raises(RuntimeError, match="without a loaded instance"):
+        manager.set_frame(0)
+
+
+def test_set_instance_rejects_invalid_total_frames(
+    instance_metadata: InstanceMetadata,
+) -> None:
+    manager = StateManager()
+
+    with pytest.raises(ValueError, match="total_frames must be >= 1"):
+        manager.set_instance(instance_metadata, total_frames=0, frame_time_ms=33.3)
+
+    with pytest.raises(ValueError, match="total_frames must be >= 1"):
+        manager.set_instance(instance_metadata, total_frames=-1, frame_time_ms=33.3)
+
+    assert manager.snapshot.instance is None
+    assert manager.snapshot.total_frames == 0
+
+
+def test_set_instance_accepts_single_frame(
+    qtbot,
+    instance_metadata: InstanceMetadata,
+) -> None:
+    manager = StateManager()
+
+    with qtbot.waitSignal(manager.state_changed):
+        manager.set_instance(instance_metadata, total_frames=1, frame_time_ms=33.3)
+
+    assert manager.snapshot.total_frames == 1
+    manager.set_frame(0)
+    assert manager.snapshot.current_frame_index == 0
+
+    with pytest.raises(IndexError):
+        manager.set_frame(1)
+
 
 def test_mark_ed_and_es_use_current_frame(
     qtbot,
