@@ -38,7 +38,6 @@ class AppController(QObject):
         self._timer.timeout.connect(self._advance_playback)
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
-        self._current_source_kind: str | None = None
         self._loaded_source_path: Path | None = None
         self._loaded_frame_index: int | None = None
         self._pending_source_path: Path | None = None
@@ -58,7 +57,7 @@ class AppController(QObject):
 
     def open_folder(self, root: Path, error_log_path: Path | None = None) -> None:
         self.status_message.emit(f"Scanning {root}…")
-        worker = ScanWorker(root, error_log_path=error_log_path)
+        worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
         worker.signals.finished.connect(self._on_studies_scanned)
         worker.signals.failed.connect(self._on_scan_failed)
         self._thread_pool.start(worker)
@@ -78,10 +77,9 @@ class AppController(QObject):
             self.frame_load_failed.emit("Instance has no file path")
             return
         self._current_instance = instance
-        self._current_source_kind = "mp4" if instance.path.suffix.lower() == ".mp4" else "dicom"
         self.status_message.emit(f"Loading {instance.path.name}…")
         try:
-            if self._current_source_kind == "mp4":
+            if instance.media_format == "mp4":
                 with VideoReader() as reader:
                     reader.open(instance.path)
                     total_frames = reader.frame_count
@@ -109,8 +107,6 @@ class AppController(QObject):
     def load_thumbnail(self, instance: InstanceMetadata) -> None:
         if instance.path is None:
             return
-        if instance.path.suffix.lower() == ".mp4":
-            return
         uid = instance.sop_instance_uid
         if uid in self._pending_thumbnails:
             return
@@ -120,6 +116,8 @@ class AppController(QObject):
             instance.path,
             uid,
             number_of_frames=instance.number_of_frames,
+            media_format=instance.media_format,
+            parent=self,
         )
         worker.signals.finished.connect(self._on_thumbnail_loaded)
         worker.signals.failed.connect(self._on_thumbnail_failed)
@@ -204,11 +202,11 @@ class AppController(QObject):
         self._pending_source_path = self._current_instance.path
         self._pending_frame_index = state.current_frame_index
 
-        source_kind = self._current_source_kind or "dicom"
         worker = FrameLoaderWorker(
             self._current_instance.path,
             frame_index=state.current_frame_index,
-            source_kind=source_kind,
+            media_format=self._current_instance.media_format,
+            parent=self,
         )
         worker.signals.finished.connect(
             partial(
@@ -233,6 +231,8 @@ class AppController(QObject):
         )
 
     def _advance_playback(self) -> None:
+        if self._pending_load_id != 0:
+            return
         self.step_frame(1)
 
     def _on_frame_loaded(

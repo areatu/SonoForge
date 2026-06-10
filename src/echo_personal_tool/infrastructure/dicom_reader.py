@@ -33,4 +33,4 @@ class DicomReaderImpl:
 
         if frame.ndim == 3 and frame.shape[-1] in (3, 4):
             frame = frame[..., 0]
-        return np.ascontiguousarray(frame)
+        return np.ascontiguousarray(frame, dtype=frame.dtype).copy()

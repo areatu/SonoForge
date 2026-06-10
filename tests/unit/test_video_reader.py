@@ -44,13 +44,12 @@ def test_open_read_frame_count_and_shape(tmp_path: Path) -> None:
     assert reader.fps == pytest.approx(30.0)
 
     frame = reader.read_frame(0)
-    assert frame.shape == (30, 40)
+    assert frame.shape == (30, 40, 3)
     assert frame.dtype == np.uint8
-    assert frame.ndim == 2
-    assert int(frame[0, 0]) == 0
+    assert int(frame[0, 0, 0]) == 0
 
     frame3 = reader.read_frame(3)
-    assert int(frame3[0, 0]) == 3
+    assert int(frame3[0, 0, 0]) == 3
 
     reader.release()
 
@@ -85,7 +84,7 @@ def test_ring_buffer_evicts_oldest_frames(tmp_path: Path) -> None:
 
     for kept in range(10, total_frames):
         buffered = reader.get_buffered_frame(kept)
-        assert int(buffered[0, 0]) == kept
+        assert int(buffered[0, 0, 0]) == kept
 
     reader.release()
 

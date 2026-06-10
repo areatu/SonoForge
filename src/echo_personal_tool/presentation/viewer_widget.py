@@ -20,6 +20,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
     pixel_to_mm_length,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.infrastructure.pixel_utils import bgr_to_rgb
 
 
 class ContourViewBox(pg.ViewBox):
@@ -65,6 +66,7 @@ class ViewerWidget(QWidget):
         self._active_contour_phase: str | None = None
         self._contour_pen = pg.mkPen("#ff6f00", width=2)
         self._syncing_state = False
+        self._is_color_frame = False
 
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
@@ -113,13 +115,21 @@ class ViewerWidget(QWidget):
         layout.addLayout(controls)
 
     def show_frame(self, pixels: np.ndarray) -> None:
-        """Render a 2D numpy array (H, W) or (H, W, C)."""
+        """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
         frame = np.asarray(pixels)
-        if frame.ndim == 3:
-            frame = frame[..., 0]
-        self._current_frame = frame
-        self._image_item.setImage(frame, autoLevels=False)
-        self._update_levels()
+        self._is_color_frame = frame.ndim == 3 and frame.shape[2] >= 3
+        if self._is_color_frame:
+            display = bgr_to_rgb(frame)
+            self._current_frame = frame
+            self._image_item.setImage(display, autoLevels=True)
+        else:
+            if frame.ndim == 3:
+                frame = frame[..., 0]
+            self._current_frame = frame
+            self._image_item.setImage(frame, autoLevels=False)
+            self._update_levels()
+        self._window_slider.setEnabled(not self._is_color_frame)
+        self._level_slider.setEnabled(not self._is_color_frame)
 
     def clear(self) -> None:
         self._image_item.clear()
@@ -373,7 +383,7 @@ class ViewerWidget(QWidget):
         self.frame_selected.emit(value)
 
     def _update_levels(self) -> None:
-        if self._current_frame is None:
+        if self._current_frame is None or self._is_color_frame:
             return
         frame = np.asarray(self._current_frame, dtype=float)
         if frame.size == 0:

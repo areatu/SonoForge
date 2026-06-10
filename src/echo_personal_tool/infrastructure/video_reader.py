@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
+
 RING_BUFFER_SIZE = 50
+_thread_local = threading.local()
+
+
+def get_thread_video_reader() -> VideoReader:
+    """Return a VideoReader cached on the current worker thread."""
+    reader = getattr(_thread_local, "video_reader", None)
+    if reader is None:
+        reader = VideoReader()
+        _thread_local.video_reader = reader
+    return reader
 
 
 class VideoReader:
@@ -18,6 +31,7 @@ class VideoReader:
         self._slots: list[tuple[int, np.ndarray] | None] = [None] * buffer_size
         self._write_pos = 0
         self._capture: cv2.VideoCapture | None = None
+        self._open_path: Path | None = None
         self._frame_count = 0
         self._fps = 0.0
         self._last_read_index: int | None = None
@@ -31,11 +45,15 @@ class VideoReader:
         return self._fps
 
     def open(self, path: Path | str) -> None:
+        resolved = Path(path).resolve()
+        if self._capture is not None and self._open_path == resolved:
+            return
         self.release()
-        capture = cv2.VideoCapture(str(path))
+        capture = cv2.VideoCapture(str(resolved))
         if not capture.isOpened():
             raise OSError(f"Cannot open video: {path}")
         self._capture = capture
+        self._open_path = resolved
         self._frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         self._fps = float(capture.get(cv2.CAP_PROP_FPS))
 
@@ -50,17 +68,18 @@ class VideoReader:
         except KeyError:
             pass
 
+        if self._last_read_index is not None and index == self._last_read_index + 1:
+            return self._read_next_sequential(index)
+
+        if self._try_read_at_index(index):
+            return self.get_buffered_frame(index)
+
         if self._last_read_index is None or index <= self._last_read_index:
             self._capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
             self._last_read_index = -1
 
         while self._last_read_index < index:
-            ok, bgr = self._capture.read()
-            if not ok or bgr is None:
-                raise OSError(f"Failed to read frame {self._last_read_index + 1}")
-            self._last_read_index += 1
-            gray = _to_grayscale_uint8(bgr)
-            self._store_in_buffer(self._last_read_index, gray)
+            self._read_next_sequential(self._last_read_index + 1)
 
         return self.get_buffered_frame(index)
 
@@ -74,6 +93,7 @@ class VideoReader:
         if self._capture is not None:
             self._capture.release()
             self._capture = None
+        self._open_path = None
         self._frame_count = 0
         self._fps = 0.0
         self._last_read_index = None
@@ -86,18 +106,25 @@ class VideoReader:
     def __exit__(self, *_args: object) -> None:
         self.release()
 
+    def _read_next_sequential(self, index: int) -> np.ndarray:
+        ok, bgr = self._capture.read()
+        if not ok or bgr is None:
+            raise OSError(f"Failed to read frame {index}")
+        frame = to_bgr_uint8(bgr)
+        self._store_in_buffer(index, frame)
+        self._last_read_index = index
+        return frame
+
+    def _try_read_at_index(self, index: int) -> bool:
+        self._capture.set(cv2.CAP_PROP_POS_FRAMES, index)
+        ok, bgr = self._capture.read()
+        if not ok or bgr is None:
+            return False
+        frame = to_bgr_uint8(bgr)
+        self._store_in_buffer(index, frame)
+        self._last_read_index = index
+        return True
+
     def _store_in_buffer(self, index: int, frame: np.ndarray) -> None:
         self._slots[self._write_pos] = (index, frame)
         self._write_pos = (self._write_pos + 1) % self._buffer_size
-
-
-def _to_grayscale_uint8(frame: np.ndarray) -> np.ndarray:
-    if frame.ndim == 2:
-        gray = frame
-    elif frame.shape[2] == 1:
-        gray = frame[:, :, 0]
-    elif frame.shape[2] == 4:
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
-    else:
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return np.ascontiguousarray(gray, dtype=np.uint8)

@@ -120,10 +120,10 @@ class MainWindow(QMainWindow):
 
         status = QStatusBar()
         self.setStatusBar(status)
-        self._show_status("Ready — open a DICOM folder")
+        self._show_status("Ready — open a study folder")
 
     def _open_folder(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Select DICOM folder")
+        directory = QFileDialog.getExistingDirectory(self, "Select study folder")
         if not directory:
             return
         log_path = Path(directory) / "scan_errors.log"

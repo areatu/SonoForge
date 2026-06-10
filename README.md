@@ -1,6 +1,6 @@
 # ECHO Personal Tool
 
-Персональный десктопный инструмент для анализа эхокардиографических исследований (DICOM, MP4).
+Персональный десктопный инструмент для анализа эхокардиографических исследований (DICOM, MP4, JPEG/PNG).
 
 **Стек:** PySide6, PyQtGraph, pydicom, NumPy — Clean Architecture.
 
@@ -46,6 +46,7 @@ src/echo_personal_tool/
 - [Этап 1.md](Этап%201.md) — MVP scope
 - [Этап2.md](Этап2.md) — SDD
 - [Этап3.md](Этап3.md) — UI/UX
+- [Sprint3.1.md](Sprint3.1.md) — MP4/JPEG support
 
 ## ONNX (Фаза 2)
 

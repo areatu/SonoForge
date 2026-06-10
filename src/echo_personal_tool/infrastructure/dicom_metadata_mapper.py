@@ -53,6 +53,7 @@ def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> Instanc
         frame_time_ms=_frame_time_ms(dataset),
         series_description=series_description,
         path=path,
+        media_format="dicom",
     )
 
 

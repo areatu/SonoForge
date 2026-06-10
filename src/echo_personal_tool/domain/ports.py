@@ -20,6 +20,10 @@ class IStudyScanner(Protocol):
     def scan(self, root: Path) -> list[StudyMetadata]: ...
 
 
+class IImageReader(Protocol):
+    def read_pixels(self, path: Path) -> np.ndarray: ...
+
+
 class IVideoReader(Protocol):
     @property
     def frame_count(self) -> int: ...

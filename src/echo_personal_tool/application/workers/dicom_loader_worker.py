@@ -11,4 +11,4 @@ class DicomLoaderWorker(FrameLoaderWorker):
     """Load a single DICOM frame on a thread pool thread."""
 
     def __init__(self, path: Path, frame_index: int = 0) -> None:
-        super().__init__(path, frame_index=frame_index, source_kind="dicom")
+        super().__init__(path, frame_index=frame_index, media_format="dicom")

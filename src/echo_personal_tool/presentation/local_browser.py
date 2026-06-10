@@ -5,12 +5,23 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QIcon, QImage
+from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
 
 _ITEM_DATA_ROLE = 256
+
+
+def _instance_label(instance: InstanceMetadata) -> str:
+    if instance.number_of_frames == 1:
+        frame_label = "1 frame"
+    else:
+        frame_label = f"{instance.number_of_frames} frames"
+    if instance.media_format == "dicom":
+        return f"{instance.sop_instance_uid[:12]}… ({frame_label})"
+    filename = instance.path.name if instance.path is not None else instance.sop_instance_uid
+    return f"{filename} ({frame_label})"
 
 
 class LocalBrowserWidget(QTreeWidget):
@@ -46,10 +57,7 @@ class LocalBrowserWidget(QTreeWidget):
                 study_item.addChild(series_item)
 
                 for instance in series.instances:
-                    inst_label = (
-                        f"{instance.sop_instance_uid[:12]}… "
-                        f"({instance.number_of_frames} frames)"
-                    )
+                    inst_label = _instance_label(instance)
                     inst_item = QTreeWidgetItem([inst_label])
                     inst_item.setData(0, _ITEM_DATA_ROLE, instance)
                     series_item.addChild(inst_item)
@@ -64,7 +72,8 @@ class LocalBrowserWidget(QTreeWidget):
             study_item.setExpanded(True)
 
     def set_thumbnail(self, sop_instance_uid: str, image: QImage) -> None:
-        icon = QIcon(image)
+        # PySide6 QIcon rejects QImage directly; pixmap conversion is required.
+        icon = QIcon(QPixmap.fromImage(image))
         self._thumbnail_cache[sop_instance_uid] = icon
         item = self._items_by_uid.get(sop_instance_uid)
         if item is not None:
