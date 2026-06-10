@@ -14,6 +14,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.models.linear_measurement import (
+    LinearMeasurement,
+    pixel_to_mm_length,
+)
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 
@@ -31,6 +35,8 @@ class ViewerWidget(QWidget):
         self._image_item.setAutoDownsample(True)
         self._view.addItem(self._image_item)
         self._current_frame: np.ndarray | None = None
+        self._current_state: ViewerState | None = None
+        self._linear_roi: pg.LineROI | None = None
         self._syncing_state = False
 
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
@@ -44,6 +50,7 @@ class ViewerWidget(QWidget):
         self._source_label = QLabel("Frame: —")
         self._ed_label = QLabel("ED: —")
         self._es_label = QLabel("ES: —")
+        self._measurement_label = QLabel("Length: —")
 
         self._window_slider = QSlider(Qt.Orientation.Horizontal)
         self._window_slider.setRange(1, 400)
@@ -70,6 +77,7 @@ class ViewerWidget(QWidget):
         wl_row.addWidget(self._level_slider, stretch=1)
         wl_row.addWidget(self._ed_label)
         wl_row.addWidget(self._es_label)
+        wl_row.addWidget(self._measurement_label)
         controls.addLayout(wl_row)
 
         layout = QVBoxLayout(self)
@@ -88,8 +96,13 @@ class ViewerWidget(QWidget):
 
     def clear(self) -> None:
         self._image_item.clear()
+        self._clear_linear_caliper()
 
     def set_state(self, viewer_state: ViewerState) -> None:
+        previous_instance = self._current_state.instance if self._current_state else None
+        if previous_instance != viewer_state.instance:
+            self._clear_linear_caliper()
+        self._current_state = viewer_state
         self._syncing_state = True
         try:
             maximum = max(0, viewer_state.total_frames - 1)
@@ -124,8 +137,36 @@ class ViewerWidget(QWidget):
                 "color: #c62828; font-weight: bold;" if es_index is not None else ""
             )
             self._update_timeline_indicator(viewer_state)
+            self._update_linear_measurement()
         finally:
             self._syncing_state = False
+
+    def toggle_linear_caliper(self) -> None:
+        if self._linear_roi is not None:
+            self._clear_linear_caliper()
+            return
+        if self._current_frame is None:
+            return
+
+        height, width = self._current_frame.shape[:2]
+        line_length = max(float(min(width, height)) * 0.35, 20.0)
+        line_width = max(float(min(width, height)) * 0.02, 4.0)
+        start_x = max((width - line_length) / 2.0, 0.0)
+        start_y = float(height) / 2.0
+        roi = pg.LineROI(
+            (start_x, start_y),
+            (min(start_x + line_length, float(width - 1)), start_y),
+            line_width,
+            pen=pg.mkPen("#ffb300", width=2),
+        )
+        roi.sigRegionChanged.connect(self._update_linear_measurement)
+        roi.sigRegionChangeFinished.connect(self._update_linear_measurement)
+        self._view.addItem(roi)
+        self._linear_roi = roi
+        self._update_linear_measurement()
+
+    def cancel_active_tool(self) -> None:
+        self._clear_linear_caliper()
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
         ed_index = viewer_state.ed_frame_index
@@ -149,6 +190,34 @@ class ViewerWidget(QWidget):
             )
         else:
             self._timeline_slider.setStyleSheet("")
+
+    def _clear_linear_caliper(self) -> None:
+        if self._linear_roi is not None:
+            self._view.removeItem(self._linear_roi)
+            self._linear_roi = None
+        self._measurement_label.setText("Length: —")
+
+    def _update_linear_measurement(self, *_args) -> None:
+        if self._linear_roi is None:
+            self._measurement_label.setText("Length: —")
+            return
+
+        pixel_length = float(self._linear_roi.size().x())
+        angle_degrees = float(self._linear_roi.angle())
+        pixel_spacing = None
+        if self._current_state and self._current_state.instance:
+            pixel_spacing = self._current_state.instance.pixel_spacing
+        millimeter_length = (
+            pixel_to_mm_length(pixel_length, angle_degrees, pixel_spacing)
+            if pixel_spacing is not None
+            else None
+        )
+        measurement = LinearMeasurement(
+            label="Length",
+            pixel_length=pixel_length,
+            millimeter_length=millimeter_length,
+        )
+        self._measurement_label.setText(measurement.display_text())
 
     def _on_timeline_changed(self, value: int) -> None:
         if self._syncing_state:

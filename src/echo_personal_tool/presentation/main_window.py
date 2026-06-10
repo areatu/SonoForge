@@ -119,4 +119,12 @@ class MainWindow(QMainWindow):
             self._controller.mark_es()
             event.accept()
             return
+        if event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self._viewer.toggle_linear_caliper()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Escape:
+            self._viewer.cancel_active_tool()
+            event.accept()
+            return
         super().keyPressEvent(event)

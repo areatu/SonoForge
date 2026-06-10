@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
@@ -68,6 +69,40 @@ def test_main_window_d_and_s_hotkeys_mark_phases(qtbot) -> None:
     controller.state_manager.set_frame(6)
     qtbot.keyClick(window, Qt.Key.Key_S)
     assert controller.state_manager.snapshot.es_frame_index == 6
+
+
+def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
+    controller = AppController()
+    instance = InstanceMetadata(
+        sop_instance_uid="1.2.3.4.5",
+        series_uid="1.2.3.4.6",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="Test",
+        path=Path("/tmp/test.dcm"),
+    )
+    controller.state_manager.set_instance(
+        instance,
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+    qtbot.keyClick(window, Qt.Key.Key_L)
+    assert window._viewer._linear_roi is not None
+    assert "mm (" in window._viewer._measurement_label.text()
+    assert window._viewer._measurement_label.text().endswith("px)")
+
+    qtbot.keyClick(window, Qt.Key.Key_Escape)
+    assert window._viewer._linear_roi is None
+    assert window._viewer._measurement_label.text() == "Length: —"
 
 
 @pytest.fixture(scope="session", autouse=True)

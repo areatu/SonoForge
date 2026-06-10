@@ -1,3 +1,7 @@
+from echo_personal_tool.domain.models.linear_measurement import (
+    LinearMeasurement,
+    pixel_to_mm_length,
+)
 from echo_personal_tool.domain.models.metadata import (
     InstanceMetadata,
     InstanceRef,
@@ -9,7 +13,9 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 __all__ = [
     "InstanceMetadata",
     "InstanceRef",
+    "LinearMeasurement",
     "SeriesMetadata",
     "StudyMetadata",
     "ViewerState",
+    "pixel_to_mm_length",
 ]
