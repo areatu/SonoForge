@@ -8,7 +8,14 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.state_manager import StateManager
-from echo_personal_tool.domain.models import InstanceMetadata, ViewerState
+from echo_personal_tool.domain.models import (
+    DopplerIntervalMarker,
+    DopplerMeasurementDTO,
+    DopplerPeakMarker,
+    DopplerTrace,
+    InstanceMetadata,
+    ViewerState,
+)
 
 
 @pytest.fixture
@@ -36,6 +43,7 @@ def test_initial_snapshot(qtbot, instance_metadata: InstanceMetadata) -> None:
     assert state.is_playing is False
     assert state.ed_frame_index is None
     assert state.es_frame_index is None
+    assert state.doppler_measurement is None
 
 
 def test_set_instance_resets_state_and_emits(
@@ -57,6 +65,7 @@ def test_set_instance_resets_state_and_emits(
     assert state.is_playing is False
     assert state.ed_frame_index is None
     assert state.es_frame_index is None
+    assert state.doppler_measurement is None
 
 
 def test_set_frame_updates_index(qtbot, instance_metadata: InstanceMetadata) -> None:
@@ -184,6 +193,22 @@ def test_set_instance_clears_previous_markers(
     assert state.instance == other
     assert state.ed_frame_index is None
     assert state.es_frame_index is None
+
+
+def test_set_doppler_measurement_updates_snapshot(qtbot) -> None:
+    manager = StateManager()
+    dto = DopplerMeasurementDTO(
+        peaks=(DopplerPeakMarker(label="E", time_ms=120.0, velocity_cm_s=85.0),),
+        intervals=(
+            DopplerIntervalMarker(label="DT", start_time_ms=80.0, end_time_ms=260.0),
+        ),
+        traces=(DopplerTrace(label="VTI", points=((0.0, 0.0), (10.0, 2.0))),),
+    )
+
+    with qtbot.waitSignal(manager.state_changed):
+        manager.set_doppler_measurement(dto)
+
+    assert manager.snapshot.doppler_measurement == dto
 
 
 @pytest.fixture(scope="session", autouse=True)

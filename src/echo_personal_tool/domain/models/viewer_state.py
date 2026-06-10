@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.metadata import InstanceMetadata
 
 
@@ -16,6 +17,7 @@ class ViewerState:
     is_playing: bool
     ed_frame_index: int | None
     es_frame_index: int | None
+    doppler_measurement: DopplerMeasurementDTO | None = None
 
     @property
     def fps(self) -> float:

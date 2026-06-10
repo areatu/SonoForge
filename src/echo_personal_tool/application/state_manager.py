@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Signal
 
 from echo_personal_tool.domain.models import InstanceMetadata
+from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 
@@ -22,6 +23,7 @@ class StateManager(QObject):
         self._is_playing = False
         self._ed_frame_index: int | None = None
         self._es_frame_index: int | None = None
+        self._doppler_measurement: DopplerMeasurementDTO | None = None
 
     @property
     def snapshot(self) -> ViewerState:
@@ -33,6 +35,7 @@ class StateManager(QObject):
             is_playing=self._is_playing,
             ed_frame_index=self._ed_frame_index,
             es_frame_index=self._es_frame_index,
+            doppler_measurement=self._doppler_measurement,
         )
 
     def set_instance(
@@ -50,6 +53,7 @@ class StateManager(QObject):
         self._is_playing = False
         self._ed_frame_index = None
         self._es_frame_index = None
+        self._doppler_measurement = None
         self._emit_state()
 
     def set_frame(self, index: int) -> None:
@@ -93,6 +97,10 @@ class StateManager(QObject):
     def clear_phase_markers(self) -> None:
         self._ed_frame_index = None
         self._es_frame_index = None
+        self._emit_state()
+
+    def set_doppler_measurement(self, dto: DopplerMeasurementDTO) -> None:
+        self._doppler_measurement = dto
         self._emit_state()
 
     def _emit_state(self) -> None:

@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -25,6 +24,7 @@ from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.presentation.doppler_widget import DopplerWidget
 from echo_personal_tool.presentation.local_browser import LocalBrowserWidget
+from echo_personal_tool.presentation.measurement_panel import MeasurementPanel
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 
@@ -94,13 +94,17 @@ class MainWindow(QMainWindow):
         self._view_stack.addWidget(self._viewer)
 
         self._doppler_widget = DopplerWidget()
+        self._doppler_widget.markers_changed.connect(
+            self._controller.on_doppler_markers_changed
+        )
         self._view_stack.addWidget(self._doppler_widget)
         splitter.addWidget(center)
 
-        right = QLabel("Measurements\n(Phase 1 — Sprint 4)")
-        right.setAlignment(Qt.AlignmentFlag.AlignTop)
-        right.setMinimumWidth(180)
-        splitter.addWidget(right)
+        self._measurement_panel = MeasurementPanel()
+        self._controller.state_manager.state_changed.connect(
+            self._measurement_panel.update_from_state
+        )
+        splitter.addWidget(self._measurement_panel)
 
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 6)
@@ -109,6 +113,7 @@ class MainWindow(QMainWindow):
 
         self._browser.instance_selected.connect(self._on_instance_selected)
         self._viewer.set_state(self._controller.state_manager.snapshot)
+        self._measurement_panel.update_from_state(self._controller.state_manager.snapshot)
         self._view_stack.setCurrentWidget(self._viewer)
         self._view_2d_button.setChecked(True)
         self._view_doppler_button.setChecked(False)

@@ -14,6 +14,7 @@ from echo_personal_tool.application.workers.frame_loader_worker import FrameLoad
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
+from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
@@ -163,6 +164,13 @@ class AppController(QObject):
         if frame is not None:
             self.status_message.emit(f"ES marked at frame {frame + 1}")
 
+    def on_doppler_markers_changed(self, dto: object) -> None:
+        if not isinstance(dto, DopplerMeasurementDTO):
+            raise TypeError("Expected DopplerMeasurementDTO")
+
+        self._state_manager.set_doppler_measurement(dto)
+        self.status_message.emit(self._format_doppler_summary(dto))
+
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
@@ -212,6 +220,17 @@ class AppController(QObject):
         )
         worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id))
         self._thread_pool.start(worker)
+
+    def _format_doppler_summary(self, dto: DopplerMeasurementDTO) -> str:
+        peaks = len(dto.peaks)
+        intervals = len(dto.intervals)
+        traces = len(dto.traces)
+        return (
+            "Doppler: "
+            f"{peaks} peak{'s' if peaks != 1 else ''}, "
+            f"{intervals} interval{'s' if intervals != 1 else ''}, "
+            f"{traces} trace{'s' if traces != 1 else ''}"
+        )
 
     def _advance_playback(self) -> None:
         self.step_frame(1)
