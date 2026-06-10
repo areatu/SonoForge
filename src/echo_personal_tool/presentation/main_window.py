@@ -123,6 +123,14 @@ class MainWindow(QMainWindow):
             self._viewer.toggle_linear_caliper()
             event.accept()
             return
+        if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self._viewer.start_contour()
+            event.accept()
+            return
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._viewer.finish_contour():
+                event.accept()
+                return
         if event.key() == Qt.Key.Key_Escape:
             self._viewer.cancel_active_tool()
             event.accept()

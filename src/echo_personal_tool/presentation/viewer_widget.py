@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
     pixel_to_mm_length,
@@ -21,22 +22,48 @@ from echo_personal_tool.domain.models.linear_measurement import (
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 
+class ContourViewBox(pg.ViewBox):
+    """ViewBox that forwards contour clicks to the widget."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._viewer_widget: ViewerWidget | None = None
+
+    def set_viewer_widget(self, viewer_widget: ViewerWidget) -> None:
+        self._viewer_widget = viewer_widget
+
+    def mouseClickEvent(self, ev) -> None:  # type: ignore[override]
+        if self._viewer_widget is not None and self._viewer_widget._handle_contour_mouse_click(ev):
+            return
+        super().mouseClickEvent(ev)
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
     play_pause_requested = Signal()
     frame_selected = Signal(int)
+    contour_completed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._graphics = pg.GraphicsLayoutWidget()
-        self._view = self._graphics.addViewBox(lockAspect=True, invertY=True)
+        self._view = ContourViewBox(lockAspect=True, invertY=True)
+        self._graphics.ci.addItem(self._view)
+        self._view.set_viewer_widget(self)
         self._image_item = pg.ImageItem(axisOrder="row-major")
         self._image_item.setAutoDownsample(True)
         self._view.addItem(self._image_item)
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
         self._linear_roi: pg.LineROI | None = None
+        self._contours: list[Contour] = []
+        self._contour_items: list[pg.PlotDataItem] = []
+        self._contour_mode_active = False
+        self._active_contour_points: list[tuple[float, float]] = []
+        self._active_contour_item: pg.PlotDataItem | None = None
+        self._active_contour_phase: str | None = None
+        self._contour_pen = pg.mkPen("#ff6f00", width=2)
         self._syncing_state = False
 
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
@@ -97,11 +124,13 @@ class ViewerWidget(QWidget):
     def clear(self) -> None:
         self._image_item.clear()
         self._clear_linear_caliper()
+        self._clear_contours()
 
     def set_state(self, viewer_state: ViewerState) -> None:
         previous_instance = self._current_state.instance if self._current_state else None
         if previous_instance != viewer_state.instance:
             self._clear_linear_caliper()
+            self._clear_contours()
         self._current_state = viewer_state
         self._syncing_state = True
         try:
@@ -165,8 +194,69 @@ class ViewerWidget(QWidget):
         self._linear_roi = roi
         self._update_linear_measurement()
 
+    def start_contour(self) -> None:
+        if self._current_frame is None or self._active_contour_item is not None:
+            return
+
+        phase = self._resolve_contour_phase()
+        self._contour_mode_active = True
+        self._active_contour_phase = phase
+        self._active_contour_points = []
+        self._active_contour_item = pg.PlotDataItem(
+            pen=self._contour_pen,
+            symbol="o",
+            symbolSize=6,
+            symbolBrush=self._contour_pen.color(),
+        )
+        self._active_contour_item.setZValue(20)
+        self._view.addItem(self._active_contour_item)
+
+    def handle_contour_click(self, point: tuple[float, float]) -> bool:
+        if not self._contour_mode_active or self._active_contour_item is None:
+            return False
+
+        self._active_contour_points.append((float(point[0]), float(point[1])))
+        self._update_active_contour_item()
+        return True
+
+    def finish_contour(self) -> bool:
+        if not self._contour_mode_active or self._active_contour_item is None:
+            return False
+        if len(self._active_contour_points) < 3:
+            return False
+
+        points = list(self._active_contour_points)
+        self._update_active_contour_item(closed=True)
+        contour = Contour(
+            phase=self._active_contour_phase or "ED",
+            points=points,
+        )
+        self._contours.append(contour)
+        self._contour_items.append(self._active_contour_item)
+        self.contour_completed.emit(contour)
+        self._active_contour_item = None
+        self._active_contour_points = []
+        self._active_contour_phase = None
+        self._contour_mode_active = False
+        return True
+
     def cancel_active_tool(self) -> None:
+        if self._active_contour_item is not None:
+            self._view.removeItem(self._active_contour_item)
+            self._active_contour_item = None
+            self._active_contour_points = []
+            self._active_contour_phase = None
+            self._contour_mode_active = False
+            return
         self._clear_linear_caliper()
+
+    @property
+    def contours(self) -> list[Contour]:
+        return list(self._contours)
+
+    @property
+    def is_contour_mode_active(self) -> bool:
+        return self._contour_mode_active
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
         ed_index = viewer_state.ed_frame_index
@@ -196,6 +286,64 @@ class ViewerWidget(QWidget):
             self._view.removeItem(self._linear_roi)
             self._linear_roi = None
         self._measurement_label.setText("Length: —")
+
+    def _clear_contours(self) -> None:
+        if self._active_contour_item is not None:
+            self._view.removeItem(self._active_contour_item)
+            self._active_contour_item = None
+        for item in self._contour_items:
+            self._view.removeItem(item)
+        self._contour_items.clear()
+        self._contours.clear()
+        self._active_contour_points = []
+        self._active_contour_phase = None
+        self._contour_mode_active = False
+
+    def _resolve_contour_phase(self) -> str:
+        if self._current_state is None:
+            return "ED"
+
+        state = self._current_state
+        current = state.current_frame_index
+        ed = state.ed_frame_index
+        es = state.es_frame_index
+        if ed is not None and current == ed:
+            return "ED"
+        if es is not None and current == es:
+            return "ES"
+        if ed is not None and es is None:
+            return "ED"
+        if es is not None and ed is None:
+            return "ES"
+        return "ED"
+
+    def _handle_contour_mouse_click(self, ev) -> bool:
+        if not self._contour_mode_active:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+
+        ev.accept()
+        if ev.double():
+            self.finish_contour()
+            return True
+
+        point = self._view.mapSceneToView(ev.scenePos())
+        self.handle_contour_click((float(point.x()), float(point.y())))
+        return True
+
+    def _update_active_contour_item(self, closed: bool = False) -> None:
+        if self._active_contour_item is None:
+            return
+        points = list(self._active_contour_points)
+        if closed and points:
+            points.append(points[0])
+        if points:
+            x_values = [point[0] for point in points]
+            y_values = [point[1] for point in points]
+            self._active_contour_item.setData(x_values, y_values)
+        else:
+            self._active_contour_item.setData([], [])
 
     def _update_linear_measurement(self, *_args) -> None:
         if self._linear_roi is None:

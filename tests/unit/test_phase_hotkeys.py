@@ -105,6 +105,45 @@ def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
     assert window._viewer._measurement_label.text() == "Length: —"
 
 
+def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+    qtbot.keyClick(window, Qt.Key.Key_C)
+    assert window._viewer.is_contour_mode_active
+
+    window._viewer.handle_contour_click((10.0, 10.0))
+    window._viewer.handle_contour_click((20.0, 10.0))
+    window._viewer.handle_contour_click((20.0, 20.0))
+
+    qtbot.keyClick(window, Qt.Key.Key_Return)
+    assert not window._viewer.is_contour_mode_active
+    assert len(window._viewer.contours) == 1
+    assert window._viewer.contours[0].phase == "ED"
+    assert window._viewer.contours[0].points == [
+        (10.0, 10.0),
+        (20.0, 10.0),
+        (20.0, 20.0),
+    ]
+
+    qtbot.keyClick(window, Qt.Key.Key_C)
+    assert window._viewer.is_contour_mode_active
+    window._viewer.handle_contour_click((5.0, 5.0))
+    qtbot.keyClick(window, Qt.Key.Key_Escape)
+    assert not window._viewer.is_contour_mode_active
+    assert len(window._viewer.contours) == 1
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _qapp() -> QApplication:
     app = QApplication.instance()
