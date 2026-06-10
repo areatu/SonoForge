@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
 
-from echo_personal_tool.domain.models import InstanceMetadata
+from echo_personal_tool.domain.models import (
+    Contour,
+    InstanceMetadata,
+    LinearMeasurement,
+    MeasurementSnapshot,
+)
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
@@ -24,6 +29,9 @@ class StateManager(QObject):
         self._ed_frame_index: int | None = None
         self._es_frame_index: int | None = None
         self._doppler_measurement: DopplerMeasurementDTO | None = None
+        self._contours: tuple[Contour, ...] = ()
+        self._linear_measurements: tuple[LinearMeasurement, ...] = ()
+        self._measurement_snapshot: MeasurementSnapshot | None = None
 
     @property
     def snapshot(self) -> ViewerState:
@@ -36,6 +44,9 @@ class StateManager(QObject):
             ed_frame_index=self._ed_frame_index,
             es_frame_index=self._es_frame_index,
             doppler_measurement=self._doppler_measurement,
+            contours=self._contours,
+            linear_measurements=self._linear_measurements,
+            measurement_snapshot=self._measurement_snapshot,
         )
 
     def set_instance(
@@ -54,6 +65,9 @@ class StateManager(QObject):
         self._ed_frame_index = None
         self._es_frame_index = None
         self._doppler_measurement = None
+        self._contours = ()
+        self._linear_measurements = ()
+        self._measurement_snapshot = None
         self._emit_state()
 
     def set_frame(self, index: int) -> None:
@@ -101,6 +115,18 @@ class StateManager(QObject):
 
     def set_doppler_measurement(self, dto: DopplerMeasurementDTO) -> None:
         self._doppler_measurement = dto
+        self._emit_state()
+
+    def set_contours(self, contours: tuple[Contour, ...]) -> None:
+        self._contours = contours
+        self._emit_state()
+
+    def set_linear_measurements(self, measurements: tuple[LinearMeasurement, ...]) -> None:
+        self._linear_measurements = measurements
+        self._emit_state()
+
+    def set_measurement_snapshot(self, snapshot: MeasurementSnapshot | None) -> None:
+        self._measurement_snapshot = snapshot
         self._emit_state()
 
     def _emit_state(self) -> None:

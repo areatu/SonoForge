@@ -9,11 +9,14 @@ from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.domain.models import (
+    Contour,
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
     DopplerPeakMarker,
     DopplerTrace,
     InstanceMetadata,
+    LinearMeasurement,
+    MeasurementSnapshot,
     ViewerState,
 )
 
@@ -44,6 +47,9 @@ def test_initial_snapshot(qtbot, instance_metadata: InstanceMetadata) -> None:
     assert state.ed_frame_index is None
     assert state.es_frame_index is None
     assert state.doppler_measurement is None
+    assert state.contours == ()
+    assert state.linear_measurements == ()
+    assert state.measurement_snapshot is None
 
 
 def test_set_instance_resets_state_and_emits(
@@ -66,6 +72,9 @@ def test_set_instance_resets_state_and_emits(
     assert state.ed_frame_index is None
     assert state.es_frame_index is None
     assert state.doppler_measurement is None
+    assert state.contours == ()
+    assert state.linear_measurements == ()
+    assert state.measurement_snapshot is None
 
 
 def test_set_frame_updates_index(qtbot, instance_metadata: InstanceMetadata) -> None:
@@ -193,6 +202,10 @@ def test_set_instance_clears_previous_markers(
     assert state.instance == other
     assert state.ed_frame_index is None
     assert state.es_frame_index is None
+    assert state.doppler_measurement is None
+    assert state.contours == ()
+    assert state.linear_measurements == ()
+    assert state.measurement_snapshot is None
 
 
 def test_set_doppler_measurement_updates_snapshot(qtbot) -> None:
@@ -209,6 +222,25 @@ def test_set_doppler_measurement_updates_snapshot(qtbot) -> None:
         manager.set_doppler_measurement(dto)
 
     assert manager.snapshot.doppler_measurement == dto
+
+
+def test_set_measurement_fields_update_snapshot(qtbot) -> None:
+    manager = StateManager()
+    contour = Contour(phase="ED", view="A4C", points=[(1.0, 2.0), (3.0, 4.0)])
+    linear = LinearMeasurement(label="LVEDD", pixel_length=42.0, millimeter_length=21.0)
+    snapshot = MeasurementSnapshot(linear_measurements=(linear,))
+
+    with qtbot.waitSignal(manager.state_changed):
+        manager.set_contours((contour,))
+    assert manager.snapshot.contours == (contour,)
+
+    with qtbot.waitSignal(manager.state_changed):
+        manager.set_linear_measurements((linear,))
+    assert manager.snapshot.linear_measurements == (linear,)
+
+    with qtbot.waitSignal(manager.state_changed):
+        manager.set_measurement_snapshot(snapshot)
+    assert manager.snapshot.measurement_snapshot == snapshot
 
 
 @pytest.fixture(scope="session", autouse=True)

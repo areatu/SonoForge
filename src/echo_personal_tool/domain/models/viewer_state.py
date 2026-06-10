@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
+from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.metadata import InstanceMetadata
 
 
@@ -18,6 +21,9 @@ class ViewerState:
     ed_frame_index: int | None
     es_frame_index: int | None
     doppler_measurement: DopplerMeasurementDTO | None = None
+    contours: tuple[Contour, ...] = ()
+    linear_measurements: tuple[LinearMeasurement, ...] = ()
+    measurement_snapshot: MeasurementSnapshot | None = None
 
     @property
     def fps(self) -> float:
