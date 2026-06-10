@@ -137,6 +137,7 @@ class MainWindow(QMainWindow):
 
     def _on_instance_selected(self, instance: object) -> None:
         if isinstance(instance, InstanceMetadata):
+            self._doppler_widget.clear_measurements()
             self._controller.load_instance(instance)
 
     def _on_frame_loaded(self, pixels: object) -> None:

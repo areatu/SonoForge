@@ -150,6 +150,29 @@ class DopplerWidget(QWidget):
     def get_measurement_dto(self) -> DopplerMeasurementDTO:
         return self._build_measurement_dto()
 
+    def clear_measurements(self) -> None:
+        """Clear all Doppler markers and plot overlays.
+
+        Does not emit ``markers_changed`` (consistent with ``ViewerWidget.clear()``,
+        which resets overlays without notifying the controller).
+        """
+
+        self._peak_markers.clear()
+        self._interval_markers.clear()
+        self._traces.clear()
+
+        self._peak_scatter.setData([], [])
+
+        for item in self._interval_items:
+            self._plot.removeItem(item)
+        self._interval_items.clear()
+
+        for item in self._trace_items:
+            self._plot.removeItem(item)
+        self._trace_items.clear()
+
+        self._clear_partial_state()
+
     def _build_measurement_dto(self) -> DopplerMeasurementDTO:
         return DopplerMeasurementDTO(
             peaks=tuple(self._peak_markers),
