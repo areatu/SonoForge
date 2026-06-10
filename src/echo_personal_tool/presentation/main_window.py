@@ -53,6 +53,8 @@ class MainWindow(QMainWindow):
         self._open_button.clicked.connect(self._open_folder)
         left_layout.addWidget(self._open_button)
         self._browser = LocalBrowserWidget()
+        self._browser.set_thumbnail_loader(self._controller.load_thumbnail)
+        self._controller.thumbnail_loaded.connect(self._browser.set_thumbnail)
         left_layout.addWidget(self._browser, stretch=1)
         splitter.addWidget(left)
 

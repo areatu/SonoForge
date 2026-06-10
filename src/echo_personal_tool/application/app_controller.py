@@ -7,10 +7,12 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
+from PySide6.QtGui import QImage
 
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
+from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.infrastructure.video_reader import VideoReader
@@ -23,6 +25,7 @@ class AppController(QObject):
     scan_failed = Signal(str)
     frame_loaded = Signal(np.ndarray)
     frame_load_failed = Signal(str)
+    thumbnail_loaded = Signal(str, QImage)
     status_message = Signal(str)
 
     def __init__(self, thread_pool: QThreadPool | None = None) -> None:
@@ -41,6 +44,7 @@ class AppController(QObject):
         self._pending_frame_index: int | None = None
         self._load_request_id = 0
         self._pending_load_id = 0
+        self._pending_thumbnails: set[str] = set()
         self._state_manager.state_changed.connect(self._on_state_changed)
 
     @property
@@ -100,6 +104,32 @@ class AppController(QObject):
         )
         if frame_index != 0:
             self._state_manager.set_frame(frame_index)
+
+    def load_thumbnail(self, instance: InstanceMetadata) -> None:
+        if instance.path is None:
+            return
+        if instance.path.suffix.lower() == ".mp4":
+            return
+        uid = instance.sop_instance_uid
+        if uid in self._pending_thumbnails:
+            return
+
+        self._pending_thumbnails.add(uid)
+        worker = ThumbnailLoaderWorker(
+            instance.path,
+            uid,
+            number_of_frames=instance.number_of_frames,
+        )
+        worker.signals.finished.connect(self._on_thumbnail_loaded)
+        worker.signals.failed.connect(self._on_thumbnail_failed)
+        self._thread_pool.start(worker)
+
+    def _on_thumbnail_loaded(self, sop_instance_uid: str, image: QImage) -> None:
+        self._pending_thumbnails.discard(sop_instance_uid)
+        self.thumbnail_loaded.emit(sop_instance_uid, image)
+
+    def _on_thumbnail_failed(self, sop_instance_uid: str, _message: str) -> None:
+        self._pending_thumbnails.discard(sop_instance_uid)
 
     def load_first_instance_of_series(self, study: StudyMetadata, series_uid: str) -> None:
         for series in study.series:
