@@ -45,7 +45,7 @@ class StateManager(QObject):
             raise ValueError(f"total_frames must be >= 1, got {total_frames}")
         self._instance = metadata
         self._total_frames = total_frames
-        self._frame_time_ms = frame_time_ms
+        self._frame_time_ms = frame_time_ms if frame_time_ms and frame_time_ms > 0 else 33.3
         self._current_frame_index = 0
         self._is_playing = False
         self._ed_frame_index = None
@@ -59,7 +59,27 @@ class StateManager(QObject):
             raise IndexError(
                 f"Frame index {index} out of range [0, {self._total_frames})"
             )
+        if index == self._current_frame_index:
+            return
         self._current_frame_index = index
+        self._emit_state()
+
+    def set_playing(self, is_playing: bool) -> None:
+        if self._is_playing == is_playing:
+            return
+        self._is_playing = is_playing
+        self._emit_state()
+
+    def toggle_playback(self) -> None:
+        self.set_playing(not self._is_playing)
+
+    def step_frame(self, delta: int) -> None:
+        if self._instance is None or self._total_frames < 1 or delta == 0:
+            return
+        frame_index = (self._current_frame_index + delta) % self._total_frames
+        if frame_index == self._current_frame_index:
+            return
+        self._current_frame_index = frame_index
         self._emit_state()
 
     def mark_ed(self) -> None:

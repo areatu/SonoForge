@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root_layout = QHBoxLayout(central)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -56,6 +57,9 @@ class MainWindow(QMainWindow):
         splitter.addWidget(left)
 
         self._viewer = ViewerWidget()
+        self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
+        self._viewer.frame_selected.connect(self._controller.state_manager.set_frame)
+        self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         splitter.addWidget(self._viewer)
 
         right = QLabel("Measurements\n(Phase 1 — Sprint 4)")
@@ -69,6 +73,7 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(splitter)
 
         self._browser.instance_selected.connect(self._on_instance_selected)
+        self._viewer.set_state(self._controller.state_manager.snapshot)
 
         status = QStatusBar()
         self.setStatusBar(status)
@@ -100,3 +105,10 @@ class MainWindow(QMainWindow):
     def _show_status(self, message: str) -> None:
         if self.statusBar():
             self.statusBar().showMessage(message)
+
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key.Key_Space:
+            self._controller.toggle_playback()
+            event.accept()
+            return
+        super().keyPressEvent(event)
