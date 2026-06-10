@@ -16,8 +16,6 @@ from echo_personal_tool.domain.models import (
 
 _PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "Vmax")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
-_TRACKING_Y_MIN = -100.0
-_TRACKING_Y_MAX = 100.0
 
 
 class DopplerWidget(QWidget):
@@ -246,7 +244,10 @@ class DopplerWidget(QWidget):
         self._emit_markers_changed()
 
     def _add_interval_marker(self, end_time_ms: float) -> None:
-        start_time_ms = float(self._active_interval_start if self._active_interval_start is not None else end_time_ms)
+        if self._active_interval_start is not None:
+            start_time_ms = float(self._active_interval_start)
+        else:
+            start_time_ms = float(end_time_ms)
         marker = DopplerIntervalMarker(
             label=self._current_interval_label(),
             start_time_ms=float(start_time_ms),

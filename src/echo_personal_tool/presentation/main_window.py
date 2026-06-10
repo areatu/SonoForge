@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
-    QStatusBar,
     QStackedWidget,
+    QStatusBar,
     QVBoxLayout,
     QWidget,
 )
@@ -193,7 +193,8 @@ class MainWindow(QMainWindow):
             return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._view_mode == "doppler":
-                if self._doppler_widget.get_tool_mode() == "trace" and self._doppler_widget.finish_trace():
+                is_trace = self._doppler_widget.get_tool_mode() == "trace"
+                if is_trace and self._doppler_widget.finish_trace():
                     event.accept()
                     return
             elif self._viewer.finish_contour():
