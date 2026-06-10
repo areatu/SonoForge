@@ -2,7 +2,7 @@
 
 **Фаза:** 1  
 **Предшественник:** Sprint 3 (DopplerWidget + MeasurementPanel stub)  
-**Статус:** В работе  
+**Статус:** Реализован  
 **Scope:** [`Этап2.md`](Этап2.md) S4 — Тей-Хольц, Симпсон, допплер-метрики, панель результатов
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement task-by-task with spec + quality review after each task.
@@ -151,6 +151,11 @@ Show computed DopplerResults, LvefResult, Teichholz, linear geometry sections.
 3. Калиперы LVEDD+LVESD → Тей-Хольц объёмы и LVEF
 4. Смена instance сбрасывает расчёты
 5. Все unit-тесты проходят; ruff clean
+
+### Этап E — Верификация
+
+- [x] `uv run pytest` (96 tests)
+- [ ] Ручная проверка на Tier 1 DICOM с pixel_spacing и допплер-сериями
 
 ---
 

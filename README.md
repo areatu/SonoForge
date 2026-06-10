@@ -48,6 +48,8 @@ src/echo_personal_tool/
 - [Этап3.md](Этап3.md) — UI/UX
 - [Sprint3.1.md](Sprint3.1.md) — MP4/JPEG support
 
+- [Sprint4.md](Sprint4.md) — domain calculations & MeasurementPanel
+
 ## ONNX (Фаза 2)
 
 ```bash
