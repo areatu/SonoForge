@@ -27,6 +27,19 @@ def rectangle_contour(
     )
 
 
+def open_arc_contour(*, phase: str, view: str, width_px: float, height_px: float) -> Contour:
+    import math
+
+    n = 9
+    annulus = ((0.0, 0.0), (width_px, 0.0))
+    angles = [math.pi - i * math.pi / (n - 1) for i in range(n)]
+    points = [
+        (width_px / 2.0 + (width_px / 2.0) * math.cos(a), height_px * math.sin(a))
+        for a in angles
+    ]
+    return Contour(phase=phase, view=view, mitral_annulus=annulus, points=points)
+
+
 def test_calculate_monoplan_rectangle_volume() -> None:
     contours = (
         rectangle_contour(phase="ed", view="a4c", width_px=100.0, height_px=50.0),
@@ -86,3 +99,15 @@ def test_calculate_without_ed_es_pair_returns_none() -> None:
     )
 
     assert calculate(contours, (0.5, 0.5)) is None
+
+
+def test_calculate_open_arc_monoplan() -> None:
+    contours = (
+        open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0),
+        open_arc_contour(phase="es", view="A4C", width_px=80.0, height_px=40.0),
+    )
+    result = calculate(contours, (0.5, 0.5))
+
+    assert result is not None
+    assert result.method == "simpson_monoplan"
+    assert result.edv_ml == pytest.approx(49.087385, rel=0.08)
