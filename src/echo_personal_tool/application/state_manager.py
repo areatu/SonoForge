@@ -85,6 +85,8 @@ class StateManager(QObject):
         if self._total_frames == total_frames:
             return
         self._total_frames = total_frames
+        if self._current_frame_index >= total_frames:
+            self._current_frame_index = total_frames - 1
         self._emit_state()
 
     def set_frame(self, index: int) -> None:

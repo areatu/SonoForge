@@ -413,9 +413,13 @@ class AppController(QObject):
     def _on_dicom_decoded(self, request_id: int, path: Path, frames: object) -> None:
         if request_id != self._pending_decode_id:
             return
-        if self._current_instance is None or self._current_instance.path != path:
+        if self._current_instance is None:
+            return
+        if Path(path).resolve() != self._current_instance.path.resolve():
+            self._on_dicom_decode_failed(request_id, "DICOM path mismatch")
             return
         if not isinstance(frames, np.ndarray):
+            self._on_dicom_decode_failed(request_id, "Decoded frames are invalid")
             return
 
         self._frame_cache.load(path, frames)

@@ -224,6 +224,22 @@ def test_set_doppler_measurement_updates_snapshot(qtbot) -> None:
     assert manager.snapshot.doppler_measurement == dto
 
 
+def test_set_total_frames_clamps_current_frame_index(
+    qtbot,
+    instance_metadata: InstanceMetadata,
+) -> None:
+    manager = StateManager()
+    manager.set_instance(instance_metadata, total_frames=10, frame_time_ms=33.3)
+    manager.set_frame(9)
+    assert manager.snapshot.current_frame_index == 9
+
+    with qtbot.waitSignal(manager.state_changed):
+        manager.set_total_frames(5)
+
+    assert manager.snapshot.total_frames == 5
+    assert manager.snapshot.current_frame_index == 4
+
+
 def test_set_decode_in_progress(qtbot, instance_metadata: InstanceMetadata) -> None:
     manager = StateManager()
     manager.set_instance(instance_metadata, total_frames=10, frame_time_ms=33.3)

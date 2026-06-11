@@ -188,3 +188,30 @@ def test_cached_dicom_frame_change_emits_without_frame_loader(
     np.testing.assert_array_equal(frame_events[0], frames[2])
     assert frame_loader_calls["count"] == 0
 
+
+def test_invalid_decode_frames_clears_decode_state(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.DicomDecodeWorker",
+        _FakeDecodeWorker,
+    )
+    thread_pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=thread_pool)
+    path = tmp_path / "study.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=4, rows=16, cols=16)
+    instance = _sample_dicom_instance(path)
+
+    failed_messages: list[str] = []
+    controller.frame_load_failed.connect(failed_messages.append)
+
+    controller.load_instance(instance)
+    worker = thread_pool.started[0]
+    worker.signals.finished.emit(worker.request_id, path, "not-an-ndarray")
+
+    assert controller.state_manager.snapshot.decode_in_progress is False
+    assert failed_messages == ["Decoded frames are invalid"]
+    assert not controller._frame_cache.is_ready(path)
+
