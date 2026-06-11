@@ -9,6 +9,7 @@ import pydicom
 
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import map_instance_metadata
+from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
 
 class DicomReaderImpl:
@@ -19,18 +20,8 @@ class DicomReaderImpl:
         return map_instance_metadata(dataset, path=path)
 
     def read_pixels(self, path: Path, frame_index: int = 0) -> np.ndarray:
-        dataset = pydicom.dcmread(path, force=True)
-        pixel_array = dataset.pixel_array
-        if pixel_array.ndim == 4:
-            frame = pixel_array[frame_index]
-        elif pixel_array.ndim == 3:
-            if pixel_array.shape[0] <= pixel_array.shape[-1]:
-                frame = pixel_array[frame_index]
-            else:
-                frame = pixel_array[..., frame_index]
-        else:
-            frame = pixel_array
-
-        if frame.ndim == 3 and frame.shape[-1] in (3, 4):
-            frame = frame[..., 0]
-        return np.ascontiguousarray(frame, dtype=frame.dtype).copy()
+        session = get_thread_dicom_session()
+        session.open(path)
+        if session.frame_count == 0:
+            session.decode_all_frames()
+        return session.read_frame(frame_index)
