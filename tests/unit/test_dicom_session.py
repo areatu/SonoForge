@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
@@ -14,6 +15,7 @@ from echo_personal_tool.infrastructure.dicom_session import (
 from tests.fixtures.generate_synthetic_dicom import (
     write_synthetic_dicom,
     write_synthetic_multiframe_dicom,
+    write_synthetic_rgb_dicom,
 )
 
 
@@ -28,6 +30,22 @@ def test_decode_single_frame_dicom(tmp_path: Path) -> None:
     assert frame.shape == (64, 64)
     session.release()
     assert session.frame_count == 0
+
+
+def test_decode_rgb_dicom(tmp_path: Path) -> None:
+    path = tmp_path / "rgb.dcm"
+    write_synthetic_rgb_dicom(path)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+    assert frames.shape == (1, 64, 64, 3)
+    assert np.array_equal(frames[0, 0, 0], np.array([255, 0, 0], dtype=np.uint8))
+    assert np.array_equal(frames[0, 0, 1], np.array([0, 255, 0], dtype=np.uint8))
+    assert np.array_equal(frames[0, 1, 0], np.array([0, 0, 255], dtype=np.uint8))
+    frame = session.read_frame(0)
+    assert frame.shape == (64, 64, 3)
+    assert np.array_equal(frame[0, 0], np.array([255, 0, 0], dtype=np.uint8))
+    session.release()
 
 
 def test_decode_multiframe_dicom(tmp_path: Path) -> None:

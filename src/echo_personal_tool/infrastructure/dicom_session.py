@@ -60,22 +60,24 @@ class DicomSession:
 
 
 def stack_pixel_array(pixel_array: np.ndarray) -> np.ndarray:
-    """Normalize pydicom pixel_array to shape (N, H, W)."""
+    """Normalize pydicom pixel_array to shape (N,H,W) or (N,H,W,C)."""
     arr = np.asarray(pixel_array)
     if arr.ndim == 2:
         return np.ascontiguousarray(arr[np.newaxis, ...])
-    if arr.ndim == 4:
-        frames = arr
-    elif arr.ndim == 3:
-        if arr.shape[0] <= arr.shape[-1]:
-            frames = arr
+    if arr.ndim == 3:
+        if arr.shape[-1] in (3, 4):
+            frames = arr[np.newaxis, ...]
         else:
-            frames = np.moveaxis(arr, -1, 0)
+            frames = arr
+    elif arr.ndim == 4:
+        frames = arr
     else:
         raise ValueError(f"Unsupported pixel_array ndim: {arr.ndim}")
 
-    if frames.ndim == 4 and frames.shape[-1] in (3, 4):
-        frames = frames[..., 0]
-    if frames.ndim != 3:
-        raise ValueError(f"Expected (N,H,W) after normalization, got {frames.shape}")
+    if frames.ndim == 4 and frames.shape[-1] == 4:
+        frames = frames[..., :3]
+    if frames.ndim == 4 and frames.shape[-1] not in (3,):
+        raise ValueError(f"Expected color channels last in {frames.shape}")
+    if frames.ndim not in (3, 4):
+        raise ValueError(f"Expected (N,H,W) or (N,H,W,C) after normalization, got {frames.shape}")
     return np.ascontiguousarray(frames)

@@ -22,8 +22,12 @@ class FrameCache:
 
     def load(self, path: Path, frames: np.ndarray) -> None:
         arr = np.ascontiguousarray(frames)
-        if arr.ndim != 3:
-            raise ValueError(f"Expected frames shape (N,H,W), got {arr.shape}")
+        if arr.ndim == 3:
+            pass
+        elif arr.ndim == 4 and arr.shape[-1] in (3, 4):
+            pass
+        else:
+            raise ValueError(f"Expected frames shape (N,H,W) or (N,H,W,C), got {arr.shape}")
         self.source_path = Path(path).resolve()
         self.frames = arr
 

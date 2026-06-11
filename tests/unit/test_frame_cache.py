@@ -28,6 +28,26 @@ def test_frame_cache_load_get_clear(tmp_path: Path) -> None:
         cache.get(0)
 
 
+def test_frame_cache_color_stack(tmp_path: Path) -> None:
+    path = tmp_path / "color_clip.dcm"
+    frames = np.zeros((2, 3, 4, 3), dtype=np.uint8)
+    frames[0, 0, 0] = np.array([255, 0, 0], dtype=np.uint8)
+    frames[1, 1, 1] = np.array([0, 255, 0], dtype=np.uint8)
+    cache = FrameCache()
+
+    cache.load(path, frames)
+    assert cache.is_ready(path)
+    assert cache.frame_count() == 2
+
+    frame0 = cache.get(0)
+    frame1 = cache.get(1)
+    assert frame0.shape == (3, 4, 3)
+    assert frame1.shape == (3, 4, 3)
+    assert np.array_equal(frame0[0, 0], np.array([255, 0, 0], dtype=np.uint8))
+    assert np.array_equal(frame1[1, 1], np.array([0, 255, 0], dtype=np.uint8))
+    assert cache.memory_bytes() == frames.nbytes
+
+
 def test_frame_cache_is_ready_requires_same_path(tmp_path: Path) -> None:
     path_a = tmp_path / "a.dcm"
     path_b = tmp_path / "b.dcm"
