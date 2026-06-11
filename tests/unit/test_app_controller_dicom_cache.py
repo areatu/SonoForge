@@ -94,6 +94,48 @@ def test_load_instance_starts_dicom_decode_worker(
     assert controller.state_manager.snapshot.decode_in_progress is True
 
 
+def test_stale_dicom_decode_request_is_ignored(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.DicomDecodeWorker",
+        _FakeDecodeWorker,
+    )
+    thread_pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=thread_pool)
+    path = tmp_path / "study.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=4, rows=16, cols=16)
+    instance = _sample_dicom_instance(path)
+
+    frame_events: list[np.ndarray] = []
+    controller.frame_loaded.connect(frame_events.append)
+
+    controller.load_instance(instance)
+    worker = thread_pool.started[0]
+    stale_frames = np.stack(
+        [np.full((16, 16), 99, dtype=np.uint8) for _ in range(4)],
+        axis=0,
+    )
+    worker.signals.finished.emit(999, path, stale_frames)
+
+    assert controller.state_manager.snapshot.decode_in_progress is True
+    assert not controller._frame_cache.is_ready(path)
+    assert frame_events == []
+
+    frames = np.stack(
+        [np.full((16, 16), frame_index, dtype=np.uint8) for frame_index in range(4)],
+        axis=0,
+    )
+    worker.signals.finished.emit(worker.request_id, path, frames)
+
+    assert controller.state_manager.snapshot.decode_in_progress is False
+    assert controller._frame_cache.is_ready(path)
+    assert len(frame_events) == 1
+    np.testing.assert_array_equal(frame_events[0], frames[0])
+
+
 def test_cached_dicom_frame_change_emits_without_frame_loader(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -102,6 +144,21 @@ def test_cached_dicom_frame_change_emits_without_frame_loader(
     monkeypatch.setattr(
         "echo_personal_tool.application.app_controller.DicomDecodeWorker",
         _FakeDecodeWorker,
+    )
+    frame_loader_calls = {"count": 0}
+    original_worker = __import__(
+        "echo_personal_tool.application.workers.frame_loader_worker",
+        fromlist=["FrameLoaderWorker"],
+    ).FrameLoaderWorker
+
+    class _SpyFrameLoader(original_worker):
+        def __init__(self, *args, **kwargs):
+            frame_loader_calls["count"] += 1
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.FrameLoaderWorker",
+        _SpyFrameLoader,
     )
     thread_pool = _RecordingThreadPool()
     controller = AppController(thread_pool=thread_pool)
@@ -129,4 +186,5 @@ def test_cached_dicom_frame_change_emits_without_frame_loader(
     assert len(thread_pool.started) == 1
     assert len(frame_events) == 1
     np.testing.assert_array_equal(frame_events[0], frames[2])
+    assert frame_loader_calls["count"] == 0
 

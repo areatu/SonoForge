@@ -416,7 +416,6 @@ class AppController(QObject):
         if self._current_instance is None or self._current_instance.path != path:
             return
         if not isinstance(frames, np.ndarray):
-            self._on_dicom_decode_failed(request_id, path, "Decoded frames are invalid")
             return
 
         self._frame_cache.load(path, frames)
