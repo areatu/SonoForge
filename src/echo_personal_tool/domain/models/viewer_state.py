@@ -24,6 +24,7 @@ class ViewerState:
     contours: tuple[Contour, ...] = ()
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     measurement_snapshot: MeasurementSnapshot | None = None
+    decode_in_progress: bool = False
 
     @property
     def fps(self) -> float:

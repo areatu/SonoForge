@@ -204,8 +204,12 @@ class ViewerWidget(QWidget):
         self._current_state = viewer_state
         try:
             maximum = max(0, viewer_state.total_frames - 1)
-            self._timeline_slider.setEnabled(viewer_state.total_frames > 1)
             self._timeline_slider.setRange(0, maximum)
+            controls_enabled = (
+                viewer_state.total_frames > 1 and not viewer_state.decode_in_progress
+            )
+            self._timeline_slider.setEnabled(controls_enabled)
+            self._play_button.setEnabled(controls_enabled)
             self._timeline_slider.setValue(
                 min(viewer_state.current_frame_index, maximum)
             )

@@ -224,6 +224,18 @@ def test_set_doppler_measurement_updates_snapshot(qtbot) -> None:
     assert manager.snapshot.doppler_measurement == dto
 
 
+def test_set_decode_in_progress(qtbot, instance_metadata: InstanceMetadata) -> None:
+    manager = StateManager()
+    manager.set_instance(instance_metadata, total_frames=10, frame_time_ms=33.3)
+    assert manager.snapshot.decode_in_progress is False
+
+    manager.set_decode_in_progress(True)
+    assert manager.snapshot.decode_in_progress is True
+
+    manager.set_decode_in_progress(False)
+    assert manager.snapshot.decode_in_progress is False
+
+
 def test_set_measurement_fields_update_snapshot(qtbot) -> None:
     manager = StateManager()
     contour = Contour(phase="ED", view="A4C", points=[(1.0, 2.0), (3.0, 4.0)])

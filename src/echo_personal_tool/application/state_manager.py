@@ -32,6 +32,7 @@ class StateManager(QObject):
         self._contours: tuple[Contour, ...] = ()
         self._linear_measurements: tuple[LinearMeasurement, ...] = ()
         self._measurement_snapshot: MeasurementSnapshot | None = None
+        self._decode_in_progress = False
 
     @property
     def snapshot(self) -> ViewerState:
@@ -47,6 +48,7 @@ class StateManager(QObject):
             contours=self._contours,
             linear_measurements=self._linear_measurements,
             measurement_snapshot=self._measurement_snapshot,
+            decode_in_progress=self._decode_in_progress,
         )
 
     def set_instance(
@@ -68,6 +70,13 @@ class StateManager(QObject):
         self._contours = ()
         self._linear_measurements = ()
         self._measurement_snapshot = None
+        self._decode_in_progress = False
+        self._emit_state()
+
+    def set_decode_in_progress(self, in_progress: bool) -> None:
+        if self._decode_in_progress == in_progress:
+            return
+        self._decode_in_progress = in_progress
         self._emit_state()
 
     def set_frame(self, index: int) -> None:
