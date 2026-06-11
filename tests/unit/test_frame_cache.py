@@ -44,3 +44,18 @@ def test_frame_cache_get_index_error(tmp_path: Path) -> None:
     cache.load(path, np.zeros((2, 4, 4), dtype=np.uint8))
     with pytest.raises(IndexError):
         cache.get(5)
+
+
+def test_frame_cache_random_access_is_fast(tmp_path: Path) -> None:
+    import time
+
+    path = tmp_path / "clip.dcm"
+    frames = np.zeros((50, 64, 64), dtype=np.uint8)
+    cache = FrameCache()
+    cache.load(path, frames)
+
+    start = time.perf_counter()
+    for _ in range(100):
+        cache.get(int(np.random.randint(0, 50)))
+    elapsed = time.perf_counter() - start
+    assert elapsed < 0.1
