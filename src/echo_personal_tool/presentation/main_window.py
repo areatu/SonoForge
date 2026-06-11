@@ -192,7 +192,8 @@ class MainWindow(QMainWindow):
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if event.key() == Qt.Key.Key_Space:
-            self._controller.toggle_playback()
+            if not self._controller.state_manager.snapshot.decode_in_progress:
+                self._controller.toggle_playback()
             event.accept()
             return
         if event.key() == Qt.Key.Key_D and event.modifiers() == Qt.KeyboardModifier.NoModifier:

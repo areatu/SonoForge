@@ -9,7 +9,9 @@ import numpy as np
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
+from echo_personal_tool.application.workers.dicom_decode_worker import DicomDecodeWorker
 from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
 from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
@@ -34,6 +36,8 @@ from echo_personal_tool.domain.services.segmentation_service import (
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
+_FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
+
 
 class AppController(QObject):
     """Coordinates scanning and frame loading between UI and infrastructure."""
@@ -54,6 +58,7 @@ class AppController(QObject):
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._state_manager = StateManager()
         self._segmenter = segmenter or OnnxInferenceEngine()
+        self._frame_cache = FrameCache()
         self._timer = QTimer(self)
         self._timer.setSingleShot(False)
         self._timer.timeout.connect(self._advance_playback)
@@ -65,6 +70,8 @@ class AppController(QObject):
         self._pending_frame_index: int | None = None
         self._load_request_id = 0
         self._pending_load_id = 0
+        self._decode_request_id = 0
+        self._pending_decode_id = 0
         self._pending_thumbnails: set[str] = set()
         self._current_frame_pixels: np.ndarray | None = None
         self._segment_in_progress = False
@@ -115,6 +122,7 @@ class AppController(QObject):
             self.frame_load_failed.emit(str(exc))
             return
 
+        self._frame_cache.clear()
         self._loaded_source_path = None
         self._loaded_frame_index = None
         self._pending_source_path = None
@@ -128,6 +136,21 @@ class AppController(QObject):
         )
         if frame_index != 0:
             self._state_manager.set_frame(frame_index)
+        if instance.media_format == "dicom":
+            self._state_manager.set_decode_in_progress(True)
+            self._decode_request_id += 1
+            request_id = self._decode_request_id
+            self._pending_decode_id = request_id
+            self.status_message.emit(
+                f"Decoding {instance.path.name}… ({total_frames} frames)"
+            )
+            worker = DicomDecodeWorker(instance.path, request_id, parent=self)
+            worker.signals.finished.connect(self._on_dicom_decoded)
+            worker.signals.failed.connect(self._on_dicom_decode_failed)
+            self._thread_pool.start(worker)
+            return
+
+        self._request_frame_if_needed(self._state_manager.snapshot)
 
     def load_thumbnail(self, instance: InstanceMetadata) -> None:
         if instance.path is None:
@@ -291,6 +314,14 @@ class AppController(QObject):
     def _request_frame_if_needed(self, state: ViewerState) -> None:
         if self._current_instance is None or self._current_instance.path is None:
             return
+        if self._current_instance.media_format == "dicom":
+            if self._state_manager.snapshot.decode_in_progress:
+                return
+            if self._frame_cache.is_ready(self._current_instance.path):
+                if self._loaded_frame_index != state.current_frame_index:
+                    self._emit_cached_frame(state.current_frame_index)
+                return
+            return
         if (
             self._loaded_source_path == self._current_instance.path
             and self._loaded_frame_index == state.current_frame_index
@@ -339,6 +370,12 @@ class AppController(QObject):
         )
 
     def _advance_playback(self) -> None:
+        if self._current_instance is not None and self._current_instance.media_format == "dicom":
+            if self._current_instance.path is not None and self._frame_cache.is_ready(
+                self._current_instance.path
+            ):
+                self.step_frame(1)
+            return
         if self._pending_load_id != 0:
             return
         self.step_frame(1)
@@ -372,6 +409,57 @@ class AppController(QObject):
         self._current_frame_pixels = None
         self.status_message.emit(f"Load failed: {message}")
         self.frame_load_failed.emit(message)
+
+    def _on_dicom_decoded(self, request_id: int, path: Path, frames: object) -> None:
+        if request_id != self._pending_decode_id:
+            return
+        if self._current_instance is None or self._current_instance.path != path:
+            return
+        if not isinstance(frames, np.ndarray):
+            self._on_dicom_decode_failed(request_id, path, "Decoded frames are invalid")
+            return
+
+        self._frame_cache.load(path, frames)
+        if self._frame_cache.memory_bytes() > _FRAME_CACHE_WARN_BYTES:
+            size_mb = self._frame_cache.memory_bytes() / (1024 * 1024)
+            self.status_message.emit(
+                f"Warning: DICOM cache uses {size_mb:.1f} MB"
+            )
+
+        frame_count = self._frame_cache.frame_count()
+        if frame_count != self._state_manager.snapshot.total_frames:
+            self._state_manager.set_total_frames(frame_count)
+
+        current_index = self._state_manager.snapshot.current_frame_index
+        self._loaded_source_path = path
+        self._loaded_frame_index = current_index
+        self._pending_decode_id = 0
+        self._state_manager.set_decode_in_progress(False)
+        self._emit_cached_frame(current_index)
+        self.status_message.emit("Ready")
+
+    def _on_dicom_decode_failed(self, request_id: int, message: str) -> None:
+        if request_id != self._pending_decode_id:
+            return
+        self._pending_decode_id = 0
+        self._frame_cache.clear()
+        self._loaded_source_path = None
+        self._loaded_frame_index = None
+        self._current_frame_pixels = None
+        self._state_manager.set_decode_in_progress(False)
+        self.status_message.emit(f"Load failed: {message}")
+        self.frame_load_failed.emit(message)
+
+    def _emit_cached_frame(self, frame_index: int) -> None:
+        if self._current_instance is None or self._current_instance.path is None:
+            return
+        if not self._frame_cache.is_ready(self._current_instance.path):
+            return
+        pixels = self._frame_cache.get(frame_index)
+        self._loaded_source_path = self._current_instance.path
+        self._loaded_frame_index = frame_index
+        self._current_frame_pixels = pixels
+        self.frame_loaded.emit(pixels)
 
     def _resolve_phase_for_frame(
         self,

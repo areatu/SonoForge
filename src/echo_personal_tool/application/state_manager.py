@@ -79,6 +79,14 @@ class StateManager(QObject):
         self._decode_in_progress = in_progress
         self._emit_state()
 
+    def set_total_frames(self, total_frames: int) -> None:
+        if total_frames < 1:
+            raise ValueError(f"total_frames must be >= 1, got {total_frames}")
+        if self._total_frames == total_frames:
+            return
+        self._total_frames = total_frames
+        self._emit_state()
+
     def set_frame(self, index: int) -> None:
         if self._instance is None or self._total_frames < 1:
             raise RuntimeError("Cannot set frame without a loaded instance")
