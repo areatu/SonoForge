@@ -18,9 +18,10 @@ def _instance_label(instance: InstanceMetadata) -> str:
         frame_label = "1 frame"
     else:
         frame_label = f"{instance.number_of_frames} frames"
-    if instance.media_format == "dicom":
-        return f"{instance.sop_instance_uid[:12]}… ({frame_label})"
-    filename = instance.path.name if instance.path is not None else instance.sop_instance_uid
+    if instance.path is not None:
+        filename = instance.path.name
+    else:
+        filename = f"{instance.sop_instance_uid[:12]}…"
     return f"{filename} ({frame_label})"
 
 
