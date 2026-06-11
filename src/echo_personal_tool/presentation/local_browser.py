@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSize, Signal
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
@@ -32,6 +32,7 @@ class LocalBrowserWidget(QTreeWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self.setIconSize(QSize(128, 128))
         self.setHeaderLabels(["Study / Series / Instance"])
         self.itemClicked.connect(self._on_item_clicked)
         self.itemExpanded.connect(self._on_item_expanded)

@@ -13,7 +13,7 @@ from echo_personal_tool.infrastructure.image_reader import ImageReader
 from echo_personal_tool.infrastructure.pixel_utils import bgr_to_rgb, is_color_frame
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
-THUMBNAIL_SIZE = 64
+THUMBNAIL_SIZE = 128
 
 
 def thumbnail_frame_index(number_of_frames: int) -> int:

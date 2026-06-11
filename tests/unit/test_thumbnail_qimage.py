@@ -8,6 +8,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.workers.thumbnail_loader_worker import (
+    THUMBNAIL_SIZE,
     numpy_grayscale_to_qimage,
 )
 
@@ -27,6 +28,8 @@ def test_numpy_grayscale_to_qimage_can_build_tree_icon(qapp: QApplication) -> No
     image = numpy_grayscale_to_qimage(pixels)
 
     assert not image.isNull()
+    assert image.width() == THUMBNAIL_SIZE
+    assert image.height() == THUMBNAIL_SIZE
     pixmap = QPixmap.fromImage(image)
     assert not pixmap.isNull()
 
