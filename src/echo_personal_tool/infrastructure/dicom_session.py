@@ -43,7 +43,7 @@ class DicomSession:
         dataset = pydicom.dcmread(self._open_path, force=True)
         pixel_array = dataset.pixel_array
         self._frames = stack_pixel_array(pixel_array)
-        return self._frames
+        return self._frames.copy()
 
     def read_frame(self, frame_index: int) -> np.ndarray:
         if self._frames is None:
