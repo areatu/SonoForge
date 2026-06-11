@@ -11,6 +11,7 @@ from PySide6.QtGui import QImage
 
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
+from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
@@ -25,6 +26,12 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.ports import IOnnxSegmenter
+from echo_personal_tool.domain.services.segmentation_service import (
+    mask_to_contour,
+    smooth_contour,
+)
+from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 
@@ -38,10 +45,15 @@ class AppController(QObject):
     thumbnail_loaded = Signal(str, QImage)
     status_message = Signal(str)
 
-    def __init__(self, thread_pool: QThreadPool | None = None) -> None:
+    def __init__(
+        self,
+        thread_pool: QThreadPool | None = None,
+        segmenter: IOnnxSegmenter | None = None,
+    ) -> None:
         super().__init__()
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._state_manager = StateManager()
+        self._segmenter = segmenter or OnnxInferenceEngine()
         self._timer = QTimer(self)
         self._timer.setSingleShot(False)
         self._timer.timeout.connect(self._advance_playback)
@@ -54,6 +66,8 @@ class AppController(QObject):
         self._load_request_id = 0
         self._pending_load_id = 0
         self._pending_thumbnails: set[str] = set()
+        self._current_frame_pixels: np.ndarray | None = None
+        self._segment_in_progress = False
         self._state_manager.state_changed.connect(self._on_state_changed)
 
     @property
@@ -105,6 +119,8 @@ class AppController(QObject):
         self._loaded_frame_index = None
         self._pending_source_path = None
         self._pending_frame_index = None
+        self._current_frame_pixels = None
+        self._segment_in_progress = False
         self._state_manager.set_instance(
             instance,
             total_frames=total_frames,
@@ -170,6 +186,56 @@ class AppController(QObject):
         frame = self._state_manager.snapshot.es_frame_index
         if frame is not None:
             self.status_message.emit(f"ES marked at frame {frame + 1}")
+
+    def request_auto_segment(self) -> None:
+        if self._segment_in_progress:
+            self.status_message.emit("Segmentation already in progress")
+            return
+
+        state = self._state_manager.snapshot
+        if state.is_playing:
+            self.status_message.emit("Pause playback before auto-segmentation")
+            return
+
+        phase = self._resolve_phase_for_frame(state.current_frame_index, state)
+        if phase is None:
+            self.status_message.emit("Auto-segmentation requires an ED or ES frame")
+            return
+
+        if (
+            self._current_frame_pixels is None
+            or self._loaded_frame_index != state.current_frame_index
+        ):
+            self.status_message.emit("Current frame is not loaded yet")
+            return
+
+        if not self._segmenter.is_available():
+            self.status_message.emit("сегментация недоступна — используйте ручной контур")
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        original_shape = (int(frame.shape[0]), int(frame.shape[1]))
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        frame_index = state.current_frame_index
+
+        self._segment_in_progress = True
+        worker = OnnxWorker(frame, parent=self)
+        worker.signals.finished.connect(
+            partial(
+                self._on_auto_segment_finished,
+                phase,
+                instance_path,
+                frame_index,
+                original_shape,
+            )
+        )
+        worker.signals.failed.connect(
+            partial(self._on_auto_segment_failed, instance_path, frame_index)
+        )
+        worker.signals.timed_out.connect(
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index)
+        )
+        self._thread_pool.start(worker)
 
     def on_doppler_markers_changed(self, dto: object) -> None:
         if not isinstance(dto, DopplerMeasurementDTO):
@@ -293,6 +359,7 @@ class AppController(QObject):
         self._pending_frame_index = None
         self._loaded_source_path = path
         self._loaded_frame_index = frame_index
+        self._current_frame_pixels = pixels
         self.status_message.emit("Frame ready")
         self.frame_loaded.emit(pixels)
 
@@ -302,5 +369,73 @@ class AppController(QObject):
         self._pending_load_id = 0
         self._pending_source_path = None
         self._pending_frame_index = None
+        self._current_frame_pixels = None
         self.status_message.emit(f"Load failed: {message}")
         self.frame_load_failed.emit(message)
+
+    def _resolve_phase_for_frame(
+        self,
+        frame_index: int,
+        state: ViewerState,
+    ) -> str | None:
+        if state.ed_frame_index is not None and frame_index == state.ed_frame_index:
+            return "ED"
+        if state.es_frame_index is not None and frame_index == state.es_frame_index:
+            return "ES"
+        return None
+
+    def _auto_segment_context_matches(
+        self,
+        instance_path: Path | None,
+        frame_index: int,
+    ) -> bool:
+        return (
+            self._current_instance is not None
+            and self._current_instance.path == instance_path
+            and self._loaded_frame_index == frame_index
+            and self._state_manager.snapshot.current_frame_index == frame_index
+        )
+
+    def _on_auto_segment_finished(
+        self,
+        phase: str,
+        instance_path: Path | None,
+        frame_index: int,
+        original_shape: tuple[int, int],
+        mask: object,
+    ) -> None:
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        if not isinstance(mask, np.ndarray):
+            return
+
+        contour_points = smooth_contour(
+            mask_to_contour(mask, original_shape),
+            num_nodes=32,
+        )
+        contour = Contour(phase=phase, points=contour_points, source="ai")
+        contours = [
+            existing
+            for existing in self._state_manager.snapshot.contours
+            if not (existing.phase == phase and existing.view == contour.view)
+        ]
+        contours.append(contour)
+        self.on_contours_changed(contours)
+
+    def _on_auto_segment_failed(
+        self,
+        instance_path: Path | None,
+        frame_index: int,
+        _message: str,
+    ) -> None:
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        self.status_message.emit("сегментация недоступна — используйте ручной контур")
+
+    def _on_auto_segment_timed_out(self, instance_path: Path | None, frame_index: int) -> None:
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        self.status_message.emit("сегментация недоступна — используйте ручной контур")

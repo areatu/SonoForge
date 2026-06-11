@@ -52,6 +52,27 @@ src/echo_personal_tool/
 
 ## ONNX (Фаза 2)
 
+Автосегментация эндокарда (EchoNet Segmentation Lite) и сплайн-редактор контуров.
+
+### Установка
+
 ```bash
-python scripts/export_echonet_seg_to_onnx.py --verify --quantize-int8
+uv sync --extra dev --extra phase2   # onnxruntime для инференса
 ```
+
+### Экспорт модели
+
+```bash
+python scripts/export_echonet_seg_to_onnx.py --verify
+```
+
+Скрипт создаёт `models/echonet_seg_resnet50.onnx` и обновляет `models/model_manifest.json`.
+Для INT8-квантизации добавьте `--quantize-int8`.
+
+### Использование в приложении
+
+1. Отметьте кадры ED (`D`) и ES (`S`).
+2. На кадре ED или ES нажмите **`I`** (Auto Segment) — ONNX строит контур эндокарда (`source="ai"`).
+3. Перетащите сплайн-узлы на контуре для коррекции; `MeasurementPanel` пересчитает объёмы по Симпсону.
+
+Если модель недоступна или инференс превышает таймаут, в статус-баре появится подсказка использовать ручной контур (`C`).

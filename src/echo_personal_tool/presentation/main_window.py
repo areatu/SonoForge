@@ -76,9 +76,7 @@ class MainWindow(QMainWindow):
         toggle_row.addWidget(self._view_2d_button)
         self._view_doppler_button = QPushButton("Doppler")
         self._view_doppler_button.setCheckable(True)
-        self._view_doppler_button.clicked.connect(
-            lambda: self.set_view_mode("doppler")
-        )
+        self._view_doppler_button.clicked.connect(lambda: self.set_view_mode("doppler"))
         self._view_mode_group.addButton(self._view_doppler_button)
         toggle_row.addWidget(self._view_doppler_button)
         toggle_row.addStretch(1)
@@ -101,9 +99,7 @@ class MainWindow(QMainWindow):
         self._view_stack.addWidget(self._viewer)
 
         self._doppler_widget = DopplerWidget()
-        self._doppler_widget.markers_changed.connect(
-            self._controller.on_doppler_markers_changed
-        )
+        self._doppler_widget.markers_changed.connect(self._controller.on_doppler_markers_changed)
         self._view_stack.addWidget(self._doppler_widget)
         splitter.addWidget(center)
 
@@ -217,6 +213,15 @@ class MainWindow(QMainWindow):
             return
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             self._viewer.start_contour()
+            event.accept()
+            return
+        if (
+            event.key() == Qt.Key.Key_I
+            and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            and self._view_mode == "2d"
+            and not self._controller.state_manager.snapshot.is_playing
+        ):
+            self._controller.request_auto_segment()
             event.accept()
             return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):

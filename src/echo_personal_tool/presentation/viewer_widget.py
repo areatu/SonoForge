@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
@@ -39,6 +41,55 @@ class ContourViewBox(pg.ViewBox):
         super().mouseClickEvent(ev)
 
 
+@dataclass
+class _ContourGraphics:
+    contour: Contour
+    line_item: pg.PlotDataItem
+    node_items: list[_ContourNodeItem]
+
+
+class _ContourNodeItem(pg.ScatterPlotItem):
+    """Single draggable contour node."""
+
+    def __init__(
+        self,
+        viewer_widget: ViewerWidget,
+        contour_index: int,
+        point_index: int,
+        position: tuple[float, float],
+        pen: pg.functions.mkPen,
+    ) -> None:
+        super().__init__(
+            symbol="o",
+            size=10,
+            pen=pen,
+            brush=pg.mkBrush(pen.color()),
+        )
+        self._viewer_widget = viewer_widget
+        self._contour_index = contour_index
+        self._point_index = point_index
+        self.setZValue(30)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setData([position[0]], [position[1]])
+
+    def set_indices(self, contour_index: int, point_index: int) -> None:
+        self._contour_index = contour_index
+        self._point_index = point_index
+
+    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        ev.accept()
+        view_box = self.getViewBox() or self._viewer_widget._view
+        point = view_box.mapSceneToView(ev.scenePos())
+        self._viewer_widget._update_contour_point(
+            self._contour_index,
+            self._point_index,
+            float(point.x()),
+            float(point.y()),
+        )
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -62,13 +113,15 @@ class ViewerWidget(QWidget):
         self._linear_roi: pg.LineROI | None = None
         self._contours: list[Contour] = []
         self._contour_items: list[pg.PlotDataItem] = []
+        self._contour_nodes: list[list[_ContourNodeItem]] = []
         self._caliper_labels = ("LVEDD", "LVESD", "IVSd", "LVPWd", "LVOT")
         self._caliper_label_index = 0
         self._contour_mode_active = False
         self._active_contour_points: list[tuple[float, float]] = []
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_contour_phase: str | None = None
-        self._contour_pen = pg.mkPen("#ff6f00", width=2)
+        self._contour_pen_manual = pg.mkPen("#ff6f00", width=2)
+        self._contour_pen_ai = pg.mkPen("#00bcd4", width=2)
         self._syncing_state = False
         self._is_color_frame = False
 
@@ -182,6 +235,8 @@ class ViewerWidget(QWidget):
                 "color: #c62828; font-weight: bold;" if es_index is not None else ""
             )
             self._update_timeline_indicator(viewer_state)
+            if tuple(self._contours) != viewer_state.contours:
+                self.apply_contours(list(viewer_state.contours))
             self._update_linear_measurement()
         finally:
             self._syncing_state = False
@@ -230,13 +285,21 @@ class ViewerWidget(QWidget):
         self._active_contour_phase = phase
         self._active_contour_points = []
         self._active_contour_item = pg.PlotDataItem(
-            pen=self._contour_pen,
+            pen=self._contour_pen_manual,
             symbol="o",
             symbolSize=6,
-            symbolBrush=self._contour_pen.color(),
+            symbolBrush=self._contour_pen_manual.color(),
         )
         self._active_contour_item.setZValue(20)
         self._view.addItem(self._active_contour_item)
+
+    def set_contour_from_domain(self, contour: Contour) -> None:
+        self._upsert_contour_from_domain(contour, emit_change=not self._syncing_state)
+
+    def apply_contours(self, contours: list[Contour]) -> None:
+        self._clear_rendered_contours()
+        for contour in contours:
+            self._upsert_contour_from_domain(contour, emit_change=False)
 
     def handle_contour_click(self, point: tuple[float, float]) -> bool:
         if not self._contour_mode_active or self._active_contour_item is None:
@@ -258,14 +321,13 @@ class ViewerWidget(QWidget):
             phase=self._active_contour_phase or "ED",
             points=points,
         )
-        self._contours.append(contour)
-        self._contour_items.append(self._active_contour_item)
-        self.contour_completed.emit(contour)
-        self.contours_changed.emit(self.contours())
+        self._view.removeItem(self._active_contour_item)
         self._active_contour_item = None
         self._active_contour_points = []
         self._active_contour_phase = None
         self._contour_mode_active = False
+        self.contour_completed.emit(contour)
+        self.set_contour_from_domain(contour)
         return True
 
     def cancel_active_tool(self) -> None:
@@ -316,19 +378,121 @@ class ViewerWidget(QWidget):
         if not self._syncing_state:
             self.linear_measurements_changed.emit([])
 
-    def _clear_contours(self) -> None:
-        if self._active_contour_item is not None:
-            self._view.removeItem(self._active_contour_item)
-            self._active_contour_item = None
+    def _clear_rendered_contours(self) -> None:
+        for nodes in self._contour_nodes:
+            for node in nodes:
+                self._view.removeItem(node)
         for item in self._contour_items:
             self._view.removeItem(item)
         self._contour_items.clear()
+        self._contour_nodes.clear()
         self._contours.clear()
+
+    def _clear_contours(self) -> None:
+        self._clear_rendered_contours()
+        if self._active_contour_item is not None:
+            self._view.removeItem(self._active_contour_item)
+            self._active_contour_item = None
         self._active_contour_points = []
         self._active_contour_phase = None
         self._contour_mode_active = False
         if not self._syncing_state:
             self.contours_changed.emit([])
+
+    def _upsert_contour_from_domain(self, contour: Contour, emit_change: bool) -> None:
+        contour_index = self._find_contour_index(contour)
+        if contour_index is None:
+            contour_index = len(self._contours)
+            self._contours.append(contour)
+            self._insert_rendered_contour(contour, contour_index)
+        else:
+            self._contours.pop(contour_index)
+            self._remove_rendered_contour(contour_index)
+            self._contours.insert(contour_index, contour)
+            self._insert_rendered_contour(contour, contour_index)
+        if emit_change and not self._syncing_state:
+            self.contours_changed.emit(self.contours())
+
+    def _insert_rendered_contour(self, contour: Contour, contour_index: int) -> None:
+        line_item, node_items = self._create_contour_render(contour, contour_index)
+        self._contour_items.insert(contour_index, line_item)
+        self._contour_nodes.insert(contour_index, node_items)
+        self._reindex_contour_nodes()
+
+    def _remove_rendered_contour(self, contour_index: int) -> None:
+        line_item = self._contour_items.pop(contour_index)
+        for node in self._contour_nodes.pop(contour_index):
+            self._view.removeItem(node)
+        self._view.removeItem(line_item)
+        self._reindex_contour_nodes()
+
+    def _create_contour_render(
+        self,
+        contour: Contour,
+        contour_index: int,
+    ) -> tuple[pg.PlotDataItem, list[_ContourNodeItem]]:
+        pen = self._contour_pen_for(contour)
+        line_item = pg.PlotDataItem(pen=pen)
+        line_item.setZValue(20)
+        x_values, y_values = self._contour_xy(contour, closed=True)
+        line_item.setData(x_values, y_values)
+        self._view.addItem(line_item)
+
+        node_items: list[_ContourNodeItem] = []
+        for point_index, point in enumerate(contour.points):
+            node = _ContourNodeItem(self, contour_index, point_index, point, pen)
+            self._view.addItem(node)
+            node_items.append(node)
+        return line_item, node_items
+
+    def _reindex_contour_nodes(self) -> None:
+        for contour_index, node_items in enumerate(self._contour_nodes):
+            for point_index, node in enumerate(node_items):
+                node.set_indices(contour_index, point_index)
+
+    def _find_contour_index(self, contour: Contour) -> int | None:
+        for index, existing in enumerate(self._contours):
+            if existing.phase == contour.phase and existing.view == contour.view:
+                return index
+        return None
+
+    def _contour_pen_for(self, contour: Contour) -> pg.QtGui.QPen:
+        return self._contour_pen_ai if contour.source == "ai" else self._contour_pen_manual
+
+    def _contour_xy(
+        self,
+        contour: Contour,
+        *,
+        closed: bool = False,
+    ) -> tuple[list[float], list[float]]:
+        points = list(contour.points)
+        if closed and points:
+            points = points + [points[0]]
+        if not points:
+            return [], []
+        x_values = [point[0] for point in points]
+        y_values = [point[1] for point in points]
+        return x_values, y_values
+
+    def _update_contour_point(
+        self,
+        contour_index: int,
+        point_index: int,
+        x: float,
+        y: float,
+    ) -> None:
+        if contour_index < 0 or contour_index >= len(self._contours):
+            return
+        contour = self._contours[contour_index]
+        if point_index < 0 or point_index >= len(contour.points):
+            return
+
+        contour.points[point_index] = (x, y)
+        x_values, y_values = self._contour_xy(contour, closed=True)
+        self._contour_items[contour_index].setData(x_values, y_values)
+        self._contour_nodes[contour_index][point_index].setData([x], [y])
+        if not self._syncing_state:
+            self.contours_changed.emit(self.contours())
 
     def _resolve_contour_phase(self) -> str:
         if self._current_state is None:

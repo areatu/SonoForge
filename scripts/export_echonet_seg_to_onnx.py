@@ -20,7 +20,7 @@ import hashlib
 import json
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import torch
@@ -188,7 +188,7 @@ def load_manifest() -> dict:
 
 
 def save_manifest(manifest: dict) -> None:
-    manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+    manifest["updated_at"] = datetime.now(UTC).isoformat()
     with MANIFEST_PATH.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
         f.write("\n")
@@ -204,7 +204,7 @@ def update_manifest_after_export(
     entry["status"] = "exported"
     entry["sha256"] = sha256_file(onnx_path)
     entry["file_size_bytes"] = onnx_path.stat().st_size
-    entry["exported_at"] = datetime.now(timezone.utc).isoformat()
+    entry["exported_at"] = datetime.now(UTC).isoformat()
 
     if int8_path and int8_path.exists():
         entry["sha256_int8"] = sha256_file(int8_path)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -146,6 +147,62 @@ def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
     qtbot.keyClick(window, Qt.Key.Key_Escape)
     assert not window._viewer.is_contour_mode_active
     assert len(window._viewer.contours()) == 1
+
+
+def test_main_window_i_hotkey_requests_auto_segment_in_2d_mode(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+    controller.request_auto_segment = MagicMock()
+
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+
+    qtbot.keyClick(window, Qt.Key.Key_I)
+    controller.request_auto_segment.assert_called_once()
+
+
+def test_main_window_i_hotkey_blocked_during_playback(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+    controller.set_playing(True)
+    controller.request_auto_segment = MagicMock()
+
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+
+    qtbot.keyClick(window, Qt.Key.Key_I)
+    controller.request_auto_segment.assert_not_called()
+
+
+def test_main_window_i_hotkey_ignored_in_doppler_mode(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+    controller.request_auto_segment = MagicMock()
+
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window.set_view_mode("doppler")
+
+    qtbot.keyClick(window, Qt.Key.Key_I)
+    controller.request_auto_segment.assert_not_called()
 
 
 @pytest.fixture(scope="session", autouse=True)
