@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -22,7 +22,10 @@ from echo_personal_tool.domain.models.linear_measurement import (
     pixel_to_mm_length,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
-from echo_personal_tool.infrastructure.pixel_utils import bgr_to_rgb
+from echo_personal_tool.infrastructure.pixel_utils import (
+    bgr_to_rgb,
+    compute_display_levels,
+)
 
 
 class ContourViewBox(pg.ViewBox):
@@ -148,6 +151,16 @@ class ViewerWidget(QWidget):
         self._level_slider.setValue(50)
         self._level_slider.valueChanged.connect(self._update_levels)
 
+        self._dr_low_slider = QSlider(Qt.Orientation.Horizontal)
+        self._dr_low_slider.setRange(0, 100)
+        self._dr_low_slider.setValue(0)
+        self._dr_low_slider.valueChanged.connect(self._update_levels)
+
+        self._dr_high_slider = QSlider(Qt.Orientation.Horizontal)
+        self._dr_high_slider.setRange(0, 100)
+        self._dr_high_slider.setValue(100)
+        self._dr_high_slider.valueChanged.connect(self._update_levels)
+
         controls = QVBoxLayout()
         timeline_row = QHBoxLayout()
         timeline_row.addWidget(self._play_button)
@@ -161,6 +174,10 @@ class ViewerWidget(QWidget):
         wl_row.addWidget(self._window_slider, stretch=1)
         wl_row.addWidget(QLabel("Level"))
         wl_row.addWidget(self._level_slider, stretch=1)
+        wl_row.addWidget(QLabel("DR min %"))
+        wl_row.addWidget(self._dr_low_slider, stretch=1)
+        wl_row.addWidget(QLabel("DR max %"))
+        wl_row.addWidget(self._dr_high_slider, stretch=1)
         wl_row.addWidget(self._ed_label)
         wl_row.addWidget(self._es_label)
         wl_row.addWidget(self._measurement_label)
@@ -184,9 +201,14 @@ class ViewerWidget(QWidget):
                 frame = frame[..., 0]
             self._current_frame = frame
             self._image_item.setImage(frame, autoLevels=False)
+            with QSignalBlocker(self._dr_low_slider), QSignalBlocker(self._dr_high_slider):
+                self._dr_low_slider.setValue(0)
+                self._dr_high_slider.setValue(100)
             self._update_levels()
         self._window_slider.setEnabled(not self._is_color_frame)
         self._level_slider.setEnabled(not self._is_color_frame)
+        self._dr_low_slider.setEnabled(not self._is_color_frame)
+        self._dr_high_slider.setEnabled(not self._is_color_frame)
 
     def clear(self) -> None:
         self._image_item.clear()
@@ -580,17 +602,13 @@ class ViewerWidget(QWidget):
         frame = np.asarray(self._current_frame, dtype=float)
         if frame.size == 0:
             return
-        data_min = float(np.nanmin(frame))
-        data_max = float(np.nanmax(frame))
-        if not np.isfinite(data_min) or not np.isfinite(data_max):
-            return
-        span = max(data_max - data_min, 1.0)
-        window_scale = self._window_slider.value() / 100.0
-        center_offset = (self._level_slider.value() - 50) / 50.0
-        window = span * max(window_scale, 0.01)
-        center = data_min + span * (0.5 + 0.5 * center_offset)
-        low = center - window / 2.0
-        high = center + window / 2.0
+        low, high = compute_display_levels(
+            frame,
+            dr_low_pct=self._dr_low_slider.value(),
+            dr_high_pct=self._dr_high_slider.value(),
+            window_scale=self._window_slider.value() / 100.0,
+            level_offset=(self._level_slider.value() - 50) / 50.0,
+        )
         self._image_item.setLevels((low, high))
 
     def _current_caliper_label(self) -> str:

@@ -39,3 +39,37 @@ def bgr_to_rgb(frame: np.ndarray) -> np.ndarray:
 
 def is_color_frame(frame: np.ndarray) -> bool:
     return frame.ndim == 3 and frame.shape[2] >= 3
+
+
+def percentile_range(frame: np.ndarray, low_pct: float, high_pct: float) -> tuple[float, float]:
+    """Return a clipped percentile range for finite values in *frame*."""
+    flat = np.asarray(frame, dtype=np.float64).ravel()
+    flat = flat[np.isfinite(flat)]
+    if flat.size == 0:
+        return 0.0, 1.0
+
+    low_pct = float(np.clip(low_pct, 0.0, 100.0))
+    high_pct = float(np.clip(high_pct, 0.0, 100.0))
+    low = float(np.percentile(flat, low_pct))
+    high = float(np.percentile(flat, high_pct))
+    if not np.isfinite(low) or not np.isfinite(high):
+        return 0.0, 1.0
+    if high < low:
+        low, high = high, low
+    return low, high
+
+
+def compute_display_levels(
+    frame: np.ndarray,
+    *,
+    dr_low_pct: float,
+    dr_high_pct: float,
+    window_scale: float,
+    level_offset: float,
+) -> tuple[float, float]:
+    """Compute display levels from dynamic-range percentiles and W/L controls."""
+    low, high = percentile_range(frame, dr_low_pct, dr_high_pct)
+    span = max(high - low, 1.0)
+    window = span * max(window_scale, 0.01)
+    center = low + span * (0.5 + 0.5 * level_offset)
+    return center - window / 2.0, center + window / 2.0
