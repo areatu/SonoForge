@@ -1,4 +1,4 @@
-"""Pure domain snapshot of viewer playback and phase-marker state."""
+"""Pure domain snapshot of viewer playback state."""
 
 from __future__ import annotations
 
@@ -18,13 +18,28 @@ class ViewerState:
     total_frames: int
     frame_time_ms: float | None
     is_playing: bool
-    ed_frame_index: int | None
-    es_frame_index: int | None
     doppler_measurement: DopplerMeasurementDTO | None = None
     contours: tuple[Contour, ...] = ()
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     measurement_snapshot: MeasurementSnapshot | None = None
     decode_in_progress: bool = False
+    manual_pixel_spacing: tuple[float, float] | None = None
+
+    @property
+    def effective_pixel_spacing(self) -> tuple[float, float] | None:
+        if self.manual_pixel_spacing is not None:
+            return self.manual_pixel_spacing
+        if self.instance is None:
+            return None
+        return self.instance.pixel_spacing
+
+    @property
+    def pixel_spacing_source_label(self) -> str | None:
+        if self.manual_pixel_spacing is not None:
+            return "manual"
+        if self.instance is None:
+            return None
+        return self.instance.pixel_spacing_source
 
     @property
     def fps(self) -> float:

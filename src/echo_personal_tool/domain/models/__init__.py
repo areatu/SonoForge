@@ -11,7 +11,9 @@ from echo_personal_tool.domain.models.linear_measurement import (
 )
 from echo_personal_tool.domain.models.measurements import (
     DopplerResults,
+    LaVolumeResult,
     LvefResult,
+    LvViewMetrics,
     MeasurementSnapshot,
     TeichholzResult,
 )
@@ -33,6 +35,8 @@ __all__ = [
     "InstanceMetadata",
     "InstanceRef",
     "LinearMeasurement",
+    "LaVolumeResult",
+    "LvViewMetrics",
     "LvefResult",
     "MeasurementSnapshot",
     "SeriesMetadata",

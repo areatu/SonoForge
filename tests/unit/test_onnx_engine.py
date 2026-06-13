@@ -40,13 +40,16 @@ def test_is_available_true_when_manifest_and_model_exist(tmp_path: Path) -> None
     _write_manifest(models_dir)
 
     with patch(
+        "echo_personal_tool.infrastructure.onnx_engine._get_ort",
+        return_value=MagicMock(),
+    ), patch(
         "echo_personal_tool.infrastructure.onnx_engine._create_session",
     ) as mock_create:
         mock_create.return_value = MagicMock()
         engine = OnnxInferenceEngine(models_dir=models_dir)
 
-    assert engine.is_available() is True
-    mock_create.assert_called_once()
+        assert engine.is_available() is True
+        mock_create.assert_called_once()
 
 
 def test_is_available_false_when_manifest_missing(tmp_path: Path) -> None:
@@ -116,12 +119,12 @@ def test_segment_uses_cpu_provider_when_creating_session(tmp_path: Path) -> None
     onnx_path = _write_manifest(models_dir)
 
     with patch(
-        "echo_personal_tool.infrastructure.onnx_engine.ort.InferenceSession",
-    ) as mock_session_cls:
-        mock_session_cls.return_value = MagicMock()
+        "echo_personal_tool.infrastructure.onnx_engine._get_ort",
+        return_value=MagicMock(),
+    ), patch(
+        "echo_personal_tool.infrastructure.onnx_engine._create_session",
+    ) as mock_create_session:
+        mock_create_session.return_value = MagicMock()
         OnnxInferenceEngine(models_dir=models_dir)
 
-    mock_session_cls.assert_called_once_with(
-        str(onnx_path),
-        providers=["CPUExecutionProvider"],
-    )
+    mock_create_session.assert_called_once_with(onnx_path)

@@ -16,6 +16,9 @@
 uv sync --extra dev
 uv run echo-personal-tool
 
+# Опционально: AI-сегментация (ONNX) и PDF-отчёты
+uv sync --extra dev --extra phase2
+
 # Или pip
 pip install -e ".[dev]"
 python -m echo_personal_tool

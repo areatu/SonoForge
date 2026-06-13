@@ -37,4 +37,4 @@ def test_single_frame_label() -> None:
         series_description="",
         path=Path("/data/frame.dcm"),
     )
-    assert _instance_label(instance) == "frame.dcm (1 frame)"
+    assert _instance_label(instance) == "frame.dcm\n(1 frame)"

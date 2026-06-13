@@ -43,9 +43,24 @@ def test_map_instance_metadata_fields() -> None:
     assert meta.modality == "US"
     assert meta.number_of_frames == 3
     assert meta.pixel_spacing == (0.5, 0.5)
+    assert meta.pixel_spacing_source == "PixelSpacing"
     assert meta.frame_time_ms == 33.3
     assert meta.series_description == "Apical 4C"
     assert meta.path == Path("/tmp/test.dcm")
+
+
+def test_map_instance_metadata_from_ultrasound_region() -> None:
+    ds = _minimal_dataset()
+    del ds.PixelSpacing
+    region = Dataset()
+    region.RegionSpatialFormat = 1
+    region.RegionDataType = 1
+    region.PhysicalDeltaX = 0.04
+    region.PhysicalDeltaY = 0.04
+    ds.SequenceOfUltrasoundRegions = [region]
+    meta = map_instance_metadata(ds)
+    assert meta.pixel_spacing == (0.4, 0.4)
+    assert meta.pixel_spacing_source == "SequenceOfUltrasoundRegions"
 
 
 def test_parse_study_datetime() -> None:

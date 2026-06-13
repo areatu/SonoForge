@@ -9,6 +9,11 @@ from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
+from echo_personal_tool.presentation.browser_item_delegate import (
+    THUMB_ROW_HEIGHT,
+    THUMB_WIDTH,
+    InstanceThumbnailDelegate,
+)
 
 _ITEM_DATA_ROLE = 256
 
@@ -22,7 +27,7 @@ def _instance_label(instance: InstanceMetadata) -> str:
         filename = instance.path.name
     else:
         filename = f"{instance.sop_instance_uid[:12]}…"
-    return f"{filename} ({frame_label})"
+    return f"{filename}\n({frame_label})"
 
 
 class LocalBrowserWidget(QTreeWidget):
@@ -34,9 +39,13 @@ class LocalBrowserWidget(QTreeWidget):
         super().__init__(parent)
         self.setIconSize(QSize(128, 128))
         self.setHeaderLabels(["Study / Series / Instance"])
+        self.setItemDelegate(InstanceThumbnailDelegate(self))
+        self.setUniformRowHeights(False)
+        self.setMinimumWidth(220)
         self.itemClicked.connect(self._on_item_clicked)
         self.itemExpanded.connect(self._on_item_expanded)
         self._thumbnail_cache: dict[str, QIcon] = {}
+        self._thumbnail_pixmaps: dict[str, QPixmap] = {}
         self._items_by_uid: dict[str, QTreeWidgetItem] = {}
         self._thumbnail_loader: Callable[[InstanceMetadata], None] | None = None
 
@@ -62,24 +71,38 @@ class LocalBrowserWidget(QTreeWidget):
                     inst_label = _instance_label(instance)
                     inst_item = QTreeWidgetItem([inst_label])
                     inst_item.setData(0, _ITEM_DATA_ROLE, instance)
+                    inst_item.setSizeHint(0, QSize(THUMB_WIDTH, THUMB_ROW_HEIGHT))
                     series_item.addChild(inst_item)
                     self._items_by_uid[instance.sop_instance_uid] = inst_item
                     cached = self._thumbnail_cache.get(instance.sop_instance_uid)
                     if cached is not None:
                         inst_item.setIcon(0, cached)
 
-                if series_item.isExpanded():
-                    self._request_series_thumbnails(series_item)
-
             study_item.setExpanded(True)
+            for index in range(study_item.childCount()):
+                series_item = study_item.child(index)
+                series_item.setExpanded(True)
+                self._request_series_thumbnails(series_item)
+
+    def thumbnail_pixmap(self, sop_instance_uid: str) -> QPixmap | None:
+        return self._thumbnail_pixmaps.get(sop_instance_uid)
 
     def set_thumbnail(self, sop_instance_uid: str, image: QImage) -> None:
-        # PySide6 QIcon rejects QImage directly; pixmap conversion is required.
-        icon = QIcon(QPixmap.fromImage(image))
+        pixmap = QPixmap.fromImage(image)
+        if pixmap.isNull():
+            return
+        self._thumbnail_pixmaps[sop_instance_uid] = pixmap
+        icon = QIcon(pixmap)
         self._thumbnail_cache[sop_instance_uid] = icon
         item = self._items_by_uid.get(sop_instance_uid)
         if item is not None:
             item.setIcon(0, icon)
+            item.setSizeHint(0, QSize(THUMB_WIDTH, THUMB_ROW_HEIGHT))
+            index = self.indexFromItem(item, 0)
+            if index.isValid():
+                self.update(index)
+            self.scheduleDelayedItemsLayout()
+            self.viewport().repaint()
 
     def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
         if item.childCount() == 0:
@@ -105,4 +128,5 @@ class LocalBrowserWidget(QTreeWidget):
     def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
         payload = item.data(0, _ITEM_DATA_ROLE)
         if isinstance(payload, InstanceMetadata):
+            self._request_thumbnail(payload)
             self.instance_selected.emit(payload)

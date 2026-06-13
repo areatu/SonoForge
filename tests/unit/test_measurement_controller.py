@@ -20,6 +20,7 @@ from echo_personal_tool.domain.models import (
     InstanceMetadata,
     LinearMeasurement,
 )
+from echo_personal_tool.domain.services.mbs_lite_service import fit_contour_from_landmarks
 
 
 def _sample_instance() -> InstanceMetadata:
@@ -73,6 +74,34 @@ def _sample_linear_measurements() -> tuple[LinearMeasurement, ...]:
         LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),
         LinearMeasurement(label="LVESD", pixel_length=80.0, millimeter_length=40.0),
     )
+
+
+def test_app_controller_recomputes_lvef_from_model_contours() -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+
+    ed = fit_contour_from_landmarks(
+        septal=(10.0, 40.0),
+        lateral=(50.0, 40.0),
+        apex=(30.0, 10.0),
+        phase="ED",
+        view="A4C",
+    )
+    es = fit_contour_from_landmarks(
+        septal=(12.0, 40.0),
+        lateral=(48.0, 40.0),
+        apex=(30.0, 15.0),
+        phase="ES",
+        view="A4C",
+    )
+    controller.on_contours_changed([ed, es])
+
+    snapshot = controller.state_manager.snapshot.measurement_snapshot
+    assert snapshot is not None
+    assert snapshot.lvef is not None
+    assert snapshot.lvef.a4c is not None
+    assert snapshot.lvef.a4c.edv_ml > 0.0
+    assert snapshot.lvef.a4c.esv_ml > 0.0
 
 
 def test_app_controller_recomputes_measurements_from_current_state() -> None:

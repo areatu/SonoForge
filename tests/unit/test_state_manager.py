@@ -44,8 +44,6 @@ def test_initial_snapshot(qtbot, instance_metadata: InstanceMetadata) -> None:
     assert state.total_frames == 0
     assert state.frame_time_ms is None
     assert state.is_playing is False
-    assert state.ed_frame_index is None
-    assert state.es_frame_index is None
     assert state.doppler_measurement is None
     assert state.contours == ()
     assert state.linear_measurements == ()
@@ -69,8 +67,6 @@ def test_set_instance_resets_state_and_emits(
     assert state.frame_time_ms == 33.3
     assert state.current_frame_index == 0
     assert state.is_playing is False
-    assert state.ed_frame_index is None
-    assert state.es_frame_index is None
     assert state.doppler_measurement is None
     assert state.contours == ()
     assert state.linear_measurements == ()
@@ -140,51 +136,14 @@ def test_set_instance_accepts_single_frame(
         manager.set_frame(1)
 
 
-def test_mark_ed_and_es_use_current_frame(
+def test_set_instance_clears_measurement_state(
     qtbot,
     instance_metadata: InstanceMetadata,
 ) -> None:
     manager = StateManager()
     manager.set_instance(instance_metadata, total_frames=100, frame_time_ms=33.3)
-    manager.set_frame(15)
-
-    with qtbot.waitSignal(manager.state_changed):
-        manager.mark_ed()
-    assert manager.snapshot.ed_frame_index == 15
-    assert manager.snapshot.es_frame_index is None
-
-    manager.set_frame(55)
-    with qtbot.waitSignal(manager.state_changed):
-        manager.mark_es()
-    assert manager.snapshot.es_frame_index == 55
-
-
-def test_clear_phase_markers(qtbot, instance_metadata: InstanceMetadata) -> None:
-    manager = StateManager()
-    manager.set_instance(instance_metadata, total_frames=100, frame_time_ms=33.3)
-    manager.set_frame(10)
-    manager.mark_ed()
-    manager.set_frame(20)
-    manager.mark_es()
-
-    with qtbot.waitSignal(manager.state_changed):
-        manager.clear_phase_markers()
-
-    state = manager.snapshot
-    assert state.ed_frame_index is None
-    assert state.es_frame_index is None
-    assert state.current_frame_index == 20
-
-
-def test_set_instance_clears_previous_markers(
-    qtbot,
-    instance_metadata: InstanceMetadata,
-) -> None:
-    manager = StateManager()
-    manager.set_instance(instance_metadata, total_frames=100, frame_time_ms=33.3)
-    manager.set_frame(7)
-    manager.mark_ed()
-    manager.mark_es()
+    contour = Contour(phase="ED", view="A4C", points=[(1.0, 2.0), (3.0, 4.0)])
+    manager.set_contours((contour,))
 
     other = InstanceMetadata(
         sop_instance_uid="9.9.9",
@@ -200,8 +159,6 @@ def test_set_instance_clears_previous_markers(
     manager.set_instance(other, total_frames=50, frame_time_ms=40.0)
     state = manager.snapshot
     assert state.instance == other
-    assert state.ed_frame_index is None
-    assert state.es_frame_index is None
     assert state.doppler_measurement is None
     assert state.contours == ()
     assert state.linear_measurements == ()

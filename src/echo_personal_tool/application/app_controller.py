@@ -17,6 +17,9 @@ from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.calculations.la_area_length import (
+    from_measurements as la_from_measurements,
+)
 from echo_personal_tool.domain.calculations.lvef_simpson import calculate
 from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
 from echo_personal_tool.domain.models import (
@@ -198,18 +201,6 @@ class AppController(QObject):
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)
 
-    def mark_ed(self) -> None:
-        self._state_manager.mark_ed()
-        frame = self._state_manager.snapshot.ed_frame_index
-        if frame is not None:
-            self.status_message.emit(f"ED marked at frame {frame + 1}")
-
-    def mark_es(self) -> None:
-        self._state_manager.mark_es()
-        frame = self._state_manager.snapshot.es_frame_index
-        if frame is not None:
-            self.status_message.emit(f"ES marked at frame {frame + 1}")
-
     def request_auto_segment(self) -> None:
         if self._segment_in_progress:
             self.status_message.emit("Segmentation already in progress")
@@ -220,9 +211,11 @@ class AppController(QObject):
             self.status_message.emit("Pause playback before auto-segmentation")
             return
 
-        phase = self._resolve_phase_for_frame(state.current_frame_index, state)
+        phase = None
+        # Future: phase from active Simpson workflow in viewer.
+        # v1: auto-segment remains non-functional without markers.
         if phase is None:
-            self.status_message.emit("Auto-segmentation requires an ED or ES frame")
+            self.status_message.emit("Auto-segmentation requires an active Simpson workflow")
             return
 
         if (
@@ -264,7 +257,7 @@ class AppController(QObject):
         if not isinstance(dto, DopplerMeasurementDTO):
             raise TypeError("Expected DopplerMeasurementDTO")
 
-        self._state_manager.set_doppler_measurement(dto)
+        self._state_manager.set_doppler_measurement(dto, emit=False)
         self._recompute_measurements()
         self.status_message.emit(self._format_doppler_summary(dto))
 
@@ -274,7 +267,7 @@ class AppController(QObject):
         ):
             raise TypeError("Expected a list of Contour objects")
 
-        self._state_manager.set_contours(tuple(contours))
+        self._state_manager.set_contours(tuple(contours), emit=False)
         self._recompute_measurements()
 
     def on_linear_measurements_changed(self, measurements: object) -> None:
@@ -283,8 +276,27 @@ class AppController(QObject):
         ):
             raise TypeError("Expected a list of LinearMeasurement objects")
 
-        self._state_manager.set_linear_measurements(tuple(measurements))
+        self._state_manager.set_linear_measurements(tuple(measurements), emit=False)
         self._recompute_measurements()
+
+    def on_manual_calibration(self, spacing: object) -> None:
+        if not isinstance(spacing, tuple) or len(spacing) != 2:
+            raise TypeError("Expected manual calibration spacing as (row, column) tuple")
+        row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
+        if row_spacing <= 0 or col_spacing <= 0:
+            raise ValueError("Manual pixel spacing must be positive")
+        self._state_manager.set_manual_pixel_spacing((row_spacing, col_spacing))
+        self._recompute_measurements()
+        self.status_message.emit(
+            f"Калибровка: {row_spacing:.3f} × {col_spacing:.3f} mm/px (ручная)"
+        )
+
+    def clear_manual_calibration(self) -> None:
+        if self._state_manager.snapshot.manual_pixel_spacing is None:
+            return
+        self._state_manager.clear_manual_pixel_spacing()
+        self._recompute_measurements()
+        self.status_message.emit("Ручная калибровка сброшена")
 
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
@@ -297,19 +309,40 @@ class AppController(QObject):
             self._timer.stop()
         self._request_frame_if_needed(state)
 
+    def _resolve_pixel_spacing(
+        self,
+        state: ViewerState,
+    ) -> tuple[tuple[float, float], bool]:
+        """Return spacing for calculations and whether it is calibrated (DICOM or manual)."""
+        spacing = state.effective_pixel_spacing
+        if spacing is not None:
+            row_spacing, col_spacing = spacing
+            if row_spacing > 0.0 and col_spacing > 0.0:
+                return spacing, True
+        return (1.0, 1.0), False
+
     def _recompute_measurements(self) -> None:
         state = self._state_manager.snapshot
         doppler = compute(state.doppler_measurement) if state.doppler_measurement else None
-        pixel_spacing = state.instance.pixel_spacing if state.instance is not None else None
+        pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(state)
         lvef = calculate(state.contours, pixel_spacing)
         teichholz = from_linear_measurements(state.linear_measurements)
+        la_spacing = pixel_spacing if spacing_calibrated else None
+        la_volume = la_from_measurements(
+            state.contours,
+            state.linear_measurements,
+            la_spacing,
+        )
         snapshot = MeasurementSnapshot(
             doppler=doppler,
             lvef=lvef,
             teichholz=teichholz,
+            la_volume=la_volume,
             linear_measurements=state.linear_measurements,
+            spacing_calibrated=spacing_calibrated,
         )
-        self._state_manager.set_measurement_snapshot(snapshot)
+        self._state_manager.set_measurement_snapshot(snapshot, emit=False)
+        self._state_manager.emit_state()
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
         if self._current_instance is None or self._current_instance.path is None:
@@ -463,17 +496,6 @@ class AppController(QObject):
         self._loaded_frame_index = frame_index
         self._current_frame_pixels = pixels
         self.frame_loaded.emit(pixels)
-
-    def _resolve_phase_for_frame(
-        self,
-        frame_index: int,
-        state: ViewerState,
-    ) -> str | None:
-        if state.ed_frame_index is not None and frame_index == state.ed_frame_index:
-            return "ED"
-        if state.es_frame_index is not None and frame_index == state.es_frame_index:
-            return "ES"
-        return None
 
     def _auto_segment_context_matches(
         self,

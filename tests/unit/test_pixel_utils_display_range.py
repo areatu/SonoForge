@@ -7,6 +7,7 @@ import pytest
 
 from echo_personal_tool.infrastructure.pixel_utils import (
     compute_display_levels,
+    dr_percentiles_from_slider,
     percentile_range,
 )
 
@@ -26,6 +27,18 @@ def test_percentile_range_returns_default_for_empty_or_non_finite_frames() -> No
         0.0,
         1.0,
     )
+
+
+def test_dr_percentiles_from_slider_center_is_full_range() -> None:
+    low, high = dr_percentiles_from_slider(50)
+    assert low == pytest.approx(0.0)
+    assert high == pytest.approx(100.0)
+
+
+def test_dr_percentiles_from_slider_left_clips_dark() -> None:
+    low, high = dr_percentiles_from_slider(0)
+    assert low == pytest.approx(45.0)
+    assert high == pytest.approx(100.0)
 
 
 def test_compute_display_levels_uses_percentile_range_and_wl_math() -> None:

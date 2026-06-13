@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
-from echo_personal_tool.domain.models import Contour, LvefResult
+from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics
 from echo_personal_tool.domain.services.contour_geometry import long_axis_endpoints
 
 _VALID_PHASES = {"ed", "es"}
@@ -23,7 +24,8 @@ def calculate(
     if row_spacing <= 0.0 or col_spacing <= 0.0:
         return None
 
-    grouped: dict[
+    grouped_contours: dict[str, dict[str, Contour]] = {"A4C": {}, "A2C": {}}
+    grouped_mm: dict[
         str,
         dict[
             str,
@@ -32,49 +34,122 @@ def calculate(
                 tuple[tuple[float, float], tuple[float, float]] | None,
             ],
         ],
-    ] = {
-        "A4C": {},
-        "A2C": {},
-    }
+    ] = {"A4C": {}, "A2C": {}}
 
     for contour in contours:
+        if contour.chamber.upper() != "LV":
+            continue
         phase = contour.phase.casefold()
         view = contour.view.casefold().upper()
         if phase not in _VALID_PHASES or view not in _VALID_VIEWS:
             continue
-        grouped[view][phase] = _contour_to_mm(contour, pixel_spacing)
+        grouped_contours[view][phase] = contour
+        grouped_mm[view][phase] = _contour_to_mm(contour, pixel_spacing)
+
+    a4c = _build_view_metrics(grouped_mm["A4C"], grouped_contours["A4C"], pixel_spacing)
+    a2c = _build_view_metrics(grouped_mm["A2C"], grouped_contours["A2C"], pixel_spacing)
+    if a4c is None and a2c is None:
+        return None
 
     per_view_volumes: dict[str, tuple[float, float]] = {}
-    for view, phases in grouped.items():
-        ed_contour = phases.get("ed")
-        es_contour = phases.get("es")
-        if ed_contour is None or es_contour is None:
+    for view, metrics in (("A4C", a4c), ("A2C", a2c)):
+        if metrics is None:
             continue
+        if metrics.edv_ml is not None and metrics.esv_ml is not None:
+            per_view_volumes[view] = (metrics.edv_ml, metrics.esv_ml)
 
-        ed_points_mm, ed_annulus_mm = ed_contour
-        es_points_mm, es_annulus_mm = es_contour
-        edv_ml = _simpson_volume_ml(ed_points_mm, ed_annulus_mm)
-        esv_ml = _simpson_volume_ml(es_points_mm, es_annulus_mm)
-        if edv_ml <= 0.0 or esv_ml <= 0.0:
-            continue
-        per_view_volumes[view] = (edv_ml, esv_ml)
+    lvef_percent: float | None = None
+    method: str | None = None
+    if per_view_volumes:
+        edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
+        esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
+        if edv_ml > 0.0:
+            lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
+            method = "simpson_biplan" if len(per_view_volumes) == 2 else "simpson_monoplan"
 
-    if not per_view_volumes:
+    return LvefResult(a4c=a4c, a2c=a2c, lvef_percent=lvef_percent, method=method)
+
+
+def format_contour_overlay(
+    contour: Contour,
+    pixel_spacing: tuple[float, float] | None,
+    *,
+    spacing_calibrated: bool = True,
+) -> str:
+    """Format frame overlay line: view phase · length · volume."""
+    view = contour.view
+    phase = contour.phase.upper()
+    if pixel_spacing is None:
+        return f"{view} {phase} · Длина: — · Объём: —"
+    length = _contour_length_mm(contour, pixel_spacing)
+    volume = _contour_volume_ml(contour, pixel_spacing)
+    if spacing_calibrated:
+        length_text = f"{length:.1f} mm" if length is not None else "—"
+        volume_text = f"{volume:.1f} mL" if volume is not None else "—"
+    else:
+        length_text = f"{length:.1f} px" if length is not None else "—"
+        volume_text = f"{volume:.1f} px³" if volume is not None else "—"
+    return f"{view} {phase} · Длина: {length_text} · Объём: {volume_text}"
+
+
+def _contour_length_mm(
+    contour: Contour,
+    pixel_spacing: tuple[float, float],
+) -> float | None:
+    if contour.mitral_annulus is None:
         return None
+    points_mm, annulus_mm = _contour_to_mm(contour, pixel_spacing)
+    base, tip = long_axis_endpoints(list(points_mm), annulus_mm)
+    length = math.hypot(tip[0] - base[0], tip[1] - base[1])
+    return length if length > 0.0 else None
 
-    edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
-    esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
-    if edv_ml <= 0.0:
-        return None
 
-    method = "simpson_biplan" if len(per_view_volumes) == 2 else "simpson_monoplan"
-    lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
-    return LvefResult(
-        edv_ml=edv_ml,
-        esv_ml=esv_ml,
-        lvef_percent=lvef_percent,
-        method=method,
-    )
+def _contour_volume_ml(
+    contour: Contour,
+    pixel_spacing: tuple[float, float],
+) -> float | None:
+    points_mm, annulus_mm = _contour_to_mm(contour, pixel_spacing)
+    volume = _simpson_volume_ml(points_mm, annulus_mm)
+    return volume if volume > 0.0 else None
+
+
+def _build_view_metrics(
+    phases: dict[
+        str,
+        tuple[
+            tuple[tuple[float, float], ...],
+            tuple[tuple[float, float], tuple[float, float]] | None,
+        ],
+    ],
+    contours_by_phase: dict[str, Contour],
+    pixel_spacing: tuple[float, float],
+) -> LvViewMetrics | None:
+    metrics = LvViewMetrics()
+    has_any = False
+
+    ed_contour = contours_by_phase.get("ed")
+    if ed_contour is not None:
+        length = _contour_length_mm(ed_contour, pixel_spacing)
+        volume = _contour_volume_ml(ed_contour, pixel_spacing)
+        if length is not None:
+            metrics = dataclasses.replace(metrics, length_ed_mm=length)
+            has_any = True
+        if volume is not None:
+            metrics = dataclasses.replace(metrics, edv_ml=volume)
+            has_any = True
+
+    es_contour = contours_by_phase.get("es")
+    if es_contour is not None:
+        length = _contour_length_mm(es_contour, pixel_spacing)
+        volume = _contour_volume_ml(es_contour, pixel_spacing)
+        if length is not None:
+            metrics = dataclasses.replace(metrics, length_es_mm=length)
+            has_any = True
+        if volume is not None:
+            metrics = dataclasses.replace(metrics, esv_ml=volume)
+            has_any = True
+
+    return metrics if has_any else None
 
 
 def _contour_to_mm(
@@ -86,9 +161,10 @@ def _contour_to_mm(
 ]:
     """Convert contour points from pixels to millimeters."""
     row_spacing, col_spacing = pixel_spacing
+    polygon_points = contour.closed_polygon_points()
     points_mm = tuple(
         (float(col) * col_spacing, float(row) * row_spacing)
-        for col, row in contour.points
+        for col, row in polygon_points
     )
     annulus_mm = None
     if contour.mitral_annulus is not None:
@@ -137,12 +213,12 @@ def _simpson_volume_ml(
                     center,
                 )
             )
-        diameter_mm = max(disk_diameters_mm, default=0.0)
-        if diameter_mm <= 0.0:
+        if not disk_diameters_mm or max(disk_diameters_mm) <= 0.0:
             return 0.0
 
         disk_volume_mm3 = 0.0
         for index in range(20):
+            diameter_mm = disk_diameters_mm[index]
             disk_volume_mm3 += (math.pi / 4.0) * diameter_mm * diameter_mm * disk_height_mm
 
         return disk_volume_mm3 / 1000.0

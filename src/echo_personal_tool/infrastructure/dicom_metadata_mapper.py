@@ -9,6 +9,7 @@ import pydicom
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.domain.models import InstanceMetadata
+from echo_personal_tool.domain.services.pixel_spacing_resolver import resolve_pixel_spacing
 
 
 def _parse_study_datetime(study_date: str | None, study_time: str | None) -> datetime:
@@ -18,14 +19,11 @@ def _parse_study_datetime(study_date: str | None, study_time: str | None) -> dat
     return datetime.strptime(f"{date_part}{time_part}", "%Y%m%d%H%M%S")
 
 
-def _pixel_spacing(dataset: Dataset) -> tuple[float, float] | None:
-    spacing = dataset.get("PixelSpacing")
-    if spacing is not None and len(spacing) >= 2:
-        return (float(spacing[0]), float(spacing[1]))
-    imager = dataset.get("ImagerPixelSpacing")
-    if imager is not None and len(imager) >= 2:
-        return (float(imager[0]), float(imager[1]))
-    return None
+def _pixel_spacing(dataset: Dataset) -> tuple[tuple[float, float] | None, str | None]:
+    resolution = resolve_pixel_spacing(dataset)
+    if resolution is None:
+        return None, None
+    return resolution.spacing, resolution.source
 
 
 def _frame_time_ms(dataset: Dataset) -> float | None:
@@ -44,12 +42,14 @@ def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> Instanc
     """Convert a DICOM dataset (header or full) to InstanceMetadata."""
     number_of_frames = int(dataset.get("NumberOfFrames", 1) or 1)
     series_description = str(dataset.get("SeriesDescription", "") or "").strip()
+    spacing, spacing_source = _pixel_spacing(dataset)
     return InstanceMetadata(
         sop_instance_uid=str(dataset.get("SOPInstanceUID", "") or ""),
         series_uid=str(dataset.get("SeriesInstanceUID", "") or ""),
         modality=str(dataset.get("Modality", "OT") or "OT"),
         number_of_frames=number_of_frames,
-        pixel_spacing=_pixel_spacing(dataset),
+        pixel_spacing=spacing,
+        pixel_spacing_source=spacing_source,
         frame_time_ms=_frame_time_ms(dataset),
         series_description=series_description,
         path=path,

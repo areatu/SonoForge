@@ -10,6 +10,7 @@ from echo_personal_tool.domain.models import (
     DopplerResults,
     LinearMeasurement,
     LvefResult,
+    LvViewMetrics,
     MeasurementSnapshot,
     TeichholzResult,
 )
@@ -58,18 +59,36 @@ def test_doppler_results_populated() -> None:
     assert results.pgmean_mmhg == 12.0
 
 
+def test_lv_view_metrics_defaults() -> None:
+    metrics = LvViewMetrics()
+    assert metrics.length_ed_mm is None
+    assert metrics.length_es_mm is None
+    assert metrics.edv_ml is None
+    assert metrics.esv_ml is None
+
+
+def test_lvef_result_partial_ed_only() -> None:
+    result = LvefResult(
+        a4c=LvViewMetrics(length_ed_mm=82.0, edv_ml=124.5),
+        lvef_percent=None,
+        method=None,
+    )
+    assert result.a4c is not None
+    assert result.a4c.edv_ml == 124.5
+    assert result.lvef_percent is None
+    assert result.a2c is None
+
+
 def test_lvef_result_creation() -> None:
     result = LvefResult(
-        edv_ml=120.0,
-        esv_ml=45.0,
+        a4c=LvViewMetrics(edv_ml=120.0, esv_ml=45.0),
         lvef_percent=62.5,
         method="simpson_monoplan",
     )
-
-    assert result.edv_ml == 120.0
-    assert result.esv_ml == 45.0
+    assert result.a4c is not None
+    assert result.a4c.edv_ml == 120.0
+    assert result.a4c.esv_ml == 45.0
     assert result.lvef_percent == 62.5
-    assert result.method == "simpson_monoplan"
 
 
 def test_teichholz_result_creation() -> None:
@@ -86,14 +105,14 @@ def test_measurement_snapshot_defaults() -> None:
     assert snapshot.doppler is None
     assert snapshot.lvef is None
     assert snapshot.teichholz is None
+    assert snapshot.la_volume is None
     assert snapshot.linear_measurements == ()
 
 
 def test_measurement_snapshot_populated() -> None:
     doppler = DopplerResults(e_cm_s=90.0, a_cm_s=55.0)
     lvef = LvefResult(
-        edv_ml=130.0,
-        esv_ml=40.0,
+        a4c=LvViewMetrics(edv_ml=130.0, esv_ml=40.0),
         lvef_percent=69.2,
         method="simpson_biplan",
     )
@@ -117,7 +136,11 @@ def test_measurement_snapshot_populated() -> None:
     "instance",
     [
         DopplerResults(e_cm_s=80.0),
-        LvefResult(edv_ml=100.0, esv_ml=40.0, lvef_percent=60.0, method="simpson_monoplan"),
+        LvefResult(
+            a4c=LvViewMetrics(edv_ml=100.0, esv_ml=40.0),
+            lvef_percent=60.0,
+            method="simpson_monoplan",
+        ),
         TeichholzResult(edv_ml=100.0, esv_ml=40.0, lvef_percent=60.0),
         MeasurementSnapshot(),
     ],

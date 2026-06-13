@@ -29,11 +29,19 @@ class DopplerResults:
 
 
 @dataclass(frozen=True)
+class LvViewMetrics:
+    length_ed_mm: float | None = None
+    length_es_mm: float | None = None
+    edv_ml: float | None = None
+    esv_ml: float | None = None
+
+
+@dataclass(frozen=True)
 class LvefResult:
-    edv_ml: float
-    esv_ml: float
-    lvef_percent: float
-    method: str  # e.g. "simpson_monoplan", "simpson_biplan"
+    a4c: LvViewMetrics | None = None
+    a2c: LvViewMetrics | None = None
+    lvef_percent: float | None = None
+    method: str | None = None  # simpson_monoplan / simpson_biplan
 
 
 @dataclass(frozen=True)
@@ -44,8 +52,20 @@ class TeichholzResult:
 
 
 @dataclass(frozen=True)
+class LaVolumeResult:
+    """Left atrial area-length result; fields set only when computable."""
+
+    volume_ml: float | None = None
+    area_cm2: float | None = None
+    length_cm: float | None = None
+    method: str = "area_length"
+
+
+@dataclass(frozen=True)
 class MeasurementSnapshot:
     doppler: DopplerResults | None = None
     lvef: LvefResult | None = None
     teichholz: TeichholzResult | None = None
+    la_volume: LaVolumeResult | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
+    spacing_calibrated: bool = True

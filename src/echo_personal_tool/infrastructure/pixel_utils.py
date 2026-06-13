@@ -59,6 +59,16 @@ def percentile_range(frame: np.ndarray, low_pct: float, high_pct: float) -> tupl
     return low, high
 
 
+def dr_percentiles_from_slider(slider_value: int) -> tuple[float, float]:
+    """Map single DR slider (0–100, default 50) to percentile low/high pair."""
+    value = int(np.clip(slider_value, 0, 100))
+    if value <= 50:
+        low = (50 - value) / 50.0 * 45.0
+        return low, 100.0
+    high = 100.0 - (value - 50) / 50.0 * 45.0
+    return 0.0, high
+
+
 def compute_display_levels(
     frame: np.ndarray,
     *,

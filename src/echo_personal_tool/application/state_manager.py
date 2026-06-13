@@ -15,7 +15,7 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 
 class StateManager(QObject):
-    """Caches the active instance context, frame position, and ED/ES markers."""
+    """Caches the active instance context and frame position."""
 
     state_changed = Signal(object)
 
@@ -26,13 +26,12 @@ class StateManager(QObject):
         self._total_frames = 0
         self._frame_time_ms: float | None = None
         self._is_playing = False
-        self._ed_frame_index: int | None = None
-        self._es_frame_index: int | None = None
         self._doppler_measurement: DopplerMeasurementDTO | None = None
         self._contours: tuple[Contour, ...] = ()
         self._linear_measurements: tuple[LinearMeasurement, ...] = ()
         self._measurement_snapshot: MeasurementSnapshot | None = None
         self._decode_in_progress = False
+        self._manual_pixel_spacing: tuple[float, float] | None = None
 
     @property
     def snapshot(self) -> ViewerState:
@@ -42,13 +41,12 @@ class StateManager(QObject):
             total_frames=self._total_frames,
             frame_time_ms=self._frame_time_ms,
             is_playing=self._is_playing,
-            ed_frame_index=self._ed_frame_index,
-            es_frame_index=self._es_frame_index,
             doppler_measurement=self._doppler_measurement,
             contours=self._contours,
             linear_measurements=self._linear_measurements,
             measurement_snapshot=self._measurement_snapshot,
             decode_in_progress=self._decode_in_progress,
+            manual_pixel_spacing=self._manual_pixel_spacing,
         )
 
     def set_instance(
@@ -64,13 +62,12 @@ class StateManager(QObject):
         self._frame_time_ms = frame_time_ms if frame_time_ms and frame_time_ms > 0 else 33.3
         self._current_frame_index = 0
         self._is_playing = False
-        self._ed_frame_index = None
-        self._es_frame_index = None
         self._doppler_measurement = None
         self._contours = ()
         self._linear_measurements = ()
         self._measurement_snapshot = None
         self._decode_in_progress = False
+        self._manual_pixel_spacing = None
         self._emit_state()
 
     def set_decode_in_progress(self, in_progress: bool) -> None:
@@ -119,34 +116,56 @@ class StateManager(QObject):
         self._current_frame_index = frame_index
         self._emit_state()
 
-    def mark_ed(self) -> None:
-        self._ed_frame_index = self._current_frame_index
-        self._emit_state()
-
-    def mark_es(self) -> None:
-        self._es_frame_index = self._current_frame_index
-        self._emit_state()
-
-    def clear_phase_markers(self) -> None:
-        self._ed_frame_index = None
-        self._es_frame_index = None
-        self._emit_state()
-
-    def set_doppler_measurement(self, dto: DopplerMeasurementDTO) -> None:
+    def set_doppler_measurement(
+        self,
+        dto: DopplerMeasurementDTO,
+        *,
+        emit: bool = True,
+    ) -> None:
         self._doppler_measurement = dto
-        self._emit_state()
+        if emit:
+            self._emit_state()
 
-    def set_contours(self, contours: tuple[Contour, ...]) -> None:
+    def set_contours(
+        self,
+        contours: tuple[Contour, ...],
+        *,
+        emit: bool = True,
+    ) -> None:
         self._contours = contours
-        self._emit_state()
+        if emit:
+            self._emit_state()
 
-    def set_linear_measurements(self, measurements: tuple[LinearMeasurement, ...]) -> None:
+    def set_linear_measurements(
+        self,
+        measurements: tuple[LinearMeasurement, ...],
+        *,
+        emit: bool = True,
+    ) -> None:
         self._linear_measurements = measurements
+        if emit:
+            self._emit_state()
+
+    def set_measurement_snapshot(
+        self,
+        snapshot: MeasurementSnapshot | None,
+        *,
+        emit: bool = True,
+    ) -> None:
+        self._measurement_snapshot = snapshot
+        if emit:
+            self._emit_state()
+
+    def emit_state(self) -> None:
+        """Publish the current snapshot to UI listeners."""
         self._emit_state()
 
-    def set_measurement_snapshot(self, snapshot: MeasurementSnapshot | None) -> None:
-        self._measurement_snapshot = snapshot
+    def set_manual_pixel_spacing(self, spacing: tuple[float, float] | None) -> None:
+        self._manual_pixel_spacing = spacing
         self._emit_state()
+
+    def clear_manual_pixel_spacing(self) -> None:
+        self.set_manual_pixel_spacing(None)
 
     def _emit_state(self) -> None:
         self.state_changed.emit(self.snapshot)

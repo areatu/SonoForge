@@ -6,6 +6,7 @@ from echo_personal_tool.domain.models import (
     DopplerResults,
     LinearMeasurement,
     LvefResult,
+    LvViewMetrics,
     MeasurementSnapshot,
     TeichholzResult,
     ViewerState,
@@ -36,8 +37,7 @@ def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:
             pgmean_mmhg=12.0,
         ),
         lvef=LvefResult(
-            edv_ml=120.0,
-            esv_ml=45.0,
+            a4c=LvViewMetrics(edv_ml=120.0, esv_ml=45.0),
             lvef_percent=62.5,
             method="simpson_monoplan",
         ),
@@ -63,11 +63,40 @@ def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:
     assert "E: 85.0 cm/s" in text
     assert "E/A: 1.40" in text
     assert "PGpeak: 25.0 mmHg" in text
-    assert "LV volumes (Simpson)" in text
-    assert "Method: simpson_monoplan" in text
+    assert "Объёмы ЛЖ (Симпсон)" in text
+    assert "КДО ЛЖ 4C" in text
+    assert "КСО ЛЖ 4C" in text
+    assert "ФВ ЛЖ" in text
+    assert "62.5" in text
+    assert "Метод: simpson_monoplan" in text
     assert "LV volumes (Teichholz)" in text
     assert "Linear geometry" in text
     assert "LVEDD: 50.0 mm (100.0 px)" in text
+
+
+def test_measurement_panel_hides_empty_sections(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(MeasurementSnapshot())
+
+    text = panel._summary_label.text()
+    assert "—" not in text
+    assert "Doppler" not in text
+    assert "Объёмы ЛЖ" not in text
+    assert "No measurements yet" in text
+
+
+def test_measurement_panel_shows_partial_doppler_fields_only(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(MeasurementSnapshot(doppler=DopplerResults(e_cm_s=72.0)))
+
+    text = panel._summary_label.text()
+    assert "E: 72.0 cm/s" in text
+    assert "A:" not in text
+    assert "—" not in text
 
 
 def test_measurement_panel_updates_from_viewer_state(qtbot) -> None:
@@ -83,8 +112,6 @@ def test_measurement_panel_updates_from_viewer_state(qtbot) -> None:
             total_frames=0,
             frame_time_ms=None,
             is_playing=False,
-            ed_frame_index=None,
-            es_frame_index=None,
             doppler_measurement=None,
             contours=(),
             linear_measurements=(),
@@ -94,3 +121,65 @@ def test_measurement_panel_updates_from_viewer_state(qtbot) -> None:
 
     assert panel._summary_label.text().startswith("Measurements")
     assert "E: 72.0 cm/s" in panel._summary_label.text()
+
+
+def test_measurement_panel_shows_russian_lv_metrics_partial_ed(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(length_ed_mm=82.3, edv_ml=124.5),
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "Объёмы ЛЖ (Симпсон)" in text
+    assert "Длина ЛЖ 4C" in text
+    assert "КДО ЛЖ 4C" in text
+    assert "КСО ЛЖ 4C" not in text
+    assert "ФВ ЛЖ" not in text
+
+
+def test_measurement_panel_shows_lvef_when_ed_es_pair_complete(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(
+                    length_ed_mm=82.0,
+                    length_es_mm=78.0,
+                    edv_ml=120.0,
+                    esv_ml=45.0,
+                ),
+                lvef_percent=62.5,
+                method="simpson_monoplan",
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "КСО ЛЖ 4C" in text
+    assert "ФВ ЛЖ" in text
+    assert "62.5" in text
+
+
+def test_measurement_panel_shows_uncalibrated_simpson_without_pixel_spacing(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(length_ed_mm=82.3, edv_ml=124.5),
+            ),
+            spacing_calibrated=False,
+        )
+    )
+    text = panel._summary_label.text()
+    assert "нет PixelSpacing" in text
+    assert "Длина ЛЖ 4C: 82.3 px" in text
+    assert "КДО ЛЖ 4C: 124.5 px³" in text

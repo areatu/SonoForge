@@ -11,11 +11,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
-from echo_personal_tool.domain.models import Contour, InstanceMetadata
-from echo_personal_tool.domain.services.segmentation_service import (
-    mask_to_contour,
-    smooth_contour,
-)
+from echo_personal_tool.domain.models import InstanceMetadata
 
 pytest.importorskip("pytestqt")
 
@@ -100,7 +96,6 @@ def _prepared_controller(
     controller = AppController(thread_pool=thread_pool, segmenter=segmenter)
     instance = _sample_instance()
     controller.state_manager.set_instance(instance, total_frames=4, frame_time_ms=40.0)
-    controller.state_manager.mark_ed()
     controller._current_instance = instance
 
     pixels = np.arange(64, dtype=np.uint8).reshape(8, 8)
@@ -109,43 +104,19 @@ def _prepared_controller(
     return controller, thread_pool, segmenter, instance, pixels
 
 
-def test_request_auto_segment_dispatches_worker_and_updates_contour(
+def test_request_auto_segment_requires_active_simpson_workflow(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    controller, thread_pool, segmenter, _, pixels = _prepared_controller(monkeypatch)
-    manual_ed = Contour(phase="ED", view="A4C", points=[(0.0, 0.0), (1.0, 1.0)])
-    manual_es = Contour(phase="ES", view="A4C", points=[(2.0, 2.0), (3.0, 3.0)])
-    controller.on_contours_changed([manual_ed, manual_es])
+    controller, thread_pool, segmenter, _, _ = _prepared_controller(monkeypatch)
+    messages: list[str] = []
+    controller.status_message.connect(messages.append)
 
     controller.request_auto_segment()
 
-    assert segmenter.calls == 1
-    assert len(thread_pool.started) == 1
-    worker = thread_pool.started[0]
-    assert isinstance(worker, _FakeWorker)
-    np.testing.assert_array_equal(worker.frame, pixels)
-
-    mask = np.zeros((8, 8), dtype=np.uint8)
-    mask[2:6, 2:6] = 1
-    worker.signals.finished.emit(mask)
-
-    contours = controller.state_manager.snapshot.contours
-    expected_points = smooth_contour(mask_to_contour(mask, pixels.shape[:2]), num_nodes=32)
-
-    assert len(contours) == 2
-    assert any(
-        contour == Contour(phase="ES", view="A4C", points=manual_es.points)
-        for contour in contours
-    )
-    assert any(
-        contour.phase == "ED"
-        and contour.view == "A4C"
-        and contour.source == "ai"
-        and contour.points == expected_points
-        for contour in contours
-    )
-    assert controller._segment_in_progress is False
+    assert segmenter.calls == 0
+    assert thread_pool.started == []
+    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
 
 
 def test_request_auto_segment_rejects_when_segmenter_unavailable(
@@ -161,9 +132,9 @@ def test_request_auto_segment_rejects_when_segmenter_unavailable(
 
     controller.request_auto_segment()
 
-    assert segmenter.calls == 1
+    assert segmenter.calls == 0
     assert thread_pool.started == []
-    assert messages[-1] == "сегментация недоступна — используйте ручной контур"
+    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
 
 
 def test_request_auto_segment_rejects_when_frame_is_not_marked(
@@ -189,7 +160,7 @@ def test_request_auto_segment_rejects_when_frame_is_not_marked(
 
     controller.request_auto_segment()
 
-    assert messages[-1] == "Auto-segmentation requires an ED or ES frame"
+    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
 
 
 def test_request_auto_segment_rejects_when_playing(
@@ -216,10 +187,9 @@ def test_request_auto_segment_emits_timeout_message(
     controller.status_message.connect(messages.append)
 
     controller.request_auto_segment()
-    worker = thread_pool.started[0]
-    worker.signals.timed_out.emit()
 
-    assert messages[-1] == "сегментация недоступна — используйте ручной контур"
+    assert thread_pool.started == []
+    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
     assert controller._segment_in_progress is False
 
 
@@ -234,5 +204,5 @@ def test_request_auto_segment_blocks_concurrent_requests(
     controller.request_auto_segment()
     controller.request_auto_segment()
 
-    assert len(thread_pool.started) == 1
-    assert messages[-1] == "Segmentation already in progress"
+    assert thread_pool.started == []
+    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
