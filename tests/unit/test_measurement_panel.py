@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.models import (
+    ChamberSimpsonResult,
     DopplerResults,
+    IndexedMeasurements,
     LinearMeasurement,
     LvefResult,
     LvViewMetrics,
@@ -71,7 +73,8 @@ def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:
     assert "Метод: simpson_monoplan" in text
     assert "LV volumes (Teichholz)" in text
     assert "Linear geometry" in text
-    assert "LVEDD: 50.0 mm (100.0 px)" in text
+    assert "LVEDD: 50.0 mm" in text
+    assert "100.0 px" not in text
 
 
 def test_measurement_panel_hides_empty_sections(qtbot) -> None:
@@ -183,3 +186,55 @@ def test_measurement_panel_shows_uncalibrated_simpson_without_pixel_spacing(qtbo
     assert "нет PixelSpacing" in text
     assert "Длина ЛЖ 4C: 82.3 px" in text
     assert "КДО ЛЖ 4C: 124.5 px³" in text
+
+
+def test_measurement_panel_shows_la_area_after_lav_lines(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            la_simpson=ChamberSimpsonResult(
+                chamber="LA",
+                a4c=LvViewMetrics(esv_ml=42.0),
+                a2c=LvViewMetrics(esv_ml=38.0),
+                area_cm2=18.5,
+            ),
+            spacing_calibrated=True,
+        )
+    )
+
+    text = panel._summary_label.text()
+    lav_4c_pos = text.index("LAV 4C")
+    lav_bi_pos = text.index("LAV Bi")
+    la_area_pos = text.index("S ЛП")
+    assert lav_4c_pos < lav_bi_pos < la_area_pos
+    assert "S ЛП: 18.5 cm²" in text
+
+
+def test_measurement_panel_shows_indexed_section_when_bsa_available(qtbot) -> None:
+    panel = MeasurementPanel()
+    qtbot.addWidget(panel)
+
+    bsa = 1.82
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(edv_ml=120.0, esv_ml=45.0),
+                lvef_percent=62.5,
+            ),
+            height_cm=170.0,
+            weight_kg=70.0,
+            indexed=IndexedMeasurements(
+                bsa_m2=bsa,
+                simpson_edvi_ml_m2=120.0 / bsa,
+                simpson_esvi_ml_m2=45.0 / bsa,
+                linear_index_mm_m2=(("LVEDD", 50.0 / bsa),),
+            ),
+        )
+    )
+
+    text = panel._summary_label.text()
+    assert "Indexed (BSA)" in text
+    assert "BSA: 1.82 m²" in text
+    assert "КДО idx (Simpson)" in text
+    assert "LVEDD idx" in text

@@ -10,6 +10,8 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
+    QGraphicsView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -29,25 +31,43 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     MIN_DELTA_NORM,
-    WEIGHT_ACTIVE_THRESHOLD,
+    apex_point,
     apply_gaussian_displacement,
-    gaussian_weights,
+    nearest_control_point_index,
+    rbf_influence_weights,
     resample_open_arc,
+    resample_open_arc_landmarks,
     sample_spline,
-    sigma_from_view_range,
+    tiered_influence_weights,
 )
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
     refine_open_arc_contour,
 )
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
-    pixel_length_along_angle,
     spacing_from_known_distance,
 )
 from echo_personal_tool.infrastructure.pixel_utils import (
     bgr_to_rgb,
     compute_display_levels,
     dr_percentiles_from_slider,
+)
+
+CALIBRATION_PROMPT_OVERLAY = "Проведите калибровку"
+_CALIBRATION_OVERLAY_STYLE = (
+    "background-color: rgba(0, 0, 0, 210);"
+    " color: #ffffff;"
+    " padding: 20px 36px;"
+    " font-size: 22px; font-weight: bold;"
+    " border: 2px solid #ffb300;"
+    " border-radius: 8px;"
+)
+_DEFAULT_OVERLAY_STYLE = (
+    "background-color: rgba(0, 0, 0, 180);"
+    " color: #f5f5f5;"
+    " padding: 8px;"
+    " font-size: 12px;"
+    " border: 1px solid #4caf50;"
 )
 
 
@@ -71,11 +91,68 @@ class ContourViewBox(pg.ViewBox):
             return
         ev.accept()
 
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() == Qt.MouseButton.RightButton:
+            ev.accept()
+            return
+        if (
+            self._viewer_widget is not None
+            and self._viewer_widget._handle_calibration_mouse_press(ev)
+        ):
+            ev.accept()
+            return
+        if (
+            self._viewer_widget is not None
+            and self._viewer_widget._handle_linear_caliper_mouse_press(ev)
+        ):
+            ev.accept()
+            return
+        if (
+            self._viewer_widget is not None
+            and self._viewer_widget._handle_contour_zone_press(ev)
+        ):
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]
+        if self._viewer_widget is not None and self._viewer_widget._handle_contour_hover(ev):
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
     def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
             return
+        viewer = self._viewer_widget
+        if viewer is not None and viewer._handle_contour_zone_drag(ev):
+            ev.accept()
+            return
+        if viewer is not None and viewer._drag_session is not None:
+            ev.accept()
+            return
         ev.ignore()
+
+    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+        if (
+            self._viewer_widget is not None
+            and self._viewer_widget._handle_contour_drag_release(ev)
+        ):
+            ev.accept()
+            return
+        if (
+            self._viewer_widget is not None
+            and self._viewer_widget._handle_contour_zone_release(ev)
+        ):
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+    def leaveEvent(self, ev) -> None:  # type: ignore[override]
+        if self._viewer_widget is not None:
+            self._viewer_widget._clear_contour_hover()
+        super().leaveEvent(ev)
 
     def wheelEvent(self, ev, axis=None) -> None:  # type: ignore[override]
         if self._viewer_widget is not None and self._viewer_widget._handle_wheel(ev):
@@ -113,45 +190,43 @@ class _ContourNodeItem(pg.ScatterPlotItem):
         self._base_pen = pen
         self.setZValue(30)
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setAcceptHoverEvents(True)
         self.setData([position[0]], [position[1]])
 
     def set_indices(self, contour_index: int, point_index: int) -> None:
         self._contour_index = contour_index
         self._point_index = point_index
 
-    def set_rbf_highlight(self, *, active: bool) -> None:
+    def set_rbf_highlight(self, *, active: bool, color: str = "#4caf50") -> None:
         if active:
-            highlight = pg.mkPen("#4caf50", width=2)
+            highlight = pg.mkPen(color, width=2)
             self.setPen(highlight)
-            self.setBrush(pg.mkBrush("#4caf50"))
+            self.setBrush(pg.mkBrush(color))
             self.setSize(12)
         else:
             self.setPen(self._base_pen)
             self.setBrush(pg.mkBrush(self._base_pen.color()))
             self.setSize(10)
 
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(ev)
             return
         ev.accept()
         view_box = self.getViewBox() or self._viewer_widget._view
         point = view_box.mapSceneToView(ev.scenePos())
-        x = float(point.x())
-        y = float(point.y())
-        if ev.isFinish():
-            self._viewer_widget._finalize_contour_point_drag(
-                self._contour_index,
-                self._point_index,
-                x,
-                y,
-            )
-            return
-        self._viewer_widget._drag_contour_point(
+        self._viewer_widget._begin_contour_node_drag(
             self._contour_index,
             self._point_index,
-            x,
-            y,
+            float(point.x()),
+            float(point.y()),
         )
+
+    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        ev.accept()
+        return
 
 
 class ViewerWidget(QWidget):
@@ -170,13 +245,23 @@ class ViewerWidget(QWidget):
         self._view = ContourViewBox(lockAspect=True, invertY=True)
         self._graphics.ci.addItem(self._view)
         self._view.set_viewer_widget(self)
+        scene = self._view.scene()
+        if scene is not None:
+            scene.sigMouseMoved.connect(self._on_scene_mouse_moved)
         self._image_item = pg.ImageItem(axisOrder="row-major")
         self._image_item.setAutoDownsample(True)
         self._view.addItem(self._image_item)
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
-        self._linear_roi: pg.LineROI | None = None
-        self._calibration_roi: pg.LineROI | None = None
+        self._linear_caliper_active = False
+        self._linear_caliper_start: tuple[float, float] | None = None
+        self._linear_caliper_line_item: pg.PlotDataItem | None = None
+        self._linear_caliper_marker_item: pg.ScatterPlotItem | None = None
+        self._calibration_active = False
+        self._calibration_x = 0.0
+        self._calibration_start_y: float | None = None
+        self._calibration_line_item: pg.PlotDataItem | None = None
+        self._calibration_marker_item: pg.ScatterPlotItem | None = None
         self._stored_contours: list[Contour] = []
         self._contours: list[Contour] = []
         self._contour_items: list[pg.PlotDataItem] = []
@@ -189,6 +274,7 @@ class ViewerWidget(QWidget):
             "LVOT",
             "LA",
             "LAL",
+            "RA",
             "RV basal",
             "TAPSE",
         ]
@@ -215,21 +301,24 @@ class ViewerWidget(QWidget):
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
-        self._stored_linear_measurements: dict[str, LinearMeasurement] = {}
+        self._stored_linear_measurements: dict[tuple[str, int], LinearMeasurement] = {}
+        self._persistent_linear_graphics: list[
+            tuple[pg.PlotDataItem, pg.ScatterPlotItem]
+        ] = []
         self._caliper_sequence: list[str] = []
         self._syncing_state = False
         self._is_color_frame = False
-        self._drag_session: tuple[int, float, float] | None = None
+        self._drag_session: tuple[int, float, float, int, int] | None = None
+        self._hover_contour_index: int | None = None
+        self._hover_tier: int | None = None
+        self._hover_grab_index: int | None = None
+        self._zone_drag_active = False
+        self._drag_overlay_contour_index: int | None = None
+        self._last_drag_apply_pos: tuple[float, float] | None = None
 
         self._overlay_label = QLabel(self)
         self._overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._overlay_label.setStyleSheet(
-            "background-color: rgba(0, 0, 0, 180);"
-            " color: #f5f5f5;"
-            " padding: 8px;"
-            " font-size: 12px;"
-            " border: 1px solid #4caf50;"
-        )
+        self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
         self._overlay_label.hide()
 
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
@@ -283,13 +372,68 @@ class ViewerWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._graphics)
         layout.addLayout(controls)
+        self._graphics.setMouseTracking(True)
+        self._graphics.setViewportUpdateMode(
+            QGraphicsView.ViewportUpdateMode.FullViewportUpdate,
+        )
         self._graphics.installEventFilter(self)
+        viewport = self._graphics.viewport()
+        if viewport is not None:
+            viewport.setMouseTracking(True)
+            viewport.installEventFilter(self)
         self._graphics.setFocusPolicy(Qt.FocusPolicy.WheelFocus)
 
+    def _on_scene_mouse_moved(self, scene_pos) -> None:
+        if self._calibration_active and self._calibration_start_y is not None:
+            mapped = self._view.mapSceneToView(scene_pos)
+            if mapped is not None and self._current_frame is not None:
+                height = self._current_frame.shape[0]
+                end_y = max(0.0, min(float(mapped.y()), float(height - 1)))
+                self._update_calibration_preview(self._calibration_start_y, end_y)
+            return
+        if self._linear_caliper_active and self._linear_caliper_start is not None:
+            mapped = self._view.mapSceneToView(scene_pos)
+            if mapped is not None:
+                end = (float(mapped.x()), float(mapped.y()))
+                self._update_linear_caliper_preview(self._linear_caliper_start, end)
+                self._update_linear_caliper_label_preview(self._linear_caliper_start, end)
+            return
+        if self._contour_editing_blocked():
+            self._clear_contour_hover()
+            return
+        if self._drag_session is not None:
+            if QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+                mapped = self._view.mapSceneToView(scene_pos)
+                if mapped is not None:
+                    contour_index, _, _, grab_index, _ = self._drag_session
+                    self._apply_rbf_drag_step(
+                        contour_index,
+                        float(mapped.x()),
+                        float(mapped.y()),
+                        grab_index=grab_index,
+                    )
+            return
+        mapped = self._view.mapSceneToView(scene_pos)
+        if mapped is None:
+            return
+        self._update_contour_hover((float(mapped.x()), float(mapped.y())))
+
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
-        if event.type() == QEvent.Type.Wheel and watched is self._graphics:
-            if self._handle_wheel(event):
-                return True
+        graphics_target = watched is self._graphics or watched is self._graphics.viewport()
+        if graphics_target:
+            if event.type() == QEvent.Type.Wheel:
+                if self._handle_wheel(event):
+                    return True
+            if event.type() == QEvent.Type.MouseMove:
+                if self._drag_session is None and hasattr(event, "globalPosition"):
+                    self._handle_contour_hover_at_global(event.globalPosition())
+            if (
+                event.type() == QEvent.Type.MouseButtonRelease
+                and event.button() == Qt.MouseButton.LeftButton
+                and self._drag_session is not None
+                and hasattr(event, "globalPosition")
+            ):
+                self._handle_contour_drag_release_from_global(event.globalPosition())
         return super().eventFilter(watched, event)
 
     def wheelEvent(self, event) -> None:  # type: ignore[override]
@@ -300,8 +444,23 @@ class ViewerWidget(QWidget):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
+        self._position_overlay_label()
+
+    def _position_overlay_label(self) -> None:
+        if not self._overlay_label.isVisible():
+            return
         geo = self._graphics.geometry()
-        self._overlay_label.move(geo.x() + 8, geo.y() + 8)
+        self._overlay_label.adjustSize()
+        label_w = self._overlay_label.width()
+        label_h = self._overlay_label.height()
+        calibration_banner = self._frame_overlay_lines == [CALIBRATION_PROMPT_OVERLAY]
+        if calibration_banner:
+            x = geo.x() + max((geo.width() - label_w) // 2, 8)
+            y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
+        else:
+            x = geo.x() + 8
+            y = geo.y() + 8
+        self._overlay_label.move(x, y)
 
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
@@ -345,14 +504,13 @@ class ViewerWidget(QWidget):
         if previous_instance != viewer_state.instance:
             self._clear_linear_caliper()
             self._clear_calibration_caliper()
+            self._clear_persistent_linear_calipers()
             self._clear_contours()
             self._stored_linear_measurements = {}
         elif frame_changed:
             self._clear_active_contour_drawing()
-        if frame_changed:
-            self._clear_frame_overlay()
         self._stored_linear_measurements = {
-            measurement.label: measurement
+            self._linear_measurement_key(measurement): measurement
             for measurement in viewer_state.linear_measurements
         }
         self._current_state = viewer_state
@@ -384,9 +542,10 @@ class ViewerWidget(QWidget):
                 self._stored_contours = list(viewer_state.contours)
             if frame_changed or contours_updated:
                 self._render_contours_for_current_frame()
-            self._update_linear_measurement_preview()
+            self._render_persistent_linear_calipers()
+            self._update_linear_caliper_label_preview_from_state()
             if frame_changed or contours_updated:
-                self._refresh_lv_frame_overlay()
+                self._refresh_frame_overlays()
         finally:
             self._syncing_state = False
             pending = self._pending_viewer_state
@@ -395,66 +554,50 @@ class ViewerWidget(QWidget):
                 self.set_state(pending)
 
     def toggle_linear_caliper(self) -> None:
-        if self._linear_roi is not None:
+        if self._linear_caliper_active:
             self._clear_linear_caliper()
             return
         self._clear_calibration_caliper()
         self.start_linear_caliper_for(self._current_caliper_label())
 
+    @property
+    def is_linear_caliper_active(self) -> bool:
+        return self._linear_caliper_active
+
     def toggle_calibration_caliper(self) -> None:
-        if self._calibration_roi is not None:
+        if self._calibration_active:
             self._clear_calibration_caliper()
             return
+        self.start_calibration_caliper()
+
+    def start_calibration_caliper(self) -> bool:
         self._clear_linear_caliper()
+        self._clear_calibration_caliper()
         if self._current_frame is None:
-            return
-
-        height, width = self._current_frame.shape[:2]
-        line_width = max(float(min(width, height)) * 0.02, 4.0)
-        start_x = max(float(width) * 0.08, 5.0)
-        start_y = float(height) * 0.25
-        end_y = float(height) * 0.75
-        roi = pg.LineROI(
-            (start_x, start_y),
-            (start_x, min(end_y, float(height - 1))),
-            line_width,
-            pen=pg.mkPen("#29b6f6", width=2),
-        )
-        self._view.addItem(roi)
-        self._calibration_roi = roi
-        self._measurement_label.setText("Калибровка: задайте линию → Enter")
-
-    def finish_calibration(self) -> bool:
-        if self._calibration_roi is None:
             return False
 
-        pixel_length = float(self._calibration_roi.size().x())
-        angle_degrees = float(self._calibration_roi.angle())
-        length_px = pixel_length_along_angle(pixel_length, angle_degrees)
-        known_mm, accepted = QInputDialog.getDouble(
-            self,
-            "Калибровка по шкале глубины",
-            "Известное расстояние (мм), например 50 для отметок 0–5 см:",
-            50.0,
-            0.1,
-            10000.0,
-            1,
-        )
-        if not accepted:
-            return True
-        spacing = spacing_from_known_distance(length_px, known_mm)
-        self._clear_calibration_caliper()
-        if not self._syncing_state:
-            self.calibration_completed.emit(spacing)
+        height, width = self._current_frame.shape[:2]
+        self._calibration_active = True
+        self._calibration_x = min(float(width) * 0.96, float(width - 5))
+        self._calibration_start_y = None
+        self._measurement_label.setText("Калибровка: 1-й клик — верхняя метка")
         return True
+
+    def finish_calibration(self) -> bool:
+        return False
 
     @property
     def is_calibration_active(self) -> bool:
-        return self._calibration_roi is not None
+        return self._calibration_active
 
     def start_linear_caliper_for(self, label: str) -> bool:
         self._caliper_sequence = []
         return self._begin_linear_caliper(label)
+
+    def activate_linear_caliper(self) -> bool:
+        """Start (or restart) click-click caliper for the current label."""
+        self._clear_calibration_caliper()
+        return self._begin_linear_caliper(self._current_caliper_label())
 
     def start_linear_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
         if not labels:
@@ -463,52 +606,41 @@ class ViewerWidget(QWidget):
         return self._begin_linear_caliper(labels[0])
 
     def _begin_linear_caliper(self, label: str) -> bool:
-        if self._linear_roi is not None:
-            self._view.removeItem(self._linear_roi)
-            self._linear_roi = None
+        self._clear_linear_caliper_graphics()
         self._clear_calibration_caliper()
         if self._current_frame is None:
             return False
         self._set_caliper_label(label)
-        height, width = self._current_frame.shape[:2]
-        line_length = max(float(min(width, height)) * 0.35, 20.0)
-        line_width = max(float(min(width, height)) * 0.02, 4.0)
-        start_x = max((width - line_length) / 2.0, 0.0)
-        start_y = float(height) / 2.0
-        roi = pg.LineROI(
-            (start_x, start_y),
-            (min(start_x + line_length, float(width - 1)), start_y),
-            line_width,
-            pen=pg.mkPen("#ffb300", width=2),
-        )
-        roi.sigRegionChanged.connect(self._update_linear_measurement_preview)
-        roi.sigRegionChangeFinished.connect(self._commit_linear_measurement)
-        self._view.addItem(roi)
-        self._linear_roi = roi
-        self._measurement_label.setText(f"{label}: —")
-        self._update_linear_measurement_preview()
+        self._linear_caliper_active = True
+        self._linear_caliper_start = None
+        self._measurement_label.setText(f"{label}: 1-й клик — начало")
         return True
 
     def cycle_caliper_label(self) -> None:
         self._caliper_label_index = (self._caliper_label_index + 1) % len(
             self._caliper_labels
         )
-        if self._linear_roi is None:
-            self._measurement_label.setText(f"{self._current_caliper_label()}: —")
-        if self._linear_roi is not None:
-            self._update_linear_measurement_preview()
+        label = self._current_caliper_label()
+        if not self._linear_caliper_active:
+            self._measurement_label.setText(f"{label}: —")
+            return
+        self._linear_caliper_start = None
+        self._clear_linear_caliper_graphics()
+        self._measurement_label.setText(f"{label}: 1-й клик — начало")
 
     def start_contour(
         self,
         *,
         phase: str | None = None,
         view: str = "A4C",
+        chamber: str = "LV",
     ) -> bool:
         return self._start_contour_drawing(
             mode_kind="manual",
             pen=self._contour_pen_manual,
             phase=phase,
             view=view,
+            chamber=chamber,
         )
 
     def start_model_contour(
@@ -516,12 +648,14 @@ class ViewerWidget(QWidget):
         *,
         phase: str | None = None,
         view: str = "A4C",
+        chamber: str = "LV",
     ) -> bool:
         return self._start_contour_drawing(
             mode_kind="model",
             pen=self._contour_pen_model,
             phase=phase,
             view=view,
+            chamber=chamber,
         )
 
     def start_closed_contour(
@@ -563,20 +697,23 @@ class ViewerWidget(QWidget):
         self._active_mitral_septal = None
         self._active_mitral_annulus = None
         self._active_arc_points = []
+        active_pen = self._contour_pen_manual
         self._active_contour_item = pg.PlotDataItem(
-            pen=pen,
+            pen=active_pen,
             symbol="o",
             symbolSize=6,
-            symbolBrush=pen.color(),
+            symbolBrush=active_pen.color(),
         )
         self._active_contour_item.setZValue(20)
         self._view.addItem(self._active_contour_item)
+        self._clear_contour_hover()
+        self._set_contour_nodes_pickable(False)
         return True
 
     def set_contour_from_domain(self, contour: Contour) -> None:
         self._upsert_stored_contour(contour)
         self._render_contours_for_current_frame()
-        self._refresh_lv_frame_overlay()
+        self._refresh_frame_overlays()
         if not self._syncing_state:
             self.contours_changed.emit(self.contours())
 
@@ -620,6 +757,7 @@ class ViewerWidget(QWidget):
                 apex=apex,
                 phase=self._active_contour_phase or "ED",
                 view=self._active_contour_view,
+                chamber=self._active_contour_chamber,
             )
             contour.frame_index = self._contour_frame_index()
         except ValueError:
@@ -630,28 +768,23 @@ class ViewerWidget(QWidget):
         return True
 
     def refine_active_open_contour(self) -> bool:
-        """Active contour refine on manual or model LV open arc for the current frame."""
+        """Smooth manual/model LV open-arc nodes on the current frame (R key)."""
         if self._current_frame is None:
             return False
         frame_index = self._contour_frame_index()
         for contour_index, contour in enumerate(self._contours):
             if (
-                contour.chamber.upper() != "LV"
-                or contour.source not in {"manual", "model"}
+                contour.source not in {"manual", "model"}
                 or not contour.is_open_arc
                 or contour.mitral_annulus is None
                 or contour.frame_index != frame_index
             ):
                 continue
             refined = refine_open_arc_contour(self._current_frame, contour)
-            num_nodes = refined.num_nodes or DEFAULT_NODE_COUNT
-            refined.points = resample_open_arc(refined.points, num_nodes=num_nodes)
-            if refined.mitral_annulus is not None:
-                refined.mitral_annulus = (refined.points[0], refined.points[-1])
             self._contours[contour_index] = refined
             self._upsert_stored_contour(refined)
             self._render_contours_for_current_frame()
-            self._refresh_lv_frame_overlay()
+            self._refresh_frame_overlays()
             if not self._syncing_state:
                 self.contours_changed.emit(self.contours())
             return True
@@ -666,16 +799,33 @@ class ViewerWidget(QWidget):
             return False
 
         septal, lateral = self._active_mitral_annulus
-        raw_arc = [septal, apex, lateral]
-        resampled = resample_open_arc(raw_arc, num_nodes=DEFAULT_NODE_COUNT)
-        contour = Contour(
-            phase=self._active_contour_phase or "ED",
-            view=self._active_contour_view,
-            mitral_annulus=self._active_mitral_annulus,
-            points=resampled,
-            num_nodes=DEFAULT_NODE_COUNT,
-            frame_index=self._contour_frame_index(),
-        )
+        if self._active_contour_chamber.upper() == "LV":
+            try:
+                contour = fit_contour_from_landmarks(
+                    septal=septal,
+                    lateral=lateral,
+                    apex=apex,
+                    phase=self._active_contour_phase or "ED",
+                    view=self._active_contour_view,
+                    chamber="LV",
+                )
+            except ValueError:
+                return False
+            contour.source = "manual"
+            contour.frame_index = self._contour_frame_index()
+            contour.apex_landmark = apex
+        else:
+            raw_arc = [septal, apex, lateral]
+            resampled = resample_open_arc(raw_arc, num_nodes=DEFAULT_NODE_COUNT)
+            contour = Contour(
+                phase=self._active_contour_phase or "ED",
+                view=self._active_contour_view,
+                chamber=self._active_contour_chamber,
+                mitral_annulus=self._active_mitral_annulus,
+                points=resampled,
+                num_nodes=DEFAULT_NODE_COUNT,
+                frame_index=self._contour_frame_index(),
+            )
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
@@ -699,6 +849,7 @@ class ViewerWidget(QWidget):
         contour = Contour(
             phase=self._active_contour_phase or "ED",
             view=self._active_contour_view,
+            chamber=self._active_contour_chamber,
             mitral_annulus=self._active_mitral_annulus,
             points=resampled,
             num_nodes=DEFAULT_NODE_COUNT,
@@ -732,7 +883,7 @@ class ViewerWidget(QWidget):
         if self._active_contour_item is not None:
             self._clear_active_contour_drawing()
             return
-        if self._calibration_roi is not None:
+        if self._calibration_active:
             self._clear_calibration_caliper()
             return
         self._clear_linear_caliper()
@@ -808,28 +959,52 @@ class ViewerWidget(QWidget):
 
     def _refresh_frame_overlay(self) -> None:
         if self._frame_overlay_lines:
+            calibration_banner = self._frame_overlay_lines == [CALIBRATION_PROMPT_OVERLAY]
+            if calibration_banner:
+                self._overlay_label.setStyleSheet(_CALIBRATION_OVERLAY_STYLE)
+                self._overlay_label.setMinimumWidth(360)
+            else:
+                self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
+                self._overlay_label.setMinimumWidth(0)
             self._overlay_label.setText("\n".join(self._frame_overlay_lines))
             self._overlay_label.adjustSize()
             self._overlay_label.show()
             self._overlay_label.raise_()
+            self._position_overlay_label()
         else:
             self._overlay_label.hide()
 
     def _clear_linear_caliper(self) -> None:
-        if self._linear_roi is not None:
-            self._view.removeItem(self._linear_roi)
-            self._linear_roi = None
+        self._linear_caliper_active = False
+        self._linear_caliper_start = None
+        self._clear_linear_caliper_graphics()
         self._caliper_sequence = []
         self._measurement_label.setText(f"{self._current_caliper_label()}: —")
         if not self._syncing_state:
             self._emit_stored_linear_measurements()
 
+    def _clear_linear_caliper_graphics(self) -> None:
+        if self._linear_caliper_line_item is not None:
+            self._view.removeItem(self._linear_caliper_line_item)
+            self._linear_caliper_line_item = None
+        if self._linear_caliper_marker_item is not None:
+            self._view.removeItem(self._linear_caliper_marker_item)
+            self._linear_caliper_marker_item = None
+
     def _clear_calibration_caliper(self) -> None:
-        if self._calibration_roi is not None:
-            self._view.removeItem(self._calibration_roi)
-            self._calibration_roi = None
-        if self._linear_roi is None:
+        self._calibration_active = False
+        self._calibration_start_y = None
+        self._clear_calibration_graphics()
+        if not self._linear_caliper_active:
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+
+    def _clear_calibration_graphics(self) -> None:
+        if self._calibration_line_item is not None:
+            self._view.removeItem(self._calibration_line_item)
+            self._calibration_line_item = None
+        if self._calibration_marker_item is not None:
+            self._view.removeItem(self._calibration_marker_item)
+            self._calibration_marker_item = None
 
     def _clear_rendered_contours(self) -> None:
         for nodes in self._contour_nodes:
@@ -912,13 +1087,20 @@ class ViewerWidget(QWidget):
         self._contour_stage = None
         self._contour_mode_kind = None
         self._contour_mode_active = False
+        self._set_contour_nodes_pickable(True)
+
+    def _set_contour_nodes_pickable(self, enabled: bool) -> None:
+        buttons = Qt.MouseButton.LeftButton if enabled else Qt.MouseButton.NoButton
+        for node_items in self._contour_nodes:
+            for node in node_items:
+                node.setAcceptedMouseButtons(buttons)
 
     def _remove_rendered_contour(self, contour_index: int) -> None:
         if self._drag_session is not None and self._drag_session[0] == contour_index:
             self._clear_drag_session()
         elif self._drag_session is not None and self._drag_session[0] > contour_index:
-            idx, lx, ly = self._drag_session
-            self._drag_session = (idx - 1, lx, ly)
+            idx, lx, ly, grab, tier = self._drag_session
+            self._drag_session = (idx - 1, lx, ly, grab, tier)
         line_item = self._contour_items.pop(contour_index)
         ma_item = self._contour_ma_items.pop(contour_index)
         for node in self._contour_nodes.pop(contour_index):
@@ -974,23 +1156,29 @@ class ViewerWidget(QWidget):
         closed: bool = False,
     ) -> tuple[list[float], list[float]]:
         points = list(contour.points)
-        if contour.is_open_arc and len(points) >= 2:
-            points = sample_spline(points, num_samples=max(len(points) * 8, 128))
-        elif closed and points:
-            points = points + [points[0]]
         if not points:
             return [], []
-        x_values = [point[0] for point in points]
-        y_values = [point[1] for point in points]
-        return x_values, y_values
+        if contour.is_open_arc and len(points) >= 2:
+            # Polyline only: B-spline overshoots past MA/apex landmarks on open arcs.
+            return [point[0] for point in points], [point[1] for point in points]
+        if closed and points:
+            points = sample_spline(points + [points[0]], num_samples=max(len(points) * 8, 128))
+        elif len(points) >= 3:
+            points = sample_spline(points, num_samples=max(len(points) * 8, 128))
+        return [point[0] for point in points], [point[1] for point in points]
 
-    def _sigma_for_contour_drag(self) -> float:
+    def _rbf_highlight_color(self, contour: Contour) -> str:
+        if contour.source == "model":
+            return "#ff6f00"
+        return "#4caf50"
+
+    def _view_metrics_for_rbf(self) -> tuple[float, float]:
         x_range, _y_range = self._view.viewRange()
         range_width = x_range[1] - x_range[0]
         viewport_w = float(self._view.width())
         if viewport_w < 10.0 and self._current_frame is not None:
             viewport_w = max(range_width, float(self._current_frame.shape[1]))
-        return sigma_from_view_range(range_width, max(viewport_w, 1.0))
+        return range_width, max(viewport_w, 1.0)
 
     def _pinned_indices_for_contour(self, contour: Contour) -> frozenset[int]:
         if contour.is_open_arc and len(contour.points) >= 2:
@@ -1008,12 +1196,14 @@ class ViewerWidget(QWidget):
         self,
         contour_index: int,
         weights: np.ndarray,
+        *,
+        color: str,
     ) -> None:
         if contour_index < 0 or contour_index >= len(self._contour_nodes):
             return
         for idx, node in enumerate(self._contour_nodes[contour_index]):
-            active = idx < len(weights) and weights[idx] > WEIGHT_ACTIVE_THRESHOLD
-            node.set_rbf_highlight(active=active)
+            active = idx < len(weights) and weights[idx] > 0.0
+            node.set_rbf_highlight(active=active, color=color)
 
     def _clear_contour_node_highlights(self, contour_index: int) -> None:
         if contour_index < 0 or contour_index >= len(self._contour_nodes):
@@ -1021,8 +1211,236 @@ class ViewerWidget(QWidget):
         for node in self._contour_nodes[contour_index]:
             node.set_rbf_highlight(active=False)
 
+    def _clear_contour_hover(self) -> None:
+        if self._hover_contour_index is None:
+            return
+        if self._hover_contour_index < len(self._contour_nodes):
+            self._clear_contour_node_highlights(self._hover_contour_index)
+        self._hover_contour_index = None
+        self._hover_tier = None
+        self._hover_grab_index = None
+
+    def _start_drag_session(
+        self,
+        contour_index: int,
+        x: float,
+        y: float,
+        grab_index: int,
+        locked_tier: int,
+    ) -> None:
+        self._last_drag_apply_pos = None
+        self._drag_session = (
+            contour_index,
+            float(x),
+            float(y),
+            grab_index,
+            locked_tier,
+        )
+
+    def _resolve_locked_tier(
+        self,
+        contour_index: int,
+        grab_index: int,
+        cursor: tuple[float, float],
+    ) -> int:
+        if (
+            self._hover_contour_index == contour_index
+            and self._hover_tier is not None
+            and self._hover_grab_index == grab_index
+        ):
+            return self._hover_tier
+
+        contour = self._contours[contour_index]
+        pinned = self._pinned_indices_for_contour(contour)
+        range_width, viewport_w = self._view_metrics_for_rbf()
+        _weights, _arc_distance, tier = rbf_influence_weights(
+            contour.points,
+            cursor,
+            grab_index,
+            range_width,
+            viewport_w,
+            pinned_indices=pinned,
+        )
+        return tier or 1
+
+    def _locked_drag_weights(
+        self,
+        contour: Contour,
+        grab_index: int,
+        locked_tier: int,
+    ) -> np.ndarray:
+        pinned = self._pinned_indices_for_contour(contour)
+        return tiered_influence_weights(
+            contour.points,
+            grab_index,
+            tier=locked_tier,
+            pinned_indices=pinned,
+        )
+
     def _clear_drag_session(self) -> None:
         self._drag_session = None
+        self._zone_drag_active = False
+        self._last_drag_apply_pos = None
+
+    def _contour_editing_blocked(self) -> bool:
+        return (
+            self._contour_mode_active
+            or self._linear_caliper_active
+            or self._calibration_active
+        )
+
+    def _map_view_event(self, ev) -> tuple[float, float] | None:
+        if hasattr(ev, "globalPosition"):
+            return self._cursor_from_global(ev.globalPosition())
+        point = ev.scenePos()
+        if point is None:
+            return None
+        mapped = self._view.mapSceneToView(point)
+        if mapped is None:
+            return None
+        return float(mapped.x()), float(mapped.y())
+
+    def _cursor_from_global(self, global_pos) -> tuple[float, float] | None:
+        local = self._graphics.mapFromGlobal(global_pos.toPoint())
+        scene_pos = self._graphics.mapToScene(local)
+        mapped = self._view.mapSceneToView(scene_pos)
+        if mapped is None:
+            return None
+        return float(mapped.x()), float(mapped.y())
+
+    def _handle_contour_hover_at_global(self, global_pos) -> bool:
+        if self._drag_session is not None or self._contour_editing_blocked():
+            return False
+        cursor = self._cursor_from_global(global_pos)
+        if cursor is None:
+            return False
+        return self._update_contour_hover(cursor)
+
+    def _handle_contour_hover(self, ev) -> bool:
+        if self._drag_session is not None or self._contour_editing_blocked():
+            return False
+        cursor = self._map_view_event(ev)
+        if cursor is None:
+            return False
+        return self._update_contour_hover(cursor)
+
+    def _update_contour_hover(self, cursor: tuple[float, float]) -> bool:
+        target = self._compute_hover_target(cursor)
+        if target is None:
+            self._clear_contour_hover()
+            return False
+
+        contour_index, _grab_index, weights, tier = target
+        if self._hover_contour_index not in (None, contour_index):
+            self._clear_contour_node_highlights(self._hover_contour_index)
+        self._hover_contour_index = contour_index
+        self._hover_grab_index = _grab_index
+        self._hover_tier = tier
+        color = self._rbf_highlight_color(self._contours[contour_index])
+        self._update_contour_node_highlights(contour_index, weights, color=color)
+        return True
+
+    def _compute_hover_target(
+        self,
+        cursor: tuple[float, float],
+    ) -> tuple[int, int, np.ndarray, float] | None:
+        if self._contour_editing_blocked() or not self._contours:
+            return None
+
+        range_width, viewport_w = self._view_metrics_for_rbf()
+        best: tuple[float, int, int, np.ndarray, float] | None = None
+        for contour_index, contour in enumerate(self._contours):
+            if len(contour.points) < 2:
+                continue
+            pinned = self._pinned_indices_for_contour(contour)
+            grab_index = nearest_control_point_index(
+                contour.points,
+                cursor,
+                pinned_indices=pinned,
+            )
+            weights, _arc_distance, tier = rbf_influence_weights(
+                contour.points,
+                cursor,
+                grab_index,
+                range_width,
+                viewport_w,
+                pinned_indices=pinned,
+            )
+            if tier is None:
+                continue
+            if best is None or _arc_distance < best[0]:
+                best = (_arc_distance, contour_index, grab_index, weights, tier)
+        if best is None:
+            return None
+        _, contour_index, grab_index, weights, _tier = best
+        return contour_index, grab_index, weights, _tier
+
+    def _handle_contour_zone_press(self, ev) -> bool:
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        if self._contour_editing_blocked() or self._drag_session is not None:
+            return False
+        cursor = self._map_view_event(ev)
+        if cursor is None:
+            return False
+
+        target = self._compute_hover_target(cursor)
+        if target is None:
+            return False
+
+        contour_index, grab_index, _weights, tier = target
+        self._zone_drag_active = True
+        self._start_drag_session(contour_index, cursor[0], cursor[1], grab_index, tier)
+        self._begin_drag_overlay(contour_index)
+        self._hover_contour_index = contour_index
+        self._hover_grab_index = grab_index
+        self._hover_tier = tier
+        return True
+
+    def _handle_contour_zone_drag(self, ev) -> bool:
+        if not self._zone_drag_active or self._drag_session is None:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        return True
+
+    def _handle_contour_drag_release(self, ev) -> bool:
+        if self._drag_session is None:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        cursor = self._map_view_event(ev)
+        if cursor is None:
+            self._cancel_contour_drag()
+            return True
+        contour_index, _, _, grab_index, _ = self._drag_session
+        self._finalize_contour_point_drag(
+            contour_index,
+            grab_index,
+            cursor[0],
+            cursor[1],
+        )
+        return True
+
+    def _handle_contour_drag_release_from_global(self, global_pos) -> None:
+        if self._drag_session is None:
+            return
+        cursor = self._cursor_from_global(global_pos)
+        if cursor is None:
+            self._cancel_contour_drag()
+            return
+        contour_index, _, _, grab_index, _ = self._drag_session
+        self._finalize_contour_point_drag(
+            contour_index,
+            grab_index,
+            cursor[0],
+            cursor[1],
+        )
+
+    def _handle_contour_zone_release(self, ev) -> bool:
+        if not self._zone_drag_active or self._drag_session is None:
+            return False
+        return self._handle_contour_drag_release(ev)
 
     def _apply_rbf_drag_step(
         self,
@@ -1030,6 +1448,7 @@ class ViewerWidget(QWidget):
         x: float,
         y: float,
         *,
+        grab_index: int,
         force: bool = False,
     ) -> bool:
         """Return True if displacement was applied."""
@@ -1038,28 +1457,113 @@ class ViewerWidget(QWidget):
         contour = self._contours[contour_index]
 
         if self._drag_session is None or self._drag_session[0] != contour_index:
-            self._drag_session = (contour_index, x, y)
+            locked_tier = self._resolve_locked_tier(contour_index, grab_index, (x, y))
+            self._start_drag_session(contour_index, x, y, grab_index, locked_tier)
             return False
 
         last_x, last_y = self._drag_session[1], self._drag_session[2]
+        session_grab = self._drag_session[3]
+        locked_tier = self._drag_session[4]
+        rounded_cursor = (round(x, 4), round(y, 4))
+        if not force and self._last_drag_apply_pos == rounded_cursor:
+            return False
         delta = (x - last_x, y - last_y)
         if not force and math.hypot(delta[0], delta[1]) < MIN_DELTA_NORM:
             return False
 
-        sigma = self._sigma_for_contour_drag()
-        cursor = (x, y)
-        pinned = self._pinned_indices_for_contour(contour)
-        weights = gaussian_weights(contour.points, cursor, sigma, pinned_indices=pinned)
+        weights = self._locked_drag_weights(contour, session_grab, locked_tier)
         updated = apply_gaussian_displacement(contour.points, delta, weights)
         contour.points[:] = updated
         self._snap_open_arc_endpoints(contour)
 
+        color = self._rbf_highlight_color(contour)
         for idx, point in enumerate(contour.points):
             self._contour_nodes[contour_index][idx].setData([point[0]], [point[1]])
-        self._update_contour_node_highlights(contour_index, weights)
-        self._refresh_rendered_contour_geometry(contour_index)
-        self._drag_session = (contour_index, x, y)
+        self._update_contour_node_highlights(contour_index, weights, color=color)
+        self._refresh_rendered_contour_geometry(contour_index, during_drag=True)
+        self._last_drag_apply_pos = rounded_cursor
+        self._drag_session = (contour_index, x, y, session_grab, locked_tier)
+        self._flush_drag_paint()
         return True
+
+    def _begin_contour_node_drag(
+        self,
+        contour_index: int,
+        point_index: int,
+        x: float,
+        y: float,
+    ) -> None:
+        if self._contour_editing_blocked():
+            return
+        if contour_index < 0 or contour_index >= len(self._contours):
+            return
+        contour = self._contours[contour_index]
+        if point_index < 0 or point_index >= len(contour.points):
+            return
+        locked_tier = self._resolve_locked_tier(contour_index, point_index, (x, y))
+        self._clear_contour_hover()
+        sx, sy = contour.points[point_index]
+        self._start_drag_session(contour_index, sx, sy, point_index, locked_tier)
+        self._begin_drag_overlay(contour_index)
+
+    def _begin_drag_overlay(self, contour_index: int) -> None:
+        """Mark contour as actively dragged; geometry updates hit visible items."""
+        if contour_index < 0 or contour_index >= len(self._contours):
+            return
+        self._drag_overlay_contour_index = contour_index
+        contour = self._contours[contour_index]
+        if self._drag_session is None:
+            return
+        weights = self._locked_drag_weights(
+            contour,
+            self._drag_session[3],
+            self._drag_session[4],
+        )
+        self._update_contour_node_highlights(
+            contour_index,
+            weights,
+            color=self._rbf_highlight_color(contour),
+        )
+
+    def _update_drag_overlay(
+        self,
+        contour_index: int,
+        contour: Contour,
+        weights: np.ndarray,
+        *,
+        color: str,
+    ) -> None:
+        del contour_index, contour, weights, color  # drag updates use visible items
+
+    def _end_drag_overlay(self, contour_index: int) -> None:
+        self._drag_overlay_contour_index = None
+        del contour_index
+
+    def _cancel_contour_drag(self) -> None:
+        if self._drag_session is not None:
+            self._end_drag_overlay(self._drag_session[0])
+        self._clear_drag_session()
+        self._clear_contour_hover()
+
+    def _flush_drag_paint(self) -> None:
+        scene = self._view.scene()
+        if scene is not None:
+            scene.update()
+        if self._drag_overlay_contour_index is not None:
+            contour_index = self._drag_overlay_contour_index
+            if 0 <= contour_index < len(self._contour_items):
+                self._contour_items[contour_index].update()
+            if 0 <= contour_index < len(self._contour_nodes):
+                for node in self._contour_nodes[contour_index]:
+                    node.update()
+        self._view.update()
+        self._graphics.update()
+        viewport = self._graphics.viewport()
+        if viewport is not None:
+            viewport.update()
+
+    def _repaint_contour_view(self, contour_index: int | None = None) -> None:
+        self._flush_drag_paint()
 
     def _drag_contour_point(
         self,
@@ -1068,12 +1572,15 @@ class ViewerWidget(QWidget):
         x: float,
         y: float,
     ) -> None:
-        if contour_index < 0 or contour_index >= len(self._contours):
-            return
-        contour = self._contours[contour_index]
-        if point_index < 0 or point_index >= len(contour.points):
-            return
-        self._apply_rbf_drag_step(contour_index, x, y)
+        """Programmatic drag step (used by unit tests)."""
+        if self._drag_session is None or self._drag_session[0] != contour_index:
+            self._begin_contour_node_drag(contour_index, point_index, x, y)
+        self._apply_rbf_drag_step(
+            contour_index,
+            x,
+            y,
+            grab_index=point_index,
+        )
 
     def _finalize_contour_point_drag(
         self,
@@ -1082,43 +1589,81 @@ class ViewerWidget(QWidget):
         x: float,
         y: float,
     ) -> None:
+        if self._drag_session is None:
+            return
         if contour_index < 0 or contour_index >= len(self._contours):
-            self._clear_drag_session()
+            self._cancel_contour_drag()
             return
         contour = self._contours[contour_index]
-        if self._drag_session is None and 0 <= point_index < len(contour.points):
+        grab_index = point_index
+        if self._drag_session is not None and self._drag_session[0] == contour_index:
+            grab_index = self._drag_session[3]
+        elif 0 <= point_index < len(contour.points):
             sx, sy = contour.points[point_index]
-            self._drag_session = (contour_index, sx, sy)
-        self._apply_rbf_drag_step(contour_index, x, y, force=True)
+            locked_tier = self._resolve_locked_tier(
+                contour_index,
+                point_index,
+                (x, y),
+            )
+            self._start_drag_session(contour_index, sx, sy, point_index, locked_tier)
+        self._apply_rbf_drag_step(
+            contour_index,
+            x,
+            y,
+            grab_index=grab_index,
+            force=True,
+        )
         contour = self._contours[contour_index]
         if contour.is_open_arc:
             num_nodes = contour.num_nodes or DEFAULT_NODE_COUNT
-            resampled = resample_open_arc(contour.points, num_nodes=num_nodes)
-            contour.points[:] = resampled
             if contour.mitral_annulus is not None:
-                contour.mitral_annulus = (resampled[0], resampled[-1])
-            for idx, point in enumerate(resampled):
+                septal, lateral = contour.mitral_annulus
+                apex = contour.apex_landmark or apex_point(
+                    contour.points, contour.mitral_annulus
+                )
+                resampled = resample_open_arc_landmarks(
+                    contour.points,
+                    septal=septal,
+                    lateral=lateral,
+                    apex=apex,
+                    num_nodes=num_nodes,
+                )
+                contour.points[:] = resampled
+                contour.mitral_annulus = (septal, lateral)
+                contour.apex_landmark = apex
+            else:
+                resampled = resample_open_arc(contour.points, num_nodes=num_nodes)
+                contour.points[:] = resampled
+            for idx, point in enumerate(contour.points):
                 self._contour_nodes[contour_index][idx].setData([point[0]], [point[1]])
-            self._refresh_rendered_contour_geometry(contour_index)
+        self._end_drag_overlay(contour_index)
+        self._refresh_rendered_contour_geometry(contour_index)
         self._clear_contour_node_highlights(contour_index)
         self._clear_drag_session()
+        self._clear_contour_hover()
         self._upsert_stored_contour(contour)
         self.contours_changed.emit(self.contours())
         current_frame = self._contour_frame_index()
-        if (
-            contour.chamber.upper() == "LV"
-            and contour.frame_index == current_frame
-        ):
-            self._refresh_lv_frame_overlay()
+        if contour.is_open_arc and contour.frame_index == current_frame:
+            self._refresh_frame_overlays()
 
-    def _refresh_rendered_contour_geometry(self, contour_index: int) -> None:
+    def _refresh_rendered_contour_geometry(
+        self,
+        contour_index: int,
+        *,
+        during_drag: bool = False,
+    ) -> None:
         if contour_index < 0 or contour_index >= len(self._contours):
             return
         if contour_index >= len(self._contour_items):
             return
         contour = self._contours[contour_index]
         closed = not contour.is_open_arc
-        x_values, y_values = self._contour_xy(contour, closed=closed)
+        if during_drag:
+            x_values = [point[0] for point in contour.points]
+            y_values = [point[1] for point in contour.points]
+        else:
+            x_values, y_values = self._contour_xy(contour, closed=closed)
         self._contour_items[contour_index].setData(x_values, y_values)
 
     def _resolve_contour_phase(self) -> str:
@@ -1133,15 +1678,24 @@ class ViewerWidget(QWidget):
                     return spacing, True
         return (1.0, 1.0), False
 
-    def _refresh_lv_frame_overlay(self, *, extra_lines: tuple[str, ...] = ()) -> None:
+    def _needs_calibration_prompt(self) -> bool:
+        if self._current_state is None or self._current_state.instance is None:
+            return False
+        if self._current_state.instance.media_format == "dicom":
+            return False
+        _, spacing_calibrated = self._effective_pixel_spacing()
+        return not spacing_calibrated
+
+    def _refresh_frame_overlays(self, *, extra_lines: tuple[str, ...] = ()) -> None:
         self.clear_frame_overlay()
+        if self._needs_calibration_prompt():
+            self.append_frame_overlay(CALIBRATION_PROMPT_OVERLAY)
         frame_index = self._contour_frame_index()
         spacing, spacing_calibrated = self._effective_pixel_spacing()
         if frame_index is not None:
             for contour in self._stored_contours:
                 if (
-                    contour.chamber.upper() == "LV"
-                    and contour.is_open_arc
+                    contour.is_open_arc
                     and contour.frame_index == frame_index
                 ):
                     self.append_frame_overlay(
@@ -1151,8 +1705,71 @@ class ViewerWidget(QWidget):
                             spacing_calibrated=spacing_calibrated,
                         )
                     )
+            for measurement in self._linear_measurements_for_frame(frame_index):
+                self.append_frame_overlay(measurement.display_text())
         for line in extra_lines:
             self.append_frame_overlay(line)
+
+    def _refresh_lv_frame_overlay(self, *, extra_lines: tuple[str, ...] = ()) -> None:
+        self._refresh_frame_overlays(extra_lines=extra_lines)
+
+    def _linear_measurement_key(self, measurement: LinearMeasurement) -> tuple[str, int]:
+        frame_key = (
+            measurement.frame_index if measurement.frame_index is not None else -1
+        )
+        return measurement.label, frame_key
+
+    def _linear_measurements_for_frame(self, frame_index: int) -> list[LinearMeasurement]:
+        measurements: list[LinearMeasurement] = []
+        for measurement in self._stored_linear_measurements.values():
+            if measurement.frame_index is None or measurement.frame_index == frame_index:
+                measurements.append(measurement)
+        return measurements
+
+    def _clear_persistent_linear_calipers(self) -> None:
+        for line_item, marker_item in self._persistent_linear_graphics:
+            self._view.removeItem(line_item)
+            self._view.removeItem(marker_item)
+        self._persistent_linear_graphics.clear()
+
+    def _render_persistent_linear_calipers(self) -> None:
+        self._clear_persistent_linear_calipers()
+        frame_index = self._contour_frame_index()
+        if frame_index is None:
+            return
+        for measurement in self._linear_measurements_for_frame(frame_index):
+            if measurement.start is None or measurement.end is None:
+                continue
+            line_item, marker_item = self._create_linear_graphics_items(
+                measurement.start,
+                measurement.end,
+            )
+            self._persistent_linear_graphics.append((line_item, marker_item))
+
+    def _create_linear_graphics_items(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+    ) -> tuple[pg.PlotDataItem, pg.ScatterPlotItem]:
+        pen = pg.mkPen("#29b6f6", width=2)
+        line_item = pg.PlotDataItem(pen=pen)
+        line_item.setZValue(24)
+        line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        line_item.setAcceptHoverEvents(False)
+        line_item.setData([start[0], end[0]], [start[1], end[1]])
+        self._view.addItem(line_item)
+        marker_item = pg.ScatterPlotItem(
+            symbol="+",
+            size=12,
+            pen=pen,
+            brush=pg.mkBrush("#29b6f6"),
+        )
+        marker_item.setZValue(25)
+        marker_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        marker_item.setAcceptHoverEvents(False)
+        marker_item.setData([start[0], end[0]], [start[1], end[1]])
+        self._view.addItem(marker_item)
+        return line_item, marker_item
 
     def _pixel_spacing(self) -> tuple[float, float] | None:
         spacing, _calibrated = self._effective_pixel_spacing()
@@ -1221,11 +1838,156 @@ class ViewerWidget(QWidget):
         else:
             self._active_contour_item.setData([], [])
 
-    def _build_current_linear_measurement(self) -> LinearMeasurement | None:
-        if self._linear_roi is None:
-            return None
-        pixel_length = float(self._linear_roi.size().x())
-        angle_degrees = float(self._linear_roi.angle())
+    def _handle_calibration_mouse_press(self, ev) -> bool:
+        if not self._calibration_active or self._current_frame is None:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+
+        click = self._map_view_event(ev)
+        if click is None:
+            return False
+
+        height = self._current_frame.shape[0]
+        y = max(0.0, min(float(click[1]), float(height - 1)))
+        if self._calibration_start_y is None:
+            self._calibration_start_y = y
+            self._update_calibration_preview(y, y)
+            self._measurement_label.setText("Калибровка: 2-й клик — нижняя метка")
+            return True
+
+        length_px = abs(y - self._calibration_start_y)
+        if length_px >= 1.0:
+            self._prompt_calibration_distance(length_px)
+        return True
+
+    def _ensure_calibration_graphics(self) -> None:
+        if self._calibration_line_item is None:
+            pen = pg.mkPen("#29b6f6", width=2)
+            self._calibration_line_item = pg.PlotDataItem(pen=pen)
+            self._calibration_line_item.setZValue(25)
+            self._calibration_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._calibration_line_item.setAcceptHoverEvents(False)
+            self._view.addItem(self._calibration_line_item)
+        if self._calibration_marker_item is None:
+            marker_pen = pg.mkPen("#29b6f6", width=2)
+            self._calibration_marker_item = pg.ScatterPlotItem(
+                symbol="+",
+                size=14,
+                pen=marker_pen,
+                brush=pg.mkBrush(0, 0, 0, 0),
+            )
+            self._calibration_marker_item.setZValue(26)
+            self._calibration_marker_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._calibration_marker_item.setAcceptHoverEvents(False)
+            self._view.addItem(self._calibration_marker_item)
+
+    def _update_calibration_preview(self, start_y: float, end_y: float) -> None:
+        self._ensure_calibration_graphics()
+        assert self._calibration_line_item is not None
+        assert self._calibration_marker_item is not None
+        x = self._calibration_x
+        self._calibration_line_item.setData([x, x], [start_y, end_y])
+        self._calibration_marker_item.setData([x, x], [start_y, end_y])
+
+    def _prompt_calibration_distance(self, length_px: float) -> None:
+        known_mm, accepted = QInputDialog.getDouble(
+            self,
+            "Калибровка по шкале глубины",
+            "Известное расстояние (мм), например 50 для отметок 0–5 см:",
+            50.0,
+            0.1,
+            10000.0,
+            1,
+        )
+        self._clear_calibration_caliper()
+        if not accepted:
+            if self._needs_calibration_prompt():
+                self.start_calibration_caliper()
+            return
+        spacing = spacing_from_known_distance(length_px, known_mm)
+        if not self._syncing_state:
+            self.calibration_completed.emit(spacing)
+            self._refresh_frame_overlays()
+
+    def _handle_linear_caliper_mouse_press(self, ev) -> bool:
+        if not self._linear_caliper_active:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        if self._calibration_active:
+            return False
+
+        click: tuple[float, float] | None = None
+        if hasattr(ev, "scenePos"):
+            point = self._view.mapSceneToView(ev.scenePos())
+            if point is not None:
+                click = (float(point.x()), float(point.y()))
+        if click is None:
+            click = self._map_view_event(ev)
+        if click is None:
+            return False
+
+        if self._linear_caliper_start is None:
+            self._linear_caliper_start = click
+            self._update_linear_caliper_preview(click, click)
+            self._measurement_label.setText(
+                f"{self._current_caliper_label()}: 2-й клик — конец"
+            )
+            return True
+
+        start = self._linear_caliper_start
+        self._commit_linear_measurement_from_endpoints(start, click)
+        return True
+
+    def _ensure_linear_caliper_graphics(self) -> None:
+        if self._linear_caliper_line_item is None:
+            pen = pg.mkPen("#ffb300", width=2)
+            self._linear_caliper_line_item = pg.PlotDataItem(pen=pen)
+            self._linear_caliper_line_item.setZValue(25)
+            self._linear_caliper_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._linear_caliper_line_item.setAcceptHoverEvents(False)
+            self._view.addItem(self._linear_caliper_line_item)
+        if self._linear_caliper_marker_item is None:
+            marker_pen = pg.mkPen("#ffb300", width=2)
+            self._linear_caliper_marker_item = pg.ScatterPlotItem(
+                symbol="+",
+                size=14,
+                pen=marker_pen,
+                brush=pg.mkBrush(0, 0, 0, 0),
+            )
+            self._linear_caliper_marker_item.setZValue(26)
+            self._linear_caliper_marker_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._linear_caliper_marker_item.setAcceptHoverEvents(False)
+            self._view.addItem(self._linear_caliper_marker_item)
+
+    def _update_linear_caliper_preview(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+    ) -> None:
+        self._ensure_linear_caliper_graphics()
+        assert self._linear_caliper_line_item is not None
+        assert self._linear_caliper_marker_item is not None
+        self._linear_caliper_line_item.setData(
+            [start[0], end[0]],
+            [start[1], end[1]],
+        )
+        self._linear_caliper_marker_item.setData(
+            [start[0], end[0]],
+            [start[1], end[1]],
+        )
+
+    def _linear_measurement_from_endpoints(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+        label: str,
+    ) -> LinearMeasurement:
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        pixel_length = math.hypot(dx, dy)
+        angle_degrees = math.degrees(math.atan2(dy, dx))
         pixel_spacing = (
             self._current_state.effective_pixel_spacing if self._current_state else None
         )
@@ -1235,32 +1997,63 @@ class ViewerWidget(QWidget):
             else None
         )
         return LinearMeasurement(
-            label=self._current_caliper_label(),
+            label=label,
             pixel_length=pixel_length,
             millimeter_length=millimeter_length,
+            frame_index=self._contour_frame_index(),
+            start=start,
+            end=end,
         )
 
-    def _update_linear_measurement_preview(self, *_args) -> None:
-        measurement = self._build_current_linear_measurement()
-        if measurement is None:
-            self._measurement_label.setText(f"{self._current_caliper_label()}: —")
-            return
+    def _update_linear_caliper_label_preview(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+    ) -> None:
+        measurement = self._linear_measurement_from_endpoints(
+            start,
+            end,
+            self._current_caliper_label(),
+        )
         self._measurement_label.setText(measurement.display_text())
 
-    def _commit_linear_measurement(self, *_args) -> None:
-        measurement = self._build_current_linear_measurement()
-        if measurement is None:
+    def _update_linear_caliper_label_preview_from_state(self) -> None:
+        if not self._linear_caliper_active:
             return
-        self._stored_linear_measurements[measurement.label] = measurement
-        self.append_frame_overlay(measurement.display_text())
+        if self._linear_caliper_start is None:
+            label = self._current_caliper_label()
+            self._measurement_label.setText(f"{label}: 1-й клик — начало")
+            return
+        self._update_linear_caliper_label_preview(
+            self._linear_caliper_start,
+            self._linear_caliper_start,
+        )
+
+    def _commit_linear_measurement_from_endpoints(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+    ) -> None:
+        measurement = self._linear_measurement_from_endpoints(
+            start,
+            end,
+            self._current_caliper_label(),
+        )
+        self._stored_linear_measurements[self._linear_measurement_key(measurement)] = (
+            measurement
+        )
         self._measurement_label.setText(measurement.display_text())
         self._emit_stored_linear_measurements()
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
+        self._linear_caliper_start = None
+        self._clear_linear_caliper_graphics()
         if self._caliper_sequence:
             next_label = self._caliper_sequence.pop(0)
             self._begin_linear_caliper(next_label)
-        elif self._linear_roi is not None:
-            self._view.removeItem(self._linear_roi)
-            self._linear_roi = None
+            self._measurement_label.setText(f"{next_label}: 1-й клик — начало")
+        else:
+            self._linear_caliper_active = False
 
     def _emit_stored_linear_measurements(self) -> None:
         measurements = list(self._stored_linear_measurements.values())

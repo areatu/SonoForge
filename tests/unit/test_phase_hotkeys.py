@@ -53,16 +53,16 @@ def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
     window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
 
     qtbot.keyClick(window, Qt.Key.Key_L)
-    assert window._viewer._linear_roi is not None
+    assert window._viewer.is_linear_caliper_active
     assert window._viewer._measurement_label.text().startswith("LVEDD:")
-    assert "mm (" in window._viewer._measurement_label.text()
-    assert window._viewer._measurement_label.text().endswith("px)")
+    assert "1-й клик" in window._viewer._measurement_label.text()
 
     qtbot.keyClick(window, Qt.Key.Key_Tab)
     assert window._viewer._measurement_label.text().startswith("LVESD:")
+    assert "1-й клик" in window._viewer._measurement_label.text()
 
     qtbot.keyClick(window, Qt.Key.Key_Escape)
-    assert window._viewer._linear_roi is None
+    assert not window._viewer.is_linear_caliper_active
     assert window._viewer._measurement_label.text() == "LVESD: —"
 
 

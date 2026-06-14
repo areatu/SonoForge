@@ -54,6 +54,8 @@ class StateManager(QObject):
         metadata: InstanceMetadata,
         total_frames: int,
         frame_time_ms: float | None,
+        *,
+        emit: bool = True,
     ) -> None:
         if total_frames < 1:
             raise ValueError(f"total_frames must be >= 1, got {total_frames}")
@@ -68,7 +70,8 @@ class StateManager(QObject):
         self._measurement_snapshot = None
         self._decode_in_progress = False
         self._manual_pixel_spacing = None
-        self._emit_state()
+        if emit:
+            self._emit_state()
 
     def set_decode_in_progress(self, in_progress: bool) -> None:
         if self._decode_in_progress == in_progress:
@@ -166,6 +169,14 @@ class StateManager(QObject):
 
     def clear_manual_pixel_spacing(self) -> None:
         self.set_manual_pixel_spacing(None)
+
+    def reset_measurement_inputs(self) -> None:
+        """Clear contours, linear measurements, Doppler input, and manual calibration."""
+        self._contours = ()
+        self._linear_measurements = ()
+        self._doppler_measurement = None
+        self._manual_pixel_spacing = None
+        self._emit_state()
 
     def _emit_state(self) -> None:
         self.state_changed.emit(self.snapshot)

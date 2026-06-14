@@ -20,15 +20,103 @@ def test_measurement_tools_panel_has_manual_and_mbs_buttons(qtbot) -> None:
     qtbot.addWidget(panel)
     labels = {button.text() for button in panel.findChildren(QPushButton)}
     assert labels >= {
+        "Калибровка",
+        "Caliper",
+        "Сброс",
         "Diastole",
         "Systole",
         "EDV Auto",
         "ESV Auto",
         "All Diastole",
         "ESD Systole",
-        "LA AP",
-        "LAV",
+        "ЛП ПЗР",
+        "LAV 4C",
+        "LAV Bi",
+        "ПП",
+        "S ПП",
+        "RAV",
+        "TAPSE",
+        "ПЖ Base",
     }
+
+
+def test_calibration_button_emits_signal(qtbot) -> None:
+    panel = MeasurementToolsPanel()
+    qtbot.addWidget(panel)
+    received: list[bool] = []
+    panel.calibration_requested.connect(lambda: received.append(True))
+    for button in panel.findChildren(QPushButton):
+        if button.text() == "Калибровка":
+            button.click()
+            break
+    else:
+        raise AssertionError("Calibration button not found")
+    assert received == [True]
+
+
+def test_lav_4c_starts_manual_contour(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+    window._on_lav_4c()
+
+    assert window._viewer.is_contour_mode_active
+    assert window._viewer._contour_mode_kind == "manual"
+    assert window._viewer._active_contour_chamber == "LA"
+    assert window._viewer._active_contour_view == "A4C"
+    assert window._viewer._active_contour_phase == "ES"
+
+
+def test_reset_measurements_clears_controller_state(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+    controller.on_manual_calibration((0.5, 0.5))
+
+    window._on_reset_measurements_requested()
+
+    snapshot = controller.state_manager.snapshot
+    assert snapshot.manual_pixel_spacing is None
+    assert snapshot.contours == ()
+    assert snapshot.linear_measurements == ()
+    assert snapshot.measurement_snapshot is not None
+    assert snapshot.measurement_snapshot.lvef is None
+    assert snapshot.measurement_snapshot.la_simpson is None
+
+
+def test_calibration_button_starts_caliper(qtbot) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
+    )
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitExposed(window)
+    window._viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+    window._on_calibration_requested()
+
+    assert window._viewer.is_calibration_active
 
 
 def test_manual_4c_diastole_emits_a4c_ed(qtbot) -> None:
@@ -90,6 +178,7 @@ def test_manual_diastole_starts_manual_contour(qtbot) -> None:
     assert window._viewer._contour_mode_kind == "manual"
     assert window._viewer._active_contour_view == "A4C"
     assert window._viewer._active_contour_phase == "ED"
+    assert window._viewer._active_contour_chamber == "LV"
 
 
 def test_mbs_edv_auto_starts_model_contour(qtbot) -> None:
@@ -111,6 +200,7 @@ def test_mbs_edv_auto_starts_model_contour(qtbot) -> None:
     assert window._viewer._contour_mode_kind == "model"
     assert window._viewer._active_contour_view == "A4C"
     assert window._viewer._active_contour_phase == "ED"
+    assert window._viewer._active_contour_chamber == "LV"
 
 
 def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch) -> None:

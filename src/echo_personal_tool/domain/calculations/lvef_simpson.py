@@ -79,8 +79,9 @@ def format_contour_overlay(
     """Format frame overlay line: view phase · length · volume."""
     view = contour.view
     phase = contour.phase.upper()
+    chamber = contour.chamber.upper()
     if pixel_spacing is None:
-        return f"{view} {phase} · Длина: — · Объём: —"
+        return f"{chamber} {view} {phase} · Длина: — · Объём: —"
     length = _contour_length_mm(contour, pixel_spacing)
     volume = _contour_volume_ml(contour, pixel_spacing)
     if spacing_calibrated:
@@ -89,7 +90,7 @@ def format_contour_overlay(
     else:
         length_text = f"{length:.1f} px" if length is not None else "—"
         volume_text = f"{volume:.1f} px³" if volume is not None else "—"
-    return f"{view} {phase} · Длина: {length_text} · Объём: {volume_text}"
+    return f"{chamber} {view} {phase} · Длина: {length_text} · Объём: {volume_text}"
 
 
 def _contour_length_mm(

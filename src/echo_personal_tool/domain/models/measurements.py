@@ -62,10 +62,44 @@ class LaVolumeResult:
 
 
 @dataclass(frozen=True)
+class ChamberSimpsonResult:
+    """Simpson monoplane/biplane volume metrics for LA, RA, or RV."""
+
+    chamber: str
+    a4c: LvViewMetrics | None = None
+    a2c: LvViewMetrics | None = None
+    area_cm2: float | None = None
+    max_volume_ml: float | None = None
+    ef_percent: float | None = None
+    method: str | None = None
+
+
+@dataclass(frozen=True)
+class IndexedMeasurements:
+    """BSA-normalized volumes (mL/m²) and linear sizes (mm/m²)."""
+
+    bsa_m2: float
+    simpson_edvi_ml_m2: float | None = None
+    simpson_esvi_ml_m2: float | None = None
+    teichholz_edvi_ml_m2: float | None = None
+    teichholz_esvi_ml_m2: float | None = None
+    lav_4c_index_ml_m2: float | None = None
+    lav_bi_index_ml_m2: float | None = None
+    rav_index_ml_m2: float | None = None
+    linear_index_mm_m2: tuple[tuple[str, float], ...] = ()
+
+
+@dataclass(frozen=True)
 class MeasurementSnapshot:
     doppler: DopplerResults | None = None
     lvef: LvefResult | None = None
     teichholz: TeichholzResult | None = None
     la_volume: LaVolumeResult | None = None
+    la_simpson: ChamberSimpsonResult | None = None
+    ra_simpson: ChamberSimpsonResult | None = None
+    rv_simpson: ChamberSimpsonResult | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     spacing_calibrated: bool = True
+    height_cm: float | None = None
+    weight_kg: float | None = None
+    indexed: IndexedMeasurements | None = None

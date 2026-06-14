@@ -76,7 +76,11 @@ def test_mbs_ed_updates_after_node_drag(qtbot) -> None:
     window._viewer.handle_contour_click((30.0, 10.0))
 
     before = window._measurement_panel._summary_label.text()
-    window._viewer._finalize_contour_point_drag(0, 16, 32.0, 8.0)
+    mid = 16
+    mx, my = window._viewer.contours()[0].points[mid]
+    window._viewer._drag_contour_point(0, mid, mx, my)
+    window._viewer._drag_contour_point(0, mid, 32.0, 8.0)
+    window._viewer._finalize_contour_point_drag(0, mid, 32.0, 8.0)
     after = window._measurement_panel._summary_label.text()
     overlay = "\n".join(window._viewer._frame_overlay_lines)
 

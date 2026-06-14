@@ -10,7 +10,9 @@ from echo_personal_tool.domain.models.linear_measurement import (
     pixel_to_mm_length,
 )
 from echo_personal_tool.domain.models.measurements import (
+    ChamberSimpsonResult,
     DopplerResults,
+    IndexedMeasurements,
     LaVolumeResult,
     LvefResult,
     LvViewMetrics,
@@ -26,12 +28,14 @@ from echo_personal_tool.domain.models.metadata import (
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 __all__ = [
+    "ChamberSimpsonResult",
     "Contour",
     "DopplerIntervalMarker",
     "DopplerMeasurementDTO",
     "DopplerPeakMarker",
     "DopplerResults",
     "DopplerTrace",
+    "IndexedMeasurements",
     "InstanceMetadata",
     "InstanceRef",
     "LinearMeasurement",

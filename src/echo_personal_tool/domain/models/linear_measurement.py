@@ -13,11 +13,14 @@ class LinearMeasurement:
     label: str
     pixel_length: float
     millimeter_length: float | None
+    frame_index: int | None = None
+    start: tuple[float, float] | None = None
+    end: tuple[float, float] | None = None
 
     def display_text(self) -> str:
         if self.millimeter_length is None:
             return f"{self.label}: {self.pixel_length:.1f} px"
-        return f"{self.label}: {self.millimeter_length:.1f} mm ({self.pixel_length:.1f} px)"
+        return f"{self.label}: {self.millimeter_length:.1f} mm"
 
 
 def pixel_to_mm_length(
@@ -32,4 +35,3 @@ def pixel_to_mm_length(
     x_pixels = pixel_length * cos(angle_radians)
     y_pixels = pixel_length * sin(angle_radians)
     return sqrt((x_pixels * column_spacing) ** 2 + (y_pixels * row_spacing) ** 2)
-

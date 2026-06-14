@@ -13,6 +13,7 @@ class Contour:
     points: list[tuple[float, float]] = field(default_factory=list)
     source: str = "manual"
     mitral_annulus: tuple[tuple[float, float], tuple[float, float]] | None = None
+    apex_landmark: tuple[float, float] | None = None
     num_nodes: int = 32
     frame_index: int | None = None
 
