@@ -5,7 +5,14 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
@@ -13,8 +20,9 @@ from echo_personal_tool.domain.models import (
     DopplerPeakMarker,
     DopplerTrace,
 )
+from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 
-_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "Vmax")
+_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "Vmax", "TR Vmax")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
 
 
@@ -65,14 +73,55 @@ class DopplerWidget(QWidget):
         self._peak_markers: list[DopplerPeakMarker] = []
         self._interval_markers: list[DopplerIntervalMarker] = []
         self._traces: list[DopplerTrace] = []
+        self._axis_mapping = DopplerAxisMapping.poc_default()
+
+        self._toolbar = QHBoxLayout()
+        btn_peak = QPushButton("Peak")
+        btn_peak.clicked.connect(lambda: self.set_tool_mode("peak"))
+        btn_interval = QPushButton("Interval")
+        btn_interval.clicked.connect(lambda: self.set_tool_mode("interval"))
+        btn_trace = QPushButton("VTI Trace")
+        btn_trace.clicked.connect(lambda: self.set_tool_mode("trace"))
+        self._peak_combo = QComboBox()
+        self._peak_combo.addItems(_PEAK_LABELS)
+        self._peak_combo.currentTextChanged.connect(self.set_peak_label)
+        self._interval_combo = QComboBox()
+        self._interval_combo.addItems(_INTERVAL_LABELS)
+        self._interval_combo.currentTextChanged.connect(self.set_interval_label)
+        self._toolbar.addWidget(btn_peak)
+        self._toolbar.addWidget(btn_interval)
+        self._toolbar.addWidget(btn_trace)
+        self._toolbar.addWidget(QLabel("Peak:"))
+        self._toolbar.addWidget(self._peak_combo)
+        self._toolbar.addWidget(QLabel("Interval:"))
+        self._toolbar.addWidget(self._interval_combo)
+        self._toolbar.addStretch(1)
 
         self._status_label = QLabel()
         self._status_label.setObjectName("dopplerToolStatus")
         self._status_label.setText(self._format_tool_status(self._tool_mode))
 
         layout = QVBoxLayout(self)
+        layout.addLayout(self._toolbar)
         layout.addWidget(self._plot, stretch=1)
         layout.addWidget(self._status_label)
+
+    def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
+        self._axis_mapping = mapping
+        span = mapping.velocity_max_cm_s - mapping.velocity_min_cm_s
+        self._image_item.setRect(
+            QRectF(
+                mapping.time_origin_ms,
+                mapping.velocity_min_cm_s,
+                mapping.time_span_ms,
+                span,
+            )
+        )
+        self._plot.setRange(
+            xRange=(mapping.time_origin_ms, mapping.time_origin_ms + mapping.time_span_ms),
+            yRange=(mapping.velocity_min_cm_s, mapping.velocity_max_cm_s),
+            padding=0.0,
+        )
 
     def show_spectrogram(self, pixels: np.ndarray) -> None:
         """Display a grayscale spectrogram in the plot coordinate space."""
@@ -83,12 +132,19 @@ class DopplerWidget(QWidget):
         if image.ndim != 2:
             raise ValueError("Doppler spectrograms must be 2D grayscale arrays")
 
-        # PoC mapping: anchor the image to a fixed 0-1000 ms / -100..100 cm/s window
-        # so marker math can happen directly in plot coordinates.
+        # PoC mapping: anchor image to axis mapping window.
+        mapping = self._axis_mapping
+        span = mapping.velocity_max_cm_s - mapping.velocity_min_cm_s
         self._image_item.setImage(image, autoLevels=False)
-        self._image_item.setRect(QRectF(0.0, -100.0, 1000.0, 200.0))
+        self._image_item.setRect(
+            QRectF(mapping.time_origin_ms, mapping.velocity_min_cm_s, mapping.time_span_ms, span)
+        )
         self._update_image_levels(image)
-        self._plot.setRange(xRange=(0.0, 1000.0), yRange=(-100.0, 100.0), padding=0.0)
+        self._plot.setRange(
+            xRange=(mapping.time_origin_ms, mapping.time_origin_ms + mapping.time_span_ms),
+            yRange=(mapping.velocity_min_cm_s, mapping.velocity_max_cm_s),
+            padding=0.0,
+        )
 
     def set_tool_mode(self, mode: str) -> None:
         mode_name = mode.strip().lower()

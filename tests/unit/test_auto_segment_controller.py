@@ -116,7 +116,7 @@ def test_request_auto_segment_requires_active_simpson_workflow(
 
     assert segmenter.calls == 0
     assert thread_pool.started == []
-    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
+    assert messages[-1] == "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
 
 
 def test_request_auto_segment_rejects_when_segmenter_unavailable(
@@ -134,7 +134,7 @@ def test_request_auto_segment_rejects_when_segmenter_unavailable(
 
     assert segmenter.calls == 0
     assert thread_pool.started == []
-    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
+    assert messages[-1] == "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
 
 
 def test_request_auto_segment_rejects_when_frame_is_not_marked(
@@ -160,7 +160,7 @@ def test_request_auto_segment_rejects_when_frame_is_not_marked(
 
     controller.request_auto_segment()
 
-    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
+    assert messages[-1] == "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
 
 
 def test_request_auto_segment_rejects_when_playing(
@@ -189,8 +189,22 @@ def test_request_auto_segment_emits_timeout_message(
     controller.request_auto_segment()
 
     assert thread_pool.started == []
-    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
+    assert messages[-1] == "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
     assert controller._segment_in_progress is False
+
+
+def test_request_auto_segment_starts_worker_when_phase_set(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller, thread_pool, segmenter, _, _ = _prepared_controller(monkeypatch)
+    controller.set_simpson_workflow_context(phase="ED", view="A4C", chamber="LV")
+
+    controller.request_auto_segment()
+
+    assert segmenter.calls == 1
+    assert len(thread_pool.started) == 1
+    assert controller._segment_in_progress is True
 
 
 def test_request_auto_segment_blocks_concurrent_requests(
@@ -205,4 +219,4 @@ def test_request_auto_segment_blocks_concurrent_requests(
     controller.request_auto_segment()
 
     assert thread_pool.started == []
-    assert messages[-1] == "Auto-segmentation requires an active Simpson workflow"
+    assert messages[-1] == "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"

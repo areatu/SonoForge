@@ -8,6 +8,10 @@ from collections.abc import Sequence
 import numpy as np
 
 from echo_personal_tool.domain.models import Contour
+from echo_personal_tool.domain.services.active_contour_refine import (
+    ActiveContourConfig,
+    refine_open_arc,
+)
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     apex_point,
@@ -75,15 +79,109 @@ def infer_apex_from_open_arc(
     return apex_point(points, (septal, lateral))
 
 
-def refine_open_arc_contour(frame: np.ndarray, contour: Contour) -> Contour:
-    """Smooth LV open-arc irregularities after manual node edits (R key)."""
-    del frame  # smoothing is geometry-only; kept for API compatibility
-    return _smooth_contour_points(contour)
+def build_lame_template_for_contour(contour: Contour) -> list[tuple[float, float]]:
+    """Regenerate Lamé template resampled to contour node count."""
+    if contour.mitral_annulus is None:
+        return list(contour.points)
+    septal, lateral = contour.mitral_annulus
+    apex = contour.apex_landmark or infer_apex_from_open_arc(
+        contour.points, septal, lateral
+    )
+    warped = warp_lame_open_arc(
+        septal,
+        lateral,
+        apex,
+        view=contour.view,
+        phase=contour.phase,
+        num_points=_TEMPLATE_POINT_COUNT,
+    )
+    return resample_open_arc_landmarks(
+        warped,
+        septal=septal,
+        lateral=lateral,
+        apex=apex,
+        num_nodes=len(contour.points),
+    )
 
 
-def refine_model_contour(frame: np.ndarray, contour: Contour) -> Contour:
+def refine_open_arc_contour(frame: np.ndarray, contour: Contour) -> tuple[Contour, str]:
+    """Refine open-arc border: gradient active contour with Laplacian fallback."""
+    if contour.mitral_annulus is None or len(contour.points) < 3:
+        return contour, "geometry"
+
+    septal, lateral = contour.mitral_annulus
+    apex = contour.apex_landmark or infer_apex_from_open_arc(
+        contour.points, septal, lateral
+    )
+    template = (
+        build_lame_template_for_contour(contour)
+        if contour.chamber.upper() == "LV"
+        else list(contour.points)
+    )
+
+    try:
+        if frame is not None and frame.size > 0:
+            refined_points = refine_open_arc(
+                frame,
+                contour.points,
+                contour.mitral_annulus,
+                template_points=template,
+                config=ActiveContourConfig(),
+            )
+            if _refined_is_sane(contour.points, refined_points, septal, lateral):
+                contour.points = resample_open_arc_landmarks(
+                    refined_points,
+                    septal=septal,
+                    lateral=lateral,
+                    apex=apex,
+                    num_nodes=contour.num_nodes or len(contour.points),
+                )
+                contour.mitral_annulus = (septal, lateral)
+                if contour.apex_landmark is None:
+                    contour.apex_landmark = apex
+                return contour, "gradient"
+    except (ValueError, FloatingPointError):
+        pass
+
+    return _smooth_contour_points(contour), "geometry"
+
+
+def refine_model_contour(frame: np.ndarray, contour: Contour) -> tuple[Contour, str]:
     """Alias for refine_open_arc_contour."""
     return refine_open_arc_contour(frame, contour)
+
+
+def _refined_is_sane(
+    original: Sequence[tuple[float, float]],
+    refined: Sequence[tuple[float, float]],
+    septal: tuple[float, float],
+    lateral: tuple[float, float],
+) -> bool:
+    if len(refined) != len(original):
+        return False
+    if refined[0] != septal and math.hypot(
+        refined[0][0] - septal[0], refined[0][1] - septal[1]
+    ) > 2.0:
+        return False
+    if refined[-1] != lateral and math.hypot(
+        refined[-1][0] - lateral[0], refined[-1][1] - lateral[1]
+    ) > 2.0:
+        return False
+    orig_area = _polyline_length(original)
+    new_area = _polyline_length(refined)
+    if orig_area <= 0.0:
+        return True
+    ratio = new_area / orig_area
+    return 0.5 <= ratio <= 2.0
+
+
+def _polyline_length(points: Sequence[tuple[float, float]]) -> float:
+    total = 0.0
+    for index in range(1, len(points)):
+        dx = points[index][0] - points[index - 1][0]
+        dy = points[index][1] - points[index - 1][1]
+        total += math.hypot(dx, dy)
+    return total
 
 
 def _smooth_contour_points(contour: Contour) -> Contour:
@@ -118,12 +216,10 @@ def _validate_landmarks(
     lateral: tuple[float, float],
     apex: tuple[float, float],
 ) -> None:
-    annulus_length = math.hypot(lateral[0] - septal[0], lateral[1] - septal[1])
-    if annulus_length < _MIN_ANNULUS_LENGTH_PX:
-        msg = f"mitral annulus length must be at least {_MIN_ANNULUS_LENGTH_PX}px"
+    length = math.hypot(lateral[0] - septal[0], lateral[1] - septal[1])
+    if length < _MIN_ANNULUS_LENGTH_PX:
+        msg = "mitral annulus length must be positive"
         raise ValueError(msg)
-
-    apex_distance = point_line_distance(apex, septal, lateral)
-    if apex_distance < _MIN_APEX_DISTANCE_PX:
-        msg = f"apex must be at least {_MIN_APEX_DISTANCE_PX}px from mitral annulus"
+    if point_line_distance(apex, septal, lateral) < _MIN_APEX_DISTANCE_PX:
+        msg = "apex must be off the mitral annulus line"
         raise ValueError(msg)

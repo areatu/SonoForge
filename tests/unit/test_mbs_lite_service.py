@@ -169,8 +169,9 @@ def test_refine_open_arc_contour_smooths_jagged_arc() -> None:
     contour.points = jagged
     apex_before = apex
 
-    refined = refine_open_arc_contour(frame, contour)
+    refined, mode = refine_open_arc_contour(frame, contour)
 
+    assert mode in {"gradient", "geometry"}
     assert refined.points[0] == pytest.approx(septal, abs=1e-3)
     assert refined.points[-1] == pytest.approx(lateral, abs=1e-3)
     assert refined.apex_landmark == pytest.approx(apex_before, abs=1e-3)
@@ -203,7 +204,7 @@ def test_refine_model_contour_opt_in() -> None:
         apex=(60.0, 20.0),
         phase="ED",
     )
-    refined = refine_model_contour(frame, contour)
+    refined, _mode = refine_model_contour(frame, contour)
     assert refined.source == "model"
     assert len(refined.points) == DEFAULT_NODE_COUNT
 
@@ -218,7 +219,7 @@ def test_refine_open_arc_contour_preserves_manual_source() -> None:
         phase="ED",
     )
     contour.source = "manual"
-    refined = refine_open_arc_contour(frame, contour)
+    refined, _mode = refine_open_arc_contour(frame, contour)
     assert refined.source == "manual"
     assert len(refined.points) == DEFAULT_NODE_COUNT
 

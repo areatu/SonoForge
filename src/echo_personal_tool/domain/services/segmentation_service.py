@@ -187,6 +187,42 @@ def _trace_boundary(component: np.ndarray) -> list[tuple[int, int]]:
     return _simplify_contour(contour)
 
 
+def closed_polygon_to_open_arc(
+    points: list[tuple[float, float]],
+    *,
+    view_hint: str = "A4C",
+) -> tuple[list[tuple[float, float]], tuple[tuple[float, float], tuple[float, float]]]:
+    """Convert closed AI polygon to open arc using longest chord as mitral annulus."""
+    del view_hint
+    if len(points) < 4:
+        msg = "closed polygon must have at least 4 points"
+        raise ValueError(msg)
+
+    best_length = -1.0
+    best_i = 0
+    best_j = 1
+    for i in range(len(points)):
+        for j in range(i + 1, len(points)):
+            dx = points[j][0] - points[i][0]
+            dy = points[j][1] - points[i][1]
+            length = dx * dx + dy * dy
+            if length > best_length:
+                best_length = length
+                best_i, best_j = i, j
+
+    septal = points[best_i]
+    lateral = points[best_j]
+    annulus = (septal, lateral)
+
+    ordered: list[tuple[float, float]] = [septal]
+    index = (best_i + 1) % len(points)
+    while index != best_j:
+        ordered.append(points[index])
+        index = (index + 1) % len(points)
+    ordered.append(lateral)
+    return ordered, annulus
+
+
 def _simplify_contour(contour: list[tuple[int, int]]) -> list[tuple[int, int]]:
     if len(contour) <= 2:
         return contour

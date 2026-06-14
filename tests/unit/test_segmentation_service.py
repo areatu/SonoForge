@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from echo_personal_tool.domain.services.segmentation_service import (
+    closed_polygon_to_open_arc,
     logits_to_mask,
     mask_to_contour,
     prepare_tensor,
@@ -122,3 +123,12 @@ def test_smooth_contour_returns_requested_node_count() -> None:
 
     assert len(resampled) == 32
     assert all(len(point) == 2 for point in resampled)
+
+
+def test_closed_polygon_to_open_arc_uses_longest_chord() -> None:
+    polygon = [(0.0, 0.0), (100.0, 0.0), (70.0, 70.0), (30.0, 70.0)]
+    arc, annulus = closed_polygon_to_open_arc(polygon)
+    assert len(arc) >= 2
+    assert arc[0] == annulus[0]
+    assert arc[-1] == annulus[1]
+

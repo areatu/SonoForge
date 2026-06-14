@@ -767,30 +767,30 @@ class ViewerWidget(QWidget):
         self.contour_completed.emit(contour)
         return True
 
-    def refine_active_open_contour(self) -> bool:
+    def refine_active_open_contour(self) -> tuple[bool, str]:
         """Smooth manual/model LV open-arc nodes on the current frame (R key)."""
         if self._current_frame is None:
-            return False
+            return False, ""
         frame_index = self._contour_frame_index()
         for contour_index, contour in enumerate(self._contours):
             if (
-                contour.source not in {"manual", "model"}
+                contour.source not in {"manual", "model", "ai"}
                 or not contour.is_open_arc
                 or contour.mitral_annulus is None
                 or contour.frame_index != frame_index
             ):
                 continue
-            refined = refine_open_arc_contour(self._current_frame, contour)
+            refined, mode = refine_open_arc_contour(self._current_frame, contour)
             self._contours[contour_index] = refined
             self._upsert_stored_contour(refined)
             self._render_contours_for_current_frame()
             self._refresh_frame_overlays()
             if not self._syncing_state:
                 self.contours_changed.emit(self.contours())
-            return True
-        return False
+            return True, mode
+        return False, ""
 
-    def refine_active_model_contour(self) -> bool:
+    def refine_active_model_contour(self) -> tuple[bool, str]:
         """Backward-compatible alias for refine_active_open_contour."""
         return self.refine_active_open_contour()
 

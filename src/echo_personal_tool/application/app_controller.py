@@ -25,8 +25,14 @@ from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements
 from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
+from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.calculations.la_area_length import (
+    from_measurements as la_from_measurements,
+)
 from echo_personal_tool.domain.calculations.lvef_simpson import calculate
+from echo_personal_tool.domain.calculations.lvm import from_linear_measurements as lvm_from_linear
+from echo_personal_tool.domain.calculations.rv_fac import from_rv_contours
 from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
 from echo_personal_tool.domain.models import (
     Contour,
@@ -39,6 +45,7 @@ from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.segmentation_service import (
+    closed_polygon_to_open_arc,
     mask_to_contour,
     smooth_contour,
 )
@@ -96,6 +103,9 @@ class AppController(QObject):
         self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
         self._current_frame_pixels: np.ndarray | None = None
         self._segment_in_progress = False
+        self._auto_segment_phase: str | None = None
+        self._auto_segment_view: str = "A4C"
+        self._auto_segment_chamber: str = "LV"
         self._scan_started_at: float | None = None
         self._first_preview_emitted = False
         self._state_manager.state_changed.connect(self._on_state_changed)
@@ -294,7 +304,24 @@ class AppController(QObject):
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)
 
-    def request_auto_segment(self) -> None:
+    def set_simpson_workflow_context(
+        self,
+        *,
+        phase: str | None,
+        view: str = "A4C",
+        chamber: str = "LV",
+    ) -> None:
+        self._auto_segment_phase = phase.upper() if phase else None
+        self._auto_segment_view = view
+        self._auto_segment_chamber = chamber
+
+    def request_auto_segment(
+        self,
+        *,
+        phase: str | None = None,
+        view: str | None = None,
+        chamber: str | None = None,
+    ) -> None:
         if self._segment_in_progress:
             self.status_message.emit("Segmentation already in progress")
             return
@@ -304,11 +331,13 @@ class AppController(QObject):
             self.status_message.emit("Pause playback before auto-segmentation")
             return
 
-        phase = None
-        # Future: phase from active Simpson workflow in viewer.
-        # v1: auto-segment remains non-functional without markers.
-        if phase is None:
-            self.status_message.emit("Auto-segmentation requires an active Simpson workflow")
+        phase = phase or self._auto_segment_phase
+        view = view or self._auto_segment_view
+        chamber = chamber or self._auto_segment_chamber
+        if phase is None or phase not in {"ED", "ES"}:
+            self.status_message.emit(
+                "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
+            )
             return
 
         if (
@@ -333,6 +362,8 @@ class AppController(QObject):
             partial(
                 self._on_auto_segment_finished,
                 phase,
+                view,
+                chamber,
                 instance_path,
                 frame_index,
                 original_shape,
@@ -508,12 +539,28 @@ class AppController(QObject):
         teichholz = from_linear_measurements(session.linear_measurements)
         la_simpson = calculate_chamber(session.contours, "LA", pixel_spacing)
         ra_simpson = calculate_chamber(session.contours, "RA", pixel_spacing)
+        rv_simpson = calculate_chamber(session.contours, "RV", pixel_spacing)
+        la_volume = la_from_measurements(
+            session.contours,
+            session.linear_measurements,
+            pixel_spacing if spacing_calibrated else None,
+        )
+        lvm_g = lvm_from_linear(session.linear_measurements)
+        rv_fac_percent = (
+            from_rv_contours(session.contours, pixel_spacing)
+            if spacing_calibrated
+            else None
+        )
         base_snapshot = MeasurementSnapshot(
             doppler=doppler,
             lvef=lvef,
             teichholz=teichholz,
+            la_volume=la_volume,
             la_simpson=la_simpson,
             ra_simpson=ra_simpson,
+            rv_simpson=rv_simpson,
+            lvm_g=lvm_g,
+            rv_fac_percent=rv_fac_percent,
             linear_measurements=session.linear_measurements,
             spacing_calibrated=spacing_calibrated,
             height_cm=session.height_cm,
@@ -524,12 +571,25 @@ class AppController(QObject):
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
         )
+        diastology_grade = None
+        if doppler is not None and indexed is not None:
+            lav_i = indexed.lav_bi_index_ml_m2 or indexed.lav_4c_index_ml_m2
+            diastology_grade = grade_diastolic_function(
+                e_over_e_prime=doppler.e_over_e_prime,
+                lav_index_ml_m2=lav_i,
+                tr_vmax_cm_s=doppler.tr_vmax_cm_s,
+            )
         snapshot = MeasurementSnapshot(
             doppler=doppler,
             lvef=lvef,
             teichholz=teichholz,
+            la_volume=la_volume,
             la_simpson=la_simpson,
             ra_simpson=ra_simpson,
+            rv_simpson=rv_simpson,
+            lvm_g=lvm_g,
+            rv_fac_percent=rv_fac_percent,
+            diastology_grade=diastology_grade,
             linear_measurements=session.linear_measurements,
             spacing_calibrated=spacing_calibrated,
             height_cm=session.height_cm,
@@ -707,6 +767,8 @@ class AppController(QObject):
     def _on_auto_segment_finished(
         self,
         phase: str,
+        view: str,
+        chamber: str,
         instance_path: Path | None,
         frame_index: int,
         original_shape: tuple[int, int],
@@ -718,18 +780,42 @@ class AppController(QObject):
         if not isinstance(mask, np.ndarray):
             return
 
-        contour_points = smooth_contour(
+        closed_points = smooth_contour(
             mask_to_contour(mask, original_shape),
             num_nodes=32,
         )
-        contour = Contour(phase=phase, points=contour_points, source="ai")
+        if not closed_points:
+            self.status_message.emit("сегментация не нашла контур — используйте ручной")
+            return
+
+        try:
+            open_points, annulus = closed_polygon_to_open_arc(closed_points, view_hint=view)
+        except ValueError:
+            self.status_message.emit("сегментация: не удалось построить open arc")
+            return
+
+        contour = Contour(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            mitral_annulus=annulus,
+            points=open_points,
+            source="ai",
+            num_nodes=len(open_points),
+            frame_index=frame_index,
+        )
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours
-            if not (existing.phase == phase and existing.view == contour.view)
+            if not (
+                existing.phase == phase
+                and existing.view == view
+                and existing.chamber == chamber
+            )
         ]
         contours.append(contour)
         self.on_contours_changed(contours)
+        self.status_message.emit(f"Auto-segment: {view} {phase} contour ready (R to refine)")
 
     def _on_auto_segment_failed(
         self,

@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QPushButton
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
@@ -51,11 +50,12 @@ def _build_study(total_instances: int = 8) -> StudyMetadata:
     )
 
 
-def test_main_window_has_no_doppler_toggle_button(qtbot) -> None:
+def test_main_window_has_system_bar_mode_toggle(qtbot) -> None:
     window = _make_window(qtbot)
-    labels = {button.text() for button in window.findChildren(QPushButton)}
-    assert "Doppler" not in labels
-    assert "2D" not in labels
+    assert window._system_bar is not None
+    assert window._worksheet is not None
+    window._system_bar.view_mode_changed.emit("doppler")
+    assert window._view_mode == "doppler"
 
 
 def test_set_view_mode_switches_to_doppler_and_shows_current_frame(qtbot) -> None:

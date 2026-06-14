@@ -226,7 +226,7 @@ def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch) -> None:
     window._viewer.handle_contour_click((50.0, 40.0))
     window._viewer.handle_contour_click((30.0, 10.0))
 
-    assert window._measurement_panel.tools._blink_timer.isActive()
+    assert window._worksheet._blink_timer.isActive()
 
 
 def test_frame_overlay_clears_on_frame_change(qtbot) -> None:

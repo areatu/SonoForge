@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QSplitter,
     QStackedWidget,
     QStatusBar,
@@ -24,9 +23,13 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
+from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.presentation.doppler_widget import DopplerWidget
 from echo_personal_tool.presentation.local_browser import LocalBrowserWidget
+from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measurement_panel import MeasurementPanel
+from echo_personal_tool.presentation.measurement_worksheet import MeasurementWorksheet
+from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 logger = logging.getLogger(__name__)
@@ -52,20 +55,31 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
-        root_layout = QHBoxLayout(central)
+        root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+        self._system_bar = SystemBar()
+        root_layout.addWidget(self._system_bar)
+
+        content = QWidget()
+        root_layout.addWidget(content, stretch=1)
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        self._open_button = QPushButton("Open folder…")
-        self._open_button.clicked.connect(self._open_folder)
-        left_layout.addWidget(self._open_button)
+        left_layout.setContentsMargins(4, 4, 4, 4)
         self._browser = LocalBrowserWidget()
         self._browser.set_thumbnail_loader(self._controller.load_thumbnail)
         self._controller.thumbnail_loaded.connect(self._browser.set_thumbnail)
-        left_layout.addWidget(self._browser, stretch=1)
+        left_layout.addWidget(self._browser, stretch=3)
+
+        self._worksheet = MeasurementWorksheet()
+        left_layout.addWidget(self._worksheet, stretch=2)
         splitter.addWidget(left)
 
         center = QWidget()
@@ -101,13 +115,14 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 6)
         splitter.setStretchFactor(2, 2)
-        self._measurement_panel.setMinimumWidth(300)
-        root_layout.addWidget(splitter)
+        self._measurement_panel.setMinimumWidth(280)
+        content_layout.addWidget(splitter)
 
         self._browser.instance_selected.connect(self._on_instance_selected)
         self._viewer.set_state(self._controller.state_manager.snapshot)
         self._measurement_panel.update_from_state(self._controller.state_manager.snapshot)
-        self._wire_measurement_tools()
+        self._sync_worksheet_from_state(self._controller.state_manager.snapshot)
+        self._wire_ui()
         self._view_stack.setCurrentWidget(self._viewer)
         self._viewer.installEventFilter(self)
         self._viewer._graphics.installEventFilter(self)
@@ -116,9 +131,7 @@ class MainWindow(QMainWindow):
 
         status = QStatusBar()
         self.setStatusBar(status)
-        self._show_status(
-            "Ready — open a study; use Measurement tools (right panel, above summary)"
-        )
+        self._show_status("Ready — open a study folder; use worksheet (left) for measurements")
         self._install_shortcuts()
 
     def _install_shortcuts(self) -> None:
@@ -184,7 +197,7 @@ class MainWindow(QMainWindow):
         if self._view_mode == "doppler":
             self._doppler_widget.cancel_active_tool()
             return
-        self._measurement_panel.tools.stop_es_prompt()
+        self._worksheet.stop_es_prompt()
         self._viewer.cancel_active_tool()
 
     def _delete_current_contour(self) -> None:
@@ -219,8 +232,10 @@ class MainWindow(QMainWindow):
     def _on_instance_selected(self, instance: object) -> None:
         if isinstance(instance, InstanceMetadata):
             self._click_to_frame_started_at = perf_counter()
-            self._measurement_panel.tools.stop_es_prompt()
+            self._worksheet.stop_es_prompt()
             self._doppler_widget.clear_measurements()
+            label = instance.series_description or instance.sop_instance_uid
+            self._system_bar.set_study_context(label, instance.modality or "US")
             self._controller.load_instance(instance)
 
     def _on_frame_loaded(self, pixels: object) -> None:
@@ -244,31 +259,109 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, "Load failed", message)
 
     def _show_status(self, message: str) -> None:
+        self._system_bar.set_status_message(message)
         if self.statusBar():
             self.statusBar().showMessage(message)
 
-    def _wire_measurement_tools(self) -> None:
-        tools = self._measurement_panel.tools
-        tools.manual_simpson_requested.connect(self._on_manual_simpson_requested)
-        tools.mbs_simpson_requested.connect(self._on_mbs_simpson_requested)
-        tools.manual_simpson_requested.connect(self._on_es_button_pressed)
-        tools.mbs_simpson_requested.connect(self._on_es_button_pressed)
-        tools.lv2d_all_diastole_requested.connect(self._on_lv2d_all_diastole)
-        tools.lv2d_es_requested.connect(self._on_lv2d_es)
-        tools.la_diameter_requested.connect(self._on_la_diameter)
-        tools.lav_4c_requested.connect(self._on_lav_4c)
-        tools.lav_bi_requested.connect(self._on_lav_bi)
-        tools.ra_diameter_requested.connect(self._on_ra_diameter)
-        tools.ra_area_requested.connect(self._on_ra_area)
-        tools.rav_volume_requested.connect(self._on_rav_volume)
-        tools.rv_basal_requested.connect(self._on_rv_basal)
-        tools.rv_tapse_requested.connect(self._on_rv_tapse)
-        tools.calibration_requested.connect(self._on_calibration_requested)
-        tools.caliper_requested.connect(self._on_caliper_requested)
-        tools.reset_measurements_requested.connect(self._on_reset_measurements_requested)
+    def _sync_worksheet_from_state(self, state: object) -> None:
+        if not isinstance(state, ViewerState):
+            return
+        self._worksheet.update_from_snapshot(
+            state.measurement_snapshot,
+            state.contours,
+        )
+
+    def _wire_ui(self) -> None:
+        self._system_bar.open_folder_requested.connect(self._open_folder)
+        self._system_bar.reset_session_requested.connect(self._on_reset_measurements_requested)
+        self._system_bar.caliper_requested.connect(self._on_caliper_requested)
+        self._system_bar.auto_segment_requested.connect(self._request_auto_segment_shortcut)
+        self._system_bar.view_mode_changed.connect(self.set_view_mode)
+        self._worksheet.action_requested.connect(self._on_worksheet_action)
+        self._controller.state_manager.state_changed.connect(self._sync_worksheet_from_state)
         self._measurement_panel.patient_metrics_changed.connect(
             self._controller.on_patient_metrics_changed
         )
+
+    def _on_worksheet_action(self, action: object, view: str, phase: str) -> None:
+        if not isinstance(action, MeasurementAction):
+            return
+        if action in {MeasurementAction.MANUAL_SIMPSON, MeasurementAction.MBS_SIMPSON}:
+            self._controller.set_simpson_workflow_context(
+                phase=phase,
+                view=view,
+                chamber="LV",
+            )
+            self._system_bar.set_auto_segment_enabled(True)
+        handlers: dict[MeasurementAction, object] = {
+            MeasurementAction.CALIBRATION: self._on_calibration_requested,
+            MeasurementAction.CALIPER: self._on_caliper_requested,
+            MeasurementAction.RESET: self._on_reset_measurements_requested,
+            MeasurementAction.MANUAL_SIMPSON: (
+                lambda: self._on_manual_simpson_requested(view, phase)
+            ),
+            MeasurementAction.MBS_SIMPSON: (
+                lambda: self._on_mbs_simpson_requested(view, phase)
+            ),
+            MeasurementAction.LV2D_ALL_DIASTOLE: self._on_lv2d_all_diastole,
+            MeasurementAction.LV2D_ES: self._on_lv2d_es,
+            MeasurementAction.LA_DIAMETER: self._on_la_diameter,
+            MeasurementAction.LAV_4C: self._on_lav_4c,
+            MeasurementAction.LAV_BI: self._on_lav_bi,
+            MeasurementAction.RA_DIAMETER: self._on_ra_diameter,
+            MeasurementAction.RA_AREA: self._on_ra_area,
+            MeasurementAction.RAV_VOLUME: self._on_rav_volume,
+            MeasurementAction.RV_BASAL: self._on_rv_basal,
+            MeasurementAction.RV_TAPSE: self._on_rv_tapse,
+            MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
+            MeasurementAction.RV_FAC_ED: lambda: self._on_rv_fac_contour("ED"),
+            MeasurementAction.RV_FAC_ES: lambda: self._on_rv_fac_contour("ES"),
+            MeasurementAction.DOPPLER_PEAK: self._on_doppler_peak_tool,
+            MeasurementAction.DOPPLER_INTERVAL: self._on_doppler_interval_tool,
+            MeasurementAction.DOPPLER_TRACE: self._on_doppler_trace_tool,
+            MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
+        }
+        handler = handlers.get(action)
+        if handler is not None:
+            handler()  # type: ignore[operator]
+
+    def _on_doppler_peak_tool(self) -> None:
+        self.set_view_mode("doppler")
+        self._doppler_widget.set_tool_mode("peak")
+        self._show_status("Doppler peak: click spectral envelope (M hotkey)")
+
+    def _on_doppler_interval_tool(self) -> None:
+        self.set_view_mode("doppler")
+        self._doppler_widget.set_tool_mode("interval")
+        self._show_status("Doppler interval: click start and end (T hotkey)")
+
+    def _on_doppler_trace_tool(self) -> None:
+        self.set_view_mode("doppler")
+        self._doppler_widget.set_tool_mode("trace")
+        self._show_status("Doppler VTI: trace envelope, Enter to finish (V hotkey)")
+
+    def _on_rv_s_prime(self) -> None:
+        self.set_view_mode("doppler")
+        self._doppler_widget.set_tool_mode("peak")
+        self._doppler_widget.set_peak_label("s_sept")
+        self._show_status("RV s': place septal TDI peak marker")
+
+    def _on_rv_fac_contour(self, phase: str) -> None:
+        if self._view_mode != "2d":
+            self._show_status("Switch to 2D view for RV FAC area")
+            return
+        if not self._start_chamber_contour(
+            "RV",
+            phase,
+            "A4C",
+            overlay=f"RV FAC {phase}: trace RV endocardium",
+            status=f"RV FAC {phase}: annulus septal → lateral → apex",
+        ):
+            self._show_status("Load a frame first or cancel the active tool (Esc)")
+
+    def _wire_measurement_tools(self) -> None:
+        """Backward-compatible alias for tests."""
+        self._wire_ui()
 
     def _on_caliper_requested(self) -> None:
         if self._view_mode != "2d":
@@ -280,7 +373,7 @@ class MainWindow(QMainWindow):
             self._show_status("Load a frame first")
 
     def _on_reset_measurements_requested(self) -> None:
-        self._measurement_panel.tools.stop_es_prompt()
+        self._worksheet.stop_es_prompt()
         self._lav_bi_active = False
         self._viewer.cancel_active_tool()
         self._doppler_widget.clear_measurements()
@@ -312,7 +405,7 @@ class MainWindow(QMainWindow):
             self._show_status("Switch to 2D view for Simpson contour")
             return
         if phase == "ED":
-            self._measurement_panel.tools.stop_es_prompt()
+            self._worksheet.stop_es_prompt()
         if self._viewer.start_contour(phase=phase, view=view, chamber="LV"):
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay(
@@ -329,7 +422,7 @@ class MainWindow(QMainWindow):
             self._show_status("Switch to 2D view for MBS-lite")
             return
         if phase == "ED":
-            self._measurement_panel.tools.stop_es_prompt()
+            self._worksheet.stop_es_prompt()
         if self._viewer.start_model_contour(phase=phase, view=view, chamber="LV"):
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay(
@@ -343,7 +436,7 @@ class MainWindow(QMainWindow):
 
     def _on_es_button_pressed(self, view: str, phase: str) -> None:
         if phase == "ES":
-            self._measurement_panel.tools.stop_es_prompt()
+            self._worksheet.stop_es_prompt()
 
     def _on_lv2d_all_diastole(self) -> None:
         if self._view_mode != "2d":
@@ -496,7 +589,7 @@ class MainWindow(QMainWindow):
             extra_lines = (
                 f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})",
             )
-            self._measurement_panel.tools.start_es_prompt(mode, view_label)
+            self._worksheet.start_es_prompt(mode, view_label)
             status = (
                 f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})"
             )
@@ -524,7 +617,7 @@ class MainWindow(QMainWindow):
         ):
             self._lav_bi_active = False
         elif contour.phase.upper() == "ES":
-            self._measurement_panel.tools.stop_es_prompt()
+            self._worksheet.stop_es_prompt()
 
         self._viewer._refresh_frame_overlays(extra_lines=extra_lines)
 
@@ -576,6 +669,7 @@ class MainWindow(QMainWindow):
             self._controller.set_playing(False)
 
         self._view_mode = mode_name
+        self._system_bar.set_view_mode(mode_name)
         if mode_name == "doppler":
             self._view_stack.setCurrentWidget(self._doppler_widget)
             if self._viewer._current_frame is not None:
@@ -644,9 +738,14 @@ class MainWindow(QMainWindow):
             and event.modifiers() == Qt.KeyboardModifier.NoModifier
             and self._view_mode == "2d"
         ):
-            if self._viewer.refine_active_open_contour():
+            refined, mode = self._viewer.refine_active_open_contour()
+            if refined:
                 self._controller.on_contours_changed(self._viewer.contours())
-                self._show_status("Уточнение границ (active contour)")
+                self._show_status(
+                    "Gradient refine (R)"
+                    if mode == "gradient"
+                    else "Geometry smooth (R)"
+                )
             else:
                 self._show_status("Нет LV open-arc контура на текущем кадре")
             event.accept()

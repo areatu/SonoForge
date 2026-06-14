@@ -41,6 +41,12 @@ def _find_vti_cm(dto: DopplerMeasurementDTO) -> float | None:
     return None
 
 
+def _ratio(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator in (None, 0):
+        return None
+    return numerator / denominator
+
+
 def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
     """Derive clinical Doppler metrics from raw markers."""
 
@@ -48,9 +54,12 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
     a_cm_s = _find_peak_velocity(dto, "a")
     e_prime_sept_cm_s = _find_peak_velocity(dto, "e_sept", "esept")
     e_prime_lat_cm_s = _find_peak_velocity(dto, "e_lat", "elat")
+    a_prime_sept_cm_s = _find_peak_velocity(dto, "a_sept", "aprime_sept", "a_prime_sept")
+    a_prime_lat_cm_s = _find_peak_velocity(dto, "a_lat", "aprime_lat", "a_prime_lat")
     vpeak_cm_s = _find_peak_velocity(dto, "vmax", "v_peak", "vmax")
+    tr_vmax_cm_s = _find_peak_velocity(dto, "tr_vmax", "trvmax", "tr")
 
-    e_a_ratio = e_cm_s / a_cm_s if e_cm_s is not None and a_cm_s not in (None, 0) else None
+    e_a_ratio = _ratio(e_cm_s, a_cm_s)
 
     e_prime_values = [
         value
@@ -60,11 +69,13 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
     e_prime_avg_cm_s = (
         sum(e_prime_values) / len(e_prime_values) if e_prime_values else None
     )
-    e_over_e_prime = (
-        e_cm_s / e_prime_avg_cm_s
-        if e_cm_s is not None and e_prime_avg_cm_s not in (None, 0)
-        else None
-    )
+    e_over_e_prime = _ratio(e_cm_s, e_prime_avg_cm_s)
+    e_over_e_prime_sept = _ratio(e_cm_s, e_prime_sept_cm_s)
+    e_over_e_prime_lat = _ratio(e_cm_s, e_prime_lat_cm_s)
+
+    a_prime_values = [v for v in (a_prime_sept_cm_s, a_prime_lat_cm_s) if v is not None]
+    a_prime_avg = sum(a_prime_values) / len(a_prime_values) if a_prime_values else None
+    e_prime_over_a_prime = _ratio(e_prime_avg_cm_s, a_prime_avg)
 
     dt_ms = _find_interval_duration_ms(dto, "dt")
     ivrt_ms = _find_interval_duration_ms(dto, "ivrt")
@@ -94,6 +105,12 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
         e_prime_lat_cm_s=e_prime_lat_cm_s,
         e_prime_avg_cm_s=e_prime_avg_cm_s,
         e_over_e_prime=e_over_e_prime,
+        e_over_e_prime_sept=e_over_e_prime_sept,
+        e_over_e_prime_lat=e_over_e_prime_lat,
+        e_prime_over_a_prime=e_prime_over_a_prime,
+        a_prime_sept_cm_s=a_prime_sept_cm_s,
+        a_prime_lat_cm_s=a_prime_lat_cm_s,
+        tr_vmax_cm_s=tr_vmax_cm_s,
         vti_cm=vti_cm,
         vpeak_cm_s=vpeak_cm_s,
         vmean_cm_s=vmean_cm_s,

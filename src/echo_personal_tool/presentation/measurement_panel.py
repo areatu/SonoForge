@@ -20,7 +20,6 @@ from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
-from echo_personal_tool.presentation.measurement_tools_panel import MeasurementToolsPanel
 
 
 class MeasurementPanel(QWidget):
@@ -32,8 +31,6 @@ class MeasurementPanel(QWidget):
         super().__init__(parent)
         self._measurement_snapshot: MeasurementSnapshot | None = None
         self._syncing_patient_metrics = False
-
-        self.tools = MeasurementToolsPanel()
 
         patient_header = QLabel("Пациент")
         patient_header.setStyleSheet("font-weight: bold; font-size: 13px;")
@@ -57,9 +54,6 @@ class MeasurementPanel(QWidget):
         patient_row.addWidget(self._weight_spin)
         patient_row.addStretch(1)
 
-        tools_header = QLabel("Measurement tools")
-        tools_header.setStyleSheet("font-weight: bold; font-size: 13px;")
-
         self._summary_label = QLabel()
         self._summary_label.setWordWrap(True)
         self._summary_label.setTextInteractionFlags(
@@ -80,12 +74,9 @@ class MeasurementPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addWidget(patient_header)
         layout.addLayout(patient_row)
-        layout.addWidget(tools_header)
-        layout.addWidget(self.tools)
         layout.addWidget(summary_scroll, stretch=1)
 
-        self.setMinimumWidth(300)
-        self.tools.setMinimumHeight(360)
+        self.setMinimumWidth(280)
 
         self._refresh_text()
 
@@ -163,6 +154,18 @@ class MeasurementPanel(QWidget):
         if ra_lines:
             sections.append(ra_lines)
 
+        rv_lines = self._format_rv_section(snapshot)
+        if rv_lines:
+            sections.append(rv_lines)
+
+        lvm_lines = self._format_lvm_section(snapshot)
+        if lvm_lines:
+            sections.append(lvm_lines)
+
+        diastology_lines = self._format_diastology_section(snapshot)
+        if diastology_lines:
+            sections.append(diastology_lines)
+
         linear_lines = self._format_linear_section(snapshot)
         if linear_lines:
             sections.append(linear_lines)
@@ -198,6 +201,10 @@ class MeasurementPanel(QWidget):
             self._optional_line("e' lat", doppler.e_prime_lat_cm_s, " cm/s"),
             self._optional_line("e' avg", doppler.e_prime_avg_cm_s, " cm/s"),
             self._optional_line("E/e'", doppler.e_over_e_prime, decimals=2),
+            self._optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
+            self._optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
+            self._optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
+            self._optional_line("TR Vmax", doppler.tr_vmax_cm_s, " cm/s"),
             self._optional_line("VTI", doppler.vti_cm, " cm"),
             self._optional_line("Vpeak", doppler.vpeak_cm_s, " cm/s"),
             self._optional_line("Vmean", doppler.vmean_cm_s, " cm/s"),
@@ -308,6 +315,27 @@ class MeasurementPanel(QWidget):
             lines.append(rav_line)
 
         return lines if len(lines) > 1 else []
+
+    def _format_rv_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
+        if snapshot is None:
+            return []
+        lines = ["Right ventricle"]
+        if snapshot.rv_fac_percent is not None:
+            lines.append(self._line("FAC", snapshot.rv_fac_percent, " %"))
+        rv = snapshot.rv_simpson
+        if rv and rv.max_volume_ml is not None:
+            lines.append(self._line("RV volume", rv.max_volume_ml, " mL"))
+        return lines if len(lines) > 1 else []
+
+    def _format_lvm_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
+        if snapshot is None or snapshot.lvm_g is None:
+            return []
+        return ["LV mass", self._line("LVM", snapshot.lvm_g, " g")]
+
+    def _format_diastology_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
+        if snapshot is None or not snapshot.diastology_grade:
+            return []
+        return ["Diastolic function", f"  {snapshot.diastology_grade}"]
 
     @staticmethod
     def _view_es_volume(metrics: LvViewMetrics | None) -> float | None:

@@ -21,6 +21,12 @@ class DopplerResults:
     e_prime_lat_cm_s: float | None = None
     e_prime_avg_cm_s: float | None = None
     e_over_e_prime: float | None = None
+    e_over_e_prime_sept: float | None = None
+    e_over_e_prime_lat: float | None = None
+    e_prime_over_a_prime: float | None = None
+    a_prime_sept_cm_s: float | None = None
+    a_prime_lat_cm_s: float | None = None
+    tr_vmax_cm_s: float | None = None
     vti_cm: float | None = None
     vpeak_cm_s: float | None = None
     vmean_cm_s: float | None = None
@@ -98,6 +104,9 @@ class MeasurementSnapshot:
     la_simpson: ChamberSimpsonResult | None = None
     ra_simpson: ChamberSimpsonResult | None = None
     rv_simpson: ChamberSimpsonResult | None = None
+    lvm_g: float | None = None
+    rv_fac_percent: float | None = None
+    diastology_grade: str | None = None
     linear_measurements: tuple[LinearMeasurement, ...] = ()
     spacing_calibrated: bool = True
     height_cm: float | None = None

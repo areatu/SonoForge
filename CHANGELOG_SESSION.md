@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-06-14 22:00] Phase 2 UI → Doppler → ASE → Refine → ONNX
+- **Тип:** feature
+- **Файлы:** `system_bar.py`, `measurement_worksheet.py`, `measurement_action.py`, `main_window.py`, `measurement_panel.py`, `doppler_widget.py`, `app_controller.py`, `lvm.py`, `rv_fac.py`, `diastology_grade.py`, `mbs_lite_service.py`, `segmentation_service.py`, `doppler_metrics.py`, `README.md`
+- **Суть:** EchoPac SystemBar + worksheet вместо кнопок; Doppler toolbar; ASE LVM/FAC/LA volume/diastology grades; gradient refine на R; ONNX auto-segment по worksheet ED/ES с closed→open arc.
+
 ## [2026-06-13 21:02] Preview-only thumbnail worker по умолчанию 96
 - **Тип:** feature
 - **Файлы:** `thumbnail_loader_worker.py`, `test_thumbnail_qimage.py`
