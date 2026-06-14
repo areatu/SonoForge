@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QPushButton
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.presentation.main_window import MainWindow
 
 
@@ -15,6 +20,42 @@ def _make_window(qtbot) -> MainWindow:
     window.show()
     qtbot.waitExposed(window)
     return window
+
+
+def _build_study(total_instances: int = 8) -> StudyMetadata:
+    instances = tuple(
+        InstanceMetadata(
+            sop_instance_uid=f"main-window-uid-{index}",
+            series_uid="main-window-series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=33.3,
+            series_description="A4C",
+            path=Path(f"/tmp/main-window-uid-{index}.dcm"),
+            media_format="dicom",
+        )
+        for index in range(total_instances)
+    )
+    series = SeriesMetadata(
+        series_uid="main-window-series-1",
+        study_uid="main-window-study-1",
+        modality="US",
+        description="A4C",
+        instances=instances,
+    )
+    return StudyMetadata(
+        study_uid="main-window-study-1",
+        study_datetime=datetime(2026, 6, 13, 12, 0, 0),
+        series=(series,),
+    )
+
+
+def test_main_window_has_no_doppler_toggle_button(qtbot) -> None:
+    window = _make_window(qtbot)
+    labels = {button.text() for button in window.findChildren(QPushButton)}
+    assert "Doppler" not in labels
+    assert "2D" not in labels
 
 
 def test_set_view_mode_switches_to_doppler_and_shows_current_frame(qtbot) -> None:
@@ -85,3 +126,28 @@ def test_escape_and_enter_delegate_to_active_doppler_tool(qtbot, monkeypatch) ->
 
     assert finish_calls == [True]
     assert cancel_calls == [True]
+
+
+def test_studies_loaded_requests_visible_previews_once_in_real_flow(
+    qtbot, monkeypatch
+) -> None:
+    window = _make_window(qtbot)
+    window._browser.resize(320, 260)
+    window._browser.show()
+    qtbot.waitExposed(window._browser)
+
+    call_count = 0
+    original_request_visible_previews = window._browser.request_visible_previews
+
+    def counted_request_visible_previews(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return original_request_visible_previews(*args, **kwargs)
+
+    monkeypatch.setattr(
+        window._browser,
+        "request_visible_previews",
+        counted_request_visible_previews,
+    )
+    window._on_studies_loaded([_build_study()])
+    assert call_count == 1

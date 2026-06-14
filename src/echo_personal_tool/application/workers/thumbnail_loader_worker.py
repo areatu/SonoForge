@@ -24,7 +24,11 @@ def thumbnail_frame_index(number_of_frames: int) -> int:
 
 
 def numpy_pixels_to_qimage(pixels: np.ndarray, size: int = THUMBNAIL_SIZE) -> QImage:
-    """Convert a grayscale or BGR frame to a scaled QImage."""
+    """Convert a grayscale or BGR frame to a scaled QImage preserving aspect ratio.
+
+    ``size`` is the maximum width and height of the bounding box; the result fits
+    inside ``size x size`` without stretching.
+    """
     arr = np.ascontiguousarray(pixels)
     if is_color_frame(arr):
         rgb = bgr_to_rgb(arr)
@@ -76,6 +80,8 @@ class ThumbnailLoaderWorker(QRunnable):
         sop_instance_uid: str,
         number_of_frames: int = 1,
         media_format: str = "dicom",
+        preview_size: int = 96,
+        preview_only: bool = True,
         parent: QObject | None = None,
     ) -> None:
         super().__init__()
@@ -83,6 +89,8 @@ class ThumbnailLoaderWorker(QRunnable):
         self._sop_instance_uid = sop_instance_uid
         self._number_of_frames = number_of_frames
         self._media_format = media_format
+        self._preview_size = int(preview_size)
+        self._preview_only = bool(preview_only)
         self.signals = ThumbnailLoaderSignals(parent)
         self.setAutoDelete(True)
 
@@ -99,7 +107,9 @@ class ThumbnailLoaderWorker(QRunnable):
             else:
                 reader = DicomReaderImpl()
                 pixels = reader.read_pixels(self._path, frame_index=frame_index)
-            image = numpy_pixels_to_qimage(pixels)
+            # MVP is strict preview-only: preview_only=False is kept for compatibility
+            # but currently does not switch to full-size rendering.
+            image = numpy_pixels_to_qimage(pixels, size=self._preview_size)
             self.signals.finished.emit(self._sop_instance_uid, image)
         except Exception as exc:  # noqa: BLE001 - surface to UI
             self.signals.failed.emit(self._sop_instance_uid, str(exc))

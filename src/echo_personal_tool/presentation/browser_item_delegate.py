@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem,
 from echo_personal_tool.domain.models import InstanceMetadata
 
 _ITEM_DATA_ROLE = 256
-THUMB_SIDE = 128
 THUMB_ROW_HEIGHT = 156
 THUMB_WIDTH = 220
 _TEXT_HEIGHT = 28
@@ -51,18 +50,25 @@ class InstanceThumbnailDelegate(QStyledItemDelegate):
             painter.fillRect(option.rect, option.palette.highlight())
 
         rect = option.rect
-        icon_size = min(THUMB_SIDE, rect.width() - 8, THUMB_ROW_HEIGHT - _TEXT_HEIGHT - 8)
-        icon_x = rect.x() + (rect.width() - icon_size) // 2
-        icon_y = rect.y() + 4
-        icon_rect = QRect(icon_x, icon_y, icon_size, icon_size)
+        max_thumb_width = max(1, rect.width() - 8)
+        max_thumb_height = max(1, THUMB_ROW_HEIGHT - _TEXT_HEIGHT - 8)
+        thumb_area_top = rect.y() + 4
 
         pixmap = tree.thumbnail_pixmap(instance.sop_instance_uid)  # type: ignore[attr-defined]
         if pixmap is not None and not pixmap.isNull():
-            painter.drawPixmap(icon_rect, pixmap)
+            scaled = pixmap.scaled(
+                max_thumb_width,
+                max_thumb_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            icon_x = rect.x() + (rect.width() - scaled.width()) // 2
+            icon_y = thumb_area_top + (max_thumb_height - scaled.height()) // 2
+            painter.drawPixmap(icon_x, icon_y, scaled)
 
         text_rect = QRect(
             rect.x() + 2,
-            icon_y + icon_size + 2,
+            thumb_area_top + max_thumb_height + 2,
             rect.width() - 4,
             _TEXT_HEIGHT,
         )

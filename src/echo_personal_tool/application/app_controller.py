@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from functools import partial
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
@@ -11,15 +13,19 @@ from PySide6.QtGui import QImage
 
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
+from echo_personal_tool.application.study_measurement_session import StudyMeasurementSessionStore
+from echo_personal_tool.application.thumbnail_scheduler import (
+    ThumbnailPriority,
+    ThumbnailScheduler,
+)
 from echo_personal_tool.application.workers.dicom_decode_worker import DicomDecodeWorker
 from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
 from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
+from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements
+from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
-from echo_personal_tool.domain.calculations.la_area_length import (
-    from_measurements as la_from_measurements,
-)
 from echo_personal_tool.domain.calculations.lvef_simpson import calculate
 from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
 from echo_personal_tool.domain.models import (
@@ -40,6 +46,7 @@ from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 _FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class AppController(QObject):
@@ -56,10 +63,14 @@ class AppController(QObject):
         self,
         thread_pool: QThreadPool | None = None,
         segmenter: IOnnxSegmenter | None = None,
+        thumbnail_scheduler: ThumbnailScheduler | None = None,
+        thumbnail_max_in_flight: int = 2,
     ) -> None:
         super().__init__()
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
         self._state_manager = StateManager()
+        self._measurement_session = StudyMeasurementSessionStore()
+        self._current_study_uid: str | None = None
         self._segmenter = segmenter or OnnxInferenceEngine()
         self._frame_cache = FrameCache()
         self._timer = QTimer(self)
@@ -75,9 +86,18 @@ class AppController(QObject):
         self._pending_load_id = 0
         self._decode_request_id = 0
         self._pending_decode_id = 0
-        self._pending_thumbnails: set[str] = set()
+        self._thumbnail_max_in_flight = thumbnail_max_in_flight
+        self._thumbnail_scheduler = (
+            thumbnail_scheduler
+            if thumbnail_scheduler is not None
+            else ThumbnailScheduler(max_in_flight=self._thumbnail_max_in_flight)
+        )
+        self._thumbnail_instances: dict[str, InstanceMetadata] = {}
+        self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
         self._current_frame_pixels: np.ndarray | None = None
         self._segment_in_progress = False
+        self._scan_started_at: float | None = None
+        self._first_preview_emitted = False
         self._state_manager.state_changed.connect(self._on_state_changed)
 
     @property
@@ -89,6 +109,11 @@ class AppController(QObject):
         return self._state_manager
 
     def open_folder(self, root: Path, error_log_path: Path | None = None) -> None:
+        self._measurement_session.clear()
+        self._current_study_uid = None
+        self._scan_started_at = perf_counter()
+        self._first_preview_emitted = False
+        logger.info("scan_start root=%s", root)
         self.status_message.emit(f"Scanning {root}…")
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
         worker.signals.finished.connect(self._on_studies_scanned)
@@ -98,10 +123,30 @@ class AppController(QObject):
     def _on_studies_scanned(self, studies: object) -> None:
         self._studies = list(studies)  # type: ignore[arg-type]
         count = len(self._studies)
+        elapsed_ms = (
+            (perf_counter() - self._scan_started_at) * 1000.0
+            if self._scan_started_at is not None
+            else None
+        )
+        if elapsed_ms is None:
+            logger.info("scan_done studies=%d", count)
+        else:
+            logger.info("scan_done studies=%d duration_ms=%.2f", count, elapsed_ms)
+        self._scan_started_at = None
         self.status_message.emit(f"Loaded {count} studies")
         self.studies_loaded.emit(self._studies)
 
     def _on_scan_failed(self, message: str) -> None:
+        elapsed_ms = (
+            (perf_counter() - self._scan_started_at) * 1000.0
+            if self._scan_started_at is not None
+            else None
+        )
+        if elapsed_ms is None:
+            logger.warning("scan_failed reason=%s", message)
+        else:
+            logger.warning("scan_failed duration_ms=%.2f reason=%s", elapsed_ms, message)
+        self._scan_started_at = None
         self.status_message.emit(f"Scan failed: {message}")
         self.scan_failed.emit(message)
 
@@ -136,9 +181,12 @@ class AppController(QObject):
             instance,
             total_frames=total_frames,
             frame_time_ms=frame_time_ms,
+            emit=False,
         )
         if frame_index != 0:
             self._state_manager.set_frame(frame_index)
+        self._current_study_uid = self._resolve_study_uid(instance)
+        self._recompute_measurements()
         if instance.media_format == "dicom":
             self._state_manager.set_decode_in_progress(True)
             self._decode_request_id += 1
@@ -156,30 +204,75 @@ class AppController(QObject):
         self._request_frame_if_needed(self._state_manager.snapshot)
 
     def load_thumbnail(self, instance: InstanceMetadata) -> None:
+        self.request_thumbnail_preview(instance, ThumbnailPriority.P2_BACKGROUND)
+
+    def request_thumbnail_preview(
+        self,
+        instance: InstanceMetadata,
+        priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
+    ) -> None:
         if instance.path is None:
             return
         uid = instance.sop_instance_uid
-        if uid in self._pending_thumbnails:
-            return
+        self._thumbnail_instances[uid] = instance
+        self._thumbnail_scheduler.enqueue(uid, priority)
+        self._pump_thumbnail_queue()
 
-        self._pending_thumbnails.add(uid)
-        worker = ThumbnailLoaderWorker(
-            instance.path,
-            uid,
-            number_of_frames=instance.number_of_frames,
-            media_format=instance.media_format,
-            parent=self,
-        )
-        worker.signals.finished.connect(self._on_thumbnail_loaded)
-        worker.signals.failed.connect(self._on_thumbnail_failed)
-        self._thread_pool.start(worker)
+    def request_thumbnail_previews(
+        self,
+        instances: list[InstanceMetadata],
+        priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
+    ) -> None:
+        uids: list[str] = []
+        for instance in instances:
+            if instance.path is None:
+                continue
+            uid = instance.sop_instance_uid
+            self._thumbnail_instances[uid] = instance
+            uids.append(uid)
+        if not uids:
+            return
+        self._thumbnail_scheduler.reprioritize(uids, priority)
+        self._pump_thumbnail_queue()
+
+    def _pump_thumbnail_queue(self) -> None:
+        while True:
+            batch = self._thumbnail_scheduler.next_batch(limit=16)
+            if not batch:
+                return
+            for task in batch:
+                instance = self._thumbnail_instances.get(task.sop_instance_uid)
+                if instance is None or instance.path is None:
+                    self._thumbnail_scheduler.mark_failed(task.sop_instance_uid)
+                    self._thumbnail_instances.pop(task.sop_instance_uid, None)
+                    continue
+                worker = ThumbnailLoaderWorker(
+                    instance.path,
+                    task.sop_instance_uid,
+                    number_of_frames=instance.number_of_frames,
+                    media_format=instance.media_format,
+                    parent=self,
+                )
+                worker.signals.finished.connect(self._on_thumbnail_loaded)
+                worker.signals.failed.connect(self._on_thumbnail_failed)
+                self._thumbnail_in_flight[task.sop_instance_uid] = task.priority
+                self._thread_pool.start(worker)
 
     def _on_thumbnail_loaded(self, sop_instance_uid: str, image: QImage) -> None:
-        self._pending_thumbnails.discard(sop_instance_uid)
+        self._thumbnail_scheduler.mark_done(sop_instance_uid)
+        self._thumbnail_in_flight.pop(sop_instance_uid, None)
+        self._thumbnail_instances.pop(sop_instance_uid, None)
+        if not self._first_preview_emitted:
+            self._first_preview_emitted = True
+            logger.info("first_preview_emitted uid=%s", sop_instance_uid)
         self.thumbnail_loaded.emit(sop_instance_uid, image)
+        self._pump_thumbnail_queue()
 
     def _on_thumbnail_failed(self, sop_instance_uid: str, _message: str) -> None:
-        self._pending_thumbnails.discard(sop_instance_uid)
+        self._thumbnail_scheduler.mark_failed(sop_instance_uid)
+        self._thumbnail_in_flight.pop(sop_instance_uid, None)
+        self._thumbnail_instances.pop(sop_instance_uid, None)
+        self._pump_thumbnail_queue()
 
     def load_first_instance_of_series(self, study: StudyMetadata, series_uid: str) -> None:
         for series in study.series:
@@ -258,6 +351,8 @@ class AppController(QObject):
             raise TypeError("Expected DopplerMeasurementDTO")
 
         self._state_manager.set_doppler_measurement(dto, emit=False)
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.set_doppler_measurement(study_uid, dto)
         self._recompute_measurements()
         self.status_message.emit(self._format_doppler_summary(dto))
 
@@ -267,7 +362,10 @@ class AppController(QObject):
         ):
             raise TypeError("Expected a list of Contour objects")
 
-        self._state_manager.set_contours(tuple(contours), emit=False)
+        contour_tuple = tuple(contours)
+        self._state_manager.set_contours(contour_tuple, emit=False)
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_contours(study_uid, contour_tuple)
         self._recompute_measurements()
 
     def on_linear_measurements_changed(self, measurements: object) -> None:
@@ -276,7 +374,10 @@ class AppController(QObject):
         ):
             raise TypeError("Expected a list of LinearMeasurement objects")
 
-        self._state_manager.set_linear_measurements(tuple(measurements), emit=False)
+        measurement_tuple = tuple(measurements)
+        self._state_manager.set_linear_measurements(measurement_tuple, emit=False)
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_linear_measurements(study_uid, measurement_tuple)
         self._recompute_measurements()
 
     def on_manual_calibration(self, spacing: object) -> None:
@@ -285,18 +386,61 @@ class AppController(QObject):
         row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
         if row_spacing <= 0 or col_spacing <= 0:
             raise ValueError("Manual pixel spacing must be positive")
-        self._state_manager.set_manual_pixel_spacing((row_spacing, col_spacing))
+        spacing_tuple = (row_spacing, col_spacing)
+        self._state_manager.set_manual_pixel_spacing(spacing_tuple)
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.set_manual_pixel_spacing(study_uid, spacing_tuple)
         self._recompute_measurements()
         self.status_message.emit(
             f"Калибровка: {row_spacing:.3f} × {col_spacing:.3f} mm/px (ручная)"
         )
 
+    def needs_manual_calibration(self) -> bool:
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom":
+            return False
+        state = self._state_manager.snapshot
+        if state.manual_pixel_spacing is not None:
+            return False
+        study_uid = self._resolve_study_uid(instance)
+        session = self._measurement_session.get(study_uid)
+        if session.manual_pixel_spacing is not None:
+            return False
+        return True
+
+    def on_patient_metrics_changed(
+        self,
+        height_cm: float | None,
+        weight_kg: float | None,
+    ) -> None:
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.set_patient_metrics(study_uid, height_cm, weight_kg)
+        self._recompute_measurements()
+
     def clear_manual_calibration(self) -> None:
-        if self._state_manager.snapshot.manual_pixel_spacing is None:
+        if (
+            self._state_manager.snapshot.manual_pixel_spacing is None
+            and self._resolve_study_uid() not in self._measurement_session._studies
+        ):
+            return
+        study_uid = self._resolve_study_uid()
+        session = self._measurement_session.get(study_uid)
+        if (
+            self._state_manager.snapshot.manual_pixel_spacing is None
+            and session.manual_pixel_spacing is None
+        ):
             return
         self._state_manager.clear_manual_pixel_spacing()
+        self._measurement_session.set_manual_pixel_spacing(study_uid, None)
         self._recompute_measurements()
         self.status_message.emit("Ручная калибровка сброшена")
+
+    def reset_measurements_and_calibration(self) -> None:
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.reset_measurements(study_uid)
+        self._state_manager.reset_measurement_inputs()
+        self._recompute_measurements()
+        self.status_message.emit("Измерения и калибровка сброшены")
 
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
@@ -312,8 +456,14 @@ class AppController(QObject):
     def _resolve_pixel_spacing(
         self,
         state: ViewerState,
+        session_manual_spacing: tuple[float, float] | None = None,
     ) -> tuple[tuple[float, float], bool]:
         """Return spacing for calculations and whether it is calibrated (DICOM or manual)."""
+        manual_spacing = state.manual_pixel_spacing or session_manual_spacing
+        if manual_spacing is not None:
+            row_spacing, col_spacing = manual_spacing
+            if row_spacing > 0.0 and col_spacing > 0.0:
+                return manual_spacing, True
         spacing = state.effective_pixel_spacing
         if spacing is not None:
             row_spacing, col_spacing = spacing
@@ -321,25 +471,70 @@ class AppController(QObject):
                 return spacing, True
         return (1.0, 1.0), False
 
+    def _resolve_study_uid(
+        self,
+        instance: InstanceMetadata | None = None,
+    ) -> str:
+        active = instance or self._current_instance or self._state_manager.snapshot.instance
+        if active is None:
+            return "__default__"
+        for study in self._studies:
+            for series in study.series:
+                if series.series_uid == active.series_uid:
+                    return study.study_uid
+                if any(
+                    item.sop_instance_uid == active.sop_instance_uid
+                    for item in series.instances
+                ):
+                    return study.study_uid
+        if self._current_study_uid is not None:
+            return self._current_study_uid
+        return active.series_uid
+
     def _recompute_measurements(self) -> None:
         state = self._state_manager.snapshot
-        doppler = compute(state.doppler_measurement) if state.doppler_measurement else None
-        pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(state)
-        lvef = calculate(state.contours, pixel_spacing)
-        teichholz = from_linear_measurements(state.linear_measurements)
-        la_spacing = pixel_spacing if spacing_calibrated else None
-        la_volume = la_from_measurements(
-            state.contours,
-            state.linear_measurements,
-            la_spacing,
+        study_uid = self._resolve_study_uid()
+        session = self._measurement_session.get(study_uid)
+        doppler = (
+            compute(session.doppler_measurement)
+            if session.doppler_measurement is not None
+            else None
+        )
+        pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(
+            state,
+            session.manual_pixel_spacing,
+        )
+        lvef = calculate(session.contours, pixel_spacing)
+        teichholz = from_linear_measurements(session.linear_measurements)
+        la_simpson = calculate_chamber(session.contours, "LA", pixel_spacing)
+        ra_simpson = calculate_chamber(session.contours, "RA", pixel_spacing)
+        base_snapshot = MeasurementSnapshot(
+            doppler=doppler,
+            lvef=lvef,
+            teichholz=teichholz,
+            la_simpson=la_simpson,
+            ra_simpson=ra_simpson,
+            linear_measurements=session.linear_measurements,
+            spacing_calibrated=spacing_calibrated,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+        )
+        indexed = compute_indexed_measurements(
+            base_snapshot,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
         )
         snapshot = MeasurementSnapshot(
             doppler=doppler,
             lvef=lvef,
             teichholz=teichholz,
-            la_volume=la_volume,
-            linear_measurements=state.linear_measurements,
+            la_simpson=la_simpson,
+            ra_simpson=ra_simpson,
+            linear_measurements=session.linear_measurements,
             spacing_calibrated=spacing_calibrated,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            indexed=indexed,
         )
         self._state_manager.set_measurement_snapshot(snapshot, emit=False)
         self._state_manager.emit_state()

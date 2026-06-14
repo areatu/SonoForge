@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QFileDialog,
     QHBoxLayout,
     QMainWindow,
@@ -28,6 +29,8 @@ from echo_personal_tool.presentation.local_browser import LocalBrowserWidget
 from echo_personal_tool.presentation.measurement_panel import MeasurementPanel
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
+logger = logging.getLogger(__name__)
+
 
 class MainWindow(QMainWindow):
     """Phase 1 layout: browser | viewer | placeholder panel."""
@@ -37,7 +40,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ECHO Personal Tool")
         self.resize(1280, 800)
         self._view_mode = "2d"
-        self._lav_workflow_active = False
+        self._click_to_frame_started_at: float | None = None
+        self._lav_bi_active = False
 
         self._controller = controller or AppController()
         self._controller.studies_loaded.connect(self._on_studies_loaded)
@@ -67,22 +71,6 @@ class MainWindow(QMainWindow):
         center = QWidget()
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
-
-        toggle_row = QHBoxLayout()
-        self._view_mode_group = QButtonGroup(self)
-        self._view_mode_group.setExclusive(True)
-        self._view_2d_button = QPushButton("2D")
-        self._view_2d_button.setCheckable(True)
-        self._view_2d_button.clicked.connect(lambda: self.set_view_mode("2d"))
-        self._view_mode_group.addButton(self._view_2d_button)
-        toggle_row.addWidget(self._view_2d_button)
-        self._view_doppler_button = QPushButton("Doppler")
-        self._view_doppler_button.setCheckable(True)
-        self._view_doppler_button.clicked.connect(lambda: self.set_view_mode("doppler"))
-        self._view_mode_group.addButton(self._view_doppler_button)
-        toggle_row.addWidget(self._view_doppler_button)
-        toggle_row.addStretch(1)
-        center_layout.addLayout(toggle_row)
 
         self._view_stack = QStackedWidget()
         center_layout.addWidget(self._view_stack, stretch=1)
@@ -121,8 +109,6 @@ class MainWindow(QMainWindow):
         self._measurement_panel.update_from_state(self._controller.state_manager.snapshot)
         self._wire_measurement_tools()
         self._view_stack.setCurrentWidget(self._viewer)
-        self._view_2d_button.setChecked(True)
-        self._view_doppler_button.setChecked(False)
         self._viewer.installEventFilter(self)
         self._viewer._graphics.installEventFilter(self)
         self._viewer._view.installEventFilter(self)
@@ -191,8 +177,6 @@ class MainWindow(QMainWindow):
                 and self._doppler_widget.finish_trace()
             ):
                 return
-        elif self._viewer.finish_calibration():
-            return
         elif self._viewer.finish_contour():
             return
 
@@ -218,25 +202,45 @@ class MainWindow(QMainWindow):
         self._controller.open_folder(Path(directory), error_log_path=log_path)
 
     def _on_studies_loaded(self, studies: object) -> None:
-        self._browser.populate(list(studies))  # type: ignore[arg-type]
+        study_list = list(studies)  # type: ignore[arg-type]
+        populate_started_at = perf_counter()
+        self._browser.populate(study_list)
+        populate_elapsed_ms = (perf_counter() - populate_started_at) * 1000.0
+        logger.info(
+            "tree_populate_done studies=%d duration_ms=%.2f",
+            len(study_list),
+            populate_elapsed_ms,
+        )
+        self._browser.request_visible_previews()
 
     def _on_scan_failed(self, message: str) -> None:
         QMessageBox.warning(self, "Scan failed", message)
 
     def _on_instance_selected(self, instance: object) -> None:
         if isinstance(instance, InstanceMetadata):
+            self._click_to_frame_started_at = perf_counter()
             self._measurement_panel.tools.stop_es_prompt()
             self._doppler_widget.clear_measurements()
             self._controller.load_instance(instance)
 
     def _on_frame_loaded(self, pixels: object) -> None:
+        if self._click_to_frame_started_at is not None:
+            elapsed_ms = (perf_counter() - self._click_to_frame_started_at) * 1000.0
+            logger.info("click_to_frame_loaded duration_ms=%.2f", elapsed_ms)
+            self._click_to_frame_started_at = None
         image = np.asarray(pixels)
         if self._view_mode == "doppler":
             self._doppler_widget.show_spectrogram(image)
             return
         self._viewer.show_frame(image)
+        if self._controller.needs_manual_calibration():
+            if self._viewer.start_calibration_caliper():
+                self._show_status(
+                    "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
+                )
 
     def _on_frame_load_failed(self, message: str) -> None:
+        self._click_to_frame_started_at = None
         QMessageBox.warning(self, "Load failed", message)
 
     def _show_status(self, message: str) -> None:
@@ -252,9 +256,56 @@ class MainWindow(QMainWindow):
         tools.lv2d_all_diastole_requested.connect(self._on_lv2d_all_diastole)
         tools.lv2d_es_requested.connect(self._on_lv2d_es)
         tools.la_diameter_requested.connect(self._on_la_diameter)
-        tools.la_volume_requested.connect(self._on_la_volume)
+        tools.lav_4c_requested.connect(self._on_lav_4c)
+        tools.lav_bi_requested.connect(self._on_lav_bi)
+        tools.ra_diameter_requested.connect(self._on_ra_diameter)
+        tools.ra_area_requested.connect(self._on_ra_area)
+        tools.rav_volume_requested.connect(self._on_rav_volume)
         tools.rv_basal_requested.connect(self._on_rv_basal)
         tools.rv_tapse_requested.connect(self._on_rv_tapse)
+        tools.calibration_requested.connect(self._on_calibration_requested)
+        tools.caliper_requested.connect(self._on_caliper_requested)
+        tools.reset_measurements_requested.connect(self._on_reset_measurements_requested)
+        self._measurement_panel.patient_metrics_changed.connect(
+            self._controller.on_patient_metrics_changed
+        )
+
+    def _on_caliper_requested(self) -> None:
+        if self._view_mode != "2d":
+            self._show_status("Switch to 2D view for linear caliper")
+            return
+        if self._viewer.activate_linear_caliper():
+            self._show_status("Linear caliper: 1-й клик — начало, 2-й — конец")
+        else:
+            self._show_status("Load a frame first")
+
+    def _on_reset_measurements_requested(self) -> None:
+        self._measurement_panel.tools.stop_es_prompt()
+        self._lav_bi_active = False
+        self._viewer.cancel_active_tool()
+        self._doppler_widget.clear_measurements()
+        self._controller.reset_measurements_and_calibration()
+        if (
+            self._view_mode == "2d"
+            and self._controller.needs_manual_calibration()
+            and self._viewer._current_frame is not None
+        ):
+            self._viewer.start_calibration_caliper()
+        self._show_status("Измерения и калибровка сброшены")
+
+    def _on_calibration_requested(self) -> None:
+        if self._view_mode != "2d":
+            self._show_status("Switch to 2D view for calibration")
+            return
+        self._viewer.toggle_calibration_caliper()
+        if self._viewer.is_calibration_active:
+            self._show_status(
+                "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
+            )
+        elif self._viewer._current_frame is None:
+            self._show_status("Load a frame first")
+        else:
+            self._show_status("Калибровка отменена")
 
     def _on_manual_simpson_requested(self, view: str, phase: str) -> None:
         if self._view_mode != "2d":
@@ -262,13 +313,13 @@ class MainWindow(QMainWindow):
             return
         if phase == "ED":
             self._measurement_panel.tools.stop_es_prompt()
-        if self._viewer.start_contour(phase=phase, view=view):
+        if self._viewer.start_contour(phase=phase, view=view, chamber="LV"):
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay(
-                f"Manual {view} {phase}: MA septal → lateral → apex"
+                f"Manual LV {view} {phase}: annulus septal → lateral → apex"
             )
             self._show_status(
-                f"Manual Simpson {view} {phase}: click MA septal, lateral, apex"
+                f"Manual Simpson {view} {phase}: click annulus septal, lateral, apex"
             )
         else:
             self._show_status("Load a frame first or cancel the active tool (Esc)")
@@ -279,13 +330,13 @@ class MainWindow(QMainWindow):
             return
         if phase == "ED":
             self._measurement_panel.tools.stop_es_prompt()
-        if self._viewer.start_model_contour(phase=phase, view=view):
+        if self._viewer.start_model_contour(phase=phase, view=view, chamber="LV"):
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay(
-                f"MBS-lite {view} {phase}: MA septal → lateral → apex"
+                f"MBS-lite LV {view} {phase}: annulus septal → lateral → apex"
             )
             self._show_status(
-                f"MBS-lite {view} {phase}: click MA septal, lateral, apex"
+                f"MBS-lite {view} {phase}: click annulus septal, lateral, apex"
             )
         else:
             self._show_status("Load a frame first or cancel the active tool (Esc)")
@@ -301,7 +352,9 @@ class MainWindow(QMainWindow):
         if self._viewer.start_linear_caliper_sequence(("IVSd", "LVEDD", "LVPWd")):
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay("LV diastole: IVSd → LVEDD → LVPWd")
-            self._show_status("LV diastole: place IVSd, then LVEDD, then LVPWd")
+            self._show_status(
+                "All Diastole: IVSd (2 клика) → LVEDD (2 клика) → LVPWd (2 клика)"
+            )
         else:
             self._show_status("Load a frame first")
 
@@ -314,6 +367,36 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
+    def _has_chamber_contour(self, chamber: str, view: str, phase: str) -> bool:
+        for contour in self._controller.state_manager.snapshot.contours:
+            if (
+                contour.chamber.upper() == chamber.upper()
+                and contour.view.upper() == view.upper()
+                and contour.phase.upper() == phase.upper()
+            ):
+                return True
+        return False
+
+    def _start_chamber_contour(
+        self,
+        chamber: str,
+        phase: str,
+        view: str,
+        *,
+        model: bool = False,
+        overlay: str,
+        status: str,
+    ) -> bool:
+        starter = (
+            self._viewer.start_model_contour if model else self._viewer.start_contour
+        )
+        if not starter(chamber=chamber, phase=phase, view=view):
+            return False
+        self._viewer.clear_frame_overlay()
+        self._viewer.append_frame_overlay(overlay)
+        self._show_status(status)
+        return True
+
     def _on_la_diameter(self) -> None:
         if self._view_mode != "2d":
             return
@@ -322,31 +405,91 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
-    def _on_la_volume(self) -> None:
+    def _on_lav_4c(self) -> None:
         if self._view_mode != "2d":
             return
-        self._lav_workflow_active = True
-        if self._viewer.start_closed_contour(chamber="LA", phase="ES"):
-            self._viewer.clear_frame_overlay()
-            self._viewer.append_frame_overlay("LAV: trace LA border → Enter → length")
-            self._show_status("LAV: trace LA border, press Enter, then place length")
+        self._lav_bi_active = False
+        if not self._start_chamber_contour(
+            "LA",
+            "ES",
+            "A4C",
+            overlay="LAV 4C: LA A4C ES — annulus septal → lateral → apex",
+            status="LAV 4C: annulus septal → lateral → apex",
+        ):
+            self._show_status("Load a frame first or cancel the active tool (Esc)")
+
+    def _on_lav_bi(self) -> None:
+        if self._view_mode != "2d":
+            return
+        has_a4c = self._has_chamber_contour("LA", "A4C", "ES")
+        has_a2c = self._has_chamber_contour("LA", "A2C", "ES")
+        if has_a4c and not has_a2c:
+            self._lav_bi_active = True
+            if not self._start_chamber_contour(
+                "LA",
+                "ES",
+                "A2C",
+                overlay="LAV Bi: LA A2C ES — annulus septal → lateral → apex",
+                status="LAV Bi: annulus septal → lateral → apex",
+            ):
+                self._show_status("Load a frame first or cancel the active tool (Esc)")
+            return
+        self._lav_bi_active = True
+        if not self._start_chamber_contour(
+            "LA",
+            "ES",
+            "A4C",
+            overlay="LAV Bi: шаг 1 — LA A4C ES — annulus septal → lateral → apex",
+            status="LAV Bi: annulus septal → lateral → apex",
+        ):
+            self._show_status("Load a frame first or cancel the active tool (Esc)")
+
+    def _on_ra_diameter(self) -> None:
+        if self._view_mode != "2d":
+            return
+        if self._viewer.start_linear_caliper_for("RA"):
+            self._show_status("Right atrium: place diameter caliper")
         else:
-            self._lav_workflow_active = False
             self._show_status("Load a frame first")
+
+    def _on_ra_area(self) -> None:
+        if self._view_mode != "2d":
+            return
+        if not self._start_chamber_contour(
+            "RA",
+            "ES",
+            "A4C",
+            overlay="S ПП: RA A4C ES — annulus septal → lateral → apex",
+            status="S ПП: annulus septal → lateral → apex",
+        ):
+            self._show_status("Load a frame first or cancel the active tool (Esc)")
+
+    def _on_rav_volume(self) -> None:
+        if self._view_mode != "2d":
+            return
+        if not self._start_chamber_contour(
+            "RA",
+            "ES",
+            "A4C",
+            overlay="RAV: RA A4C ES — annulus septal → lateral → apex",
+            status="RAV: annulus septal → lateral → apex",
+        ):
+            self._show_status("Load a frame first or cancel the active tool (Esc)")
 
     def _on_contour_completed(self, contour: object) -> None:
         if not isinstance(contour, Contour):
             return
-        if contour.chamber.upper() == "LA" and self._lav_workflow_active:
-            self._lav_workflow_active = False
-            if self._viewer.start_linear_caliper_for("LAL"):
-                self._show_status("LAV: place LA length caliper")
+        chamber = contour.chamber.upper()
+        if chamber not in {"LV", "LA", "RA", "RV"}:
             return
-        if contour.chamber.upper() != "LV":
+        if not contour.is_open_arc:
             return
 
         extra_lines: tuple[str, ...] = ()
-        if contour.phase.upper() == "ED":
+        if (
+            chamber == "LV"
+            and contour.phase.upper() == "ED"
+        ):
             mode = "mbs" if contour.source == "model" else "manual"
             view_label = "4C" if contour.view.upper() == "A4C" else "2C"
             es_name = "ESV Auto" if mode == "mbs" else "Systole"
@@ -362,10 +505,28 @@ class MainWindow(QMainWindow):
             ):
                 status += " · нет PixelSpacing (K — калибровка, px / px³)"
             self._show_status(status)
+        elif (
+            self._lav_bi_active
+            and chamber == "LA"
+            and contour.phase.upper() == "ES"
+            and contour.view.upper() == "A4C"
+        ):
+            extra_lines = (
+                "LAV Bi: перейдите на 2C ES и нажмите LAV Bi",
+            )
+            self._show_status(
+                "LAV Bi: шаг 1 завершён — перейдите на 2C ES и нажмите LAV Bi"
+            )
+        elif (
+            contour.phase.upper() == "ES"
+            and chamber == "LA"
+            and contour.view.upper() == "A2C"
+        ):
+            self._lav_bi_active = False
         elif contour.phase.upper() == "ES":
             self._measurement_panel.tools.stop_es_prompt()
 
-        self._viewer._refresh_lv_frame_overlay(extra_lines=extra_lines)
+        self._viewer._refresh_frame_overlays(extra_lines=extra_lines)
 
     def _on_rv_basal(self) -> None:
         if self._view_mode != "2d":
@@ -417,15 +578,11 @@ class MainWindow(QMainWindow):
         self._view_mode = mode_name
         if mode_name == "doppler":
             self._view_stack.setCurrentWidget(self._doppler_widget)
-            self._view_2d_button.setChecked(False)
-            self._view_doppler_button.setChecked(True)
             if self._viewer._current_frame is not None:
                 self._doppler_widget.show_spectrogram(self._viewer._current_frame)
             self._show_status("Doppler view active")
         else:
             self._view_stack.setCurrentWidget(self._viewer)
-            self._view_2d_button.setChecked(True)
-            self._view_doppler_button.setChecked(False)
             self._show_status("2D viewer active")
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
@@ -448,7 +605,7 @@ class MainWindow(QMainWindow):
                 self._viewer.toggle_calibration_caliper()
                 if self._viewer.is_calibration_active:
                     self._show_status(
-                        "Калибровка: линия по шкале глубины → Enter (Escape — отмена)"
+                        "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
                     )
             event.accept()
             return True
@@ -509,9 +666,6 @@ class MainWindow(QMainWindow):
                 if is_trace and self._doppler_widget.finish_trace():
                     event.accept()
                     return True
-            elif self._viewer.finish_calibration():
-                event.accept()
-                return True
             elif self._viewer.finish_contour():
                 event.accept()
                 return True
