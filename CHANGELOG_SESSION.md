@@ -1,89 +1,142 @@
 # CHANGELOG_SESSION.md
 
 **Назначение:** Автоматическая передача ключевого контекста между чатами Cursor.
-**Правила чтения:** При старте нового чата Cursor ОБЯЗАН прочитать этот файл после AGENTS.md.
-**Лимиты:** Максимум 30 записей. При превышении старые записи удаляются или архивируются. Не дублировать код, только суть.
+**Правила чтения:** При старте нового чата — `AGENTS.md`, затем последние записи здесь (не весь файл).
+**Лимиты:** Максимум 30 записей; при превышении удаляются самые старые. Только суть, без кода.
 
 ---
 
-## [2026-06-12] Simpson dual workflow — дизайн и план
-**Тип:** design + plan
-**Файлы:** `docs/superpowers/specs/2026-06-12-simpson-dual-workflow-design.md`, `docs/superpowers/plans/2026-06-12-simpson-dual-workflow.md`
-**Суть:**
-- Два параллельных пути Simpson: **Manual** (Diastole/Systole, оранжевый контур) и **MBS** (EDV Auto/ESV Auto, зелёный контур); раскладка панели — два блока × (4C | 2C).
-- Удалить маркеры D/S (`ed_frame_index`/`es_frame_index`, горячие клавиши, метки на таймлайне); фаза только из кнопки + `frame_index` контура.
-- После ED: подсказка в статус-баре/overlay + мигание ES-кнопки (Systole / ESV Auto); координатор — `MainWindow`, анимация — `MeasurementToolsPanel`.
-
-## [2026-06-13] LvViewMetrics и расширенный LvefResult
+## [2026-06-13 21:02] Preview-only thumbnail worker по умолчанию 96
 - **Тип:** feature
-- **Файлы:** `src/echo_personal_tool/domain/models/measurements.py`, `src/echo_personal_tool/domain/models/__init__.py`, `tests/unit/test_measurement_models.py`
-- **Суть:** Добавлен `LvViewMetrics` (метрики по проекции 4C/2C); `LvefResult` теперь хранит `a4c`/`a2c` вместо плоских `edv_ml`/`esv_ml`. Подготовка к dual-view Simpson workflow.
-- Measurements: частичные результаты после одного ED; русские метки по ракурсам (`Длина ЛЖ 4C`, `КДО ЛЖ 4C`, `КСО ЛЖ 4C`, аналогично 2C); площадь ЛЖ не показывать; overlay — длина + объём.
-- Причина пустой панели сейчас: `lvef_simpson.calculate()` возвращает `None` без пары ED+ES.
-- Авто-сегментация (`I`) — out of scope; реализация по плану в 8 задачах.
+- **Файлы:** `thumbnail_loader_worker.py`, `test_thumbnail_qimage.py`
+- **Суть:** Worker рендерит preview по запрошенному размеру (default 96) без второй full-size фазы.
 
-## [2026-06-13] Simpson dual workflow — реализация (8 задач)
-- **Тип:** feature
-- **Файлы:** `domain/models/measurements.py`, `domain/calculations/lvef_simpson.py`, `application/state_manager.py`, `application/app_controller.py`, `presentation/measurement_tools_panel.py`, `presentation/main_window.py`, `presentation/viewer_widget.py`, `presentation/measurement_panel.py`, `tests/unit/*`
-- **Суть:** Manual/MBS Simpson с partial per-view метриками; удалены D/S маркеры; ED→ES подсказка + blink; русские метки в панели; numeric overlay на кадре. 223 unit-теста проходят.
-
----
-
-## [2026-06-13] Simpson calculate — partial per-view metrics
-- **Тип:** feature
-- **Файлы:** `src/echo_personal_tool/domain/calculations/lvef_simpson.py`, `tests/unit/test_lvef_simpson.py`, `tests/unit/test_measurement_controller.py`, `tests/unit/test_mbs_lite_service.py`
-- **Суть:** `calculate()` возвращает `LvefResult` с `a4c`/`a2c` (`LvViewMetrics`); при одном ED — частичные метрики без LVEF. Добавлены `_contour_length_mm`, `_contour_volume_ml`, `_build_view_metrics`, `format_contour_overlay`.
-
-## [2026-06-13] MeasurementPanel — Russian per-view LV labels
-- **Тип:** feature
-- **Файлы:** `src/echo_personal_tool/presentation/measurement_panel.py`, `tests/unit/test_measurement_panel.py`
-- **Суть:** `_format_lvef_section` показывает метрики по проекциям 4C/2C с русскими подписями (Длина, КДО, КСО, ФВ); частичные данные без КСО/ФВ.
-
-## [2026-06-13] Fix MeasurementToolsPanel click KeyError
+## [2026-06-13 21:04] Уточнена preview_only логика и error-path тест
 - **Тип:** fix
-- **Файлы:** `src/echo_personal_tool/presentation/measurement_tools_panel.py`, `tests/unit/test_measurement_tools_panel.py`
-- **Суть:** QPushButton.clicked передаёт bool checked в lambda; без `_checked=False` view становился False и ломал `_VIEW_MAP`. Интеграционный тест изолирован от устаревшего `_format_lvef_section`.
+- **Файлы:** `thumbnail_loader_worker.py`, `test_thumbnail_qimage.py`
+- **Суть:** Явная ветка preview_only в `run()`; тест эмиссии `failed` при исключении reader.
 
-- **Тип:** feature + refactor
-- **Файлы:** `viewer_state.py`, `state_manager.py`, `app_controller.py`, `measurement_tools_panel.py`, `main_window.py`, `viewer_widget.py`, связанные тесты
-- **Суть:** Удалены `ed_frame_index`/`es_frame_index`, горячие клавиши D/S, `mark_ed`/`mark_es`. Панель разделена на Manual и MBS; после ED — overlay + мигание Systole/ESV Auto. Auto-segment (`I`) временно отключён до активного Simpson workflow.
-
-## [2026-06-13] ViewerWidget overlay и русские метки Measurements
-- **Тип:** feature
-- **Файлы:** `viewer_widget.py`, `measurement_panel.py`, `tests/unit/test_contour.py`, `tests/unit/test_measurement_panel.py`, `tests/unit/test_measurement_wiring.py`
-- **Суть:** Убраны ED/ES маркеры на таймлайне; overlay показывает длину/объём через `format_contour_overlay` (в т.ч. при drag). Панель измерений — русские метки по проекциям (`Длина ЛЖ 4C`, `КДО ЛЖ 4C`, `КСО ЛЖ 4C`, `ФВ ЛЖ`).
-
-## [2026-06-13] ViewerWidget — markers off, overlay on drag
-- **Тип:** feature
-- **Файлы:** `src/echo_personal_tool/presentation/viewer_widget.py`, `tests/unit/test_contour.py`
-- **Суть:** Убраны ED/ES метки на таймлайне; фаза контура по умолчанию ED. Overlay LV-контура через `format_contour_overlay` при завершении и после drag точек.
-
-## [2026-06-13] Simpson live feedback без Enter
+## [2026-06-13 21:06] Strict preview-only MVP режим
 - **Тип:** fix
-- **Файлы:** `app_controller.py`, `viewer_widget.py`, `main_window.py`, `measurement_panel.py`, `lvef_simpson.py`, `measurements.py`, `tests/unit/test_simpson_live_feedback.py`
-- **Суть:** После 3-й точки и drag — немедленный пересчёт в overlay и панели. Без PixelSpacing — px/px³ с пометкой. Overlay восстанавливается при возврате на кадр с контуром.
+- **Файлы:** `thumbnail_loader_worker.py`, `test_thumbnail_qimage.py`
+- **Суть:** Убран full-size рендер из worker; параметр `preview_only` задокументирован как игнорируемый в MVP.
 
-## [2026-06-13 12:00] DICOM spacing fallbacks и ручная калибровка K
+## [2026-06-13 21:07] Scheduler thumbnail в AppController
 - **Тип:** feature
-- **Файлы:** `pixel_spacing_resolver.py`, `dicom_metadata_mapper.py`, `metadata.py`, `viewer_state.py`, `state_manager.py`, `app_controller.py`, `viewer_widget.py`, `main_window.py`, `measurement_panel.py`, `tests/unit/test_pixel_spacing_resolver.py`, `tests/unit/test_dicom_metadata_mapper.py`
-- **Суть:** PixelSpacing из нескольких DICOM-тегов (в т.ч. SequenceOfUltrasoundRegions). Ручная калибровка по шкале глубины: K — линия, Enter — мм, Shift+K — сброс. Manual override имеет приоритет над DICOM.
+- **Файлы:** `app_controller.py`, `test_app_controller_thumbnail_priority.py`
+- **Суть:** ThumbnailScheduler с приоритетами P0/P1/P2; main frame не блокируется thumbnail backlog.
 
-## [2026-06-13] MBS v1.1 — active contour, A2C, ED→ES
-- **Тип:** feature
-- **Файлы:** `active_contour_refine.py`, `lv_shape_template.py`, `mbs_lite_service.py`, `viewer_widget.py`, `main_window.py`, `docs/superpowers/specs/2026-06-13-mbs-advanced-design.md`, `docs/superpowers/plans/2026-06-13-mbs-advanced.md`, `tests/unit/test_active_contour_refine.py`, `tests/unit/test_mbs_propagation.py`, `tests/unit/test_mbs_lite_service.py`
-- **Суть:** После 3 landmarks — discrete open snake refine к градиенту; A2C barycentric template; ESV Auto переносит ED model contour как init и уточняет на ES-кадре без повторных кликов.
-
-## [2026-06-13] MBS v1.1 fixes — dome, bulk move, no propagation
+## [2026-06-13 21:12] QA thumbnail scheduler
 - **Тип:** fix
-- **Файлы:** `mbs_lite_service.py`, `lv_shape_template.py`, `viewer_widget.py`, `main_window.py`, `contour_geometry.py`, `tests/unit/test_mbs_lite_service.py`, `tests/unit/test_contour_geometry.py`, `docs/superpowers/specs/2026-06-13-mbs-advanced-design.md`
-- **Суть:** Восстановлен sinusoidal dome (исправлен «треугольник»); ED→ES propagation удалён; auto-refine отключён (opt-in R); Alt+drag translate всего контура; `[`/`]` — normal shift ±3 px.
+- **Файлы:** `app_controller.py`, `test_app_controller_thumbnail_priority.py`
+- **Суть:** Очистка `_thumbnail_instances` при success/fail; release-slot после failed.
 
-## [2026-06-13] R для manual+model; убраны bulk-коррекции
+## [2026-06-13 21:13] In-flight state thumbnail
 - **Тип:** fix
-- **Файлы:** `viewer_widget.py`, `main_window.py`, `contour_geometry.py`, `mbs_lite_service.py`, `tests/unit/test_contour_geometry.py`, `tests/unit/test_mbs_lite_service.py`, `docs/superpowers/specs/2026-06-13-mbs-advanced-design.md`
-- **Суть:** **R** — active contour refine для manual и model LV open-arc на текущем кадре. Удалены Alt+drag translate всего контура и `[`/`]` normal shift (искажали контур).
+- **Файлы:** `app_controller.py`, `test_app_controller_thumbnail_priority.py`
+- **Суть:** Явный учёт `_thumbnail_in_flight` в dispatch/finish/fail.
 
-## [2026-06-13] RBF Gaussian contour drag (QLAB-style)
+## [2026-06-13 21:18] LocalBrowser lazy preview
 - **Тип:** feature
-- **Файлы:** `contour_geometry.py`, `viewer_widget.py`, `tests/unit/test_rbf_contour_deform.py`, `tests/unit/test_spline_editor.py`, `tests/unit/test_contour_geometry.py`
-- **Суть:** Drag узлов контура через Gaussian RBF от курсора; MA-концы pinned; σ от zoom viewRange; подсветка активных узлов; заменён drag_node_local.
+- **Файлы:** `local_browser.py`, `test_local_browser_thumbnail_requesting.py`
+- **Суть:** Visibility-driven preview вместо eager-запросов всех series при populate.
+
+## [2026-06-13 21:21] Fallback и scroll-jank fix
+- **Тип:** fix
+- **Файлы:** `local_browser.py`, `test_local_browser_thumbnail_requesting.py`
+- **Суть:** Сигнатура loader на set_loader; debounce scroll-trigger; non-blocking update.
+
+## [2026-06-13 21:24] LocalBrowser helper-сигнатуры
+- **Тип:** fix
+- **Файлы:** `local_browser.py`
+- **Суть:** `_collect_visible_instances` / `_collect_nearby_instances` для plan-совместимости.
+
+## [2026-06-13 21:25] Initial preview и readiness метрики
+- **Тип:** feature
+- **Файлы:** `main_window.py`, `app_controller.py`, `test_main_window_doppler.py`
+- **Суть:** `request_visible_previews()` после populate; лог-точки scan/preview/frame timing.
+
+## [2026-06-13 21:30] Дубликат preview и таймер
+- **Тип:** fix
+- **Файлы:** `main_window.py`, `test_main_window_doppler.py`
+- **Суть:** Убран лишний preview trigger; сброс click-to-frame таймера на load failure.
+
+## [2026-06-13 21:32] Единая точка initial preview
+- **Тип:** fix
+- **Файлы:** `main_window.py`, `local_browser.py`, `test_local_browser_thumbnail_requesting.py`
+- **Суть:** Initial preview только из `_on_studies_loaded`; убран автозапрос из `populate()`.
+
+## [2026-06-13 21:40] Preview-thumbnail тесты
+- **Тип:** fix
+- **Файлы:** `local_browser.py`, `test_thumbnail_qimage.py`
+- **Суть:** Флаг `_building_tree` подавляет лишние запросы при populate.
+
+## [2026-06-13 21:45] Preview без искажения пропорций
+- **Тип:** fix
+- **Файлы:** `browser_item_delegate.py`, `thumbnail_loader_worker.py`, `test_thumbnail_qimage.py`
+- **Суть:** KeepAspectRatio в delegate и preview scaling.
+
+## [2026-06-13 22:00] MVP шаг A: Калибровка в Setup
+- **Тип:** feature
+- **Файлы:** `main_window.py`, `measurement_tools_panel.py`, `test_measurement_tools_panel.py`
+- **Суть:** Убран Doppler toggle из UI; кнопка «Калибровка» в Setup.
+
+## [2026-06-13 23:30] MVP шаг B: session persistence
+- **Тип:** feature
+- **Файлы:** `study_measurement_session.py`, `app_controller.py`, `state_manager.py`
+- **Суть:** Измерения накапливаются по study_uid; не сбрасываются при смене instance.
+
+## [2026-06-14 00:15] MVP шаг C: click-click калипер
+- **Тип:** feature
+- **Файлы:** `viewer_widget.py`, `test_linear_caliper_click_click.py`
+- **Суть:** Линейный калипер click→click с live preview и session store.
+
+## [2026-06-14 01:00] Caliper button и All Diastole chain
+- **Тип:** fix
+- **Файлы:** `viewer_widget.py`, `measurement_tools_panel.py`, `main_window.py`
+- **Суть:** 2-й клик через mousePressEvent; Caliper в Setup; IVSd→LVEDD→LVPWd автоматически.
+
+## [2026-06-14 02:00] MVP шаг D2: LAV/RAV/RV Simpson
+- **Тип:** feature
+- **Файлы:** `chamber_simpson.py`, `measurement_panel.py`, `main_window.py`, `mbs_lite_service.py`
+- **Суть:** LA/RA/RV объёмы через Simpson; панели ЛП/ПП/ПЖ; LAV Bi 4C→2C ES.
+
+## [2026-06-14 04:00] Overlay и калиперы по кадрам
+- **Тип:** fix
+- **Файлы:** `viewer_widget.py`, `main_window.py`, `study_measurement_session.py`
+- **Суть:** Overlay/caliper per-frame для cine; LAV Bi шаг 2 только по кнопке на 2C.
+
+## [2026-06-14 05:00] MVP E1+E2: рост/вес и indexed
+- **Тип:** feature
+- **Файлы:** `body_surface.py`, `measurement_panel.py`, `study_measurement_session.py`
+- **Суть:** BSA (Du Bois), индексированные объёмы и диаметры (mL/m², mm/m²).
+
+## [2026-06-14 06:00] LV Lamé open-arc template
+- **Тип:** feature
+- **Файлы:** `lv_shape_template.py`, `mbs_lite_service.py`, `viewer_widget.py`
+- **Суть:** Piecewise Lamé по хорде МК с пресетами A4C/A2C ED/ES; manual и model LV.
+
+## [2026-06-14 07:00] Lamé apex + R smoothing
+- **Тип:** fix
+- **Файлы:** `lv_shape_template.py`, `contour_geometry.py`, `mbs_lite_service.py`
+- **Суть:** Foot-point→apex; R — Laplacian smooth с фиксацией MA.
+
+## [2026-06-13 14:00] Lamé spec warp + равномерный resample
+- **Тип:** fix
+- **Файлы:** `lv_shape_template.py`, `contour_geometry.py`, `mbs_lite_service.py`
+- **Суть:** Warp P(u)=B(u)+h(u)·d̂; `resample_open_arc_landmarks` septal→apex→lateral.
+
+## [2026-06-13 16:00] Arc-length split узлов
+- **Тип:** fix
+- **Файлы:** `contour_geometry.py`, `mbs_lite_service.py`
+- **Суть:** Число узлов по доле длины дуги Lamé; устранены вылеты septal.
+
+## [2026-06-13 18:00] Без pin apex на узле
+- **Тип:** fix
+- **Файлы:** `lv_shape_template.py`, `contour_geometry.py`, `mbs_lite_service.py`
+- **Суть:** Lamé через foot-point; фиксируются только концы МК; apex — метаданные клика.
+
+## [2026-06-14 18:00] Завершение блока MVP измерений и калибровки
+- **Тип:** feature + fix
+- **Файлы:** `viewer_widget.py`, `main_window.py`, `app_controller.py`, `measurement_panel.py`, `measurement_tools_panel.py`, `linear_measurement.py`, `state_manager.py`, `study_measurement_session.py`, `AGENTS.md`, `.cursor/rules/changelog.mdc`
+- **Суть:** Калибровка non-DICOM: вертикальный отрезок справа (96% ширины), 2 клика → диалог мм, крупный центральный оверлей. LAV 4C/Bi, S ПП, RAV — ручной Simpson 3 клика (MBS-lite только LV). Linear geometry без px. S ЛП в панели после LAV. Кнопка «Сброс» — контуры, caliper, Doppler, калибровка. Правило: changelog только в конце сессии, лимит 30 записей.

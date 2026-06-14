@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.contour_geometry import (
@@ -36,10 +37,15 @@ def test_apply_contours_renders_closed_lines_and_nodes(qtbot) -> None:
 
     manual_x, manual_y = viewer._contour_items[0].getData()
     ai_x, ai_y = viewer._contour_items[1].getData()
-    assert list(manual_x) == [2.0, 8.0, 8.0, 2.0]
-    assert list(manual_y) == [2.0, 2.0, 7.0, 2.0]
-    assert list(ai_x) == [12.0, 18.0, 18.0, 12.0, 12.0]
-    assert list(ai_y) == [12.0, 12.0, 18.0, 18.0, 12.0]
+    assert len(manual_x) >= 128
+    assert len(ai_x) >= 128
+    assert manual_x[0] == pytest.approx(manual_x[-1], abs=0.01)
+    assert manual_y[0] == pytest.approx(manual_y[-1], abs=0.01)
+    assert min(manual_x) == pytest.approx(2.0, abs=0.5)
+    assert max(manual_x) == pytest.approx(8.0, abs=0.5)
+    assert max(manual_y) == pytest.approx(7.0, abs=1.5)
+    assert ai_x[0] == pytest.approx(ai_x[-1], abs=0.01)
+    assert ai_y[0] == pytest.approx(ai_y[-1], abs=0.01)
 
     assert viewer._contour_items[0].opts["pen"].color().name() == "#ff6f00"
     assert viewer._contour_items[1].opts["pen"].color().name() == "#00bcd4"
@@ -143,6 +149,59 @@ def test_open_arc_rbf_drag_moves_neighbors_not_ma(qtbot) -> None:
     assert contour.points[mid + 1][1] < y_neighbor
 
 
+def test_scene_mouse_moved_applies_drag_during_session(qtbot) -> None:
+    from unittest.mock import patch
+
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtWidgets import QApplication
+
+    annulus = ((10.0, 40.0), (50.0, 40.0))
+    arc = [(10.0, 40.0), (30.0, 10.0), (50.0, 40.0)]
+    contour = Contour(
+        phase="ED",
+        mitral_annulus=annulus,
+        points=resample_open_arc(arc, num_nodes=DEFAULT_NODE_COUNT),
+        num_nodes=DEFAULT_NODE_COUNT,
+        source="manual",
+    )
+    viewer = ViewerWidget()
+    qtbot.addWidget(viewer)
+    viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+    viewer.apply_contours([contour])
+
+    mid = DEFAULT_NODE_COUNT // 2
+    mx, my = contour.points[mid]
+    viewer._begin_contour_node_drag(0, mid, mx, my)
+    mapped = viewer._view.mapViewToScene(QPointF(mx, my - 4.0))
+    with patch.object(QApplication, "mouseButtons", return_value=Qt.MouseButton.LeftButton):
+        viewer._on_scene_mouse_moved(mapped)
+    assert contour.points[mid][1] < my
+
+
+def test_locked_tier_drag_moves_highlighted_neighbors(qtbot) -> None:
+    annulus = ((10.0, 40.0), (50.0, 40.0))
+    arc = [(10.0, 40.0), (30.0, 10.0), (50.0, 40.0)]
+    contour = Contour(
+        phase="ED",
+        mitral_annulus=annulus,
+        points=resample_open_arc(arc, num_nodes=DEFAULT_NODE_COUNT),
+        num_nodes=DEFAULT_NODE_COUNT,
+        source="manual",
+    )
+    viewer = ViewerWidget()
+    qtbot.addWidget(viewer)
+    viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
+    viewer.apply_contours([contour])
+
+    mid = DEFAULT_NODE_COUNT // 2
+    y_neighbor = contour.points[mid + 1][1]
+    viewer._start_drag_session(0, 30.0, 10.0, mid, 3)
+    viewer._apply_rbf_drag_step(0, 30.0, 8.0, grab_index=mid)
+
+    assert contour.points[mid][1] < 10.0
+    assert contour.points[mid + 1][1] < y_neighbor
+
+
 def test_closed_contour_rbf_drag_moves_multiple_points(qtbot) -> None:
     contour = Contour(
         phase="ED",
@@ -157,8 +216,8 @@ def test_closed_contour_rbf_drag_moves_multiple_points(qtbot) -> None:
     x1_before = contour.points[1][0]
     x2_before = contour.points[2][0]
 
-    viewer._drag_contour_point(0, 1, 8.0, 2.0)
-    viewer._drag_contour_point(0, 1, 10.0, 2.0)
+    viewer._start_drag_session(0, 8.0, 2.0, 1, 3)
+    viewer._apply_rbf_drag_step(0, 10.0, 2.0, grab_index=1)
 
     assert contour.points[1][0] > x1_before
     assert contour.points[2][0] > x2_before
