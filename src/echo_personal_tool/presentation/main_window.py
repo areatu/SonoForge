@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
         self._measurement_panel.update_from_state(self._controller.state_manager.snapshot)
         self._sync_worksheet_from_state(self._controller.state_manager.snapshot)
         self._wire_ui()
+        self._system_bar.set_auto_segment_enabled(False)
         self._view_stack.setCurrentWidget(self._viewer)
         self._viewer.installEventFilter(self)
         self._viewer._graphics.installEventFilter(self)
@@ -775,7 +776,7 @@ class MainWindow(QMainWindow):
             and self._view_mode == "2d"
             and not self._controller.state_manager.snapshot.is_playing
         ):
-            self._controller.request_auto_segment()
+            self._request_auto_segment_shortcut()
             event.accept()
             return True
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):

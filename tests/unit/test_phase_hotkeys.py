@@ -130,6 +130,16 @@ def test_main_window_m_hotkey_works_when_viewer_has_focus(qtbot) -> None:
     assert window._viewer.contours()[0].source == "model"
 
 
+def test_main_window_i_hotkey_requires_lv_auto_session(qtbot) -> None:
+    controller = AppController()
+    controller.is_lv_auto_session_active = MagicMock(return_value=False)
+    controller.request_auto_segment = MagicMock()
+    window = MainWindow(controller=controller)
+    qtbot.addWidget(window)
+    qtbot.keyClick(window, Qt.Key.Key_I)
+    controller.request_auto_segment.assert_not_called()
+
+
 def test_main_window_i_hotkey_requests_auto_segment_in_2d_mode(qtbot) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
@@ -144,6 +154,7 @@ def test_main_window_i_hotkey_requests_auto_segment_in_2d_mode(qtbot) -> None:
     window.show()
     qtbot.waitExposed(window)
 
+    controller.set_simpson_workflow_context(phase="ED", view="A4C")
     qtbot.keyClick(window, Qt.Key.Key_I)
     controller.request_auto_segment.assert_called_once()
 

@@ -54,6 +54,7 @@ class SystemBar(QWidget):
 
         self._btn_auto = QPushButton("Auto Segment")
         self._btn_auto.setToolTip("ONNX auto-segment (I)")
+        self._btn_auto.setEnabled(False)
         self._btn_auto.clicked.connect(self.auto_segment_requested.emit)
 
         btn_reset = QPushButton("Reset")
