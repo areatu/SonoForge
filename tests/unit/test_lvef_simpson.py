@@ -136,3 +136,14 @@ def test_calculate_open_arc_monoplan() -> None:
     assert result.method == "simpson_monoplan"
     assert result.a4c.edv_ml == pytest.approx(31.498208, rel=1e-4)
     assert result.a4c.esv_ml == pytest.approx(16.127083, rel=1e-4)
+
+
+def test_calculate_ignores_review_pending_contours() -> None:
+    pending = open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0)
+    pending.review_pending = True
+    accepted = open_arc_contour(phase="es", view="A4C", width_px=80.0, height_px=40.0)
+    result = calculate((pending, accepted), (0.5, 0.5))
+    assert result is not None
+    assert result.a4c is not None
+    assert result.a4c.edv_ml is None
+    assert result.a4c.esv_ml is not None

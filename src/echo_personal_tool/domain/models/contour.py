@@ -16,6 +16,7 @@ class Contour:
     apex_landmark: tuple[float, float] | None = None
     num_nodes: int = 32
     frame_index: int | None = None
+    review_pending: bool = False
 
     @property
     def is_open_arc(self) -> bool:
