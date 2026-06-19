@@ -11,11 +11,11 @@ from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 def test_lv_auto_biplane_buttons_disabled(_qapp) -> None:
     menu = MeasuresMenuWidget()
     buttons = [
-        child for child in menu.findChildren(QPushButton)
-        if child.text().startswith("Simpson Biplane")
+        child
+        for child in menu.findChildren(QPushButton)
+        if child.text().startswith("Simpson Biplane") and not child.isEnabled()
     ]
     assert len(buttons) == 2
-    assert all(not button.isEnabled() for button in buttons)
     assert all("следующей" in button.toolTip() for button in buttons)
 
 

@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-06-19 21:00] Merge ONNX LV Auto + EchoPac UI в phase2
+- **Тип:** feature
+- **Файлы:** `segmentation_service.py`, `app_controller.py`, `main_window.py`, `viewer_widget.py`, `measures_menu.py`, `tool_panel.py`, `echopac_theme.py`, `thumbnail_gallery.py`, `test_auto_segment_controller.py`
+- **Суть:** Fast-forward merge `feat/onnx-lv-auto-segment` → `feat/phase2-echopac-ui`: LV Auto ONNX A4C, ASE papillary, review UX + актуальный EchoPac layout.
+
 ## [2026-06-14 22:00] Phase 2 UI → Doppler → ASE → Refine → ONNX
 - **Тип:** feature
 - **Файлы:** `system_bar.py`, `measurement_worksheet.py`, `measurement_action.py`, `main_window.py`, `measurement_panel.py`, `doppler_widget.py`, `app_controller.py`, `lvm.py`, `rv_fac.py`, `diastology_grade.py`, `mbs_lite_service.py`, `segmentation_service.py`, `doppler_metrics.py`, `README.md`
