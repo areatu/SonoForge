@@ -78,6 +78,7 @@
     "trigger_frames": [
       "ED",
       "ES"
-    ]
+    ],
+    "auto_refine_after_segment": true
   }
 }

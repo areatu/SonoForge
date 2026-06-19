@@ -53,7 +53,11 @@ from echo_personal_tool.domain.services.segmentation_service import (
     papillary_mask_cleanup,
     smooth_contour,
 )
-from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
+from echo_personal_tool.infrastructure.onnx_engine import (
+    OnnxInferenceEngine,
+    _default_models_dir,
+    _load_manifest,
+)
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 _FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
@@ -801,6 +805,15 @@ class AppController(QObject):
             and self._state_manager.snapshot.current_frame_index == frame_index
         )
 
+    def _should_auto_refine_after_segment(self) -> bool:
+        manifest = _load_manifest(_default_models_dir())
+        if not manifest:
+            return False
+        inference = manifest.get("inference", {})
+        if not isinstance(inference, dict):
+            return False
+        return bool(inference.get("auto_refine_after_segment", False))
+
     def _on_auto_segment_finished(
         self,
         phase: str,
@@ -834,6 +847,27 @@ class AppController(QObject):
 
         apex = apex_point(open_points, annulus)
         refined_points = exclude_papillary_concavities(open_points, annulus, apex)
+
+        if self._should_auto_refine_after_segment() and self._current_frame_pixels is not None:
+            from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
+
+            draft = Contour(
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                mitral_annulus=annulus,
+                apex_landmark=apex,
+                points=refined_points,
+                source="ai",
+                num_nodes=len(refined_points),
+                frame_index=frame_index,
+            )
+            refined, _ = refine_open_arc_contour(self._current_frame_pixels, draft)
+            refined_points = list(refined.points)
+            if refined.mitral_annulus is not None:
+                annulus = refined.mitral_annulus
+            if refined.apex_landmark is not None:
+                apex = refined.apex_landmark
 
         contour = Contour(
             phase=phase,
