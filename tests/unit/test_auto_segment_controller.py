@@ -82,6 +82,19 @@ def _sample_instance() -> InstanceMetadata:
     )
 
 
+def _circle_mask(
+    *,
+    height: int,
+    width: int,
+    center_y: float,
+    center_x: float,
+    radius: float,
+) -> np.ndarray:
+    ys, xs = np.ogrid[:height, :width]
+    distance = (ys - center_y) ** 2 + (xs - center_x) ** 2
+    return (distance <= radius**2).astype(np.uint8)
+
+
 def _prepared_controller(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -220,3 +233,88 @@ def test_request_auto_segment_blocks_concurrent_requests(
 
     assert thread_pool.started == []
     assert messages[-1] == "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
+
+
+def test_on_auto_segment_finished_sets_review_pending(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch)
+    controller.set_simpson_workflow_context(phase="ED", view="A4C")
+    messages: list[str] = []
+    controller.status_message.connect(messages.append)
+    mask = _circle_mask(
+        height=64,
+        width=48,
+        center_y=32,
+        center_x=24,
+        radius=18,
+    )
+
+    controller._on_auto_segment_finished(
+        "ED",
+        "A4C",
+        "LV",
+        instance.path,
+        0,
+        (64, 48),
+        mask,
+    )
+
+    contours = controller.state_manager.snapshot.contours
+    assert len(contours) == 1
+    assert contours[0].source == "ai"
+    assert contours[0].review_pending is True
+    assert messages[-1] == (
+        "A4C ED: проверьте контур (ASE, без папиллярных мышц) · R — уточнить · Enter — принять"
+    )
+
+
+def test_accept_ai_contour_review_clears_pending(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch)
+    controller.set_simpson_workflow_context(phase="ED", view="A4C")
+    messages: list[str] = []
+    controller.status_message.connect(messages.append)
+    mask = _circle_mask(
+        height=64,
+        width=48,
+        center_y=32,
+        center_x=24,
+        radius=18,
+    )
+
+    controller._on_auto_segment_finished(
+        "ED",
+        "A4C",
+        "LV",
+        instance.path,
+        0,
+        (64, 48),
+        mask,
+    )
+
+    accepted = controller.accept_ai_contour_review("A4C", "ED")
+
+    contours = controller.state_manager.snapshot.contours
+    assert accepted is True
+    assert len(contours) == 1
+    assert contours[0].review_pending is False
+    assert messages[-1] == "A4C ED: контур принят"
+
+
+def test_request_auto_segment_requires_a4c_view(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch)
+    controller.set_simpson_workflow_context(phase="ED", view="A2C")
+    messages: list[str] = []
+    controller.status_message.connect(messages.append)
+
+    controller.request_auto_segment()
+
+    assert thread_pool.started == []
+    assert "A2C" in messages[-1] or "следующей" in messages[-1]

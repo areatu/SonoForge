@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 from time import perf_counter
 
+import dataclasses
 import numpy as np
 from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
@@ -44,9 +45,12 @@ from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
+from echo_personal_tool.domain.services.contour_geometry import apex_point
 from echo_personal_tool.domain.services.segmentation_service import (
     closed_polygon_to_open_arc,
+    exclude_papillary_concavities,
     mask_to_contour,
+    papillary_mask_cleanup,
     smooth_contour,
 )
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
@@ -315,6 +319,35 @@ class AppController(QObject):
         self._auto_segment_view = view
         self._auto_segment_chamber = chamber
 
+    def is_lv_auto_session_active(self) -> bool:
+        phase = self._auto_segment_phase
+        view = self._auto_segment_view or ""
+        return phase in {"ED", "ES"} and view.upper() == "A4C"
+
+    def accept_ai_contour_review(self, view: str, phase: str) -> bool:
+        target_view = view.upper()
+        target_phase = phase.upper()
+        updated_contours: list[Contour] = []
+        found = False
+        for contour in self._state_manager.snapshot.contours:
+            if (
+                contour.source == "ai"
+                and contour.review_pending
+                and contour.view.upper() == target_view
+                and contour.phase.upper() == target_phase
+            ):
+                updated_contours.append(
+                    dataclasses.replace(contour, review_pending=False)
+                )
+                found = True
+            else:
+                updated_contours.append(contour)
+        if not found:
+            return False
+        self.on_contours_changed(updated_contours)
+        self.status_message.emit(f"{target_view} {target_phase}: контур принят")
+        return True
+
     def request_auto_segment(
         self,
         *,
@@ -338,6 +371,10 @@ class AppController(QObject):
             self.status_message.emit(
                 "Auto-segmentation: select A4C/A2C ED or ES in worksheet first"
             )
+            return
+
+        if (view or "").upper() != "A4C":
+            self.status_message.emit("A2C auto — в следующей версии")
             return
 
         if (
@@ -780,8 +817,9 @@ class AppController(QObject):
         if not isinstance(mask, np.ndarray):
             return
 
+        cleaned_mask = papillary_mask_cleanup(mask)
         closed_points = smooth_contour(
-            mask_to_contour(mask, original_shape),
+            mask_to_contour(cleaned_mask, original_shape),
             num_nodes=32,
         )
         if not closed_points:
@@ -794,15 +832,20 @@ class AppController(QObject):
             self.status_message.emit("сегментация: не удалось построить open arc")
             return
 
+        apex = apex_point(open_points, annulus)
+        refined_points = exclude_papillary_concavities(open_points, annulus, apex)
+
         contour = Contour(
             phase=phase,
             view=view,
             chamber=chamber,
             mitral_annulus=annulus,
-            points=open_points,
+            apex_landmark=apex,
+            points=refined_points,
             source="ai",
-            num_nodes=len(open_points),
+            num_nodes=len(refined_points),
             frame_index=frame_index,
+            review_pending=True,
         )
         contours = [
             existing
@@ -815,7 +858,9 @@ class AppController(QObject):
         ]
         contours.append(contour)
         self.on_contours_changed(contours)
-        self.status_message.emit(f"Auto-segment: {view} {phase} contour ready (R to refine)")
+        self.status_message.emit(
+            f"{view} {phase}: проверьте контур (ASE, без папиллярных мышц) · R — уточнить · Enter — принять"
+        )
 
     def _on_auto_segment_failed(
         self,
