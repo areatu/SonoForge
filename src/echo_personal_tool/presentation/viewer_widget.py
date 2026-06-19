@@ -295,6 +295,9 @@ class ViewerWidget(QWidget):
         self._active_contour_phase: str | None = None
         self._contour_pen_manual = pg.mkPen("#ff6f00", width=2)
         self._contour_pen_ai = pg.mkPen("#00bcd4", width=2)
+        self._contour_pen_ai_pending = pg.mkPen(
+            "#00bcd4", width=2, style=Qt.PenStyle.DashLine
+        )
         self._contour_pen_model = pg.mkPen("#4caf50", width=2)
         self._contour_pen_ma = pg.mkPen("#ff6f00", width=1, style=Qt.PenStyle.DashLine)
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
@@ -915,6 +918,37 @@ class ViewerWidget(QWidget):
             self.contours_changed.emit(self.contours())
         return True
 
+    def pending_ai_review_contour(self) -> Contour | None:
+        frame_index = self._contour_frame_index()
+        if frame_index is None:
+            return None
+        for contour in self._stored_contours:
+            if (
+                contour.source == "ai"
+                and contour.review_pending
+                and contour.frame_index == frame_index
+            ):
+                return contour
+        return None
+
+    def discard_pending_ai_contour(self) -> bool:
+        pending = self.pending_ai_review_contour()
+        if pending is None:
+            return False
+        self._stored_contours = [
+            c
+            for c in self._stored_contours
+            if not (
+                c.source == "ai"
+                and c.review_pending
+                and c.frame_index == pending.frame_index
+                and c.phase == pending.phase
+                and c.view == pending.view
+            )
+        ]
+        self._render_contours_for_current_frame()
+        return True
+
     @property
     def is_contour_mode_active(self) -> bool:
         return self._contour_mode_active
@@ -1144,6 +1178,8 @@ class ViewerWidget(QWidget):
 
     def _contour_pen_for(self, contour: Contour) -> pg.QtGui.QPen:
         if contour.source == "ai":
+            if contour.review_pending:
+                return self._contour_pen_ai_pending
             return self._contour_pen_ai
         if contour.source == "model":
             return self._contour_pen_model
