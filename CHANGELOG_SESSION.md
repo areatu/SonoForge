@@ -6,20 +6,25 @@
 
 ---
 
-## [2026-06-23 16:00] DICOMweb — cancel, прогресс, includefield
-- **Тип:** fix
-- **Файлы:** `orthanc_download_worker.py`, `orthanc_study_dialog.py`, `orthanc_client.py`, `main_window.py`, `DICOM_parsing.md`
-- **Суть:** Отмена загрузки останавливает worker и чистит session cache; суммарный progress-bar; httpx client закрывается после worker; QIDO includefield.
+## [2026-06-23] Сессия: DICOMweb Orthanc + RV FAC + доработки (итог)
 
-## [2026-06-22 14:00] RV FAC — одна кнопка, crescent template, ED→ES blink
-- **Тип:** feature
-- **Файлы:** `rv_shape_template.py`, `rv_fac.py`, `mbs_lite_service.py`, `measures_menu.py`, `main_window.py`, `viewer_widget.py`, `test_rv_shape_template.py`, `test_rv_fac.py`, spec `2026-06-22-rv-fac-design.md`
-- **Суть:** RV FAC через одну кнопку: контур ED (3 клика + crescent open-arc), blink, систола ES, FAC% в overlay; S ПП закрыт (площадь через RAV 4C).
-
-## [2026-06-22 12:00] DICOMweb Orthanc — merge в phase2
-- **Тип:** feature
-- **Файлы:** `orthanc_client.py`, `orthanc_cache.py`, `fake_dicom_web_client.py`, `orthanc_study_dialog.py`, `server_settings.py`, `main_window.py`, `system_bar.py`, `domain/ports.py`, `pyproject.toml`, тесты и фикстуры `tests/fixtures/orthanc/`
-- **Суть:** Fast-forward merge `feat/dicomweb-orthanc` → `feat/phase2-echopac-ui`: QIDO/WADO через httpx, mock offline, session cache, диалог браузера и «Загрузить с сервера…»; fix shadowing `domain/ports.py`.
+- **Тип:** feature + fix
+- **Ветка:** `feat/phase2-echopac-ui` @ `7490405` (push на `origin`)
+- **Файлы (ключевые):** `orthanc_*.py`, `fake_dicom_web_client.py`, `orthanc_study_dialog.py`, `server_settings*.py`, `rv_shape_template.py`, `main_window.py`, `system_bar.py`, `domain/ports.py`, `README.md`, `ROADMAP.md`, `DICOM_parsing.md`, спеки/планы в `docs/superpowers/`
+- **Суть:**
+  - **DICOMweb v1:** QIDO/WADO (httpx), session cache, mock offline, диалог «Загрузить с сервера…», настройки сервера; merge из worktree `feat/dicomweb-orthanc`; fix shadowing `domain/ports.py`.
+  - **DICOMweb v1.1 (DICOM_parsing.md):** cancel worker + clear session; суммарный progress; lifecycle httpx в диалоге; QIDO `includefield`; парсинг `00201209` → «N инст.» в дереве серий.
+  - **RV FAC:** одна кнопка FAC, crescent open-arc (3 клика), ED→blink→ES, FAC% в overlay; S ПП закрыт (площадь через RAV 4C).
+- **Чеклист сессии:**
+  - [x] Реализация DICOMweb (10 задач плана)
+  - [x] Merge + push в `feat/phase2-echopac-ui`
+  - [x] Коммит RV FAC отдельно
+  - [x] README обновлён
+  - [x] Замечания `DICOM_parsing.md` закрыты
+  - [x] `instance_count` в `parse_series`
+  - [ ] Workplace: записать реальные JSON-фикстуры с Orthanc (`curl` в spec)
+  - [ ] Manual smoke на работе с живым сервером
+- **Следующий приоритет:** ONNX v1.1 (mean/std, annulus) — см. `ROADMAP.md`
 
 ## [2026-06-19 45:00] ROADMAP, чеклисты, LAV/RAV овал, LV Auto
 - **Тип:** feature
@@ -155,18 +160,3 @@
 - **Тип:** fix
 - **Файлы:** `lvef_simpson.py`, `app_controller.py`, `model_manifest.json`, `test_lvef_simpson.py`
 - **Суть:** Отклонение ONNX-контура по геометрии в px (не по мм при плохом PixelSpacing); ранний fail при малой маске; `auto_refine_after_segment` выключен по умолчанию; статус с конкретной причиной отказа.
-
-## [2026-06-19 23:30] Cine scroll + контуры per-instance + DopplerAxisMapping
-- **Тип:** fix
-- **Файлы:** `contour.py`, `study_measurement_session.py`, `app_controller.py`, `viewer_widget.py`, `state_manager.py`, `doppler_axis.py`, `doppler_calibration.py`, `test_study_measurement_session.py`
-- **Суть:** Слайдер/колесо во время DICOM decode; контуры per-instance; восстановлен полный API `DopplerAxisMapping` (`from_frame_size`, inverse maps, ROI) — падение при `show_frame`.
-
-## [2026-06-19 21:00] Merge ONNX LV Auto + EchoPac UI в phase2
-- **Тип:** feature
-- **Файлы:** `segmentation_service.py`, `app_controller.py`, `main_window.py`, `viewer_widget.py`, `measures_menu.py`, `tool_panel.py`, `echopac_theme.py`, `thumbnail_gallery.py`, `test_auto_segment_controller.py`
-- **Суть:** Fast-forward merge `feat/onnx-lv-auto-segment` → `feat/phase2-echopac-ui`: LV Auto ONNX A4C, ASE papillary, review UX + актуальный EchoPac layout.
-
-## [2026-06-14 22:00] Phase 2 UI → Doppler → ASE → Refine → ONNX
-- **Тип:** feature
-- **Файлы:** `system_bar.py`, `measurement_worksheet.py`, `measurement_action.py`, `main_window.py`, `measurement_panel.py`, `doppler_widget.py`, `app_controller.py`, `lvm.py`, `rv_fac.py`, `diastology_grade.py`, `mbs_lite_service.py`, `segmentation_service.py`, `doppler_metrics.py`, `README.md`
-- **Суть:** EchoPac SystemBar + worksheet вместо кнопок; Doppler toolbar; ASE LVM/FAC/LA volume/diastology grades; gradient refine на R; ONNX auto-segment по worksheet ED/ES с closed→open arc.

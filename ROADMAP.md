@@ -1,6 +1,6 @@
 # ROADMAP — ECHO Personal Tool
 
-**Обновлено:** 2026-06-23  
+**Обновлено:** 2026-06-23 (сессия: DICOMweb + RV FAC)  
 **Источник истины по коду:** этот файл + `CHANGELOG_SESSION.md` (последние записи).  
 **Детальные спеки:** `docs/superpowers/specs/`, планы — `docs/superpowers/plans/`.
 
@@ -80,9 +80,9 @@
 Код handlers есть, **кнопок в `measures_menu.py` нет:**
 
 - [x] ~~**S ПП**~~ — **закрыто**: площадь ПП через RAV 4C (Simpson), отдельной кнопки не будет
-- [x] **RV FAC** — одна кнопка, ED→blink→ES, шаблон quarter-sine (спека `2026-06-22-rv-fac-design.md`)
+- [x] **RV FAC** — одна кнопка, ED→blink→ES, шаблон crescent open-arc (спека `2026-06-22-rv-fac-design.md`)
 
-**Реализовано в меню:** LV, LV Auto (EDV/ESV A4C), Aorta, LA, RA (диаметр + RAV 4C), RV (без FAC), Diastology, MV/AV, TV/PV.
+**Реализовано в меню:** LV, LV Auto (EDV/ESV A4C), Aorta, LA, RA (диаметр + RAV 4C), RV + **FAC**, Diastology, MV/AV, TV/PV.
 
 **Area-length LA/RA:** `la_area_length.py`, `start_atrial_area_length_contour` — legacy, не в меню (Simpson primary).
 
@@ -121,18 +121,23 @@
 - [x] Mock offline: `FakeDicomWebClient` + JSON/DICOM фикстуры
 - [x] UI: `OrthancStudyDialog`, «Загрузить с сервера…», настройки сервера
 - [x] Интеграция: `open_folder(study_path)` после загрузки
+- [x] Cancel загрузки + очистка session cache (`DICOM_parsing.md`)
+- [x] Суммарный progress-bar по всем выбранным сериям
+- [x] QIDO `includefield`; парсинг `00201209` → «N инст.» в диалоге
+- [ ] Workplace: реальные JSON-фикстуры с Orthanc (см. spec footer)
 
-**Спека:** `docs/superpowers/specs/2026-06-23-dicomweb-orthanc-design.md`
+**Спека:** `docs/superpowers/specs/2026-06-23-dicomweb-orthanc-design.md` · **Замечания:** `DICOM_parsing.md`
 
 ---
 
 ## Следующие приоритеты (рекомендация)
 
-1. [x] RV FAC (одна кнопка, quarter-sine, blink ED→ES)
-2. [ ] ONNX v1.1 (mean/std, annulus)
-3. [ ] ONNX v2 / A2C auto
-4. [ ] CSV/JSON отчёт
-5. [ ] Side-by-side + ECG (Этап 3)
+1. [x] RV FAC (одна кнопка, crescent open-arc, blink ED→ES)
+2. [ ] Workplace smoke DICOMweb + обновить `tests/fixtures/orthanc/` с сервера
+3. [ ] ONNX v1.1 (mean/std, annulus)
+4. [ ] ONNX v2 / A2C auto
+5. [ ] CSV/JSON отчёт
+6. [ ] Side-by-side + ECG (Этап 3)
 
 ---
 

@@ -1,11 +1,14 @@
-## Статус доработок (2026-06-23)
+## Статус доработок (2026-06-23) — сессия закрыта
 
 | № | Проблема | Статус |
 |---|----------|--------|
-| 1 | Cancel-флаг + очистка сессии при отмене | ✅ `OrthancDownloadWorker.cancel()`, `cancelled` signal |
-| 2 | Прогресс суммарный по всем сериям | ✅ `progress(overall, total, series_uid)` |
-| 3 | Жизненный цикл httpx client при cancel | ✅ закрытие в `OrthancStudyDialog` после worker |
-| 4 | `includefield` в QIDO-RS | ✅ `orthanc_client.py` |
+| 1 | Cancel-флаг + очистка сессии при отмене | ✅ |
+| 2 | Прогресс суммарный по всем сериям | ✅ |
+| 3 | Жизненный цикл httpx client при cancel | ✅ |
+| 4 | `includefield` в QIDO-RS | ✅ |
+| 5 | `parse_series` → `instance_count` (00201209) | ✅ |
+
+**Осталось вне кода:** записать workplace JSON-фикстуры (`curl` в spec) и manual smoke на `192.168.1.111:8042`.
 
 ---
 

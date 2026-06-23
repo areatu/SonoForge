@@ -196,6 +196,11 @@ GET  /dicom-web/studies/{uid}/series/{uid}/instances/{uid}
 - [x] Сессионный кэш очищается при выходе
 - [x] Unit-тесты парсера и worker (mock)
 - [x] `httpx` в `pyproject.toml`
+- [x] Отмена загрузки (cancel worker, clear session)
+- [x] Суммарный progress; lifecycle httpx в диалоге
+- [x] QIDO `includefield`; `SeriesInfo.instance_count` из `00201209`
+
+**Отложено (workplace):** обновить `tests/fixtures/orthanc/*.json` с живого Orthanc.
 
 ---
 
