@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-06-23] ONNX v1.1 откат — остаёмся на v1
+- **Тип:** fix
+- **Файлы:** (код без изменений относительно HEAD; решение зафиксировано в changelog/ROADMAP)
+- **Суть:** Локальная реализация v1.1 (fixed mean/std, PCA annulus + longest-chord fallback) ухудшила auto LV контур; откат к v1 pipeline. Annulus отдельно не уточняем — v1.1 отложен.
+
 ## [2026-06-23] Сессия: DICOMweb Orthanc + RV FAC + доработки (итог)
 
 - **Тип:** feature + fix
@@ -24,7 +29,7 @@
   - [x] `instance_count` в `parse_series`
   - [ ] Workplace: записать реальные JSON-фикстуры с Orthanc (`curl` в spec)
   - [ ] Manual smoke на работе с живым сервером
-- **Следующий приоритет:** ONNX v1.1 (mean/std, annulus) — см. `ROADMAP.md`
+- **Следующий приоритет:** DICOMweb smoke + фикстуры; ONNX v1.1 отложен (см. ROADMAP)
 
 ## [2026-06-19 45:00] ROADMAP, чеклисты, LAV/RAV овал, LV Auto
 - **Тип:** feature

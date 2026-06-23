@@ -54,7 +54,7 @@
 |------|------------|--------|
 | **v1** | A4C ONNX, papillary cleanup, review UX (Enter/Esc), hotkey I | [x] |
 | **v1** | Biplane A2C в LV Auto | [x] убрано из меню (не v1) |
-| **v1.1** | Фиксированные train mean/std; annulus из геометрии маски | [ ] |
+| **v1.1** | Фиксированные train mean/std | [ ] отложено — v1 annulus не трогаем |
 | **v2** | A2C auto (отдельная модель / transfer) | [ ] «в следующей версии» |
 
 - [x] Stepped border refine + edge snap для ai/manual
@@ -134,7 +134,7 @@
 
 1. [x] RV FAC (одна кнопка, crescent open-arc, blink ED→ES)
 2. [ ] Workplace smoke DICOMweb + обновить `tests/fixtures/orthanc/` с сервера
-3. [ ] ONNX v1.1 (mean/std, annulus)
+3. [ ] ONNX v1.1 (mean/std only, annulus — без изменений)
 4. [ ] ONNX v2 / A2C auto
 5. [ ] CSV/JSON отчёт
 6. [ ] Side-by-side + ECG (Этап 3)
