@@ -37,6 +37,32 @@ def test_is_color_frame_true_for_doppler_like_channels() -> None:
     assert is_color_frame(frame)
 
 
+def test_to_display_rgb_preserves_dicom_channel_order() -> None:
+    from echo_personal_tool.infrastructure.pixel_utils import to_display_rgb
+
+    frame = np.zeros((4, 4, 3), dtype=np.uint8)
+    frame[0, 0] = (255, 0, 0)
+
+    rgb = to_display_rgb(frame, channel_order="rgb")
+    assert np.array_equal(rgb[0, 0], np.array([255, 0, 0], dtype=np.uint8))
+
+    swapped = to_display_rgb(frame, channel_order="bgr")
+    assert np.array_equal(swapped[0, 0], np.array([0, 0, 255], dtype=np.uint8))
+
+
+def test_apply_window_level_rgb_preserves_red_hue() -> None:
+    from echo_personal_tool.infrastructure.pixel_utils import apply_window_level_rgb
+
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    frame[..., 0] = 200
+    frame[..., 1] = 20
+    frame[..., 2] = 20
+
+    adjusted = apply_window_level_rgb(frame, low=0.0, high=255.0)
+    assert adjusted[0, 0, 0] > adjusted[0, 0, 1]
+    assert adjusted[0, 0, 0] > adjusted[0, 0, 2]
+
+
 def test_to_grayscale_array_preserves_uint16_range() -> None:
     from echo_personal_tool.infrastructure.pixel_utils import to_grayscale_array
 

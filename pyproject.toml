@@ -40,6 +40,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/echo_personal_tool"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/echo_personal_tool/resources/fonts" = "echo_personal_tool/resources/fonts"
+
 [tool.hatch.build.targets.sdist]
 include = ["src/echo_personal_tool", "README.md"]
 

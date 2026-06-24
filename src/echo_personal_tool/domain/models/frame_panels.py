@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from enum import Enum
 
 from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+from echo_personal_tool.domain.services.ultrasound_region_physics import (
+    PHYSICAL_UNIT_CM,
+    PHYSICAL_UNIT_MM,
+    horizontal_ms_per_pixel,
+    vertical_mm_per_pixel,
+)
 
 
 class PanelKind(str, Enum):
@@ -20,39 +26,31 @@ class UltrasoundPanel:
 
     kind: PanelKind
     bounds: DopplerSpectrogramRoi
-    physical_delta_x_cm: float | None = None
-    physical_delta_y_cm: float | None = None
+    physical_delta_x: float | None = None
+    physical_delta_y: float | None = None
     physical_units_x: int | None = None
     physical_units_y: int | None = None
 
     @property
-    def horizontal_mm_per_pixel(self) -> float | None:
-        if self.physical_delta_x_cm is None:
+    def horizontal_ms_per_pixel(self) -> float | None:
+        if self.physical_delta_x is None or self.physical_units_x is None:
             return None
-        return abs(self.physical_delta_x_cm) * 10.0
+        return horizontal_ms_per_pixel(abs(self.physical_delta_x), self.physical_units_x)
+
+    @property
+    def horizontal_mm_per_pixel(self) -> float | None:
+        """B-mode horizontal scale (mm/px); None on time/velocity axes."""
+        if self.physical_delta_x is None or self.physical_units_x is None:
+            return None
+        if self.physical_units_x not in (PHYSICAL_UNIT_CM, PHYSICAL_UNIT_MM):
+            return None
+        return vertical_mm_per_pixel(abs(self.physical_delta_x), self.physical_units_x)
 
     @property
     def vertical_mm_per_pixel(self) -> float | None:
-        from echo_personal_tool.domain.services.ultrasound_region_physics import (
-            PHYSICAL_UNIT_CM,
-            vertical_mm_per_pixel,
-        )
-
-        if self.physical_delta_y_cm is None:
+        if self.physical_delta_y is None or self.physical_units_y is None:
             return None
-        if self.physical_units_y == PHYSICAL_UNIT_CM:
-            return vertical_mm_per_pixel(abs(self.physical_delta_y_cm), PHYSICAL_UNIT_CM)
-        return abs(self.physical_delta_y_cm) * 10.0
-
-    @property
-    def horizontal_ms_per_pixel(self) -> float | None:
-        from echo_personal_tool.domain.services.ultrasound_region_physics import (
-            horizontal_ms_per_pixel,
-        )
-
-        if self.physical_delta_x_cm is None or self.physical_units_x is None:
-            return None
-        return horizontal_ms_per_pixel(abs(self.physical_delta_x_cm), self.physical_units_x)
+        return vertical_mm_per_pixel(abs(self.physical_delta_y), self.physical_units_y)
 
     def contains(self, x: float, y: float) -> bool:
         return self.bounds.contains(x, y)

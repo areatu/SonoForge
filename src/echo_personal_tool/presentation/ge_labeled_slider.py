@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSlider, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.echopac_theme import (
     ACCENT_BRIGHT,
@@ -53,6 +53,53 @@ class _SliderTrack(QWidget):
         painter.setFont(font)
         painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), self._label)
         painter.end()
+
+
+class TopLabeledSlider(QWidget):
+    """Standard horizontal slider with a text label above the track."""
+
+    valueChanged = Signal(int)
+
+    def __init__(
+        self,
+        label: str,
+        *,
+        minimum: int = 0,
+        maximum: int = 100,
+        value: int = 50,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._title = QLabel(label)
+        self._title.setStyleSheet(f"color: {TEXT}; font-weight: 600;")
+
+        self._slider = QSlider(Qt.Orientation.Horizontal)
+        self._slider.setRange(minimum, maximum)
+        self._slider.setValue(value)
+        self._slider.valueChanged.connect(self.valueChanged.emit)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.addWidget(self._title)
+        layout.addWidget(self._slider)
+
+    def slider(self) -> QSlider:
+        return self._slider
+
+    def value(self) -> int:
+        return self._slider.value()
+
+    def setValue(self, value: int) -> None:
+        self._slider.setValue(value)
+
+    def setRange(self, minimum: int, maximum: int) -> None:
+        self._slider.setRange(minimum, maximum)
+
+    def setEnabled(self, enabled: bool) -> None:  # type: ignore[override]
+        super().setEnabled(enabled)
+        self._title.setEnabled(enabled)
+        self._slider.setEnabled(enabled)
 
 
 class GeLabeledSlider(QWidget):

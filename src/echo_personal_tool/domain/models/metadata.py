@@ -29,6 +29,7 @@ class InstanceMetadata:
     path: Path | None = None
     media_format: str = "dicom"
     pixel_spacing_source: str | None = None
+    frame_time_vector: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)

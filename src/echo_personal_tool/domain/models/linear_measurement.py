@@ -17,10 +17,16 @@ class LinearMeasurement:
     start: tuple[float, float] | None = None
     end: tuple[float, float] | None = None
 
-    def display_text(self) -> str:
+    def display_text(self, *, length_unit: str = "mm") -> str:
         if self.millimeter_length is None:
             return f"{self.label}: {self.pixel_length:.1f} px"
-        return f"{self.label}: {self.millimeter_length:.1f} mm"
+        return f"{self.label}: {format_length_mm(self.millimeter_length, length_unit)}"
+
+
+def format_length_mm(millimeters: float, unit: str) -> str:
+    if unit == "cm":
+        return f"{millimeters / 10.0:.2f} cm"
+    return f"{millimeters:.1f} mm"
 
 
 def pixel_to_mm_length(

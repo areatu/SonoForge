@@ -47,7 +47,10 @@ class _SignalCapture:
 
 class _FailingDownloadClient(FakeDicomWebClient):
     def download_series(
-        self, study_uid: str, series_uid: str
+        self,
+        study_uid: str,
+        series_uid: str,
+        **kwargs: object,
     ) -> list[tuple[str, bytes]]:
         raise TimeoutError("WADO timeout")
 
@@ -66,7 +69,10 @@ class _SlowDownloadClient(FakeDicomWebClient):
         self._calls = 0
 
     def download_series(
-        self, study_uid: str, series_uid: str
+        self,
+        study_uid: str,
+        series_uid: str,
+        **kwargs: object,
     ) -> list[tuple[str, bytes]]:
         self._calls += 1
         if self._calls == 1:
@@ -92,7 +98,8 @@ def test_download_saves_instances_and_emits_done(tmp_path: Path) -> None:
     assert expected_path.exists()
     assert expected_path.read_bytes()[128:132] == b"DICM"
     assert capture.series_done == [(SERIES_UID, "ok")]
-    assert capture.progress == [(1, 1, SERIES_UID)]
+    assert capture.progress
+    assert capture.progress[-1] == (1, 1, SERIES_UID)
     assert capture.done == [(session_id, STUDY_UID)]
     assert capture.failed == []
     assert capture.cancelled == []
@@ -111,7 +118,8 @@ def test_series_failed_when_download_fails(tmp_path: Path) -> None:
     worker.run()
 
     assert capture.series_done == [(SERIES_UID, "failed")]
-    assert capture.progress == []
+    assert capture.progress
+    assert capture.progress[0] == (0, 1, SERIES_UID)
     assert capture.done == []
     assert len(capture.failed) == 1
     assert capture.failed[0][0] == STUDY_UID

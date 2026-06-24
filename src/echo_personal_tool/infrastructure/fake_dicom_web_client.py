@@ -69,7 +69,10 @@ class FakeDicomWebClient:
         return self._load_sample_dcm()
 
     def download_series(
-        self, study_uid: str, series_uid: str
+        self,
+        study_uid: str,
+        series_uid: str,
+        **kwargs: object,
     ) -> list[tuple[str, bytes]]:
         # For fake client, just wrap instance download
         instances = self.query_instances(study_uid, series_uid)

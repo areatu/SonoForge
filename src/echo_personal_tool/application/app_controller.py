@@ -41,9 +41,8 @@ from echo_personal_tool.domain.calculations.lvef_simpson import (
     explain_lv_auto_reject_reason,
 )
 from echo_personal_tool.domain.calculations.lvm import from_linear_measurements as lvm_from_linear
-from echo_personal_tool.domain.calculations.rwt import from_linear_measurements as rwt_from_linear
-from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
 from echo_personal_tool.domain.calculations.rv_fac import from_rv_contours
+from echo_personal_tool.domain.calculations.rwt import from_linear_measurements as rwt_from_linear
 from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
 from echo_personal_tool.domain.models import (
     Contour,
@@ -57,6 +56,7 @@ from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.contour_geometry import apex_point
+from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
 from echo_personal_tool.domain.services.segment_roi import (
     echonet_crop_mode_for_media,
     resolve_cine_segment_roi_xyxy,
@@ -90,6 +90,7 @@ class AppController(QObject):
     frame_load_failed = Signal(str)
     thumbnail_loaded = Signal(str, QImage)
     status_message = Signal(str)
+    speckle_result_ready = Signal(object)
 
     def __init__(
         self,
@@ -119,6 +120,7 @@ class AppController(QObject):
         self._decode_request_id = 0
         self._pending_decode_id = 0
         self._thumbnail_max_in_flight = thumbnail_max_in_flight
+        self._playback_speed_multiplier = 1.0
         self._thumbnail_scheduler = (
             thumbnail_scheduler
             if thumbnail_scheduler is not None
@@ -338,6 +340,10 @@ class AppController(QObject):
 
     def toggle_playback(self) -> None:
         self._state_manager.toggle_playback()
+
+    def set_playback_speed_multiplier(self, multiplier: float) -> None:
+        self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))
+        self._on_state_changed(self._state_manager.snapshot)
 
     def step_frame(self, delta: int) -> None:
         self._state_manager.step_frame(delta)
@@ -729,7 +735,10 @@ class AppController(QObject):
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
-        interval = max(1, int(round(state.frame_time_ms or 33.3)))
+        interval = max(
+            1,
+            int(round((state.frame_time_ms or 33.3) / self._playback_speed_multiplier)),
+        )
         self._timer.setInterval(interval)
         if state.is_playing and not self._timer.isActive():
             self._timer.start()
@@ -782,11 +791,16 @@ class AppController(QObject):
         study_uid = self._resolve_study_uid(instance)
         session = self._measurement_session.get(study_uid)
         frame_index = state.current_frame_index
-        doppler_dto = self._measurement_session.get_doppler_for_instance_frame(
+        doppler_dto = self._measurement_session.get_doppler_for_instance(
             study_uid,
             instance.sop_instance_uid,
-            frame_index,
         )
+        if doppler_dto is None:
+            doppler_dto = self._measurement_session.get_doppler_for_instance_frame(
+                study_uid,
+                instance.sop_instance_uid,
+                frame_index,
+            )
         if doppler_dto is None and instance.number_of_frames <= 1:
             doppler_dto = self._measurement_session.get_doppler_for_instance(
                 study_uid,
@@ -1290,3 +1304,65 @@ class AppController(QObject):
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
         self.status_message.emit("сегментация недоступна — используйте ручной контур")
+
+    # ── Speckle Tracking ──────────────────────────────────────────────────
+
+    def run_speckle_tracking(self, contour: object | None = None) -> None:
+        """Launch speckle tracking on current CINE frames."""
+        from echo_personal_tool.application.workers.speckle_worker import (
+            SpeckleTrackingWorker,
+        )
+        from echo_personal_tool.domain.models.speckle import SpeckleConfig
+        from echo_personal_tool.domain.services.myocardial_zone import (
+            create_myocardial_zone,
+        )
+
+        frames = self._frame_cache.frames
+        if frames is None or len(frames) < 3:
+            self.status_message.emit("speckle tracking: недостаточно кадров")
+            return
+
+        if contour is None:
+            self.status_message.emit("speckle tracking: нарисуйте контур LV")
+            return
+
+        from echo_personal_tool.domain.models.contour import Contour
+
+        if not isinstance(contour, Contour) or len(contour.points) < 3:
+            self.status_message.emit("speckle tracking: контур LV не найден")
+            return
+
+        pixel_spacing = self._state_manager.snapshot.pixel_spacing or (1.0, 1.0)
+        endo_points = __import__("numpy").array(contour.points, dtype=__import__("numpy").float64)
+
+        config = SpeckleConfig(wall_thickness_mm=8.0)
+        zone = create_myocardial_zone(endo_points, pixel_spacing, config.wall_thickness_mm)
+
+        frame_time_ms = self._state_manager.snapshot.frame_time_ms or 33.3
+
+        self.status_message.emit("speckle tracking: вычисление...")
+        worker = SpeckleTrackingWorker(
+            frames=frames,
+            zone=zone,
+            pixel_spacing=pixel_spacing,
+            frame_time_ms=frame_time_ms,
+            config=config,
+        )
+        worker.signals.finished.connect(self._on_speckle_tracking_finished)
+        worker.signals.error.connect(self._on_speckle_tracking_error)
+        self._thread_pool.start(worker)
+
+    def _on_speckle_tracking_finished(self, result: object) -> None:
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        if not isinstance(result, StrainResult):
+            return
+
+        gls_text = f"GLS: {result.gls:.1f}%"
+        hr_text = f"HR: {result.heart_rate_bpm:.0f} bpm" if result.heart_rate_bpm > 0 else ""
+        status = f"{gls_text}  {hr_text}".strip()
+        self.status_message.emit(status)
+        self.speckle_result_ready.emit(result)
+
+    def _on_speckle_tracking_error(self, message: str) -> None:
+        self.status_message.emit(f"speckle tracking ошибка: {message}")

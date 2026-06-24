@@ -25,10 +25,11 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
     load_ase_reference_text,
     markdown_to_html,
 )
+from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
 _SETTINGS_ORG = "echo-personal-tool"
 _SETTINGS_APP = "ase-reference"
-_DEFAULT_FONT_FAMILY = "DejaVu Sans"
+_DEFAULT_FONT_FAMILY = FONT_FAMILY_UI
 _DEFAULT_FONT_SIZE = 12
 _MIN_FONT_SIZE = 8
 _MAX_FONT_SIZE = 28

@@ -5,16 +5,27 @@ from __future__ import annotations
 from pydicom.dataset import Dataset
 
 # DICOM PS3.3 C.8.5.5 Physical Units
-PHYSICAL_UNIT_CM = 3
-PHYSICAL_UNIT_SEC = 4
+PHYSICAL_UNIT_CM = 1
+PHYSICAL_UNIT_MM = 2
+PHYSICAL_UNIT_SEC = 3
+PHYSICAL_UNIT_HZ = 4
+PHYSICAL_UNIT_DB = 5
 PHYSICAL_UNIT_CM_PER_SEC = 6
 
 # RegionSpatialFormat
-SPATIAL_SPECTRAL = 3
+SPATIAL_2D = 1
 SPATIAL_M_MODE = 2
+SPATIAL_SPECTRAL = 3
 
-# RegionDataType — spectral / tissue Doppler
-DOPPLER_DATA_TYPES = frozenset({0x10, 0x11, 16, 17})
+# RegionDataType — spectral / tissue Doppler (2 = Spectral per PS3.3)
+DOPPLER_DATA_TYPES = frozenset({2, 0x10, 0x11, 16, 17})
+
+_SPATIAL_UNIT_CODES = frozenset(
+    {
+        PHYSICAL_UNIT_CM,
+        PHYSICAL_UNIT_MM,
+    }
+)
 
 
 def region_physical_deltas(region: Dataset) -> tuple[float | None, float | None, int | None, int | None]:
@@ -31,17 +42,29 @@ def region_physical_deltas(region: Dataset) -> tuple[float | None, float | None,
 
 
 def horizontal_ms_per_pixel(delta_x: float, units_x: int) -> float | None:
-    """M-mode / spectral sweep: seconds per pixel on the time axis."""
-    if units_x != PHYSICAL_UNIT_SEC or delta_x <= 0.0:
+    """M-mode / spectral sweep: milliseconds per pixel on the time axis."""
+    if delta_x <= 0.0:
         return None
-    return delta_x * 1000.0
+    if units_x == PHYSICAL_UNIT_SEC:
+        return delta_x * 1000.0
+    # Vendor quirk: time increment mis-tagged as Hz while value is seconds/pixel.
+    if units_x == PHYSICAL_UNIT_HZ and delta_x < 1.0:
+        return delta_x * 1000.0
+    return None
 
 
 def vertical_mm_per_pixel(delta_y: float, units_y: int) -> float | None:
-    """Depth axis in cm → mm per pixel."""
-    if units_y != PHYSICAL_UNIT_CM or delta_y <= 0.0:
+    """Depth axis: millimeters per pixel."""
+    if delta_y <= 0.0:
         return None
-    return delta_y * 10.0
+    if units_y == PHYSICAL_UNIT_CM:
+        return delta_y * 10.0
+    if units_y == PHYSICAL_UNIT_MM:
+        return delta_y
+    # Vendor quirk: depth increment mis-tagged as seconds while value is cm/pixel.
+    if units_y == PHYSICAL_UNIT_SEC and delta_y < 1.0:
+        return delta_y * 10.0
+    return None
 
 
 def time_span_ms_from_region(width_px: float, delta_x: float, units_x: int) -> float | None:
@@ -59,6 +82,22 @@ def velocity_span_cm_s_from_region(height_px: float, delta_y: float, units_y: in
     return height_px * delta_y
 
 
+def is_spatial_calibration_region(region: Dataset) -> bool:
+    """True when region deltas describe B-mode distance (cm/mm), not time/velocity."""
+    if is_spectral_doppler_region(region):
+        return False
+    spatial = int(region.get("RegionSpatialFormat", 0) or 0)
+    data_type = int(region.get("RegionDataType", 0) or 0)
+    if spatial == SPATIAL_2D and data_type == 1:
+        return True
+    _, _, units_x, units_y = region_physical_deltas(region)
+    if units_x is not None and units_x not in _SPATIAL_UNIT_CODES:
+        return False
+    if units_y is not None and units_y not in _SPATIAL_UNIT_CODES:
+        return False
+    return True
+
+
 def is_spectral_doppler_region(region: Dataset) -> bool:
     spatial = int(region.get("RegionSpatialFormat", 0) or 0)
     data_type = int(region.get("RegionDataType", 0) or 0)
@@ -69,3 +108,19 @@ def is_spectral_doppler_region(region: Dataset) -> bool:
 
 def is_mmode_region(region: Dataset) -> bool:
     return int(region.get("RegionSpatialFormat", 0) or 0) == SPATIAL_M_MODE
+
+
+def spectral_doppler_region_priority(region: Dataset) -> int:
+    """Higher = preferred when multiple regions match Doppler."""
+    if not is_spectral_doppler_region(region):
+        return -1
+    data_type = int(region.get("RegionDataType", 0) or 0)
+    if data_type == 2:
+        return 4
+    if data_type in {0x10, 16}:
+        return 3
+    if data_type in {0x11, 17}:
+        return 2
+    if int(region.get("RegionSpatialFormat", 0) or 0) == SPATIAL_SPECTRAL:
+        return 3
+    return 1

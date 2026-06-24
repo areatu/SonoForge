@@ -21,12 +21,17 @@ from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
 from echo_personal_tool.presentation.echopac_theme import ACCENT_BRIGHT, BG_DARK, TEXT
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
-_THUMB_W = 96
-_THUMB_H = 72
-_CELL_W = 108
-_CELL_H = 84
 _VISIBLE_PADDING = 8
 _SCROLL_DEBOUNCE_MS = 25
+
+_THUMBNAIL_SCALES: dict[str, dict[str, tuple[int, int]]] = {
+    "small": {"thumb": (72, 54), "cell": (84, 66)},
+    "medium": {"thumb": (96, 72), "cell": (108, 84)},
+    "large": {"thumb": (128, 96), "cell": (140, 108)},
+}
+_COLUMN_COUNT = 2
+_CELL_SPACING = 2
+_SCROLLBAR_GUTTER = 24
 
 ThumbnailLoader = (
     Callable[[InstanceMetadata], None] | Callable[[InstanceMetadata, ThumbnailPriority], None]
@@ -37,7 +42,10 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
     """Paint thumbnail with index (TL), cine (BL), DICOM (BR)."""
 
     def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:  # type: ignore[override]
-        return QSize(_CELL_W, _CELL_H)
+        widget = option.widget
+        if isinstance(widget, ThumbnailGalleryWidget):
+            return QSize(widget.cell_width(), widget.cell_height())
+        return QSize(108, 84)
 
     def paint(self, painter, option, index) -> None:  # type: ignore[override]
         instance = index.data(_ITEM_ROLE)
@@ -128,13 +136,8 @@ def _has_dicom_tags(instance: InstanceMetadata) -> bool:
     return instance.pixel_spacing is not None or instance.frame_time_ms is not None
 
 
-_COLUMN_COUNT = 2
-_CELL_SPACING = 2
-# Reserve gutter for vertical scrollbar + frame so two grid cells still fit in the viewport.
-_SCROLLBAR_GUTTER = 24
-_GALLERY_WIDTH = (
-    _COLUMN_COUNT * _CELL_W + (_COLUMN_COUNT - 1) * _CELL_SPACING + _SCROLLBAR_GUTTER
-)
+def _gallery_width(cell_w: int) -> int:
+    return _COLUMN_COUNT * cell_w + (_COLUMN_COUNT - 1) * _CELL_SPACING + _SCROLLBAR_GUTTER
 
 
 class ThumbnailGalleryWidget(QListWidget):
@@ -145,6 +148,8 @@ class ThumbnailGalleryWidget(QListWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("thumbnailGallery")
+        self._thumb_w, self._thumb_h = _THUMBNAIL_SCALES["medium"]["thumb"]
+        self._cell_w, self._cell_h = _THUMBNAIL_SCALES["medium"]["cell"]
         self.setItemDelegate(ThumbnailGalleryDelegate(self))
         # LeftToRight + wrap => exactly two columns, rows grow downward (vertical scroll).
         self.setViewMode(QListWidget.ViewMode.IconMode)
@@ -154,11 +159,9 @@ class ThumbnailGalleryWidget(QListWidget):
         self.setUniformItemSizes(True)
         self.setMovement(QListWidget.Movement.Static)
         self.setSpacing(_CELL_SPACING)
-        self.setGridSize(QSize(_CELL_W, _CELL_H))
+        self._apply_gallery_metrics()
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.setIconSize(QSize(_THUMB_W, _THUMB_H))
-        self.setFixedWidth(_GALLERY_WIDTH)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.itemClicked.connect(self._on_item_clicked)
 
@@ -174,6 +177,24 @@ class ThumbnailGalleryWidget(QListWidget):
         self._scroll_timer.setInterval(_SCROLL_DEBOUNCE_MS)
         self._scroll_timer.timeout.connect(self.request_visible_previews)
         self.verticalScrollBar().valueChanged.connect(lambda _v: self._scroll_timer.start())
+
+    def cell_width(self) -> int:
+        return self._cell_w
+
+    def cell_height(self) -> int:
+        return self._cell_h
+
+    def apply_scale(self, scale: str) -> None:
+        spec = _THUMBNAIL_SCALES.get(scale, _THUMBNAIL_SCALES["medium"])
+        self._thumb_w, self._thumb_h = spec["thumb"]
+        self._cell_w, self._cell_h = spec["cell"]
+        self._apply_gallery_metrics()
+        self.viewport().update()
+
+    def _apply_gallery_metrics(self) -> None:
+        self.setGridSize(QSize(self._cell_w, self._cell_h))
+        self.setIconSize(QSize(self._thumb_w, self._thumb_h))
+        self.setFixedWidth(_gallery_width(self._cell_w))
 
     def set_thumbnail_loader(self, loader: ThumbnailLoader) -> None:
         self._thumbnail_loader = loader
@@ -196,7 +217,7 @@ class ThumbnailGalleryWidget(QListWidget):
                     item = QListWidgetItem()
                     item.setData(_ITEM_ROLE, instance)
                     item.setData(Qt.ItemDataRole.UserRole + 1, index)
-                    item.setSizeHint(QSize(_CELL_W, _CELL_H))
+                    item.setSizeHint(QSize(self._cell_w, self._cell_h))
                     cached = self._thumbnail_cache.get(instance.sop_instance_uid)
                     if cached is not None:
                         item.setIcon(cached)

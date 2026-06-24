@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from echo_personal_tool.domain.models.linear_measurement import format_length_mm
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.calculations.chamber_simpson import (
     biplane_es_volume_ml,
@@ -17,6 +18,7 @@ def format_results_overlay(
     *,
     time_calibrated: bool = False,
     amplitude_only: bool | None = None,
+    length_display_unit: str = "mm",
 ) -> str:
     """Return multi-line summary of session-computed values (study-wide)."""
     if amplitude_only is not None:
@@ -111,7 +113,7 @@ def format_results_overlay(
         _append(lines, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
     for measurement in snapshot.linear_measurements:
-        lines.append(f"  {measurement.display_text()}")
+        lines.append(f"  {measurement.display_text(length_unit=length_display_unit)}")
 
     return "\n".join(lines)
 

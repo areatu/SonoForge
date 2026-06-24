@@ -30,6 +30,13 @@ from echo_personal_tool.domain.models.orthanc import (
     SeriesInfo,
     StudyInfo,
 )
+from echo_personal_tool.domain.models.speckle import (
+    MyocardialZone,
+    SpeckleConfig,
+    StrainResult,
+    TrackingKernel,
+    TrackingResult,
+)
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 __all__ = [
@@ -49,11 +56,16 @@ __all__ = [
     "LvViewMetrics",
     "LvefResult",
     "MeasurementSnapshot",
+    "MyocardialZone",
     "SeriesInfo",
     "SeriesMetadata",
+    "SpeckleConfig",
+    "StrainResult",
     "StudyInfo",
     "TeichholzResult",
     "StudyMetadata",
+    "TrackingKernel",
+    "TrackingResult",
     "ViewerState",
     "pixel_to_mm_length",
 ]

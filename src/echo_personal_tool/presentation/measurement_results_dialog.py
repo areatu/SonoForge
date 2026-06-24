@@ -35,11 +35,17 @@ class MeasurementResultsDialog(QDialog):
         *,
         parent=None,
         default_pdf_name: str = "echo_measurements.pdf",
+        length_display_unit: str = "mm",
+        pdf_font_size: int = 10,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Результаты измерений")
         self.resize(520, 640)
-        self._report_text = format_measurement_report(snapshot)
+        self._report_text = format_measurement_report(
+            snapshot,
+            length_display_unit=length_display_unit,
+        )
+        self._pdf_font_size = pdf_font_size
         self._default_pdf_name = default_pdf_name
 
         self._text = QPlainTextEdit(self._report_text)
@@ -70,7 +76,11 @@ class MeasurementResultsDialog(QDialog):
         if output_path.suffix.lower() != ".pdf":
             output_path = output_path.with_suffix(".pdf")
         try:
-            export_measurement_report_pdf(self._report_text, output_path)
+            export_measurement_report_pdf(
+                self._report_text,
+                output_path,
+                font_size=self._pdf_font_size,
+            )
         except PdfExportError as exc:
             QMessageBox.warning(self, "Экспорт PDF", str(exc))
             return

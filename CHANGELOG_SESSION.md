@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-06-23] Оверлей между кадрами + «По умолчанию» в настройках
+- **Тип:** fix + feature
+- **Файлы:** `main_window.py`, `viewer_widget.py`, `app_controller.py`, `user_preferences.py`, `user_preferences_dialog.py`, `test_user_preferences.py`
+- **Суть:** Оверлей результатов не пересчитывается при смене кадра одного cine (только при смене инстанса или измерений); позиция сохраняется per-instance. В диалоге настроек — кнопка «По умолчанию» с подтверждением (сброс к factory defaults, last_opened_folder сохраняется).
+
 ## [2026-06-23] ONNX v1.1 откат — остаёмся на v1
 - **Тип:** fix
 - **Файлы:** (код без изменений относительно HEAD; решение зафиксировано в changelog/ROADMAP)
@@ -165,3 +170,13 @@
 - **Тип:** fix
 - **Файлы:** `lvef_simpson.py`, `app_controller.py`, `model_manifest.json`, `test_lvef_simpson.py`
 - **Суть:** Отклонение ONNX-контура по геометрии в px (не по мм при плохом PixelSpacing); ранний fail при малой маске; `auto_refine_after_segment` выключен по умолчанию; статус с конкретной причиной отказа.
+
+## [2026-06-24] DICOM tag dictionary + рефакторинг orthanc_dicom_json
+- **Тип:** feature + refactor
+- **Файлы:** `domain/services/dicom_tag_dictionary.py` (новый), `infrastructure/orthanc_dicom_json.py`, `tests/test_dicom_tag_dictionary.py` (новый)
+- **Суть:** Легковесный словарь ~211 DICOM-тегов с lookup по int/hex/tuple. Заменены хардкод hex-констант в orthanc_dicom_json.py на импорт из словаря. Анализ Weasis показал, что Doppler/M-mode калибровка в ECHO2026 уже продвинутее.
+
+## [2026-06-24] Speckle Tracking (2D Strain) — ядро + UI
+- **Тип:** feature
+- **Файлы:** `domain/models/speckle.py`, `domain/services/myocardial_zone.py`, `domain/services/speckle_tracking.py`, `domain/services/strain_computation.py`, `domain/services/cardiac_cycle_detector.py`, `presentation/speckle_overlay.py`, `presentation/strain_curve_widget.py`, `application/workers/speckle_worker.py`, `tests/unit/test_speckle_tracking.py`, `presentation/measurement_action.py`, `presentation/measures_menu.py`, `presentation/main_window.py`, `application/app_controller.py`, `presentation/viewer_widget.py`
+- **Суть:** Block-matching speckle tracking с NCC, пирамидальный подход, sub-pixel точность. Dual-contour (Philips/Samsung стиль): эндокард + эпикард с фиксированной толщиной. GLS + radial strain, авто-определение ED/ES через FFT. Offline batch режим. UI: кнопка "Speckle Tracking" в Measures → Strain, AppController.run_speckle_tracking(), SpeckleOverlay + StrainCurveWidget.

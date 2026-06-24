@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import QMetaObject, Qt, QThreadPool, QTimer, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -21,12 +21,12 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.workers.orthanc_download_worker import OrthancDownloadWorker
 from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
 from echo_personal_tool.domain.ports import DicomWebClient
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
-from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+from echo_personal_tool.infrastructure.server_settings import ServerSettings, load_server_settings
 
 _STUDY_UID_ROLE = Qt.ItemDataRole.UserRole
 _SERIES_UID_ROLE = Qt.ItemDataRole.UserRole + 1
 _SORT_ROLE = Qt.ItemDataRole.UserRole + 2
+_CANCEL_FORCE_CLOSE_MS = 30_000
 
 
 class OrthancStudyDialog(QDialog):
@@ -36,6 +36,7 @@ class OrthancStudyDialog(QDialog):
         cache: OrthancSessionCache,
         parent: QWidget | None = None,
         *,
+        server_settings: ServerSettings | None = None,
         base_url: str | None = None,
         username: str | None = None,
         password: str | None = None,
@@ -43,6 +44,7 @@ class OrthancStudyDialog(QDialog):
         super().__init__(parent)
         self._client = client
         self._cache = cache
+        self._server_settings = server_settings
         self._base_url = base_url
         self._username = username
         self._password = password
@@ -51,6 +53,10 @@ class OrthancStudyDialog(QDialog):
         self._worker: OrthancDownloadWorker | None = None
         self._session_id: str | None = None
         self._client_closed = False
+        self._close_pending = False
+        self._force_close_timer = QTimer(self)
+        self._force_close_timer.setSingleShot(True)
+        self._force_close_timer.timeout.connect(self._force_close_if_still_downloading)
 
         self.setWindowTitle("Загрузка с сервера")
         self.resize(800, 520)
@@ -106,20 +112,16 @@ class OrthancStudyDialog(QDialog):
 
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         if self._downloading:
+            self._close_pending = True
+            self._on_cancel()
             event.ignore()
-            if self._worker is not None:
-                self._on_cancel()
-            else:
-                self._downloading = False
-                self._release_client()
-                event.accept()
-                super().closeEvent(event)
             return
         self._release_client()
         super().closeEvent(event)
 
     def reject(self) -> None:
         if self._downloading:
+            self._close_pending = True
             self._on_cancel()
             return
         self._release_client()
@@ -157,7 +159,6 @@ class OrthancStudyDialog(QDialog):
             QMessageBox.warning(self, "Поиск", f"Ошибка запроса исследований: {exc}")
             return
 
-        # Sort: newest study_date first, then by patient name
         studies = sorted(
             studies,
             key=lambda s: (s.study_date or "", s.patient_name or ""),
@@ -248,15 +249,16 @@ class OrthancStudyDialog(QDialog):
         session_id = self._cache.create_session()
         self._session_id = session_id
         self._downloading = True
+        self._close_pending = False
         self._load_btn.setEnabled(False)
         self._cancel_btn.setText("Отменить загрузку")
         self._cancel_btn.setEnabled(True)
         self._find_btn.setEnabled(False)
         self._tree.setEnabled(False)
+        self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        self._progress.setMaximum(0)
         self._progress.show()
-        self._status_label.setText("Загрузка…")
+        self._status_label.setText("Подготовка загрузки…")
 
         worker = OrthancDownloadWorker(
             self._client,
@@ -265,12 +267,14 @@ class OrthancStudyDialog(QDialog):
             study_uid,
             series_uids,
             self,
+            server_settings=self._server_settings,
             base_url=self._base_url,
             username=self._username,
             password=self._password,
         )
         self._worker = worker
         worker.signals.progress.connect(self._on_progress)
+        worker.signals.status.connect(self._on_status)
         worker.signals.done.connect(self._on_done)
         worker.signals.failed.connect(self._on_failed)
         worker.signals.cancelled.connect(self._on_cancelled)
@@ -282,33 +286,62 @@ class OrthancStudyDialog(QDialog):
             self._status_label.setText("Отмена загрузки…")
             self._cancel_btn.setEnabled(False)
             self._worker.cancel()
+            self._force_close_timer.start(_CANCEL_FORCE_CLOSE_MS)
             return
         self.reject()
 
+    def _force_close_if_still_downloading(self) -> None:
+        if not self._downloading:
+            return
+        self._downloading = False
+        self._worker = None
+        if self._session_id is not None:
+            self._cache.clear_session(self._session_id)
+            self._session_id = None
+        self._progress.hide()
+        self._release_client()
+        super().reject()
+
+    def _short_uid(self, series_uid: str) -> str:
+        return series_uid[:12] + "…" if len(series_uid) > 12 else series_uid
+
     def _on_progress(self, current: int, total: int, series_uid: str) -> None:
         if total > 0:
-            self._progress.setMaximum(total)
-            self._progress.setValue(current)
-        short_uid = series_uid[:12] + "…" if len(series_uid) > 12 else series_uid
+            self._progress.setRange(0, total)
+            self._progress.setValue(min(current, total))
+        short_uid = self._short_uid(series_uid)
         self._status_label.setText(f"Загрузка — {current}/{total} (серия {short_uid})")
+
+    def _on_status(self, message: str) -> None:
+        self._status_label.setText(message)
 
     def _on_series_done(self, series_uid: str, status: str) -> None:
         if status == "failed":
-            short_uid = series_uid[:12] + "…" if len(series_uid) > 12 else series_uid
-            self._status_label.setText(f"Ошибка в серии {short_uid}")
+            self._status_label.setText(f"Ошибка в серии {self._short_uid(series_uid)}")
 
-    def _on_done(self, session_id: str, study_uid: str) -> None:
+    def _reset_after_download(self) -> None:
         self._downloading = False
         self._worker = None
+        self._force_close_timer.stop()
+
+    def _on_done(self, session_id: str, study_uid: str) -> None:
+        self._reset_after_download()
         self._session_id = None
         self._result = (session_id, study_uid)
         self._progress.setValue(self._progress.maximum())
         self._status_label.setText("Загрузка завершена")
+        QMetaObject.invokeMethod(
+            self,
+            "_finish_accept",
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    @Slot()
+    def _finish_accept(self) -> None:
         self.accept()
 
     def _on_failed(self, _uid: str, message: str) -> None:
-        self._downloading = False
-        self._worker = None
+        self._reset_after_download()
         if self._session_id is not None:
             self._cache.clear_session(self._session_id)
             self._session_id = None
@@ -321,8 +354,7 @@ class OrthancStudyDialog(QDialog):
         QMessageBox.warning(self, "Загрузка", f"Ошибка загрузки: {message}")
 
     def _on_cancelled(self, _session_id: str) -> None:
-        self._downloading = False
-        self._worker = None
+        self._reset_after_download()
         self._session_id = None
         self._progress.hide()
         self._tree.setEnabled(True)
@@ -331,4 +363,12 @@ class OrthancStudyDialog(QDialog):
         self._cancel_btn.setEnabled(True)
         self._update_load_button()
         self._release_client()
+        QMetaObject.invokeMethod(
+            self,
+            "_finish_reject",
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    @Slot()
+    def _finish_reject(self) -> None:
         super().reject()

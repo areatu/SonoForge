@@ -10,7 +10,10 @@ from PySide6.QtGui import QImage
 
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.image_reader import ImageReader
-from echo_personal_tool.infrastructure.pixel_utils import bgr_to_rgb, is_color_frame
+from echo_personal_tool.infrastructure.pixel_utils import (
+    is_color_frame,
+    to_display_rgb,
+)
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
 THUMBNAIL_SIZE = 128
@@ -23,7 +26,12 @@ def thumbnail_frame_index(number_of_frames: int) -> int:
     return (number_of_frames - 1) // 2
 
 
-def numpy_pixels_to_qimage(pixels: np.ndarray, size: int = THUMBNAIL_SIZE) -> QImage:
+def numpy_pixels_to_qimage(
+    pixels: np.ndarray,
+    size: int = THUMBNAIL_SIZE,
+    *,
+    media_format: str | None = None,
+) -> QImage:
     """Convert a grayscale or BGR frame to a scaled QImage preserving aspect ratio.
 
     ``size`` is the maximum width and height of the bounding box; the result fits
@@ -31,7 +39,8 @@ def numpy_pixels_to_qimage(pixels: np.ndarray, size: int = THUMBNAIL_SIZE) -> QI
     """
     arr = np.ascontiguousarray(pixels)
     if is_color_frame(arr):
-        rgb = bgr_to_rgb(arr)
+        channel_order = "rgb" if media_format == "dicom" else "bgr"
+        rgb = to_display_rgb(arr, channel_order=channel_order)
         height, width, _channels = rgb.shape
         qimg = QImage(
             rgb.data,
@@ -109,7 +118,11 @@ class ThumbnailLoaderWorker(QRunnable):
                 pixels = reader.read_pixels(self._path, frame_index=frame_index)
             # MVP is strict preview-only: preview_only=False is kept for compatibility
             # but currently does not switch to full-size rendering.
-            image = numpy_pixels_to_qimage(pixels, size=self._preview_size)
+            image = numpy_pixels_to_qimage(
+                pixels,
+                size=self._preview_size,
+                media_format=self._media_format,
+            )
             self.signals.finished.emit(self._sop_instance_uid, image)
         except Exception as exc:  # noqa: BLE001 - surface to UI
             self.signals.failed.emit(self._sop_instance_uid, str(exc))

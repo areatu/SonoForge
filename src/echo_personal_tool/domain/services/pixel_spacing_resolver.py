@@ -91,6 +91,15 @@ def _from_nominal_scanned_pixel_spacing(dataset: Dataset) -> PixelSpacingResolut
     return None
 
 
+from echo_personal_tool.domain.services.ultrasound_region_physics import (
+    PHYSICAL_UNIT_CM,
+    PHYSICAL_UNIT_MM,
+    PHYSICAL_UNIT_SEC,
+    is_spatial_calibration_region,
+    region_physical_deltas,
+)
+
+
 def _from_ultrasound_regions(dataset: Dataset) -> PixelSpacingResolution | None:
     regions = dataset.get("SequenceOfUltrasoundRegions")
     if not regions:
@@ -99,6 +108,8 @@ def _from_ultrasound_regions(dataset: Dataset) -> PixelSpacingResolution | None:
     preferred: PixelSpacingResolution | None = None
     fallback: PixelSpacingResolution | None = None
     for region in regions:
+        if not is_spatial_calibration_region(region):
+            continue
         result = _spacing_from_ultrasound_region(region)
         if result is None:
             continue
@@ -113,16 +124,25 @@ def _from_ultrasound_regions(dataset: Dataset) -> PixelSpacingResolution | None:
 
 
 def _spacing_from_ultrasound_region(region: Dataset) -> PixelSpacingResolution | None:
-    delta_x = region.get("PhysicalDeltaX")
-    delta_y = region.get("PhysicalDeltaY")
+    delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
     if delta_x is None or delta_y is None:
         return None
-    try:
-        col_mm = abs(float(delta_x)) * 10.0
-        row_mm = abs(float(delta_y)) * 10.0
-    except (TypeError, ValueError):
+
+    def _delta_to_mm(delta: float, units: int | None, *, tissue_2d: bool) -> float | None:
+        if units in (None, PHYSICAL_UNIT_CM):
+            return abs(delta) * 10.0
+        if units == PHYSICAL_UNIT_MM:
+            return abs(delta)
+        if tissue_2d and units == PHYSICAL_UNIT_SEC and abs(delta) < 1.0:
+            return abs(delta) * 10.0
         return None
-    if row_mm <= 0 or col_mm <= 0:
+
+    spatial = int(region.get("RegionSpatialFormat", 0) or 0)
+    data_type = int(region.get("RegionDataType", 0) or 0)
+    tissue_2d = spatial == 1 and data_type == 1
+    col_mm = _delta_to_mm(delta_x, units_x, tissue_2d=tissue_2d)
+    row_mm = _delta_to_mm(delta_y, units_y, tissue_2d=tissue_2d)
+    if col_mm is None or row_mm is None or row_mm <= 0 or col_mm <= 0:
         return None
     return PixelSpacingResolution(
         spacing=(row_mm, col_mm),

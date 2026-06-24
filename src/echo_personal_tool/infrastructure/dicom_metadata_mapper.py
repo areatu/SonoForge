@@ -38,6 +38,17 @@ def _frame_time_ms(dataset: Dataset) -> float | None:
     return None
 
 
+def _frame_time_vector(dataset: Dataset) -> tuple[float, ...] | None:
+    """Parse FrameTimeVector (0018,1065) for per-frame timing."""
+    if not hasattr(dataset, "FrameTimeVector"):
+        return None
+    raw = dataset.FrameTimeVector
+    try:
+        return tuple(float(x) for x in raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> InstanceMetadata:
     """Convert a DICOM dataset (header or full) to InstanceMetadata."""
     number_of_frames = int(dataset.get("NumberOfFrames", 1) or 1)
@@ -51,6 +62,7 @@ def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> Instanc
         pixel_spacing=spacing,
         pixel_spacing_source=spacing_source,
         frame_time_ms=_frame_time_ms(dataset),
+        frame_time_vector=_frame_time_vector(dataset),
         series_description=series_description,
         path=path,
         media_format="dicom",

@@ -276,4 +276,4 @@ def test_tool_panel_has_results_button_under_patient_metrics(qtbot) -> None:
     qtbot.addWidget(panel)
     labels = {button.text() for button in panel.findChildren(QPushButton)}
     assert "Результаты" in labels
-    assert panel.measure._patient_metrics._results_button.isVisibleTo(panel)
+    assert panel.measure._results_button.isVisibleTo(panel)

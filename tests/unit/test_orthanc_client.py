@@ -12,9 +12,18 @@ from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClie
 
 def _client_with_transport(handler) -> OrthancDicomWebClient:
     transport = httpx.MockTransport(handler)
-    client = OrthancDicomWebClient("http://orthanc", "user", "pass")
+    client = OrthancDicomWebClient(
+        "http://orthanc/dicom-web",
+        "user",
+        "pass",
+        auth_mode="basic",
+    )
+    client._orthanc_client = httpx.Client(
+        base_url="http://orthanc/",
+        transport=transport,
+    )
     client._client = httpx.Client(
-        base_url="http://orthanc",
+        base_url="http://orthanc/dicom-web/",
         auth=("user", "pass"),
         transport=transport,
     )
@@ -49,7 +58,7 @@ def test_query_studies_parses_dicom_json() -> None:
     payload = json.loads(raw)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/dicom-web/studies"
+        assert "/dicom-web/studies" in str(request.url)
         assert request.headers["Accept"] == "application/dicom+json"
         assert "PatientName" not in request.url.params
         include_fields = request.url.params.get_list("includefield")

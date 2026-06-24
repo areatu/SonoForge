@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import cv2
 import numpy as np
+
+ChannelOrder = Literal["rgb", "bgr"]
 
 
 def to_bgr_uint8(frame: np.ndarray) -> np.ndarray:
@@ -35,6 +39,34 @@ def bgr_to_rgb(frame: np.ndarray) -> np.ndarray:
     if frame.ndim == 2:
         return frame
     return np.ascontiguousarray(frame[:, :, ::-1], dtype=np.uint8)
+
+
+def to_display_rgb(frame: np.ndarray, *, channel_order: ChannelOrder = "bgr") -> np.ndarray:
+    """Normalize a color frame to contiguous RGB uint8 for Qt display."""
+    if frame.ndim == 2:
+        return frame
+    if frame.ndim != 3 or frame.shape[2] < 3:
+        raise ValueError(f"Unsupported color frame shape: {frame.shape}")
+    if channel_order == "rgb":
+        return np.ascontiguousarray(frame[..., :3], dtype=np.uint8)
+    return bgr_to_rgb(frame)
+
+
+def apply_window_level_rgb(rgb: np.ndarray, low: float, high: float) -> np.ndarray:
+    """Apply window/level via luminance scaling while preserving chroma ratios."""
+    source = np.asarray(rgb, dtype=np.float64)
+    if source.ndim != 3 or source.shape[2] < 3:
+        raise ValueError(f"Expected RGB frame, got shape {source.shape}")
+    luminance = np.mean(source[..., :3], axis=2)
+    span = max(high - low, 1.0)
+    target = (np.clip(luminance, low, high) - low) / span * 255.0
+    gain = np.divide(
+        target,
+        np.maximum(luminance, 1.0),
+        out=np.ones_like(luminance),
+        where=luminance > 1.0,
+    )
+    return np.clip(source * gain[..., np.newaxis], 0.0, 255.0).astype(np.uint8)
 
 
 def is_effective_grayscale(frame: np.ndarray, *, tolerance: int = 12) -> bool:

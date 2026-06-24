@@ -33,3 +33,4 @@ class MeasurementAction(StrEnum):
     DOPPLER_TRACE = "doppler_trace"
     DOPPLER_MITRAL_INFLOW = "doppler_mitral_inflow"
     AUTO_SEGMENT = "auto_segment"
+    SPECKLE_TRACKING = "speckle_tracking"

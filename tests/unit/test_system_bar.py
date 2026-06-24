@@ -34,6 +34,25 @@ def test_system_bar_emits_settings_requested(qtbot) -> None:
         bar._btn_settings.click()
 
 
+def test_system_bar_long_status_elides_with_tooltip(qtbot) -> None:
+    bar = SystemBar()
+    qtbot.addWidget(bar)
+    bar.resize(720, 48)
+    bar.show()
+    qtbot.waitExposed(bar)
+
+    long_message = (
+        "Doppler калибровка 1/3: клик — первый угол окна спектра (не весь кадр), "
+        "затем противоположный угол, baseline и шкала скорости на краю спектра"
+    )
+    bar.set_status_message(long_message)
+    qtbot.wait(50)
+
+    assert len(bar._status_label.text()) < len(long_message)
+    assert bar._status_label.toolTip() == long_message
+    assert bar._actions_widget.geometry().right() <= bar.width()
+
+
 def test_system_bar_emits_references_requested(qtbot) -> None:
     bar = SystemBar()
     qtbot.addWidget(bar)

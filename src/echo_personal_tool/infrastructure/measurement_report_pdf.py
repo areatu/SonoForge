@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from echo_personal_tool.resources.bundled_fonts import report_cyrillic_font_path
+
 
 class PdfExportError(RuntimeError):
     """Raised when PDF export cannot be completed."""
 
 
-def export_measurement_report_pdf(text: str, output_path: Path) -> Path:
+def export_measurement_report_pdf(
+    text: str,
+    output_path: Path,
+    *,
+    font_size: int = 10,
+) -> Path:
     """Write report text to a PDF file and return the path."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -30,7 +37,7 @@ def export_measurement_report_pdf(text: str, output_path: Path) -> Path:
     margin_x = 18 * mm
     margin_y = 18 * mm
     line_height = 5 * mm
-    font_size = 10
+    font_size = max(8, min(16, int(font_size)))
 
     pdf = canvas.Canvas(str(output_path), pagesize=A4)
     pdf.setTitle("Результаты измерений")
@@ -51,17 +58,6 @@ def export_measurement_report_pdf(text: str, output_path: Path) -> Path:
 
 
 def _register_cyrillic_font(pdfmetrics: object, TTFont: object) -> str:
-    candidates = (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    )
-    for path in candidates:
-        font_path = Path(path)
-        if font_path.is_file():
-            pdfmetrics.registerFont(TTFont("ReportCyrillic", str(font_path)))
-            return "ReportCyrillic"
-    raise PdfExportError(
-        "Не найден TTF-шрифт с кириллицей (DejaVu/Liberation) для PDF-экспорта."
-    )
+    font_path = report_cyrillic_font_path()
+    pdfmetrics.registerFont(TTFont("ReportCyrillic", str(font_path)))
+    return "ReportCyrillic"

@@ -25,7 +25,11 @@ def dedupe_linear_measurements_latest(
     return tuple(by_label.values())
 
 
-def format_measurement_report(snapshot: MeasurementSnapshot | None) -> str:
+def format_measurement_report(
+    snapshot: MeasurementSnapshot | None,
+    *,
+    length_display_unit: str = "mm",
+) -> str:
     """Return multi-section study report; duplicate labels show latest only."""
     if snapshot is None:
         return "Нет измерений."
@@ -40,7 +44,7 @@ def format_measurement_report(snapshot: MeasurementSnapshot | None) -> str:
     sections: list[list[str]] = []
     for section in (
         _format_doppler_section(report_snapshot),
-        _format_lvef_section(report_snapshot),
+        _format_lvef_section(report_snapshot, length_display_unit=length_display_unit),
         _format_teichholz_section(report_snapshot),
         _format_la_section(report_snapshot),
         _format_ra_section(report_snapshot),
@@ -48,7 +52,7 @@ def format_measurement_report(snapshot: MeasurementSnapshot | None) -> str:
         _format_lvm_section(report_snapshot),
         _format_diastology_section(report_snapshot),
         _format_planimeter_section(report_snapshot),
-        _format_linear_section(report_snapshot),
+        _format_linear_section(report_snapshot, length_display_unit=length_display_unit),
         _format_indexed_section(report_snapshot),
     ):
         if section:
@@ -97,13 +101,22 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
     return ["Допплер", *lines]
 
 
-def _format_lvef_section(snapshot: MeasurementSnapshot) -> list[str]:
+def _format_lvef_section(
+    snapshot: MeasurementSnapshot,
+    *,
+    length_display_unit: str = "mm",
+) -> list[str]:
     lvef = snapshot.lvef
     if lvef is None:
         return []
 
     volume_suffix = " mL" if snapshot.spacing_calibrated else " px³"
-    length_suffix = " mm" if snapshot.spacing_calibrated else " px"
+    if snapshot.spacing_calibrated:
+        length_suffix = " cm" if length_display_unit == "cm" else " mm"
+        length_scale = 0.1 if length_display_unit == "cm" else 1.0
+    else:
+        length_suffix = " px"
+        length_scale = 1.0
     lines = ["Объёмы ЛЖ (Симпсон)"]
     if not snapshot.spacing_calibrated:
         lines.append("  (нет PixelSpacing — длина в px, объём в px³)")
@@ -112,6 +125,8 @@ def _format_lvef_section(snapshot: MeasurementSnapshot) -> list[str]:
         if metrics is None:
             continue
         length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
+        if length is not None:
+            length = length * length_scale
         length_line = _optional_line(f"Длина ЛЖ {view_label}", length, length_suffix)
         if length_line:
             lines.append(length_line)
@@ -222,12 +237,19 @@ def _format_planimeter_section(snapshot: MeasurementSnapshot) -> list[str]:
     return lines if len(lines) > 1 else []
 
 
-def _format_linear_section(snapshot: MeasurementSnapshot) -> list[str]:
+def _format_linear_section(
+    snapshot: MeasurementSnapshot,
+    *,
+    length_display_unit: str = "mm",
+) -> list[str]:
     if not snapshot.linear_measurements:
         return []
     return [
         "Линейные измерения",
-        *(f"  {measurement.display_text()}" for measurement in snapshot.linear_measurements),
+        *(
+            f"  {measurement.display_text(length_unit=length_display_unit)}"
+            for measurement in snapshot.linear_measurements
+        ),
     ]
 
 

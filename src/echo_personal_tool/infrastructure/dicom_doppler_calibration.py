@@ -17,6 +17,7 @@ from echo_personal_tool.domain.services.doppler_calibration import calibration_f
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_spectral_doppler_region,
     region_physical_deltas,
+    spectral_doppler_region_priority,
     time_span_ms_from_region,
     velocity_span_cm_s_from_region,
 )
@@ -33,22 +34,24 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
     return float(min_x), float(min_y), float(max_x), float(max_y)
 
 
+def _sorted_doppler_regions(regions: object) -> list[Dataset]:
+    items = [region for region in regions if is_spectral_doppler_region(region)]
+    return sorted(items, key=spectral_doppler_region_priority, reverse=True)
+
+
 def try_parse_from_dataset(
     dataset: Dataset,
     frame: object | None = None,
     *,
     kind: DopplerKind = DopplerKind.SPECTRAL,
 ) -> DopplerCalibrationState | None:
-    """Build calibration only when DICOM tags define time (s) and velocity (cm/s) axes."""
+    """Build calibration from DICOM tags (time axis required; velocity optional)."""
     regions = dataset.get("SequenceOfUltrasoundRegions")
     if not regions:
         return None
 
     best: DopplerCalibrationState | None = None
-    for region in regions:
-        if not is_spectral_doppler_region(region):
-            continue
-
+    for region in _sorted_doppler_regions(regions):
         bounds = _region_bounds(region)
         if bounds is None:
             continue
@@ -62,13 +65,16 @@ def try_parse_from_dataset(
         )
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
-        if None in (delta_x, delta_y, units_x, units_y):
+        if None in (delta_x, units_x):
             continue
 
         time_span_ms = time_span_ms_from_region(roi.width, delta_x, units_x)
-        velocity_span = velocity_span_cm_s_from_region(roi.height, delta_y, units_y)
-        if time_span_ms is None or velocity_span is None:
+        if time_span_ms is None:
             continue
+
+        velocity_span = None
+        if delta_y is not None and units_y is not None:
+            velocity_span = velocity_span_cm_s_from_region(roi.height, delta_y, units_y)
 
         baseline_y = roi.y0 + roi.height / 2.0
         if frame is not None:
@@ -96,7 +102,9 @@ def try_parse_from_dataset(
             kind=candidate.kind,
             from_dicom_tags=True,
         )
-        if candidate.is_dicom_trusted():
+        if candidate.has_time_scale_from_dicom():
+            return candidate
+        if best is None:
             best = candidate
 
     return best

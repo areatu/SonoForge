@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -21,12 +22,16 @@ BORDER = "#2a3848"
 SLIDER_TRACK = "#1e2834"
 SLIDER_FILL = "#3a7cb5"
 
-ECHOPAC_STYLESHEET = f"""
+ECHOPAC_STYLESHEET = ""  # built by build_echopac_stylesheet()
+
+
+def build_echopac_stylesheet(font_size: int = 12) -> str:
+    return f"""
 QWidget {{
     background-color: {BG_PANEL};
     color: {TEXT};
-    font-family: "Segoe UI", "DejaVu Sans", sans-serif;
-    font-size: 12px;
+    font-family: "{FONT_FAMILY_UI}", sans-serif;
+    font-size: {font_size}px;
 }}
 QMainWindow {{
     background-color: {BG_DARK};
@@ -120,12 +125,27 @@ QSplitter::handle {{
 #systemBar {{
     background: {BG_CONTROL};
     border-bottom: 1px solid {BORDER};
+    min-height: 39px;
 }}
 #systemBar QPushButton {{
-    min-height: 18px;
-    max-height: 18px;
-    padding: 2px 9px;
+    min-height: 27px;
+    max-height: 27px;
+    padding: 3px 9px;
     font-size: 11px;
+}}
+#systemBar QPushButton#resetButton {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #8b3a3a, stop:1 #6b2a2a);
+    border-color: #a04040;
+    color: {TEXT};
+}}
+#systemBar QPushButton#resetButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #a84848, stop:1 #7a3232);
+    border-color: #c05050;
+}}
+#systemBar QPushButton#resetButton:pressed {{
+    background: #5a2222;
 }}
 #toolPanel {{
     background: {BG_PANEL};
@@ -166,12 +186,12 @@ QSplitter::handle {{
 """
 
 
-def apply_echopac_theme(widget: QWidget | None = None) -> None:
+def apply_echopac_theme(widget: QWidget | None = None, *, font_size: int = 12) -> None:
     """Apply EchoPac palette to the whole app or a subtree."""
     app = QApplication.instance()
     if app is None:
         return
-    app.setStyleSheet(ECHOPAC_STYLESHEET)
+    app.setStyleSheet(build_echopac_stylesheet(font_size))
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor(BG_PANEL))
     palette.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))

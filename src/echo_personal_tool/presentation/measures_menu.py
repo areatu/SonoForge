@@ -154,6 +154,12 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("Trace PR", doppler_trace="VTI PR"),
         ),
     ),
+    (
+        "Strain",
+        (
+            _btn("Speckle Tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),
+        ),
+    ),
 )
 
 

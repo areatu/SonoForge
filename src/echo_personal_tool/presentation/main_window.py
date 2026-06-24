@@ -8,16 +8,15 @@ from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt
 from PySide6.QtGui import QCloseEvent, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QSplitter,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -33,21 +32,26 @@ from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWeb
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.server_settings import load_server_settings
+from echo_personal_tool.infrastructure.user_preferences import (
+    UserPreferences,
+    load_user_preferences,
+    save_user_preferences,
+)
 from echo_personal_tool.presentation.ase_reference_dialog import show_ase_reference_dialog
-from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
-from echo_personal_tool.presentation.server_settings_dialog import show_server_settings_dialog
 from echo_personal_tool.presentation.echopac_theme import apply_echopac_theme
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
+from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
-from echo_personal_tool.presentation.thumbnail_gallery import (
-    _GALLERY_WIDTH,
-    ThumbnailGalleryWidget,
-)
+from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
+from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+from echo_personal_tool.resources.bundled_fonts import ui_font
 
 logger = logging.getLogger(__name__)
+
+_TOOL_PANEL_WIDTH = 280
 
 
 def _loaded_file_label(instance: InstanceMetadata) -> str:
@@ -64,14 +68,22 @@ class MainWindow(QMainWindow):
         """Backward-compatible alias (tests); thumbnail gallery replaces tree browser."""
         return self._gallery
 
-    def __init__(self, controller: AppController | None = None) -> None:
+    def __init__(
+        self,
+        controller: AppController | None = None,
+        *,
+        user_preferences: UserPreferences | None = None,
+    ) -> None:
         super().__init__()
         self.setWindowTitle("ECHO Personal Tool")
-        self.showMaximized()
+        self._user_preferences = user_preferences or load_user_preferences()
         self._click_to_frame_started_at: float | None = None
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
         self._instance_overlay_cache: dict[str, str] = {}
+        self._instance_overlay_positions: dict[str, tuple[float, float]] = {}
+        self._overlay_sync_instance_uid: str | None = None
+        self._last_overlay_state: ViewerState | None = None
 
         self._controller = controller or AppController()
         orthanc_root = Path.home() / ".echo-personal-tool" / "orthanc"
@@ -82,7 +94,7 @@ class MainWindow(QMainWindow):
         self._controller.frame_loaded.connect(self._on_frame_loaded)
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
         self._controller.status_message.connect(self._show_status)
-        apply_echopac_theme()
+        apply_echopac_theme(font_size=self._user_preferences.ui_font_size)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -98,14 +110,12 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(content, stretch=1)
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        content_layout.setSpacing(0)
 
         self._gallery = ThumbnailGalleryWidget()
         self._gallery.set_thumbnail_loader(self._controller.load_thumbnail)
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
-        splitter.addWidget(self._gallery)
-        splitter.setCollapsible(0, False)
+        content_layout.addWidget(self._gallery)
 
         center = QWidget()
         center_layout = QVBoxLayout(center)
@@ -136,19 +146,21 @@ class MainWindow(QMainWindow):
         self._viewer.mmode_calibration_changed.connect(
             self._controller.on_mmode_calibration_changed
         )
+        self._viewer.results_overlay_position_changed.connect(
+            self._on_results_overlay_position_changed
+        )
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         center_layout.addWidget(self._viewer, stretch=1)
-        splitter.addWidget(center)
+        content_layout.addWidget(center, stretch=1)
 
         self._tool_panel = ToolPanel()
-        splitter.addWidget(self._tool_panel)
+        self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        content_layout.addWidget(self._tool_panel)
 
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 5)
-        splitter.setStretchFactor(2, 2)
-        splitter.setSizes([_GALLERY_WIDTH, 900, 320])
-        content_layout.addWidget(splitter)
+        content_layout.setStretch(0, 0)
+        content_layout.setStretch(1, 1)
+        content_layout.setStretch(2, 0)
 
         self._gallery.instance_selected.connect(self._on_instance_selected)
         self._viewer.set_state(self._controller.state_manager.snapshot)
@@ -158,6 +170,8 @@ class MainWindow(QMainWindow):
             self._tool_panel.controls.level_slider,
             self._tool_panel.controls.dr_slider,
         )
+        self._wire_wl_persistence()
+        self._apply_user_preferences(self._user_preferences)
         self._controller.state_manager.state_changed.connect(self._on_state_changed)
         self._wire_ui()
         self._viewer.installEventFilter(self)
@@ -244,31 +258,78 @@ class MainWindow(QMainWindow):
     def _show_references(self) -> None:
         show_ase_reference_dialog(self)
 
-    def _show_server_settings(self) -> None:
-        show_server_settings_dialog(self)
+    def _show_user_preferences(self) -> None:
+        show_user_preferences_dialog(self, on_apply=self._apply_user_preferences)
 
-    def _show_settings_menu(self) -> None:
-        menu = QMenu(self)
-        snap_action = menu.addAction("Магнит к стенке")
-        snap_action.setCheckable(True)
-        snap_action.setChecked(
-            self._tool_panel.controls._magnetic_snap_check.isChecked()
-        )
-        snap_action.toggled.connect(
-            self._tool_panel.controls._magnetic_snap_check.setChecked
-        )
-        menu.addSeparator()
-        server_action = menu.addAction("Сервер…")
-        server_action.triggered.connect(self._show_server_settings)
-        anchor = self._system_bar._btn_settings
-        menu.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
+    def _apply_user_preferences(self, preferences: UserPreferences) -> None:
+        self._user_preferences = preferences
+        if not preferences.results_overlay_custom_position:
+            self._instance_overlay_positions.clear()
+        app = QApplication.instance()
+        if app is not None:
+            app.setFont(ui_font(point_size=preferences.ui_font_size))
+        apply_echopac_theme(font_size=preferences.ui_font_size)
+        with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
+            self._tool_panel.controls._magnetic_snap_check.setChecked(
+                preferences.magnetic_snap_enabled
+            )
+        self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
+        self._viewer.apply_user_preferences(preferences)
+        self._gallery.apply_scale(preferences.thumbnail_scale)
+        self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
+        self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
+        self._refresh_dicom_inspector()
+        self._sync_results_overlay(self._controller.state_manager.snapshot)
+
+    def _on_magnetic_snap_changed(self, enabled: bool) -> None:
+        self._viewer.set_magnetic_snap_enabled(enabled)
+        self._user_preferences.magnetic_snap_enabled = enabled
+        save_user_preferences(self._user_preferences)
+
+    def _on_results_overlay_position_changed(self, x_ratio: float, y_ratio: float) -> None:
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is not None:
+            self._instance_overlay_positions[instance.sop_instance_uid] = (x_ratio, y_ratio)
+
+    def _restore_results_overlay_position(self, instance_uid: str | None) -> None:
+        if instance_uid and instance_uid in self._instance_overlay_positions:
+            x_ratio, y_ratio = self._instance_overlay_positions[instance_uid]
+            self._viewer.set_results_overlay_position(x_ratio, y_ratio, custom=True)
+            return
+        self._viewer.reset_results_overlay_to_default()
+
+    def _wire_wl_persistence(self) -> None:
+        for slider_widget in (
+            self._tool_panel.controls.window_slider,
+            self._tool_panel.controls.level_slider,
+            self._tool_panel.controls.dr_slider,
+        ):
+            slider_widget.slider().valueChanged.connect(self._persist_window_level_preferences)
+
+    def _persist_window_level_preferences(self) -> None:
+        self._user_preferences.wl_preset = "last_used"
+        self._user_preferences.wl_window = self._tool_panel.controls.window_slider.slider().value()
+        self._user_preferences.wl_level = self._tool_panel.controls.level_slider.slider().value()
+        self._user_preferences.wl_dr = self._tool_panel.controls.dr_slider.slider().value()
+        save_user_preferences(self._user_preferences)
+
+    def _refresh_dicom_inspector(self) -> None:
+        instance = self._controller.state_manager.snapshot.instance
+        path = instance.path if instance is not None else None
+        self._tool_panel.load_dicom_inspector(path)
+
+    def open_folder_path(self, directory: Path) -> None:
+        log_path = directory / "scan_errors.log"
+        self._controller.open_folder(directory, error_log_path=log_path)
 
     def _open_folder(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Select study folder")
         if not directory:
             return
-        log_path = Path(directory) / "scan_errors.log"
-        self._controller.open_folder(Path(directory), error_log_path=log_path)
+        folder = Path(directory)
+        self._user_preferences.last_opened_folder = str(folder)
+        save_user_preferences(self._user_preferences)
+        self.open_folder_path(folder)
 
     def _open_orthanc_dialog(self) -> None:
         settings = load_server_settings()
@@ -276,16 +337,12 @@ class MainWindow(QMainWindow):
             client = FakeDicomWebClient()
             dialog = OrthancStudyDialog(client, self._orthanc_cache, self)
         else:
-            client = OrthancDicomWebClient(
-                settings.url, settings.username, settings.password
-            )
+            client = OrthancDicomWebClient.from_settings(settings)
             dialog = OrthancStudyDialog(
                 client,
                 self._orthanc_cache,
                 self,
-                base_url=settings.url,
-                username=settings.username,
-                password=settings.password,
+                server_settings=settings,
             )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             result = dialog.result_data()
@@ -323,6 +380,9 @@ class MainWindow(QMainWindow):
             self._instance_overlay_cache[previous.sop_instance_uid] = (
                 self._viewer.results_overlay_text()
             )
+            if self._viewer.results_overlay_custom_position():
+                x_ratio, y_ratio = self._viewer.results_overlay_position()
+                self._instance_overlay_positions[previous.sop_instance_uid] = (x_ratio, y_ratio)
             frame_index = self._controller.state_manager.snapshot.current_frame_index
             self._controller.save_doppler_for_frame(
                 previous.sop_instance_uid,
@@ -343,6 +403,7 @@ class MainWindow(QMainWindow):
         label = _loaded_file_label(selected)
         self._system_bar.set_study_context(label)
         self._controller.load_instance(selected)
+        self._restore_results_overlay_position(selected.sop_instance_uid)
 
     def _on_frame_loaded(self, pixels: object) -> None:
         if self._click_to_frame_started_at is not None:
@@ -351,6 +412,8 @@ class MainWindow(QMainWindow):
             self._click_to_frame_started_at = None
         image = np.asarray(pixels)
         self._viewer.show_frame(image)
+        self._viewer.reposition_overlays()
+        self._viewer.refresh_dicom_tags_overlay()
         self._restore_doppler_for_current_instance()
         self._restore_mmode_for_current_instance()
         self._sync_doppler_tool_availability()
@@ -370,8 +433,26 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(message)
 
     def _on_state_changed(self, state: object) -> None:
-        if isinstance(state, ViewerState):
+        if not isinstance(state, ViewerState):
+            return
+        instance_uid = state.instance.sop_instance_uid if state.instance else None
+        instance_changed = instance_uid != self._overlay_sync_instance_uid
+        content_changed = False
+        if self._last_overlay_state is not None:
+            previous = self._last_overlay_state
+            content_changed = (
+                previous.contours != state.contours
+                or previous.linear_measurements != state.linear_measurements
+                or previous.measurement_snapshot != state.measurement_snapshot
+            )
+        if instance_changed:
+            self._overlay_sync_instance_uid = instance_uid
+            self._restore_results_overlay_position(instance_uid)
             self._sync_results_overlay(state)
+        elif content_changed:
+            self._sync_results_overlay(state)
+        self._last_overlay_state = state
+        self._refresh_dicom_inspector()
 
     def _restore_doppler_for_current_frame(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -463,6 +544,7 @@ class MainWindow(QMainWindow):
         fresh_text = format_results_overlay(
             overlay_snapshot,
             time_calibrated=time_calibrated,
+            length_display_unit=self._user_preferences.length_display_unit,
         )
 
         if instance_uid is not None:
@@ -491,6 +573,8 @@ class MainWindow(QMainWindow):
             snapshot,
             parent=self,
             default_pdf_name=default_name,
+            length_display_unit=self._user_preferences.length_display_unit,
+            pdf_font_size=self._user_preferences.pdf_font_size,
         )
         dialog.exec()
 
@@ -522,15 +606,22 @@ class MainWindow(QMainWindow):
         self._system_bar.doppler_calibration_requested.connect(
             self._on_doppler_calibration_requested
         )
-        self._system_bar.settings_requested.connect(self._show_settings_menu)
+        self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.patient_metrics_changed.connect(
             self._controller.on_patient_metrics_changed
         )
         self._tool_panel.results_requested.connect(self._show_results_dialog)
-        self._tool_panel.magnetic_snap_changed.connect(self._viewer.set_magnetic_snap_enabled)
-        self._viewer.set_magnetic_snap_enabled(self._tool_panel.controls._magnetic_snap_check.isChecked())
+        self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
+        self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
+        self._apply_magnetic_snap_from_preferences()
+
+    def _apply_magnetic_snap_from_preferences(self) -> None:
+        enabled = self._user_preferences.magnetic_snap_enabled
+        with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
+            self._tool_panel.controls._magnetic_snap_check.setChecked(enabled)
+        self._viewer.set_magnetic_snap_enabled(enabled)
 
     def _on_measure_action(
         self,
@@ -569,6 +660,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_S_PRIME: self._on_rv_s_prime,
             MeasurementAction.RV_FAC: self._on_rv_fac,
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
+            MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
         }
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
@@ -666,6 +758,16 @@ class MainWindow(QMainWindow):
             self._show_status("Load a frame first")
 
     def _on_reset_measurements_requested(self) -> None:
+        if self._user_preferences.confirm_reset:
+            answer = QMessageBox.question(
+                self,
+                "Сброс измерений",
+                "Сбросить все измерения, контуры и калибровку текущей сессии?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
         self._instance_overlay_cache.clear()
@@ -698,6 +800,24 @@ class MainWindow(QMainWindow):
             )
         else:
             self._show_status("Калибровка отменена")
+
+    def _on_speckle_tracking_requested(self) -> None:
+        if self._viewer._current_frame is None:
+            self._show_status("Load a frame first")
+            return
+        contour = self._viewer.get_lv_contour()
+        if contour is None:
+            self._show_status("Сначала нарисуйте контур LV")
+            return
+        self._controller.run_speckle_tracking(contour)
+
+    def _on_speckle_result_ready(self, result: object) -> None:
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        if not isinstance(result, StrainResult):
+            return
+        gls = result.gls
+        self._show_status(f"GLS: {gls:.1f}%  |  HR: {result.heart_rate_bpm:.0f} bpm")
 
     def _on_doppler_calibration_requested(self) -> None:
         if self._viewer._current_frame is None:
@@ -924,11 +1044,11 @@ class MainWindow(QMainWindow):
                 self._tool_panel.measure.clear_action_highlight()
 
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
-            from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
             from echo_personal_tool.domain.calculations.chamber_simpson import (
                 biplane_es_volume_ml,
                 es_volume_from_view,
             )
+            from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
                 contour,
@@ -956,8 +1076,8 @@ class MainWindow(QMainWindow):
                     )
         elif chamber == "RA" and contour.phase.upper() == "ES":
             spacing, spacing_calibrated = self._viewer._effective_pixel_spacing()
-            from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
             from echo_personal_tool.domain.calculations.chamber_simpson import es_volume_from_view
+            from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 
             line = format_contour_overlay(
                 contour,

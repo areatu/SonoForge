@@ -8,7 +8,8 @@ from typing import Literal
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsView,
@@ -74,23 +75,33 @@ from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
     refine_open_arc_contour,
 )
-from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
 from echo_personal_tool.domain.services.mmode_calibration import mmode_state_from_panel
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     spacing_from_known_distance,
 )
+from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_path
 from echo_personal_tool.infrastructure.dicom_frame_panels import (
     try_parse_from_path as try_parse_panels_from_path,
 )
+from echo_personal_tool.infrastructure.dicom_tag_inspector import read_interesting_dicom_tag_rows
 from echo_personal_tool.infrastructure.pixel_utils import (
-    bgr_to_rgb,
+    apply_window_level_rgb,
     compute_display_levels,
     dr_percentiles_from_slider,
     is_color_frame,
+    is_effective_grayscale,
+    to_display_rgb,
     to_grayscale_array,
 )
+from echo_personal_tool.infrastructure.user_preferences import (
+    DEFAULT_RESULTS_OVERLAY_Y_RATIO,
+    RESULTS_OVERLAY_EDGE_MARGIN,
+    UserPreferences,
+    resolve_wl_values,
+)
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
+from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 CALIBRATION_PROMPT_OVERLAY = "Проведите калибровку"
 
@@ -118,11 +129,19 @@ _RESULTS_OVERLAY_STYLE = (
     "background-color: rgba(8, 16, 28, 215);"
     " color: #e8eef4;"
     " padding: 11px 18px;"
-    " font-size: 20px;"
-    " font-family: 'Consolas', 'DejaVu Sans Mono', monospace;"
+    f" font-family: '{FONT_FAMILY_MONO}', monospace;"
     " border: 2px solid #3d7cb8;"
     " border-radius: 5px;"
 )
+
+
+def _results_overlay_style(font_size: int, opacity: float = 0.84) -> str:
+    alpha = int(max(0.0, min(1.0, opacity)) * 255)
+    return (
+        _RESULTS_OVERLAY_STYLE
+        + f" font-size: {font_size}px;"
+        + f" background-color: rgba(8, 16, 28, {alpha});"
+    )
 _DEFAULT_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 180);"
     " color: #f5f5f5;"
@@ -304,6 +323,71 @@ class _ContourNodeItem(pg.ScatterPlotItem):
         return
 
 
+class ResultsOverlayLabel(QLabel):
+    """Draggable measurement summary overlay on the viewer."""
+
+    position_changed = Signal(float, float)
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._x_ratio = 1.0
+        self._y_ratio = DEFAULT_RESULTS_OVERLAY_Y_RATIO
+        self._dragging = False
+        self._drag_offset_x = 0.0
+        self._drag_offset_y = 0.0
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setToolTip("Перетащите для смены позиции оверлея результатов")
+
+    def set_position_ratios(self, x_ratio: float, y_ratio: float) -> None:
+        self._x_ratio = max(0.0, min(1.0, x_ratio))
+        self._y_ratio = max(0.0, min(1.0, y_ratio))
+
+    def position_ratios(self) -> tuple[float, float]:
+        return self._x_ratio, self._y_ratio
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            viewer = self.parent()
+            if isinstance(viewer, ViewerWidget):
+                viewer._mark_results_overlay_custom_position()
+            self._drag_offset_x = event.position().x()
+            self._drag_offset_y = event.position().y()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        if not self._dragging:
+            super().mouseMoveEvent(event)
+            return
+        viewer = self.parent()
+        if not isinstance(viewer, ViewerWidget):
+            return
+        geo = viewer._graphics_content_geometry()
+        local = viewer.mapFromGlobal(event.globalPosition().toPoint())
+        x = int(local.x() - self._drag_offset_x)
+        y = int(local.y() - self._drag_offset_y)
+        rw = self.width()
+        rh = self.height()
+        x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
+        y = max(geo.y(), min(y, geo.y() + max(geo.height() - rh, 0)))
+        self.move(x, y)
+        self._x_ratio = (x - geo.x()) / max(geo.width(), 1)
+        self._y_ratio = (y - geo.y()) / max(geo.height(), 1)
+        self.position_changed.emit(self._x_ratio, self._y_ratio)
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
+            self._dragging = False
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -322,6 +406,7 @@ class ViewerWidget(QWidget):
     doppler_frame_changed = Signal(int)
     mmode_calibration_changed = Signal(object)
     mmode_time_calibration_completed = Signal(object)
+    results_overlay_position_changed = Signal(float, float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -372,6 +457,8 @@ class ViewerWidget(QWidget):
         self._calibration_start_y: float | None = None
         self._calibration_line_item: pg.PlotDataItem | None = None
         self._calibration_marker_item: pg.ScatterPlotItem | None = None
+        self._calibration_h_guide_start_item: pg.PlotDataItem | None = None
+        self._calibration_h_guide_end_item: pg.PlotDataItem | None = None
         self._stored_contours: list[Contour] = []
         self._contours: list[Contour] = []
         self._contour_items: list[pg.PlotDataItem] = []
@@ -420,6 +507,8 @@ class ViewerWidget(QWidget):
         self._caliper_sequence_size = 0
         self._syncing_state = False
         self._is_color_frame = False
+        self._color_source_rgb: np.ndarray | None = None
+        self._window_level_enabled = True
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
         self._hover_tier: int | None = None
@@ -427,7 +516,19 @@ class ViewerWidget(QWidget):
         self._zone_drag_active = False
         self._drag_overlay_contour_index: int | None = None
         self._last_drag_apply_pos: tuple[float, float] | None = None
+        self._caliper_line_width = 2.0
+        self._magnetic_snap_weight_threshold = _MAGNETIC_SNAP_WEIGHT_THRESHOLD
+        self._magnetic_snap_release_strength = _MAGNETIC_RELEASE_STRENGTH
+        self._magnetic_snap_release_max_radial_px = _MAGNETIC_RELEASE_MAX_RADIAL_PX
+        self._show_crosshair = True
+        self._show_panel_frames = False
+        self._show_caliper_labels_on_frame = True
+        self._doppler_auto_calibration_enabled = True
+        self._length_display_unit = "mm"
+        self._interesting_dicom_tags: tuple[str, ...] = ()
+        self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
+        self._results_overlay_custom_position = False
         self._edge_map_cache: EdgeMap | None = None
         self._edge_map_cache_key: tuple[int, tuple[float, float] | None] | None = None
 
@@ -436,13 +537,25 @@ class ViewerWidget(QWidget):
         self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
         self._overlay_label.hide()
 
-        self._results_overlay_label = QLabel(self)
-        self._results_overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._results_overlay_label.setStyleSheet(_RESULTS_OVERLAY_STYLE)
+        self._results_overlay_label = ResultsOverlayLabel(self)
+        self._results_overlay_label.setStyleSheet(_results_overlay_style(20, 0.84))
         self._results_overlay_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
+        self._results_overlay_label.position_changed.connect(
+            self.results_overlay_position_changed.emit
+        )
         self._results_overlay_label.hide()
+
+        self._dicom_tags_overlay_label = QLabel(self)
+        self._dicom_tags_overlay_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self._dicom_tags_overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
+        self._dicom_tags_overlay_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self._dicom_tags_overlay_label.hide()
 
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
@@ -513,6 +626,7 @@ class ViewerWidget(QWidget):
                 height = self._current_frame.shape[0]
                 end_y = max(0.0, min(float(mapped.y()), float(height - 1)))
                 self._update_calibration_preview(self._calibration_start_y, end_y)
+                self._update_calibration_horizontal_guides(end_y)
             return
         if self._linear_caliper_active and self._linear_caliper_start is not None:
             mapped = self._view.mapSceneToView(scene_pos)
@@ -569,9 +683,9 @@ class ViewerWidget(QWidget):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        self._position_overlay_labels()
+        self._position_overlay_labels(reposition_results=True)
 
-    def _position_overlay_labels(self) -> None:
+    def _position_overlay_labels(self, *, reposition_results: bool = False) -> None:
         geo = self._graphics.geometry()
         if self._overlay_label.isVisible():
             self._overlay_label.adjustSize()
@@ -586,23 +700,259 @@ class ViewerWidget(QWidget):
                 y = geo.y() + 8
             self._overlay_label.move(x, y)
 
+        if self._results_overlay_label.isVisible() and reposition_results:
+            self._reposition_results_overlay_label(geo)
+
+        if self._dicom_tags_overlay_label.isVisible():
+            self._position_dicom_tags_overlay(geo)
+
+    def _position_dicom_tags_overlay(self, geo) -> None:
+        self._dicom_tags_overlay_label.adjustSize()
+        self._dicom_tags_overlay_label.move(
+            geo.x() + 8,
+            geo.y() + geo.height() - self._dicom_tags_overlay_label.height() - 8,
+        )
+
+    def _request_results_overlay_reposition(self) -> None:
+        if not self._results_overlay_label.isVisible():
+            return
+        QTimer.singleShot(0, self._reposition_results_overlay_deferred)
+
+    def _reposition_results_overlay_deferred(self) -> None:
         if self._results_overlay_label.isVisible():
-            self._results_overlay_label.adjustSize()
-            rw = self._results_overlay_label.width()
-            x = geo.x() + max(geo.width() - rw - 8, 8)
-            y = geo.y() + max(int(geo.height() * 0.20), 8)
-            self._results_overlay_label.move(x, y)
+            self._reposition_results_overlay_label(self._graphics.geometry())
+
+    def _reposition_results_overlay_label(self, geo) -> None:
+        if geo.width() < 16 or geo.height() < 16:
+            return
+        self._results_overlay_label.adjustSize()
+        rw = self._results_overlay_label.width()
+        rh = self._results_overlay_label.height()
+        if self._results_overlay_custom_position:
+            x_ratio, y_ratio = self._results_overlay_label.position_ratios()
+            x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
+            y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
+        else:
+            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN
+            y = geo.y() + max(
+                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO),
+                RESULTS_OVERLAY_EDGE_MARGIN,
+            )
+        x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
+        y = max(geo.y(), min(y, geo.y() + max(geo.height() - rh, 0)))
+        self._results_overlay_label.move(x, y)
+        if self._results_overlay_custom_position:
+            self._results_overlay_label.set_position_ratios(
+                (x - geo.x()) / max(geo.width(), 1),
+                (y - geo.y()) / max(geo.height(), 1),
+            )
+
+    def reset_results_overlay_to_default(self) -> None:
+        self._results_overlay_custom_position = False
+        if self._results_overlay_label.isVisible():
+            self._request_results_overlay_reposition()
+
+    def _graphics_content_geometry(self):
+        return self._graphics.geometry()
+
+    def apply_user_preferences(self, preferences: UserPreferences) -> None:
+        self._caliper_line_width = preferences.caliper_line_width
+        if not preferences.results_overlay_custom_position:
+            self.reset_results_overlay_to_default()
+        self._results_overlay_label.setStyleSheet(
+            _results_overlay_style(
+                preferences.results_overlay_font_size,
+                preferences.results_overlay_opacity,
+            )
+        )
+        self._dicom_tags_overlay_label.setStyleSheet(
+            _results_overlay_style(
+                preferences.results_overlay_font_size,
+                preferences.results_overlay_opacity,
+            )
+        )
+        self._show_crosshair = preferences.show_crosshair
+        self._show_panel_frames = preferences.show_panel_frames
+        self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
+        self._doppler_auto_calibration_enabled = preferences.doppler_auto_calibration_enabled
+        self._length_display_unit = preferences.length_display_unit
+        self._interesting_dicom_tags = tuple(
+            tag.strip()
+            for tag in preferences.interesting_dicom_tags.split(",")
+            if tag.strip()
+        )
+        self._magnetic_snap_weight_threshold = preferences.magnetic_snap_weight_threshold
+        self._magnetic_snap_release_strength = preferences.magnetic_snap_release_strength
+        self._magnetic_snap_release_max_radial_px = preferences.magnetic_snap_release_max_radial_px
+        self._rebuild_contour_pens(preferences)
+        self._refresh_caliper_line_pens()
+        self._refresh_rendered_contour_pens()
+        self._apply_window_level_preferences(preferences)
+        self._refresh_panel_frame_graphics()
+        self._refresh_dicom_tags_overlay()
+        if not self._show_caliper_labels_on_frame:
+            self._measurement_label.hide()
+        self._position_overlay_labels()
+
+    def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
+        manual_width = preferences.contour_pen_manual_width
+        ai_width = preferences.contour_pen_ai_width
+        simpson_width = preferences.contour_pen_simpson_width
+        self._contour_pen_manual = pg.mkPen("#ff6f00", width=manual_width)
+        self._contour_pen_ai = pg.mkPen("#00bcd4", width=ai_width)
+        self._contour_pen_ai_pending = pg.mkPen(
+            "#00bcd4", width=ai_width, style=Qt.PenStyle.DashLine
+        )
+        self._contour_pen_model = pg.mkPen("#4caf50", width=simpson_width)
+        ma_width = max(1.0, manual_width * 0.5)
+        self._contour_pen_ma = pg.mkPen(
+            "#ff6f00", width=ma_width, style=Qt.PenStyle.DashLine
+        )
+
+    def _refresh_rendered_contour_pens(self) -> None:
+        if self._active_contour_item is not None:
+            self._active_contour_item.setPen(self._contour_pen_manual)
+        if self._active_ma_chord_item is not None:
+            self._active_ma_chord_item.setPen(self._contour_pen_ma)
+        for contour_index, contour in enumerate(self._contours):
+            if contour_index >= len(self._contour_items):
+                continue
+            pen = self._contour_pen_for(contour)
+            self._contour_items[contour_index].setPen(pen)
+            if contour_index < len(self._contour_ma_items):
+                ma_item = self._contour_ma_items[contour_index]
+                if ma_item is not None:
+                    ma_item.setPen(self._contour_pen_ma)
+            if contour_index < len(self._contour_nodes):
+                for node in self._contour_nodes[contour_index]:
+                    node.setPen(pen)
+                    node.setBrush(pg.mkBrush(pen.color()))
+
+    def _caliper_pen(self, color: str, *, style: Qt.PenStyle = Qt.PenStyle.SolidLine):
+        return pg.mkPen(color, width=self._caliper_line_width, style=style)
+
+    def _refresh_caliper_line_pens(self) -> None:
+        if self._linear_caliper_line_item is not None:
+            self._linear_caliper_line_item.setPen(self._caliper_pen("#ffb300"))
+        if self._linear_caliper_marker_item is not None:
+            self._linear_caliper_marker_item.setPen(self._caliper_pen("#ffb300"))
+        for line_item, marker_item in self._persistent_linear_graphics:
+            pen = self._caliper_pen("#29b6f6")
+            line_item.setPen(pen)
+            marker_item.setPen(pen)
+        if self._calibration_line_item is not None:
+            self._calibration_line_item.setPen(self._caliper_pen("#29b6f6"))
+        if self._calibration_marker_item is not None:
+            self._calibration_marker_item.setPen(self._caliper_pen("#29b6f6"))
+
+    def _apply_window_level_preferences(self, preferences: UserPreferences) -> None:
+        window, level, dr = resolve_wl_values(preferences)
+        for slider, value in (
+            (self._window_slider, window),
+            (self._level_slider, level),
+            (self._dr_slider, dr),
+        ):
+            slider.blockSignals(True)
+            slider.setValue(value)
+            slider.blockSignals(False)
+        self._update_levels()
+
+    def _clear_panel_frame_graphics(self) -> None:
+        for item in self._panel_frame_items:
+            self._view.removeItem(item)
+        self._panel_frame_items.clear()
+
+    def _refresh_panel_frame_graphics(self) -> None:
+        self._clear_panel_frame_graphics()
+        if not self._show_panel_frames:
+            return
+        layout = self._resolve_frame_panels()
+        if layout is None:
+            return
+        for panel in layout.panels:
+            bounds = panel.bounds
+            pen = pg.mkPen("#4fc3f7", width=1)
+            item = pg.PlotDataItem(pen=pen)
+            item.setZValue(12)
+            item.setData(
+                [bounds.x0, bounds.x1, bounds.x1, bounds.x0, bounds.x0],
+                [bounds.y0, bounds.y0, bounds.y1, bounds.y1, bounds.y0],
+            )
+            self._view.addItem(item)
+            self._panel_frame_items.append(item)
+
+    def _refresh_dicom_tags_overlay(self) -> None:
+        instance = self._current_instance_metadata()
+        if instance is None or instance.path is None or not self._interesting_dicom_tags:
+            self._dicom_tags_overlay_label.hide()
+            return
+        try:
+            rows = read_interesting_dicom_tag_rows(instance.path, list(self._interesting_dicom_tags))
+        except Exception:  # noqa: BLE001
+            self._dicom_tags_overlay_label.hide()
+            return
+        lines = [
+            f"{row.keyword or row.tag_hex}: {row.value}"
+            for row in rows
+            if row.value
+        ]
+        if not lines:
+            self._dicom_tags_overlay_label.hide()
+            return
+        self._dicom_tags_overlay_label.setText("\n".join(lines))
+        self._dicom_tags_overlay_label.adjustSize()
+        self._dicom_tags_overlay_label.show()
+        self._position_dicom_tags_overlay(self._graphics.geometry())
+
+    def _current_instance_metadata(self):
+        if self._current_state is not None and self._current_state.instance is not None:
+            return self._current_state.instance
+        return None
 
     def set_results_overlay(self, text: str) -> None:
         """Show session measurement summary (top-right box, left-aligned text)."""
         if text.strip():
-            self._results_overlay_label.setText(text)
-            self._results_overlay_label.adjustSize()
-            self._results_overlay_label.show()
+            text_changed = text != self._results_overlay_label.text()
+            was_visible = self._results_overlay_label.isVisible()
+            if text_changed:
+                self._results_overlay_label.setText(text)
+                self._results_overlay_label.adjustSize()
+            if not was_visible:
+                self._results_overlay_label.show()
             self._results_overlay_label.raise_()
+            if not self._results_overlay_custom_position and (not was_visible or text_changed):
+                self._request_results_overlay_reposition()
         else:
             self._results_overlay_label.hide()
-        self._position_overlay_labels()
+            self._position_dicom_tags_overlay(self._graphics.geometry())
+
+    def refresh_dicom_tags_overlay(self) -> None:
+        self._refresh_dicom_tags_overlay()
+
+    def _mark_results_overlay_custom_position(self) -> None:
+        self._results_overlay_custom_position = True
+
+    def results_overlay_custom_position(self) -> bool:
+        return self._results_overlay_custom_position
+
+    def set_results_overlay_position(
+        self,
+        x_ratio: float,
+        y_ratio: float,
+        *,
+        custom: bool = True,
+    ) -> None:
+        self._results_overlay_custom_position = custom
+        if custom:
+            self._results_overlay_label.set_position_ratios(x_ratio, y_ratio)
+        if self._results_overlay_label.isVisible():
+            self._request_results_overlay_reposition()
+
+    def results_overlay_position(self) -> tuple[float, float]:
+        return self._results_overlay_label.position_ratios()
+
+    def reposition_overlays(self) -> None:
+        self._position_overlay_labels(reposition_results=not self._results_overlay_custom_position)
 
     def results_overlay_text(self) -> str:
         return self._results_overlay_label.text()
@@ -610,38 +960,50 @@ class ViewerWidget(QWidget):
     def _position_overlay_label(self) -> None:
         self._position_overlay_labels()
 
+    def _resolve_display_mode(
+        self,
+        frame: np.ndarray,
+        media_format: str | None,
+    ) -> tuple[bool, bool]:
+        """Return (color_display, window_level_enabled)."""
+        if frame.ndim == 3 and frame.shape[2] >= 3:
+            if media_format == "dicom":
+                return True, True
+            if is_effective_grayscale(frame, tolerance=24):
+                return False, True
+            color = is_color_frame(frame)
+            return color, not color
+        return False, True
+
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
         frame = np.asarray(pixels)
-        self._is_color_frame = is_color_frame(frame)
-        if self._is_color_frame and frame.ndim == 3 and frame.shape[2] >= 3:
-            from echo_personal_tool.domain.services.frame_panel_parser import (
-                detect_panels_heuristic,
-            )
-            from echo_personal_tool.infrastructure.pixel_utils import is_effective_grayscale
-
-            layout = detect_panels_heuristic(to_grayscale_array(frame).astype(np.uint8))
-            if layout is not None and layout.b_mode is not None:
-                bounds = layout.b_mode.bounds
-                y0 = max(0, int(bounds.y0))
-                y1 = min(frame.shape[0], int(bounds.y0 + bounds.height))
-                if y1 > y0 and is_effective_grayscale(frame[y0:y1, ...]):
-                    self._is_color_frame = False
+        media_format = (
+            self._current_state.instance.media_format
+            if self._current_state is not None and self._current_state.instance is not None
+            else None
+        )
+        self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
+            frame,
+            media_format,
+        )
+        channel_order = "rgb" if media_format == "dicom" else "bgr"
+        self._current_frame = to_grayscale_array(frame)
 
         if self._is_color_frame:
-            display = bgr_to_rgb(frame)
-            self._current_frame = to_grayscale_array(frame)
-            self._image_item.setImage(display, autoLevels=True)
+            self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+            self._image_item.setImage(self._color_source_rgb, autoLevels=False)
+            self._update_levels()
         else:
-            gray = to_grayscale_array(frame)
-            self._current_frame = gray
+            self._color_source_rgb = None
+            gray = self._current_frame
             self._image_item.setImage(gray, autoLevels=False)
             with QSignalBlocker(self._dr_slider):
                 self._dr_slider.setValue(50)
             self._update_levels()
-        self._window_slider.setEnabled(not self._is_color_frame)
-        self._level_slider.setEnabled(not self._is_color_frame)
-        self._dr_slider.setEnabled(not self._is_color_frame)
+        self._window_slider.setEnabled(self._window_level_enabled)
+        self._level_slider.setEnabled(self._window_level_enabled)
+        self._dr_slider.setEnabled(self._window_level_enabled)
         sync_enabled = getattr(self, "_sync_display_control_enabled", None)
         if callable(sync_enabled):
             sync_enabled()
@@ -722,6 +1084,9 @@ class ViewerWidget(QWidget):
             self._update_linear_caliper_label_preview_from_state()
             if frame_changed or contours_updated:
                 self._refresh_frame_overlays()
+            self._refresh_frame_panel_layout()
+            self._refresh_panel_frame_graphics()
+            self._refresh_dicom_tags_overlay()
         finally:
             self._syncing_state = False
             pending = self._pending_viewer_state
@@ -1133,6 +1498,9 @@ class ViewerWidget(QWidget):
             self._crosshair_v_item.setData([], [])
 
     def _update_measurement_crosshair(self, x: float, y: float) -> None:
+        if not self._show_crosshair:
+            self._clear_crosshair()
+            return
         panel = self._crosshair_panel_bounds()
         if panel is None or not self._measurement_crosshair_active():
             self._clear_crosshair()
@@ -1163,6 +1531,8 @@ class ViewerWidget(QWidget):
         return self._doppler.get_measurement_dto()
 
     def _try_auto_detect_doppler_calibration(self) -> bool:
+        if not self._doppler_auto_calibration_enabled:
+            return False
         if self._current_frame is None:
             return False
         instance = self._current_state.instance if self._current_state else None
@@ -1172,7 +1542,7 @@ class ViewerWidget(QWidget):
                 kind=DopplerKind.SPECTRAL,
                 frame=self._current_frame,
             )
-            if parsed is not None and parsed.has_velocity_scale():
+            if parsed is not None and parsed.has_time_scale_from_dicom():
                 self.apply_doppler_calibration_state(parsed, persist=True)
                 return True
         return False
@@ -1702,6 +2072,13 @@ class ViewerWidget(QWidget):
     def contours(self) -> list[Contour]:
         return list(self._stored_contours)
 
+    def get_lv_contour(self) -> Contour | None:
+        """Return the first LV contour, or None if no LV contour exists."""
+        for contour in self._stored_contours:
+            if contour.chamber == "LV":
+                return contour
+        return None
+
     def pending_ai_review_contour(self) -> Contour | None:
         frame_index = self._contour_frame_index()
         instance_uid = self._current_instance_uid()
@@ -1854,6 +2231,54 @@ class ViewerWidget(QWidget):
         if self._calibration_marker_item is not None:
             self._view.removeItem(self._calibration_marker_item)
             self._calibration_marker_item = None
+        if self._calibration_h_guide_start_item is not None:
+            self._view.removeItem(self._calibration_h_guide_start_item)
+            self._calibration_h_guide_start_item = None
+        if self._calibration_h_guide_end_item is not None:
+            self._view.removeItem(self._calibration_h_guide_end_item)
+            self._calibration_h_guide_end_item = None
+
+    def _ensure_calibration_horizontal_guides(self) -> None:
+        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        if self._calibration_h_guide_start_item is None:
+            self._calibration_h_guide_start_item = pg.PlotDataItem(pen=pen)
+            self._calibration_h_guide_start_item.setZValue(24)
+            self._calibration_h_guide_start_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._calibration_h_guide_start_item.setAcceptHoverEvents(False)
+            self._view.addItem(self._calibration_h_guide_start_item)
+        if self._calibration_h_guide_end_item is None:
+            self._calibration_h_guide_end_item = pg.PlotDataItem(pen=pen)
+            self._calibration_h_guide_end_item.setZValue(24)
+            self._calibration_h_guide_end_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._calibration_h_guide_end_item.setAcceptHoverEvents(False)
+            self._view.addItem(self._calibration_h_guide_end_item)
+
+    def _update_calibration_horizontal_guides(self, end_y: float) -> None:
+        if not self._calibration_active or self._calibration_start_y is None:
+            return
+        if self._calibration_kind == "mmode_time":
+            return
+        self._ensure_calibration_horizontal_guides()
+        assert self._calibration_h_guide_start_item is not None
+        assert self._calibration_h_guide_end_item is not None
+        start_y = float(self._calibration_start_y)
+        end_y = float(end_y)
+        x_start = float(self._calibration_x)
+        if self._current_frame is None:
+            return
+        x_end = float(self._current_frame.shape[1] - 1)
+        if x_start >= x_end:
+            self._calibration_h_guide_start_item.setData([], [])
+            self._calibration_h_guide_end_item.setData([], [])
+            return
+        self._calibration_h_guide_start_item.setData(
+            [x_start, x_end],
+            [start_y, start_y],
+        )
+        self._calibration_h_guide_end_item.setData(
+            [x_start, x_end],
+            [end_y, end_y],
+        )
 
     def _clear_rendered_contours(self) -> None:
         for nodes in self._contour_nodes:
@@ -2706,7 +3131,7 @@ class ViewerWidget(QWidget):
         start: tuple[float, float],
         end: tuple[float, float],
     ) -> tuple[pg.PlotDataItem, pg.ScatterPlotItem]:
-        pen = pg.mkPen("#29b6f6", width=2)
+        pen = self._caliper_pen("#29b6f6")
         line_item = pg.PlotDataItem(pen=pen)
         line_item.setZValue(24)
         line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -2851,6 +3276,7 @@ class ViewerWidget(QWidget):
         if self._calibration_start_y is None:
             self._calibration_start_y = y
             self._update_calibration_preview(y, y)
+            self._update_calibration_horizontal_guides(y)
             if self._calibration_kind in {"spectral", "doppler_velocity"}:
                 self._measurement_label.setText("Спектр: 2-й клик — низ шкалы скорости")
             else:
@@ -2914,14 +3340,14 @@ class ViewerWidget(QWidget):
 
     def _ensure_calibration_graphics(self) -> None:
         if self._calibration_line_item is None:
-            pen = pg.mkPen("#29b6f6", width=2)
+            pen = self._caliper_pen("#29b6f6")
             self._calibration_line_item = pg.PlotDataItem(pen=pen)
             self._calibration_line_item.setZValue(25)
             self._calibration_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._calibration_line_item.setAcceptHoverEvents(False)
             self._view.addItem(self._calibration_line_item)
         if self._calibration_marker_item is None:
-            marker_pen = pg.mkPen("#29b6f6", width=2)
+            marker_pen = self._caliper_pen("#29b6f6")
             self._calibration_marker_item = pg.ScatterPlotItem(
                 symbol="+",
                 size=14,
@@ -3116,14 +3542,14 @@ class ViewerWidget(QWidget):
 
     def _ensure_linear_caliper_graphics(self) -> None:
         if self._linear_caliper_line_item is None:
-            pen = pg.mkPen("#ffb300", width=2)
+            pen = self._caliper_pen("#ffb300")
             self._linear_caliper_line_item = pg.PlotDataItem(pen=pen)
             self._linear_caliper_line_item.setZValue(25)
             self._linear_caliper_line_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._linear_caliper_line_item.setAcceptHoverEvents(False)
             self._view.addItem(self._linear_caliper_line_item)
         if self._linear_caliper_marker_item is None:
-            marker_pen = pg.mkPen("#ffb300", width=2)
+            marker_pen = self._caliper_pen("#ffb300")
             self._linear_caliper_marker_item = pg.ScatterPlotItem(
                 symbol="+",
                 size=14,
@@ -3190,7 +3616,9 @@ class ViewerWidget(QWidget):
             end,
             self._current_caliper_label(),
         )
-        self._measurement_label.setText(measurement.display_text())
+        self._measurement_label.setText(
+            measurement.display_text(length_unit=self._length_display_unit)
+        )
 
     def _update_linear_caliper_label_preview_from_state(self) -> None:
         if not self._linear_caliper_active:
@@ -3215,7 +3643,9 @@ class ViewerWidget(QWidget):
             self._current_caliper_label(),
         )
         self._stored_linear_measurements[self._linear_measurement_key(measurement)] = measurement
-        self._measurement_label.setText(measurement.display_text())
+        self._measurement_label.setText(
+            measurement.display_text(length_unit=self._length_display_unit)
+        )
         self._emit_stored_linear_measurements()
         self._render_persistent_linear_calipers()
         self._refresh_frame_overlays()
@@ -3252,16 +3682,19 @@ class ViewerWidget(QWidget):
         level_slider: object,
         dr_slider: object,
     ) -> None:
-        """Wire external GE-style sliders to internal window/level/DR logic."""
-        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+        """Wire external sliders to internal window/level/DR logic."""
+        from echo_personal_tool.presentation.ge_labeled_slider import (
+            GeLabeledSlider,
+            TopLabeledSlider,
+        )
 
-        sliders: list[tuple[GeLabeledSlider, object]] = []
+        sliders: list[tuple[object, object]] = []
         for external, internal in (
             (window_slider, self._window_slider),
             (level_slider, self._level_slider),
             (dr_slider, self._dr_slider),
         ):
-            if not isinstance(external, GeLabeledSlider):
+            if not isinstance(external, (GeLabeledSlider, TopLabeledSlider)):
                 continue
             ext = external.slider()
             sliders.append((external, internal))
@@ -3272,7 +3705,7 @@ class ViewerWidget(QWidget):
             ext.valueChanged.connect(self._update_levels)
 
         def sync_enabled() -> None:
-            enabled = not self._is_color_frame
+            enabled = self._window_level_enabled
             for external, internal in sliders:
                 external.setEnabled(enabled)
                 internal.setEnabled(enabled)
@@ -3281,7 +3714,7 @@ class ViewerWidget(QWidget):
         sync_enabled()
 
     def _update_levels(self) -> None:
-        if self._current_frame is None or self._is_color_frame:
+        if self._current_frame is None or not self._window_level_enabled:
             return
         frame = np.asarray(self._current_frame, dtype=float)
         if frame.size == 0:
@@ -3294,7 +3727,11 @@ class ViewerWidget(QWidget):
             window_scale=self._window_slider.value() / 100.0,
             level_offset=(self._level_slider.value() - 50) / 50.0,
         )
-        self._image_item.setLevels((low, high))
+        if self._is_color_frame and self._color_source_rgb is not None:
+            display = apply_window_level_rgb(self._color_source_rgb, low, high)
+            self._image_item.setImage(display, autoLevels=False)
+        else:
+            self._image_item.setLevels((low, high))
         self._invalidate_edge_map_cache()
 
     def set_magnetic_snap_enabled(self, enabled: bool) -> None:
@@ -3366,9 +3803,9 @@ class ViewerWidget(QWidget):
             list(contour.points),
             weights,
             edge_map,
-            strength=_MAGNETIC_RELEASE_STRENGTH,
-            max_radial_px=_MAGNETIC_RELEASE_MAX_RADIAL_PX,
-            weight_threshold=_MAGNETIC_SNAP_WEIGHT_THRESHOLD,
+            strength=self._magnetic_snap_release_strength,
+            max_radial_px=self._magnetic_snap_release_max_radial_px,
+            weight_threshold=self._magnetic_snap_weight_threshold,
             config=snap_cfg,
             pinned_indices=pinned,
             grab_index=grab_index,

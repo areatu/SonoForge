@@ -17,8 +17,12 @@ _SPATIAL_2D = 1
 _SPATIAL_M_MODE = 2
 _SPATIAL_SPECTRAL = 3
 
-# RegionDataType — tissue / PW / CW Doppler
-_DOPPLER_DATA_TYPES = frozenset({0x10, 0x11, 16, 17})
+from echo_personal_tool.domain.services.ultrasound_region_physics import (
+    DOPPLER_DATA_TYPES,
+    horizontal_ms_per_pixel,
+    region_physical_deltas,
+    vertical_mm_per_pixel,
+)
 
 
 def _bounds_to_roi(x0: float, y0: float, x1: float, y1: float) -> DopplerSpectrogramRoi:
@@ -33,7 +37,7 @@ def _bounds_to_roi(x0: float, y0: float, x1: float, y1: float) -> DopplerSpectro
 def _panel_kind(spatial_format: int, data_type: int) -> PanelKind | None:
     if spatial_format == _SPATIAL_M_MODE:
         return PanelKind.M_MODE
-    if spatial_format == _SPATIAL_SPECTRAL or data_type in _DOPPLER_DATA_TYPES:
+    if spatial_format == _SPATIAL_SPECTRAL or data_type in DOPPLER_DATA_TYPES:
         return PanelKind.DOPPLER
     if spatial_format == _SPATIAL_2D and data_type == 1:
         return PanelKind.B_MODE
@@ -62,21 +66,16 @@ def parse_panels_from_dataset(dataset: Dataset) -> FramePanelLayout | None:
         if kind is None:
             continue
 
-        delta_x = region.get("PhysicalDeltaX")
-        delta_y = region.get("PhysicalDeltaY")
-        phys_x = abs(float(delta_x)) if delta_x is not None else None
-        phys_y = abs(float(delta_y)) if delta_y is not None else None
-        units_x = region.get("PhysicalUnitsXDirection")
-        units_y = region.get("PhysicalUnitsYDirection")
+        delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
 
         panels.append(
             UltrasoundPanel(
                 kind=kind,
                 bounds=_bounds_to_roi(float(min_x), float(min_y), float(max_x), float(max_y)),
-                physical_delta_x_cm=phys_x,
-                physical_delta_y_cm=phys_y,
-                physical_units_x=int(units_x) if units_x is not None else None,
-                physical_units_y=int(units_y) if units_y is not None else None,
+                physical_delta_x=delta_x,
+                physical_delta_y=delta_y,
+                physical_units_x=units_x,
+                physical_units_y=units_y,
             )
         )
 
