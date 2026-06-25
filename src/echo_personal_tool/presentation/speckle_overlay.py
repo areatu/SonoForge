@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import ColorMap
 from PySide6.QtWidgets import QWidget
+from pyqtgraph import ColorMap
 
 from echo_personal_tool.domain.models.speckle import (
     MyocardialZone,
@@ -30,7 +30,7 @@ class SpeckleOverlay(QWidget):
 
         brush_fill = pg.mkBrush(66, 165, 245, 30)
         self._endo_fill = pg.PlotDataItem(
-            pen=pg.mkPen(Qt.PenStyle.NoPen), brush=brush_fill
+            pen=None, brush=brush_fill
         )
         self._endo_fill.setZValue(1)
         self._plot.addItem(self._endo_fill)
@@ -43,6 +43,7 @@ class SpeckleOverlay(QWidget):
 
         self._displacement_arrows: list[pg.PlotDataItem] = []
         self._strain_items: list[pg.PlotDataItem] = []
+        self._phase_contour_items: list[pg.PlotDataItem] = []
 
         self._kernel_scatter.sigClicked.connect(self._on_kernel_clicked)
 
@@ -158,6 +159,34 @@ class SpeckleOverlay(QWidget):
             self._plot.addItem(item)
             self._strain_items.append(item)
 
+    def show_phase_contours(
+        self,
+        ed_contour: np.ndarray | None,
+        es_contour: np.ndarray | None,
+    ) -> None:
+        """Draw ED (green) and ES (red) endocardial contours for phase verification."""
+        for item in self._phase_contour_items:
+            self._plot.removeItem(item)
+        self._phase_contour_items.clear()
+
+        if ed_contour is not None and len(ed_contour) >= 3:
+            x = np.append(ed_contour[:, 0], ed_contour[0, 0])
+            y = np.append(ed_contour[:, 1], ed_contour[0, 1])
+            pen_ed = pg.mkPen("#00e676", width=2, style=Qt.PenStyle.DashLine)
+            item = pg.PlotDataItem(x, y, pen=pen_ed)
+            item.setZValue(15)
+            self._plot.addItem(item)
+            self._phase_contour_items.append(item)
+
+        if es_contour is not None and len(es_contour) >= 3:
+            x = np.append(es_contour[:, 0], es_contour[0, 0])
+            y = np.append(es_contour[:, 1], es_contour[0, 1])
+            pen_es = pg.mkPen("#ff1744", width=2, style=Qt.PenStyle.DashLine)
+            item = pg.PlotDataItem(x, y, pen=pen_es)
+            item.setZValue(15)
+            self._plot.addItem(item)
+            self._phase_contour_items.append(item)
+
     def clear(self) -> None:
         """Remove all overlay items."""
         self._zone_item.setData([], [])
@@ -169,6 +198,9 @@ class SpeckleOverlay(QWidget):
         for item in self._strain_items:
             self._plot.removeItem(item)
         self._strain_items.clear()
+        for item in self._phase_contour_items:
+            self._plot.removeItem(item)
+        self._phase_contour_items.clear()
 
     def _on_kernel_clicked(self, scatter, points) -> None:
         if points:

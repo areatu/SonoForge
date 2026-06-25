@@ -425,6 +425,9 @@ class ViewerWidget(QWidget):
         self._doppler.workflow_step_changed.connect(self._on_doppler_workflow_step_changed)
         self._doppler.workflow_completed.connect(self._on_doppler_workflow_completed)
         self._doppler.trace_prompt_changed.connect(self._on_doppler_trace_prompt_changed)
+        from echo_personal_tool.presentation.speckle_overlay import SpeckleOverlay
+        self._speckle_overlay = SpeckleOverlay(self._view, self)
+        self._speckle_overlay.hide()
         self._calibration_kind: Literal[
             "depth", "spectral", "doppler_velocity", "mmode_time", "mmode_depth"
         ] | None = None
@@ -2102,6 +2105,29 @@ class ViewerWidget(QWidget):
             if contour.chamber == "LV":
                 return contour
         return None
+
+    def show_speckle_result(self, result: object) -> None:
+        """Display speckle tracking overlay from StrainResult."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        if not isinstance(result, StrainResult):
+            return
+        if result.zone is not None:
+            self._speckle_overlay.show_myocardial_zone(result.zone)
+        if result.kernels:
+            self._speckle_overlay.show_kernels(
+                result.kernels, result.last_valid_mask, result.last_ncc_scores
+            )
+        displacements = result.cumulative_displacements if result.cumulative_displacements is not None else result.last_displacements
+        if result.kernels and displacements is not None:
+            self._speckle_overlay.show_displacements(result.kernels, displacements, scale=1.5)
+        if result.kernels and result.per_kernel_longitudinal is not None:
+            self._speckle_overlay.show_strain_color_map(result.kernels, result.per_kernel_longitudinal)
+        self._speckle_overlay.show_phase_contours(result.ed_contour, result.es_contour)
+        self._speckle_overlay.show()
+
+    def clear_speckle_overlay(self) -> None:
+        self._speckle_overlay.clear()
+        self._speckle_overlay.hide()
 
     def pending_ai_review_contour(self) -> Contour | None:
         frame_index = self._contour_frame_index()

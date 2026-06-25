@@ -85,6 +85,8 @@ class MainWindow(QMainWindow):
         self._instance_overlay_positions: dict[str, tuple[float, float]] = {}
         self._overlay_sync_instance_uid: str | None = None
         self._last_overlay_state: ViewerState | None = None
+        self._manual_ed_frame: int | None = None
+        self._manual_es_frame: int | None = None
 
         self._controller = controller or AppController()
         orthanc_root = Path.home() / ".echo-personal-tool" / "orthanc"
@@ -779,6 +781,7 @@ class MainWindow(QMainWindow):
         self._viewer.cancel_active_tool()
         self._viewer.clear_doppler_calibration_display()
         self._viewer.clear_doppler_measurements()
+        self._viewer.clear_speckle_overlay()
         self._viewer.reset_dist_caliper_serial()
         self._controller.reset_measurements_and_calibration()
         if self._viewer._current_frame is None:
@@ -806,6 +809,28 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Калибровка отменена")
 
+    def _get_current_frame_index(self) -> int | None:
+        snapshot = self._controller.state_manager.snapshot
+        if snapshot.instance is None:
+            return None
+        return snapshot.current_frame_index
+
+    def _mark_current_frame_as_ed(self) -> None:
+        idx = self._get_current_frame_index()
+        if idx is None:
+            self._show_status("Load a frame first")
+            return
+        self._manual_ed_frame = idx
+        self._show_status(f"ED = кадр {idx}")
+
+    def _mark_current_frame_as_es(self) -> None:
+        idx = self._get_current_frame_index()
+        if idx is None:
+            self._show_status("Load a frame first")
+            return
+        self._manual_es_frame = idx
+        self._show_status(f"ES = кадр {idx}")
+
     def _on_speckle_tracking_requested(self) -> None:
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
@@ -814,7 +839,13 @@ class MainWindow(QMainWindow):
         if contour is None:
             self._show_status("Сначала нарисуйте контур LV")
             return
-        self._controller.run_speckle_tracking(contour)
+        self._viewer.clear_speckle_overlay()
+        self._show_status("speckle tracking: вычисление...")
+        self._controller.run_speckle_tracking(
+            contour,
+            manual_ed=self._manual_ed_frame,
+            manual_es=self._manual_es_frame,
+        )
 
     def _on_speckle_result_ready(self, result: object) -> None:
         from echo_personal_tool.domain.models.speckle import StrainResult
@@ -823,6 +854,7 @@ class MainWindow(QMainWindow):
             return
         gls = result.gls
         self._show_status(f"GLS: {gls:.1f}%  |  HR: {result.heart_rate_bpm:.0f} bpm")
+        self._viewer.show_speckle_result(result)
 
     def _on_doppler_calibration_requested(self) -> None:
         if self._viewer._current_frame is None:
@@ -1184,6 +1216,14 @@ class MainWindow(QMainWindow):
             return True
         if event.key() == Qt.Key.Key_Tab:
             self._viewer.cycle_caliper_label()
+            event.accept()
+            return True
+        if event.key() == Qt.Key.Key_E and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self._mark_current_frame_as_ed()
+            event.accept()
+            return True
+        if event.key() == Qt.Key.Key_D and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self._mark_current_frame_as_es()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:

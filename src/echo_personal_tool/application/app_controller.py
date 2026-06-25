@@ -1337,7 +1337,13 @@ class AppController(QObject):
 
     # ── Speckle Tracking ──────────────────────────────────────────────────
 
-    def run_speckle_tracking(self, contour: object | None = None) -> None:
+    def run_speckle_tracking(
+        self,
+        contour: object | None = None,
+        *,
+        manual_ed: int | None = None,
+        manual_es: int | None = None,
+    ) -> None:
         """Launch speckle tracking on current CINE frames."""
         from echo_personal_tool.application.workers.speckle_worker import (
             SpeckleTrackingWorker,
@@ -1362,7 +1368,7 @@ class AppController(QObject):
             self.status_message.emit("speckle tracking: контур LV не найден")
             return
 
-        pixel_spacing = self._state_manager.snapshot.pixel_spacing or (1.0, 1.0)
+        pixel_spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
         endo_points = __import__("numpy").array(contour.points, dtype=__import__("numpy").float64)
 
         config = SpeckleConfig(wall_thickness_mm=8.0)
@@ -1377,6 +1383,8 @@ class AppController(QObject):
             pixel_spacing=pixel_spacing,
             frame_time_ms=frame_time_ms,
             config=config,
+            manual_ed=manual_ed,
+            manual_es=manual_es,
         )
         worker.signals.finished.connect(self._on_speckle_tracking_finished)
         worker.signals.error.connect(self._on_speckle_tracking_error)

@@ -67,3 +67,12 @@ class StrainResult:
     es_index: int = 0
     heart_rate_bpm: float = 0.0
     phases: dict[str, int] = field(default_factory=dict)
+    zone: MyocardialZone | None = None
+    kernels: list[TrackingKernel] = field(default_factory=list)
+    last_displacements: np.ndarray | None = None
+    last_ncc_scores: np.ndarray | None = None
+    last_valid_mask: np.ndarray | None = None
+    cumulative_displacements: np.ndarray | None = None
+    per_kernel_longitudinal: np.ndarray | None = None
+    ed_contour: np.ndarray | None = None
+    es_contour: np.ndarray | None = None
