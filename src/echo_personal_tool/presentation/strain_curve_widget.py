@@ -48,6 +48,9 @@ class StrainCurveWidget(QWidget):
         radial_strain: np.ndarray,
         ed_index: int = 0,
         es_index: int = 0,
+        *,
+        window_start: int | None = None,
+        window_end: int | None = None,
     ) -> None:
         """Plot longitudinal (blue) and radial (red) strain curves.
 
@@ -56,14 +59,30 @@ class StrainCurveWidget(QWidget):
             radial_strain: (N,) radial strain values in %.
             ed_index: end-diastole frame index for vertical marker.
             es_index: end-systole frame index for vertical marker.
+            window_start: optional first frame to display (inclusive).
+            window_end: optional last frame to display (inclusive).
         """
         if len(longitudinal_strain) == 0:
             self.clear()
             return
 
-        frames = np.arange(len(longitudinal_strain))
-        self._longitudinal_curve.setData(frames, longitudinal_strain)
-        self._radial_curve.setData(frames, radial_strain)
+        if (
+            window_start is not None
+            and window_end is not None
+            and window_end >= window_start
+            and window_end < len(longitudinal_strain)
+        ):
+            frames = np.arange(window_start, window_end + 1)
+            long_data = longitudinal_strain[window_start : window_end + 1]
+            radial_data = radial_strain[window_start : window_end + 1]
+        else:
+            frames = np.arange(len(longitudinal_strain))
+            long_data = longitudinal_strain
+            radial_data = radial_strain
+
+        self._longitudinal_curve.setData(frames, long_data)
+        self._radial_curve.setData(frames, radial_data)
+        self._plot.setXRange(float(frames[0]), float(frames[-1]), padding=0.02)
 
         if self._ed_line is not None:
             self._plot.removeItem(self._ed_line)

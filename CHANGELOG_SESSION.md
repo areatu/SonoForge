@@ -6,20 +6,15 @@
 
 ---
 
-## [2026-06-19 40:00] LAV: результат в оверлее после контура
+## [2026-06-27 18:30] STE: окно ED–ES, оверлей, QC-таблица
 - **Тип:** fix
-- **Файлы:** `measurement_results_formatter.py`, `chamber_simpson.py`, `main_window.py`, `viewer_widget.py`, тесты
-- **Суть:** LAV из Simpson (la_simpson) выводится в study/frame overlay после Enter; исправлен spacing для MP4 без DICOM; apex_landmark при завершении LA-дуги.
+- **Файлы:** `speckle_worker.py`, `viewer_widget.py`, `strain_curve_widget.py`, `segment_quality_panel.py`, `speckle.py`, `main_window.py`
+- **Суть:** Трекинг только в окне ED…ES; график strain по этому окну; спеклы обновляются по кадру; Quality < 0.4 — тёмно-красный.
 
-## [2026-06-19 39:00] Площадь/Объём и LAV: упрощённый контур
+## [2026-06-27 17:00] Оверлей спеклов по кадрам ED–ES
 - **Тип:** fix
-- **Файлы:** `planimeter.py`, `viewer_widget.py`, `main_window.py`, `lvef_simpson.py`, `planimeter_formatter.py`, `test_planimeter.py`
-- **Суть:** Площадь и Объём — замкнутый полигон (двойной щелчок), точки двигаются по одной; LAV 4C/2C — Simpson как LV (МК → apex → дуга → Enter), без LAL-калипера.
-
-## [2026-06-19 38:00] Общие: Площадь и Объём (сплайн)
-- **Тип:** feature
-- **Файлы:** `planimeter.py`, `planimeter_formatter.py`, `viewer_widget.py`, `main_window.py`, `measures_menu.py`, `contour.py`, `measurements.py`, тесты
-- **Суть:** Площадь — замкнутый сплайн-контур (Площадь1, 2…); Объём — open-arc Simpson (Объем1, 2…); результаты в overlay и study summary.
+- **Файлы:** `speckle.py`, `speckle_worker.py`, `viewer_widget.py`, `speckle_overlay.py`
+- **Суть:** Спеклы рисовались только в позициях ES; добавлены полные траектории `tracked_positions_all` и обновление оверлея при смене кадра в окне ED…ES.
 
 ## [2026-06-19 37:00] Индексы при отклонении от ASE-норм
 - **Тип:** feature
@@ -174,3 +169,31 @@
 - **Тип:** fix
 - **Файлы:** `app_controller.py`, `viewer_widget.py`, `main_window.py`
 - **Суть:** Исправлено «зависание» первых кадров при воспроизведении DICOM/MP4: при декодировании определяется число leading static frames (MAD от кадра 0), при старте play и при loop индекс перескакивает на первый динамический кадр; `toggle_playback` маршрутизирован через `set_playing`. В `show_frame_fast` убрана пересборка display mode на каждом кадре — устранён flicker color/grayscale. Отладочная инструментация удалена.
+
+## [2026-06-27 12:00] STE clinical parity: spec + implementation plan
+- **Тип:** feature
+- **Файлы:** `docs/superpowers/specs/2026-06-27-ste-clinical-parity-design.md`, `docs/superpowers/plans/2026-06-27-ste-clinical-parity.md`
+- **Суть:** Утверждена Strategy 1 (Tier A + determinism fixes): bidirectional ED-anchored NCC, spline smoothing, Green–Lagrange strain, AHA segments, drift compensation, QC UI. Design spec и 8-task implementation plan для backlog #1–#8.
+
+## [2026-06-27 15:05] STE Task 6: ED/ES pre-detect + worker pipeline
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/services/cardiac_cycle_detector.py`, `src/echo_personal_tool/application/workers/speckle_worker.py`, `src/echo_personal_tool/domain/services/speckle_tracking.py`, `tests/unit/test_speckle_tracking.py`
+- **Суть:** Добавлены pre-tracking ED/ES детекция по сглаженной кривой proxy-area и ROI mask для FFT HR-оценки; `SpeckleTrackingWorker` переведён на новый ED-anchored bidirectional pipeline с smoothing, GL strain, AHA segment aggregation и расширенным `StrainResult`. Исправлен возврат `track_cine_bidirectional` для корректной совместимости с `extract_trajectories` при `ed_index != 0`.
+
+## [2026-06-27 15:20] STE Task 7: QC panel, settings, preset metadata
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/presentation/segment_quality_panel.py`, `src/echo_personal_tool/presentation/speckle_settings_dialog.py`, `src/echo_personal_tool/presentation/speckle_overlay.py`, `src/echo_personal_tool/presentation/main_window.py`, `src/echo_personal_tool/application/app_controller.py`, `src/echo_personal_tool/application/workers/speckle_worker.py`
+- **Суть:** Добавлены UI-компоненты контроля качества сегментов и настроек speckle preset перед запуском, интеграция кривых strain + QC в окно и status bar. `run_speckle_tracking` принимает опциональный `SpeckleConfig`, а worker теперь возвращает выбранный `config_preset` в `StrainResult`.
+
+## [2026-06-27 17:00] STE: окно ED-ES, зона миокарда, QC цвет
+- **Тип:** fix
+- **Файлы:** `speckle_worker.py`, `myocardial_zone.py`, `speckle_overlay.py`, `viewer_widget.py`, `segment_quality_panel.py`, `strain_computation.py`, `speckle.py`
+- **Суть:** При ручном ED/ES трекинг и GLS только в окне фаз; drift comp ED→ES. Заливка стенки миокарда (endo–epi), kernels на ES с цветом по слою (endo/mid/epi). Quality 0.0 — тёмно-красный фон, белый текст.
+
+- **Тип:** fix
+- **Файлы:** `speckle_tracking.py`, `speckle_worker.py`, `speckle_overlay.py`, `viewer_widget.py`, `tracking_smoothing.py`, `aha_segments.py`
+- **Суть:** Исправлено смешение ко координат ED и frame-t в bidirectional fusion (источник «веера» жёлтых линий и GLS -70%). Позиции только из forward match; backward — валидация NCC. Стрелки ED→ES по контурам; per-kernel strain на Green–Lagrange; GLS из кривой longitudinal.
+
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/services/cardiac_cycle_detector.py`, `src/echo_personal_tool/application/workers/speckle_worker.py`, `tests/unit/test_ste_reproducibility.py`
+- **Суть:** Добавлены `detect_cycle_boundaries` и `average_strain_curves` для выделения циклов по ED-пикам area-сигнала и post-hoc усреднения GLS-кривой по фазе. В `SpeckleTrackingWorker` включено multi-cycle усреднение longitudinal strain при `config.multi_cycle_average` и наличии >=2 циклов; добавлены тесты на детектор, ресемплинг-усреднение и воспроизводимость GLS (10 запусков).

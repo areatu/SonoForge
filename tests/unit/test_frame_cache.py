@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from echo_personal_tool.application.frame_cache import FrameCache
+from echo_personal_tool.domain.exceptions import IncompleteCineError
 
 
 def test_frame_cache_load_get_clear(tmp_path: Path) -> None:
@@ -158,3 +159,20 @@ def test_frame_cache_prefetch(tmp_path: Path) -> None:
     assert cache.is_loaded(25)
     assert cache.is_loaded(35)
     assert cache.is_loaded(30)
+
+
+def test_require_full_cine_raises_on_partial():
+    cache = FrameCache(evict_window=2)
+    frames = np.zeros((10, 32, 32), dtype=np.uint8)
+    cache.load(Path("fake.dcm"), frames)
+    cache.set_current(5)
+    with pytest.raises(IncompleteCineError):
+        cache.require_full_cine()
+
+
+def test_require_full_cine_returns_stack():
+    cache = FrameCache()
+    frames = np.arange(50, dtype=np.uint8).reshape(5, 2, 5)
+    cache.load(Path("fake.dcm"), frames)
+    out = cache.require_full_cine()
+    assert out.shape == (5, 2, 5)

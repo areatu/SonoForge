@@ -54,6 +54,7 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.models.speckle import SpeckleConfig
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.contour_geometry import apex_point
@@ -1418,6 +1419,8 @@ class AppController(QObject):
         self,
         contour: object | None = None,
         *,
+        config: SpeckleConfig | None = None,
+        config_preset: str = "echo_pac",
         manual_ed: int | None = None,
         manual_es: int | None = None,
     ) -> None:
@@ -1425,13 +1428,20 @@ class AppController(QObject):
         from echo_personal_tool.application.workers.speckle_worker import (
             SpeckleTrackingWorker,
         )
-        from echo_personal_tool.domain.models.speckle import SpeckleConfig
+        from echo_personal_tool.domain.exceptions import IncompleteCineError
         from echo_personal_tool.domain.services.myocardial_zone import (
             create_myocardial_zone,
         )
 
-        frames = self._frame_cache.frames
-        if frames is None or len(frames) < 3:
+        try:
+            frames = self._frame_cache.require_full_cine()
+        except IncompleteCineError:
+            self.status_message.emit(
+                "speckle tracking: перезагрузите полную cine-последовательность"
+            )
+            return
+
+        if len(frames) < 3:
             self.status_message.emit("speckle tracking: недостаточно кадров")
             return
 
@@ -1448,8 +1458,12 @@ class AppController(QObject):
         pixel_spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
         endo_points = __import__("numpy").array(contour.points, dtype=__import__("numpy").float64)
 
-        config = SpeckleConfig(wall_thickness_mm=8.0)
-        zone = create_myocardial_zone(endo_points, pixel_spacing, config.wall_thickness_mm)
+        active_config = config or SpeckleConfig.preset_echo_pac()
+        zone = create_myocardial_zone(
+            endo_points,
+            pixel_spacing,
+            active_config.wall_thickness_mm,
+        )
 
         frame_time_ms = self._state_manager.snapshot.frame_time_ms or 33.3
 
@@ -1459,7 +1473,8 @@ class AppController(QObject):
             zone=zone,
             pixel_spacing=pixel_spacing,
             frame_time_ms=frame_time_ms,
-            config=config,
+            config=active_config,
+            config_preset=config_preset,
             manual_ed=manual_ed,
             manual_es=manual_es,
         )

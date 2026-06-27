@@ -38,6 +38,7 @@ from echo_personal_tool.domain.services.strain_computation import (
     compute_strain_rate,
 )
 from echo_personal_tool.domain.services.tracking_smoothing import (
+    apply_motion_model,
     extract_trajectories,
     interpolate_invalid_kernels,
     smooth_trajectories,
@@ -189,6 +190,9 @@ class SpeckleTrackingWorker(QRunnable):
                 positions, ncc_matrix, kernels, config.ncc_threshold,
             )
             smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
+            smoothed = apply_motion_model(
+                smoothed, ncc_matrix, kernels, track_ed_index, config.ncc_threshold,
+            )
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]

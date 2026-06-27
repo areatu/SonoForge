@@ -345,7 +345,28 @@ def track_cine_incremental(
     progress_callback: Callable[[int, int], None] | None = None,
     zone_mask: np.ndarray | None = None,
     wall_thickness_px: int = 20,
+    n_iterations: int = 2,
 ) -> list[TrackingResult]:
+    """ED-anchored tracking with progressive zone deformation and iterative refinement.
+
+    Two-pass approach:
+    1. Coarse pass: track without zone constraint to get approximate positions
+    2. Fine pass(s): re-track with zone mask interpolated between ED and ES positions
+       Repeat n_iterations times, using previous result as new ED positions.
+
+    Args:
+        frames: (N, H, W) preprocessed CINE frames.
+        initial_kernels: kernels at ED frame.
+        ed_index: ED frame index.
+        config: tracking configuration.
+        progress_callback: optional (current, total) progress reporter.
+        zone_mask: static zone mask (used as fallback).
+        wall_thickness_px: wall thickness for progressive zone.
+        n_iterations: number of refinement iterations (1 = no refinement).
+
+    Returns:
+        List of TrackingResult for each frame (excluding ED).
+    """
     n_frames = frames.shape[0]
     ed_index = int(np.clip(ed_index, 0, n_frames - 1))
     n_kernels = len(initial_kernels)
@@ -384,59 +405,40 @@ def track_cine_incremental(
         es_index = min(ed_index + n_frames // 3, n_frames - 1)
 
     logger.info(
-        "STE progressive zone: ed=%d, es=%d, n_frames=%d",
-        ed_index, es_index, n_frames,
+        "STE progressive zone: ed=%d, es=%d, n_frames=%d, iterations=%d",
+        ed_index, es_index, n_frames, n_iterations,
     )
 
-    final_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
-    final_ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
-    final_valid = np.zeros((n_frames, n_kernels), dtype=bool)
-    final_positions[ed_index] = ed_centers
-    final_ncc[ed_index] = 1.0
-    final_valid[ed_index] = True
+    current_ed_centers = ed_centers.copy()
 
-    es_positions = coarse_positions[es_index]
-    total_span = max(abs(es_index - ed_index), 1)
+    for iteration in range(n_iterations):
+        final_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
+        final_ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
+        final_valid = np.zeros((n_frames, n_kernels), dtype=bool)
+        final_positions[ed_index] = current_ed_centers
+        final_ncc[ed_index] = 1.0
+        final_valid[ed_index] = True
 
-    for t in range(n_frames):
-        if t == ed_index:
-            if progress_callback:
-                progress_callback(t + 1, n_frames)
-            continue
+        if iteration == 0:
+            es_positions = coarse_positions[es_index]
+        else:
+            es_positions = final_positions_prev[es_index]
 
-        span = abs(t - ed_index)
-        alpha = min(span / total_span, 1.0)
-        interp_centers = ed_centers * (1.0 - alpha) + es_positions * alpha
+        total_span = max(abs(es_index - ed_index), 1)
 
-        interp_kernels = [
-            TrackingKernel(
-                center=(float(interp_centers[i, 0]), float(interp_centers[i, 1])),
-                node_index=initial_kernels[i].node_index,
-                layer=initial_kernels[i].layer,
-                radius=initial_kernels[i].radius,
-                aha_segment=initial_kernels[i].aha_segment,
-                arc_length_param=initial_kernels[i].arc_length_param,
-            )
-            for i in range(n_kernels)
-        ]
+        for t in range(n_frames):
+            if t == ed_index:
+                if progress_callback:
+                    progress_callback(t + 1, n_frames)
+                continue
 
-        progressive_mask = build_zone_mask_from_kernels(
-            interp_centers, endo_mask, frame_shape, wall_thickness_px,
-        )
+            span = abs(t - ed_index)
+            alpha = min(span / total_span, 1.0)
+            interp_centers = current_ed_centers * (1.0 - alpha) + es_positions * alpha
 
-        match = track_frame_from_reference(
-            ed_frame, frames[t], interp_kernels, config, progressive_mask,
-        )
-
-        final_positions[t] = match.kernel_positions
-        final_ncc[t] = match.ncc_scores
-        final_valid[t] = match.valid_mask
-
-        if config.bidirectional:
-            bwd_kernels = [
+            interp_kernels = [
                 TrackingKernel(
-                    center=(float(match.kernel_positions[i, 0]),
-                            float(match.kernel_positions[i, 1])),
+                    center=(float(interp_centers[i, 0]), float(interp_centers[i, 1])),
                     node_index=initial_kernels[i].node_index,
                     layer=initial_kernels[i].layer,
                     radius=initial_kernels[i].radius,
@@ -445,21 +447,54 @@ def track_cine_incremental(
                 )
                 for i in range(n_kernels)
             ]
-            bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
-            for i in range(n_kernels):
-                if match.valid_mask[i] and bwd.valid_mask[i]:
-                    closure_err = float(np.linalg.norm(
-                        bwd.kernel_positions[i] - ed_centers[i]
-                    ))
-                    if closure_err > config.search_radius * 0.8:
-                        final_valid[t, i] = False
-                    else:
-                        final_ncc[t, i] = (
-                            match.ncc_scores[i] + bwd.ncc_scores[i]
-                        ) / 2.0
 
-        if progress_callback:
-            progress_callback(t + 1, n_frames)
+            progressive_mask = build_zone_mask_from_kernels(
+                interp_centers, endo_mask, frame_shape, wall_thickness_px,
+            )
+
+            match = track_frame_from_reference(
+                ed_frame, frames[t], interp_kernels, config, progressive_mask,
+            )
+
+            final_positions[t] = match.kernel_positions
+            final_ncc[t] = match.ncc_scores
+            final_valid[t] = match.valid_mask
+
+            if config.bidirectional:
+                bwd_kernels = [
+                    TrackingKernel(
+                        center=(float(match.kernel_positions[i, 0]),
+                                float(match.kernel_positions[i, 1])),
+                        node_index=initial_kernels[i].node_index,
+                        layer=initial_kernels[i].layer,
+                        radius=initial_kernels[i].radius,
+                        aha_segment=initial_kernels[i].aha_segment,
+                        arc_length_param=initial_kernels[i].arc_length_param,
+                    )
+                    for i in range(n_kernels)
+                ]
+                bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
+                for i in range(n_kernels):
+                    if match.valid_mask[i] and bwd.valid_mask[i]:
+                        closure_err = float(np.linalg.norm(
+                            bwd.kernel_positions[i] - current_ed_centers[i]
+                        ))
+                        if closure_err > config.search_radius * 0.8:
+                            final_valid[t, i] = False
+                        else:
+                            final_ncc[t, i] = (
+                                match.ncc_scores[i] + bwd.ncc_scores[i]
+                            ) / 2.0
+
+            if progress_callback:
+                progress_callback(t + 1, n_frames)
+
+        final_positions_prev = final_positions.copy()
+
+        if iteration < n_iterations - 1:
+            mean_positions = np.mean(final_positions, axis=0)
+            current_ed_centers = mean_positions
+            logger.info("STE refinement iteration %d done, updating ED centers", iteration + 1)
 
     results: list[TrackingResult] = []
     for t in range(n_frames):

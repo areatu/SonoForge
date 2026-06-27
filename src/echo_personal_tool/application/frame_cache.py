@@ -12,6 +12,8 @@ from pathlib import Path
 
 import numpy as np
 
+from echo_personal_tool.domain.exceptions import IncompleteCineError
+
 _DEFAULT_EVICT_WINDOW = 40
 
 
@@ -85,6 +87,16 @@ class FrameCache:
     def prefetch(self, center: int, near: int = 5) -> None:
         self._current_index = center
         self._evict()
+
+    def require_full_cine(self) -> np.ndarray:
+        if not self._frame_store or self._total_frames == 0:
+            raise IncompleteCineError("Frame cache is empty")
+        if len(self._frame_store) != self._total_frames:
+            raise IncompleteCineError(
+                f"Only {len(self._frame_store)}/{self._total_frames} frames loaded. "
+                "Reload full cine before speckle tracking."
+            )
+        return np.stack([self._frame_store[i] for i in range(self._total_frames)])
 
     def _evict(self) -> None:
         lo = self._current_index - self._evict_window
