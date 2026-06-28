@@ -84,6 +84,12 @@ class UserPreferencesDialog(QDialog):
         tabs = QTabWidget()
 
         interface_form = QFormLayout()
+        self._theme_combo = QComboBox()
+        self._theme_combo.addItem("Тёмная", "dark")
+        self._theme_combo.addItem("Светлая", "light")
+        self._theme_combo.addItem("Системная", "system")
+        theme_index = self._theme_combo.findData(current.theme_mode)
+        self._theme_combo.setCurrentIndex(max(theme_index, 0))
         self._font_spin = QSpinBox()
         self._font_spin.setRange(MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE)
         self._font_spin.setSuffix(" pt")
@@ -103,6 +109,7 @@ class UserPreferencesDialog(QDialog):
         self._caliper_spin.setDecimals(1)
         self._caliper_spin.setSuffix(" px")
         self._caliper_spin.setValue(current.caliper_line_width)
+        interface_form.addRow("Цветовая тема:", self._theme_combo)
         interface_form.addRow("Размер шрифта UI:", self._font_spin)
         interface_form.addRow("Шрифт оверлея результатов:", self._overlay_font_spin)
         interface_form.addRow("Прозрачность оверлея:", self._overlay_opacity_spin)
@@ -299,6 +306,7 @@ class UserPreferencesDialog(QDialog):
             pdf_font_size=self._pdf_font_spin.value(),
             startup_mode=str(self._startup_mode.currentData()),
             last_opened_folder=stored.last_opened_folder,
+            theme_mode=str(self._theme_combo.currentData()),
         )
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())

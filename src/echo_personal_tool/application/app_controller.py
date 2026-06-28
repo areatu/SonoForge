@@ -487,6 +487,10 @@ class AppController(QObject):
         )
         crop_mode = echonet_crop_mode_for_media(media_format)
 
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)  # grayscale → 3ch for ONNX
+
         self._segment_in_progress = True
         worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
         worker.signals.finished.connect(
@@ -1077,7 +1081,6 @@ class AppController(QObject):
         self._loaded_source_path = path
         self._loaded_frame_index = frame_index
         self._current_frame_pixels = pixels
-        self.status_message.emit("Frame ready")
         self.frame_loaded.emit(pixels)
 
     def _on_frame_load_failed(self, request_id: int, message: str) -> None:
@@ -1216,23 +1219,14 @@ class AppController(QObject):
         media_format: str = "dicom",
         phase: str | None = None,
     ) -> tuple[float, float, float, float] | None:
-        """B-mode ROI for ONNX: DICOM tags for DICOM; frozen heuristic ROI for cine."""
+        """B-mode ROI for ONNX: DICOM tags for DICOM; full frame for cine."""
         if media_format == "dicom":
             return resolve_segment_roi_xyxy(
                 frame,
                 media_format=media_format,
                 instance_path=instance_path,
             )
-
-        if phase == "ED":
-            roi = resolve_cine_segment_roi_xyxy(frame)
-            self._cache_cine_segment_roi(roi)
-            return roi
-
-        frozen = self._frozen_cine_segment_roi()
-        if frozen is not None:
-            return frozen
-        return resolve_cine_segment_roi_xyxy(frame)
+        return None
 
     def _open_arc_from_cleaned_mask(
         self,
@@ -1240,13 +1234,11 @@ class AppController(QObject):
         *,
         original_shape: tuple[int, int],
         view: str,
-        cine: bool,
     ) -> tuple[
         list[tuple[float, float]],
         tuple[tuple[float, float], tuple[float, float]],
         tuple[float, float],
     ]:
-        del cine
         return open_arc_from_cavity_mask(
             cleaned_mask,
             original_shape=original_shape,
@@ -1308,7 +1300,6 @@ class AppController(QObject):
                 cleaned_mask,
                 original_shape=original_shape,
                 view=view,
-                cine=is_cine,
             )
         except ValueError:
             closed_points = smooth_contour(
@@ -1327,7 +1318,9 @@ class AppController(QObject):
 
         refined_points = exclude_papillary_concavities(open_points, annulus, apex)
 
-        if self._should_auto_refine_after_segment() and self._current_frame_pixels is not None:
+        if self._current_frame_pixels is not None and (
+            is_cine or self._should_auto_refine_after_segment()
+        ):
             from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
 
             instance_uid = (
@@ -1345,7 +1338,9 @@ class AppController(QObject):
                 frame_index=frame_index,
                 sop_instance_uid=instance_uid,
             )
-            refined, _ = refine_open_arc_contour(self._current_frame_pixels, draft)
+            refined, _ = refine_open_arc_contour(
+                self._current_frame_pixels, draft, cine=is_cine,
+            )
             refined_points = list(refined.points)
             if refined.mitral_annulus is not None:
                 annulus = refined.mitral_annulus

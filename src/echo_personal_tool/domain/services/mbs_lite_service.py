@@ -224,6 +224,7 @@ def refine_open_arc_contour(
     contour: Contour,
     *,
     display_levels: tuple[float, float] | None = None,
+    cine: bool = False,
 ) -> tuple[Contour, str]:
     """Refine open-arc: directed edge snap for ai/manual; active contour for model."""
     if contour.mitral_annulus is None or len(contour.points) < 3:
@@ -245,6 +246,9 @@ def refine_open_arc_contour(
             locked_indices=locked,
             step=next_step,
             display_levels=display_levels,
+            cine=cine,
+            smooth_blend=0.25 if cine else None,
+            smooth_iterations=2 if cine else None,
         )
         interior_count = max(0, len(original_points) - 2)
         status = format_stepped_refine_status(
@@ -277,7 +281,7 @@ def refine_open_arc_contour(
                 original_points,
                 contour.mitral_annulus,
                 template_points=template,
-                config=_active_contour_config_for_contour(contour),
+                config=_active_contour_config_for_contour(contour, cine=cine),
                 display_levels=display_levels,
             )
             if _refined_is_sane(
@@ -318,7 +322,9 @@ def _refine_internal_template(contour: Contour) -> list[tuple[float, float]]:
     return list(contour.points)
 
 
-def _active_contour_config_for_contour(contour: Contour) -> ActiveContourConfig:
+def _active_contour_config_for_contour(
+    contour: Contour, *, cine: bool = False,
+) -> ActiveContourConfig:
     if contour.source == "manual":
         return ActiveContourConfig(
             search_radius_px=12.0,
@@ -326,6 +332,15 @@ def _active_contour_config_for_contour(contour: Contour) -> ActiveContourConfig:
             k_ext=1.0,
             k_smooth=0.15,
             step_size=0.3,
+            max_iterations=40,
+        )
+    if cine:
+        return ActiveContourConfig(
+            search_radius_px=6.0,
+            k_int=0.5,
+            k_ext=0.4,
+            k_smooth=0.3,
+            step_size=0.25,
             max_iterations=40,
         )
     return ActiveContourConfig(k_smooth=0.2, max_iterations=50)

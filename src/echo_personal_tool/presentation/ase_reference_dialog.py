@@ -7,8 +7,8 @@ from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
     QFontComboBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QMenuBar,
@@ -25,6 +25,7 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
     load_ase_reference_text,
     markdown_to_html,
 )
+from echo_personal_tool.presentation.echopac_theme import get_theme_palette
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
 _SETTINGS_ORG = "echo-personal-tool"
@@ -89,14 +90,15 @@ class AseReferenceDialog(QDialog):
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
         self._browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
+        p = get_theme_palette()
         self._browser.document().setDefaultStyleSheet(
-            "body { color: #e8eef4; }"
-            "h1, h2, h3 { color: #e8eef4; }"
-            "table { border-collapse: collapse; width: 100%; margin: 12px 0; }"
-            "th, td { border: 1px solid #2a3848; vertical-align: top; }"
-            "th { background: #1a2430; }"
-            "blockquote { color: #8fa3b8; margin: 8px 0 8px 12px; }"
-            "hr { border: none; border-top: 1px solid #2a3848; margin: 16px 0; }"
+            f"body {{ color: {p['text']}; }}"
+            f"h1, h2, h3 {{ color: {p['text']}; }}"
+            f"table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}"
+            f"th, td {{ border: 1px solid {p['border']}; vertical-align: top; }}"
+            f"th {{ background: {p['bg_control']}; }}"
+            f"blockquote {{ color: {p['text_dim']}; margin: 8px 0 8px 12px; }}"
+            f"hr {{ border: none; border-top: 1px solid {p['border']}; margin: 16px 0; }}"
         )
         root.addWidget(self._browser, stretch=1)
 

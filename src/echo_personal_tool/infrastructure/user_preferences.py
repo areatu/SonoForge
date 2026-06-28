@@ -94,6 +94,7 @@ class UserPreferences:
     pdf_font_size: int = DEFAULT_PDF_FONT_SIZE
     startup_mode: str = "empty"
     last_opened_folder: str = ""
+    theme_mode: str = "dark"
 
 
 def _settings_store() -> QSettings:
@@ -266,6 +267,9 @@ def load_user_preferences() -> UserPreferences:
         ),
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
+        theme_mode=_read_choice(
+            store.value("theme_mode"), "dark", {"dark", "light", "system"}
+        ),
     )
 
 

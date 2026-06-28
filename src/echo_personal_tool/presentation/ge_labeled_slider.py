@@ -10,7 +10,7 @@ from echo_personal_tool.presentation.echopac_theme import (
     ACCENT_BRIGHT,
     SLIDER_FILL,
     SLIDER_TRACK,
-    TEXT,
+    get_theme_palette,
 )
 
 
@@ -28,11 +28,12 @@ class _SliderTrack(QWidget):
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
         del event
+        p = get_theme_palette()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect().adjusted(1, 1, -1, -1)
-        painter.setPen(QPen(QColor("#2a3848"), 1))
-        painter.setBrush(QColor(SLIDER_TRACK))
+        painter.setPen(QPen(QColor(p["border"]), 1))
+        painter.setBrush(QColor(p.get("slider_track", SLIDER_TRACK)))
         painter.drawRoundedRect(rect, 4, 4)
 
         minimum = self._slider.minimum()
@@ -43,10 +44,10 @@ class _SliderTrack(QWidget):
         if fill_width > 0:
             fill_rect = rect.adjusted(0, 0, fill_width - rect.width(), 0)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(SLIDER_FILL))
+            painter.setBrush(QColor(p.get("slider_fill", SLIDER_FILL)))
             painter.drawRoundedRect(fill_rect, 4, 4)
 
-        painter.setPen(QColor(TEXT))
+        painter.setPen(QColor(p["text"]))
         font = QFont(self.font())
         font.setBold(True)
         font.setPointSize(max(8, font.pointSize()))
@@ -71,7 +72,7 @@ class TopLabeledSlider(QWidget):
     ) -> None:
         super().__init__(parent)
         self._title = QLabel(label)
-        self._title.setStyleSheet(f"color: {TEXT}; font-weight: 600;")
+        self._title.setStyleSheet("font-weight: 600;")
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(minimum, maximum)

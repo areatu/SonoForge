@@ -334,7 +334,7 @@ def test_on_auto_segment_finished_auto_refines_when_enabled(
     controller.set_simpson_workflow_context(phase="ED", view="A4C")
     refine_calls: list[tuple[np.ndarray, Contour]] = []
 
-    def _fake_refine(frame: np.ndarray, contour: Contour) -> tuple[Contour, str]:
+    def _fake_refine(frame: np.ndarray, contour: Contour, **kwargs: object) -> tuple[Contour, str]:
         refine_calls.append((frame, contour))
         shifted = [(x + 1.0, y) for x, y in contour.points]
         return dataclasses.replace(contour, points=shifted), "gradient"

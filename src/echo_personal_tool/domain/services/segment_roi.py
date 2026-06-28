@@ -19,7 +19,7 @@ CINE_PANEL_BOTTOM_PAD_RATIO = 0.05
 
 
 def echonet_crop_mode_for_media(media_format: str) -> str:
-    """DICOM and cine use center-square EchoNet embed inside the ROI."""
+    """Both DICOM and cine use center-square EchoNet embed."""
     del media_format
     return ECHONET_CROP_CENTER_SQUARE
 

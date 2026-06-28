@@ -42,9 +42,8 @@ from echo_personal_tool.presentation.echopac_theme import apply_echopac_theme
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
-from echo_personal_tool.presentation.segment_quality_panel import SegmentQualityPanel
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
-from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
@@ -100,7 +99,10 @@ class MainWindow(QMainWindow):
         self._controller.frame_loaded.connect(self._on_frame_loaded)
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
         self._controller.status_message.connect(self._show_status)
-        apply_echopac_theme(font_size=self._user_preferences.ui_font_size)
+        apply_echopac_theme(
+            font_size=self._user_preferences.ui_font_size,
+            theme=self._user_preferences.theme_mode,
+        )
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -161,16 +163,7 @@ class MainWindow(QMainWindow):
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         center_layout.addWidget(self._viewer, stretch=1)
 
-        self._strain_curve_widget = StrainCurveWidget()
-        self._segment_quality_panel = SegmentQualityPanel()
-        self._segment_quality_panel.setMinimumHeight(180)
-        self._speckle_metrics_panel = QWidget()
-        speckle_layout = QHBoxLayout(self._speckle_metrics_panel)
-        speckle_layout.setContentsMargins(0, 0, 0, 0)
-        speckle_layout.setSpacing(8)
-        speckle_layout.addWidget(self._strain_curve_widget, stretch=2)
-        speckle_layout.addWidget(self._segment_quality_panel, stretch=1)
-        center_layout.addWidget(self._speckle_metrics_panel, stretch=0)
+        self._ste_dialog: SteResultsDialog | None = None
         content_layout.addWidget(center, stretch=1)
 
         self._tool_panel = ToolPanel()
@@ -287,7 +280,10 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.setFont(ui_font(point_size=preferences.ui_font_size))
-        apply_echopac_theme(font_size=preferences.ui_font_size)
+        apply_echopac_theme(
+            font_size=preferences.ui_font_size,
+            theme=preferences.theme_mode,
+        )
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(
                 preferences.magnetic_snap_enabled
@@ -803,8 +799,8 @@ class MainWindow(QMainWindow):
         self._viewer.clear_doppler_calibration_display()
         self._viewer.clear_doppler_measurements()
         self._viewer.clear_speckle_overlay()
-        self._strain_curve_widget.clear()
-        self._segment_quality_panel.update_results({}, {})
+        if self._ste_dialog is not None:
+            self._ste_dialog.clear()
         self._viewer.reset_dist_caliper_serial()
         self._controller.reset_measurements_and_calibration()
         if self._viewer._current_frame is None:
@@ -893,25 +889,29 @@ class MainWindow(QMainWindow):
             manual_es=self._manual_es_frame,
         )
 
+    def _ensure_ste_dialog(self) -> SteResultsDialog:
+        if self._ste_dialog is None:
+            self._ste_dialog = SteResultsDialog(self)
+        return self._ste_dialog
+
     def _on_speckle_result_ready(self, result: object) -> None:
         from echo_personal_tool.domain.models.speckle import StrainResult
 
         if not isinstance(result, StrainResult):
             return
         gls = result.gls
-        self._segment_quality_panel.update_results(
-            result.segment_strain,
-            result.segment_quality,
-        )
-        self._strain_curve_widget.set_strain_data(
+        dialog = self._ensure_ste_dialog()
+        dialog.update_results(
             result.longitudinal,
             result.radial,
+            result.segment_strain,
+            result.segment_quality,
+            gls=gls,
             ed_index=result.ed_index,
             es_index=result.es_index,
             window_start=result.tracking_window_start,
             window_end=result.tracking_window_end,
         )
-        self._strain_curve_widget.set_gls_value(gls)
         quality_pct = result.tracking_quality_mean * 100.0
         drift = "ON" if result.drift_compensation_applied else "OFF"
         preset_name = self._format_speckle_preset_name(result.config_preset)

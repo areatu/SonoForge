@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import numpy as np
+
 from echo_personal_tool.domain.services.contour_edge_snap import (
     build_edge_map,
     directed_edge_score,
@@ -71,16 +73,23 @@ def run_stepped_refine_pass(
     lock_score_min: float = LOCK_SCORE_MIN,
     smooth_blend: float | None = None,
     smooth_iterations: int | None = None,
+    cine: bool = False,
 ) -> SteppedRefineResult:
     """One R pass: ±step px edge search, then Laplacian smooth (locked nodes pinned)."""
     if len(points) < 3:
         return SteppedRefineResult(list(points), locked_indices, step, 0)
 
     step_px = max(1, min(int(step), MAX_REFINE_STEP))
-    edge_map = build_edge_map(frame, display_levels=display_levels, blur_sigma=1.0)
+    effective_lock_min = 0.0 if cine else lock_score_min
+    edge_map = build_edge_map(frame, display_levels=display_levels, blur_sigma=0.5 if cine else 1.0)
     updated = list(points)
     new_locked = set(locked_indices)
     newly_locked = 0
+
+    if cine:
+        search_offsets = np.linspace(-step_px, step_px, max(7, step_px * 2 + 1)).tolist()
+    else:
+        search_offsets = [0, -step_px, step_px]
 
     for index in range(1, len(points) - 1):
         if index in locked_indices:
@@ -91,7 +100,7 @@ def run_stepped_refine_pass(
 
         best_score = 0.0
         best_pos = (px, py)
-        for offset in (0, -step_px, step_px):
+        for offset in search_offsets:
             sample_x = px + float(offset) * nx
             sample_y = py + float(offset) * ny
             score = directed_edge_score(edge_map, sample_x, sample_y, normal)
@@ -99,7 +108,7 @@ def run_stepped_refine_pass(
                 best_score = score
                 best_pos = (sample_x, sample_y)
 
-        if best_score >= lock_score_min:
+        if best_score >= effective_lock_min:
             updated[index] = best_pos
             if index not in new_locked:
                 newly_locked += 1

@@ -32,9 +32,16 @@ class EdgeMap:
     intensity: np.ndarray | None = None
 
 
-def edge_snap_config_for_source(source: str) -> EdgeSnapConfig:
+def edge_snap_config_for_source(source: str, *, cine: bool = False) -> EdgeSnapConfig:
     normalized = source.strip().lower()
     if normalized == "ai":
+        if cine:
+            return EdgeSnapConfig(
+                search_radius_px=10.0,
+                min_edge_strength=0.0,
+                blur_sigma=1.0,
+                inward_only=False,
+            )
         return EdgeSnapConfig(search_radius_px=16.0, min_edge_strength=0.05)
     if normalized == "manual":
         return EdgeSnapConfig(search_radius_px=10.0, min_edge_strength=0.08)
