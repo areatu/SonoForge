@@ -77,6 +77,9 @@ from echo_personal_tool.infrastructure.onnx_engine import (
     _default_models_dir,
     _load_manifest,
 )
+from echo_personal_tool.domain.services.auto_depth_calibration import (
+    try_auto_depth_calibration,
+)
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
@@ -252,6 +255,7 @@ class AppController(QObject):
             emit=False,
         )
         study_uid = self._resolve_study_uid(instance)
+        self._measurement_session.set_manual_pixel_spacing(study_uid, None)
         session_contours = contours_for_instance(
             self._measurement_session.get(study_uid).contours,
             instance.sop_instance_uid,
@@ -443,16 +447,23 @@ class AppController(QObject):
         self._prefetch_load_id = 0
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
-        if path in self._leading_static_frames:
-            return
-        leading = self._detect_leading_static_from_cache(path, total)
-        self._leading_static_frames[path] = leading
+        if path not in self._leading_static_frames:
+            leading = self._detect_leading_static_from_cache(path, total)
+            self._leading_static_frames[path] = leading
+        if self._state_manager.snapshot.is_playing:
+            current = self._state_manager.snapshot.current_frame_index
+            self._prefetch_playback_buffer(current)
+            QTimer.singleShot(0, self._advance_playback)
 
     def _on_leading_scan_failed(self, request_id: int, path: Path, total: int, message: str) -> None:
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
         self._leading_static_frames[path] = 0
+        if self._state_manager.snapshot.is_playing:
+            current = self._state_manager.snapshot.current_frame_index
+            self._prefetch_playback_buffer(current)
+            QTimer.singleShot(0, self._advance_playback)
 
     def set_playing(self, is_playing: bool) -> None:
         if is_playing:
@@ -839,6 +850,16 @@ class AppController(QObject):
             return False
         return True
 
+    def try_auto_depth_calibration(self, frame: np.ndarray) -> bool:
+        if not self.needs_manual_calibration():
+            return False
+        result = try_auto_depth_calibration(frame)
+        if result is None:
+            return False
+        self.on_manual_calibration(result.spacing)
+        self.status_message.emit("Калибровка успешна")
+        return True
+
     def on_patient_metrics_changed(
         self,
         height_cm: float | None,
@@ -1211,6 +1232,8 @@ class AppController(QObject):
             return
         self._prefetch_load_id = 0
         self.status_message.emit(f"Prefetch failed: {message}")
+        if self._state_manager.snapshot.is_playing:
+            QTimer.singleShot(0, self._advance_playback)
 
     def _advance_playback(self) -> None:
         from time import perf_counter

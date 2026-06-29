@@ -188,6 +188,13 @@ class UserPreferencesDialog(QDialog):
         self._magnetic_radius_spin.setValue(current.magnetic_snap_release_max_radial_px)
         self._doppler_auto_cal = QCheckBox()
         self._doppler_auto_cal.setChecked(current.doppler_auto_calibration_enabled)
+        self._calibration_tick_snap = QCheckBox("Привязка к тикам шкалы")
+        self._calibration_tick_snap.setChecked(current.calibration_tick_snap_enabled)
+        self._auto_depth_cal = QCheckBox("Автокалибровка по шкале глубины")
+        self._auto_depth_cal.setChecked(current.auto_depth_calibration_enabled)
+        self._auto_depth_cal.setToolTip(
+            "Для MP4/JPEG без DICOM-тегов. Определяет масштаб по сантиметровым меткам справа."
+        )
         self._length_unit = QComboBox()
         self._length_unit.addItem("мм", "mm")
         self._length_unit.addItem("см", "cm")
@@ -201,6 +208,8 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow("Магнит: отпускание:", self._magnetic_release_spin)
         measure_form.addRow("Магнит: радиус:", self._magnetic_radius_spin)
         measure_form.addRow("Doppler из DICOM:", self._doppler_auto_cal)
+        measure_form.addRow(self._calibration_tick_snap)
+        measure_form.addRow(self._auto_depth_cal)
         measure_form.addRow("Единицы длины:", self._length_unit)
         tabs.addTab(_scrollable_tab(measure_form), "Измерения")
 
@@ -299,6 +308,8 @@ class UserPreferencesDialog(QDialog):
             magnetic_snap_release_strength=float(self._magnetic_release_spin.value()),
             magnetic_snap_release_max_radial_px=float(self._magnetic_radius_spin.value()),
             doppler_auto_calibration_enabled=self._doppler_auto_cal.isChecked(),
+            calibration_tick_snap_enabled=self._calibration_tick_snap.isChecked(),
+            auto_depth_calibration_enabled=self._auto_depth_cal.isChecked(),
             length_display_unit=str(self._length_unit.currentData()),
             show_dicom_tag_inspector=self._show_dicom_inspector.isChecked(),
             interesting_dicom_tags=self._interesting_tags.text().strip(),

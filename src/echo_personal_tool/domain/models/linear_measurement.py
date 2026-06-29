@@ -40,6 +40,12 @@ def format_length_mm(millimeters: float, unit: str) -> str:
     return f"{millimeters:.1f} mm"
 
 
+def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "mm") -> str:
+    if measurement.millimeter_length is None:
+        return f"{measurement.label} {measurement.pixel_length:.1f} px"
+    return f"{measurement.label} {format_length_mm(measurement.millimeter_length, length_unit)}"
+
+
 def pixel_to_mm_length(
     pixel_length: float,
     angle_degrees: float,

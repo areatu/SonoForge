@@ -87,6 +87,8 @@ class UserPreferences:
     magnetic_snap_release_strength: float = DEFAULT_MAGNETIC_RELEASE
     magnetic_snap_release_max_radial_px: float = DEFAULT_MAGNETIC_RADIUS
     doppler_auto_calibration_enabled: bool = True
+    calibration_tick_snap_enabled: bool = True
+    auto_depth_calibration_enabled: bool = True
     length_display_unit: str = "mm"
     show_dicom_tag_inspector: bool = False
     interesting_dicom_tags: str = DEFAULT_INTERESTING_DICOM_TAGS
@@ -247,6 +249,14 @@ def load_user_preferences() -> UserPreferences:
         ),
         doppler_auto_calibration_enabled=_read_bool(
             store.value("doppler_auto_calibration_enabled"),
+            True,
+        ),
+        calibration_tick_snap_enabled=_read_bool(
+            store.value("calibration_tick_snap_enabled"),
+            True,
+        ),
+        auto_depth_calibration_enabled=_read_bool(
+            store.value("auto_depth_calibration_enabled"),
             True,
         ),
         length_display_unit=_read_choice(

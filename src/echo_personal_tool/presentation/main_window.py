@@ -454,7 +454,10 @@ class MainWindow(QMainWindow):
             self._restore_mmode_for_current_instance()
             self._sync_doppler_tool_availability()
             if self._controller.needs_manual_calibration():
-                if self._viewer.start_calibration_caliper():
+                self._viewer._auto_calibration_succeeded = False
+                if self._controller.try_auto_depth_calibration(image):
+                    self._viewer.show_calibration_ok_overlay()
+                elif self._viewer.start_calibration_caliper():
                     self._show_status(
                         "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
                     )
@@ -775,9 +778,9 @@ class MainWindow(QMainWindow):
             "RV",
             phase,
             "A4C",
-            overlay=f"RV FAC {phase}: TV septal → lateral → free wall",
+            overlay=f"RV FAC {phase}: TV lateral → septal → free wall",
             status=(
-                f"RV FAC {phase}: 1) TV septal  2) TV lateral  3) free wall · Enter — подтвердить"
+                f"RV FAC {phase}: 1) TV lateral  2) TV septal  3) free wall · Enter — подтвердить"
             ),
         ):
             self._show_status("Load a frame first or cancel the active tool (Esc)")
@@ -820,7 +823,11 @@ class MainWindow(QMainWindow):
             self._show_status("Измерения и калибровка сброшены")
             return
         if self._controller.needs_manual_calibration():
-            self._viewer.start_calibration_caliper()
+            self._viewer._auto_calibration_succeeded = False
+            if self._controller.try_auto_depth_calibration(self._viewer._current_frame):
+                self._viewer.show_calibration_ok_overlay()
+            else:
+                self._viewer.start_calibration_caliper()
         elif self._viewer.is_doppler_context():
             if self._viewer.start_doppler_scale_calibration():
                 self._show_status(self._viewer.doppler_calibration_prompt())

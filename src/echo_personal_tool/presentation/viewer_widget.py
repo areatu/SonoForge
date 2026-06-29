@@ -44,7 +44,16 @@ from echo_personal_tool.domain.models.frame_panels import (
 )
 from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
+    inline_caliper_text,
     pixel_to_mm_length,
+)
+from echo_personal_tool.presentation.caliper_label_item import (
+    compute_caliper_label_layout,
+)
+from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
+from echo_personal_tool.domain.services.depth_scale_detector import (
+    detect_depth_scale_ticks,
+    find_scale_ticks,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.contour_edge_snap import (
@@ -105,6 +114,7 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 CALIBRATION_PROMPT_OVERLAY = "Проведите калибровку"
+CALIBRATION_SUCCESS_OVERLAY = "Авто-калибровка ОК"
 
 _DOPPLER_CAL_ROI_STEP1 = (
     "Doppler калибровка 1/3: клик — первый угол окна спектра (не весь кадр)"
@@ -124,6 +134,14 @@ _CALIBRATION_OVERLAY_STYLE = (
     " padding: 20px 36px;"
     " font-size: 22px; font-weight: bold;"
     " border: 2px solid #ffb300;"
+    " border-radius: 8px;"
+)
+_CALIBRATION_SUCCESS_STYLE = (
+    "background-color: rgba(0, 0, 0, 210);"
+    " color: #00b4d8;"
+    " padding: 20px 36px;"
+    " font-size: 22px; font-weight: bold;"
+    " border: 2px solid #00b4d8;"
     " border-radius: 8px;"
 )
 _RESULTS_OVERLAY_STYLE = (
@@ -465,6 +483,11 @@ class ViewerWidget(QWidget):
         self._calibration_marker_item: pg.ScatterPlotItem | None = None
         self._calibration_h_guide_start_item: pg.PlotDataItem | None = None
         self._calibration_h_guide_end_item: pg.PlotDataItem | None = None
+        self._depth_tick_y_positions: list[float] = []
+        self._calibration_tick_snap_enabled: bool = True
+        self._calibration_tick_snap_radius_px: float = 8.0
+        self._auto_calibration_succeeded: bool = False
+        self._calibration_ok_timer: QTimer | None = None
         self._stored_contours: list[Contour] = []
         self._contours: list[Contour] = []
         self._contour_items: list[pg.PlotDataItem] = []
@@ -509,6 +532,8 @@ class ViewerWidget(QWidget):
         self._pending_viewer_state: ViewerState | None = None
         self._stored_linear_measurements: dict[tuple[str, int], LinearMeasurement] = {}
         self._persistent_linear_graphics: list[tuple[pg.PlotDataItem, pg.ScatterPlotItem]] = []
+        self._active_caliper_label_item: pg.TextItem | None = None
+        self._persistent_caliper_label_items: list[pg.TextItem] = []
         self._caliper_sequence: list[str] = []
         self._caliper_sequence_size = 0
         self._syncing_state = False
@@ -627,13 +652,18 @@ class ViewerWidget(QWidget):
             and self._doppler.has_pending_interval_start()
         ):
             self._doppler.update_interval_preview_position(float(mapped.x()))
-        if self._calibration_active and self._calibration_start_y is not None:
+        if self._calibration_active:
             mapped = self._view.mapSceneToView(scene_pos)
             if mapped is not None and self._current_frame is not None:
                 height = self._current_frame.shape[0]
-                end_y = max(0.0, min(float(mapped.y()), float(height - 1)))
-                self._update_calibration_preview(self._calibration_start_y, end_y)
-                self._update_calibration_horizontal_guides(end_y)
+                raw_y = max(0.0, min(float(mapped.y()), float(height - 1)))
+                snapped_y = snap_y_to_nearest_tick(raw_y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px)
+                if self._calibration_start_y is not None:
+                    self._update_calibration_preview(self._calibration_start_y, snapped_y)
+                    self._update_calibration_horizontal_guides(snapped_y)
+                else:
+                    self._update_calibration_preview(snapped_y, snapped_y)
+                    self._update_calibration_horizontal_guides(snapped_y)
             return
         if self._linear_caliper_active and self._linear_caliper_start is not None:
             mapped = self._view.mapSceneToView(scene_pos)
@@ -699,7 +729,8 @@ class ViewerWidget(QWidget):
             label_w = self._overlay_label.width()
             label_h = self._overlay_label.height()
             calibration_banner = self._frame_overlay_lines == [CALIBRATION_PROMPT_OVERLAY]
-            if calibration_banner:
+            calibration_ok = self._frame_overlay_lines == [CALIBRATION_SUCCESS_OVERLAY]
+            if calibration_banner or calibration_ok:
                 x = geo.x() + max((geo.width() - label_w) // 2, 8)
                 y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
             else:
@@ -782,6 +813,7 @@ class ViewerWidget(QWidget):
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._doppler_auto_calibration_enabled = preferences.doppler_auto_calibration_enabled
+        self._calibration_tick_snap_enabled = preferences.calibration_tick_snap_enabled
         self._length_display_unit = preferences.length_display_unit
         self._interesting_dicom_tags = tuple(
             tag.strip()
@@ -1185,8 +1217,17 @@ class ViewerWidget(QWidget):
         self._calibration_active = True
         self._calibration_x = min(float(width) * 0.96, float(width - 5))
         self._calibration_start_y = None
+        if self._calibration_tick_snap_enabled:
+            self._depth_tick_y_positions = self._detect_calibration_ticks()
+        else:
+            self._depth_tick_y_positions = []
         self._measurement_label.setText("Калибровка: 1-й клик — верхняя метка")
         return True
+
+    def _detect_calibration_ticks(self) -> list[float]:
+        if self._current_frame is None:
+            return []
+        return find_scale_ticks(self._current_frame)
 
     def start_spectral_calibration(self) -> bool:
         """Start Doppler calibration wizard (ROI → baseline → velocity scale)."""
@@ -2339,8 +2380,12 @@ class ViewerWidget(QWidget):
     def _refresh_frame_overlay(self) -> None:
         if self._frame_overlay_lines:
             calibration_banner = self._frame_overlay_lines == [CALIBRATION_PROMPT_OVERLAY]
+            calibration_ok = self._frame_overlay_lines == [CALIBRATION_SUCCESS_OVERLAY]
             if calibration_banner:
                 self._overlay_label.setStyleSheet(_CALIBRATION_OVERLAY_STYLE)
+                self._overlay_label.setMinimumWidth(360)
+            elif calibration_ok:
+                self._overlay_label.setStyleSheet(_CALIBRATION_SUCCESS_STYLE)
                 self._overlay_label.setMinimumWidth(360)
             else:
                 self._overlay_label.setStyleSheet(_DEFAULT_OVERLAY_STYLE)
@@ -2370,6 +2415,9 @@ class ViewerWidget(QWidget):
         if self._linear_caliper_marker_item is not None:
             self._view.removeItem(self._linear_caliper_marker_item)
             self._linear_caliper_marker_item = None
+        if self._active_caliper_label_item is not None:
+            self._view.removeItem(self._active_caliper_label_item)
+            self._active_caliper_label_item = None
 
     def _clear_calibration_caliper(self) -> None:
         self._calibration_active = False
@@ -3215,10 +3263,34 @@ class ViewerWidget(QWidget):
         _, spacing_calibrated = self._effective_pixel_spacing()
         return not spacing_calibrated
 
+    def _auto_calibration_ok(self) -> bool:
+        if self._current_state is None or self._current_state.instance is None:
+            return False
+        if self._current_state.instance.media_format == "dicom":
+            return False
+        _, spacing_calibrated = self._effective_pixel_spacing()
+        return spacing_calibrated and self._auto_calibration_succeeded
+
+    def show_calibration_ok_overlay(self) -> None:
+        self._auto_calibration_succeeded = True
+        self._refresh_frame_overlays()
+        if self._calibration_ok_timer is not None:
+            self._calibration_ok_timer.stop()
+        self._calibration_ok_timer = QTimer(self)
+        self._calibration_ok_timer.setSingleShot(True)
+        self._calibration_ok_timer.timeout.connect(self._fade_out_calibration_ok)
+        self._calibration_ok_timer.start(4000)
+
+    def _fade_out_calibration_ok(self) -> None:
+        self._auto_calibration_succeeded = False
+        self._refresh_frame_overlays()
+
     def _refresh_frame_overlays(self, *, extra_lines: tuple[str, ...] = ()) -> None:
         self.clear_frame_overlay()
         if self._needs_calibration_prompt():
             self.append_frame_overlay(CALIBRATION_PROMPT_OVERLAY)
+        elif self._auto_calibration_ok():
+            self.append_frame_overlay(CALIBRATION_SUCCESS_OVERLAY)
         frame_index = self._contour_frame_index()
         spacing, spacing_calibrated = self._effective_pixel_spacing()
         if frame_index is not None:
@@ -3267,6 +3339,9 @@ class ViewerWidget(QWidget):
             self._view.removeItem(line_item)
             self._view.removeItem(marker_item)
         self._persistent_linear_graphics.clear()
+        for item in self._persistent_caliper_label_items:
+            self._view.removeItem(item)
+        self._persistent_caliper_label_items.clear()
 
     def _render_persistent_linear_calipers(self) -> None:
         self._clear_persistent_linear_calipers()
@@ -3281,6 +3356,11 @@ class ViewerWidget(QWidget):
                 measurement.end,
             )
             self._persistent_linear_graphics.append((line_item, marker_item))
+            if self._show_caliper_labels_on_frame:
+                self._update_caliper_label_graphics(
+                    measurement.start, measurement.end,
+                    color="#29b6f6", is_preview=False,
+                )
 
     def _create_linear_graphics_items(
         self,
@@ -3429,6 +3509,7 @@ class ViewerWidget(QWidget):
             return True
 
         y = max(0.0, min(float(click[1]), float(height - 1)))
+        y = snap_y_to_nearest_tick(y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px)
         if self._calibration_start_y is None:
             self._calibration_start_y = y
             self._update_calibration_preview(y, y)
@@ -3733,6 +3814,44 @@ class ViewerWidget(QWidget):
             [start[0], end[0]],
             [start[1], end[1]],
         )
+        if self._show_caliper_labels_on_frame:
+            self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True)
+
+    def _update_caliper_label_graphics(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+        *,
+        color: str,
+        is_preview: bool,
+    ) -> None:
+        measurement = self._linear_measurement_from_endpoints(
+            start, end, self._current_caliper_label()
+        )
+        text = inline_caliper_text(measurement, length_unit=self._length_display_unit)
+        layout = compute_caliper_label_layout(
+            start, end,
+            vertical_labels=self._vertical_caliper_labels,
+            label=measurement.label,
+        )
+        if is_preview:
+            if self._active_caliper_label_item is None:
+                self._active_caliper_label_item = pg.TextItem(
+                    color=color, anchor=(0.5, 0.5)
+                )
+                self._active_caliper_label_item.setZValue(27)
+                self._view.addItem(self._active_caliper_label_item)
+            item = self._active_caliper_label_item
+        else:
+            item = pg.TextItem(color=color, anchor=(0.5, 0.5))
+            item.setZValue(27)
+            item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            item.setAcceptHoverEvents(False)
+            self._view.addItem(item)
+            self._persistent_caliper_label_items.append(item)
+        item.setText(text)
+        item.setPos(layout.anchor_x + layout.offset_x, layout.anchor_y + layout.offset_y)
+        item.setRotation(layout.angle_deg)
 
     def _linear_measurement_from_endpoints(
         self,
