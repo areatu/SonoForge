@@ -1,0 +1,54 @@
+# RagCode MCP config for ECHO2026 project
+
+llm:
+  provider: ollama
+  ollama_base_url: http://localhost:11434
+  ollama_model: qwen2.5-coder:7b
+  ollama_embed: nomic-embed-text
+  temperature: 0.7
+  max_tokens: 1024
+  timeout: 60s
+  max_retries: 3
+
+storage:
+  vector_db:
+    url: http://localhost:6333
+    api_key: ""
+
+logging:
+  level: info
+  format: text
+  output: file
+  path: mcp.log
+
+workspace:
+  enabled: true
+  auto_index: true
+  max_workspaces: 10
+  detection_markers:
+    - .git
+    - pyproject.toml
+    - setup.py
+    - requirements.txt
+  exclude_patterns:
+    - node_modules
+    - .git
+    - vendor
+    - target
+    - build
+    - dist
+    - .venv
+    - .tooling-venv
+    - .pytest_cache
+    - .ruff_cache
+    - __pycache__
+    - .worktrees
+  collection_prefix: ragcode
+  index_include:
+    - "src/**/*.py"
+    - "tests/**/*.py"
+    - "scripts/**/*.py"
+  index_exclude:
+    - "docs/**"
+    - "*.md"
+    - "DICOM_*"

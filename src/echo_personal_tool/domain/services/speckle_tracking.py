@@ -410,6 +410,7 @@ def track_cine_incremental(
     )
 
     current_ed_centers = ed_centers.copy()
+    final_positions_prev = coarse_positions
 
     for iteration in range(n_iterations):
         final_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)

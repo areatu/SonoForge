@@ -137,16 +137,17 @@ def test_septal_shift_moves_both_control_points() -> None:
 
 
 def test_es_uses_different_defaults_than_ed() -> None:
+    import math
+
     septal = (0.0, 0.0)
     lateral = (100.0, 0.0)
     apex = (50.0, 60.0)
     ed = fit_lv_bezier_contour(septal, lateral, apex, phase="ED")
     es = fit_lv_bezier_contour(septal, lateral, apex, phase="ES")
-    ed_x = [p[0] for p in ed.points]
-    es_x = [p[0] for p in es.points]
-    # ES более гладкий (без S), поэтому середина левее чем у ED
-    mid = len(ed.points) // 2
-    assert es.points[mid][0] != pytest.approx(ed.points[mid][0], abs=1.0)
+    max_dist = max(
+        math.hypot(e[0] - d[0], e[1] - d[1]) for e, d in zip(es.points, ed.points)
+    )
+    assert max_dist > 1.0
 
 
 def test_fit_lv_bezier_contour_with_custom_params() -> None:

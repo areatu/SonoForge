@@ -77,9 +77,10 @@ def test_mbs_ed_updates_after_node_drag(qtbot) -> None:
     before = window._viewer.results_overlay_text()
     mid = 16
     mx, my = window._viewer.contours()[0].points[mid]
+    # Существенное смещение apex-узла: малый drag (~31,10)→(32,8) не меняет округление 2.7 mL.
     window._viewer._drag_contour_point(0, mid, mx, my)
-    window._viewer._drag_contour_point(0, mid, 32.0, 8.0)
-    window._viewer._finalize_contour_point_drag(0, mid, 32.0, 8.0)
+    window._viewer._drag_contour_point(0, mid, 20.0, 3.0)
+    window._viewer._finalize_contour_point_drag(0, mid, 20.0, 3.0)
     after = window._viewer.results_overlay_text()
     overlay = "\n".join(window._viewer._frame_overlay_lines)
 

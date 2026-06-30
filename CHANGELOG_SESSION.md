@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-06-30 18:30] Speckle fix, layout tests, docs
+- **Тип:** fix
+- **Файлы:** `speckle_tracking.py`, `orthanc_study_dialog.py`, `test_main_window_layout.py`, `test_lv_bezier_contour.py`, `test_simpson_live_feedback.py`, layout docs, `DICOM_VTI_tag_fix.md`, `rag-code-mcp.yaml`
+- **Суть:** Инициализация `final_positions_prev` в speckle tracking; импорт OrthancSessionCache; 13 layout regression-тестов; стабилизация unit-тестов; spec/plan customize layout и заметки по VTI.
+
 ## [2026-06-29 23:00] MP4 keyframe index + scroll min_buffer
 - **Тип:** feature
 - **Файлы:** `video_reader.py`, `app_controller.py`, `test_video_reader.py`, `test_scroll_min_buffer.py`
