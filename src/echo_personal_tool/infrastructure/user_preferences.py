@@ -97,6 +97,7 @@ class UserPreferences:
     startup_mode: str = "empty"
     last_opened_folder: str = ""
     theme_mode: str = "dark"
+    layout_state_json: str = ""
 
 
 def _settings_store() -> QSettings:
@@ -280,6 +281,7 @@ def load_user_preferences() -> UserPreferences:
         theme_mode=_read_choice(
             store.value("theme_mode"), "dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
         ),
+        layout_state_json=str(store.value("layout_state_json", "")),
     )
 
 

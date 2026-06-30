@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import QEvent, QSignalBlocker, Qt, QThreadPool
+from PySide6.QtCore import QEvent, QPoint, QSignalBlocker, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSplitter,
     QStatusBar,
@@ -57,6 +60,16 @@ logger = logging.getLogger(__name__)
 _TOOL_PANEL_WIDTH = 280
 
 
+@dataclass
+class LayoutConfig:
+    """Immutable snapshot — always replace, never mutate in place."""
+    swap_places: bool = False
+    gallery_horizontal: bool = False
+    activity_bar: bool = False
+    status_bar_visible: bool = True
+    multiview: bool = False
+
+
 def _loaded_file_label(instance: InstanceMetadata) -> str:
     if instance.path is not None:
         return instance.path.name
@@ -91,6 +104,11 @@ class MainWindow(QMainWindow):
         self._last_overlay_state: ViewerState | None = None
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
+        self._layout_config = self._load_layout_state()
+        self._bottom_container: QWidget | None = None
+        self._viewer2: ViewerWidget | None = None
+        self._active_viewer: ViewerWidget | None = None
+        self._activity_bar = None
 
         self._controller = controller or AppController()
         orthanc_root = Path.home() / ".echo-personal-tool" / "orthanc"
@@ -108,34 +126,30 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
-        root_layout = QVBoxLayout(central)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        self._root_layout = QVBoxLayout(central)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setSpacing(0)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._system_bar = SystemBar()
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
-        root_layout.addWidget(self._system_bar)
+        self._root_layout.addWidget(self._system_bar)
 
-        content = QWidget()
-        root_layout.addWidget(content, stretch=1)
-        content_layout = QHBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
+        self._content_widget = QWidget()
+        self._root_layout.addWidget(self._content_widget, stretch=1)
+        self._content_layout = QHBoxLayout(self._content_widget)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
 
         self._gallery = ThumbnailGalleryWidget()
         self._gallery.set_thumbnail_loader(self._controller.load_thumbnail)
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
-        content_layout.addWidget(self._gallery)
+        self._gallery.instance_selected.connect(self._on_instance_selected)
+        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._content_splitter.setHandleWidth(2)
-        content_layout.addWidget(self._content_splitter, stretch=1)
-
-        center = QWidget()
-        center_layout = QVBoxLayout(center)
-        center_layout.setContentsMargins(0, 0, 0, 0)
 
         self._viewer = ViewerWidget()
         self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
@@ -167,21 +181,11 @@ class MainWindow(QMainWindow):
         )
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
-        center_layout.addWidget(self._viewer, stretch=1)
-
         self._ste_dialog: SteResultsDialog | None = None
-        self._content_splitter.addWidget(center)
 
         self._tool_panel = ToolPanel()
         self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
-        self._content_splitter.addWidget(self._tool_panel)
 
-        self._content_splitter.setStretchFactor(0, 1)
-        self._content_splitter.setStretchFactor(1, 0)
-        self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
-
-        self._gallery.instance_selected.connect(self._on_instance_selected)
-        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
         self._viewer.set_state(self._controller.state_manager.snapshot)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._viewer.bind_display_controls(
@@ -201,6 +205,7 @@ class MainWindow(QMainWindow):
         self.setStatusBar(status)
         self._show_status("Ready — open a study; tools: Measures / Controls (right)")
         self._install_shortcuts()
+        self._rebuild_layout()
 
     def _install_shortcuts(self) -> None:
         """Window-level shortcuts that work when the viewer or browser has focus."""
@@ -226,8 +231,9 @@ class MainWindow(QMainWindow):
             shortcut.activated.connect(handler)
 
     def _toggle_playback_shortcut(self) -> None:
-        if not self._controller.state_manager.snapshot.decode_in_progress:
-            self._controller.toggle_playback()
+        if self._controller.state_manager.snapshot.decode_in_progress:
+            return
+        self._controller.toggle_playback()
 
     def _start_manual_contour_shortcut(self) -> None:
         if self._viewer.start_contour():
@@ -285,7 +291,8 @@ class MainWindow(QMainWindow):
         if self.isFullScreen():
             self.showNormal()
             self._gallery.show()
-            self._tool_panel.show()
+            if not self._layout_config.activity_bar:
+                self._tool_panel.show()
         else:
             self._gallery.hide()
             self._tool_panel.hide()
@@ -302,6 +309,280 @@ class MainWindow(QMainWindow):
         if event.type() == QEvent.Type.WindowStateChange:
             self._system_bar.update_maximize_button(self.isMaximized())
         super().changeEvent(event)
+
+    def _load_layout_state(self) -> LayoutConfig:
+        raw = self._user_preferences.layout_state_json
+        if not raw:
+            return LayoutConfig()
+        try:
+            cfg = LayoutConfig(**json.loads(raw))
+            return cfg
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return LayoutConfig()
+
+    def reset_layout_to_default(self) -> None:
+        self._layout_config = LayoutConfig()
+        self._rebuild_layout()
+
+    def _save_layout_state(self) -> None:
+        self._user_preferences.layout_state_json = json.dumps(asdict(self._layout_config))
+        save_user_preferences(self._user_preferences)
+
+    def _show_layout_menu(self) -> None:
+        menu = QMenu(self._system_bar._btn_layout)
+        menu.setObjectName("layoutMenu")
+        items = [
+            ("swap_places", "Менять местами Gallery и Tools"),
+            ("gallery_horizontal", "Миниатюры снизу, 2 ряда"),
+            ("activity_bar", "Узкая панель инструментов"),
+            ("status_bar_visible", "Полоса статуса"),
+            ("multiview", "Два независимых окна просмотра"),
+        ]
+        for attr, tooltip in items:
+            action = menu.addAction(tooltip)
+            action.setCheckable(True)
+            action.setChecked(getattr(self._layout_config, attr))
+            action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
+        menu.exec(self._system_bar._btn_layout.mapToGlobal(
+            QPoint(0, self._system_bar._btn_layout.height())
+        ))
+
+    def _on_layout_toggle(self, attr: str, checked: bool) -> None:
+        from dataclasses import replace
+        self._layout_config = replace(self._layout_config, **{attr: checked})
+        self._rebuild_layout()
+
+    def _release_content_layout(self) -> None:
+        """Remove widgets from the horizontal content row without destroying them."""
+        while self._content_layout.count():
+            item = self._content_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(self._content_widget)
+
+    def _teardown_bottom_gallery(self) -> None:
+        """Reparent gallery before deleting the bottom strip (avoids destroying gallery)."""
+        if self._bottom_container is None:
+            return
+        bottom_layout = self._bottom_container.layout()
+        if bottom_layout is not None:
+            while bottom_layout.count():
+                item = bottom_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.setParent(self._content_widget)
+        self._root_layout.removeWidget(self._bottom_container)
+        self._bottom_container.deleteLater()
+        self._bottom_container = None
+
+    def _clear_splitter(self, splitter: QSplitter) -> None:
+        while splitter.count():
+            child = splitter.widget(0)
+            child.setParent(self._content_widget)
+
+    def _apply_layout_visibility(
+        self,
+        cfg: LayoutConfig,
+        *,
+        use_splitter: bool,
+        left: QWidget | None,
+        right: QWidget | None,
+    ) -> None:
+        self._viewer.show()
+        if cfg.multiview and self._viewer2 is not None:
+            self._viewer2.show()
+
+        if cfg.gallery_horizontal:
+            if self._bottom_container is not None:
+                self._bottom_container.show()
+            self._gallery.show()
+        elif left is self._gallery or right is self._gallery:
+            self._gallery.show()
+
+        if cfg.activity_bar:
+            if self._activity_bar is not None:
+                self._activity_bar.show()
+            if not use_splitter and self._tool_panel not in (left, right):
+                self._tool_panel.hide()
+        else:
+            if self._activity_bar is not None:
+                self._activity_bar.hide()
+            if use_splitter or self._tool_panel in (left, right):
+                self._tool_panel.show()
+
+    def _rebuild_layout(self) -> None:
+        cfg = self._layout_config
+        self._content_widget.setUpdatesEnabled(False)
+        try:
+            self._release_content_layout()
+            self._teardown_bottom_gallery()
+            self._clear_splitter(self._content_splitter)
+
+            if cfg.activity_bar:
+                self._ensure_activity_bar()
+
+            use_splitter = (
+                not cfg.activity_bar
+                and not cfg.gallery_horizontal
+                and not cfg.multiview
+                and not cfg.swap_places
+            )
+
+            if cfg.multiview:
+                self._ensure_viewer2()
+                self._content_splitter.addWidget(self._viewer)
+                self._content_splitter.addWidget(self._viewer2)
+                self._content_splitter.setHandleWidth(2)
+                self._content_splitter.blockSignals(True)
+                self._content_splitter.setSizes([800, 800])
+                self._content_splitter.blockSignals(False)
+                center: QWidget = self._content_splitter
+            elif use_splitter:
+                self._content_splitter.blockSignals(True)
+                self._content_splitter.addWidget(self._viewer)
+                self._content_splitter.addWidget(self._tool_panel)
+                self._content_splitter.setStretchFactor(0, 1)
+                self._content_splitter.setStretchFactor(1, 0)
+                self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                self._content_splitter.blockSignals(False)
+                center = self._content_splitter
+            else:
+                center = self._viewer
+
+            if not cfg.multiview:
+                self._detach_viewer2()
+
+            left = self._decide_left(cfg)
+            right = self._decide_right(cfg)
+
+            if left is not None:
+                left.show()
+                self._content_layout.addWidget(left)
+            if center is not None:
+                center.show()
+                self._content_layout.addWidget(center, stretch=1)
+            if right is not None:
+                right.show()
+                self._content_layout.addWidget(right)
+
+            if cfg.gallery_horizontal:
+                self._gallery.set_horizontal_mode(True)
+                self._bottom_container = QWidget()
+                bottom_layout = QHBoxLayout(self._bottom_container)
+                bottom_layout.setContentsMargins(0, 0, 0, 0)
+                bottom_layout.addWidget(self._gallery)
+                if self.statusBar() is not None:
+                    status_index = self._root_layout.indexOf(self.statusBar())
+                    self._root_layout.insertWidget(status_index, self._bottom_container)
+                else:
+                    self._root_layout.addWidget(self._bottom_container)
+            else:
+                self._gallery.set_horizontal_mode(False)
+
+            self.statusBar().setVisible(cfg.status_bar_visible)
+            self._apply_layout_visibility(cfg, use_splitter=use_splitter, left=left, right=right)
+            if cfg.activity_bar:
+                self._restore_activity_tool_panel_if_needed()
+            elif self._activity_bar is not None:
+                self._activity_bar.set_active(None)
+            self._save_layout_state()
+        finally:
+            self._content_widget.setUpdatesEnabled(True)
+
+    def _clear_content_layout(self) -> None:
+        """Backward-compatible alias for tests."""
+        self._release_content_layout()
+
+    def _decide_left(self, cfg: LayoutConfig) -> QWidget | None:
+        if cfg.activity_bar and cfg.swap_places:
+            return self._activity_bar
+        if cfg.swap_places:
+            return self._tool_panel
+        if cfg.activity_bar:
+            return None if cfg.gallery_horizontal else self._gallery
+        if cfg.gallery_horizontal:
+            return None
+        return self._gallery
+
+    def _decide_right(self, cfg: LayoutConfig) -> QWidget | None:
+        if cfg.activity_bar and not cfg.swap_places:
+            return self._activity_bar
+        if cfg.activity_bar and cfg.swap_places:
+            return None if cfg.gallery_horizontal else self._gallery
+        if cfg.swap_places:
+            return None if cfg.gallery_horizontal else self._gallery
+        if cfg.gallery_horizontal or cfg.multiview:
+            return self._tool_panel
+        return None
+
+    def _ensure_viewer2(self) -> None:
+        if self._viewer2 is not None:
+            try:
+                _ = self._viewer2.width()
+                return
+            except RuntimeError:
+                self._viewer2 = None
+        self._viewer2 = ViewerWidget()
+        self._viewer2.installEventFilter(self)
+        self._viewer2._graphics.installEventFilter(self)
+        self._viewer2._view.installEventFilter(self)
+        self._viewer2.play_pause_requested.connect(self._controller.toggle_playback)
+        self._viewer2.frame_selected.connect(self._controller.state_manager.set_frame)
+        self._viewer2.contour_completed.connect(self._on_contour_completed)
+        self._viewer2.contours_changed.connect(self._controller.on_contours_changed)
+        self._viewer2.set_state(self._controller.state_manager.snapshot)
+
+    def _detach_viewer2(self) -> None:
+        if self._viewer2 is None:
+            return
+        try:
+            self._viewer2.hide()
+        except RuntimeError:
+            self._viewer2 = None
+
+    def _ensure_activity_bar(self) -> None:
+        if self._activity_bar is not None:
+            return
+        from echo_personal_tool.presentation.activity_bar import ActivityBar
+        self._activity_bar = ActivityBar()
+        self._activity_bar.tab_activated.connect(self._on_activity_tab_activated)
+        self._activity_bar.tab_deactivated.connect(self._on_activity_tab_deactivated)
+
+    def _remove_tool_panel_from_content_layout(self) -> None:
+        idx = self._content_layout.indexOf(self._tool_panel)
+        if idx >= 0:
+            self._content_layout.takeAt(idx)
+
+    def _attach_tool_panel_after(self, anchor: QWidget) -> None:
+        bar_idx = self._content_layout.indexOf(anchor)
+        if bar_idx < 0:
+            return
+        self._remove_tool_panel_from_content_layout()
+        self._content_layout.insertWidget(bar_idx + 1, self._tool_panel)
+
+    def _restore_activity_tool_panel_if_needed(self) -> None:
+        if self._activity_bar is None or not self._layout_config.activity_bar:
+            return
+        for name, button in self._activity_bar._buttons.items():
+            if button.isChecked():
+                self._on_activity_tab_activated(name)
+                return
+
+    def _on_activity_tab_activated(self, tab: str) -> None:
+        tab_map = {"measures": 0, "controls": 1, "dicom": 2}
+        if tab in tab_map:
+            self._tool_panel._tabs.setCurrentIndex(tab_map[tab])
+        self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        if self._activity_bar is not None:
+            if self._content_layout.indexOf(self._activity_bar) >= 0:
+                self._attach_tool_panel_after(self._activity_bar)
+            elif self._content_layout.indexOf(self._tool_panel) < 0:
+                self._content_layout.addWidget(self._tool_panel)
+        self._tool_panel.show()
+
+    def _on_activity_tab_deactivated(self, tab: str) -> None:
+        self._tool_panel.hide()
+        self._remove_tool_panel_from_content_layout()
 
     def _show_references(self) -> None:
         show_ase_reference_dialog(self)
@@ -486,6 +767,14 @@ class MainWindow(QMainWindow):
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
             return
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            if not self._layout_config.multiview:
+                from dataclasses import replace
+                self._layout_config = replace(self._layout_config, multiview=True)
+                self._rebuild_layout()
+            self._load_instance_into_viewer2(selected)
+            return
         self._click_to_frame_started_at = perf_counter()
         previous = self._controller.state_manager.snapshot.instance
         if previous is not None:
@@ -516,6 +805,27 @@ class MainWindow(QMainWindow):
         self._system_bar.set_study_context(label)
         self._controller.load_instance(selected)
         self._restore_results_overlay_position(selected.sop_instance_uid)
+
+    def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
+        self._ensure_viewer2()
+        if instance.path is None:
+            return
+        from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
+        worker = FrameLoaderWorker(
+            instance.path, 0, instance.media_format,
+            total_frames=instance.number_of_frames,
+        )
+        worker.signals.finished.connect(
+            lambda pixels, inst=instance: self._on_viewer2_frame_loaded(pixels, inst)
+        )
+        worker.signals.failed.connect(lambda msg: self._show_status(f"viewer2 load failed: {msg}"))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_viewer2_frame_loaded(self, pixels: object, instance: InstanceMetadata) -> None:
+        if self._viewer2 is None:
+            return
+        image = np.asarray(pixels)
+        self._viewer2.show_frame(image)
 
     def _on_frame_loaded(self, pixels: object) -> None:
         if self._click_to_frame_started_at is not None:
@@ -731,6 +1041,7 @@ class MainWindow(QMainWindow):
         self._system_bar.minimize_requested.connect(self.showMinimized)
         self._system_bar.maximize_requested.connect(self._toggle_maximize)
         self._system_bar.close_requested.connect(self.close)
+        self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.patient_metrics_changed.connect(
             self._controller.on_patient_metrics_changed
@@ -1353,8 +1664,20 @@ class MainWindow(QMainWindow):
             self._show_status("Load a frame first")
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
+                self._active_viewer = self._viewer
+            elif self._viewer2 is not None and watched in (
+                self._viewer2, self._viewer2._graphics, self._viewer2._view,
+            ):
+                self._active_viewer = self._viewer2
         if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
+                if self._handle_key_press(event):
+                    return True
+            if self._viewer2 is not None and watched in (
+                self._viewer2, self._viewer2._graphics, self._viewer2._view,
+            ):
                 if self._handle_key_press(event):
                     return True
         return super().eventFilter(watched, event)
@@ -1373,8 +1696,10 @@ class MainWindow(QMainWindow):
 
     def _handle_key_press(self, event: QKeyEvent) -> bool:
         if event.key() == Qt.Key.Key_Space:
-            if not self._controller.state_manager.snapshot.decode_in_progress:
-                self._controller.toggle_playback()
+            if self._controller.state_manager.snapshot.decode_in_progress:
+                event.accept()
+                return True
+            self._controller.toggle_playback()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.NoModifier:

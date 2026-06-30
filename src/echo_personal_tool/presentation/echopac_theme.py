@@ -202,6 +202,46 @@ QWidget {{
 QMainWindow {{
     background-color: {p["bg_dark"]};
 }}
+QDialog {{
+    background-color: {p["bg_panel"]};
+    color: {p["text"]};
+}}
+QScrollArea {{
+    background-color: {p["bg_panel"]};
+    border: none;
+}}
+QScrollBar:vertical {{
+    background: {p["bg_control"]};
+    width: 10px;
+    margin: 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {p["border"]};
+    min-height: 30px;
+    border-radius: 5px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: {p["text_dim"]};
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0;
+}}
+QScrollBar:horizontal {{
+    background: {p["bg_control"]};
+    height: 10px;
+    margin: 0;
+}}
+QScrollBar::handle:horizontal {{
+    background: {p["border"]};
+    min-width: 30px;
+    border-radius: 5px;
+}}
+QScrollBar::handle:horizontal:hover {{
+    background: {p["text_dim"]};
+}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0;
+}}
 
 /* ── Status bar ─────────────────────────────────────────────── */
 QStatusBar {{
@@ -434,6 +474,41 @@ QCheckBox::indicator:checked {{
 #windowControls QPushButton#closeButton:hover {{
     background: #e81123;
     color: white;
+}}
+
+/* ── Activity Bar ──────────────────────────────────────────────── */
+#activityBar {{
+    background: {p["bg_panel"]};
+    border-right: 1px solid {p["border"]};
+}}
+#activityBar QPushButton {{
+    min-width: 48px;
+    max-width: 48px;
+    min-height: 48px;
+    max-height: 48px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+}}
+#activityBar QPushButton:hover {{
+    background: {p["bg_button"]};
+}}
+#activityBar QPushButton:checked {{
+    background: {p["bg_control"]};
+    border-left: 2px solid {p["accent"]};
+}}
+
+/* ── Layout Menu ──────────────────────────────────────────────── */
+#layoutMenu {{
+    background: {p["bg_panel"]};
+    border: 1px solid {p["border"]};
+}}
+#layoutMenu::item {{
+    padding: 6px 24px;
+}}
+#layoutMenu::item:selected {{
+    background: {p["bg_button"]};
 }}
 
 /* ── ToolPanel ──────────────────────────────────────────────── */

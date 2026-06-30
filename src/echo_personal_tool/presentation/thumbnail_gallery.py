@@ -154,6 +154,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self.setObjectName("thumbnailGallery")
         self._collapsed = False
         self._saved_width = None
+        self._horizontal_mode = False
         self._thumb_w, self._thumb_h = _THUMBNAIL_SCALES["medium"]["thumb"]
         self._cell_w, self._cell_h = _THUMBNAIL_SCALES["medium"]["cell"]
         self.setItemDelegate(ThumbnailGalleryDelegate(self))
@@ -198,6 +199,37 @@ class ThumbnailGalleryWidget(QListWidget):
         self._cell_w, self._cell_h = spec["cell"]
         self._apply_gallery_metrics()
         self.viewport().update()
+
+    def set_horizontal_mode(self, enabled: bool) -> None:
+        if enabled:
+            self._saved_width = self.width()
+            self.setFixedWidth(16777215)
+            row_h = self._cell_h + _CELL_SPACING
+            self.setFixedHeight(row_h * 2 + 4)
+            self.setWrapping(True)
+            self.setFlow(QListWidget.Flow.LeftToRight)
+            self.setGridSize(QSize(self._cell_w, row_h))
+            self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        else:
+            self.setFixedWidth(_gallery_width(self._cell_w))
+            self.setFixedHeight(16777215)
+            self.setFlow(QListWidget.Flow.LeftToRight)
+            self.setGridSize(QSize(self._cell_w, self._cell_h))
+            self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self._horizontal_mode = enabled
+
+    def wheelEvent(self, event) -> None:
+        if self._horizontal_mode:
+            delta = event.angleDelta().y()
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta
+            )
+        else:
+            super().wheelEvent(event)
 
     def _apply_gallery_metrics(self) -> None:
         self.setGridSize(QSize(self._cell_w, self._cell_h))

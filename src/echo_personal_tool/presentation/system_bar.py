@@ -86,6 +86,7 @@ class SystemBar(QWidget):
     minimize_requested = Signal()
     maximize_requested = Signal()
     close_requested = Signal()
+    layout_customize_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -146,6 +147,12 @@ class SystemBar(QWidget):
         btn_reset.setObjectName("resetButton")
         btn_reset.clicked.connect(self.reset_session_requested.emit)
 
+        self._btn_layout = QPushButton()
+        self._btn_layout.setIcon(_load_icon("layout"))
+        self._btn_layout.setObjectName("layoutButton")
+        self._btn_layout.setToolTip("Customize Layout")
+        self._btn_layout.clicked.connect(self.layout_customize_requested.emit)
+
         # Window control buttons
         self._btn_minimize = QPushButton()
         self._btn_minimize.setIcon(_load_icon("minimize"))
@@ -191,6 +198,7 @@ class SystemBar(QWidget):
             btn_doppler_calibration,
             self._btn_references,
             btn_reset,
+            self._btn_layout,
         ):
             actions_layout.addWidget(button)
 

@@ -161,7 +161,7 @@ def _results_overlay_style(font_size: int, opacity: float = 0.84) -> str:
     return (
         _RESULTS_OVERLAY_STYLE
         + f" font-size: {font_size}px;"
-        + f" background-color: rgba(8, 16, 28, {alpha});"
+        + f" background-color: rgba(0, 0, 0, 0);"
     )
 _DEFAULT_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 180);"
@@ -439,7 +439,7 @@ class ViewerWidget(QWidget):
         if scene is not None:
             scene.sigMouseMoved.connect(self._on_scene_mouse_moved)
         self._image_item = pg.ImageItem(axisOrder="row-major")
-        self._image_item.setAutoDownsample(True)
+        self._image_item.setAutoDownsample(False)
         self._view.addItem(self._image_item)
         self._doppler = DopplerOverlayTools(self._view, self)
         self._doppler.markers_changed.connect(self.doppler_markers_changed.emit)
@@ -791,9 +791,9 @@ class ViewerWidget(QWidget):
             x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
             y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
         else:
-            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN
+            x = geo.x() + RESULTS_OVERLAY_EDGE_MARGIN
             y = geo.y() + max(
-                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO),
+                geo.height() - rh - RESULTS_OVERLAY_EDGE_MARGIN,
                 RESULTS_OVERLAY_EDGE_MARGIN,
             )
         x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
