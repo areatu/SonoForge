@@ -352,6 +352,32 @@ class ThumbnailGalleryWidget(QListWidget):
         else:
             self._animate_collapse()
 
+    def select_next_instance(self) -> None:
+        current = self.currentItem()
+        if current is None:
+            return
+        row = self.row(current) + 1
+        if row < self.count():
+            self.setCurrentRow(row)
+            item = self.item(row)
+            if item is not None:
+                instance = item.data(_ITEM_ROLE)
+                if isinstance(instance, InstanceMetadata):
+                    self.instance_selected.emit(instance)
+
+    def select_previous_instance(self) -> None:
+        current = self.currentItem()
+        if current is None:
+            return
+        row = self.row(current) - 1
+        if row >= 0:
+            self.setCurrentRow(row)
+            item = self.item(row)
+            if item is not None:
+                instance = item.data(_ITEM_ROLE)
+                if isinstance(instance, InstanceMetadata):
+                    self.instance_selected.emit(instance)
+
     def _animate_collapse(self) -> None:
         self._saved_width = self.width()
         self._anim = QPropertyAnimation(self, b"maximumWidth")

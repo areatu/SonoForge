@@ -216,6 +216,8 @@ class MainWindow(QMainWindow):
             ("Delete", self._delete_current_contour),
             ("`", self._toggle_gallery_shortcut),
             ("F11", self._toggle_fullscreen_shortcut),
+            ("Up", self._gallery.select_previous_instance),
+            ("Down", self._gallery.select_next_instance),
         ]
         for sequence, handler in bindings:
             shortcut = QShortcut(QKeySequence(sequence), self)

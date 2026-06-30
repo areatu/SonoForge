@@ -600,7 +600,9 @@ class ViewerWidget(QWidget):
         self._step_back_button.setToolTip("Step back (Previous frame)")
         self._step_back_button.clicked.connect(self._step_back)
 
-        self._play_button = QPushButton("Play")
+        self._play_button = QPushButton("Pause")
+        self._play_button.setFixedWidth(self._play_button.sizeHint().width() + 12)
+        self._play_button.setText("Play")
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
         self._step_forward_button = QPushButton("⏭")

@@ -155,6 +155,7 @@ class AppController(QObject):
         self._auto_segment_chamber: str = "LV"
         self._scan_started_at: float | None = None
         self._first_preview_emitted = False
+        self._study_metrics_auto_filled = False
         self._state_manager.state_changed.connect(self._on_state_changed)
 
     @property
@@ -170,6 +171,7 @@ class AppController(QObject):
         self._current_study_uid = None
         self._scan_started_at = perf_counter()
         self._first_preview_emitted = False
+        self._study_metrics_auto_filled = False
         logger.info("scan_start root=%s", root)
         self.status_message.emit(f"Scanning {root}…")
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
@@ -184,6 +186,7 @@ class AppController(QObject):
         self._measurement_session.clear()
         self._current_study_uid = None
         self._first_preview_emitted = False
+        self._study_metrics_auto_filled = False
         self._studies = studies
         count = len(self._studies)
         logger.info("pre_scanned_load studies=%d", count)
@@ -227,6 +230,19 @@ class AppController(QObject):
             self.frame_load_failed.emit("Instance has no file path")
             return
         self._current_instance = instance
+        if (
+            not self._study_metrics_auto_filled
+            and instance.patient_height_m is not None
+            and instance.patient_weight_kg is not None
+        ):
+            study_uid = self._resolve_study_uid()
+            session = self._measurement_session.get(study_uid)
+            if session.height_cm is None and session.weight_kg is None:
+                self.on_patient_metrics_changed(
+                    instance.patient_height_m * 100,
+                    instance.patient_weight_kg,
+                )
+                self._study_metrics_auto_filled = True
         self.status_message.emit(f"Loading {instance.path.name}…")
         total_frames = instance.number_of_frames
         frame_time_ms = instance.frame_time_ms or 33.3

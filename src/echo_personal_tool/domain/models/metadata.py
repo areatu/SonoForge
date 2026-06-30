@@ -30,6 +30,8 @@ class InstanceMetadata:
     media_format: str = "dicom"
     pixel_spacing_source: str | None = None
     frame_time_vector: tuple[float, ...] | None = None
+    patient_height_m: float | None = None
+    patient_weight_kg: float | None = None
 
 
 @dataclass(frozen=True)

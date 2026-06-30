@@ -49,6 +49,15 @@ def _frame_time_vector(dataset: Dataset) -> tuple[float, ...] | None:
         return None
 
 
+def _safe_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> InstanceMetadata:
     """Convert a DICOM dataset (header or full) to InstanceMetadata."""
     number_of_frames = int(dataset.get("NumberOfFrames", 1) or 1)
@@ -66,6 +75,8 @@ def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> Instanc
         series_description=series_description,
         path=path,
         media_format="dicom",
+        patient_height_m=_safe_float(dataset.get("PatientSize")),
+        patient_weight_kg=_safe_float(dataset.get("PatientWeight")),
     )
 
 
