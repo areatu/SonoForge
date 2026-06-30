@@ -107,6 +107,8 @@ class MainWindow(QMainWindow):
         self._layout_config = self._load_layout_state()
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
+        self._viewer2_instance: InstanceMetadata | None = None
+        self._viewer2_frame_index: int = 0
         self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
 
@@ -185,6 +187,7 @@ class MainWindow(QMainWindow):
             self._on_results_overlay_position_changed
         )
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
+        self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._ste_dialog: SteResultsDialog | None = None
 
@@ -533,10 +536,8 @@ class MainWindow(QMainWindow):
         self._viewer2._graphics.installEventFilter(self)
         self._viewer2._view.installEventFilter(self)
         self._viewer2.play_pause_requested.connect(self._controller.toggle_playback)
-        self._viewer2.frame_selected.connect(self._controller.state_manager.set_frame)
-        self._viewer2.scroll_frame_selected.connect(
-            lambda index: self._controller.state_manager.set_frame(index, scroll=True)
-        )
+        self._viewer2.frame_selected.connect(self._on_viewer2_frame_selected)
+        self._viewer2.scroll_frame_selected.connect(self._on_viewer2_frame_selected)
         self._viewer2.contour_completed.connect(self._on_contour_completed)
         self._viewer2.contours_changed.connect(self._controller.on_contours_changed)
         self._viewer2.set_state(self._controller.state_manager.snapshot)
@@ -819,9 +820,25 @@ class MainWindow(QMainWindow):
         self._ensure_viewer2()
         if instance.path is None:
             return
+        self._viewer2_instance = instance
+        self._viewer2_frame_index = 0
+        self._load_viewer2_frame(0)
+
+    def _load_viewer2_frame(self, frame_index: int) -> None:
+        if self._viewer2 is None or self._viewer2_instance is None:
+            return
+        instance = self._viewer2_instance
+        cache = self._controller._frame_cache
+        if cache is not None and cache.is_ready(instance.path):
+            try:
+                pixels = cache.get(frame_index)
+                self._on_viewer2_frame_loaded(np.asarray(pixels), instance)
+                return
+            except (RuntimeError, IndexError):
+                pass
         from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
         worker = FrameLoaderWorker(
-            instance.path, 0, instance.media_format,
+            instance.path, frame_index, instance.media_format,
             total_frames=instance.number_of_frames,
         )
         worker.signals.finished.connect(
@@ -830,11 +847,21 @@ class MainWindow(QMainWindow):
         worker.signals.failed.connect(lambda msg: self._show_status(f"viewer2 load failed: {msg}"))
         QThreadPool.globalInstance().start(worker)
 
+    def _on_viewer2_frame_selected(self, frame_index: int) -> None:
+        self._viewer2_frame_index = frame_index
+        self._load_viewer2_frame(frame_index)
+
     def _on_viewer2_frame_loaded(self, pixels: object, instance: InstanceMetadata) -> None:
         if self._viewer2 is None:
             return
         image = np.asarray(pixels)
         self._viewer2.show_frame(image)
+
+    def _on_state_changed_for_viewer2(self, state: ViewerState) -> None:
+        if self._viewer2 is None:
+            return
+        if self._viewer2_instance is not None and self._viewer2_instance == state.instance:
+            self._viewer2.set_state(state)
 
     def _on_frame_loaded(self, pixels: object) -> None:
         if self._click_to_frame_started_at is not None:

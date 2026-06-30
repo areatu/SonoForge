@@ -270,8 +270,6 @@ class ContourViewBox(pg.ViewBox):
         super().leaveEvent(ev)
 
     def wheelEvent(self, ev, axis=None) -> None:  # type: ignore[override]
-        if self._viewer_widget is not None and self._viewer_widget._handle_wheel(ev):
-            return
         ev.ignore()
 
 
@@ -720,9 +718,6 @@ class ViewerWidget(QWidget):
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
-            if event.type() == QEvent.Type.Wheel:
-                if self._handle_wheel(event):
-                    return True
             if event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.MouseButton.RightButton:
                     self._show_save_context_menu(event)
@@ -798,9 +793,9 @@ class ViewerWidget(QWidget):
             x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
             y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
         else:
-            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN
+            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN - 28
             y = geo.y() + max(
-                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO),
+                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO) + 19,
                 RESULTS_OVERLAY_EDGE_MARGIN,
             )
         x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
