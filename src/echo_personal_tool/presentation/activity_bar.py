@@ -53,14 +53,13 @@ class ActivityBar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self._buttons: dict[str, QPushButton] = {}
-        for name, icon_file, tooltip in [
-            ("measures", "activity_measures", "Измерения"),
-            ("controls", "activity_controls", "Управление"),
+        for name, icon_file in [
+            ("measures", "activity_measures"),
+            ("controls", "activity_controls"),
         ]:
             btn = QPushButton()
             btn.setIcon(_load_icon(icon_file))
             btn.setCheckable(True)
-            btn.setToolTip(tooltip)
             btn.clicked.connect(lambda _, n=name: self._on_click(n))
             layout.addWidget(btn)
             self._buttons[name] = btn
@@ -68,18 +67,17 @@ class ActivityBar(QWidget):
         layout.addSpacing(8)
 
         self._action_buttons: dict[str, QPushButton] = {}
-        for name, icon_file, tooltip in [
-            ("caliper", "activity_caliper", "Линейный калипер"),
-            ("lv2d", "activity_lv2d", "МЖП-КДР-ЗСЛЖ (2D)"),
-            ("esv", "activity_esv", "КСР (ESV)"),
-            ("simpson_manual_ed", "activity_simpd", "Simpson manual КДО"),
-            ("simpson_manual_es", "activity_simps", "Simpson manual КСО"),
-            ("auto_ed", "activity_auto_d", "ЛЖ авто КДО"),
-            ("auto_es", "activity_auto_s", "ЛЖ авто КСО"),
+        for name, icon_file in [
+            ("caliper", "activity_caliper"),
+            ("lv2d", "activity_lv2d"),
+            ("esv", "activity_esv"),
+            ("simpson_manual_ed", "activity_simpd"),
+            ("simpson_manual_es", "activity_simps"),
+            ("auto_ed", "activity_auto_d"),
+            ("auto_es", "activity_auto_s"),
         ]:
             btn = QPushButton()
             btn.setIcon(_load_icon(icon_file))
-            btn.setToolTip(tooltip)
             btn.clicked.connect(lambda _, n=name: self.action_requested.emit(n))
             layout.addWidget(btn)
             self._action_buttons[name] = btn
@@ -102,6 +100,17 @@ class ActivityBar(QWidget):
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
-        names = {"measures": tr("measures"), "controls": tr("controls")}
+        tab_names = {"measures": tr("measures"), "controls": tr("controls")}
         for name, btn in self._buttons.items():
-            btn.setToolTip(names.get(name, name.capitalize()))
+            btn.setToolTip(tab_names.get(name, name.capitalize()))
+        action_names = {
+            "caliper": tr("tools.caliper"),
+            "lv2d": tr("tools.lv2d_all_diastole"),
+            "esv": tr("tools.lv2d_es"),
+            "simpson_manual_ed": tr("tools.ed_auto"),
+            "simpson_manual_es": tr("tools.es_auto"),
+            "auto_ed": tr("tools.ed_auto"),
+            "auto_es": tr("tools.es_auto"),
+        }
+        for name, btn in self._action_buttons.items():
+            btn.setToolTip(action_names.get(name, name))

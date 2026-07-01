@@ -367,21 +367,22 @@ class MeasurementPanel(QWidget):
         ]
 
     def _format_indexed_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
+        from echo_personal_tool.infrastructure.i18n import tr
         indexed = snapshot.indexed if snapshot is not None else None
         if indexed is None:
             return []
 
-        lines = ["Индексиров. (ППТ)"]
-        lines.append(self._line("ППТ", indexed.bsa_m2, " m²", decimals=2))
+        lines = [tr("indexed.header")]
+        lines.append(self._line(tr("indexed.bsa"), indexed.bsa_m2, " m²", decimals=2))
 
         volume_fields = (
-            ("иКДО (Simpson)", indexed.simpson_edvi_ml_m2),
-            ("иКСО (Simpson)", indexed.simpson_esvi_ml_m2),
-            ("иКДО (Teichholz)", indexed.teichholz_edvi_ml_m2),
-            ("иКСО (Teichholz)", indexed.teichholz_esvi_ml_m2),
-            ("иОЛП 4C", indexed.lav_4c_index_ml_m2),
-            ("иОЛП 2C", indexed.lav_bi_index_ml_m2),
-            ("иОПП", indexed.rav_index_ml_m2),
+            (tr("indexed.simpson_ed"), indexed.simpson_edvi_ml_m2),
+            (tr("indexed.simpson_es"), indexed.simpson_esvi_ml_m2),
+            (tr("indexed.teichholz_ed"), indexed.teichholz_edvi_ml_m2),
+            (tr("indexed.teichholz_es"), indexed.teichholz_esvi_ml_m2),
+            (tr("indexed.lav_4c"), indexed.lav_4c_index_ml_m2),
+            (tr("indexed.lav_2c"), indexed.lav_bi_index_ml_m2),
+            (tr("indexed.rav"), indexed.rav_index_ml_m2),
         )
         for label, value in volume_fields:
             line = self._optional_line(label, value, " mL/m²")
@@ -389,7 +390,7 @@ class MeasurementPanel(QWidget):
                 lines.append(line)
 
         for label, value in indexed.linear_index_mm_m2:
-            line = self._optional_line(f"{label} инд.", value, " mm/m²")
+            line = self._optional_line(f"{label}{tr('indexed.suffix')}", value, " mm/m²")
             if line:
                 lines.append(line)
 

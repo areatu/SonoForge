@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.infrastructure.i18n import tr
+
 _VIEW_MAP = {"4C": "A4C", "2C": "A2C"}
 
 
@@ -92,13 +94,13 @@ class MeasurementToolsPanel(QWidget):
         return col
 
     def _build_manual_group(self) -> QGroupBox:
-        group = QGroupBox("Ручной")
+        group = QGroupBox(tr("tools.manual"))
         row = QHBoxLayout(group)
         row.addLayout(
             self._build_view_column(
                 "4C",
-                "КДР",
-                "КСР",
+                tr("tools.ed"),
+                tr("tools.es"),
                 registry=self._manual_buttons,
                 signal=self.manual_simpson_requested,
             )
@@ -106,8 +108,8 @@ class MeasurementToolsPanel(QWidget):
         row.addLayout(
             self._build_view_column(
                 "2C",
-                "КДР",
-                "КСР",
+                tr("tools.ed"),
+                tr("tools.es"),
                 registry=self._manual_buttons,
                 signal=self.manual_simpson_requested,
             )
@@ -120,8 +122,8 @@ class MeasurementToolsPanel(QWidget):
         row.addLayout(
             self._build_view_column(
                 "4C",
-                "КДО авто",
-                "КСО авто",
+                tr("tools.ed_auto"),
+                tr("tools.es_auto"),
                 registry=self._mbs_buttons,
                 signal=self.mbs_simpson_requested,
             )
@@ -129,8 +131,8 @@ class MeasurementToolsPanel(QWidget):
         row.addLayout(
             self._build_view_column(
                 "2C",
-                "КДО авто",
-                "КСО авто",
+                tr("tools.ed_auto"),
+                tr("tools.es_auto"),
                 registry=self._mbs_buttons,
                 signal=self.mbs_simpson_requested,
             )
@@ -138,20 +140,18 @@ class MeasurementToolsPanel(QWidget):
         return group
 
     def _build_setup_group(self) -> QGroupBox:
-        group = QGroupBox("Настройка")
+        group = QGroupBox(tr("tools.setup"))
         row = QHBoxLayout(group)
-        btn_cal = QPushButton("Калибровка")
-        btn_cal.setToolTip("Линия по шкале глубины → Enter для подтверждения (K — горячая клавиша)")
+        btn_cal = QPushButton(tr("tools.calibrate"))
+        btn_cal.setToolTip(tr("tools.calibrate_tip"))
         btn_cal.clicked.connect(self.calibration_requested.emit)
         row.addWidget(btn_cal)
-        btn_caliper = QPushButton("Калипер")
-        btn_caliper.setToolTip(
-            "Линейный калипер: 1-й клик — начало, 2-й — конец (L — горячая клавиша)"
-        )
+        btn_caliper = QPushButton(tr("tools.caliper"))
+        btn_caliper.setToolTip(tr("tools.caliper_tip"))
         btn_caliper.clicked.connect(self.caliper_requested.emit)
         row.addWidget(btn_caliper)
-        btn_reset = QPushButton("Сброс")
-        btn_reset.setToolTip("Сбросить контуры, линейные измерения, Doppler и ручную калибровку")
+        btn_reset = QPushButton(tr("tools.reset"))
+        btn_reset.setToolTip(tr("tools.reset_tip"))
         btn_reset.clicked.connect(self.reset_measurements_requested.emit)
         row.addWidget(btn_reset)
         row.addStretch(1)
@@ -180,63 +180,63 @@ class MeasurementToolsPanel(QWidget):
         )
 
     def _build_lv2d_group(self) -> QGroupBox:
-        group = QGroupBox("ЛЖ-2D")
+        group = QGroupBox(tr("tools.lv2d"))
         row = QHBoxLayout(group)
-        btn_all_ed = QPushButton("МЖП-КДР-ЗСЛЖ (2D)")
-        btn_all_ed.setToolTip("IVSd → LVEDD → LVPWd (МЖП, КДР, ЗСЛЖ)")
+        btn_all_ed = QPushButton(tr("tools.lv2d_all_diastole"))
+        btn_all_ed.setToolTip(tr("tools.lv2d_all_diastole_tip"))
         btn_all_ed.clicked.connect(self.lv2d_all_diastole_requested.emit)
         row.addWidget(btn_all_ed)
-        btn_esd = QPushButton("КСР (2D)")
-        btn_esd.setToolTip("LVESD (КСР)")
+        btn_esd = QPushButton(tr("tools.lv2d_es"))
+        btn_esd.setToolTip(tr("tools.lv2d_es_tip"))
         btn_esd.clicked.connect(self.lv2d_es_requested.emit)
         row.addWidget(btn_esd)
         return group
 
     def _build_la_group(self) -> QGroupBox:
-        group = QGroupBox("ЛП")
+        group = QGroupBox(tr("tools.la"))
         row = QHBoxLayout(group)
-        btn_ap = QPushButton("ЛП ПЗР")
-        btn_ap.setToolTip("Линейный калипер — переднезадний размер ЛП")
+        btn_ap = QPushButton(tr("tools.la_diameter"))
+        btn_ap.setToolTip(tr("tools.la_diameter_tip"))
         btn_ap.clicked.connect(self.la_diameter_requested.emit)
         row.addWidget(btn_ap)
-        btn_lav_4c = QPushButton("ОЛП 4C")
-        btn_lav_4c.setToolTip("Объём ЛП: ручной контур Simpson 4C (3 клика)")
+        btn_lav_4c = QPushButton(tr("tools.lav_4c"))
+        btn_lav_4c.setToolTip(tr("tools.lav_4c_tip"))
         btn_lav_4c.clicked.connect(self.lav_4c_requested.emit)
         row.addWidget(btn_lav_4c)
-        btn_lav_bi = QPushButton("ОЛП 2C")
-        btn_lav_bi.setToolTip("Объём ЛП: контуры Simpson 4C + 2C")
+        btn_lav_bi = QPushButton(tr("tools.lav_2c"))
+        btn_lav_bi.setToolTip(tr("tools.lav_2c_tip"))
         btn_lav_bi.clicked.connect(self.lav_bi_requested.emit)
         row.addWidget(btn_lav_bi)
         return group
 
     def _build_ra_group(self) -> QGroupBox:
-        group = QGroupBox("ПП")
+        group = QGroupBox(tr("tools.ra"))
         row = QHBoxLayout(group)
-        btn_ra = QPushButton("ПП")
-        btn_ra.setToolTip("Линейный калипер — размер ПП")
+        btn_ra = QPushButton(tr("tools.ra_diameter"))
+        btn_ra.setToolTip(tr("tools.ra_diameter_tip"))
         btn_ra.clicked.connect(self.ra_diameter_requested.emit)
         row.addWidget(btn_ra)
-        btn_area = QPushButton("S ПП")
-        btn_area.setToolTip("Площадь ПП: ручной контур Simpson 4C (3 клика)")
+        btn_area = QPushButton(tr("tools.ra_area"))
+        btn_area.setToolTip(tr("tools.ra_area_tip"))
         btn_area.clicked.connect(self.ra_area_requested.emit)
         row.addWidget(btn_area)
-        btn_rav = QPushButton("ОПП")
-        btn_rav.setToolTip("Объём ПП: ручной контур Simpson 4C (3 клика)")
+        btn_rav = QPushButton(tr("tools.rav"))
+        btn_rav.setToolTip(tr("tools.rav_tip"))
         btn_rav.clicked.connect(self.rav_volume_requested.emit)
         row.addWidget(btn_rav)
         return group
 
     def _build_rv_group(self) -> QGroupBox:
-        group = QGroupBox("ПЖ")
+        group = QGroupBox(tr("tools.rv"))
         row = QHBoxLayout(group)
         btn_tapse = QPushButton("TAPSE")
         btn_tapse.clicked.connect(self.rv_tapse_requested.emit)
         row.addWidget(btn_tapse)
-        btn_basal = QPushButton("ПЖ основание")
+        btn_basal = QPushButton(tr("tools.rv_basal"))
         btn_basal.clicked.connect(self.rv_basal_requested.emit)
         row.addWidget(btn_basal)
         btn_s_prime = QPushButton("s'")
-        btn_s_prime.setToolTip("Тканевый Doppler — будет реализован позже")
+        btn_s_prime.setToolTip(tr("tools.rv_s_prime_tip"))
         btn_s_prime.setEnabled(False)
         btn_s_prime.clicked.connect(self.rv_s_prime_requested.emit)
         row.addWidget(btn_s_prime)

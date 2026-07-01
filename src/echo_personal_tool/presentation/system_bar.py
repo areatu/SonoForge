@@ -301,12 +301,13 @@ class SystemBar(QWidget):
         self._progress_bar.setValue(0)
 
     def update_maximize_button(self, is_maximized: bool) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
         if is_maximized:
             self._btn_maximize.setIcon(_load_icon("restore"))
-            self._btn_maximize.setToolTip("Восстановить")
+            self._btn_maximize.setToolTip(tr("restore"))
         else:
             self._btn_maximize.setIcon(_load_icon("maximize"))
-            self._btn_maximize.setToolTip("Развернуть")
+            self._btn_maximize.setToolTip(tr("maximize"))
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

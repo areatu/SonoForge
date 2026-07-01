@@ -120,13 +120,14 @@ class DopplerOverlayTools(QWidget):
     def trace_prompt(self) -> str | None:
         if self._tool_mode != "trace":
             return None
+        from echo_personal_tool.infrastructure.i18n import tr
         if not self._active_partial_points:
-            return f"{self._trace_label}: клик на baseline — начало потока"
+            return f"{self._trace_label}: {tr('doppler.trace_click_baseline')}"
         if self._trace_stroke_active:
-            return f"{self._trace_label}: ведите вдоль огибающей…"
+            return f"{self._trace_label}: {tr('doppler.trace_draw_envelope')}"
         if len(self._active_partial_points) < 3:
-            return f"{self._trace_label}: обведите спектр, завершите на baseline"
-        return f"{self._trace_label}: клик на baseline — конец потока (V)"
+            return f"{self._trace_label}: {tr('doppler.trace_trace_spectrum')}"
+        return f"{self._trace_label}: {tr('doppler.trace_click_end')}"
 
     def consume_trace_click_suppression(self) -> bool:
         if not self._trace_suppress_click:
@@ -207,13 +208,14 @@ class DopplerOverlayTools(QWidget):
             return None
         if self._workflow_index >= len(self._workflow):
             return None
+        from echo_personal_tool.infrastructure.i18n import tr
         mode, label = self._workflow[self._workflow_index]
         if mode == "peak":
-            return f"Mitral inflow: пик {label}"
+            return f"Mitral inflow: {tr('doppler.peak', label=label)}"
         if mode == "interval":
             if self._active_interval_start is not None:
-                return f"Mitral inflow: {label} — 2-й клик (конец на baseline)"
-            return f"Mitral inflow: {label} — 1-й клик (начало на baseline)"
+                return f"Mitral inflow: {label} — {tr('doppler.interval_click_end')}"
+            return f"Mitral inflow: {label} — {tr('doppler.interval_click_start')}"
         return None
 
     def finish_trace(self) -> bool:

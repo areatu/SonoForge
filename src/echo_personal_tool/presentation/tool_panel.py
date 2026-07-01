@@ -30,10 +30,11 @@ class _PatientMetricsRow(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        from echo_personal_tool.infrastructure.i18n import tr
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        height_label = QLabel("Рост")
+        height_label = QLabel(tr("tools.height"))
         height_label.setStyleSheet(self._LABEL_STYLE)
         layout.addWidget(height_label)
         self._height_spin = QSpinBox()
@@ -41,7 +42,7 @@ class _PatientMetricsRow(QWidget):
         self._height_spin.setSpecialValueText("")
         self._height_spin.valueChanged.connect(self._emit_metrics)
         layout.addWidget(self._height_spin)
-        weight_label = QLabel("Вес")
+        weight_label = QLabel(tr("tools.weight"))
         weight_label.setStyleSheet(self._LABEL_STYLE)
         layout.addWidget(weight_label)
         self._weight_spin = QSpinBox()
@@ -81,11 +82,10 @@ class ControlsTab(QWidget):
         self.dr_slider.slider().setToolTip(
             "Dynamic range: center = full range; left = clip dark (typical for US)"
         )
-        self._magnetic_snap_check = QCheckBox("Магнит к стенке")
+        from echo_personal_tool.infrastructure.i18n import tr
+        self._magnetic_snap_check = QCheckBox(tr("tools.magnetic_snap"))
         self._magnetic_snap_check.setChecked(True)
-        self._magnetic_snap_check.setToolTip(
-            "При отпускании узла — мягкое прилипание к границе по градиенту"
-        )
+        self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
         self._magnetic_snap_check.toggled.connect(self.magnetic_snap_changed.emit)
 
         layout = QVBoxLayout(self)
@@ -113,11 +113,12 @@ class MeasureTab(QWidget):
         self._patient_metrics = _PatientMetricsRow()
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
-        self._auto_play_check = QCheckBox("Автовоспроизведение")
-        self._auto_play_check.setToolTip("Автоматически воспроизводить cine при загрузке")
+        from echo_personal_tool.infrastructure.i18n import tr
+        self._auto_play_check = QCheckBox(tr("preferences.auto_play"))
+        self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._auto_play_check.toggled.connect(self.auto_play_changed.emit)
 
-        self._results_button = QPushButton("Результаты")
+        self._results_button = QPushButton(tr("tool_panel.measures"))
         self._results_button.setMinimumHeight(32)
         self._results_button.clicked.connect(self.results_requested.emit)
         results_wrap = QWidget()

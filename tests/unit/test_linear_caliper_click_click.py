@@ -151,3 +151,11 @@ def _qapp() -> QApplication:
     if app is None:
         app = QApplication([])
     return app
+
+
+@pytest.fixture(autouse=True)
+def _ru_locale():
+    from echo_personal_tool.infrastructure.i18n import set_language
+    set_language("ru")
+    yield
+    set_language("ru")
