@@ -1,12 +1,19 @@
-"""Scrollable ASE reference viewer backed by ``References ASE+.md``."""
+"""Scrollable ASE reference viewer with multi-document tabs and PDF support."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QFont
+import logging
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import QPoint, QSettings, Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFontComboBox,
     QFormLayout,
     QHBoxLayout,
@@ -14,6 +21,8 @@ from PySide6.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTextBrowser,
     QVBoxLayout,
@@ -29,12 +38,36 @@ from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.echopac_theme import get_theme_palette
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
+logger = logging.getLogger(__name__)
+
 _SETTINGS_ORG = "echo-personal-tool"
 _SETTINGS_APP = "ase-reference"
 _DEFAULT_FONT_FAMILY = FONT_FAMILY_UI
 _DEFAULT_FONT_SIZE = 12
 _MIN_FONT_SIZE = 8
 _MAX_FONT_SIZE = 28
+
+_PDF_DPI_BASE = 150
+
+
+def _load_icon(name: str) -> QPixmap:
+    """Load an SVG icon from the resources/icons directory, recolored to theme text."""
+    from PySide6.QtGui import QIcon
+    import sys
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass is not None:
+        icon_dir = Path(meipass) / "echo_personal_tool" / "resources" / "icons"
+    else:
+        icon_dir = Path(__file__).resolve().parents[2] / "resources" / "icons"
+    svg_path = icon_dir / f"{name}.svg"
+    if svg_path.is_file():
+        svg_text = svg_path.read_text(encoding="utf-8")
+        color = get_theme_palette().get("text", "#f1f5f9")
+        svg_text = svg_text.replace("currentColor", color)
+        pixmap = QPixmap()
+        pixmap.loadFromData(svg_text.encode("utf-8"))
+        return pixmap
+    return QPixmap()
 
 
 def show_ase_reference_dialog(parent: QWidget | None = None) -> None:
@@ -50,41 +83,144 @@ def show_ase_reference_dialog(parent: QWidget | None = None) -> None:
     dialog.exec()
 
 
+# ── Document tab widget ───────────────────────────────────────────
+
+
+class _DocTab(QPushButton):
+    """Clickable tab for a loaded document."""
+
+    def __init__(self, label: str, path: Path, parent: QWidget | None = None) -> None:
+        super().__init__(label, parent)
+        self.doc_path = path
+        self.setCheckable(True)
+        self._apply_style(False)
+
+    def _apply_style(self, active: bool) -> None:
+        p = get_theme_palette()
+        if active:
+            self.setStyleSheet(
+                f"QPushButton {{ background: {p['accent_tab']}; color: {p['text']}; "
+                f"border: none; padding: 4px 10px; border-radius: 3px; font-weight: bold; }}"
+            )
+        else:
+            self.setStyleSheet(
+                f"QPushButton {{ background: {p['bg_control']}; color: {p['text_dim']}; "
+                f"border: none; padding: 4px 10px; border-radius: 3px; }}"
+                f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
+            )
+
+    def set_active(self, active: bool) -> None:
+        self.setChecked(active)
+        self._apply_style(active)
+
+
+# ── PDF page renderer ─────────────────────────────────────────────
+
+
+def _render_pdf_page(doc: Any, page_index: int, dpi: float = 150) -> QPixmap | None:
+    """Render a single PDF page to QPixmap via pymupdf."""
+    try:
+        import fitz  # pymupdf
+    except ImportError:
+        return None
+    if page_index < 0 or page_index >= len(doc):
+        return None
+    page = doc.load_page(page_index)
+    mat = fitz.Matrix(dpi / 72, dpi / 72)
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+    image = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+    return QPixmap.fromImage(image)
+
+
+# ── PDF continuous viewer widget ──────────────────────────────────
+
+
+class _PdfContinuousWidget(QWidget):
+    """Scrollable widget that renders multiple PDF pages vertically."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(4)
+        self._page_labels: list[QLabel] = []
+
+    def render_pages(self, doc: Any, start: int, count: int, dpi: float) -> None:
+        for label in self._page_labels:
+            self._layout.removeWidget(label)
+            label.deleteLater()
+        self._page_labels.clear()
+
+        for i in range(start, min(start + count, len(doc))):
+            pixmap = _render_pdf_page(doc, i, dpi)
+            if pixmap is None:
+                continue
+            lbl = QLabel()
+            lbl.setPixmap(pixmap)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._layout.addWidget(lbl)
+            self._page_labels.append(lbl)
+        self._layout.addStretch(1)
+
+
+# ── Main dialog ───────────────────────────────────────────────────
+
+
 class AseReferenceDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("ase_refs.title"))
-        self.resize(980, 720)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.resize(1020, 750)
 
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
-        self._md_path = default_ase_reference_path()
         self._font_family = str(
             self._settings.value("font_family", _DEFAULT_FONT_FAMILY)
         )
         self._font_size = int(self._settings.value("font_size", _DEFAULT_FONT_SIZE))
 
+        # Dragging state
+        self._drag_pos: QPoint | None = None
+        self._is_maximized = False
+        self._normal_geometry: Any = None
+
+        # Documents: list of (name, path, kind) where kind is "md" or "pdf"
+        self._documents: list[tuple[str, Path, str]] = []
+        self._active_doc_index: int = -1
+        self._pdf_docs: dict[Path, Any] = {}  # fitz.Document cache
+
+        # PDF state
+        self._pdf_current_page: int = 0
+        self._pdf_total_pages: int = 0
+        self._pdf_zoom: float = 1.0
+        self._pdf_view_mode: str = "single"  # "single" | "double" | "continuous"
+
         root = QVBoxLayout(self)
-        root.setMenuBar(self._build_menu())
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        hint = QLabel(
-            tr("ase_refs.hint", name=self._md_path.name)
-        )
-        hint.setWordWrap(True)
-        hint.setTextFormat(Qt.TextFormat.RichText)
-        root.addWidget(hint)
+        # ── Title bar (draggable) ──
+        title_bar = self._build_title_bar()
+        root.addWidget(title_bar)
 
-        toolbar = QHBoxLayout()
-        btn_reload = QPushButton(tr("ase_refs.reload"))
-        btn_reload.setToolTip(tr("ase_refs.reload_tip"))
-        btn_reload.clicked.connect(self._reload_document)
-        btn_open = QPushButton(tr("ase_refs.open_file"))
-        btn_open.setToolTip(tr("ase_refs.open_file_tip"))
-        btn_open.clicked.connect(self._open_markdown_file)
-        toolbar.addWidget(btn_reload)
-        toolbar.addWidget(btn_open)
-        toolbar.addStretch(1)
-        root.addLayout(toolbar)
+        # ── Menu bar ──
+        root.addWidget(self._build_menu())
 
+        # ── Tabs bar ──
+        self._tabs_widget = QWidget()
+        self._tabs_layout = QHBoxLayout(self._tabs_widget)
+        self._tabs_layout.setContentsMargins(4, 2, 4, 2)
+        self._tabs_layout.setSpacing(2)
+        self._tabs_layout.addStretch(1)
+        self._btn_add_tab = QPushButton("+")
+        self._btn_add_tab.setFixedSize(28, 24)
+        self._btn_add_tab.setToolTip(tr("ase_refs.add_document"))
+        self._btn_add_tab.clicked.connect(self._add_document)
+        self._tabs_layout.addWidget(self._btn_add_tab)
+        root.addWidget(self._tabs_widget)
+
+        # ── Content area ──
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
         self._browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
@@ -98,10 +234,165 @@ class AseReferenceDialog(QDialog):
             f"blockquote {{ color: {p['text_dim']}; margin: 8px 0 8px 12px; }}"
             f"hr {{ border: none; border-top: 1px solid {p['border']}; margin: 16px 0; }}"
         )
+
+        # PDF single/double page view
+        self._pdf_scroll = QScrollArea()
+        self._pdf_scroll.setWidgetResizable(True)
+        self._pdf_label = QLabel()
+        self._pdf_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._pdf_scroll.setWidget(self._pdf_label)
+
+        # PDF continuous view
+        self._pdf_continuous_widget = _PdfContinuousWidget()
+        self._pdf_continuous_scroll = QScrollArea()
+        self._pdf_continuous_scroll.setWidgetResizable(True)
+        self._pdf_continuous_scroll.setWidget(self._pdf_continuous_widget)
+
+        # PDF toolbar: zoom +/-, view mode, page nav
+        self._pdf_toolbar = QWidget()
+        pdf_toolbar_layout = QHBoxLayout(self._pdf_toolbar)
+        pdf_toolbar_layout.setContentsMargins(4, 2, 4, 2)
+        pdf_toolbar_layout.setSpacing(4)
+
+        self._btn_pdf_zoom_out = QPushButton("\u2212")  # −
+        self._btn_pdf_zoom_out.setFixedSize(28, 24)
+        self._btn_pdf_zoom_out.setToolTip(tr("ase_refs.pdf_zoom_out"))
+        self._btn_pdf_zoom_out.clicked.connect(self._pdf_zoom_out)
+
+        self._btn_pdf_zoom_in = QPushButton("+")
+        self._btn_pdf_zoom_in.setFixedSize(28, 24)
+        self._btn_pdf_zoom_in.setToolTip(tr("ase_refs.pdf_zoom_in"))
+        self._btn_pdf_zoom_in.clicked.connect(self._pdf_zoom_in)
+
+        self._pdf_zoom_label = QLabel("100%")
+        self._pdf_zoom_label.setFixedWidth(48)
+        self._pdf_zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._combo_pdf_view = QComboBox()
+        self._combo_pdf_view.addItems([
+            tr("ase_refs.pdf_view_single"),
+            tr("ase_refs.pdf_view_double"),
+            tr("ase_refs.pdf_view_continuous"),
+        ])
+        self._combo_pdf_view.currentIndexChanged.connect(self._pdf_view_mode_changed)
+
+        self._btn_pdf_prev = QPushButton("\u25C0")
+        self._btn_pdf_prev.setFixedSize(28, 24)
+        self._btn_pdf_prev.clicked.connect(self._pdf_prev_page)
+        self._btn_pdf_page = QLabel("1 / 1")
+        self._btn_pdf_page.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._btn_pdf_page.setFixedWidth(80)
+        self._btn_pdf_next = QPushButton("\u25B6")
+        self._btn_pdf_next.setFixedSize(28, 24)
+        self._btn_pdf_next.clicked.connect(self._pdf_next_page)
+
+        pdf_toolbar_layout.addStretch(1)
+        pdf_toolbar_layout.addWidget(self._btn_pdf_zoom_out)
+        pdf_toolbar_layout.addWidget(self._pdf_zoom_label)
+        pdf_toolbar_layout.addWidget(self._btn_pdf_zoom_in)
+        pdf_toolbar_layout.addWidget(self._combo_pdf_view)
+        pdf_toolbar_layout.addSpacing(16)
+        pdf_toolbar_layout.addWidget(self._btn_pdf_prev)
+        pdf_toolbar_layout.addWidget(self._btn_pdf_page)
+        pdf_toolbar_layout.addWidget(self._btn_pdf_next)
+        pdf_toolbar_layout.addStretch(1)
+
         root.addWidget(self._browser, stretch=1)
+        root.addWidget(self._pdf_scroll, stretch=1)
+        root.addWidget(self._pdf_continuous_scroll, stretch=1)
+        root.addWidget(self._pdf_toolbar)
+        self._pdf_scroll.hide()
+        self._pdf_continuous_scroll.hide()
+        self._pdf_toolbar.hide()
 
         self._apply_font()
-        self._reload_document()
+        self._load_default_document()
+
+    # ── Title bar ─────────────────────────────────────────────────
+
+    def _build_title_bar(self) -> QWidget:
+        from PySide6.QtGui import QIcon
+        p = get_theme_palette()
+        bar = QWidget()
+        bar.setFixedHeight(32)
+        bar.setStyleSheet(f"background: {p['bg_panel']};")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(8, 0, 4, 0)
+        layout.setSpacing(0)
+
+        title = QLabel(tr("ase_refs.title"))
+        title.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
+        layout.addWidget(title)
+        layout.addStretch(1)
+
+        btn_style = (
+            f"QPushButton {{ border: none; padding: 2px; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; border-radius: 3px; }}"
+        )
+
+        self._btn_minimize = QPushButton()
+        self._btn_minimize.setFixedSize(28, 24)
+        self._btn_minimize.setIcon(QIcon(_load_icon("minimize")))
+        self._btn_minimize.setStyleSheet(btn_style)
+        self._btn_minimize.setToolTip(tr("ase_refs.minimize"))
+        self._btn_minimize.clicked.connect(self.showMinimized)
+
+        self._btn_maximize = QPushButton()
+        self._btn_maximize.setFixedSize(28, 24)
+        self._btn_maximize.setIcon(QIcon(_load_icon("maximize")))
+        self._btn_maximize.setStyleSheet(btn_style)
+        self._btn_maximize.setToolTip(tr("ase_refs.maximize"))
+        self._btn_maximize.clicked.connect(self._toggle_maximize)
+
+        btn_close = QPushButton()
+        btn_close.setFixedSize(28, 24)
+        btn_close.setIcon(QIcon(_load_icon("close")))
+        btn_close.setStyleSheet(
+            f"QPushButton {{ border: none; padding: 2px; }}"
+            f"QPushButton:hover {{ background: #e74c3c; border-radius: 3px; }}"
+        )
+        btn_close.setToolTip(tr("ase_refs.close"))
+        btn_close.clicked.connect(self.reject)
+
+        layout.addWidget(self._btn_minimize)
+        layout.addWidget(self._btn_maximize)
+        layout.addWidget(btn_close)
+
+        return bar
+
+    def _toggle_maximize(self) -> None:
+        if self._is_maximized:
+            self.showNormal()
+            if self._normal_geometry is not None:
+                self.setGeometry(self._normal_geometry)
+            self._is_maximized = False
+            self._btn_maximize.setIcon(QIcon(_load_icon("maximize")))
+            self._btn_maximize.setToolTip(tr("ase_refs.maximize"))
+        else:
+            self._normal_geometry = self.geometry()
+            screen = self.screen() or QApplication.primaryScreen()
+            if screen is not None:
+                geo = screen.availableGeometry()
+                self.setGeometry(geo)
+            self._is_maximized = True
+            self._btn_maximize.setIcon(QIcon(_load_icon("restore")))
+            self._btn_maximize.setToolTip(tr("ase_refs.restore"))
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
+
+    # ── Menu ──────────────────────────────────────────────────────
 
     def _build_menu(self) -> QMenuBar:
         from PySide6.QtWidgets import QMenu
@@ -109,8 +400,9 @@ class AseReferenceDialog(QDialog):
         menu_bar = QMenuBar(self)
 
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
-        file_menu.addAction(tr("ase_refs.reload"), self._reload_document)
-        file_menu.addAction(tr("ase_refs.open_file"), self._open_markdown_file)
+        file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
+        file_menu.addSeparator()
+        file_menu.addAction(tr("ase_refs.reload"), self._reload_active_document)
         menu_bar.addMenu(file_menu)
 
         settings_menu = QMenu(tr("ase_refs.settings_menu"), menu_bar)
@@ -119,26 +411,190 @@ class AseReferenceDialog(QDialog):
 
         return menu_bar
 
-    def _reload_document(self) -> None:
+    # ── Documents ─────────────────────────────────────────────────
+
+    def _load_default_document(self) -> None:
         try:
-            markdown = load_ase_reference_text(self._md_path)
+            md_path = default_ase_reference_path()
+        except FileNotFoundError:
+            return
+        self._add_doc_tab(md_path.name, md_path, "md")
+        if self._documents:
+            self._switch_to_doc(0)
+
+    def _add_doc_tab(self, name: str, path: Path, kind: str) -> int:
+        self._documents.append((name, path, kind))
+        index = len(self._documents) - 1
+
+        tab = _DocTab(name, path)
+        tab.clicked.connect(lambda _checked, i=index: self._switch_to_doc(i))
+
+        # Insert before the stretch + add button
+        count = self._tabs_layout.count()
+        self._tabs_layout.insertWidget(count - 2, tab)
+        return index
+
+    def _switch_to_doc(self, index: int) -> None:
+        if index < 0 or index >= len(self._documents):
+            return
+        self._active_doc_index = index
+
+        # Update tab states
+        for i in range(self._tabs_layout.count()):
+            widget = self._tabs_layout.itemAt(i).widget()
+            if isinstance(widget, _DocTab):
+                widget.set_active(i == index)
+
+        name, path, kind = self._documents[index]
+
+        if kind == "md":
+            self._show_markdown(path)
+        elif kind == "pdf":
+            self._show_pdf(path)
+
+    def _show_markdown(self, path: Path) -> None:
+        self._browser.show()
+        self._pdf_scroll.hide()
+        self._pdf_continuous_scroll.hide()
+        self._pdf_toolbar.hide()
+        try:
+            markdown = load_ase_reference_text(path)
         except OSError as exc:
             QMessageBox.warning(
                 self,
                 tr("ase_refs.read_error.title"),
-                tr("ase_refs.read_error.body", path=str(self._md_path), exc=str(exc)),
+                tr("ase_refs.read_error.body", path=str(path), exc=str(exc)),
             )
             return
         self._browser.setHtml(markdown_to_html(markdown))
         self._apply_font()
 
-    def _open_markdown_file(self) -> None:
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._md_path))):
-            QMessageBox.warning(
-                self,
-                tr("ase_refs.open_error.title"),
-                tr("ase_refs.open_error.body", path=str(self._md_path)),
-            )
+    def _show_pdf(self, path: Path) -> None:
+        self._browser.hide()
+        self._pdf_toolbar.show()
+
+        try:
+            import fitz
+        except ImportError:
+            self._pdf_label.setText(tr("ase_refs.pdf_missing"))
+            self._pdf_scroll.show()
+            self._pdf_continuous_scroll.hide()
+            return
+
+        if path not in self._pdf_docs:
+            self._pdf_docs[path] = fitz.open(str(path))
+        doc = self._pdf_docs[path]
+        self._pdf_total_pages = len(doc)
+        self._pdf_current_page = 0
+        self._pdf_zoom = 1.0
+        self._pdf_zoom_label.setText("100%")
+        self._update_pdf_view_visibility()
+        self._render_pdf()
+
+    def _update_pdf_view_visibility(self) -> None:
+        mode = self._combo_pdf_view.currentIndex()
+        if mode == 2:  # continuous
+            self._pdf_scroll.hide()
+            self._pdf_continuous_scroll.show()
+        else:
+            self._pdf_scroll.show()
+            self._pdf_continuous_scroll.hide()
+
+    def _render_pdf(self) -> None:
+        if self._active_doc_index < 0:
+            return
+        _, path, kind = self._documents[self._active_doc_index]
+        if kind != "pdf" or path not in self._pdf_docs:
+            return
+        doc = self._pdf_docs[path]
+        dpi = _PDF_DPI_BASE * self._pdf_zoom
+        mode = self._combo_pdf_view.currentIndex()
+
+        if mode == 2:  # continuous
+            self._pdf_continuous_widget.render_pages(doc, 0, len(doc), dpi)
+        elif mode == 1:  # double page
+            end = min(self._pdf_current_page + 2, self._pdf_total_pages)
+            combined = QPixmap()
+            pixmaps = []
+            for i in range(self._pdf_current_page, end):
+                pm = _render_pdf_page(doc, i, dpi)
+                if pm is not None:
+                    pixmaps.append(pm)
+            if pixmaps:
+                total_w = sum(p.width() for p in pixmaps) + 4 * (len(pixmaps) - 1)
+                max_h = max(p.height() for p in pixmaps)
+                combined = QPixmap(total_w, max_h)
+                combined.fill(0)
+                from PySide6.QtGui import QPainter
+                x = 0
+                for p in pixmaps:
+                    painter = QPainter(combined)
+                    painter.drawPixmap(x, 0, p)
+                    painter.end()
+                    x += p.width() + 4
+            self._pdf_label.setPixmap(combined)
+        else:  # single page
+            pixmap = _render_pdf_page(doc, self._pdf_current_page, dpi)
+            if pixmap is not None:
+                self._pdf_label.setPixmap(pixmap)
+
+        self._pdf_zoom_label.setText(f"{int(self._pdf_zoom * 100)}%")
+        self._btn_pdf_page.setText(
+            f"{self._pdf_current_page + 1} / {self._pdf_total_pages}"
+        )
+        self._btn_pdf_prev.setEnabled(self._pdf_current_page > 0)
+        self._btn_pdf_next.setEnabled(self._pdf_current_page < self._pdf_total_pages - 1)
+
+    def _pdf_prev_page(self) -> None:
+        if self._pdf_current_page > 0:
+            self._pdf_current_page -= 1
+            self._render_pdf()
+
+    def _pdf_next_page(self) -> None:
+        if self._pdf_current_page < self._pdf_total_pages - 1:
+            self._pdf_current_page += 1
+            self._render_pdf()
+
+    def _pdf_zoom_in(self) -> None:
+        if self._pdf_zoom < 4.0:
+            self._pdf_zoom = min(4.0, self._pdf_zoom + 0.25)
+            self._render_pdf()
+
+    def _pdf_zoom_out(self) -> None:
+        if self._pdf_zoom > 0.25:
+            self._pdf_zoom = max(0.25, self._pdf_zoom - 0.25)
+            self._render_pdf()
+
+    def _pdf_view_mode_changed(self, index: int) -> None:
+        self._update_pdf_view_visibility()
+        self._render_pdf()
+
+    def _add_document(self) -> None:
+        path_str, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("ase_refs.open_document"),
+            "",
+            tr("ase_refs.supported_files"),
+        )
+        if not path_str:
+            return
+        path = Path(path_str)
+        kind = "pdf" if path.suffix.lower() == ".pdf" else "md"
+        self._add_doc_tab(path.stem, path, kind)
+        self._switch_to_doc(len(self._documents) - 1)
+
+    def _reload_active_document(self) -> None:
+        if self._active_doc_index < 0:
+            return
+        name, path, kind = self._documents[self._active_doc_index]
+        if kind == "md":
+            self._show_markdown(path)
+        elif kind == "pdf" and path in self._pdf_docs:
+            self._pdf_docs[path].close()
+            del self._pdf_docs[path]
+            self._show_pdf(path)
+
+    # ── Font ──────────────────────────────────────────────────────
 
     def _show_font_settings(self) -> None:
         dialog = ReferenceFontSettingsDialog(
@@ -157,6 +613,15 @@ class AseReferenceDialog(QDialog):
     def _apply_font(self) -> None:
         font = QFont(self._font_family, self._font_size)
         self._browser.setFont(font)
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        for doc in self._pdf_docs.values():
+            try:
+                doc.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._pdf_docs.clear()
+        super().closeEvent(event)
 
 
 class ReferenceFontSettingsDialog(QDialog):

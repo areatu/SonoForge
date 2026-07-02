@@ -961,8 +961,7 @@ class ViewerWidget(QWidget):
     def _on_results_overlay_clear(self) -> None:
         self._results_overlay_cleared = True
         self._stored_linear_measurements.clear()
-        self._persistent_linear_graphics.clear()
-        self._render_persistent_linear_calipers()
+        self._clear_persistent_linear_calipers()
         self._emit_stored_linear_measurements()
         self.set_results_overlay("")
 
@@ -1031,7 +1030,7 @@ class ViewerWidget(QWidget):
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if self._current_state is not None:
             self._play_button.setText(
-                tr("viewer.pause") if self._current_state.is_playing else tr("viewer.play")
+                "Pause" if self._current_state.is_playing else "Play"
             )
             if self._current_state.total_frames > 0:
                 current = min(
@@ -1482,7 +1481,7 @@ class ViewerWidget(QWidget):
             self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
             self._timeline_slider.setValue(min(viewer_state.current_frame_index, maximum))
             self._play_button.setText(
-                tr("viewer.pause") if viewer_state.is_playing else tr("viewer.play")
+                "Pause" if viewer_state.is_playing else "Play"
             )
             self._fps_label.setText(
                 f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"

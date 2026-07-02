@@ -107,9 +107,9 @@ def merge_linear_measurements(
     existing: tuple[LinearMeasurement, ...],
     incoming: tuple[LinearMeasurement, ...],
 ) -> tuple[LinearMeasurement, ...]:
-    """Replace linear measurements by label and frame; ignore empty incoming."""
+    """Replace linear measurements by label and frame; clear when incoming is empty."""
     if not incoming:
-        return existing
+        return ()
     by_key: dict[tuple[str, int], LinearMeasurement] = {}
     for measurement in existing:
         frame_key = measurement.frame_index if measurement.frame_index is not None else -1

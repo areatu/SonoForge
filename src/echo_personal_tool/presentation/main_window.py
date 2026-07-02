@@ -87,6 +87,7 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
         return
     geo = screen.availableGeometry()
     if sys.platform == "win32":
+        window.show()
         window.setGeometry(geo)
         window._user_maximized = True  # type: ignore[attr-defined]
         return
@@ -132,6 +133,7 @@ class MainWindow(QMainWindow):
         self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
         self._user_maximized = False
+        self._slider_navigating = False
 
         self._controller = controller or AppController()
         orthanc_root = Path.home() / ".echo-personal-tool" / "orthanc"
@@ -178,7 +180,7 @@ class MainWindow(QMainWindow):
         self._viewer = ViewerWidget()
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
-        self._viewer.frame_selected.connect(self._controller.state_manager.set_frame)
+        self._viewer.frame_selected.connect(self._on_slider_frame_selected)
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
         )
@@ -961,6 +963,8 @@ class MainWindow(QMainWindow):
         image = np.asarray(pixels)
         is_playing = self._controller.state_manager.snapshot.is_playing
         scroll_active = self._controller.is_scroll_active()
+        slider_nav = self._slider_navigating
+        self._slider_navigating = False
         if is_playing or scroll_active:
             self._viewer.show_frame_fast(image)
         elif instance_switch:
@@ -973,7 +977,7 @@ class MainWindow(QMainWindow):
             self._restore_doppler_for_current_instance()
             self._restore_mmode_for_current_instance()
             self._sync_doppler_tool_availability()
-            if self._user_preferences.auto_play and not is_playing:
+            if self._user_preferences.auto_play and not is_playing and not slider_nav:
                 self._controller.toggle_playback()
             if self._controller.needs_manual_calibration():
                 self._viewer._auto_calibration_succeeded = False
@@ -1001,6 +1005,10 @@ class MainWindow(QMainWindow):
                 self._show_status(
                     tr("status.calibration_click")
                 )
+
+    def _on_slider_frame_selected(self, index: int) -> None:
+        self._slider_navigating = True
+        self._controller.state_manager.set_frame(index)
 
     def _on_scroll_settled(self) -> None:
         if self._controller.state_manager.snapshot.is_playing:
@@ -1142,7 +1150,8 @@ class MainWindow(QMainWindow):
                 self._instance_overlay_cache[instance_uid] = fresh_text
                 display_text = fresh_text
             else:
-                display_text = self._instance_overlay_cache.get(instance_uid, "")
+                self._instance_overlay_cache.pop(instance_uid, None)
+                display_text = ""
         else:
             display_text = fresh_text
 

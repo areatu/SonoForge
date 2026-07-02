@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +40,11 @@ def _get_ort() -> Any | None:
 
 
 def _default_models_dir() -> Path:
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass is not None:
+        candidate = Path(meipass) / "models"
+        if (candidate / "model_manifest.json").is_file():
+            return candidate
     for ancestor in Path(__file__).resolve().parents:
         manifest_path = ancestor / "models" / "model_manifest.json"
         if manifest_path.is_file():

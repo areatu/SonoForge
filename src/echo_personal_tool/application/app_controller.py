@@ -10,7 +10,7 @@ from pathlib import Path
 from time import perf_counter
 
 import numpy as np
-from PySide6.QtCore import QObject, QThreadPool, QTimer, Signal
+from PySide6.QtCore import Qt, QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
 from echo_personal_tool.application.frame_cache import FrameCache
