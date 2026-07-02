@@ -34,6 +34,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
     next_volume_label,
 )
 from echo_personal_tool.domain.models import Contour
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerCalibrationState,
@@ -190,6 +191,7 @@ class ContourViewBox(pg.ViewBox):
             return
         ev.accept()
 
+    @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
@@ -223,6 +225,7 @@ class ContourViewBox(pg.ViewBox):
             return
         super().mousePressEvent(ev)
 
+    @_prof
     def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_hover(ev):
             ev.accept()
@@ -267,6 +270,7 @@ class ContourViewBox(pg.ViewBox):
                 self._viewer_widget._finish_caliper_node_drag(cancel=True)
         super().leaveEvent(ev)
 
+    @_prof
     def wheelEvent(self, ev, axis=None) -> None:  # type: ignore[override]
         ev.ignore()
 
@@ -319,6 +323,7 @@ class _ContourNodeItem(pg.ScatterPlotItem):
             self.setBrush(pg.mkBrush(self._base_pen.color()))
             self.setSize(10)
 
+    @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
@@ -383,6 +388,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
                 self.setPen(self._base_pen)
                 self.setBrush(pg.mkBrush(self._base_pen.color()))
 
+    @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
@@ -454,6 +460,7 @@ class ResultsOverlayLabel(QLabel):
     def position_ratios(self) -> tuple[float, float]:
         return self._x_ratio, self._y_ratio
 
+    @_prof
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
@@ -467,6 +474,7 @@ class ResultsOverlayLabel(QLabel):
             return
         super().mousePressEvent(event)
 
+    @_prof
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if not self._dragging:
             super().mouseMoveEvent(event)
@@ -877,6 +885,7 @@ class ViewerWidget(QWidget):
                 self._handle_contour_drag_release_from_global(event.globalPosition())
         return super().eventFilter(watched, event)
 
+    @_prof
     def wheelEvent(self, event) -> None:  # type: ignore[override]
         if self._handle_wheel(event):
             event.accept()
@@ -958,6 +967,7 @@ class ViewerWidget(QWidget):
         if self._results_overlay_label.isVisible():
             self._request_results_overlay_reposition()
 
+    @_prof
     def _on_results_overlay_clear(self) -> None:
         self._results_overlay_cleared = True
         self._stored_linear_measurements.clear()
@@ -1162,6 +1172,7 @@ class ViewerWidget(QWidget):
             return self._current_state.instance
         return None
 
+    @_prof
     def set_results_overlay(self, text: str) -> None:
         """Show session measurement summary (top-right box, left-aligned text)."""
         if self._results_overlay_cleared and text.strip():
@@ -1185,6 +1196,7 @@ class ViewerWidget(QWidget):
     def refresh_dicom_tags_overlay(self) -> None:
         self._refresh_dicom_tags_overlay()
 
+    @_prof
     def toggle_debug_overlay(self) -> None:
         self._debug_overlay_visible = not self._debug_overlay_visible
         if self._debug_overlay_visible:
@@ -1245,6 +1257,7 @@ class ViewerWidget(QWidget):
     def results_overlay_position(self) -> tuple[float, float]:
         return self._results_overlay_label.position_ratios()
 
+    @_prof
     def reposition_overlays(self) -> None:
         self._position_overlay_labels(reposition_results=not self._results_overlay_custom_position)
 
@@ -1292,6 +1305,7 @@ class ViewerWidget(QWidget):
             return color, not color
         return False, True
 
+    @_prof
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
         frame = np.asarray(pixels)
@@ -1300,10 +1314,13 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
-            frame,
-            media_format,
-        )
+        # Cache display mode per instance to avoid re-detection
+        instance_key = id(frame) if frame.base is None else None
+        if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
+            self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
+                frame, media_format,
+            )
+            self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
 
@@ -1312,10 +1329,20 @@ class ViewerWidget(QWidget):
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
+            else:
+                self._image_item.setLevels((0, 255))
         else:
             self._color_source_rgb = None
             gray = self._current_frame
             self._image_item.setImage(gray, autoLevels=False)
+            if self._window_level_enabled:
+                self._update_levels()
+            else:
+                vmin = float(gray.min()) if gray.size else 0.0
+                vmax = float(gray.max()) if gray.size else 255.0
+                if vmin == vmax:
+                    vmax = vmin + 1.0
+                self._image_item.setLevels((vmin, vmax))
             new_path = Path(self._current_state.instance.path) if self._current_state and self._current_state.instance and self._current_state.instance.path else None
             if new_path != self._current_instance_path:
                 with QSignalBlocker(self._dr_slider):
@@ -1383,6 +1410,7 @@ class ViewerWidget(QWidget):
     def zoom_mode(self) -> str:
         return self._zoom_mode
 
+    @_prof
     def show_frame_fast(self, pixels: np.ndarray) -> None:
         """Fast render for playback: skip layout/doppler/panel detection."""
         frame = np.asarray(pixels)
@@ -1391,12 +1419,14 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
-            frame,
-            media_format,
-        )
+        # Cache display mode per instance to avoid re-detection every frame
+        instance_key = id(frame) if frame.base is None else None
+        if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
+            self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
+                frame, media_format,
+            )
+            self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
-        self._current_frame = to_grayscale_array(frame)
 
         levels_key = (
             self._dr_slider.value(),
@@ -1408,18 +1438,35 @@ class ViewerWidget(QWidget):
 
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+            self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled and levels_changed:
                 self._update_levels()
+            elif not self._window_level_enabled:
+                self._image_item.setLevels((0, 255))
         else:
             self._color_source_rgb = None
+            # Skip float64 conversion — pyqtgraph displays uint8 directly
+            if frame.ndim == 2:
+                self._current_frame = frame
+            elif frame.ndim == 3 and frame.shape[2] >= 3:
+                self._current_frame = np.mean(frame[..., :3], axis=2).astype(np.uint8) if not levels_changed else to_grayscale_array(frame)
+            else:
+                self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             self._image_item.setImage(self._current_frame, autoLevels=False)
             if self._window_level_enabled and levels_changed:
                 self._update_levels()
+            elif not self._window_level_enabled:
+                vmin = float(self._current_frame.min()) if self._current_frame.size else 0.0
+                vmax = float(self._current_frame.max()) if self._current_frame.size else 255.0
+                if vmin == vmax:
+                    vmax = vmin + 1.0
+                self._image_item.setLevels((vmin, vmax))
         sync_enabled = getattr(self, "_sync_display_control_enabled", None)
         if callable(sync_enabled):
             sync_enabled()
 
+    @_prof
     def refresh_after_scroll(self) -> None:
         """Restore layout/overlays after fast scroll without reprocessing pixels."""
         if self._current_frame is not None:
@@ -1435,6 +1482,7 @@ class ViewerWidget(QWidget):
         self._clear_calibration_caliper()
         self._clear_contours()
 
+    @_prof
     def set_state(self, viewer_state: ViewerState) -> None:
         if self._syncing_state:
             self._pending_viewer_state = viewer_state
@@ -1479,24 +1527,26 @@ class ViewerWidget(QWidget):
             controls_enabled = viewer_state.total_frames > 1
             self._timeline_slider.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
-            self._timeline_slider.setValue(min(viewer_state.current_frame_index, maximum))
-            self._play_button.setText(
-                "Pause" if viewer_state.is_playing else "Play"
-            )
-            self._fps_label.setText(
-                f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
-            )
+            target_frame = min(viewer_state.current_frame_index, maximum)
+            if self._timeline_slider.value() != target_frame:
+                self._timeline_slider.setValue(target_frame)
+            play_text = "Pause" if viewer_state.is_playing else "Play"
+            if self._play_button.text() != play_text:
+                self._play_button.setText(play_text)
+            fps_text = f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
+            if self._fps_label.text() != fps_text:
+                self._fps_label.setText(fps_text)
             if viewer_state.total_frames > 0:
                 current = min(viewer_state.current_frame_index + 1, viewer_state.total_frames)
-                self._source_label.setText(
-                    tr(
-                        "viewer.frame_counter",
-                        current=str(current),
-                        total=str(viewer_state.total_frames),
-                    )
+                source_text = tr(
+                    "viewer.frame_counter",
+                    current=str(current),
+                    total=str(viewer_state.total_frames),
                 )
             else:
-                self._source_label.setText(tr("viewer.frame_none"))
+                source_text = tr("viewer.frame_none")
+            if self._source_label.text() != source_text:
+                self._source_label.setText(source_text)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self._stored_contours) != viewer_state.contours
             if contours_updated:
@@ -1526,6 +1576,7 @@ class ViewerWidget(QWidget):
         self._image_smooth = enabled
         self._image_item.setOpts(smooth=enabled)
 
+    @_prof
     def toggle_linear_caliper(self) -> None:
         if self._linear_caliper_active:
             self._clear_linear_caliper()
@@ -1552,12 +1603,14 @@ class ViewerWidget(QWidget):
     def is_linear_caliper_active(self) -> bool:
         return self._linear_caliper_active
 
+    @_prof
     def toggle_calibration_caliper(self) -> None:
         if self._calibration_active:
             self._clear_calibration_caliper()
             return
         self.start_calibration_caliper()
 
+    @_prof
     def start_calibration_caliper(self) -> bool:
         self._clear_linear_caliper()
         self._clear_calibration_caliper()
@@ -2144,6 +2197,7 @@ class ViewerWidget(QWidget):
         self._clear_calibration_caliper()
         return self.activate_generic_dist_caliper() is not None
 
+    @_prof
     def start_linear_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
         if not labels:
             return False
@@ -3703,6 +3757,7 @@ class ViewerWidget(QWidget):
                 measurements.append(measurement)
         return measurements
 
+    @_prof
     def _clear_persistent_linear_calipers(self) -> None:
         for item in self._persistent_linear_graphics:
             self._view.removeItem(item[0])
@@ -3713,6 +3768,7 @@ class ViewerWidget(QWidget):
             self._view.removeItem(item)
         self._persistent_caliper_label_items.clear()
 
+    @_prof
     def _render_persistent_linear_calipers(self) -> None:
         self._clear_persistent_linear_calipers()
         frame_index = self._contour_frame_index()
@@ -4428,6 +4484,7 @@ class ViewerWidget(QWidget):
                 item[1].set_selected(is_selected)
                 item[2].set_selected(is_selected)
 
+    @_prof
     def _delete_selected_caliper(self) -> bool:
         if self._selected_caliper_key is None:
             return False
@@ -4440,6 +4497,7 @@ class ViewerWidget(QWidget):
         self._refresh_frame_overlays()
         return True
 
+    @_prof
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if event.key() == Qt.Key.Key_Escape:
             if self._caliper_drag_active:
@@ -4535,6 +4593,7 @@ class ViewerWidget(QWidget):
         self._sync_display_control_enabled = sync_enabled  # type: ignore[attr-defined]
         sync_enabled()
 
+    @_prof
     def _update_levels(self) -> None:
         if self._current_frame is None or not self._window_level_enabled:
             return

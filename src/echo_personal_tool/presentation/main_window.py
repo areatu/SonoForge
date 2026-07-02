@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import (
@@ -261,17 +262,20 @@ class MainWindow(QMainWindow):
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(handler)
 
+    @_prof
     def _toggle_playback_shortcut(self) -> None:
         if self._controller.state_manager.snapshot.decode_in_progress:
             return
         self._controller.toggle_playback()
 
+    @_prof
     def _start_manual_contour_shortcut(self) -> None:
         if self._viewer.start_contour():
             self._show_status(tr("status.manual_contour"))
         else:
             self._show_status(tr("status.load_frame_or_finish_contour"))
 
+    @_prof
     def _start_model_contour_shortcut(self) -> None:
         start_mode = self._viewer.start_model_contour()
         if start_mode:
@@ -281,6 +285,7 @@ class MainWindow(QMainWindow):
         else:
             self._show_status(tr("status.load_frame_or_finish_contour"))
 
+    @_prof
     def _request_auto_segment_shortcut(self) -> None:
         if self._viewer.get_doppler_tool_mode() != "none":
             return
@@ -290,6 +295,7 @@ class MainWindow(QMainWindow):
         if not self._controller.state_manager.snapshot.is_playing:
             self._controller.request_auto_segment()
 
+    @_prof
     def _finish_active_tool_shortcut(self) -> None:
         pending = self._viewer.pending_ai_review_contour()
         if pending is not None:
@@ -303,6 +309,7 @@ class MainWindow(QMainWindow):
         if self._viewer.finish_contour():
             return
 
+    @_prof
     def _cancel_active_tool(self) -> None:
         if self._viewer.discard_pending_ai_contour():
             self._controller.on_contours_changed(self._viewer.contours())
@@ -310,6 +317,7 @@ class MainWindow(QMainWindow):
             return
         self._viewer.cancel_active_tool()
 
+    @_prof
     def _delete_current_contour(self) -> None:
         if self._viewer._delete_selected_caliper():
             self._show_status(tr("status.caliper_deleted"))
@@ -652,9 +660,11 @@ class MainWindow(QMainWindow):
         self._tool_panel.hide()
         self._remove_tool_panel_from_content_layout()
 
+    @_prof
     def _show_references(self) -> None:
         show_ase_reference_dialog(self)
 
+    @_prof
     def _show_user_preferences(self) -> None:
         show_user_preferences_dialog(self, on_apply=self._apply_user_preferences)
 
@@ -750,6 +760,7 @@ class MainWindow(QMainWindow):
         log_path = directory / "scan_errors.log"
         self._controller.open_folder(directory, error_log_path=log_path)
 
+    @_prof
     def _open_folder(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Select study folder")
         if not directory:
@@ -798,6 +809,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, tr("dialog.export_error.title"), error)
         self._show_status(tr("status.mp4_export_failed"))
 
+    @_prof
     def _open_orthanc_dialog(self) -> None:
         settings = load_server_settings()
         if settings.use_mock:
@@ -838,6 +850,7 @@ class MainWindow(QMainWindow):
         self._orthanc_cache.clear_all()
         super().closeEvent(event)
 
+    @_prof
     def _on_studies_loaded(self, studies: object) -> None:
         study_list = list(studies)  # type: ignore[arg-type]
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
@@ -948,12 +961,14 @@ class MainWindow(QMainWindow):
         image = np.asarray(pixels)
         self._viewer2.show_frame(image)
 
+    @_prof
     def _on_state_changed_for_viewer2(self, state: ViewerState) -> None:
         if self._viewer2 is None:
             return
         if self._viewer2_instance is not None and self._viewer2_instance == state.instance:
             self._viewer2.set_state(state)
 
+    @_prof
     def _on_frame_loaded(self, pixels: object) -> None:
         instance_switch = self._click_to_frame_started_at is not None
         if instance_switch:
@@ -1010,6 +1025,7 @@ class MainWindow(QMainWindow):
         self._slider_navigating = True
         self._controller.state_manager.set_frame(index)
 
+    @_prof
     def _on_scroll_settled(self) -> None:
         if self._controller.state_manager.snapshot.is_playing:
             return
@@ -1020,6 +1036,7 @@ class MainWindow(QMainWindow):
         self._restore_mmode_for_current_instance()
         self._sync_doppler_tool_availability()
 
+    @_prof
     def _on_frame_load_failed(self, message: str) -> None:
         self._click_to_frame_started_at = None
         QMessageBox.warning(self, "Load failed", message)
@@ -1029,6 +1046,7 @@ class MainWindow(QMainWindow):
         if self.statusBar():
             self.statusBar().showMessage(message)
 
+    @_prof
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
@@ -1133,6 +1151,7 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.load_first_frame_mmode"))
         return False
 
+    @_prof
     def _sync_results_overlay(self, state: ViewerState) -> None:
         time_calibrated = self._viewer.is_doppler_time_calibrated()
         instance = state.instance
@@ -1363,6 +1382,7 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("Load a frame first")
 
+    @_prof
     def _on_reset_measurements_requested(self) -> None:
         if self._user_preferences.confirm_reset:
             answer = QMessageBox.question(
@@ -1854,6 +1874,7 @@ class MainWindow(QMainWindow):
                     return True
         return super().eventFilter(watched, event)
 
+    @_prof
     def event(self, event) -> bool:  # type: ignore[override]
         if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Tab:
             self._viewer.cycle_caliper_label()

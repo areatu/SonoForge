@@ -13,6 +13,8 @@ import numpy as np
 from PySide6.QtCore import Qt, QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
+
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (

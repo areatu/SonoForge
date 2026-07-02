@@ -14,8 +14,10 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
     should_show_indexed_linear,
 )
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 
+@_prof
 def append_indexed_for_overlay(
     lines: list[str],
     snapshot: MeasurementSnapshot,

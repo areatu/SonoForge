@@ -190,9 +190,12 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
                 img = img[..., :3]
             if img.shape[2] == 1:
                 img = img[..., 0]
+            # OpenCV returns BGR, convert to RGB for DICOM color Doppler
+            if img.ndim == 3 and img.shape[2] == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         if img.shape[:2] != (rows, cols):
             return None
-        return img
+        return np.ascontiguousarray(img)
     except Exception:
         return None
 

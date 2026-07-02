@@ -12,6 +12,7 @@ from echo_personal_tool.domain.models import (
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 
 class StateManager(QObject):
@@ -74,6 +75,7 @@ class StateManager(QObject):
         if emit:
             self._emit_state()
 
+    @_prof
     def set_decode_in_progress(self, in_progress: bool, *, emit: bool = True) -> None:
         if self._decode_in_progress == in_progress:
             return
@@ -81,6 +83,7 @@ class StateManager(QObject):
         if emit:
             self._emit_state()
 
+    @_prof
     def set_total_frames(self, total_frames: int) -> None:
         if total_frames < 1:
             raise ValueError(f"total_frames must be >= 1, got {total_frames}")
@@ -91,6 +94,7 @@ class StateManager(QObject):
             self._current_frame_index = total_frames - 1
         self._emit_state()
 
+    @_prof
     def set_frame(self, index: int, *, scroll: bool = False) -> None:
         if self._instance is None or self._total_frames < 1:
             raise RuntimeError("Cannot set frame without a loaded instance")
@@ -160,6 +164,7 @@ class StateManager(QObject):
         if emit:
             self._emit_state()
 
+    @_prof
     def emit_state(self) -> None:
         """Publish the current snapshot to UI listeners."""
         self._emit_state()
@@ -171,6 +176,7 @@ class StateManager(QObject):
     def clear_manual_pixel_spacing(self) -> None:
         self.set_manual_pixel_spacing(None)
 
+    @_prof
     def reset_measurement_inputs(self) -> None:
         """Clear contours, linear measurements, Doppler input, and manual calibration."""
         self._contours = ()

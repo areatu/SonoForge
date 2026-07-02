@@ -579,6 +579,18 @@ QToolTip {{
     padding: 4px 8px;
     font-size: {max(font_size - 1, 11)}px;
 }}
+
+QHeaderView::section {{
+    background: {p["bg_panel"]};
+    color: {p["text"]};
+    border: 1px solid {p["border"]};
+    padding: 6px 8px;
+    font-weight: 600;
+    font-size: {font_size}px;
+}}
+QHeaderView::section:hover {{
+    background: {p["bg_button_hover"]};
+}}
 """
 
 

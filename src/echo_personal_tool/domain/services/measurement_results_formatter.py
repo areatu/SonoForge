@@ -11,8 +11,10 @@ from echo_personal_tool.domain.services.indexed_results_formatter import (
     append_indexed_for_overlay,
 )
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 
+@_prof
 def format_results_overlay(
     snapshot: MeasurementSnapshot | None,
     *,

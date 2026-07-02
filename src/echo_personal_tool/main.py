@@ -32,6 +32,7 @@ from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_load
 
 from echo_personal_tool.presentation.main_window import MainWindow, apply_maximized_to_work_area
 from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_export_dialog
+from echo_personal_tool.infrastructure.profiler import print_summary, is_enabled
 
 
 def main() -> int:
@@ -48,7 +49,10 @@ def main() -> int:
             QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
-    return app.exec()
+    result = app.exec()
+    if is_enabled():
+        print_summary()
+    return result
 
 
 if __name__ == "__main__":

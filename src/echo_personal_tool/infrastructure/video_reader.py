@@ -30,8 +30,8 @@ class VideoReader:
 
     def __init__(self, buffer_size: int = RING_BUFFER_SIZE) -> None:
         self._buffer_size = buffer_size
-        self._slots: list[tuple[int, np.ndarray] | None] = [None] * buffer_size
-        self._write_pos = 0
+        self._buffer: dict[int, np.ndarray] = {}
+        self._buffer_order: list[int] = []
         self._capture: cv2.VideoCapture | None = None
         self._open_path: Path | None = None
         self._frame_count = 0
@@ -87,10 +87,10 @@ class VideoReader:
         return self.get_buffered_frame(index)
 
     def get_buffered_frame(self, index: int) -> np.ndarray:
-        for slot in self._slots:
-            if slot is not None and slot[0] == index:
-                return slot[1]
-        raise KeyError(f"Frame {index} is not in the ring buffer")
+        frame = self._buffer.get(index)
+        if frame is None:
+            raise KeyError(f"Frame {index} is not in the ring buffer")
+        return frame
 
     def release(self) -> None:
         if self._capture is not None:
@@ -101,8 +101,8 @@ class VideoReader:
         self._fps = 0.0
         self._last_read_index = None
         self._keyframe_index = None
-        self._slots = [None] * self._buffer_size
-        self._write_pos = 0
+        self._buffer.clear()
+        self._buffer_order.clear()
 
     def __enter__(self) -> VideoReader:
         return self
@@ -186,5 +186,10 @@ class VideoReader:
         return True
 
     def _store_in_buffer(self, index: int, frame: np.ndarray) -> None:
-        self._slots[self._write_pos] = (index, frame)
-        self._write_pos = (self._write_pos + 1) % self._buffer_size
+        if index in self._buffer:
+            return
+        self._buffer[index] = frame
+        self._buffer_order.append(index)
+        if len(self._buffer_order) > self._buffer_size:
+            evict_idx = self._buffer_order.pop(0)
+            self._buffer.pop(evict_idx, None)

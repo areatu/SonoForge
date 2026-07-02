@@ -117,17 +117,24 @@ class FrameCache:
         """Count loaded frames strictly after center (no wrap)."""
         if self._total_frames == 0:
             return 0
-        return sum(1 for i in range(center + 1, self._total_frames) if i in self._frame_store)
+        # O(k) scan where k = frames ahead, instead of O(n) full scan
+        count = 0
+        store = self._frame_store
+        for i in range(center + 1, self._total_frames):
+            if i in store:
+                count += 1
+        return count
 
     def nearest_loaded_ahead(self, center: int) -> int | None:
         """Return the smallest loaded index > center, wrapping to 0 at end; None if none."""
         if self._total_frames == 0:
             return None
+        store = self._frame_store
         for idx in range(center + 1, self._total_frames):
-            if idx in self._frame_store:
+            if idx in store:
                 return idx
         for idx in range(0, center):
-            if idx in self._frame_store:
+            if idx in store:
                 return idx
         return None
 
