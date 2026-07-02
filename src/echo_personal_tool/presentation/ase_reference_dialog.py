@@ -58,7 +58,7 @@ def _load_icon(name: str) -> QPixmap:
     if meipass is not None:
         icon_dir = Path(meipass) / "echo_personal_tool" / "resources" / "icons"
     else:
-        icon_dir = Path(__file__).resolve().parents[2] / "resources" / "icons"
+        icon_dir = Path(__file__).resolve().parents[1] / "resources" / "icons"
     svg_path = icon_dir / f"{name}.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
@@ -172,6 +172,7 @@ class AseReferenceDialog(QDialog):
         self.setWindowTitle(tr("ase_refs.title"))
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.resize(1020, 750)
 
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
@@ -312,12 +313,13 @@ class AseReferenceDialog(QDialog):
 
     def _build_title_bar(self) -> QWidget:
         from PySide6.QtGui import QIcon
+        from PySide6.QtWidgets import QSizePolicy
         p = get_theme_palette()
         bar = QWidget()
         bar.setFixedHeight(32)
         bar.setStyleSheet(f"background: {p['bg_panel']};")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(8, 0, 4, 0)
+        layout.setContentsMargins(8, 0, 0, 0)
         layout.setSpacing(0)
 
         title = QLabel(tr("ase_refs.title"))
@@ -325,38 +327,36 @@ class AseReferenceDialog(QDialog):
         layout.addWidget(title)
         layout.addStretch(1)
 
-        btn_style = (
-            f"QPushButton {{ border: none; padding: 2px; }}"
-            f"QPushButton:hover {{ background: {p['bg_button_hover']}; border-radius: 3px; }}"
-        )
+        # Window controls — use object names so theme CSS from echopac_theme applies
+        window_controls = QWidget()
+        window_controls.setObjectName("windowControls")
+        window_controls.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        wc_layout = QHBoxLayout(window_controls)
+        wc_layout.setContentsMargins(0, 0, 0, 0)
+        wc_layout.setSpacing(0)
 
         self._btn_minimize = QPushButton()
-        self._btn_minimize.setFixedSize(28, 24)
+        self._btn_minimize.setObjectName("minimizeButton")
         self._btn_minimize.setIcon(QIcon(_load_icon("minimize")))
-        self._btn_minimize.setStyleSheet(btn_style)
         self._btn_minimize.setToolTip(tr("ase_refs.minimize"))
         self._btn_minimize.clicked.connect(self.showMinimized)
 
         self._btn_maximize = QPushButton()
-        self._btn_maximize.setFixedSize(28, 24)
+        self._btn_maximize.setObjectName("maximizeButton")
         self._btn_maximize.setIcon(QIcon(_load_icon("maximize")))
-        self._btn_maximize.setStyleSheet(btn_style)
         self._btn_maximize.setToolTip(tr("ase_refs.maximize"))
         self._btn_maximize.clicked.connect(self._toggle_maximize)
 
         btn_close = QPushButton()
-        btn_close.setFixedSize(28, 24)
+        btn_close.setObjectName("closeButton")
         btn_close.setIcon(QIcon(_load_icon("close")))
-        btn_close.setStyleSheet(
-            f"QPushButton {{ border: none; padding: 2px; }}"
-            f"QPushButton:hover {{ background: #e74c3c; border-radius: 3px; }}"
-        )
         btn_close.setToolTip(tr("ase_refs.close"))
         btn_close.clicked.connect(self.reject)
 
-        layout.addWidget(self._btn_minimize)
-        layout.addWidget(self._btn_maximize)
-        layout.addWidget(btn_close)
+        wc_layout.addWidget(self._btn_minimize)
+        wc_layout.addWidget(self._btn_maximize)
+        wc_layout.addWidget(btn_close)
+        layout.addWidget(window_controls)
 
         return bar
 
@@ -391,6 +391,38 @@ class AseReferenceDialog(QDialog):
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
         self._drag_pos = None
         super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if self._active_doc_index >= 0:
+            _, _, kind = self._documents[self._active_doc_index]
+            if kind == "pdf":
+                key = event.key()
+                if key == Qt.Key.Key_Right or key == Qt.Key.Key_Down:
+                    self._pdf_next_page()
+                    event.accept()
+                    return
+                if key == Qt.Key.Key_Left or key == Qt.Key.Key_Up:
+                    self._pdf_prev_page()
+                    event.accept()
+                    return
+                if key == Qt.Key.Key_Space:
+                    self._pdf_next_page()
+                    event.accept()
+                    return
+        super().keyPressEvent(event)
+
+    def wheelEvent(self, event) -> None:  # type: ignore[override]
+        if self._active_doc_index >= 0:
+            _, _, kind = self._documents[self._active_doc_index]
+            if kind == "pdf" and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                delta = event.angleDelta().y()
+                if delta > 0:
+                    self._pdf_zoom_in()
+                elif delta < 0:
+                    self._pdf_zoom_out()
+                event.accept()
+                return
+        super().wheelEvent(event)
 
     # ── Menu ──────────────────────────────────────────────────────
 
