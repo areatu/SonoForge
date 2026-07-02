@@ -234,7 +234,7 @@ def test_measurement_panel_shows_indexed_section_when_bsa_available(qtbot) -> No
     )
 
     text = panel._summary_label.text()
-    assert "Индексиров. (ППТ)" in text
+    assert "Индексир. (ППТ)" in text
     assert "ППТ: 1.82 m²" in text
     assert "иКДО (Simpson)" in text
     assert "LVEDD инд." in text

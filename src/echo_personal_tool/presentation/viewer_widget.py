@@ -4360,12 +4360,9 @@ class ViewerWidget(QWidget):
         self._clear_linear_caliper_graphics()
         if self._caliper_sequence:
             next_label = self._caliper_sequence.pop(0)
-            # Chain: next segment starts where this one ended
-            self._linear_caliper_start = end
             self._set_caliper_label(next_label)
             self._linear_caliper_active = True
-            self._update_linear_caliper_preview(end, end)
-            self._measurement_label.setText(tr("viewer.linear_caliper_click_end", label=next_label))
+            self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=next_label))
         else:
             self._linear_caliper_active = False
             if self._caliper_sequence_size > 1:

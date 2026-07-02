@@ -45,7 +45,7 @@ def test_highlight_manual_esv_after_edv() -> None:
     esv_button = next(
         btn
         for btn in menu.findChildren(QPushButton)
-        if btn.text() == "ФВ ЛЖ Simpson КСО"
+        if btn.text() == "Simpson ES"
     )
     assert menu._blink_target is esv_button
 

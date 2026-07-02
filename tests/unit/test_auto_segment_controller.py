@@ -276,7 +276,7 @@ def test_on_auto_segment_finished_sets_review_pending(
     assert contours[0].source == "ai"
     assert contours[0].review_pending is True
     assert messages[-1] == (
-        "A4C ED: проверьте контур (ASE, без папиллярных мышц) · R — уточнить · Enter — принять"
+        "A4C ED: review contour (ASE, no papillary muscles) \u00b7 R \u2014 refine \u00b7 Enter \u2014 accept"
     )
 
 
@@ -321,7 +321,7 @@ def test_accept_ai_contour_review_clears_pending(
     assert accepted is True
     assert len(contours) == 1
     assert contours[0].review_pending is False
-    assert messages[-1] == "A4C ED: контур принят"
+    assert messages[-1] == "A4C ED: contour accepted"
 
 
 def test_on_auto_segment_finished_auto_refines_when_enabled(
@@ -389,4 +389,12 @@ def test_request_auto_segment_requires_a4c_view(
     controller.request_auto_segment()
 
     assert thread_pool.started == []
-    assert "A2C" in messages[-1] or "следующей" in messages[-1]
+    assert "unavailable" in messages[-1].lower() or "недоступн" in messages[-1]
+
+
+@pytest.fixture(autouse=True)
+def _en_locale():
+    from echo_personal_tool.infrastructure.i18n import set_language
+    set_language("en")
+    yield
+    set_language("ru")
