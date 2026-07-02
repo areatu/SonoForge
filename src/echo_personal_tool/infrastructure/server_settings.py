@@ -24,6 +24,16 @@ class ServerSettings:
     auth_mode: str = _DEFAULT_AUTH_MODE
     http_headers: str = ""
     use_mock: bool = _DEFAULT_USE_MOCK
+    # DIMSE
+    dimse_enabled: bool = False
+    dimse_ae_title: str = "ECHO2026"
+    dimse_called_ae: str = "ORTHANC"
+    dimse_host: str = "127.0.0.1"
+    dimse_port: int = 4242
+    # STOW-RS override
+    stow_dicom_web_url: str = ""
+    # Query source preference
+    query_source: str = "dicomweb"
 
 
 def _settings_store() -> QSettings:
@@ -83,6 +93,13 @@ def load_server_settings() -> ServerSettings:
         auth_mode=auth_mode,
         http_headers=str(store.value("http_headers", "")),
         use_mock=_read_bool(store.value("use_mock"), _DEFAULT_USE_MOCK),
+        dimse_enabled=_read_bool(store.value("dimse_enabled"), False),
+        dimse_ae_title=str(store.value("dimse_ae_title", "ECHO2026")),
+        dimse_called_ae=str(store.value("dimse_called_ae", "ORTHANC")),
+        dimse_host=str(store.value("dimse_host", "127.0.0.1")),
+        dimse_port=int(store.value("dimse_port", 4242)),
+        stow_dicom_web_url=str(store.value("stow_dicom_web_url", "")),
+        query_source=str(store.value("query_source", "dicomweb")),
     )
 
 
@@ -95,4 +112,11 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("auth_mode", settings.auth_mode)
     store.setValue("http_headers", settings.http_headers)
     store.setValue("use_mock", settings.use_mock)
+    store.setValue("dimse_enabled", settings.dimse_enabled)
+    store.setValue("dimse_ae_title", settings.dimse_ae_title)
+    store.setValue("dimse_called_ae", settings.dimse_called_ae)
+    store.setValue("dimse_host", settings.dimse_host)
+    store.setValue("dimse_port", settings.dimse_port)
+    store.setValue("stow_dicom_web_url", settings.stow_dicom_web_url)
+    store.setValue("query_source", settings.query_source)
     store.sync()

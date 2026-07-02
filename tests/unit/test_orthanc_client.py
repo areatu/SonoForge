@@ -83,6 +83,6 @@ def test_query_studies_filters_by_patient_name() -> None:
 
     client = _client_with_transport(handler)
     try:
-        assert client.query_studies("IVAN") == []
+        assert client.query_studies(patient_name="IVAN") == []
     finally:
         client.close()

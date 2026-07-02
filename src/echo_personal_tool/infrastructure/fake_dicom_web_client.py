@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
+from echo_personal_tool.domain.models.orthanc import (
+    InstanceInfo,
+    SeriesInfo,
+    StowResult,
+    StudyInfo,
+)
 from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
     parse_series,
@@ -50,12 +55,22 @@ class FakeDicomWebClient:
     def ping(self) -> bool:
         return True
 
-    def query_studies(self, patient_name: str | None = None) -> list[StudyInfo]:
+    def query_studies(
+        self,
+        *,
+        patient_name: str | None = None,
+        patient_id: str | None = None,
+        study_date: str | None = None,
+    ) -> list[StudyInfo]:
         studies = parse_studies(self._load_studies())
-        if patient_name is None:
-            return studies
-        needle = patient_name.casefold()
-        return [s for s in studies if needle in s.patient_name.casefold()]
+        if patient_name is not None:
+            needle = patient_name.casefold()
+            studies = [s for s in studies if needle in s.patient_name.casefold()]
+        if patient_id is not None:
+            studies = [s for s in studies if patient_id in s.patient_id]
+        if study_date is not None:
+            studies = [s for s in studies if study_date in s.study_date]
+        return studies
 
     def query_series(self, study_uid: str) -> list[SeriesInfo]:
         return parse_series(self._load_series(), study_uid)
@@ -67,3 +82,6 @@ class FakeDicomWebClient:
         self, study_uid: str, series_uid: str, instance_uid: str
     ) -> bytes:
         return self._load_sample_dcm()
+
+    def stow_instances(self, dicom_files: list[bytes]) -> StowResult:
+        return StowResult(success_count=len(dicom_files))

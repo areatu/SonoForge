@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -29,3 +29,12 @@ class InstanceInfo:
     sop_instance_uid: str
     series_uid: str
     study_uid: str
+
+
+@dataclass(frozen=True)
+class StowResult:
+    """Result of STOW-RS or batch C-STORE upload."""
+
+    success_count: int
+    failed_uids: list[str] = field(default_factory=list)
+    error_message: str = ""

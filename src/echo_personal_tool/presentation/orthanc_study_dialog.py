@@ -221,7 +221,7 @@ class OrthancStudyDialog(QDialog):
         text = self._search_edit.text().strip()
         patient_name = text or None
         try:
-            studies = self._client.query_studies(patient_name)
+            studies = self._client.query_studies(patient_name=patient_name)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, tr("orthanc.find"), tr("orthanc.find_error", message=str(exc)))
             return

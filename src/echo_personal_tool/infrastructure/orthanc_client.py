@@ -1,15 +1,21 @@
-"""Orthanc DICOMweb client (QIDO-RS + WADO-RS over httpx)."""
+"""Orthanc DICOMweb client (QIDO-RS + WADO-RS + STOW-RS over httpx)."""
 
 from __future__ import annotations
 
 import logging
 import threading
+import uuid
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
+from echo_personal_tool.domain.models.orthanc import (
+    InstanceInfo,
+    SeriesInfo,
+    StowResult,
+    StudyInfo,
+)
 from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
     parse_series,
@@ -114,10 +120,20 @@ class OrthancDicomWebClient:
         except httpx.HTTPError:
             return False
 
-    def query_studies(self, patient_name: str | None = None) -> list[StudyInfo]:
+    def query_studies(
+        self,
+        *,
+        patient_name: str | None = None,
+        patient_id: str | None = None,
+        study_date: str | None = None,
+    ) -> list[StudyInfo]:
         params: list[tuple[str, str]] = _include_params(_STUDY_INCLUDE_FIELDS)
         if patient_name:
             params.append(("PatientName", f"*{patient_name}*"))
+        if patient_id:
+            params.append(("PatientID", f"*{patient_id}*"))
+        if study_date:
+            params.append(("StudyDate", study_date))
         r = self._client.get(
             "studies",
             params=params,
@@ -186,3 +202,60 @@ class OrthancDicomWebClient:
             self._orthanc_client.close()
         except Exception:  # noqa: BLE001
             logger.debug("Orthanc client close", exc_info=True)
+
+    def stow_instances(self, dicom_files: list[bytes]) -> StowResult:
+        """STOW-RS: upload one or more DICOM objects via POST /studies."""
+        if not dicom_files:
+            return StowResult(0)
+        boundary = uuid.uuid4().hex
+        body = _build_stow_multipart_body(boundary, dicom_files)
+        try:
+            r = self._client.post(
+                "studies",
+                content=body,
+                headers={
+                    "Content-Type": f"multipart/related; type=application/dicom; boundary={boundary}",
+                },
+            )
+            if r.status_code not in (200, 201):
+                return StowResult(0, [], f"HTTP {r.status_code}")
+            return _parse_stow_response(r.json(), len(dicom_files))
+        except httpx.HTTPError as exc:
+            return StowResult(0, [], str(exc))
+
+
+def _build_stow_multipart_body(boundary: str, dicom_files: list[bytes]) -> bytes:
+    """Build multipart/related body for STOW-RS per DICOMweb Part 18."""
+    parts: list[bytes] = []
+    for f in dicom_files:
+        parts.append(
+            f"--{boundary}\r\n"
+            f"Content-Type: application/dicom\r\n"
+            f"\r\n".encode()
+            + f
+            + b"\r\n"
+        )
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts)
+
+
+def _parse_stow_response(data: object, expected_count: int) -> StowResult:
+    """Parse Orthanc STOW-RS JSON response to extract success/failure counts."""
+    if not isinstance(data, list):
+        return StowResult(expected_count)
+    failed_uids: list[str] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        # Orthanc returns {00081199: [{00081150: ..., 00081155: ...}]} for failures
+        failed_seq = item.get("00081199")
+        if isinstance(failed_seq, list):
+            for entry in failed_seq:
+                if isinstance(entry, dict):
+                    uid_item = entry.get("00081155")
+                    if isinstance(uid_item, dict):
+                        uid = uid_item.get("Value", [""])[0] if "Value" in uid_item else ""
+                        if uid:
+                            failed_uids.append(str(uid))
+    success = expected_count - len(failed_uids)
+    return StowResult(success_count=success, failed_uids=failed_uids)
