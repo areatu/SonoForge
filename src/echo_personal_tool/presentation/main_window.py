@@ -34,11 +34,14 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
 )
-from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
-from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+from echo_personal_tool.infrastructure.server_client_factory import (
+    make_dicom_query_service,
+    make_dicom_web_client,
+)
 from echo_personal_tool.infrastructure.server_settings import load_server_settings
+from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.infrastructure.user_preferences import (
     UserPreferences,
     load_user_preferences,
@@ -812,17 +815,15 @@ class MainWindow(QMainWindow):
     @_prof
     def _open_orthanc_dialog(self) -> None:
         settings = load_server_settings()
-        if settings.use_mock:
-            client = FakeDicomWebClient()
-            dialog = OrthancStudyDialog(client, self._orthanc_cache, self)
-        else:
-            client = OrthancDicomWebClient.from_settings(settings)
-            dialog = OrthancStudyDialog(
-                client,
-                self._orthanc_cache,
-                self,
-                server_settings=settings,
-            )
+        client = make_dicom_web_client(settings)
+        query_service = make_dicom_query_service(settings)
+        dialog = OrthancStudyDialog(
+            client,
+            self._orthanc_cache,
+            self,
+            server_settings=settings,
+            query_service=query_service,
+        )
         dialog.exec()
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
@@ -845,6 +846,17 @@ class MainWindow(QMainWindow):
                 self._controller.open_folder(path, error_log_path=log_path)
         else:
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
+
+    def _send_to_server(self) -> None:
+        studies = self._controller.studies
+        if not studies:
+            QMessageBox.information(
+                self,
+                tr("dialog.dicom_upload.title"),
+                tr("dialog.dicom_upload.no_files"),
+            )
+            return
+        run_dicom_upload_dialog(self, studies, load_server_settings())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._orthanc_cache.clear_all()
@@ -1217,6 +1229,7 @@ class MainWindow(QMainWindow):
     def _wire_ui(self) -> None:
         self._system_bar.open_folder_requested.connect(self._open_folder)
         self._system_bar.load_from_server_requested.connect(self._open_orthanc_dialog)
+        self._system_bar.send_to_server_requested.connect(self._send_to_server)
         self._system_bar.reset_session_requested.connect(self._on_reset_measurements_requested)
         self._system_bar.caliper_requested.connect(lambda: self._on_caliper_requested())
         self._system_bar.calibration_requested.connect(self._on_calibration_requested)

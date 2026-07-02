@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-import struct
 from io import BytesIO
 
 import pydicom
+from pydicom.dataset import Dataset
 from pynetdicom import AE, StoragePresentationContexts
 from pynetdicom.sop_class import (
-    PatientRootQueryRetrieveInformationModelFIND,
-    StudyRootQueryRetrieveInformationModelFIND,
+    StudyRootQueryRetrieveInformationModelFind,
     Verification,
 )
 
@@ -23,8 +22,6 @@ from echo_personal_tool.infrastructure.dimse_find_mapper import (
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 logger = logging.getLogger(__name__)
-
-_PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
 
 
 class DimseAssociationError(Exception):
@@ -60,10 +57,11 @@ class PynetdimseClient:
 
     def _build_ae(self) -> AE:
         ae = AE(ae_title=self._ae_title)
-        ae.requested_contexts = [
-            (Verification, "1.2.840.10008.1.1"),
-            (StudyRootQueryRetrieveInformationModelFIND, "1.2.840.10008.1.2.1"),
-        ]
+        ae.acse_timeout = self._timeout_s
+        ae.dimse_timeout = self._timeout_s
+        ae.network_timeout = self._timeout_s
+        ae.add_requested_context(Verification)
+        ae.add_requested_context(StudyRootQueryRetrieveInformationModelFind)
         for ctx in StoragePresentationContexts:
             ae.add_requested_context(ctx.abstract_syntax)
         return ae
@@ -103,24 +101,24 @@ class PynetdimseClient:
         """C-FIND at STUDY level using Study Root model."""
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
-        ds.StudyInstanceUID = "*"
-        ds.PatientName = f"*{patient_name}*" if patient_name else "*"
-        ds.PatientID = f"*{patient_id}*" if patient_id else "*"
-        ds.StudyDate = study_date or "*"
-        ds.StudyDescription = "*"
+        ds.StudyInstanceUID = ""
+        ds.PatientName = f"*{patient_name}*" if patient_name else ""
+        ds.PatientID = f"*{patient_id}*" if patient_id else ""
+        ds.StudyDate = study_date or ""
+        ds.StudyDescription = ""
         ds.NumberOfStudyRelatedSeries = ""
-        return self._c_find(ds, lambda d: map_study(d))
+        return self._c_find(ds, map_study)
 
     def c_find_series(self, study_uid: str) -> list[SeriesInfo]:
         """C-FIND at SERIES level using Study Root model."""
         ds = Dataset()
         ds.QueryRetrieveLevel = "SERIES"
         ds.StudyInstanceUID = study_uid
-        ds.SeriesInstanceUID = "*"
-        ds.Modality = "*"
-        ds.SeriesDescription = "*"
+        ds.SeriesInstanceUID = ""
+        ds.Modality = ""
+        ds.SeriesDescription = ""
         ds.NumberOfSeriesRelatedInstances = ""
-        return self._c_find(ds, lambda d: map_series(d, study_uid))
+        return self._c_find(ds, lambda identifier: map_series(identifier, study_uid))
 
     def c_find_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
         """C-FIND at IMAGE level using Study Root model."""
@@ -128,16 +126,19 @@ class PynetdimseClient:
         ds.QueryRetrieveLevel = "IMAGE"
         ds.StudyInstanceUID = study_uid
         ds.SeriesInstanceUID = series_uid
-        ds.SOPInstanceUID = "*"
-        return self._c_find(ds, lambda d: map_instance(d, study_uid, series_uid))
+        ds.SOPInstanceUID = ""
+        return self._c_find(
+            ds,
+            lambda identifier: map_instance(identifier, study_uid, series_uid),
+        )
 
     def _c_find(self, query_ds: Dataset, mapper) -> list:  # noqa: ANN001
-        results = []
+        results: list = []
         try:
             assoc = self._associate()
             try:
                 responses = assoc.send_c_find(
-                    query_ds, StudyRootQueryRetrieveInformationModelFIND
+                    query_ds, StudyRootQueryRetrieveInformationModelFind
                 )
                 for status, identifier in responses:
                     if status is None:

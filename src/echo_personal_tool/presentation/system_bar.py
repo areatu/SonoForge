@@ -90,6 +90,7 @@ class SystemBar(QWidget):
 
     open_folder_requested = Signal()
     load_from_server_requested = Signal()
+    send_to_server_requested = Signal()
     reset_session_requested = Signal()
     caliper_requested = Signal()
     calibration_requested = Signal()
@@ -129,6 +130,11 @@ class SystemBar(QWidget):
         btn_load_server.setIcon(_load_icon("cloud_download"))
         btn_load_server.clicked.connect(self.load_from_server_requested.emit)
         self._btn_load_server = btn_load_server
+
+        btn_send_server = QPushButton("Send to server…")
+        btn_send_server.setIcon(_load_icon("activity_dicom"))
+        btn_send_server.clicked.connect(self.send_to_server_requested.emit)
+        self._btn_send_server = btn_send_server
 
         self._btn_settings = QPushButton("Настройки")
         self._btn_settings.setIcon(_load_icon("settings"))
@@ -198,6 +204,7 @@ class SystemBar(QWidget):
         left_layout.setSpacing(8)
         left_layout.addWidget(btn_open, 0)
         left_layout.addWidget(btn_load_server, 0)
+        left_layout.addWidget(btn_send_server, 0)
         left_layout.addWidget(self._study_label, 0)
         left_layout.addWidget(self._status_label, 1)
         left_layout.addWidget(self._progress_bar, 0)
@@ -259,6 +266,7 @@ class SystemBar(QWidget):
         """Reload all icons with current theme colors."""
         self._btn_open.setIcon(_load_icon("folder_open"))
         self._btn_load_server.setIcon(_load_icon("cloud_download"))
+        self._btn_send_server.setIcon(_load_icon("activity_dicom"))
         self._btn_settings.setIcon(_load_icon("settings"))
         self._btn_caliper.setIcon(_load_icon("straighten"))
         self._btn_calibration.setIcon(_load_icon("tune"))
@@ -275,6 +283,7 @@ class SystemBar(QWidget):
         from echo_personal_tool.infrastructure.i18n import tr
         self._btn_open.setText(tr("system_bar.open_folder"))
         self._btn_load_server.setText(tr("system_bar.load_from_server"))
+        self._btn_send_server.setText(tr("system_bar.send_to_server"))
         self._btn_settings.setText(tr("system_bar.settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings"))
         self._btn_caliper.setText(tr("system_bar.caliper"))

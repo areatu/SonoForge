@@ -49,6 +49,13 @@ def test_save_and_load_roundtrip(isolated_settings: None) -> None:
         auth_mode="basic",
         http_headers="Authorization: Basic abc",
         use_mock=False,
+        dimse_enabled=True,
+        dimse_ae_title="ECHO2026",
+        dimse_called_ae="ORTHANC",
+        dimse_host="10.0.0.5",
+        dimse_port=4242,
+        stow_dicom_web_url="http://10.0.0.5:8042/dicom-web",
+        query_source="auto",
     )
     save_server_settings(original)
     assert load_server_settings() == original

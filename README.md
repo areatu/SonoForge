@@ -12,7 +12,7 @@
 
 | Область | Что реализовано |
 |---------|-----------------|
-| **Источники данных** | Локальная папка; **Orthanc DICOMweb** (QIDO-RS / WADO-RS); mock offline |
+| **Источники данных** | Локальная папка; **Orthanc DICOMweb** (QIDO-RS / WADO-RS / STOW-RS); **DIMSE** (C-ECHO, C-FIND, C-STORE); mock offline |
 | **Просмотр** | Gallery, 2D viewer, таймлайн, cine play/pause, W/L + DR |
 | **Производительность** | Lazy decode DICOM/MP4 (первый кадр мгновенно); prefetch при playback; LRU frame cache |
 | **Калибровка** | DICOM tags; ручная B-mode (см); **авто** по шкале глубины (MP4/JPEG); snap к тикам |
@@ -67,7 +67,9 @@
 
 ### DICOMweb / Orthanc
 
-- Поиск исследований (QIDO), скачивание серий **per-instance WADO-RS** (parallel, progress bar).
+- Поиск исследований (QIDO / C-FIND), скачивание серий **per-instance WADO-RS** (parallel, progress bar).
+- **STOW-RS** и **C-STORE** upload («Отправить на сервер…»).
+- Источник поиска: DICOMweb / DIMSE / Auto; `query_source` сохраняется в настройках.
 - Сессионный кэш, cancel загрузки, pre-scan метаданных.
 - После загрузки — тот же pipeline, что для локальной папки.
 
@@ -136,13 +138,42 @@ python -m echo_personal_tool
 4. **Measures** (справа) — линейные, Simpson, Doppler, STE, RV FAC…
 5. **Результаты** — сводка и PDF.
 
-### Orthanc DICOMweb
+### Orthanc DICOMweb / DIMSE
 
-1. **Настройки → Сервер…** — URL, логин, пароль (или **Mock** offline).
-2. **Загрузить с сервера…** — QIDO-поиск, выбор серий, WADO-RS download.
-3. Прогресс по сериям; после загрузки — локальный pipeline.
+Orthanc по умолчанию слушает **два порта**:
 
-Спека: [`docs/superpowers/specs/2026-06-23-dicomweb-orthanc-design.md`](docs/superpowers/specs/2026-06-23-dicomweb-orthanc-design.md)
+| Порт | Протокол | Назначение в ECHO2026 |
+|------|----------|------------------------|
+| **8042** | HTTP | DICOMweb: QIDO-RS, WADO-RS, STOW-RS; REST `/system` (ping) |
+| **4242** | TCP DIMSE | C-ECHO, C-FIND, C-STORE (native DICOM) |
+
+Типичный URL DICOMweb: `http://127.0.0.1:8042/dicom-web`  
+DIMSE: host `127.0.0.1`, port `4242`, Called AE `ORTHANC`, Calling AE `ECHO2026`.
+
+**Публичный demo (read-only, для smoke-тестов):**  
+[https://orthanc.uclouvain.be/demo/dicom-web](https://orthanc.uclouvain.be/demo/dicom-web)  
+REST root: `https://orthanc.uclouvain.be/demo` — DIMSE на demo обычно **не** exposed.
+
+1. **Настройки → Сервер…** — DICOMweb URL, DIMSE (опционально), STOW override, **Mock** offline.
+2. **Загрузить с сервера…** — источник поиска: DICOMweb / DIMSE / Auto; QIDO или C-FIND; скачивание через WADO-RS.
+3. **Отправить на сервер…** — STOW-RS или C-STORE (локальные DICOM из загруженных studies).
+4. Прогресс по сериям; после загрузки — локальный pipeline.
+
+**Integration-тесты** (live Orthanc):
+
+```bash
+# DICOMweb smoke против UCLouvain demo
+ECHO_ORTHANC=1 pytest tests/integration/test_orthanc_live.py -v
+
+# Свой сервер
+ECHO_ORTHANC=1 ECHO_ORTHANC_URL=http://127.0.0.1:8042/dicom-web pytest tests/integration/test_orthanc_live.py -v
+
+# Локальный DIMSE (Orthanc :4242)
+ECHO_ORTHANC=1 ECHO_ORTHANC_DIMSE=1 pytest tests/integration/test_orthanc_live.py -v -k dimse
+```
+
+Спека: [`docs/superpowers/specs/2026-06-23-dicomweb-orthanc-design.md`](docs/superpowers/specs/2026-06-23-dicomweb-orthanc-design.md)  
+План DIMSE/STOW: [`docs/superpowers/plans/2026-07-02-dimse-stow-rs-implementation.md`](docs/superpowers/plans/2026-07-02-dimse-stow-rs-implementation.md)
 
 ### ONNX (LV Auto)
 

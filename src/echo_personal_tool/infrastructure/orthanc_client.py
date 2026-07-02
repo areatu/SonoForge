@@ -65,6 +65,7 @@ class OrthancDicomWebClient:
         auth_mode: str = "basic",
         http_headers: dict[str, str] | None = None,
         timeout: float = 30.0,
+        stow_dicom_web_url: str = "",
     ):
         self._timeout = timeout
         self._orthanc_root, self._dicom_web_root = split_orthanc_urls(base_url)
@@ -85,6 +86,17 @@ class OrthancDicomWebClient:
             headers=headers,
             timeout=self._timeout,
         )
+        stow_root = stow_dicom_web_url.strip()
+        if stow_root:
+            _, stow_web = split_orthanc_urls(stow_root)
+            self._stow_client: httpx.Client | None = httpx.Client(
+                base_url=f"{stow_web}/",
+                auth=auth,
+                headers=headers,
+                timeout=self._timeout,
+            )
+        else:
+            self._stow_client = None
         self._cancel_event = threading.Event()
 
     @classmethod
@@ -96,6 +108,7 @@ class OrthancDicomWebClient:
             auth_mode=settings.auth_mode,
             http_headers=parse_http_headers(settings.http_headers),
             timeout=timeout,
+            stow_dicom_web_url=settings.stow_dicom_web_url,
         )
 
     def _build_client(self) -> httpx.Client:
@@ -110,6 +123,8 @@ class OrthancDicomWebClient:
         try:
             self._client.close()
             self._orthanc_client.close()
+            if self._stow_client is not None:
+                self._stow_client.close()
         except Exception:  # noqa: BLE001
             logger.debug("Orthanc client close during cancel", exc_info=True)
 
@@ -200,8 +215,13 @@ class OrthancDicomWebClient:
         try:
             self._client.close()
             self._orthanc_client.close()
+            if self._stow_client is not None:
+                self._stow_client.close()
         except Exception:  # noqa: BLE001
             logger.debug("Orthanc client close", exc_info=True)
+
+    def _stow_http_client(self) -> httpx.Client:
+        return self._stow_client if self._stow_client is not None else self._client
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult:
         """STOW-RS: upload one or more DICOM objects via POST /studies."""
@@ -210,7 +230,7 @@ class OrthancDicomWebClient:
         boundary = uuid.uuid4().hex
         body = _build_stow_multipart_body(boundary, dicom_files)
         try:
-            r = self._client.post(
+            r = self._stow_http_client().post(
                 "studies",
                 content=body,
                 headers={

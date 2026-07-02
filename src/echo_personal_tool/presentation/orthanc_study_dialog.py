@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
@@ -29,7 +30,11 @@ from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
 from echo_personal_tool.domain.ports import DicomWebClient, QuerySource
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
-from echo_personal_tool.infrastructure.server_settings import ServerSettings, load_server_settings
+from echo_personal_tool.infrastructure.server_settings import (
+    ServerSettings,
+    load_server_settings,
+    save_server_settings,
+)
 
 _STUDY_UID_ROLE = Qt.ItemDataRole.UserRole
 _SERIES_UID_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -236,12 +241,25 @@ class OrthancStudyDialog(QDialog):
         source_val = self._source_combo.currentData()
         if self._query_service is not None and source_val:
             self._query_service.source = QuerySource(source_val)
+        if source_val:
+            self._persist_query_source(str(source_val))
         # Show warning if DIMSE selected but no DICOMweb for download
         if source_val == "dimse" and self._server_settings:
             if not self._server_settings.url or self._server_settings.use_mock:
                 self._status_label.setText(
                     tr("orthanc.dimse_needs_wado_warning")
                 )
+
+    def _persist_query_source(self, source_val: str) -> None:
+        if source_val not in {s.value for s in QuerySource}:
+            return
+        current = load_server_settings()
+        if current.query_source == source_val:
+            return
+        updated = replace(current, query_source=source_val)
+        save_server_settings(updated)
+        if self._server_settings is not None:
+            self._server_settings = replace(self._server_settings, query_source=source_val)
 
     def _load_studies(self) -> None:
         text = self._search_edit.text().strip()
