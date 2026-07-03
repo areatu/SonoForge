@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPoint, QSettings, Qt, QUrl
+from PySide6.QtCore import QPoint, QSettings, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QSpacerItem,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -86,32 +87,82 @@ def show_ase_reference_dialog(parent: QWidget | None = None) -> None:
 # ── Document tab widget ───────────────────────────────────────────
 
 
-class _DocTab(QPushButton):
-    """Clickable tab for a loaded document."""
+class _DocTab(QWidget):
+    """Clickable tab for a loaded document with a close button."""
 
     def __init__(self, label: str, path: Path, parent: QWidget | None = None) -> None:
-        super().__init__(label, parent)
+        super().__init__(parent)
         self.doc_path = path
-        self.setCheckable(True)
+        self.setFixedHeight(26)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 0, 2, 0)
+        layout.setSpacing(4)
+
+        self._btn_label = QPushButton(label)
+        self._btn_label.setCheckable(True)
+        self._btn_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_label.setStyleSheet("QPushButton { border: none; padding: 0; background: transparent; }")
+        layout.addWidget(self._btn_label)
+
+        self._btn_close = QPushButton()
+        self._btn_close.setFixedSize(16, 16)
+        self._btn_close.setIconSize(self._btn_close.sizeHint())
+        self._btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_close.clicked.connect(self._on_close_clicked)
+        layout.addWidget(self._btn_close)
+
+        self._active = False
         self._apply_style(False)
+        self._apply_close_style(False)
+
+    clicked = Signal()
+
+    def _on_close_clicked(self) -> None:
+        # Emit a signal so the dialog can handle tab removal
+        self.close_requested.emit()
+
+    close_requested = Signal()
 
     def _apply_style(self, active: bool) -> None:
         p = get_theme_palette()
         if active:
             self.setStyleSheet(
-                f"QPushButton {{ background: {p['accent_tab']}; color: {p['text']}; "
-                f"border: none; padding: 4px 10px; border-radius: 3px; font-weight: bold; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
+                f"_DocTab {{ background: {p['accent_tab']}; border-radius: 3px; }}"
             )
         else:
             self.setStyleSheet(
-                f"QPushButton {{ background: {p['bg_control']}; color: {p['text_dim']}; "
-                f"border: none; padding: 4px 10px; border-radius: 3px; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
+                f"_DocTab {{ background: {p['bg_control']}; border-radius: 3px; }}"
+            )
+        self._apply_label_style(active)
+
+    def _apply_label_style(self, active: bool) -> None:
+        p = get_theme_palette()
+        if active:
+            self._btn_label.setStyleSheet(
+                f"QPushButton {{ border: none; padding: 0; background: transparent; "
+                f"color: {p['text']}; font-weight: bold; }}"
+            )
+        else:
+            self._btn_label.setStyleSheet(
+                f"QPushButton {{ border: none; padding: 0; background: transparent; "
+                f"color: {p['text_dim']}; }}"
             )
 
+    def _apply_close_style(self, active: bool) -> None:
+        from PySide6.QtGui import QIcon
+        p = get_theme_palette()
+        close_pixmap = _load_icon("close")
+        if not close_pixmap.isNull():
+            self._btn_close.setIcon(QIcon(close_pixmap))
+        self._btn_close.setStyleSheet(
+            f"QPushButton {{ border: none; padding: 0; background: transparent; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; border-radius: 3px; }}"
+        )
+
     def set_active(self, active: bool) -> None:
-        self.setChecked(active)
+        self._active = active
+        self._btn_label.setChecked(active)
         self._apply_style(active)
 
 
@@ -216,8 +267,16 @@ class AseReferenceDialog(QDialog):
         self._tabs_layout.setSpacing(2)
         self._tabs_layout.addStretch(1)
         self._btn_add_tab = QPushButton("+")
-        self._btn_add_tab.setFixedSize(28, 24)
+        self._btn_add_tab.setFixedSize(32, 24)
         self._btn_add_tab.setToolTip(tr("ase_refs.add_document"))
+        self._btn_add_tab.setCursor(Qt.CursorShape.PointingHandCursor)
+        p = get_theme_palette()
+        self._btn_add_tab.setStyleSheet(
+            f"QPushButton {{ background: {p['accent_tab']}; color: {p['text']}; "
+            f"border: none; padding: 0; border-radius: 3px; font-weight: bold; font-size: 16px; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
+            f"QPushButton:pressed {{ background: {p['bg_button_pressed']}; color: {p['text']}; }}"
+        )
         self._btn_add_tab.clicked.connect(self._add_document)
         self._tabs_layout.addWidget(self._btn_add_tab)
         root.addWidget(self._tabs_widget)
@@ -472,7 +531,8 @@ class AseReferenceDialog(QDialog):
         index = len(self._documents) - 1
 
         tab = _DocTab(name, path)
-        tab.clicked.connect(lambda _checked, i=index: self._switch_to_doc(i))
+        tab._btn_label.clicked.connect(lambda _checked, i=index: self._switch_to_doc(i))
+        tab.close_requested.connect(lambda i=index: self._close_doc_tab(i))
 
         # Insert before the stretch + add button
         count = self._tabs_layout.count()
@@ -488,7 +548,7 @@ class AseReferenceDialog(QDialog):
         for i in range(self._tabs_layout.count()):
             widget = self._tabs_layout.itemAt(i).widget()
             if isinstance(widget, _DocTab):
-                widget.set_active(i == index)
+                widget.set_active(self._tab_index_of(widget) == index)
 
         name, path, kind = self._documents[index]
 
@@ -496,6 +556,96 @@ class AseReferenceDialog(QDialog):
             self._show_markdown(path)
         elif kind == "pdf":
             self._show_pdf(path)
+
+    def _tab_index_of(self, tab: _DocTab) -> int:
+        """Return the document index corresponding to a tab widget."""
+        for i in range(self._tabs_layout.count()):
+            widget = self._tabs_layout.itemAt(i).widget()
+            if widget is tab:
+                return self._document_index_for_tab_position(i)
+        return -1
+
+    def _document_index_for_tab_position(self, tab_layout_pos: int) -> int:
+        """Map a layout position to a document index by counting _DocTab widgets before it."""
+        count = 0
+        for i in range(tab_layout_pos):
+            widget = self._tabs_layout.itemAt(i).widget()
+            if isinstance(widget, _DocTab):
+                count += 1
+        return count
+
+    def _close_doc_tab(self, index: int) -> None:
+        if index < 0 or index >= len(self._documents):
+            return
+        # Don't close the last tab
+        if len(self._documents) <= 1:
+            return
+
+        name, path, kind = self._documents[index]
+        if kind == "pdf" and path in self._pdf_docs:
+            try:
+                self._pdf_docs[path].close()
+            except Exception:  # noqa: BLE001
+                pass
+            del self._pdf_docs[path]
+
+        # Find and remove the tab widget
+        tab_widget = self._tab_widget_at_doc_index(index)
+        if tab_widget is not None:
+            self._tabs_layout.removeWidget(tab_widget)
+            tab_widget.deleteLater()
+
+        del self._documents[index]
+
+        # Re-index remaining tab click signals
+        self._reconnect_tab_signals()
+
+        # Switch to adjacent tab
+        if self._active_doc_index >= len(self._documents):
+            self._active_doc_index = len(self._documents) - 1
+        if self._active_doc_index >= 0:
+            self._switch_to_doc(self._active_doc_index)
+        else:
+            self._active_doc_index = -1
+            self._browser.hide()
+            self._pdf_scroll.hide()
+            self._pdf_continuous_scroll.hide()
+            self._pdf_toolbar.hide()
+
+    def _tab_widget_at_doc_index(self, doc_index: int) -> _DocTab | None:
+        """Find the _DocTab widget at the given document index."""
+        count = 0
+        for i in range(self._tabs_layout.count()):
+            widget = self._tabs_layout.itemAt(i).widget()
+            if isinstance(widget, _DocTab):
+                if count == doc_index:
+                    return widget
+                count += 1
+        return None
+
+    def _reconnect_tab_signals(self) -> None:
+        """Reconnect click/close signals so doc indices stay correct."""
+        doc_idx = 0
+        for i in range(self._tabs_layout.count()):
+            widget = self._tabs_layout.itemAt(i).widget()
+            if isinstance(widget, _DocTab):
+                # Disconnect old signals
+                try:
+                    widget._btn_label.clicked.disconnect()
+                except RuntimeError:
+                    pass
+                try:
+                    widget.close_requested.disconnect()
+                except RuntimeError:
+                    pass
+                idx = doc_idx  # capture
+                widget._btn_label.clicked.connect(
+                    lambda _checked, ii=idx: self._switch_to_doc(ii)
+                )
+                widget.close_requested.connect(
+                    lambda ii=idx: self._close_doc_tab(ii)
+                )
+                doc_idx += 1
 
     def _show_markdown(self, path: Path) -> None:
         self._browser.show()

@@ -663,6 +663,7 @@ class ViewerWidget(QWidget):
         self._selected_caliper_key: tuple[str, int] | None = None
         self._syncing_state = False
         self._zoom_mode: str = "fit"
+        self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
         self._is_color_frame = False
         self._color_source_rgb: np.ndarray | None = None
         self._window_level_enabled = True
@@ -1400,11 +1401,13 @@ class ViewerWidget(QWidget):
         modes = ["fit", "100%", "200%"]
         idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
         self._zoom_mode = modes[(idx + 1) % len(modes)]
+        self._zoom_factor = 1.0
         self._apply_zoom_mode()
 
     def set_zoom_mode(self, mode: str) -> None:
         if mode in ("fit", "100%", "200%"):
             self._zoom_mode = mode
+            self._zoom_factor = 1.0
             self._apply_zoom_mode()
 
     @property
@@ -2761,7 +2764,7 @@ class ViewerWidget(QWidget):
         self.scroll_frame_selected.emit(index)
 
     def _handle_wheel(self, ev) -> bool:
-        if self._current_state is None or self._current_state.total_frames <= 1:
+        if self._current_state is None:
             return False
         if hasattr(ev, "angleDelta"):
             delta_y = ev.angleDelta().y()
@@ -2770,6 +2773,15 @@ class ViewerWidget(QWidget):
         else:
             return False
         if delta_y == 0:
+            return False
+
+        # Ctrl+Scroll → zoom
+        modifiers = ev.modifiers() if hasattr(ev, "modifiers") else Qt.KeyboardModifier.NoModifier
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            return self._handle_ctrl_wheel(ev, delta_y)
+
+        # Plain scroll → frame navigation
+        if self._current_state.total_frames <= 1:
             return False
         step = -1 if delta_y > 0 else 1
         current = (
@@ -2787,6 +2799,71 @@ class ViewerWidget(QWidget):
             self._emit_pending_scroll()
             return True
         self._scroll_debounce_timer.start(self._scroll_debounce_ms)
+        return True
+
+    def _handle_ctrl_wheel(self, ev, delta_y: int) -> bool:
+        if self._current_frame is None:
+            return False
+
+        zoom_step = 1.1
+        if delta_y > 0:
+            new_factor = self._zoom_factor * zoom_step
+        else:
+            new_factor = self._zoom_factor / zoom_step
+
+        # Clamp zoom to [0.1, 20.0]
+        new_factor = max(0.1, min(20.0, new_factor))
+        if abs(new_factor - self._zoom_factor) < 1e-6:
+            return False
+
+        # Get mouse position in view coordinates
+        if hasattr(ev, "position"):
+            mouse_pos = ev.position()
+            mx, my = mouse_pos.x(), mouse_pos.y()
+        elif hasattr(ev, "pos"):
+            p = ev.pos()
+            mx, my = p.x(), p.y()
+        else:
+            # Fallback: zoom around viewport center
+            viewport = self._graphics.viewport()
+            mx = viewport.width() / 2.0
+            my = viewport.height() / 2.0
+
+        # Convert mouse pixel position to scene (data) coordinates
+        scene_pos = self._graphics.mapToScene(mx, my)
+        data_x = scene_pos.x()
+        data_y = scene_pos.y()
+
+        h, w = self._current_frame.shape[:2]
+        old_factor = self._zoom_factor
+        self._zoom_factor = new_factor
+
+        # Compute visible range centered on mouse, scaled by new_factor
+        view_w = self._graphics.viewport().width() / self._graphics.devicePixelRatioF()
+        view_h = self._graphics.viewport().height() / self._graphics.devicePixelRatioF()
+
+        # Portion of image visible at 1x is (view_w, view_h); at zoom factor it's (view_w/f, view_h/f)
+        half_w = (view_w / 2.0) / new_factor
+        half_h = (view_h / 2.0) / new_factor
+
+        # Shift so that data_x, data_y stays under the mouse
+        # Ratio of mouse position within viewport
+        if view_w > 0 and view_h > 0:
+            ratio_x = mx / view_w
+            ratio_y = my / view_h
+        else:
+            ratio_x = 0.5
+            ratio_y = 0.5
+
+        cx = data_x - half_w * (2 * ratio_x - 1)
+        cy = data_y - half_w * (2 * ratio_y - 1)
+
+        self._view.setRange(
+            xRange=(cx - half_w, cx + half_w),
+            yRange=(cy - half_h, cy + half_h),
+            padding=0,
+        )
+        ev.accept()
         return True
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
@@ -4524,6 +4601,7 @@ class ViewerWidget(QWidget):
                 modes = ["fit", "100%", "200%"]
                 idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
                 self._zoom_mode = modes[min(idx + 1, len(modes) - 1)]
+                self._zoom_factor = 1.0
                 self._apply_zoom_mode()
                 event.accept()
                 return
@@ -4531,11 +4609,13 @@ class ViewerWidget(QWidget):
                 modes = ["fit", "100%", "200%"]
                 idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
                 self._zoom_mode = modes[max(idx - 1, 0)]
+                self._zoom_factor = 1.0
                 self._apply_zoom_mode()
                 event.accept()
                 return
             if event.key() == Qt.Key.Key_0:
                 self._zoom_mode = "fit"
+                self._zoom_factor = 1.0
                 self._apply_zoom_mode()
                 event.accept()
                 return

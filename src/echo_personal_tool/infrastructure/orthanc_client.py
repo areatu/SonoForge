@@ -224,24 +224,43 @@ class OrthancDicomWebClient:
         return self._stow_client if self._stow_client is not None else self._client
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult:
-        """STOW-RS: upload one or more DICOM objects via POST /studies."""
+        """STOW-RS: upload DICOM objects via POST /studies, batched to avoid timeouts."""
         if not dicom_files:
             return StowResult(0)
-        boundary = uuid.uuid4().hex
-        body = _build_stow_multipart_body(boundary, dicom_files)
-        try:
-            r = self._stow_http_client().post(
-                "studies",
-                content=body,
-                headers={
-                    "Content-Type": f"multipart/related; type=application/dicom; boundary={boundary}",
-                },
-            )
-            if r.status_code not in (200, 201):
-                return StowResult(0, [], f"HTTP {r.status_code}")
-            return _parse_stow_response(r.json(), len(dicom_files))
-        except httpx.HTTPError as exc:
-            return StowResult(0, [], str(exc))
+
+        batch_size = 10
+        total_success = 0
+        all_failed_uids: list[str] = []
+        last_error = ""
+
+        for start in range(0, len(dicom_files), batch_size):
+            batch = dicom_files[start : start + batch_size]
+            boundary = uuid.uuid4().hex
+            body = _build_stow_multipart_body(boundary, batch)
+            try:
+                r = self._stow_http_client().post(
+                    "studies",
+                    content=body,
+                    headers={
+                        "Content-Type": f"multipart/related; type=application/dicom; boundary={boundary}",
+                    },
+                    timeout=120.0,
+                )
+                if r.status_code not in (200, 201):
+                    last_error = f"HTTP {r.status_code}"
+                    continue
+                partial = _parse_stow_response(r.json(), len(batch))
+                total_success += partial.success_count
+                all_failed_uids.extend(partial.failed_uids)
+            except httpx.HTTPError as exc:
+                last_error = str(exc)
+
+        if total_success == 0 and not all_failed_uids and last_error:
+            return StowResult(0, [], last_error)
+        return StowResult(
+            success_count=total_success,
+            failed_uids=all_failed_uids,
+        )
 
 
 def _build_stow_multipart_body(boundary: str, dicom_files: list[bytes]) -> bytes:
