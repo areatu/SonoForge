@@ -1,10 +1,10 @@
 # ROADMAP — ECHO Personal Tool
 
-**Обновлено:** 2026-07-02 (сессия: DIMSE/STOW-RS + Benchmarks)  
+**Обновлено:** 2026-07-04 (DIMSE Phase 2 + Micro-UX specs)  
 **Источник истины по коду:** этот файл + `CHANGELOG_SESSION.md` (последние записи).  
 **Детальные спеки:** `docs/superpowers/specs/`, планы — `docs/superpowers/plans/`.
 
-Легенда: `[x]` реализовано в коде · `[~]` частично · `[ ]` не начато / отложено.
+Легенда: `[x]` реализовано в коде · `[~]` частично · `[ ]` не начато / отложено · `[—]` **cancelled**
 
 ---
 
@@ -108,7 +108,8 @@
 | Simpson dual workflow (manual + MBS) | [x] |
 | LV Lamé template | [x] |
 | RBF contour deform | [x] |
-| MBS Advanced (ED→ES propagate, sinusoidal) | [~] superseded: Lamé + R-refine, без ED→ES propagate |
+| MBS Advanced (ED→ES propagate) | [—] **cancelled** — superseded Lamé + R-refine |
+| LV Lamé template v2 (piecewise asymmetric) | [—] **cancelled** |
 | Open-arc Simpson (2026-06-11) | [x] |
 | DICOMweb Orthanc (QIDO/WADO, mock offline, session cache) | [x] |
 
@@ -140,8 +141,31 @@
 - [x] UI: Query source selector (DICOMweb / DIMSE / Auto)
 - [x] STOW-RS: stow_instances() в OrthancDicomWebClient
 - [x] DicomUploadWorker: STOW-RS batch + DIMSE sequential C-STORE
-- [ ] UI: кнопка "Send to Server" в SystemBar / context menu (worker есть, UI не подключён)
+- [x] UI: «Отправить на сервер…» в SystemBar
 - [x] Unit + integration tests (ECHO_ORTHANC=1 / ECHO_ORTHANC_DIMSE=1)
+
+### DIMSE Phase 2 (спека 2026-07-04)
+
+- [ ] C-GET retrieval (`c_get_instance`)
+- [ ] C-MOVE + embedded Storage SCP (port 11112, lifecycle = download)
+- [ ] `DicomRetrieveService` + DIMSE-only (без WADO URL)
+- [ ] TLS client (CA + optional client cert)
+- [ ] `retrieval_source`: wado / dimse / cmove / auto
+
+**Спека:** `docs/superpowers/specs/2026-07-04-dimse-phase2-design.md`
+
+---
+
+## Micro-UX (спека 2026-07-04)
+
+- [~] Inter fonts, theme fade, SVG icons — done
+- [ ] Hover lerp 100ms (SystemBar, ActivityBar, ToolPanel)
+- [ ] Dialog fade+scale open/close
+- [ ] Focus ring + disabled opacity (global QSS)
+- [ ] Loading state on Search / Upload / C-ECHO
+- [—] Darcula palette migration — **cancelled**
+
+**Спека:** `docs/superpowers/specs/2026-07-04-micro-ux-design.md`
 
 ---
 

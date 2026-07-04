@@ -1,7 +1,7 @@
 # План: DIMSE + STOW-RS для ECHO2026
 
 Дата: 2026-07-02  
-Статус: черновик (уточнён после ревью архитектуры)  
+Статус: **v1 implemented** (main) · **v2 spec:** [2026-07-04-dimse-phase2-design.md](../specs/2026-07-04-dimse-phase2-design.md)  
 Связанные документы: [`2026-06-23-dicomweb-orthanc-design.md`](../specs/2026-06-23-dicomweb-orthanc-design.md)
 
 ## Мотивация
@@ -431,4 +431,12 @@ class DicomUploadWorker(QRunnable):
 - **Thread safety**: DIMSE и httpx — только worker threads; GUI через signals.
 - **Mock parity**: `use_mock=True` → `FakeDimseClient` + `FakeDicomWebClient`; upload/search работают offline.
 - **Orthanc defaults**: HTTP `8042/dicom-web`, DIMSE `4242`, Called AE `ORTHANC` — документировать в README.
-- **TLS**: v1 — plain TCP DIMSE; для hospital PACS добавить `dimse_use_tls` в фазе 2.
+- **TLS**: v1 — plain TCP DIMSE; v2 — `dimse_use_tls` (spec 2026-07-04).
+
+---
+
+## 14. Phase 2 (отдельная спека)
+
+C-GET, C-MOVE (embedded Storage SCP on :11112 during download), DIMSE-only retrieval, TLS.
+
+**Спека:** [`2026-07-04-dimse-phase2-design.md`](../specs/2026-07-04-dimse-phase2-design.md)

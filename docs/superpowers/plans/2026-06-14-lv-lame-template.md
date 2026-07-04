@@ -1,5 +1,7 @@
 # LV Lamé Open-Arc Template (D1) Implementation Plan
 
+> **STATUS: CANCELLED (2026-07-04)** — current open-arc + R-refine sufficient; piecewise Lamé warp not planned.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace sinusoidal MA-chord warp with piecewise asymmetric Lamé open-arc for LV Manual and Model Simpson (A4C/A2C ED/ES), improving R-refine stability and visual closeness to manual contours.

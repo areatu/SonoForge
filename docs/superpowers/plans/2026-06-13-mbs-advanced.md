@@ -1,5 +1,7 @@
 # MBS Advanced (v1.1) Implementation Plan
 
+> **STATUS: CANCELLED (2026-07-04)** — superseded by Lamé + R-refine; ED→ES propagate not planned.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Active contour border refinement after MBS 3-click landmarks, A2C shape template, and ED→ES propagation on ESV Auto.
