@@ -19,6 +19,7 @@ from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagInspectorWidget
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
+from echo_personal_tool.presentation.properties_panel import PropertiesPanel
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
 
@@ -77,9 +78,10 @@ class ControlsTab(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.window_slider = TopLabeledSlider("Window", minimum=1, maximum=400, value=100)
-        self.level_slider = TopLabeledSlider("Level", minimum=0, maximum=100, value=50)
-        self.dr_slider = TopLabeledSlider("DR", minimum=0, maximum=100, value=50)
+        from echo_personal_tool.infrastructure.i18n import tr
+        self.window_slider = TopLabeledSlider(tr("tools.window"), minimum=1, maximum=400, value=100)
+        self.level_slider = TopLabeledSlider(tr("tools.level"), minimum=0, maximum=100, value=50)
+        self.dr_slider = TopLabeledSlider(tr("tools.dr"), minimum=0, maximum=100, value=50)
         self.dr_slider.slider().setToolTip(
             "Dynamic range: center = full range; left = clip dark (typical for US)"
         )
@@ -204,9 +206,13 @@ class ToolPanel(QWidget):
         self._tabs = QTabWidget()
         self.measure = MeasureTab()
         self.controls = ControlsTab()
+        self._tag_inspector = DicomTagInspectorWidget()
+        self._properties_panel = PropertiesPanel()
 
         self._tabs.addTab(self.measure, "Measures")
         self._tabs.addTab(self.controls, "Controls")
+        self._tabs.addTab(self._properties_panel, "Properties")
+        self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
         self.measure.action_requested.connect(self.action_requested.emit)
         self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
@@ -231,10 +237,22 @@ class ToolPanel(QWidget):
         self._tabs.setTabText(1, tr("tool_panel.controls"))
 
     def set_dicom_inspector_visible(self, visible: bool) -> None:
-        pass
+        """Show/hide the DICOM Tags tab."""
+        from echo_personal_tool.infrastructure.i18n import tr
+        idx = self._tabs.indexOf(self._tag_inspector)
+        if visible and idx == -1:
+            self._tabs.addTab(self._tag_inspector, tr("tool_panel.dicom_tags"))
+        elif not visible and idx != -1:
+            self._tabs.removeTab(idx)
 
     def load_dicom_inspector(self, path) -> None:
-        pass
+        """Load DICOM tags from a file path into the inspector."""
+        self._tag_inspector.load_instance(path)
+
+    @property
+    def properties_panel(self) -> PropertiesPanel:
+        """Access the properties panel to update it."""
+        return self._properties_panel
 
     def set_doppler_tool_availability(self, *, time_ok: bool) -> None:
         self.measure.set_doppler_tool_availability(time_ok=time_ok)

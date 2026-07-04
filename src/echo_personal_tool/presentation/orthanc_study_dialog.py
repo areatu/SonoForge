@@ -235,6 +235,11 @@ class OrthancStudyDialog(QDialog):
             self._client_closed = True
 
     def _check_ping(self) -> None:
+        # Skip DICOMweb ping in DIMSE-only mode
+        if self._server_settings and self._server_settings.dimse_enabled:
+            if not self._server_settings.url or self._server_settings.use_mock:
+                self._status_label.setText(tr("orthanc.dimse_info_banner"))
+                return
         if self._client.ping():
             self._status_label.setText(tr("orthanc.server_available"))
             return

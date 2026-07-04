@@ -134,6 +134,8 @@ class MainWindow(QMainWindow):
         self._viewer2: ViewerWidget | None = None
         self._viewer2_instance: InstanceMetadata | None = None
         self._viewer2_frame_index: int = 0
+        self._viewer2_playing: bool = False
+        self._viewer2_total_frames: int = 0
         self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
         self._user_maximized = False
@@ -579,12 +581,13 @@ class MainWindow(QMainWindow):
         self._viewer2.installEventFilter(self)
         self._viewer2._graphics.installEventFilter(self)
         self._viewer2._view.installEventFilter(self)
-        self._viewer2.play_pause_requested.connect(self._controller.toggle_playback)
+        self._viewer2.play_pause_requested.connect(self._toggle_viewer2_playback)
         self._viewer2.frame_selected.connect(self._on_viewer2_frame_selected)
         self._viewer2.scroll_frame_selected.connect(self._on_viewer2_frame_selected)
         self._viewer2.contour_completed.connect(self._on_contour_completed)
         self._viewer2.contours_changed.connect(self._controller.on_contours_changed)
-        self._viewer2.set_state(self._controller.state_manager.snapshot)
+        # Sync viewer2 state from controller's current instance
+        self._sync_viewer2_state()
 
     def _detach_viewer2(self) -> None:
         if self._viewer2 is None:
@@ -765,7 +768,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _open_folder(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Select study folder")
+        from echo_personal_tool.infrastructure.i18n import tr
+        directory = QFileDialog.getExistingDirectory(self, tr("dialog.select_folder"))
         if not directory:
             return
         folder = Path(directory)
@@ -886,7 +890,8 @@ class MainWindow(QMainWindow):
         self._gallery.request_visible_previews()
 
     def _on_scan_failed(self, message: str) -> None:
-        QMessageBox.warning(self, "Scan failed", message)
+        from echo_personal_tool.infrastructure.i18n import tr
+        QMessageBox.warning(self, tr("error.scan_failed"), message)
 
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
@@ -974,12 +979,66 @@ class MainWindow(QMainWindow):
         image = np.asarray(pixels)
         self._viewer2.show_frame(image)
 
-    @_prof
-    def _on_state_changed_for_viewer2(self, state: ViewerState) -> None:
+    def _toggle_viewer2_playback(self) -> None:
+        """Toggle playback for viewer2 independently."""
+        if self._viewer2_instance is None or self._viewer2 is None:
+            return
+        self._viewer2_playing = not self._viewer2_playing
+        if self._viewer2_playing:
+            self._start_viewer2_playback()
+        else:
+            self._stop_viewer2_playback()
+
+    def _start_viewer2_playback(self) -> None:
+        """Start playback timer for viewer2."""
+        if not self._viewer2_playing or self._viewer2_instance is None:
+            return
+        instance = self._viewer2_instance
+        total = instance.number_of_frames or 1
+        self._viewer2_total_frames = total
+        frame_time_ms = instance.frame_time_ms or 33.3
+        self._viewer2_timer = QTimer(self)
+        self._viewer2_timer.setInterval(int(frame_time_ms))
+        self._viewer2_timer.timeout.connect(self._viewer2_tick)
+        self._viewer2_timer.start()
+
+    def _stop_viewer2_playback(self) -> None:
+        """Stop playback timer for viewer2."""
+        if hasattr(self, "_viewer2_timer") and self._viewer2_timer is not None:
+            self._viewer2_timer.stop()
+            self._viewer2_timer = None
+
+    def _viewer2_tick(self) -> None:
+        """Advance viewer2 by one frame during playback."""
+        if not self._viewer2_playing or self._viewer2_instance is None:
+            self._stop_viewer2_playback()
+            return
+        self._viewer2_frame_index += 1
+        if self._viewer2_frame_index >= self._viewer2_total_frames:
+            self._viewer2_frame_index = 0
+        self._load_viewer2_frame(self._viewer2_frame_index)
+
+    def _sync_viewer2_state(self) -> None:
+        """Sync viewer2 display with controller's current instance."""
         if self._viewer2 is None:
             return
-        if self._viewer2_instance is not None and self._viewer2_instance == state.instance:
-            self._viewer2.set_state(state)
+        state = self._controller.state_manager.snapshot
+        if state.instance is not None:
+            # Show same instance in viewer2 if not already loaded
+            if self._viewer2_instance != state.instance:
+                self._load_instance_into_viewer2(state.instance)
+        elif self._viewer2_instance is not None:
+            self._viewer2_instance = None
+            self._viewer2_playing = False
+            self._stop_viewer2_playback()
+
+    def _on_state_changed_for_viewer2(self, state: ViewerState) -> None:
+        """Sync viewer2 when main viewer changes instance."""
+        if self._viewer2 is None:
+            return
+        # If main viewer changed instance, sync viewer2 to show same instance
+        if state.instance is not None and self._viewer2_instance != state.instance:
+            self._load_instance_into_viewer2(state.instance)
 
     @_prof
     def _on_frame_loaded(self, pixels: object) -> None:
@@ -1051,8 +1110,9 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_frame_load_failed(self, message: str) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
         self._click_to_frame_started_at = None
-        QMessageBox.warning(self, "Load failed", message)
+        QMessageBox.warning(self, tr("error.load_failed"), message)
 
     def _show_status(self, message: str) -> None:
         self._system_bar.set_status_message(message)
@@ -1082,6 +1142,39 @@ class MainWindow(QMainWindow):
         self._last_overlay_state = state
         if instance_changed:
             self._refresh_dicom_inspector()
+        self._update_properties_panel(state)
+
+    def _update_properties_panel(self, state: ViewerState) -> None:
+        """Update the properties panel with current instance info."""
+        panel = self._tool_panel.properties_panel
+        if state.instance is None:
+            panel.clear_all()
+            return
+        inst = state.instance
+        # Instance info
+        panel.update_instance_info(
+            patient_name=inst.patient_name or "",
+            patient_id=inst.patient_id or "",
+            study_date=inst.study_date or "",
+            modality=inst.modality or "",
+            series_desc=inst.series_description or "",
+            instance_number=inst.instance_number or 0,
+            frame_rate=inst.frame_rate,
+            rows=inst.rows or 0,
+            columns=inst.columns or 0,
+            pixel_spacing=str(inst.pixel_spacing) if inst.pixel_spacing else "",
+        )
+        # Latest measurement
+        if state.linear_measurements:
+            m = state.linear_measurements[-1]
+            panel.update_measurement_info(
+                label=m.label,
+                value_mm=m.mm_length,
+                start=m.start,
+                end=m.end,
+            )
+        else:
+            panel.update_measurement_info()
 
     def _restore_doppler_for_current_frame(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -1892,7 +1985,8 @@ class MainWindow(QMainWindow):
     @_prof
     def event(self, event) -> bool:  # type: ignore[override]
         if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Tab:
-            self._viewer.cycle_caliper_label()
+            v = self._active_viewer or self._viewer
+            v.cycle_caliper_label()
             event.accept()
             return True
         return super().event(event)
@@ -1903,6 +1997,7 @@ class MainWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def _handle_key_press(self, event: QKeyEvent) -> bool:
+        v = self._active_viewer or self._viewer
         if event.key() == Qt.Key.Key_Space:
             if self._controller.state_manager.snapshot.decode_in_progress:
                 event.accept()
@@ -1911,12 +2006,12 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            self._viewer.toggle_linear_caliper()
+            v.toggle_linear_caliper()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            self._viewer.toggle_calibration_caliper()
-            if self._viewer.is_calibration_active:
+            v.toggle_calibration_caliper()
+            if v.is_calibration_active:
                 self._show_status(
                     tr("status.calibration_click")
                 )
@@ -1927,21 +2022,21 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() == Qt.Key.Key_Tab:
-            self._viewer.cycle_caliper_label()
+            v.cycle_caliper_label()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            if self._viewer.start_contour():
+            if v.start_contour():
                 self._show_status("Manual contour: click MA septal, lateral, then arc")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
             event.accept()
             return True
         if event.key() == Qt.Key.Key_M and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            if self._viewer.get_doppler_tool_mode() != "none":
-                self._viewer.set_doppler_tool_mode("peak")
+            if v.get_doppler_tool_mode() != "none":
+                v.set_doppler_tool_mode("peak")
                 self._show_status("Doppler peak (M)")
-            elif self._viewer.start_model_contour():
+            elif v.start_model_contour():
                 self._show_status("MBS-lite: click MA septal, lateral, then apex")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
@@ -1949,7 +2044,7 @@ class MainWindow(QMainWindow):
             return True
         if event.key() == Qt.Key.Key_T and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             if self._ensure_doppler_ready(require_time=True):
-                self._viewer.set_doppler_tool_mode("interval")
+                v.set_doppler_tool_mode("interval")
                 self._show_status("Doppler interval (T)")
             event.accept()
             return True
@@ -1959,9 +2054,9 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() == Qt.Key.Key_R and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            refined, mode = self._viewer.refine_active_open_contour()
+            refined, mode = v.refine_active_open_contour()
             if refined:
-                self._controller.on_contours_changed(self._viewer.contours())
+                self._controller.on_contours_changed(v.contours())
                 if mode.startswith(("step:", "complete")):
                     self._show_status(f"Refine {mode}")
                 elif mode == "gradient":
@@ -1980,16 +2075,16 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            trace_active = self._viewer.get_doppler_tool_mode() == "trace"
-            if trace_active and self._viewer.finish_doppler_trace():
+            trace_active = v.get_doppler_tool_mode() == "trace"
+            if trace_active and v.finish_doppler_trace():
                 event.accept()
                 return True
-            if self._viewer.finish_contour():
+            if v.finish_contour():
                 event.accept()
                 return True
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            if self._viewer.delete_contour_for_current_phase():
-                self._controller.on_contours_changed(self._viewer.contours())
+            if v.delete_contour_for_current_phase():
+                self._controller.on_contours_changed(v.contours())
                 self._show_status(tr("status.contour_deleted"))
             event.accept()
             return True

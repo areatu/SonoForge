@@ -63,6 +63,7 @@ class ServerSettingsForm(QWidget):
         dimse_form = QFormLayout(dimse_group)
         self._dimse_enabled = QCheckBox(tr("server_settings.dimse_enabled"))
         self._dimse_enabled.toggled.connect(self._sync_dimse_fields)
+        self._dimse_use_tls.toggled.connect(self._sync_dimse_fields)
         dimse_form.addRow("", self._dimse_enabled)
         self._dimse_ae_edit = QLineEdit()
         self._dimse_ae_edit.setPlaceholderText("ECHO2026")
@@ -83,34 +84,34 @@ class ServerSettingsForm(QWidget):
         self._retrieval_source_combo.addItem("DIMSE (C-GET)", "dimse")
         self._retrieval_source_combo.addItem("DIMSE (C-MOVE)", "cmove")
         self._retrieval_source_combo.addItem("Auto", "auto")
-        dimse_form.addRow("Retrieval source:", self._retrieval_source_combo)
+        dimse_form.addRow(tr("server_settings.retrieval_source"), self._retrieval_source_combo)
 
         # TLS settings
-        self._dimse_use_tls = QCheckBox("Use TLS")
+        self._dimse_use_tls = QCheckBox(tr("server_settings.use_tls"))
         dimse_form.addRow("", self._dimse_use_tls)
-        self._dimse_tls_verify = QCheckBox("Verify server certificate")
+        self._dimse_tls_verify = QCheckBox(tr("server_settings.verify_certificate"))
         dimse_form.addRow("", self._dimse_tls_verify)
         self._dimse_tls_ca_path = QLineEdit()
         self._dimse_tls_ca_path.setPlaceholderText("/path/to/ca.pem")
-        dimse_form.addRow("CA certificate:", self._dimse_tls_ca_path)
+        dimse_form.addRow(tr("server_settings.ca_certificate"), self._dimse_tls_ca_path)
         self._dimse_tls_cert_path = QLineEdit()
         self._dimse_tls_cert_path.setPlaceholderText("/path/to/client.pem")
-        dimse_form.addRow("Client certificate:", self._dimse_tls_cert_path)
+        dimse_form.addRow(tr("server_settings.client_certificate"), self._dimse_tls_cert_path)
         self._dimse_tls_key_path = QLineEdit()
         self._dimse_tls_key_path.setPlaceholderText("/path/to/client.key")
-        dimse_form.addRow("Client key:", self._dimse_tls_key_path)
+        dimse_form.addRow(tr("server_settings.client_key"), self._dimse_tls_key_path)
 
         # Embedded Storage SCP for C-MOVE
-        dimse_form.addRow("--- Embedded Storage SCP ---", QLabel())
+        dimse_form.addRow("--- " + tr("server_settings.embedded_scp") + " ---", QLabel())
         self._dimse_scp_host = QLineEdit()
         self._dimse_scp_host.setPlaceholderText("127.0.0.1")
-        dimse_form.addRow("SCP bind host:", self._dimse_scp_host)
+        dimse_form.addRow(tr("server_settings.scp_host"), self._dimse_scp_host)
         self._dimse_scp_port = QLineEdit()
         self._dimse_scp_port.setPlaceholderText("11112")
-        dimse_form.addRow("SCP port:", self._dimse_scp_port)
+        dimse_form.addRow(tr("server_settings.scp_port"), self._dimse_scp_port)
         self._dimse_scp_ae_title = QLineEdit()
-        self._dimse_scp_ae_title.setPlaceholderText("(default: same as AE title)")
-        dimse_form.addRow("SCP AE title:", self._dimse_scp_ae_title)
+        self._dimse_scp_ae_title.setPlaceholderText(tr("server_settings.scp_ae_placeholder"))
+        dimse_form.addRow(tr("server_settings.scp_ae_title"), self._dimse_scp_ae_title)
 
         self._dimse_echo_btn = QPushButton(tr("server_settings.dimse_test_echo"))
         self._dimse_echo_btn.clicked.connect(self._on_dimse_echo)
@@ -146,6 +147,16 @@ class ServerSettingsForm(QWidget):
         self._dimse_host_edit.setEnabled(enabled)
         self._dimse_port_edit.setEnabled(enabled)
         self._dimse_echo_btn.setEnabled(enabled)
+        # TLS/SCP/retrieval fields
+        self._retrieval_source_combo.setEnabled(enabled)
+        self._dimse_use_tls.setEnabled(enabled)
+        self._dimse_tls_verify.setEnabled(enabled and self._dimse_use_tls.isChecked())
+        self._dimse_tls_ca_path.setEnabled(enabled and self._dimse_use_tls.isChecked())
+        self._dimse_tls_cert_path.setEnabled(enabled and self._dimse_use_tls.isChecked())
+        self._dimse_tls_key_path.setEnabled(enabled and self._dimse_use_tls.isChecked())
+        self._dimse_scp_host.setEnabled(enabled)
+        self._dimse_scp_port.setEnabled(enabled)
+        self._dimse_scp_ae_title.setEnabled(enabled)
 
     def _on_profiles(self) -> None:
         from echo_personal_tool.presentation.server_profile_dialog import ServerProfileDialog
@@ -192,7 +203,7 @@ class ServerSettingsForm(QWidget):
             dimse_port=int(self._dimse_port_edit.text().strip() or "4242"),
             stow_dicom_web_url=self._stow_url_edit.text().strip(),
             retrieval_source=str(self._retrieval_source_combo.currentData() or "auto"),
-            dimse_retrieval_mode="cget",  # derived from retrieval_source
+            dimse_retrieval_mode="cmove" if self._retrieval_source_combo.currentData() == "cmove" else "cget",
             dimse_use_tls=self._dimse_use_tls.isChecked(),
             dimse_tls_verify=self._dimse_tls_verify.isChecked(),
             dimse_tls_ca_path=self._dimse_tls_ca_path.text().strip(),

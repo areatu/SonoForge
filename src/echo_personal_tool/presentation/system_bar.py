@@ -108,7 +108,8 @@ class SystemBar(QWidget):
         super().__init__(parent)
         self.setObjectName("systemBar")
 
-        self._study_label = QLabel("No study loaded")
+        from echo_personal_tool.infrastructure.i18n import tr
+        self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
         self._study_label.setSizePolicy(
             QSizePolicy.Policy.Maximum,
@@ -138,7 +139,7 @@ class SystemBar(QWidget):
         btn_send_server.clicked.connect(self.send_to_server_requested.emit)
         self._btn_send_server = btn_send_server
 
-        self._btn_settings = QPushButton("Настройки")
+        self._btn_settings = QPushButton(tr("system_bar.settings"))
         self._btn_settings.setIcon(_load_icon("settings"))
         self._btn_settings.setToolTip("Параметры измерений и отображения")
         self._btn_settings.clicked.connect(self.settings_requested.emit)
@@ -163,7 +164,7 @@ class SystemBar(QWidget):
         btn_doppler_calibration.clicked.connect(self.doppler_calibration_requested.emit)
         self._btn_doppler_calibration = btn_doppler_calibration
 
-        self._btn_references = QPushButton("Нормативы")
+        self._btn_references = QPushButton(tr("system_bar.references"))
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_references.setToolTip("Справочник нормативных значений ASE")
         self._btn_references.clicked.connect(self.references_requested.emit)
@@ -184,19 +185,19 @@ class SystemBar(QWidget):
         self._btn_minimize = QPushButton()
         self._btn_minimize.setIcon(_load_icon("minimize"))
         self._btn_minimize.setObjectName("minimizeButton")
-        self._btn_minimize.setToolTip("Свернуть")
+        self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_minimize.clicked.connect(self.minimize_requested.emit)
 
         self._btn_maximize = QPushButton()
         self._btn_maximize.setIcon(_load_icon("maximize"))
         self._btn_maximize.setObjectName("maximizeButton")
-        self._btn_maximize.setToolTip("Развернуть")
+        self._btn_maximize.setToolTip(tr("system_bar.maximize"))
         self._btn_maximize.clicked.connect(self.maximize_requested.emit)
 
         self._btn_close = QPushButton()
         self._btn_close.setIcon(_load_icon("close"))
         self._btn_close.setObjectName("closeButton")
-        self._btn_close.setToolTip("Закрыть")
+        self._btn_close.setToolTip(tr("system_bar.close"))
         self._btn_close.clicked.connect(self.close_requested.emit)
 
         # Install hover lerp mixin on all buttons
@@ -271,7 +272,8 @@ class SystemBar(QWidget):
         self._study_label.setToolTip(label)
 
     def clear_study_context(self) -> None:
-        self._study_label.setText("No study loaded")
+        from echo_personal_tool.infrastructure.i18n import tr
+        self._study_label.setText(tr("system_bar.no_study"))
         self._study_label.setToolTip("")
 
     def reload_icons(self) -> None:

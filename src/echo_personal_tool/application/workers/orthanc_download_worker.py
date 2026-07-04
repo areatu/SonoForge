@@ -112,7 +112,8 @@ class OrthancDownloadWorker(QRunnable):
                 if self._cancelled:
                     self._finish_cancelled()
                     return
-                self.signals.status.emit(f"Запрос списка инстансов ({series_uid[:12]}…)")
+                from echo_personal_tool.infrastructure.i18n import tr
+                self.signals.status.emit(tr("orthanc.querying_instances", uid=series_uid[:12]))
                 t_q = time.monotonic()
                 instances = _client.query_instances(self._study_uid, series_uid)
                 logger.info(
@@ -160,7 +161,8 @@ class OrthancDownloadWorker(QRunnable):
             )
 
             self.signals.progress.emit(0, total, self._series_uids[0])
-            self.signals.status.emit(f"Загрузка {total} инстансов…")
+            from echo_personal_tool.infrastructure.i18n import tr
+            self.signals.status.emit(tr("orthanc.downloading_count", count=total))
 
             saved_count = 0
             failed_count = 0

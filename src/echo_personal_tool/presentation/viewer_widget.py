@@ -751,9 +751,8 @@ class ViewerWidget(QWidget):
         self._step_back_button.setToolTip("Step back (Previous frame)")
         self._step_back_button.clicked.connect(self._step_back)
 
-        self._play_button = QPushButton("Pause")
+        self._play_button = QPushButton(tr("viewer.play"))
         self._play_button.setFixedWidth(self._play_button.sizeHint().width() + 12)
-        self._play_button.setText("Play")
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
         self._step_forward_button = QPushButton("⏭")
@@ -1042,7 +1041,7 @@ class ViewerWidget(QWidget):
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if self._current_state is not None:
             self._play_button.setText(
-                "Pause" if self._current_state.is_playing else "Play"
+                tr("viewer.pause") if self._current_state.is_playing else tr("viewer.play")
             )
             if self._current_state.total_frames > 0:
                 current = min(
@@ -1478,7 +1477,11 @@ class ViewerWidget(QWidget):
         """Restore layout/overlays after fast scroll without reprocessing pixels."""
         if self._current_frame is not None:
             height, width = self._current_frame.shape[:2]
-            self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
+            # Preserve zoom if user has zoomed in (custom or 100%/200%)
+            if self._zoom_mode != "fit" or self._zoom_factor != 1.0:
+                pass  # keep current view range, don't reset
+            else:
+                self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
             if self._window_level_enabled:
                 self._update_levels()
             self._refresh_frame_panel_layout()
@@ -1539,7 +1542,7 @@ class ViewerWidget(QWidget):
             target_frame = min(viewer_state.current_frame_index, maximum)
             if self._timeline_slider.value() != target_frame:
                 self._timeline_slider.setValue(target_frame)
-            play_text = "Pause" if viewer_state.is_playing else "Play"
+            play_text = tr("viewer.pause") if viewer_state.is_playing else tr("viewer.play")
             if self._play_button.text() != play_text:
                 self._play_button.setText(play_text)
             fps_text = f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
@@ -2839,6 +2842,7 @@ class ViewerWidget(QWidget):
         h, w = self._current_frame.shape[:2]
         old_factor = self._zoom_factor
         self._zoom_factor = new_factor
+        self._zoom_mode = "custom"  # Ctrl+Scroll enters custom zoom
 
         # Compute visible range centered on mouse, scaled by new_factor
         view_w = self._graphics.viewport().width() / self._graphics.devicePixelRatioF()
@@ -2858,7 +2862,7 @@ class ViewerWidget(QWidget):
             ratio_y = 0.5
 
         cx = data_x - half_w * (2 * ratio_x - 1)
-        cy = data_y - half_w * (2 * ratio_y - 1)
+        cy = data_y - half_h * (2 * ratio_y - 1)
 
         self._view.setRange(
             xRange=(cx - half_w, cx + half_w),
