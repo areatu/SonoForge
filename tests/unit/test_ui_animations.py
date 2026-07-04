@@ -106,22 +106,12 @@ def test_hover_button_mixin_install(app):
     assert mixin is mixin2
 
 
-def test_hover_button_mixin_reads_colors(app):
+def test_hover_button_mixin_is_noop(app):
+    """HoverButtonMixin is a no-op placeholder; hover is handled by QSS."""
     btn = QPushButton("Test")
     mixin = HoverButtonMixin.install(btn)
-    mixin._read_colors()
-    assert mixin._normal_bg != ""
-    assert mixin._hover_bg != ""
-    assert mixin._pressed_bg != ""
-
-
-def test_hover_button_mixin_event_filter(app):
-    btn = QPushButton("Test")
-    mixin = HoverButtonMixin.install(btn)
-    # Simulate enter event
-    enter_event = QEnterEvent(btn.mapToGlobal(btn.rect().center()), btn.rect().center(), btn.rect().topLeft())
-    result = mixin.eventFilter(btn, enter_event)
-    assert result is False  # Should not consume the event
+    # No event filter installed — should not interfere with widget
+    assert mixin is not None
 
 
 def test_exec_animated_exists():

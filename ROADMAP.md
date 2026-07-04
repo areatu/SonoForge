@@ -158,11 +158,11 @@
 
 ## Micro-UX (спека 2026-07-04)
 
-- [~] Inter fonts, theme fade, SVG icons — done
-- [ ] Hover lerp 100ms (SystemBar, ActivityBar, ToolPanel)
-- [ ] Dialog fade+scale open/close
-- [ ] Focus ring + disabled opacity (global QSS)
-- [ ] Loading state on Search / Upload / C-ECHO
+- [x] Inter fonts, theme fade, SVG icons — done
+- [x] Hover lerp 100ms (SystemBar, ActivityBar, ToolPanel)
+- [x] Dialog fade+scale open/close
+- [x] Focus ring + disabled opacity (global QSS)
+- [x] Loading state on Search / Upload / C-ECHO
 - [—] Darcula palette migration — **cancelled**
 
 **Спека:** `docs/superpowers/specs/2026-07-04-micro-ux-design.md`

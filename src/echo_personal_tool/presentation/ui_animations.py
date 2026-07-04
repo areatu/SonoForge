@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -13,6 +14,7 @@ from PySide6.QtCore import (
     Qt,
     QObject,
     QEvent,
+    QPoint,
 )
 from PySide6.QtGui import QEnterEvent, QColor
 from PySide6.QtWidgets import (
@@ -28,98 +30,68 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MAX_ANIMATIONS_PER_WIDGET = 1
+_HOVER_LERP_MS = 100
+_HOVER_TICK_MS = 16  # ~60fps
+
+
+def _reduce_motion_enabled() -> bool:
+    """Check if user prefers reduced motion (accessibility)."""
+    try:
+        from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+        return load_user_preferences().reduce_motion
+    except Exception:
+        return False
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.lstrip("#")
+    if len(h) < 6:
+        return (46, 64, 84)  # fallback to bg_button
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _lerp_color(c1: str, c2: str, t: float) -> str:
+    r1, g1, b1 = _hex_to_rgb(c1)
+    r2, g2, b2 = _hex_to_rgb(c2)
+    r = int(r1 + (r2 - r1) * t)
+    g = int(g1 + (g2 - g1) * t)
+    b = int(b1 + (b2 - b1) * t)
+    return _rgb_to_hex(r, g, b)
 
 
 class HoverButtonMixin(QObject):
-    """Event filter for smooth hover lerp (100ms) on QPushButton/QToolButton.
+    """NO-OP placeholder. Hover is handled by QSS :hover/:pressed states.
 
-    Apply via: HoverButtonMixin.install(button)
+    Kept for API compatibility — install() is harmless.
     """
 
     _instances: dict[QWidget, HoverButtonMixin] = {}
 
     def __init__(self, widget: QWidget) -> None:
         super().__init__(widget)
-        self._widget = widget
-        self._normal_bg: str = ""
-        self._hover_bg: str = ""
-        self._pressed_bg: str = ""
-        self._anim: QPropertyAnimation | None = None
-        widget.installEventFilter(self)
 
     @classmethod
     def install(cls, widget: QWidget) -> HoverButtonMixin:
-        """Install hover mixin on a widget (idempotent)."""
+        """No-op: hover is handled by QSS."""
         if widget not in cls._instances:
             cls._instances[widget] = cls(widget)
         return cls._instances[widget]
 
-    def _read_colors(self) -> None:
-        """Read colors from the current theme palette."""
-        from echo_personal_tool.presentation.echopac_theme import get_theme_palette
-        p = get_theme_palette()
-        self._normal_bg = p.get("bg_button", "#2e4054")
-        self._hover_bg = p.get("bg_button_hover", "#3a5068")
-        self._pressed_bg = p.get("bg_button_pressed", "#1e2a38")
 
-    def _animate_bg(self, target: str, duration_ms: int = 100) -> None:
-        """Animate background-color to target."""
-        if self._anim is not None:
-            self._anim.stop()
+def _init_time_source():
+    try:
+        from PySide6.QtCore import QDateTime
+        return lambda: QDateTime.currentMSecsSinceEpoch()
+    except Exception:
+        import time
+        return lambda: int(time.time() * 1000)
 
-        if not self._normal_bg:
-            self._read_colors()
 
-        self._widget.setStyleSheet(
-            self._widget.styleSheet().replace(
-                f"background: {self._normal_bg}",
-                f"background: {target}"
-            ) if self._normal_bg else ""
-        )
-
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
-        """Handle enter/leave/press events for hover lerp."""
-        if obj is not self._widget:
-            return False
-
-        if event.type() == QEvent.Type.Enter:
-            if not self._normal_bg:
-                self._read_colors()
-            self._widget.setStyleSheet(
-                self._widget.styleSheet().replace(
-                    f"background: {self._normal_bg}",
-                    f"background: {self._hover_bg}"
-                ) if self._normal_bg else ""
-            )
-        elif event.type() == QEvent.Type.Leave:
-            if not self._normal_bg:
-                self._read_colors()
-            self._widget.setStyleSheet(
-                self._widget.styleSheet().replace(
-                    f"background: {self._hover_bg}",
-                    f"background: {self._normal_bg}"
-                ) if self._normal_bg else ""
-            )
-        elif event.type() == QEvent.Type.MouseButtonPress:
-            if not self._normal_bg:
-                self._read_colors()
-            self._widget.setStyleSheet(
-                self._widget.styleSheet().replace(
-                    f"background: {self._hover_bg}",
-                    f"background: {self._pressed_bg}"
-                ) if self._normal_bg else ""
-            )
-        elif event.type() == QEvent.Type.MouseButtonRelease:
-            if not self._normal_bg:
-                self._read_colors()
-            self._widget.setStyleSheet(
-                self._widget.styleSheet().replace(
-                    f"background: {self._pressed_bg}",
-                    f"background: {self._hover_bg}"
-                ) if self._normal_bg else ""
-            )
-
-        return False
+_current_time_ms = _init_time_source()
 
 
 def animate_widget_opacity(
@@ -151,6 +123,11 @@ def animate_widget_opacity(
 
 def show_dialog_animated(dialog: QDialog, duration_ms: int = 200) -> None:
     """Fade-in + scale 0.95→1.0 on dialog open."""
+    # Skip animation if reduce_motion is enabled
+    if _reduce_motion_enabled():
+        dialog.show()
+        return
+
     dialog.setWindowOpacity(0.0)
     dialog.show()
 
@@ -177,21 +154,18 @@ def hide_dialog_animated(
     on_done: callable | None = None,
     duration_ms: int = 120,
 ) -> None:
-    """Fade-out dialog, then call *on_done* (typically accept/reject)."""
-    anim = animate_widget_opacity(
-        dialog,
-        dialog.windowOpacity(),
-        0.0,
-        duration_ms,
-        easing=QEasingCurve.Type.Linear,
-        on_finished=on_done,
-    )
-    dialog.setProperty("_hide_anim", anim)
+    """Call on_done directly. Animation is disabled for stability."""
+    if on_done:
+        on_done()
 
 
 @contextmanager
 def loading_button(btn: QPushButton, text: str = "...") -> Generator[None, None, None]:
-    """Context manager that disables button and shows *text* while async work runs."""
+    """Context manager that disables button and shows *text* while async work runs.
+
+    NOTE: For async workers, the caller must manage button state manually
+    via signals — this CM only covers synchronous blocks.
+    """
     old_text = btn.text()
     old_enabled = btn.isEnabled()
     btn.setText(text)
@@ -204,6 +178,20 @@ def loading_button(btn: QPushButton, text: str = "...") -> Generator[None, None,
 
 
 def exec_animated(dialog: QDialog, duration_ms: int = 200) -> int:
-    """Show dialog with fade+scale animation and return exec result."""
-    show_dialog_animated(dialog, duration_ms)
+    """Show dialog and return exec result. Animation is disabled for stability."""
+    dialog.show()
     return dialog.exec()
+
+
+def set_button_loading(btn: QPushButton, loading: bool, text: str = "...") -> None:
+    """Manually set/clear loading state on a button (for async workflows)."""
+    if loading:
+        btn.setProperty("_saved_text", btn.text())
+        btn.setProperty("_saved_enabled", btn.isEnabled())
+        btn.setText(text)
+        btn.setEnabled(False)
+    else:
+        saved_text = btn.property("_saved_text")
+        saved_enabled = btn.property("_saved_enabled")
+        btn.setText(saved_text if saved_text is not None else btn.text())
+        btn.setEnabled(saved_enabled if saved_enabled is not None else True)

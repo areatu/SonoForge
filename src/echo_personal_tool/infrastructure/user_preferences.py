@@ -101,6 +101,7 @@ class UserPreferences:
     language: str = "ru"
     auto_play: bool = False
     layout_state_json: str = ""
+    reduce_motion: bool = False
 
 
 def _settings_store() -> QSettings:
@@ -288,6 +289,7 @@ def load_user_preferences() -> UserPreferences:
         language=_read_choice(store.value("language"), "ru", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
+        reduce_motion=_read_bool(store.value("reduce_motion"), False),
     )
 
 

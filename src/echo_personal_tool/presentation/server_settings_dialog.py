@@ -149,26 +149,28 @@ class ServerSettingsForm(QWidget):
 
     def _on_profiles(self) -> None:
         from echo_personal_tool.presentation.server_profile_dialog import ServerProfileDialog
+        from echo_personal_tool.presentation.ui_animations import exec_animated
 
         dlg = ServerProfileDialog(self.settings(), self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
+        if exec_animated(dlg) == QDialog.DialogCode.Accepted:
             self.set_settings(dlg.selected_settings)
 
     def _on_dimse_echo(self) -> None:
         from echo_personal_tool.infrastructure.dimse_client import PynetdimseClient
-        from echo_personal_tool.presentation.ui_animations import loading_button
+        from echo_personal_tool.presentation.ui_animations import set_button_loading
 
         settings = self.settings()
         client = PynetdimseClient.from_settings(settings)
         self._dimse_echo_label.setText("...")
+        set_button_loading(self._dimse_echo_btn, True, "…")
         signals = _DimseEchoSignals()
         signals.result.connect(self._on_dimse_echo_result)
         task = _DimseEchoTask(client, signals)
-        with loading_button(self._dimse_echo_btn, "..."):
-            QThreadPool.globalInstance().start(task)
+        QThreadPool.globalInstance().start(task)
 
     def _on_dimse_echo_result(self, ok: bool, message: str) -> None:
-        self._dimse_echo_btn.setEnabled(self._dimse_enabled.isChecked())
+        from echo_personal_tool.presentation.ui_animations import set_button_loading
+        set_button_loading(self._dimse_echo_btn, False)
         if ok:
             self._dimse_echo_label.setText(tr("server_settings.dimse_echo_ok"))
         else:
@@ -232,8 +234,9 @@ class ServerSettingsForm(QWidget):
 
 
 def show_server_settings_dialog(parent: QWidget | None = None) -> bool:
+    from echo_personal_tool.presentation.ui_animations import exec_animated
     dialog = ServerSettingsDialog(parent)
-    return dialog.exec() == QDialog.DialogCode.Accepted
+    return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
 
 class ServerSettingsDialog(QDialog):

@@ -73,7 +73,8 @@ def run_dicom_upload_dialog(
     buttons.rejected.connect(dialog.reject)
     layout.addWidget(buttons)
 
-    if dialog.exec() != QDialog.DialogCode.Accepted:
+    from echo_personal_tool.presentation.ui_animations import exec_animated
+    if exec_animated(dialog) != QDialog.DialogCode.Accepted:
         return
 
     protocol = str(protocol_combo.currentData())

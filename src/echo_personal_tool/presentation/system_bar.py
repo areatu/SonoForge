@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 
@@ -196,6 +198,16 @@ class SystemBar(QWidget):
         self._btn_close.setObjectName("closeButton")
         self._btn_close.setToolTip("Закрыть")
         self._btn_close.clicked.connect(self.close_requested.emit)
+
+        # Install hover lerp mixin on all buttons
+        for btn in (
+            btn_open, btn_load_server, btn_send_server,
+            self._btn_settings, btn_caliper, btn_calibration,
+            btn_doppler_calibration, self._btn_references, btn_reset,
+            self._btn_layout, self._btn_minimize, self._btn_maximize,
+            self._btn_close,
+        ):
+            HoverButtonMixin.install(btn)
 
         left = QWidget()
         left.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)

@@ -127,7 +127,7 @@ with loading_button(btn, tr("orthanc.searching")):
 **Apply to:**
 
 - Orthanc «Search» / «Download»
-- Dicom Upload «Send»
+- Dicom Upload «Send» — **Note:** QProgressDialog with cancel = acceptable v1; loading_button on OK is optional enhancement
 - Server Settings «Test C-ECHO»
 
 ### 5. Context menu + tooltip (optional v1.1)

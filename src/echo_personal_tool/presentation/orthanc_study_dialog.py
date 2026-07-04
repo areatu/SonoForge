@@ -369,6 +369,7 @@ class OrthancStudyDialog(QDialog):
         return result
 
     def _on_load(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import set_button_loading
         all_series = self._collect_all_checked_series()
         log.info("[DLG] _on_load: checked_series=%d", len(all_series))
         if not all_series:
@@ -378,7 +379,7 @@ class OrthancStudyDialog(QDialog):
         self._session_id = session_id
         self._downloading = True
         self._close_pending = False
-        self._load_btn.setEnabled(False)
+        set_button_loading(self._load_btn, True, "…")
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
         self._cancel_btn.setEnabled(True)
         self._find_btn.setEnabled(False)
@@ -479,9 +480,11 @@ class OrthancStudyDialog(QDialog):
         self._downloaded_studies.extend(studies)
 
     def _reset_after_download(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import set_button_loading
         self._downloading = False
         self._worker = None
         self._force_close_timer.stop()
+        set_button_loading(self._load_btn, False)
 
     def _on_single_study_done(self, session_id: str, study_uid: str) -> None:
         log.info("[DLG] _on_single_study_done: uid=%s", study_uid[:16])

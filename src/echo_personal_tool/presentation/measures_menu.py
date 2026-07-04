@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
+from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
 
 _MENU_BUTTON_HEIGHT_PX = 18
 _ACCORDION_ANIM_MS = 180
@@ -200,6 +201,7 @@ class MeasuresAccordionSection(QWidget):
         self._header.setFlat(True)
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
         self._header.clicked.connect(self._on_header_clicked)
+        HoverButtonMixin.install(self._header)
 
         self._body = QWidget()
         self._body.setObjectName("measuresSectionBody")
@@ -211,6 +213,7 @@ class MeasuresAccordionSection(QWidget):
             button = QPushButton(spec.label)
             button.setEnabled(spec.enabled)
             style_menu_button(button)
+            HoverButtonMixin.install(button)
             if not spec.enabled:
                 button.setToolTip(tr("tooltip.a2c_auto_next"))
             if spec.enabled:

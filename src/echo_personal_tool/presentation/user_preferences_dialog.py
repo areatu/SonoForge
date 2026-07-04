@@ -60,8 +60,9 @@ def show_user_preferences_dialog(
     *,
     on_apply: Callable[[UserPreferences], None] | None = None,
 ) -> bool:
+    from echo_personal_tool.presentation.ui_animations import exec_animated
     dialog = UserPreferencesDialog(parent, on_apply=on_apply)
-    return dialog.exec() == QDialog.DialogCode.Accepted
+    return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
 
 def _scrollable_tab(form: QFormLayout) -> QWidget:
@@ -181,6 +182,8 @@ class UserPreferencesDialog(QDialog):
         self._show_caliper_labels.setChecked(current.show_caliper_labels_on_frame)
         self._show_caliper_inline_labels = QCheckBox()
         self._show_caliper_inline_labels.setChecked(current.show_caliper_inline_labels)
+        self._reduce_motion = QCheckBox(tr("preferences.reduce_motion"))
+        self._reduce_motion.setChecked(current.reduce_motion)
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
         display_form.addRow(tr("tool_panel.wl_preset"), self._wl_preset)
         display_form.addRow(tr("tool_panel.thumbnail_size"), self._thumbnail_scale)
@@ -188,6 +191,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.panel_frames"), self._show_panel_frames)
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
+        display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
         tabs.addTab(_scrollable_tab(display_form), tr("preferences.tab_display"))
 
         measure_form = QFormLayout()
@@ -363,6 +367,7 @@ class UserPreferencesDialog(QDialog):
             last_opened_folder=stored.last_opened_folder,
             theme_mode=str(self._theme_combo.currentData()),
             language=str(self._language_combo.currentData()),
+            reduce_motion=self._reduce_motion.isChecked(),
         )
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())

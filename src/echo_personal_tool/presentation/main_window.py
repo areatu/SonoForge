@@ -814,6 +814,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _open_orthanc_dialog(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import exec_animated
         settings = load_server_settings()
         client = make_dicom_web_client(settings)
         query_service = make_dicom_query_service(settings)
@@ -824,7 +825,7 @@ class MainWindow(QMainWindow):
             server_settings=settings,
             query_service=query_service,
         )
-        dialog.exec()
+        exec_animated(dialog)
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         logger.info(
@@ -1490,7 +1491,8 @@ class MainWindow(QMainWindow):
             manual_es=self._manual_es_frame,
             n_frames=n_frames,
         )
-        if settings.exec() != QDialog.DialogCode.Accepted:
+        from echo_personal_tool.presentation.ui_animations import exec_animated
+        if exec_animated(settings) != QDialog.DialogCode.Accepted:
             self._show_status(tr("status.speckle_cancelled"))
             return
         config = settings.get_config()

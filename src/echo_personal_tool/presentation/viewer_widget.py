@@ -1461,7 +1461,7 @@ class ViewerWidget(QWidget):
             else:
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             self._image_item.setImage(self._current_frame, autoLevels=False)
-            if self._window_level_enabled and levels_changed:
+            if self._window_level_enabled:
                 self._update_levels()
             elif not self._window_level_enabled:
                 vmin = float(self._current_frame.min()) if self._current_frame.size else 0.0
@@ -1479,6 +1479,8 @@ class ViewerWidget(QWidget):
         if self._current_frame is not None:
             height, width = self._current_frame.shape[:2]
             self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
+            if self._window_level_enabled:
+                self._update_levels()
             self._refresh_frame_panel_layout()
             self._configure_doppler_axis_for_frame()
             self._invalidate_edge_map_cache()
@@ -4437,9 +4439,12 @@ class ViewerWidget(QWidget):
         self._clear_linear_caliper_graphics()
         if self._caliper_sequence:
             next_label = self._caliper_sequence.pop(0)
+            # Chain: next segment starts where this one ended
+            self._linear_caliper_start = end
             self._set_caliper_label(next_label)
             self._linear_caliper_active = True
-            self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=next_label))
+            self._update_linear_caliper_preview(end, end)
+            self._measurement_label.setText(tr("viewer.linear_caliper_click_end", label=next_label))
         else:
             self._linear_caliper_active = False
             if self._caliper_sequence_size > 1:

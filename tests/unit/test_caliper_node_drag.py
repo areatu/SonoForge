@@ -52,6 +52,15 @@ def _place_caliper(viewer: ViewerWidget, x_start: float, x_end: float, y: float 
     assert viewer._handle_linear_caliper_mouse_press(ev_end)
 
 
+def _chain_click(viewer: ViewerWidget, x: float, y: float = 32.0) -> None:
+    """Single click for a chained caliper (start already set by previous segment)."""
+    scene = viewer._view.mapViewToScene(QPointF(x, y))
+    ev = MagicMock()
+    ev.button.return_value = Qt.MouseButton.LeftButton
+    ev.scenePos.return_value = scene
+    assert viewer._handle_linear_caliper_mouse_press(ev)
+
+
 def _find_node_for_endpoint(
     viewer: ViewerWidget, caliper_key: tuple[str, int], endpoint: int
 ):
@@ -148,7 +157,8 @@ def test_drag_first_caliper_second_remains_visible(qtbot) -> None:
 
     viewer.start_linear_caliper_sequence(("IVSd", "LVEDD"))
     _place_caliper(viewer, 5.0, 15.0)
-    _place_caliper(viewer, 20.0, 50.0)
+    # Chain: start is already at end of first segment (15, 32), just click end
+    _chain_click(viewer, 50.0)
 
     keys = list(viewer._stored_linear_measurements.keys())
     assert len(keys) == 2
