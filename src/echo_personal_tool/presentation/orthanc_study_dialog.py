@@ -243,12 +243,11 @@ class OrthancStudyDialog(QDialog):
             self._query_service.source = QuerySource(source_val)
         if source_val:
             self._persist_query_source(str(source_val))
-        # Show warning if DIMSE selected but no DICOMweb for download
-        if source_val == "dimse" and self._server_settings:
-            if not self._server_settings.url or self._server_settings.use_mock:
-                self._status_label.setText(
-                    tr("orthanc.dimse_needs_wado_warning")
-                )
+        # Show info if DIMSE selected — download via C-GET
+        if source_val == "dimse":
+            self._status_label.setText(
+                tr("orthanc.dimse_info_banner")
+            )
 
     def _persist_query_source(self, source_val: str) -> None:
         if source_val not in {s.value for s in QuerySource}:

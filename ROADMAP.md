@@ -146,11 +146,11 @@
 
 ### DIMSE Phase 2 (спека 2026-07-04)
 
-- [ ] C-GET retrieval (`c_get_instance`)
-- [ ] C-MOVE + embedded Storage SCP (port 11112, lifecycle = download)
-- [ ] `DicomRetrieveService` + DIMSE-only (без WADO URL)
-- [ ] TLS client (CA + optional client cert)
-- [ ] `retrieval_source`: wado / dimse / cmove / auto
+- [x] C-GET retrieval (`c_get_instance`)
+- [x] C-MOVE + embedded Storage SCP (port 11112, lifecycle = download)
+- [x] `DicomRetrieveService` + DIMSE-only (без WADO URL)
+- [x] TLS client (CA + optional client cert)
+- [x] `retrieval_source`: wado / dimse / cmove / auto
 
 **Спека:** `docs/superpowers/specs/2026-07-04-dimse-phase2-design.md`
 

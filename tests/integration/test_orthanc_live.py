@@ -89,3 +89,103 @@ def test_live_dimse_c_find_studies(orthanc_dimse_settings: ServerSettings) -> No
     client = PynetdimseClient.from_settings(orthanc_dimse_settings)
     studies = client.c_find_studies()
     assert isinstance(studies, list)
+
+
+def test_live_dimse_c_get_instance(orthanc_dimse_settings: ServerSettings) -> None:
+    """Test C-GET retrieval (requires local Orthanc with DIMSE enabled)."""
+    if orthanc_dimse_settings.retrieval_source not in ("dimse", "auto"):
+        pytest.skip("C-GET test requires retrieval_source=dimse or auto")
+    client = PynetdimseClient.from_settings(orthanc_dimse_settings)
+    studies = client.c_find_studies()
+    if not studies:
+        pytest.skip("No studies found")
+    series_list = client.c_find_series(studies[0].study_uid)
+    if not series_list:
+        pytest.skip("No series found")
+    instances = client.c_find_instances(
+        studies[0].study_uid, series_list[0].series_uid
+    )
+    if not instances:
+        pytest.skip("No instances found")
+    data = client.c_get_instance(
+        studies[0].study_uid,
+        series_list[0].series_uid,
+        instances[0].sop_instance_uid,
+    )
+    assert len(data) > 132
+    assert b"DICM" in data[:132] or data.startswith(b"\x00")
+
+
+def test_live_dimse_c_move_series(orthanc_dimse_settings: ServerSettings) -> None:
+    """Test C-MOVE retrieval (requires local Orthanc with modality configured)."""
+    if orthanc_dimse_settings.retrieval_source != "cmove":
+        pytest.skip("C-MOVE test requires retrieval_source=cmove")
+    client = PynetdimseClient.from_settings(orthanc_dimse_settings)
+    from echo_personal_tool.infrastructure.embedded_storage_scp import (
+        EmbeddedStorageSCP,
+    )
+
+    scp_host = orthanc_dimse_settings.dimse_scp_host
+    scp_port = orthanc_dimse_settings.dimse_scp_port
+    scp_ae = orthanc_dimse_settings.dimse_scp_ae_title or orthanc_dimse_settings.dimse_ae_title
+
+    studies = client.c_find_studies()
+    if not studies:
+        pytest.skip("No studies found")
+    series_list = client.c_find_series(studies[0].study_uid)
+    if not series_list:
+        pytest.skip("No series found")
+
+    with EmbeddedStorageSCP(
+        host=scp_host,
+        port=scp_port,
+        ae_title=scp_ae,
+    ) as scp:
+        received: dict[str, bytes] = {}
+        result = client.c_move_series(
+            studies[0].study_uid,
+            series_list[0].series_uid,
+            move_destination_ae=scp_ae,
+            scp_host=scp_host,
+            scp_port=scp_port,
+            received=received,
+        )
+        assert result.completed > 0 or result.failed > 0
+        # At least some instances should be received
+        if result.completed > 0:
+            assert len(received) > 0
+
+
+def test_live_dicom_retrieve_service_cget(orthanc_dimse_settings: ServerSettings) -> None:
+    """Test DicomRetrieveService with C-GET adapter."""
+    from echo_personal_tool.application.services.dicom_retrieve_service import (
+        make_retrieve_service,
+    )
+
+    if orthanc_dimse_settings.retrieval_source not in ("dimse", "auto"):
+        pytest.skip("Requires retrieval_source=dimse or auto")
+
+    client = PynetdimseClient.from_settings(orthanc_dimse_settings)
+    service = make_retrieve_service(
+        orthanc_dimse_settings,
+        dimse_client=client,
+    )
+
+    studies = client.c_find_studies()
+    if not studies:
+        pytest.skip("No studies found")
+    series_list = client.c_find_series(studies[0].study_uid)
+    if not series_list:
+        pytest.skip("No series found")
+    instances = client.c_find_instances(
+        studies[0].study_uid, series_list[0].series_uid
+    )
+    if not instances:
+        pytest.skip("No instances found")
+
+    data = service.retrieve_instance(
+        studies[0].study_uid,
+        series_list[0].series_uid,
+        instances[0].sop_instance_uid,
+    )
+    assert len(data) > 132

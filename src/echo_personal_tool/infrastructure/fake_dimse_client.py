@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from io import BytesIO
+
+from pydicom.dataset import Dataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage
+
 from echo_personal_tool.domain.models.orthanc import InstanceInfo, SeriesInfo, StudyInfo
+from echo_personal_tool.domain.ports import CMoveResult
 
 _MOCK_STUDIES = [
     StudyInfo(
@@ -94,3 +100,73 @@ class FakeDimseClient:
 
     def c_store(self, dicom_bytes: bytes) -> bool:
         return True
+
+    def c_get_instance(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+        *,
+        tls_args: tuple | None = None,
+    ) -> bytes:
+        """Return a mock DICOM instance."""
+        ds = Dataset()
+        ds.SOPClassUID = SecondaryCaptureImageStorage
+        ds.SOPInstanceUID = instance_uid
+        ds.StudyInstanceUID = study_uid
+        ds.SeriesInstanceUID = series_uid
+        ds.PatientName = "MOCK^PATIENT"
+        ds.PatientID = "MOCK001"
+
+        file_meta = FileMetaDataset()
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+        file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+        ds.file_meta = file_meta
+
+        buf = BytesIO()
+        ds.save_as(buf, enforce_file_format=True)
+        return buf.getvalue()
+
+    def c_move_instances(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uids: list[str],
+        *,
+        move_destination_ae: str,
+        scp_host: str,
+        scp_port: int,
+        received: dict[str, bytes],
+        tls_args: tuple | None = None,
+    ) -> CMoveResult:
+        """Mock C-MOVE: populate received dict with mock instances."""
+        for uid in instance_uids:
+            received[uid] = self.c_get_instance(study_uid, series_uid, uid)
+        return CMoveResult(
+            completed=len(instance_uids),
+            failed=0,
+            warning=0,
+        )
+
+    def c_move_series(
+        self,
+        study_uid: str,
+        series_uid: str,
+        *,
+        move_destination_ae: str,
+        scp_host: str,
+        scp_port: int,
+        received: dict[str, bytes],
+        tls_args: tuple | None = None,
+    ) -> CMoveResult:
+        """Mock C-MOVE series: populate received dict with mock instances."""
+        # Get mock instances for this series
+        instances = self.c_find_instances(study_uid, series_uid)
+        count = 0
+        for inst in instances:
+            received[inst.sop_instance_uid] = self.c_get_instance(
+                study_uid, series_uid, inst.sop_instance_uid
+            )
+            count += 1
+        return CMoveResult(completed=count, failed=0, warning=0)

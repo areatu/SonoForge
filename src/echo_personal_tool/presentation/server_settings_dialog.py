@@ -76,6 +76,42 @@ class ServerSettingsForm(QWidget):
         self._dimse_port_edit = QLineEdit()
         self._dimse_port_edit.setPlaceholderText("4242")
         dimse_form.addRow(tr("server_settings.dimse_port"), self._dimse_port_edit)
+
+        # Retrieval source
+        self._retrieval_source_combo = QComboBox()
+        self._retrieval_source_combo.addItem("WADO-RS", "wado")
+        self._retrieval_source_combo.addItem("DIMSE (C-GET)", "dimse")
+        self._retrieval_source_combo.addItem("DIMSE (C-MOVE)", "cmove")
+        self._retrieval_source_combo.addItem("Auto", "auto")
+        dimse_form.addRow("Retrieval source:", self._retrieval_source_combo)
+
+        # TLS settings
+        self._dimse_use_tls = QCheckBox("Use TLS")
+        dimse_form.addRow("", self._dimse_use_tls)
+        self._dimse_tls_verify = QCheckBox("Verify server certificate")
+        dimse_form.addRow("", self._dimse_tls_verify)
+        self._dimse_tls_ca_path = QLineEdit()
+        self._dimse_tls_ca_path.setPlaceholderText("/path/to/ca.pem")
+        dimse_form.addRow("CA certificate:", self._dimse_tls_ca_path)
+        self._dimse_tls_cert_path = QLineEdit()
+        self._dimse_tls_cert_path.setPlaceholderText("/path/to/client.pem")
+        dimse_form.addRow("Client certificate:", self._dimse_tls_cert_path)
+        self._dimse_tls_key_path = QLineEdit()
+        self._dimse_tls_key_path.setPlaceholderText("/path/to/client.key")
+        dimse_form.addRow("Client key:", self._dimse_tls_key_path)
+
+        # Embedded Storage SCP for C-MOVE
+        dimse_form.addRow("--- Embedded Storage SCP ---", QLabel())
+        self._dimse_scp_host = QLineEdit()
+        self._dimse_scp_host.setPlaceholderText("127.0.0.1")
+        dimse_form.addRow("SCP bind host:", self._dimse_scp_host)
+        self._dimse_scp_port = QLineEdit()
+        self._dimse_scp_port.setPlaceholderText("11112")
+        dimse_form.addRow("SCP port:", self._dimse_scp_port)
+        self._dimse_scp_ae_title = QLineEdit()
+        self._dimse_scp_ae_title.setPlaceholderText("(default: same as AE title)")
+        dimse_form.addRow("SCP AE title:", self._dimse_scp_ae_title)
+
         self._dimse_echo_btn = QPushButton(tr("server_settings.dimse_test_echo"))
         self._dimse_echo_btn.clicked.connect(self._on_dimse_echo)
         dimse_form.addRow("", self._dimse_echo_btn)
@@ -152,6 +188,16 @@ class ServerSettingsForm(QWidget):
             dimse_host=self._dimse_host_edit.text().strip() or "127.0.0.1",
             dimse_port=int(self._dimse_port_edit.text().strip() or "4242"),
             stow_dicom_web_url=self._stow_url_edit.text().strip(),
+            retrieval_source=str(self._retrieval_source_combo.currentData() or "auto"),
+            dimse_retrieval_mode="cget",  # derived from retrieval_source
+            dimse_use_tls=self._dimse_use_tls.isChecked(),
+            dimse_tls_verify=self._dimse_tls_verify.isChecked(),
+            dimse_tls_ca_path=self._dimse_tls_ca_path.text().strip(),
+            dimse_tls_cert_path=self._dimse_tls_cert_path.text().strip(),
+            dimse_tls_key_path=self._dimse_tls_key_path.text().strip(),
+            dimse_scp_host=self._dimse_scp_host.text().strip() or "127.0.0.1",
+            dimse_scp_port=int(self._dimse_scp_port.text().strip() or "11112"),
+            dimse_scp_ae_title=self._dimse_scp_ae_title.text().strip(),
         )
 
     def set_settings(self, settings: ServerSettings) -> None:
@@ -169,6 +215,17 @@ class ServerSettingsForm(QWidget):
         self._dimse_host_edit.setText(settings.dimse_host)
         self._dimse_port_edit.setText(str(settings.dimse_port))
         self._stow_url_edit.setText(settings.stow_dicom_web_url)
+        # New retrieval settings
+        retrieval_idx = self._retrieval_source_combo.findData(settings.retrieval_source)
+        self._retrieval_source_combo.setCurrentIndex(max(retrieval_idx, 0))
+        self._dimse_use_tls.setChecked(settings.dimse_use_tls)
+        self._dimse_tls_verify.setChecked(settings.dimse_tls_verify)
+        self._dimse_tls_ca_path.setText(settings.dimse_tls_ca_path)
+        self._dimse_tls_cert_path.setText(settings.dimse_tls_cert_path)
+        self._dimse_tls_key_path.setText(settings.dimse_tls_key_path)
+        self._dimse_scp_host.setText(settings.dimse_scp_host)
+        self._dimse_scp_port.setText(str(settings.dimse_scp_port))
+        self._dimse_scp_ae_title.setText(settings.dimse_scp_ae_title)
         self._sync_auth_fields()
         self._sync_dimse_fields()
 

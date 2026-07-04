@@ -36,6 +36,19 @@ class ServerSettings:
     stow_dicom_web_url: str = ""
     # Query source preference
     query_source: str = "dicomweb"
+    # Retrieval source preference
+    retrieval_source: str = "auto"  # wado | dimse | cmove | auto
+    dimse_retrieval_mode: str = "cget"  # cget | cmove
+    # TLS
+    dimse_use_tls: bool = False
+    dimse_tls_verify: bool = True
+    dimse_tls_ca_path: str = ""
+    dimse_tls_cert_path: str = ""  # optional client cert
+    dimse_tls_key_path: str = ""
+    # Embedded Storage SCP for C-MOVE
+    dimse_scp_port: int = 11112
+    dimse_scp_host: str = "127.0.0.1"  # bind address; PACS must reach this IP
+    dimse_scp_ae_title: str = ""  # default: dimse_ae_title
 
 
 # ── Profile management ──────────────────────────────────────────────
@@ -163,6 +176,16 @@ def load_server_settings() -> ServerSettings:
         dimse_port=int(store.value("dimse_port", 4242)),
         stow_dicom_web_url=str(store.value("stow_dicom_web_url", "")),
         query_source=str(store.value("query_source", "dicomweb")),
+        retrieval_source=str(store.value("retrieval_source", "auto")),
+        dimse_retrieval_mode=str(store.value("dimse_retrieval_mode", "cget")),
+        dimse_use_tls=_read_bool(store.value("dimse_use_tls"), False),
+        dimse_tls_verify=_read_bool(store.value("dimse_tls_verify"), True),
+        dimse_tls_ca_path=str(store.value("dimse_tls_ca_path", "")),
+        dimse_tls_cert_path=str(store.value("dimse_tls_cert_path", "")),
+        dimse_tls_key_path=str(store.value("dimse_tls_key_path", "")),
+        dimse_scp_port=int(store.value("dimse_scp_port", 11112)),
+        dimse_scp_host=str(store.value("dimse_scp_host", "127.0.0.1")),
+        dimse_scp_ae_title=str(store.value("dimse_scp_ae_title", "")),
     )
 
 
@@ -182,4 +205,14 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("dimse_port", settings.dimse_port)
     store.setValue("stow_dicom_web_url", settings.stow_dicom_web_url)
     store.setValue("query_source", settings.query_source)
+    store.setValue("retrieval_source", settings.retrieval_source)
+    store.setValue("dimse_retrieval_mode", settings.dimse_retrieval_mode)
+    store.setValue("dimse_use_tls", settings.dimse_use_tls)
+    store.setValue("dimse_tls_verify", settings.dimse_tls_verify)
+    store.setValue("dimse_tls_ca_path", settings.dimse_tls_ca_path)
+    store.setValue("dimse_tls_cert_path", settings.dimse_tls_cert_path)
+    store.setValue("dimse_tls_key_path", settings.dimse_tls_key_path)
+    store.setValue("dimse_scp_port", settings.dimse_scp_port)
+    store.setValue("dimse_scp_host", settings.dimse_scp_host)
+    store.setValue("dimse_scp_ae_title", settings.dimse_scp_ae_title)
     store.sync()

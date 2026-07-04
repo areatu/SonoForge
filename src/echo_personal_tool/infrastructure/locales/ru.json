@@ -424,6 +424,7 @@
   "server_settings.query_source_auto": "Auto",
   "server_settings.stow_url": "STOW-RS URL (если отличается):",
   "orthanc.dimse_needs_wado_warning": "DIMSE: скачивание требует настроенного DICOMweb (WADO-RS). C-GET — в следующей версии.",
+  "orthanc.dimse_info_banner": "Скачивание через DIMSE (C-GET)",
   "status.a2c_auto_next": "A2C auto — в следующей версии",
   "status.ai_contour_cancelled": "AI контур отменён — нажмите LV Auto EDV/ESV",
   "status.area_tool": "Площадь: клики по контуру, двойной щелчок — замкнуть; точки можно двигать",

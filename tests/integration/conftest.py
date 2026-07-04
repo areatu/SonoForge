@@ -21,6 +21,11 @@ def orthanc_dimse_integration_enabled() -> bool:
     return os.environ.get("ECHO_ORTHANC_DIMSE", "") == "1"
 
 
+def orthanc_retrieval_mode() -> str:
+    """Return retrieval mode: 'wado', 'dimse', or 'cmove'."""
+    return os.environ.get("ECHO_ORTHANC_RETRIEVAL", "wado").lower()
+
+
 @pytest.fixture
 def orthanc_dicom_web_url() -> str:
     return os.environ.get("ECHO_ORTHANC_URL", DEFAULT_ORTHANC_DICOM_WEB_URL).strip()
@@ -43,6 +48,7 @@ def orthanc_dimse_settings() -> ServerSettings:
     host = os.environ.get("ECHO_ORTHANC_DIMSE_HOST", "127.0.0.1")
     port = int(os.environ.get("ECHO_ORTHANC_DIMSE_PORT", "4242"))
     called_ae = os.environ.get("ECHO_ORTHANC_DIMSE_CALLED_AE", "ORTHANC")
+    retrieval_source = orthanc_retrieval_mode()
     return ServerSettings(
         url=os.environ.get("ECHO_ORTHANC_URL", DEFAULT_ORTHANC_DICOM_WEB_URL),
         use_mock=False,
@@ -51,4 +57,8 @@ def orthanc_dimse_settings() -> ServerSettings:
         dimse_port=port,
         dimse_called_ae=called_ae,
         dimse_ae_title=os.environ.get("ECHO_ORTHANC_DIMSE_AE", "ECHO2026"),
+        retrieval_source=retrieval_source,
+        dimse_scp_host=os.environ.get("ECHO_ORTHANC_DIMSE_SCP_HOST", "127.0.0.1"),
+        dimse_scp_port=int(os.environ.get("ECHO_ORTHANC_DIMSE_SCP_PORT", "11112")),
+        dimse_scp_ae_title=os.environ.get("ECHO_ORTHANC_DIMSE_SCP_AE", "ECHO2026"),
     )

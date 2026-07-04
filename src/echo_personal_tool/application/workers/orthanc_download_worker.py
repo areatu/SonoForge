@@ -13,6 +13,9 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 logger = logging.getLogger(__name__)
 
+from echo_personal_tool.application.services.dicom_retrieve_service import (
+    DicomRetrieveService,
+)
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.ports import DicomWebClient
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
@@ -60,6 +63,7 @@ class OrthancDownloadWorker(QRunnable):
         base_url: str | None = None,
         username: str | None = None,
         password: str | None = None,
+        retrieve_service: DicomRetrieveService | None = None,
     ) -> None:
         super().__init__()
         self._client = client
@@ -71,6 +75,7 @@ class OrthancDownloadWorker(QRunnable):
         self._base_url = base_url
         self._username = username
         self._password = password
+        self._retrieve_service = retrieve_service
         self._cancelled = False
         self._thread_client: OrthancDicomWebClient | None = None
         self._lock = Lock()
@@ -238,6 +243,34 @@ class OrthancDownloadWorker(QRunnable):
         """Download single instance. Returns bytes or None on failure."""
         if self._cancelled:
             return None
+
+        # Use retrieve service if available (supports DIMSE/C-GET/C-MOVE)
+        if self._retrieve_service is not None:
+            try:
+                data = self._retrieve_service.retrieve_instance(
+                    study_uid, series_uid, instance_uid
+                )
+                if not data:
+                    return None
+                self._cache.save_instance(
+                    self._session_id,
+                    study_uid,
+                    series_uid,
+                    instance_uid,
+                    data,
+                )
+                return data
+            except DownloadCancelled:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "[DIAG] download failed instance=%s error=%s",
+                    instance_uid[:16],
+                    exc,
+                )
+                return None
+
+        # Fallback to legacy client
         if self._server_settings is not None or self._base_url:
             client = self._make_thread_client()
         else:

@@ -424,6 +424,7 @@
   "server_settings.query_source_auto": "Auto",
   "server_settings.stow_url": "STOW-RS URL (if different):",
   "orthanc.dimse_needs_wado_warning": "DIMSE: download requires configured DICOMweb (WADO-RS). C-GET coming in next version.",
+  "orthanc.dimse_info_banner": "Download via DIMSE (C-GET)",
   "status.a2c_auto_next": "A2C auto — coming next version",
   "status.ai_contour_cancelled": "AI contour cancelled — press LV Auto EDV/ESV",
   "status.area_tool": "Area: click along contour, double-click to close; points are draggable",
