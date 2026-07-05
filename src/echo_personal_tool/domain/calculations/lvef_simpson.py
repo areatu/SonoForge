@@ -103,6 +103,8 @@ def format_contour_overlay(
 _MIN_LV_AUTO_ANNULUS_PX = 20.0
 _MIN_LV_AUTO_LONG_AXIS_PX = 15.0
 _MIN_LV_AUTO_ARC_SPAN_PX = 8.0
+_MIN_LV_AUTO_ANNULUS_MM = 3.0
+_MIN_ARC_DEPTH_RATIO = 0.15
 
 
 def _contour_annulus_length_px(contour: Contour) -> float:
@@ -137,12 +139,48 @@ def _contour_arc_span_px(contour: Contour) -> float:
     return max_span
 
 
+def _contour_arc_depth_px(contour: Contour) -> float:
+    """Depth of the arc: max perpendicular distance from MA chord to arc points."""
+    if contour.mitral_annulus is None or len(contour.points) < 3:
+        return 0.0
+    septal, lateral = contour.mitral_annulus
+    # MA chord direction
+    dx = lateral[0] - septal[0]
+    dy = lateral[1] - septal[1]
+    chord_len = math.hypot(dx, dy)
+    if chord_len < 1e-6:
+        return 0.0
+    # Unit normal to chord
+    nx, ny = -dy / chord_len, dx / chord_len
+    max_depth = 0.0
+    for pt in contour.points:
+        # Distance from point to MA chord line
+        dist = abs(nx * (pt[0] - septal[0]) + ny * (pt[1] - septal[1]))
+        if dist > max_depth:
+            max_depth = dist
+    return max_depth
+
+
+def _contour_centroid(contour: Contour) -> tuple[float, float] | None:
+    """Centroid of the closed contour polygon."""
+    if len(contour.points) < 3:
+        return None
+    xs = [p[0] for p in contour.points]
+    ys = [p[1] for p in contour.points]
+    return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+
 def explain_lv_auto_reject_reason(
     contour: Contour,
     pixel_spacing: tuple[float, float] | None,
+    *,
+    mask_pixels: int | None = None,
+    roi_xyxy: tuple[float, float, float, float] | None = None,
 ) -> str | None:
-    """Return a short Russian reason when an ONNX contour should not enter review."""
-    del pixel_spacing  # accept/reject uses pixel geometry only (spacing affects mm display)
+    """Return a short Russian reason when an ONNX contour should not enter review.
+
+    Quality gate v2 adds spacing-aware and geometry checks.
+    """
     if contour.mitral_annulus is None or len(contour.points) < 3:
         return "контур не построен"
     annulus_px = _contour_annulus_length_px(contour)
@@ -157,6 +195,34 @@ def explain_lv_auto_reject_reason(
         return "не найдено митральное кольцо (проверьте вид A4C и кадр ED/ES)"
     if long_axis_px < _MIN_LV_AUTO_LONG_AXIS_PX:
         return "короткая ось ЛЖ слишком мала — выберите другой кадр"
+
+    # v2: spacing-aware MA length check
+    if pixel_spacing is not None:
+        row_spacing, col_spacing = pixel_spacing
+        if row_spacing > 0 and col_spacing > 0:
+            annulus_mm = annulus_px * ((row_spacing + col_spacing) / 2.0)
+            if annulus_mm < _MIN_LV_AUTO_ANNULUS_MM:
+                return (
+                    f"митральное кольцо слишком мало ({annulus_mm:.1f} мм < {_MIN_LV_AUTO_ANNULUS_MM} мм) — "
+                    "проверьте вид A4C и калибровку"
+                )
+
+    # v2: arc depth ratio check
+    arc_depth = _contour_arc_depth_px(contour)
+    if annulus_px > 0 and arc_depth / annulus_px < _MIN_ARC_DEPTH_RATIO:
+        return (
+            f"контур слишком плоский (глубина {arc_depth:.0f}px / кольцо {annulus_px:.0f}px "
+            f"< {_MIN_ARC_DEPTH_RATIO:.0%}) — возможно ES или не тот view"
+        )
+
+    # v2: centroid outside ROI check
+    if roi_xyxy is not None:
+        centroid = _contour_centroid(contour)
+        if centroid is not None:
+            rx0, ry0, rx1, ry1 = roi_xyxy
+            if not (rx0 <= centroid[0] <= rx1 and ry0 <= centroid[1] <= ry1):
+                return "центр контура вне ROI — проверьте выделение сектора"
+
     return None
 
 

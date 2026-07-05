@@ -546,6 +546,7 @@ class ViewerWidget(QWidget):
     mmode_calibration_changed = Signal(object)
     mmode_time_calibration_completed = Signal(object)
     results_overlay_position_changed = Signal(float, float)
+    gold_export_requested = Signal(str, int)  # phase, frame_index
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1324,7 +1325,43 @@ class ViewerWidget(QWidget):
     def _show_save_context_menu(self, ev) -> None:
         menu = QMenu(self)
         menu.addAction(tr("viewer.context_save_as"), self._save_viewer_image)
+        self._add_gold_export_actions(menu)
         menu.exec(QCursor.pos())
+
+    def _add_gold_export_actions(self, menu: QMenu) -> None:
+        """Add gold export menu items when conditions are met."""
+        from echo_personal_tool.infrastructure.user_preferences import (
+            _read_bool,
+            _settings_store,
+        )
+
+        store = _settings_store()
+        if not _read_bool(store.value("gold_annotation_enabled"), False):
+            return
+        if self._current_state is None or self._current_state.instance is None:
+            return
+        if self._current_state.instance.media_format != "dicom":
+            return
+
+        frame_index = self._current_state.current_frame_index
+        for contour in self._stored_contours:
+            if (
+                contour.chamber == "LV"
+                and contour.view == "A4C"
+                and not contour.review_pending
+                and contour.frame_index == frame_index
+            ):
+                phase = contour.phase
+                if phase in ("ED", "ES"):
+                    label = tr(
+                        "viewer.context_save_gold",
+                        phase=phase,
+                        frame=frame_index,
+                    )
+                    menu.addAction(
+                        label,
+                        lambda p=phase, fi=frame_index: self.gold_export_requested.emit(p, fi),
+                    )
 
     def _save_viewer_image(self) -> None:
         if self._current_frame is None:

@@ -647,6 +647,80 @@ def _annulus_and_apex_from_mask_pixels(
     return septal, lateral, apex
 
 
+def _fallback_annulus_wider_band(
+    ys: np.ndarray,
+    xs: np.ndarray,
+    *,
+    y_min: int,
+    y_max: int,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Fallback A: wider annulus band (18% instead of 12%) for fragmented masks."""
+    height = y_max - y_min + 1
+    band_depth = max(3, int(round(0.18 * height)))
+    apex_band = max(3, int(round(0.08 * height)))
+
+    top_band = (y_min, y_min + band_depth)
+    bottom_band = (y_max - band_depth, y_max)
+    top_width = _band_horizontal_width(ys, xs, *top_band)
+    bottom_width = _band_horizontal_width(ys, xs, *bottom_band)
+
+    annulus_at_bottom = bottom_width >= top_width
+
+    if annulus_at_bottom:
+        annulus_mask = (ys >= bottom_band[0]) & (ys <= bottom_band[1])
+        apex_mask = (ys >= y_min) & (ys <= y_min + apex_band)
+        apex_y = float(y_min + apex_band / 2.0)
+    else:
+        annulus_mask = (ys >= top_band[0]) & (ys <= top_band[1])
+        apex_mask = (ys >= y_max - apex_band) & (ys <= y_max)
+        apex_y = float(y_max - apex_band / 2.0)
+
+    ann_xs = xs[annulus_mask]
+    ann_ys = ys[annulus_mask]
+    if ann_xs.size < 2:
+        msg = "fallback A: cannot locate mitral annulus with wider band"
+        raise ValueError(msg)
+
+    septal, lateral = _mitral_annulus_endpoints(ann_xs, ann_ys, trim_percentile=8.0)
+    if np.any(apex_mask):
+        apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
+    else:
+        apex = (float(np.median(xs)), apex_y)
+    return septal, lateral, apex
+
+
+def _fallback_annulus_sector_chord(
+    ys: np.ndarray,
+    xs: np.ndarray,
+    *,
+    y_min: int,
+    y_max: int,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Fallback B: widest horizontal span in basal 25% as provisional MA."""
+    height = y_max - y_min + 1
+    basal_depth = max(3, int(round(0.25 * height)))
+    basal_band = (y_min, y_min + basal_depth)
+
+    basal_ys = ys[(ys >= basal_band[0]) & (ys <= basal_band[1])]
+    basal_xs = xs[(ys >= basal_band[0]) & (ys <= basal_band[1])]
+    if basal_xs.size < 2:
+        msg = "fallback B: basal band too narrow for sector chord"
+        raise ValueError(msg)
+
+    min_x = float(np.min(basal_xs))
+    max_x = float(np.max(basal_xs))
+    min_y_at_min = float(np.mean(basal_ys[basal_xs == np.min(basal_xs)]))
+    max_y_at_max = float(np.mean(basal_ys[basal_xs == np.max(basal_xs)]))
+
+    septal = (min_x, min_y_at_min)
+    lateral = (max_x, max_y_at_max)
+    if septal[0] > lateral[0]:
+        septal, lateral = lateral, septal
+
+    apex = (float(np.median(xs)), float(y_max - height * 0.04))
+    return septal, lateral, apex
+
+
 def open_arc_from_cavity_mask(
     mask: np.ndarray,
     *,
@@ -687,23 +761,29 @@ def open_arc_from_cavity_mask(
         msg = "cavity mask bounding box too small"
         raise ValueError(msg)
 
-    septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
-        ys,
-        xs,
-        y_min=y_min,
-        y_max=y_max,
-        annulus_end=annulus_end,
-    )
+    try:
+        septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
+            ys, xs, y_min=y_min, y_max=y_max, annulus_end=annulus_end,
+        )
+    except ValueError:
+        try:
+            septal, lateral, apex = _fallback_annulus_wider_band(
+                ys, xs, y_min=y_min, y_max=y_max,
+            )
+        except ValueError:
+            septal, lateral, apex = _fallback_annulus_sector_chord(
+                ys, xs, y_min=y_min, y_max=y_max,
+            )
+
     if view == "A4C" and annulus_end == "auto":
         annulus_mid_y = (septal[1] + lateral[1]) / 2.0
         if annulus_mid_y < apex[1]:
-            septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
-                ys,
-                xs,
-                y_min=y_min,
-                y_max=y_max,
-                annulus_end="bottom",
-            )
+            try:
+                septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
+                    ys, xs, y_min=y_min, y_max=y_max, annulus_end="bottom",
+                )
+            except ValueError:
+                pass  # keep the original flip result
     annulus = (septal, lateral)
 
     frame_shape = original_shape or binary.shape[:2]

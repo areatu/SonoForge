@@ -126,6 +126,7 @@ class OnnxInferenceEngine:
             self._input_name, self._output_name = _resolve_io_names(self._manifest)
         else:
             self._input_name, self._output_name = "input", "logits"
+        self._input_size = self._resolve_input_size()
 
         if session is not None:
             self._session = session
@@ -169,7 +170,7 @@ class OnnxInferenceEngine:
         )
 
         fixed_mean, fixed_std = self._resolve_normalization_params()
-        tensor = prepare_tensor(cropped, fixed_mean=fixed_mean, fixed_std=fixed_std)
+        tensor = prepare_tensor(cropped, target_size=self._input_size, fixed_mean=fixed_mean, fixed_std=fixed_std)
         outputs = self._session.run(
             [self._output_name],
             {self._input_name: tensor},
@@ -211,3 +212,16 @@ class OnnxInferenceEngine:
         if threshold is None:
             return None
         return float(threshold)
+
+    def _resolve_input_size(self) -> int:
+        """Resolve model input spatial size from manifest, default 112."""
+        if self._manifest is None:
+            return 112
+        models = self._manifest.get("models", {})
+        active = self._manifest.get("active_model", "")
+        entry = models.get(active, {}) if isinstance(models, dict) else {}
+        onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
+        shape = onnx_meta.get("input_shape", [1, 3, 112, 112])
+        if isinstance(shape, (list, tuple)) and len(shape) >= 3:
+            return int(shape[2])
+        return 112

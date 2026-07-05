@@ -136,7 +136,7 @@ Implement via existing `EchoNetCropMode` in `segmentation_service.crop_frame_for
 
 When viewer debug overlay is visible (`toggle_debug_overlay`), draw ROI rectangle used for last auto-segment (store last `roi_xyxy` on controller). Not user-facing in production UI.
 
-> **v1.5 deviation (2026-07-05):** Not implemented — developer-only feature, low priority. Can be added in a follow-up if needed for visual ROI debugging.
+> **Implemented (2026-07-05):** `_last_segment_roi_xyxy` stored on controller, ROI drawn as dashed red rectangle on ViewBox, coords shown in debug label. Toggle off clears rect.
 
 ---
 

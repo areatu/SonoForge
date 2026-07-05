@@ -216,6 +216,7 @@ class MainWindow(QMainWindow):
         self._viewer.results_overlay_position_changed.connect(
             self._on_results_overlay_position_changed
         )
+        self._viewer.gold_export_requested.connect(self._on_gold_export_requested)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -733,6 +734,9 @@ class MainWindow(QMainWindow):
             self._viewer.set_results_overlay_position(x_ratio, y_ratio, custom=True)
             return
         self._viewer.reset_results_overlay_to_default()
+
+    def _on_gold_export_requested(self, phase: str, frame_index: int) -> None:
+        self._controller.save_gold_annotation(phase=phase, frame_index=frame_index)
 
     def _wire_wl_persistence(self) -> None:
         for slider_widget in (

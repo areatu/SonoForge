@@ -102,6 +102,8 @@ class UserPreferences:
     auto_play: bool = False
     layout_state_json: str = ""
     reduce_motion: bool = False
+    gold_annotation_enabled: bool = False
+    gold_dataset_path: str = ""
 
 
 def _settings_store() -> QSettings:
@@ -290,6 +292,8 @@ def load_user_preferences() -> UserPreferences:
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
         reduce_motion=_read_bool(store.value("reduce_motion"), False),
+        gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),
+        gold_dataset_path=str(store.value("gold_dataset_path", "")),
     )
 
 

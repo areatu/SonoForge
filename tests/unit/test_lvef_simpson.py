@@ -181,8 +181,22 @@ def test_contour_meets_lv_auto_quality_rejects_tiny_contour() -> None:
     ) is None
 
 
-def test_lv_auto_quality_ignores_bad_mm_spacing_when_pixels_ok() -> None:
+def test_lv_auto_quality_rejects_small_annulus_mm_with_spacing() -> None:
+    """v2: with very small spacing, MA mm check triggers."""
     from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
 
     contour = open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0)
-    assert explain_lv_auto_reject_reason(contour, (0.001, 0.001)) is None
+    # spacing 0.001 mm/px → MA = 100 * 0.001 = 0.1mm < 3mm → reject
+    reason = explain_lv_auto_reject_reason(contour, (0.001, 0.001))
+    assert reason is not None
+    assert "мм" in reason
+
+
+def test_lv_auto_quality_passes_with_normal_spacing() -> None:
+    """v2: with normal spacing, MA mm check passes."""
+    from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
+
+    contour = open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0)
+    # spacing 0.15 mm/px → MA = 100 * 0.15 = 15mm >= 3mm → passes
+    reason = explain_lv_auto_reject_reason(contour, (0.15, 0.15))
+    assert reason is None

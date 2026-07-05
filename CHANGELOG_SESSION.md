@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-07-06 12:00] LV Auto Commercial Parity v2 — Phase 2a + 2b
+- **Тип:** feature
+- **Файлы:** `bench/`, `gold_store.py`, `bench_metrics.py`, `run_lv_auto_bench.py`, `onnx_engine.py`, `segment_roi.py`, `segmentation_service.py`, `lvef_simpson.py`, `user_preferences.py`, `viewer_widget.py`, `app_controller.py`, `main_window.py`, `model_manifest.json`, `locales/{ru,en}.json`
+- **Суть:** Phase 2a: Tier-1 bench infrastructure (gold JSON I/O, metrics, bench runner, gold annotation UX via QSettings + context menu). Phase 2b: 224x224 model support in onnx_engine, ROI apex guard on sector trim, landmark fallbacks A/B in open_arc, quality gate v2 (spacing-aware MA < 3mm, arc depth < 0.15×MA, centroid outside ROI). 47 new unit tests, all passing.
+
 ## [2026-07-05 18:00] LV Auto ONNX Quality v1.5 — Per-Frame Segmentation
 - **Тип:** feature + fix
 - **Файлы:** `app_controller.py`, `segmentation_service.py`, `segment_roi.py`, `onnx_engine.py`, `model_manifest.json`, `ROADMAP.md`, `scripts/calibrate_echonet_norm.py`, `tests/unit/test_segmentation_service.py`
@@ -14,7 +19,7 @@
 ## [2026-07-05 20:00] LV Auto Temporal Fusion v1.0
 - **Тип:** feature
 - **Файлы:** `domain/models/temporal_fusion.py`, `domain/services/lv_temporal_fusion.py`, `app_controller.py`, `viewer_widget.py`, `main_window.py`, `model_manifest.json`, `tests/unit/test_lv_temporal_fusion.py`, `tests/unit/test_auto_segment_controller.py`
-- **Суть:** Neighbor-aware contour fusion (N±2): translation registration, mask vote, node clamp, annulus fuse, apex direction lock. Ghost overlays (G/Shift+G/[ ]) with 50%/25% opacity. 19 unit tests + 3 controller tests.
+- **Суть:** Neighbor-aware contour fusion (N±2): translation registration, mask vote, node clamp (apex ratio), annulus fuse (center_ref), apex direction lock. Ghost overlays (G=center vs fused, Shift+G=neighbor, [/]=cycle). Neighbor points aligned to anchor canvas. Debug ROI overlay. P0 fusion hang fix. P1 annulus δ + refine after fusion. i18n. 45 tests.
 
 ## [2026-07-01 16:00] Playback timing, overlay i18n, test_i18n
 - **Тип:** fix + feature

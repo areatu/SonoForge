@@ -628,6 +628,84 @@ class AppController(QObject):
         self.status_message.emit(tr("app.contour_accepted", target_view=target_view, target_phase=target_phase))
         return True
 
+    def save_gold_annotation(self, *, phase: str, frame_index: int) -> None:
+        """Save the accepted LV contour on the given frame as gold annotation."""
+        from echo_personal_tool.domain.services.gold_store import (
+            load_gold,
+            make_gold_frame,
+            make_gold_study,
+            merge_frame_into_gold,
+            save_gold,
+        )
+
+        snapshot = self._state_manager.snapshot
+        instance = snapshot.instance
+        if instance is None or instance.media_format != "dicom":
+            return
+
+        from echo_personal_tool.infrastructure.user_preferences import _read_bool, _settings_store
+        store = _settings_store()
+        if not _read_bool(store.value("gold_annotation_enabled"), False):
+            return
+
+        gold_root = Path(str(store.value("gold_dataset_path", "")))
+        if not gold_root.is_dir():
+            self.status_message.emit(tr("app.gold_path_invalid"))
+            return
+
+        study_uid = self._resolve_study_uid(instance)
+        gold_dir = gold_root / "gold"
+        gold_path = gold_dir / f"{study_uid}.json"
+
+        # Find accepted LV contour on this frame
+        contour = None
+        for c in snapshot.contours:
+            if (
+                c.chamber == "LV"
+                and c.view == "A4C"
+                and c.phase == phase
+                and c.frame_index == frame_index
+                and not c.review_pending
+            ):
+                contour = c
+                break
+        if contour is None:
+            self.status_message.emit(tr("app.gold_no_contour", phase=phase))
+            return
+
+        pixel_spacing = snapshot.effective_pixel_spacing
+        ps_mm = list(pixel_spacing) if pixel_spacing else [0.0, 0.0]
+
+        frame_data = make_gold_frame(
+            frame_index=frame_index,
+            phase=phase,
+            points=[list(p) for p in contour.points],
+            mitral_annulus=[list(contour.mitral_annulus[0]), list(contour.mitral_annulus[1])],
+            apex_landmark=list(contour.apex_landmark) if contour.apex_landmark else None,
+            source="ai_corrected",
+            annotator="",
+            view="A4C",
+            sop_instance_uid=instance.sop_instance_uid,
+        )
+
+        if gold_path.exists():
+            existing = load_gold(gold_path)
+            merged = merge_frame_into_gold(existing, frame_data)
+        else:
+            merged = make_gold_study(
+                study_id=study_uid,
+                instance_path=str(instance.path),
+                pixel_spacing_mm=ps_mm,
+                sop_instance_uid=instance.sop_instance_uid,
+            )
+            merged = merge_frame_into_gold(merged, frame_data)
+
+        gold_path.parent.mkdir(parents=True, exist_ok=True)
+        save_gold(gold_path, merged)
+        self.status_message.emit(
+            tr("app.gold_saved", phase=phase, frame=frame_index, path=str(gold_path))
+        )
+
     def _clear_fusion_state(self) -> None:
         """Clear temporal fusion state after accept/discard/instance change."""
         self._fusion_in_progress = False

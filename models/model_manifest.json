@@ -55,11 +55,30 @@
       "status": "not_exported",
       "sha256": null,
       "file_size_bytes": null
+    },
+    "echonet_seg_resnet50_224": {
+      "id": "echonet_seg_resnet50_224",
+      "filename": "echonet_seg_resnet50_224.onnx",
+      "architecture": "deeplabv3_resnet50",
+      "description": "EchoNet-Dynamic LV segmentation 224x224 (Phase 2b)",
+      "onnx": {
+        "opset_version": 17,
+        "input_name": "input",
+        "output_name": "logits",
+        "input_shape": [1, 3, 224, 224],
+        "output_shape": [1, 1, 224, 224],
+        "output_type": "logits",
+        "postprocess": "sigmoid_then_threshold_0.5"
+      },
+      "status": "not_exported",
+      "sha256": null,
+      "file_size_bytes": null
     }
   },
   "preprocessing": {
     "resize_height": 112,
     "resize_width": 112,
+    "supported_sizes": [112, 224],
     "interpolation": "cubic",
     "layout": "NCHW",
     "color_order": "RGB",

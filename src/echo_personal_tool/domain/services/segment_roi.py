@@ -80,13 +80,21 @@ def _trim_sector_content_bounds(
     intensity_percentile: float = 35.0,
     pad_px: int = 6,
     trim_bottom: bool = True,
+    apex_guard: bool = False,
+    apex_guard_max_removal_ratio: float = 0.15,
+    apex_guard_band_ratio: float = 0.12,
 ) -> tuple[float, float, float, float]:
-    """Tighten ROI to the fan sector (drop black margins above/below tissue)."""
+    """Tighten ROI to the fan sector (drop black margins above/below tissue).
+
+    When apex_guard=True, aborts trim if removed area exceeds
+    apex_guard_max_removal_ratio of original height or apex band is empty.
+    """
     x0f, y0f, x1f, y1f = roi_xyxy
     x0 = int(np.clip(round(x0f), 0, grayscale.shape[1] - 1))
     y0 = int(np.clip(round(y0f), 0, grayscale.shape[0] - 1))
     x1 = int(np.clip(round(x1f), x0 + 1, grayscale.shape[1]))
     y1 = int(np.clip(round(y1f), y0 + 1, grayscale.shape[0]))
+    original_height = y1 - y0
     panel = grayscale[y0:y1, x0:x1]
     if panel.size == 0:
         return roi_xyxy
@@ -113,6 +121,20 @@ def _trim_sector_content_bounds(
         sy1 = panel.shape[0]
     if sx1 <= sx0 or sy1 <= sy0:
         return roi_xyxy
+
+    trimmed_height = sy1 - sy0
+    if apex_guard and original_height > 0:
+        removal_ratio = (original_height - trimmed_height) / original_height
+        if removal_ratio > apex_guard_max_removal_ratio:
+            return roi_xyxy
+        apex_band_start = sy0
+        apex_band_end = min(sy1, sy0 + int(round(original_height * apex_guard_band_ratio)))
+        if apex_band_end <= apex_band_start:
+            return roi_xyxy
+        apex_panel = grayscale[y0 + apex_band_start : y0 + apex_band_end, x0 + sx0 : x0 + sx1]
+        if apex_panel.size == 0 or not np.any(apex_panel > threshold):
+            return roi_xyxy
+
     return (float(x0 + sx0), float(y0 + sy0), float(x0 + sx1), float(y0 + sy1))
 
 
@@ -140,7 +162,9 @@ def resolve_cine_segment_roi_xyxy(frame: np.ndarray) -> tuple[float, float, floa
 
     x0, x1 = _trim_lateral_content_columns(grayscale, y0=panel_y0, y1=panel_y1)
     panel_roi = (float(x0), float(panel_y0), float(x1), float(panel_y1))
-    return _trim_sector_content_bounds(grayscale, panel_roi, trim_bottom=False)
+    return _trim_sector_content_bounds(
+        grayscale, panel_roi, trim_bottom=False, apex_guard=True,
+    )
 
 
 def resolve_dicom_segment_roi_xyxy(
