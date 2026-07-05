@@ -117,10 +117,11 @@ def export_onnx(
     model: nn.Module,
     output_path: Path,
     opset_version: int = 17,
+    input_size: int = 112,
 ) -> None:
     model.eval()
     wrapper = EchoNetSegmentationWrapper(model)
-    dummy = torch.randn(1, 3, INPUT_SIZE, INPUT_SIZE)
+    dummy = torch.randn(1, 3, input_size, input_size)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
@@ -157,7 +158,7 @@ def quantize_int8(onnx_path: Path, output_path: Path) -> None:
     print(f"INT8 ONNX exported: {output_path}")
 
 
-def verify_onnx(onnx_path: Path) -> None:
+def verify_onnx(onnx_path: Path, input_size: int = 112) -> None:
     try:
         import numpy as np
         import onnxruntime as ort
@@ -170,7 +171,7 @@ def verify_onnx(onnx_path: Path) -> None:
     session = ort.InferenceSession(
         str(onnx_path), providers=["CPUExecutionProvider"]
     )
-    sample = np.random.randn(1, 3, INPUT_SIZE, INPUT_SIZE).astype(np.float32)
+    sample = np.random.randn(1, 3, input_size, input_size).astype(np.float32)
     outputs = session.run(None, {"input": sample})
     logits = outputs[0]
     print(
@@ -199,8 +200,9 @@ def update_manifest_after_export(
     manifest: dict,
     onnx_path: Path,
     int8_path: Path | None,
+    model_id: str = MODEL_ID,
 ) -> None:
-    entry = manifest["models"][MODEL_ID]
+    entry = manifest["models"][model_id]
     entry["status"] = "exported"
     entry["sha256"] = sha256_file(onnx_path)
     entry["file_size_bytes"] = onnx_path.stat().st_size
@@ -258,6 +260,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip updating models/model_manifest.json",
     )
+    parser.add_argument(
+        "--input-size",
+        type=int,
+        default=112,
+        help="Model input spatial size (default: 112)",
+    )
+    parser.add_argument(
+        "--model-id",
+        default=MODEL_ID,
+        help=f"Manifest model ID to update (default: {MODEL_ID})",
+    )
     return parser.parse_args()
 
 
@@ -276,7 +289,7 @@ def main() -> int:
     model.load_state_dict(state_dict, strict=True)
     print("Weights loaded successfully.")
 
-    export_onnx(model, args.output, opset_version=args.opset)
+    export_onnx(model, args.output, opset_version=args.opset, input_size=args.input_size)
 
     int8_path: Path | None = None
     if args.quantize_int8:
@@ -286,13 +299,13 @@ def main() -> int:
         quantize_int8(args.output, int8_path)
 
     if args.verify:
-        verify_onnx(args.output)
+        verify_onnx(args.output, input_size=args.input_size)
         if int8_path and int8_path.exists():
-            verify_onnx(int8_path)
+            verify_onnx(int8_path, input_size=args.input_size)
 
     if not args.no_update_manifest:
         manifest = load_manifest()
-        update_manifest_after_export(manifest, args.output, int8_path)
+        update_manifest_after_export(manifest, args.output, int8_path, model_id=args.model_id)
         save_manifest(manifest)
 
     print("Done.")

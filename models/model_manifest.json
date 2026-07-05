@@ -98,7 +98,7 @@
       "ED",
       "ES"
     ],
-    "crop_mode": "center_square",
+    "crop_mode": "full_roi",
     "logit_threshold": null,
     "auto_refine_after_segment": true,
     "refine_step_stride": 3,
@@ -106,7 +106,7 @@
     "refine_smooth_iterations": 6
   },
   "temporal_fusion": {
-    "enabled": true,
+    "enabled": false,
     "window": 2,
     "vote_threshold": 3,
     "max_node_shift_ratio_ed": 0.03,
