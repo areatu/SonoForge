@@ -53,6 +53,8 @@ from echo_personal_tool.domain.models import (
     InstanceMetadata,
     LinearMeasurement,
     StudyMetadata,
+    TemporalFusionConfig,
+    TemporalFusionResult,
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
@@ -74,6 +76,10 @@ from echo_personal_tool.domain.services.segmentation_service import (
     open_arc_from_cavity_mask,
     papillary_mask_cleanup,
     smooth_contour,
+)
+from echo_personal_tool.domain.services.lv_temporal_fusion import (
+    compute_window,
+    temporal_fuse,
 )
 from echo_personal_tool.infrastructure.onnx_engine import (
     OnnxInferenceEngine,
@@ -169,6 +175,19 @@ class AppController(QObject):
         self._auto_segment_phase: str | None = None
         self._auto_segment_view: str = "A4C"
         self._auto_segment_chamber: str = "LV"
+        # Temporal fusion state
+        self._fusion_in_progress = False
+        self._fusion_config: object | None = None
+        self._fusion_anchor_frame: int = -1
+        self._fusion_phase: str | None = None
+        self._fusion_view: str = "A4C"
+        self._fusion_chamber: str = "LV"
+        self._fusion_instance_path: Path | None = None
+        self._fusion_original_shape: tuple[int, int] = (0, 0)
+        self._fusion_masks: dict[int, np.ndarray] = {}
+        self._fusion_contours: dict[int, Contour] = {}
+        self._fusion_window: list[int] = []
+        self._fusion_result: TemporalFusionResult | None = None
         self._scan_started_at: float | None = None
         self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
@@ -185,6 +204,10 @@ class AppController(QObject):
     @property
     def playback_config(self) -> PlaybackConfig:
         return self._playback_config
+
+    @property
+    def fusion_result(self) -> TemporalFusionResult | None:
+        return self._fusion_result
 
     def is_scroll_active(self) -> bool:
         return self._scroll_active
@@ -253,6 +276,7 @@ class AppController(QObject):
             self.frame_load_failed.emit("Instance has no file path")
             return
         self._current_instance = instance
+        self._clear_fusion_state()
         if (
             not self._study_metrics_auto_filled
             and instance.patient_height_m is not None
@@ -592,9 +616,25 @@ class AppController(QObject):
                 updated_contours.append(contour)
         if not found:
             return False
+        self._clear_fusion_state()
         self.on_contours_changed(updated_contours)
         self.status_message.emit(tr("app.contour_accepted", target_view=target_view, target_phase=target_phase))
         return True
+
+    def _clear_fusion_state(self) -> None:
+        """Clear temporal fusion state after accept/discard/instance change."""
+        self._fusion_in_progress = False
+        self._fusion_config = None
+        self._fusion_anchor_frame = -1
+        self._fusion_phase = None
+        self._fusion_view = "A4C"
+        self._fusion_chamber = "LV"
+        self._fusion_instance_path = None
+        self._fusion_original_shape = (0, 0)
+        self._fusion_masks = {}
+        self._fusion_contours = {}
+        self._fusion_window = []
+        self._fusion_result = None
 
     def request_auto_segment(
         self,
@@ -1840,6 +1880,25 @@ class AppController(QObject):
             return False
         return bool(inference.get("auto_refine_after_segment", False))
 
+    def _resolve_temporal_fusion_config(self) -> TemporalFusionConfig | None:
+        manifest = _load_manifest(_default_models_dir())
+        if not manifest:
+            return None
+        tf = manifest.get("temporal_fusion")
+        if not isinstance(tf, dict) or not tf.get("enabled", False):
+            return None
+        return TemporalFusionConfig(
+            window=tf.get("window", 2),
+            vote_threshold=tf.get("vote_threshold", 3),
+            max_node_shift_ratio_ed=tf.get("max_node_shift_ratio_ed", 0.03),
+            max_node_shift_ratio_es=tf.get("max_node_shift_ratio_es", 0.025),
+            apex_max_shift_ratio_ed=tf.get("apex_max_shift_ratio_ed", 0.02),
+            apex_max_shift_ratio_es=tf.get("apex_max_shift_ratio_es", 0.015),
+            annulus_max_shift_ratio_ed=tf.get("annulus_max_shift_ratio_ed", 0.015),
+            annulus_max_shift_ratio_es=tf.get("annulus_max_shift_ratio_es", 0.012),
+            apex_direction_lock=tf.get("apex_direction_lock", True),
+        )
+
     def _on_auto_segment_finished(
         self,
         phase: str,
@@ -1958,6 +2017,18 @@ class AppController(QObject):
         self.status_message.emit(review_status)
         self.on_contours_changed(contours)
 
+        # Temporal fusion: after showing center contour, queue neighbors
+        self._maybe_start_temporal_fusion(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            instance_path=instance_path,
+            frame_index=frame_index,
+            original_shape=original_shape,
+            mask=mask,
+            center_contour=contour,
+        )
+
     def _on_auto_segment_failed(
         self,
         instance_path: Path | None,
@@ -1974,6 +2045,263 @@ class AppController(QObject):
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
         self.status_message.emit(tr("app.segmentation_unavailable"))
+
+    # ── Temporal Fusion ──────────────────────────────────────────────────
+
+    def _maybe_start_temporal_fusion(
+        self,
+        *,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        frame_index: int,
+        original_shape: tuple[int, int],
+        mask: np.ndarray,
+        center_contour: Contour,
+    ) -> None:
+        """After center segment, queue neighbors if temporal fusion enabled."""
+        config = self._resolve_temporal_fusion_config()
+        if config is None:
+            return
+        if self._current_instance is None:
+            return
+        total = self._current_instance.number_of_frames
+        if total <= 1:
+            return
+
+        window = compute_window(frame_index, total, config.window)
+        neighbors = [i for i in window if i != frame_index]
+        if not neighbors:
+            return
+
+        self._fusion_in_progress = True
+        self._fusion_config = config
+        self._fusion_anchor_frame = frame_index
+        self._fusion_phase = phase
+        self._fusion_view = view
+        self._fusion_chamber = chamber
+        self._fusion_instance_path = instance_path
+        self._fusion_original_shape = original_shape
+        self._fusion_masks = {frame_index: mask}
+        self._fusion_contours = {frame_index: center_contour}
+        self._fusion_window = window
+        self._fusion_result = None
+
+        self.status_message.emit(
+            tr("status.temporal_fusion_started", count=len(neighbors))
+        )
+
+        for neighbor_idx in neighbors:
+            self._queue_neighbor_segment(neighbor_idx, phase, view, chamber, instance_path)
+
+    def _queue_neighbor_segment(
+        self,
+        neighbor_idx: int,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+    ) -> None:
+        """Load frame at neighbor_idx and segment it."""
+        if self._current_instance is None:
+            return
+
+        media_format = self._current_instance.media_format
+
+        worker = FrameLoaderWorker(
+            self._current_instance.path,
+            frame_index=neighbor_idx,
+            media_format=media_format,
+            parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_neighbor_frame_loaded,
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                instance_path=instance_path,
+                neighbor_idx=neighbor_idx,
+            )
+        )
+        worker.signals.failed.connect(
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
+        )
+        self._thread_pool.start(worker)
+
+    def _on_neighbor_frame_loaded(
+        self,
+        pixels: np.ndarray,
+        *,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        neighbor_idx: int,
+    ) -> None:
+        """Got neighbor frame pixels — segment them."""
+        if not isinstance(pixels, np.ndarray):
+            self._on_neighbor_segment_failed(neighbor_idx)
+            return
+
+        frame = np.ascontiguousarray(pixels)
+        original_shape = (int(frame.shape[0]), int(frame.shape[1]))
+        media_format = (
+            self._current_instance.media_format if self._current_instance is not None else "dicom"
+        )
+
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase=phase,
+        )
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
+        worker.signals.finished.connect(
+            partial(
+                self._on_neighbor_segment_finished,
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                instance_path=instance_path,
+                neighbor_idx=neighbor_idx,
+                original_shape=original_shape,
+            )
+        )
+        worker.signals.failed.connect(
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
+        )
+        worker.signals.timed_out.connect(
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
+        )
+        self._thread_pool.start(worker)
+
+    def _on_neighbor_segment_finished(
+        self,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        neighbor_idx: int,
+        original_shape: tuple[int, int],
+        mask: object,
+    ) -> None:
+        """Neighbor ONNX finished — store mask and contour, try fusion."""
+        if not isinstance(mask, np.ndarray):
+            self._on_neighbor_segment_failed(neighbor_idx)
+            return
+
+        cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
+        if int(np.count_nonzero(cleaned_mask)) < 80:
+            self._on_neighbor_segment_failed(neighbor_idx)
+            return
+
+        try:
+            open_points, annulus, apex = self._open_arc_from_cleaned_mask(
+                cleaned_mask,
+                original_shape=original_shape,
+                view=view,
+            )
+        except ValueError:
+            self._on_neighbor_segment_failed(neighbor_idx)
+            return
+
+        refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
+
+        instance_uid = (
+            self._current_instance.sop_instance_uid if self._current_instance is not None else None
+        )
+        contour = Contour(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            mitral_annulus=annulus,
+            apex_landmark=apex,
+            points=refined_points,
+            source="ai",
+            num_nodes=len(refined_points),
+            frame_index=neighbor_idx,
+            sop_instance_uid=instance_uid,
+        )
+
+        self._fusion_masks[neighbor_idx] = mask
+        self._fusion_contours[neighbor_idx] = contour
+
+        done = sum(1 for i in self._fusion_window if i in self._fusion_masks)
+        self.status_message.emit(
+            tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window))
+        )
+
+        self._try_complete_temporal_fusion()
+
+    def _on_neighbor_segment_failed(self, neighbor_idx: int) -> None:
+        """Neighbor segment failed — count what we have and try fusion."""
+        self._try_complete_temporal_fusion()
+
+    def _try_complete_temporal_fusion(self) -> None:
+        """If all window frames processed (or enough), run fusion."""
+        if not self._fusion_in_progress:
+            return
+
+        expected = len(self._fusion_window)
+        done = sum(1 for i in self._fusion_window if i in self._fusion_masks)
+        if done < expected:
+            return
+
+        self._fusion_in_progress = False
+        config = self._fusion_config
+        if config is None:
+            return
+
+        anchor = self._fusion_anchor_frame
+        center_mask = self._fusion_masks.get(anchor)
+        center_contour = self._fusion_contours.get(anchor)
+        if center_mask is None or center_contour is None:
+            return
+
+        neighbor_masks = {i: m for i, m in self._fusion_masks.items() if i != anchor}
+        neighbor_contours = {i: c for i, c in self._fusion_contours.items() if i != anchor}
+
+        result = temporal_fuse(
+            center_mask=center_mask,
+            neighbor_masks=neighbor_masks,
+            center_contour=center_contour,
+            neighbor_contours=neighbor_contours,
+            anchor_frame_index=anchor,
+            phase=self._fusion_phase or "ED",
+            config=config,
+            original_shape=self._fusion_original_shape,
+        )
+
+        self._fusion_result = result
+
+        # Replace pending contour with fused contour
+        contours = [
+            existing
+            for existing in self._state_manager.snapshot.contours
+            if not (
+                existing.phase == result.fused_contour.phase
+                and existing.view == result.fused_contour.view
+                and existing.chamber == result.fused_contour.chamber
+            )
+        ]
+        contours.append(result.fused_contour)
+        self.on_contours_changed(contours)
+
+        self.status_message.emit(
+            tr(
+                "status.temporal_fusion_complete",
+                used=result.frames_used,
+                requested=result.frames_requested,
+            )
+        )
 
     # ── Speckle Tracking ──────────────────────────────────────────────────
 

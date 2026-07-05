@@ -56,6 +56,7 @@
 | **v1** | Biplane A2C в LV Auto | [x] убрано из меню (не v1) |
 | **v1.1** | Фиксированные train mean/std | [ ] отложено — v1 annulus не трогаем |
 | **v1.5** | Per-frame quality: MP4 ROI fix, DICOM sector trim, adaptive Otsu threshold, embed order=1, phase-aware papillary, fixed norm v1.1, auto_refine all media | [x] спека `2026-07-05-lv-auto-onnx-quality-design.md` |
+| **v1.5+** | Temporal fusion: neighbor-aware contour (N±2), mask vote, node clamp, annulus fuse, ghost overlays | [x] спека `2026-07-05-lv-auto-temporal-fusion-design.md` |
 | **v2** | A2C auto (отдельная модель / transfer) | [ ] «в следующей версии» |
 
 - [x] Stepped border refine + edge snap для ai/manual

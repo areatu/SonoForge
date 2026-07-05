@@ -85,5 +85,17 @@
     "refine_step_stride": 3,
     "refine_smooth_blend": 0.62,
     "refine_smooth_iterations": 6
+  },
+  "temporal_fusion": {
+    "enabled": true,
+    "window": 2,
+    "vote_threshold": 3,
+    "max_node_shift_ratio_ed": 0.03,
+    "max_node_shift_ratio_es": 0.025,
+    "apex_max_shift_ratio_ed": 0.02,
+    "apex_max_shift_ratio_es": 0.015,
+    "annulus_max_shift_ratio_ed": 0.015,
+    "annulus_max_shift_ratio_es": 0.012,
+    "apex_direction_lock": true
   }
 }

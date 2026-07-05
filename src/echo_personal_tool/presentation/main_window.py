@@ -184,6 +184,7 @@ class MainWindow(QMainWindow):
         self._content_splitter.setHandleWidth(2)
 
         self._viewer = ViewerWidget()
+        self._viewer._controller_ref = self._controller
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
         self._viewer.frame_selected.connect(self._on_slider_frame_selected)
@@ -2076,6 +2077,27 @@ class MainWindow(QMainWindow):
             return True
         if event.key() == Qt.Key.Key_Escape:
             self._cancel_active_tool()
+            event.accept()
+            return True
+        # Ghost overlay keys (temporal fusion)
+        if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            mode = v.toggle_ghost_mode()
+            self._show_status(f"Ghost: {mode}")
+            event.accept()
+            return True
+        if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+            v.set_ghost_mode("neighbor")
+            self._show_status("Ghost: neighbor")
+            event.accept()
+            return True
+        if event.key() == Qt.Key.Key_BracketLeft:
+            v.cycle_neighbor_ghost(-1)
+            self._show_status(f"Ghost: neighbor {v.ghost_mode}")
+            event.accept()
+            return True
+        if event.key() == Qt.Key.Key_BracketRight:
+            v.cycle_neighbor_ghost(1)
+            self._show_status(f"Ghost: neighbor {v.ghost_mode}")
             event.accept()
             return True
         return False

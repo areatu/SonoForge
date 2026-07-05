@@ -648,6 +648,16 @@ class ViewerWidget(QWidget):
         )
         self._contour_pen_model = pg.mkPen("#4caf50", width=2)
         self._contour_pen_ma = pg.mkPen("#ff6f00", width=1, style=Qt.PenStyle.DashLine)
+        # Ghost overlay pens (temporal fusion)
+        self._contour_pen_ghost_center = pg.mkPen(
+            "#00bcd4", width=1, style=Qt.PenStyle.DashLine,
+        )
+        self._contour_pen_ghost_neighbor = pg.mkPen(
+            "#9e9e9e", width=1, style=Qt.PenStyle.DotLine,
+        )
+        self._ghost_mode: str = "off"  # off | center | neighbor
+        self._ghost_neighbor_index: int = 0
+        self._ghost_items: list[pg.PlotDataItem] = []
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
@@ -3018,6 +3028,93 @@ class ViewerWidget(QWidget):
         self._clear_active_contour_drawing()
         if not self._syncing_state:
             self.contours_changed.emit([])
+
+    # ── Ghost overlays (temporal fusion) ──────────────────────────────────
+
+    @property
+    def ghost_mode(self) -> str:
+        return self._ghost_mode
+
+    def toggle_ghost_mode(self) -> str:
+        """Cycle: off → center → neighbor → off. Returns new mode."""
+        if self._ghost_mode == "off":
+            self._ghost_mode = "center"
+        elif self._ghost_mode == "center":
+            self._ghost_mode = "neighbor"
+        else:
+            self._ghost_mode = "off"
+        self._render_ghost_overlay()
+        return self._ghost_mode
+
+    def set_ghost_mode(self, mode: str) -> None:
+        self._ghost_mode = mode
+        self._render_ghost_overlay()
+
+    def cycle_neighbor_ghost(self, direction: int = 1) -> None:
+        """Cycle which neighbor ghost is shown."""
+        result = self._get_fusion_result()
+        if result is None or not result.neighbor_contours:
+            return
+        keys = sorted(result.neighbor_contours.keys())
+        if not keys:
+            return
+        current_pos = 0
+        if self._ghost_neighbor_index in keys:
+            current_pos = keys.index(self._ghost_neighbor_index)
+        new_pos = (current_pos + direction) % len(keys)
+        self._ghost_neighbor_index = keys[new_pos]
+        self._ghost_mode = "neighbor"
+        self._render_ghost_overlay()
+
+    def _get_fusion_result(self):
+        """Get temporal fusion result from controller (if available)."""
+        # Access via controller reference set by main_window
+        if hasattr(self, '_controller_ref') and self._controller_ref is not None:
+            return self._controller_ref.fusion_result
+        return None
+
+    def _clear_ghost_overlay(self) -> None:
+        for item in self._ghost_items:
+            self._view.removeItem(item)
+        self._ghost_items.clear()
+
+    def _render_ghost_overlay(self) -> None:
+        """Render ghost contour based on current ghost_mode."""
+        self._clear_ghost_overlay()
+        if self._ghost_mode == "off":
+            return
+        result = self._get_fusion_result()
+        if result is None:
+            return
+
+        if self._ghost_mode == "center":
+            contour = result.center_contour
+            pen = self._contour_pen_ghost_center
+        elif self._ghost_mode == "neighbor":
+            contour = result.neighbor_contours.get(self._ghost_neighbor_index)
+            pen = self._contour_pen_ghost_neighbor
+        else:
+            return
+
+        if contour is None:
+            return
+
+        x_values, y_values = self._contour_xy(contour, closed=not contour.is_open_arc)
+        line_item = pg.PlotDataItem(pen=pen)
+        line_item.setZValue(18)
+        line_item.setAlpha(0.5, auto=False)
+        line_item.setData(x_values, y_values)
+        self._view.addItem(line_item)
+        self._ghost_items.append(line_item)
+
+        if contour.is_open_arc and contour.mitral_annulus is not None:
+            septal, lateral = contour.mitral_annulus
+            ma_item = pg.PlotDataItem(pen=self._contour_pen_ghost_center)
+            ma_item.setZValue(17)
+            ma_item.setAlpha(0.3, auto=False)
+            ma_item.setData([septal[0], lateral[0]], [septal[1], lateral[1]])
+            self._view.addItem(ma_item)
+            self._ghost_items.append(ma_item)
 
     def _render_contours_for_current_frame(self) -> None:
         if self._current_state is None:
