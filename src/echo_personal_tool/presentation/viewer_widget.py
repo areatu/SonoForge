@@ -10,13 +10,15 @@ from typing import Literal
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QSignalBlocker, Qt, QTimer, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QCursor, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QGraphicsView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QMenu,
     QPushButton,
     QSlider,
     QVBoxLayout,
@@ -32,6 +34,7 @@ from echo_personal_tool.domain.calculations.planimeter import (
     next_volume_label,
 )
 from echo_personal_tool.domain.models import Contour
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerCalibrationState,
@@ -111,23 +114,16 @@ from echo_personal_tool.infrastructure.user_preferences import (
     resolve_wl_values,
 )
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
-CALIBRATION_PROMPT_OVERLAY = "Проведите калибровку"
-CALIBRATION_SUCCESS_OVERLAY = "Авто-калибровка ОК"
+CALIBRATION_PROMPT_OVERLAY_KEY = "viewer.calibration.calibration_prompt"
+CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
 
-_DOPPLER_CAL_ROI_STEP1 = (
-    "Doppler калибровка 1/3: клик — первый угол окна спектра (не весь кадр)"
-)
-_DOPPLER_CAL_ROI_STEP2 = (
-    "Doppler калибровка 1/3: клик — противоположный угол окна спектра"
-)
-_DOPPLER_CAL_BASELINE = (
-    "Doppler калибровка 2/3: клик на линию нулевой скорости (baseline)"
-)
-_DOPPLER_CAL_VELOCITY = (
-    "Doppler калибровка 3/3: клик верх и низ шкалы скорости на краю спектра"
-)
+_DOPPLER_CAL_ROI_STEP1_KEY = "viewer.doppler.cal_roi1"
+_DOPPLER_CAL_ROI_STEP2_KEY = "viewer.doppler.cal_roi2"
+_DOPPLER_CAL_BASELINE_KEY = "viewer.doppler.cal_baseline"
+_DOPPLER_CAL_VELOCITY_KEY = "viewer.doppler.cal_velocity"
 _CALIBRATION_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 210);"
     " color: #ffffff;"
@@ -159,7 +155,7 @@ def _results_overlay_style(font_size: int, opacity: float = 0.84) -> str:
     return (
         _RESULTS_OVERLAY_STYLE
         + f" font-size: {font_size}px;"
-        + f" background-color: rgba(8, 16, 28, {alpha});"
+        + f" background-color: rgba(0, 0, 0, 0);"
     )
 _DEFAULT_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 180);"
@@ -195,6 +191,7 @@ class ContourViewBox(pg.ViewBox):
             return
         ev.accept()
 
+    @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
@@ -228,6 +225,7 @@ class ContourViewBox(pg.ViewBox):
             return
         super().mousePressEvent(ev)
 
+    @_prof
     def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_hover(ev):
             ev.accept()
@@ -251,6 +249,9 @@ class ContourViewBox(pg.ViewBox):
         ev.ignore()
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+        if self._viewer_widget is not None and self._viewer_widget._handle_caliper_drag_release(ev):
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_trace_release(ev):
             ev.accept()
             return
@@ -265,11 +266,12 @@ class ContourViewBox(pg.ViewBox):
     def leaveEvent(self, ev) -> None:  # type: ignore[override]
         if self._viewer_widget is not None:
             self._viewer_widget._clear_contour_hover()
+            if self._viewer_widget._caliper_drag_active:
+                self._viewer_widget._finish_caliper_node_drag(cancel=True)
         super().leaveEvent(ev)
 
+    @_prof
     def wheelEvent(self, ev, axis=None) -> None:  # type: ignore[override]
-        if self._viewer_widget is not None and self._viewer_widget._handle_wheel(ev):
-            return
         ev.ignore()
 
 
@@ -321,6 +323,7 @@ class _ContourNodeItem(pg.ScatterPlotItem):
             self.setBrush(pg.mkBrush(self._base_pen.color()))
             self.setSize(10)
 
+    @_prof
     def mousePressEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
@@ -342,10 +345,105 @@ class _ContourNodeItem(pg.ScatterPlotItem):
         return
 
 
+class _CaliperNodeItem(pg.ScatterPlotItem):
+    """Single draggable caliper endpoint node."""
+
+    _SYMBOL_DEFAULT = "+"
+    _SYMBOL_HOVER = "o"
+
+    def __init__(
+        self,
+        viewer_widget: "ViewerWidget",
+        caliper_key: tuple[str, int],
+        endpoint_index: int,
+        position: tuple[float, float],
+        pen: pg.functions.mkPen,
+    ) -> None:
+        super().__init__(
+            symbol=self._SYMBOL_DEFAULT,
+            size=12,
+            pen=pen,
+            brush=pg.mkBrush(pen.color()),
+        )
+        self._viewer_widget = viewer_widget
+        self._caliper_key = caliper_key
+        self._endpoint_index = endpoint_index
+        self._base_pen = pen
+        self._base_size = 12
+        self.setZValue(30)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setAcceptHoverEvents(True)
+        self.setData([position[0]], [position[1]])
+
+    def hoverEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.isEnter():
+            self.setSymbol(self._SYMBOL_HOVER)
+            self.setSize(14)
+            self.setPen(pg.mkPen("#ffb300", width=2))
+            self.setBrush(pg.mkBrush("#ffb300"))
+        elif ev.isExit():
+            if self._viewer_widget._selected_caliper_key != self._caliper_key:
+                self.setSymbol(self._SYMBOL_DEFAULT)
+                self.setSize(self._base_size)
+                self.setPen(self._base_pen)
+                self.setBrush(pg.mkBrush(self._base_pen.color()))
+
+    @_prof
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(ev)
+            return
+        if self._viewer_widget._linear_caliper_active:
+            ev.ignore()
+            return
+        ev.accept()
+        view_box = self.getViewBox() or self._viewer_widget._view
+        point = view_box.mapSceneToView(ev.scenePos())
+        self._viewer_widget._select_caliper(self._caliper_key)
+        self._viewer_widget._begin_caliper_node_drag(
+            self._caliper_key,
+            self._endpoint_index,
+            float(point.x()),
+            float(point.y()),
+        )
+
+    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        ev.accept()
+        view_box = self.getViewBox() or self._viewer_widget._view
+        point = view_box.mapSceneToView(ev.scenePos())
+        self._viewer_widget._apply_caliper_node_drag(
+            float(point.x()), float(point.y())
+        )
+
+    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(ev)
+            return
+        ev.accept()
+        self._viewer_widget._finish_caliper_node_drag()
+
+    def set_selected(self, selected: bool) -> None:
+        if selected:
+            self.setSymbol(self._SYMBOL_HOVER)
+            self.setSize(14)
+            self.setPen(pg.mkPen("#ffb300", width=2))
+            self.setBrush(pg.mkBrush("#ffb300"))
+        else:
+            self.setSymbol(self._SYMBOL_DEFAULT)
+            self.setSize(self._base_size)
+            self.setPen(self._base_pen)
+            self.setBrush(pg.mkBrush(self._base_pen.color()))
+
+
 class ResultsOverlayLabel(QLabel):
     """Draggable measurement summary overlay on the viewer."""
 
     position_changed = Signal(float, float)
+    clear_requested = Signal()
+    reset_position_requested = Signal()
+    pin_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -354,8 +452,9 @@ class ResultsOverlayLabel(QLabel):
         self._dragging = False
         self._drag_offset_x = 0.0
         self._drag_offset_y = 0.0
+        self._pinned = False
         self.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.setToolTip("Перетащите для смены позиции оверлея результатов")
+        self.setToolTip(tr("viewer.results_drag_tip"))
 
     def set_position_ratios(self, x_ratio: float, y_ratio: float) -> None:
         self._x_ratio = max(0.0, min(1.0, x_ratio))
@@ -364,6 +463,7 @@ class ResultsOverlayLabel(QLabel):
     def position_ratios(self) -> tuple[float, float]:
         return self._x_ratio, self._y_ratio
 
+    @_prof
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
@@ -377,6 +477,7 @@ class ResultsOverlayLabel(QLabel):
             return
         super().mousePressEvent(event)
 
+    @_prof
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if not self._dragging:
             super().mouseMoveEvent(event)
@@ -406,12 +507,31 @@ class ResultsOverlayLabel(QLabel):
             return
         super().mouseReleaseEvent(event)
 
+    def contextMenuEvent(self, event) -> None:  # type: ignore[override]
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        clear_action = menu.addAction(tr("viewer.overlay_clear"))
+        reset_action = menu.addAction(tr("viewer.overlay_reset_position"))
+        pin_action = menu.addAction(tr("viewer.overlay_unpin") if self._pinned else tr("viewer.overlay_pin"))
+        action = menu.exec(event.globalPos())
+        if action == clear_action:
+            self.clear_requested.emit()
+        elif action == reset_action:
+            self.reset_position_requested.emit()
+        elif action == pin_action:
+            self._pinned = not self._pinned
+            self.pin_toggled.emit(self._pinned)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
 
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
     play_pause_requested = Signal()
     frame_selected = Signal(int)
+    scroll_frame_selected = Signal(int)
     contour_completed = Signal(object)
     contour_landmark_rejected = Signal(str)
     contours_changed = Signal(object)
@@ -437,7 +557,9 @@ class ViewerWidget(QWidget):
         if scene is not None:
             scene.sigMouseMoved.connect(self._on_scene_mouse_moved)
         self._image_item = pg.ImageItem(axisOrder="row-major")
-        self._image_item.setAutoDownsample(True)
+        self._image_item.setAutoDownsample(False)
+        self._image_item.setOpts(smooth=True)
+        self._image_smooth = True
         self._view.addItem(self._image_item)
         self._doppler = DopplerOverlayTools(self._view, self)
         self._doppler.markers_changed.connect(self.doppler_markers_changed.emit)
@@ -536,11 +658,20 @@ class ViewerWidget(QWidget):
         self._persistent_caliper_label_items: list[pg.TextItem] = []
         self._caliper_sequence: list[str] = []
         self._caliper_sequence_size = 0
+        self._caliper_drag_active: bool = False
+        self._caliper_drag_key: tuple[str, int] | None = None
+        self._caliper_drag_node: int | None = None
+        self._caliper_drag_original: LinearMeasurement | None = None
+        self._caliper_drag_persistent_items: list | None = None
+        self._selected_caliper_key: tuple[str, int] | None = None
         self._syncing_state = False
+        self._zoom_mode: str = "fit"
+        self._zoom_factor: float = 1.0  # continuous zoom for Ctrl+Scroll
         self._is_color_frame = False
         self._color_source_rgb: np.ndarray | None = None
         self._window_level_enabled = True
         self._cached_levels_key: tuple[int, int, int] | None = None
+        self._last_color_frame_ptr: int | None = None
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
         self._hover_tier: int | None = None
@@ -555,12 +686,14 @@ class ViewerWidget(QWidget):
         self._show_crosshair = True
         self._show_panel_frames = False
         self._show_caliper_labels_on_frame = True
+        self._show_caliper_inline_labels = False
         self._doppler_auto_calibration_enabled = True
         self._length_display_unit = "mm"
         self._interesting_dicom_tags: tuple[str, ...] = ()
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
         self._results_overlay_custom_position = False
+        self._results_overlay_cleared = False
         self._edge_map_cache: EdgeMap | None = None
         self._edge_map_cache_key: tuple[int, tuple[float, float] | None] | None = None
 
@@ -577,6 +710,9 @@ class ViewerWidget(QWidget):
         self._results_overlay_label.position_changed.connect(
             self.results_overlay_position_changed.emit
         )
+        self._results_overlay_label.clear_requested.connect(self._on_results_overlay_clear)
+        self._results_overlay_label.reset_position_requested.connect(self._on_results_overlay_reset_position)
+        self._results_overlay_label.pin_toggled.connect(self._on_results_overlay_pin_toggled)
         self._results_overlay_label.hide()
 
         self._dicom_tags_overlay_label = QLabel(self)
@@ -589,12 +725,43 @@ class ViewerWidget(QWidget):
         )
         self._dicom_tags_overlay_label.hide()
 
+        self._debug_overlay_visible = False
+        self._debug_overlay_label = QLabel(self)
+        self._debug_overlay_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+        )
+        self._debug_overlay_label.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 180); color: #0f0; "
+            "font-family: monospace; font-size: 11px; padding: 4px;"
+        )
+        self._debug_overlay_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self._debug_overlay_label.hide()
+
         self._timeline_slider = QSlider(Qt.Orientation.Horizontal)
         self._timeline_slider.setSingleStep(1)
         self._timeline_slider.valueChanged.connect(self._on_timeline_changed)
 
-        self._play_button = QPushButton("Play")
+        self._scroll_debounce_ms = 70
+        self._pending_scroll_index: int | None = None
+        self._scroll_debounce_timer = QTimer(self)
+        self._scroll_debounce_timer.setSingleShot(True)
+        self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
+
+        self._step_back_button = QPushButton("⏮")
+        self._step_back_button.setFixedWidth(32)
+        self._step_back_button.setToolTip("Step back (Previous frame)")
+        self._step_back_button.clicked.connect(self._step_back)
+
+        self._play_button = QPushButton(tr("viewer.play"))
+        self._play_button.setFixedWidth(self._play_button.sizeHint().width() + 12)
         self._play_button.clicked.connect(self.play_pause_requested.emit)
+
+        self._step_forward_button = QPushButton("⏭")
+        self._step_forward_button.setFixedWidth(32)
+        self._step_forward_button.setToolTip("Step forward (Next frame)")
+        self._step_forward_button.clicked.connect(self._step_forward)
 
         self._fps_label = QLabel("FPS: —")
         self._source_label = QLabel("Frame: —")
@@ -621,7 +788,9 @@ class ViewerWidget(QWidget):
 
         controls = QVBoxLayout()
         timeline_row = QHBoxLayout()
+        timeline_row.addWidget(self._step_back_button)
         timeline_row.addWidget(self._play_button)
+        timeline_row.addWidget(self._step_forward_button)
         timeline_row.addWidget(self._timeline_slider, stretch=1)
         timeline_row.addWidget(self._source_label)
         timeline_row.addWidget(self._fps_label)
@@ -635,6 +804,8 @@ class ViewerWidget(QWidget):
         self._graphics.setViewportUpdateMode(
             QGraphicsView.ViewportUpdateMode.SmartViewportUpdate,
         )
+        from PySide6.QtGui import QPainter
+        self._graphics.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         self._graphics.installEventFilter(self)
         viewport = self._graphics.viewport()
         if viewport is not None:
@@ -674,6 +845,11 @@ class ViewerWidget(QWidget):
                 self._update_linear_caliper_preview(self._linear_caliper_start, end)
                 self._update_linear_caliper_label_preview(self._linear_caliper_start, end)
             return
+        if self._caliper_drag_active and QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+            mapped = self._view.mapSceneToView(scene_pos)
+            if mapped is not None:
+                self._apply_caliper_node_drag(float(mapped.x()), float(mapped.y()))
+            return
         if self._contour_editing_blocked():
             self._clear_contour_hover()
             return
@@ -697,8 +873,9 @@ class ViewerWidget(QWidget):
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
-            if event.type() == QEvent.Type.Wheel:
-                if self._handle_wheel(event):
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if event.button() == Qt.MouseButton.RightButton:
+                    self._show_save_context_menu(event)
                     return True
             if event.type() == QEvent.Type.MouseMove:
                 if self._drag_session is None and hasattr(event, "globalPosition"):
@@ -712,6 +889,7 @@ class ViewerWidget(QWidget):
                 self._handle_contour_drag_release_from_global(event.globalPosition())
         return super().eventFilter(watched, event)
 
+    @_prof
     def wheelEvent(self, event) -> None:  # type: ignore[override]
         if self._handle_wheel(event):
             event.accept()
@@ -728,8 +906,8 @@ class ViewerWidget(QWidget):
             self._overlay_label.adjustSize()
             label_w = self._overlay_label.width()
             label_h = self._overlay_label.height()
-            calibration_banner = self._frame_overlay_lines == [CALIBRATION_PROMPT_OVERLAY]
-            calibration_ok = self._frame_overlay_lines == [CALIBRATION_SUCCESS_OVERLAY]
+            calibration_banner = self._frame_overlay_lines == [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
+            calibration_ok = self._frame_overlay_lines == [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
             if calibration_banner or calibration_ok:
                 x = geo.x() + max((geo.width() - label_w) // 2, 8)
                 y = geo.y() + max(geo.height() // 6 - label_h // 2, 8)
@@ -739,7 +917,8 @@ class ViewerWidget(QWidget):
             self._overlay_label.move(x, y)
 
         if self._results_overlay_label.isVisible() and reposition_results:
-            self._reposition_results_overlay_label(geo)
+            if not self._results_overlay_label._pinned:
+                self._reposition_results_overlay_label(geo)
 
         if self._dicom_tags_overlay_label.isVisible():
             self._position_dicom_tags_overlay(geo)
@@ -753,6 +932,8 @@ class ViewerWidget(QWidget):
 
     def _request_results_overlay_reposition(self) -> None:
         if not self._results_overlay_label.isVisible():
+            return
+        if self._results_overlay_label._pinned:
             return
         QTimer.singleShot(0, self._reposition_results_overlay_deferred)
 
@@ -771,9 +952,9 @@ class ViewerWidget(QWidget):
             x = geo.x() + int(x_ratio * max(geo.width() - rw, 0))
             y = geo.y() + int(y_ratio * max(geo.height() - rh, 0))
         else:
-            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN
+            x = geo.x() + geo.width() - rw - RESULTS_OVERLAY_EDGE_MARGIN - 28
             y = geo.y() + max(
-                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO),
+                int(geo.height() * DEFAULT_RESULTS_OVERLAY_Y_RATIO) + 19,
                 RESULTS_OVERLAY_EDGE_MARGIN,
             )
         x = max(geo.x(), min(x, geo.x() + max(geo.width() - rw, 0)))
@@ -789,6 +970,26 @@ class ViewerWidget(QWidget):
         self._results_overlay_custom_position = False
         if self._results_overlay_label.isVisible():
             self._request_results_overlay_reposition()
+
+    @_prof
+    def _on_results_overlay_clear(self) -> None:
+        self._results_overlay_cleared = True
+        self._stored_linear_measurements.clear()
+        self._clear_persistent_linear_calipers()
+        self._emit_stored_linear_measurements()
+        self.set_results_overlay("")
+
+    def _on_results_overlay_reset_position(self) -> None:
+        self.reset_results_overlay_to_default()
+
+    def _on_results_overlay_pin_toggled(self, pinned: bool) -> None:
+        if pinned:
+            self._results_overlay_label.setCursor(Qt.CursorShape.ArrowCursor)
+            if self._results_overlay_custom_position:
+                x_ratio, y_ratio = self._results_overlay_label.position_ratios()
+                self.results_overlay_position_changed.emit(x_ratio, y_ratio)
+        else:
+            self._results_overlay_label.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def _graphics_content_geometry(self):
         return self._graphics.geometry()
@@ -812,6 +1013,8 @@ class ViewerWidget(QWidget):
         self._show_crosshair = preferences.show_crosshair
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
+        self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
+        self._render_persistent_linear_calipers()
         self._doppler_auto_calibration_enabled = preferences.doppler_auto_calibration_enabled
         self._calibration_tick_snap_enabled = preferences.calibration_tick_snap_enabled
         self._length_display_unit = preferences.length_display_unit
@@ -832,6 +1035,31 @@ class ViewerWidget(QWidget):
         if not self._show_caliper_labels_on_frame:
             self._measurement_label.hide()
         self._position_overlay_labels()
+
+    def reload_text(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        self._step_back_button.setToolTip(tr("viewer.step_back"))
+        self._step_forward_button.setToolTip(tr("viewer.step_forward"))
+        self._timeline_slider.setToolTip(tr("viewer.timeline"))
+        if self._current_state is not None:
+            self._play_button.setText(
+                tr("viewer.pause") if self._current_state.is_playing else tr("viewer.play")
+            )
+            if self._current_state.total_frames > 0:
+                current = min(
+                    self._current_state.current_frame_index + 1,
+                    self._current_state.total_frames,
+                )
+                self._source_label.setText(
+                    tr(
+                        "viewer.frame_counter",
+                        current=str(current),
+                        total=str(self._current_state.total_frames),
+                    )
+                )
+            else:
+                self._source_label.setText(tr("viewer.frame_none"))
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -926,7 +1154,7 @@ class ViewerWidget(QWidget):
             self._dicom_tags_overlay_label.hide()
             return
         try:
-            rows = read_interesting_dicom_tag_rows(instance.path, list(self._interesting_dicom_tags))
+            rows = read_interesting_dicom_tag_rows(instance.path, tuple(self._interesting_dicom_tags))
         except Exception:  # noqa: BLE001
             self._dicom_tags_overlay_label.hide()
             return
@@ -948,8 +1176,12 @@ class ViewerWidget(QWidget):
             return self._current_state.instance
         return None
 
+    @_prof
     def set_results_overlay(self, text: str) -> None:
         """Show session measurement summary (top-right box, left-aligned text)."""
+        if self._results_overlay_cleared and text.strip():
+            return
+        self._results_overlay_cleared = False
         if text.strip():
             text_changed = text != self._results_overlay_label.text()
             was_visible = self._results_overlay_label.isVisible()
@@ -967,6 +1199,45 @@ class ViewerWidget(QWidget):
 
     def refresh_dicom_tags_overlay(self) -> None:
         self._refresh_dicom_tags_overlay()
+
+    @_prof
+    def toggle_debug_overlay(self) -> None:
+        self._debug_overlay_visible = not self._debug_overlay_visible
+        if self._debug_overlay_visible:
+            self._update_debug_overlay()
+            self._debug_overlay_label.show()
+        else:
+            self._debug_overlay_label.hide()
+
+    def _update_debug_overlay(self) -> None:
+        if not self._debug_overlay_visible:
+            return
+        lines: list[str] = []
+        if self._current_frame is not None:
+            h, w = self._current_frame.shape[:2]
+            lines.append(f"Native: {w}x{h}")
+        geo = self._graphics.geometry()
+        vw, vh = geo.width(), geo.height()
+        lines.append(f"Viewport: {vw}x{vh}")
+        if self._current_frame is not None:
+            h, w = self._current_frame.shape[:2]
+            if w > 0 and h > 0:
+                scale = max(vw / w, vh / h)
+                lines.append(f"Scale: {scale:.2f}x")
+        dpr = self._graphics.devicePixelRatioF()
+        lines.append(f"DPR: {dpr:.1f}")
+        if self._current_state and self._current_state.instance:
+            inst = self._current_state.instance
+            lines.append(f"Format: {inst.media_format}")
+            lines.append(f"Frames: {inst.number_of_frames}")
+        self._debug_overlay_label.setText("\n".join(lines))
+        self._debug_overlay_label.adjustSize()
+        geo_viewer = self._graphics.geometry()
+        self._debug_overlay_label.move(
+            geo_viewer.x() + 4,
+            geo_viewer.y() + 4,
+        )
+        self._debug_overlay_label.raise_()
 
     def _mark_results_overlay_custom_position(self) -> None:
         self._results_overlay_custom_position = True
@@ -990,6 +1261,7 @@ class ViewerWidget(QWidget):
     def results_overlay_position(self) -> tuple[float, float]:
         return self._results_overlay_label.position_ratios()
 
+    @_prof
     def reposition_overlays(self) -> None:
         self._position_overlay_labels(reposition_results=not self._results_overlay_custom_position)
 
@@ -999,6 +1271,27 @@ class ViewerWidget(QWidget):
     def _position_overlay_label(self) -> None:
         self._position_overlay_labels()
 
+    def _show_save_context_menu(self, ev) -> None:
+        menu = QMenu(self)
+        menu.addAction(tr("viewer.context_save_as"), self._save_viewer_image)
+        menu.exec(QCursor.pos())
+
+    def _save_viewer_image(self) -> None:
+        if self._current_frame is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("viewer.context_save_frame"),
+            "",
+            "PNG (*.png);JPEG (*.jpg)",
+        )
+        if not path:
+            return
+        full = self.grab()
+        geo = self._graphics.geometry()
+        cropped = full.copy(geo.x(), geo.y(), geo.width(), geo.height())
+        cropped.save(path)
+
     def _resolve_display_mode(
         self,
         frame: np.ndarray,
@@ -1007,13 +1300,16 @@ class ViewerWidget(QWidget):
         """Return (color_display, window_level_enabled)."""
         if frame.ndim == 3 and frame.shape[2] >= 3:
             if media_format == "dicom":
-                return True, True
+                if is_color_frame(frame):
+                    return True, False
+                return False, True
             if is_effective_grayscale(frame, tolerance=24):
                 return False, True
             color = is_color_frame(frame)
             return color, not color
         return False, True
 
+    @_prof
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
         frame = np.asarray(pixels)
@@ -1022,21 +1318,35 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
-            frame,
-            media_format,
-        )
+        # Cache display mode per instance to avoid re-detection
+        instance_key = id(frame) if frame.base is None else None
+        if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
+            self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
+                frame, media_format,
+            )
+            self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
 
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
-            self._update_levels()
+            if self._window_level_enabled:
+                self._update_levels()
+            else:
+                self._image_item.setLevels((0, 255))
         else:
             self._color_source_rgb = None
             gray = self._current_frame
             self._image_item.setImage(gray, autoLevels=False)
+            if self._window_level_enabled:
+                self._update_levels()
+            else:
+                vmin = float(gray.min()) if gray.size else 0.0
+                vmax = float(gray.max()) if gray.size else 255.0
+                if vmin == vmax:
+                    vmax = vmin + 1.0
+                self._image_item.setLevels((vmin, vmax))
             new_path = Path(self._current_state.instance.path) if self._current_state and self._current_state.instance and self._current_state.instance.path else None
             if new_path != self._current_instance_path:
                 with QSignalBlocker(self._dr_slider):
@@ -1055,7 +1365,58 @@ class ViewerWidget(QWidget):
             self._refresh_frame_panel_layout()
             self._configure_doppler_axis_for_frame()
             self._invalidate_edge_map_cache()
+        self._update_debug_overlay()
+        self._apply_zoom_mode()
 
+    def _apply_zoom_mode(self) -> None:
+        if self._current_frame is None:
+            return
+        h, w = self._current_frame.shape[:2]
+        if self._zoom_mode == "fit":
+            self._view.setRange(xRange=(0, w), yRange=(0, h), padding=0)
+        elif self._zoom_mode == "100%":
+            dpr = self._graphics.devicePixelRatioF()
+            view_w = self._graphics.viewport().width() / dpr
+            view_h = self._graphics.viewport().height() / dpr
+            cx, cy = w / 2.0, h / 2.0
+            half_w = view_w / 2.0
+            half_h = view_h / 2.0
+            self._view.setRange(
+                xRange=(cx - half_w, cx + half_w),
+                yRange=(cy - half_h, cy + half_h),
+                padding=0,
+            )
+        elif self._zoom_mode == "200%":
+            dpr = self._graphics.devicePixelRatioF()
+            view_w = self._graphics.viewport().width() / dpr
+            view_h = self._graphics.viewport().height() / dpr
+            cx, cy = w / 2.0, h / 2.0
+            half_w = view_w / 4.0
+            half_h = view_h / 4.0
+            self._view.setRange(
+                xRange=(cx - half_w, cx + half_w),
+                yRange=(cy - half_h, cy + half_h),
+                padding=0,
+            )
+
+    def cycle_zoom_mode(self) -> None:
+        modes = ["fit", "100%", "200%"]
+        idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
+        self._zoom_mode = modes[(idx + 1) % len(modes)]
+        self._zoom_factor = 1.0
+        self._apply_zoom_mode()
+
+    def set_zoom_mode(self, mode: str) -> None:
+        if mode in ("fit", "100%", "200%"):
+            self._zoom_mode = mode
+            self._zoom_factor = 1.0
+            self._apply_zoom_mode()
+
+    @property
+    def zoom_mode(self) -> str:
+        return self._zoom_mode
+
+    @_prof
     def show_frame_fast(self, pixels: np.ndarray) -> None:
         """Fast render for playback: skip layout/doppler/panel detection."""
         frame = np.asarray(pixels)
@@ -1064,7 +1425,14 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        self._current_frame = to_grayscale_array(frame)
+        # Cache display mode per instance to avoid re-detection every frame
+        instance_key = id(frame) if frame.base is None else None
+        if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
+            self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
+                frame, media_format,
+            )
+            self._display_mode_cache_key = instance_key
+        channel_order = "rgb" if media_format == "dicom" else "bgr"
 
         levels_key = (
             self._dr_slider.value(),
@@ -1075,23 +1443,53 @@ class ViewerWidget(QWidget):
         self._cached_levels_key = levels_key
 
         if self._is_color_frame:
-            channel_order = (
-                "rgb"
-                if media_format == "dicom"
-                else "bgr"
-            )
-            self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+            frame_data_ptr = frame.ctypes.data if hasattr(frame, 'ctypes') else id(frame)
+            if frame_data_ptr != self._last_color_frame_ptr:
+                self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+                self._last_color_frame_ptr = frame_data_ptr
+            self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
-            if levels_changed:
+            if self._window_level_enabled and levels_changed:
                 self._update_levels()
+            elif not self._window_level_enabled:
+                self._image_item.setLevels((0, 255))
         else:
             self._color_source_rgb = None
+            # Skip float64 conversion — pyqtgraph displays uint8 directly
+            if frame.ndim == 2:
+                self._current_frame = frame
+            elif frame.ndim == 3 and frame.shape[2] >= 3:
+                self._current_frame = np.mean(frame[..., :3], axis=2).astype(np.uint8) if not levels_changed else to_grayscale_array(frame)
+            else:
+                self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             self._image_item.setImage(self._current_frame, autoLevels=False)
-            if levels_changed:
+            if self._window_level_enabled:
                 self._update_levels()
+            elif not self._window_level_enabled:
+                vmin = float(self._current_frame.min()) if self._current_frame.size else 0.0
+                vmax = float(self._current_frame.max()) if self._current_frame.size else 255.0
+                if vmin == vmax:
+                    vmax = vmin + 1.0
+                self._image_item.setLevels((vmin, vmax))
         sync_enabled = getattr(self, "_sync_display_control_enabled", None)
         if callable(sync_enabled):
             sync_enabled()
+
+    @_prof
+    def refresh_after_scroll(self) -> None:
+        """Restore layout/overlays after fast scroll without reprocessing pixels."""
+        if self._current_frame is not None:
+            height, width = self._current_frame.shape[:2]
+            # Preserve zoom if user has zoomed in (custom or 100%/200%)
+            if self._zoom_mode != "fit" or self._zoom_factor != 1.0:
+                pass  # keep current view range, don't reset
+            else:
+                self._view.setRange(xRange=(0, width), yRange=(0, height), padding=0)
+            if self._window_level_enabled:
+                self._update_levels()
+            self._refresh_frame_panel_layout()
+            self._configure_doppler_axis_for_frame()
+            self._invalidate_edge_map_cache()
 
     def clear(self) -> None:
         self._image_item.clear()
@@ -1099,6 +1497,7 @@ class ViewerWidget(QWidget):
         self._clear_calibration_caliper()
         self._clear_contours()
 
+    @_prof
     def set_state(self, viewer_state: ViewerState) -> None:
         if self._syncing_state:
             self._pending_viewer_state = viewer_state
@@ -1113,6 +1512,7 @@ class ViewerWidget(QWidget):
             self._clear_persistent_linear_calipers()
             self._clear_contours()
             self._stored_linear_measurements = {}
+            self._results_overlay_cleared = False
             if self._doppler_cal_step is not None:
                 self._doppler_cal_step = None
                 self._doppler_roi_corner1 = None
@@ -1143,16 +1543,26 @@ class ViewerWidget(QWidget):
             controls_enabled = viewer_state.total_frames > 1
             self._timeline_slider.setEnabled(controls_enabled)
             self._play_button.setEnabled(controls_enabled and not viewer_state.decode_in_progress)
-            self._timeline_slider.setValue(min(viewer_state.current_frame_index, maximum))
-            self._play_button.setText("Pause" if viewer_state.is_playing else "Play")
-            self._fps_label.setText(
-                f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
-            )
+            target_frame = min(viewer_state.current_frame_index, maximum)
+            if self._timeline_slider.value() != target_frame:
+                self._timeline_slider.setValue(target_frame)
+            play_text = tr("viewer.pause") if viewer_state.is_playing else tr("viewer.play")
+            if self._play_button.text() != play_text:
+                self._play_button.setText(play_text)
+            fps_text = f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
+            if self._fps_label.text() != fps_text:
+                self._fps_label.setText(fps_text)
             if viewer_state.total_frames > 0:
                 current = min(viewer_state.current_frame_index + 1, viewer_state.total_frames)
-                self._source_label.setText(f"Frame: {current}/{viewer_state.total_frames}")
+                source_text = tr(
+                    "viewer.frame_counter",
+                    current=str(current),
+                    total=str(viewer_state.total_frames),
+                )
             else:
-                self._source_label.setText("Frame: —")
+                source_text = tr("viewer.frame_none")
+            if self._source_label.text() != source_text:
+                self._source_label.setText(source_text)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self._stored_contours) != viewer_state.contours
             if contours_updated:
@@ -1164,9 +1574,11 @@ class ViewerWidget(QWidget):
             if frame_changed or contours_updated:
                 self._refresh_frame_overlays()
             self._refresh_speckle_overlay_for_current_frame()
-            self._refresh_frame_panel_layout()
-            self._refresh_panel_frame_graphics()
-            self._refresh_dicom_tags_overlay()
+            self._set_image_smooth(not viewer_state.is_playing)
+            if not viewer_state.is_playing:
+                self._refresh_frame_panel_layout()
+                self._refresh_panel_frame_graphics()
+                self._refresh_dicom_tags_overlay()
         finally:
             self._syncing_state = False
             pending = self._pending_viewer_state
@@ -1174,6 +1586,13 @@ class ViewerWidget(QWidget):
             if pending is not None:
                 self.set_state(pending)
 
+    def _set_image_smooth(self, enabled: bool) -> None:
+        if self._image_smooth == enabled:
+            return
+        self._image_smooth = enabled
+        self._image_item.setOpts(smooth=enabled)
+
+    @_prof
     def toggle_linear_caliper(self) -> None:
         if self._linear_caliper_active:
             self._clear_linear_caliper()
@@ -1200,12 +1619,14 @@ class ViewerWidget(QWidget):
     def is_linear_caliper_active(self) -> bool:
         return self._linear_caliper_active
 
+    @_prof
     def toggle_calibration_caliper(self) -> None:
         if self._calibration_active:
             self._clear_calibration_caliper()
             return
         self.start_calibration_caliper()
 
+    @_prof
     def start_calibration_caliper(self) -> bool:
         self._clear_linear_caliper()
         self._clear_calibration_caliper()
@@ -1221,7 +1642,7 @@ class ViewerWidget(QWidget):
             self._depth_tick_y_positions = self._detect_calibration_ticks()
         else:
             self._depth_tick_y_positions = []
-        self._measurement_label.setText("Калибровка: 1-й клик — верхняя метка")
+        self._measurement_label.setText(tr("viewer.calibration_click_start"))
         return True
 
     def _detect_calibration_ticks(self) -> list[float]:
@@ -1243,17 +1664,13 @@ class ViewerWidget(QWidget):
         self._doppler_roi_corner1 = None
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
-        self._measurement_label.setText(_DOPPLER_CAL_ROI_STEP1)
+        self._measurement_label.setText(tr(_DOPPLER_CAL_ROI_STEP1_KEY))
         self._measurement_label.show()
         return True
 
     @staticmethod
     def doppler_calibration_prompt() -> str:
-        return (
-            "Калибровка Doppler: шаг 1 — два клика по углам окна спектра; "
-            "шаг 2 — baseline (нулевая скорость); шаг 3 — верх и низ шкалы "
-            "скорости на правом крае спектра + ввод полного диапазона (см. строку под кадром)"
-        )
+        return tr("viewer.doppler_calibration_prompt")
 
     def _current_instance_uid(self) -> str | None:
         if self._current_state is None or self._current_state.instance is None:
@@ -1314,7 +1731,7 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(prompt)
 
     def _on_doppler_workflow_completed(self) -> None:
-        self._measurement_label.setText("Mitral inflow E/DT/A: готово")
+        self._measurement_label.setText(tr("viewer.mitral_inflow_done"))
 
     def _on_doppler_trace_prompt_changed(self, prompt: str) -> None:
         self._measurement_label.setText(prompt)
@@ -1416,10 +1833,10 @@ class ViewerWidget(QWidget):
                 prompt = self._doppler.trace_prompt()
                 self._measurement_label.setText(
                     prompt
-                    or "Doppler trace: baseline → обводка → baseline"
+                    or tr("viewer.doppler_trace_prompt")
                 )
             else:
-                self._measurement_label.setText(f"Doppler {mode}: клик на спектре")
+                self._measurement_label.setText(tr("viewer.doppler_mode_click", mode=mode))
             self._ensure_crosshair_graphics()
 
     def is_doppler_context(self) -> bool:
@@ -1489,7 +1906,7 @@ class ViewerWidget(QWidget):
         self._mmode_cal_step = "roi"
         self._mmode_roi_corner1 = None
         self._mmode_pending_roi = None
-        self._measurement_label.setText("M-mode: 1-й клик — угол полосы M-режима")
+        self._measurement_label.setText(tr("viewer.mmode_cal1"))
         return True
 
     def _handle_mmode_calibration_click(self, ev) -> bool:
@@ -1503,7 +1920,7 @@ class ViewerWidget(QWidget):
         x, y = click
         if self._mmode_roi_corner1 is None:
             self._mmode_roi_corner1 = (x, y)
-            self._measurement_label.setText("M-mode: 2-й клик — противоположный угол полосы")
+            self._measurement_label.setText(tr("viewer.mmode_cal2"))
             return True
         height, width = self._current_frame.shape[:2]
         roi = roi_from_corners(self._mmode_roi_corner1, (x, y)).normalized(
@@ -1517,7 +1934,7 @@ class ViewerWidget(QWidget):
         self._calibration_active = True
         self._calibration_x = roi.x0 + roi.width / 2.0
         self._calibration_start_y = None
-        self._measurement_label.setText("M-mode: 1-й клик — верх шкалы глубины в полосе")
+        self._measurement_label.setText(tr("viewer.mmode_cal_depth"))
         return True
 
     def _refresh_frame_panel_layout(self) -> None:
@@ -1612,7 +2029,7 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
         else:
             self._measurement_label.setText(
-                "Doppler trace: завершите на baseline (клик или V)"
+                tr("viewer.doppler_trace_finish")
             )
         return finished
 
@@ -1796,6 +2213,7 @@ class ViewerWidget(QWidget):
         self._clear_calibration_caliper()
         return self.activate_generic_dist_caliper() is not None
 
+    @_prof
     def start_linear_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
         if not labels:
             return False
@@ -1811,7 +2229,7 @@ class ViewerWidget(QWidget):
         self._set_caliper_label(label)
         self._linear_caliper_active = True
         self._linear_caliper_start = None
-        self._measurement_label.setText(f"{label}: 1-й клик — начало")
+        self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=label))
         return True
 
     def cycle_caliper_label(self) -> None:
@@ -1822,7 +2240,7 @@ class ViewerWidget(QWidget):
             return
         self._linear_caliper_start = None
         self._clear_linear_caliper_graphics()
-        self._measurement_label.setText(f"{label}: 1-й клик — начало")
+        self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=label))
 
     def start_contour(
         self,
@@ -1880,7 +2298,7 @@ class ViewerWidget(QWidget):
         ):
             return False
         self._measurement_label.setText(
-            "Площадь: клики по контуру, двойной щелчок — замкнуть"
+            tr("viewer.area_contour_prompt")
         )
         return True
 
@@ -1895,7 +2313,7 @@ class ViewerWidget(QWidget):
         ):
             return False
         self._measurement_label.setText(
-            "Объем: клики по контуру, двойной щелчок — замкнуть"
+            tr("viewer.volume_contour_prompt")
         )
         return True
 
@@ -2134,6 +2552,9 @@ class ViewerWidget(QWidget):
         return True
 
     def cancel_active_tool(self) -> None:
+        if self._caliper_drag_active:
+            self._finish_caliper_node_drag(cancel=True)
+            return
         if self._mmode_cal_step is not None:
             self._mmode_cal_step = None
             self._mmode_roi_corner1 = None
@@ -2341,8 +2762,18 @@ class ViewerWidget(QWidget):
     def is_contour_mode_active(self) -> bool:
         return self._contour_mode_active
 
+    def set_scroll_debounce_ms(self, ms: int) -> None:
+        self._scroll_debounce_ms = max(0, ms)
+
+    def _emit_pending_scroll(self) -> None:
+        if self._pending_scroll_index is None:
+            return
+        index = self._pending_scroll_index
+        self._pending_scroll_index = None
+        self.scroll_frame_selected.emit(index)
+
     def _handle_wheel(self, ev) -> bool:
-        if self._current_state is None or self._current_state.total_frames <= 1:
+        if self._current_state is None:
             return False
         if hasattr(ev, "angleDelta"):
             delta_y = ev.angleDelta().y()
@@ -2352,14 +2783,97 @@ class ViewerWidget(QWidget):
             return False
         if delta_y == 0:
             return False
+
+        # Ctrl+Scroll → zoom
+        modifiers = ev.modifiers() if hasattr(ev, "modifiers") else Qt.KeyboardModifier.NoModifier
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            return self._handle_ctrl_wheel(ev, delta_y)
+
+        # Plain scroll → frame navigation
+        if self._current_state.total_frames <= 1:
+            return False
         step = -1 if delta_y > 0 else 1
-        current = self._current_state.current_frame_index
+        current = (
+            self._pending_scroll_index
+            if self._pending_scroll_index is not None
+            else self._current_state.current_frame_index
+        )
         total = self._current_state.total_frames
         new_index = (current + step) % total
         if new_index == current:
             return False
         ev.accept()
-        self.frame_selected.emit(new_index)
+        self._pending_scroll_index = new_index
+        if self._scroll_debounce_ms <= 0:
+            self._emit_pending_scroll()
+            return True
+        self._scroll_debounce_timer.start(self._scroll_debounce_ms)
+        return True
+
+    def _handle_ctrl_wheel(self, ev, delta_y: int) -> bool:
+        if self._current_frame is None:
+            return False
+
+        zoom_step = 1.1
+        if delta_y > 0:
+            new_factor = self._zoom_factor * zoom_step
+        else:
+            new_factor = self._zoom_factor / zoom_step
+
+        # Clamp zoom to [0.1, 20.0]
+        new_factor = max(0.1, min(20.0, new_factor))
+        if abs(new_factor - self._zoom_factor) < 1e-6:
+            return False
+
+        # Get mouse position in view coordinates
+        if hasattr(ev, "position"):
+            mouse_pos = ev.position()
+            mx, my = mouse_pos.x(), mouse_pos.y()
+        elif hasattr(ev, "pos"):
+            p = ev.pos()
+            mx, my = p.x(), p.y()
+        else:
+            # Fallback: zoom around viewport center
+            viewport = self._graphics.viewport()
+            mx = viewport.width() / 2.0
+            my = viewport.height() / 2.0
+
+        # Convert mouse pixel position to scene (data) coordinates
+        scene_pos = self._graphics.mapToScene(mx, my)
+        data_x = scene_pos.x()
+        data_y = scene_pos.y()
+
+        h, w = self._current_frame.shape[:2]
+        old_factor = self._zoom_factor
+        self._zoom_factor = new_factor
+        self._zoom_mode = "custom"  # Ctrl+Scroll enters custom zoom
+
+        # Compute visible range centered on mouse, scaled by new_factor
+        view_w = self._graphics.viewport().width() / self._graphics.devicePixelRatioF()
+        view_h = self._graphics.viewport().height() / self._graphics.devicePixelRatioF()
+
+        # Portion of image visible at 1x is (view_w, view_h); at zoom factor it's (view_w/f, view_h/f)
+        half_w = (view_w / 2.0) / new_factor
+        half_h = (view_h / 2.0) / new_factor
+
+        # Shift so that data_x, data_y stays under the mouse
+        # Ratio of mouse position within viewport
+        if view_w > 0 and view_h > 0:
+            ratio_x = mx / view_w
+            ratio_y = my / view_h
+        else:
+            ratio_x = 0.5
+            ratio_y = 0.5
+
+        cx = data_x - half_w * (2 * ratio_x - 1)
+        cy = data_y - half_h * (2 * ratio_y - 1)
+
+        self._view.setRange(
+            xRange=(cx - half_w, cx + half_w),
+            yRange=(cy - half_h, cy + half_h),
+            padding=0,
+        )
+        ev.accept()
         return True
 
     def _update_timeline_indicator(self, viewer_state: ViewerState) -> None:
@@ -2379,8 +2893,8 @@ class ViewerWidget(QWidget):
 
     def _refresh_frame_overlay(self) -> None:
         if self._frame_overlay_lines:
-            calibration_banner = self._frame_overlay_lines == [CALIBRATION_PROMPT_OVERLAY]
-            calibration_ok = self._frame_overlay_lines == [CALIBRATION_SUCCESS_OVERLAY]
+            calibration_banner = self._frame_overlay_lines == [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
+            calibration_ok = self._frame_overlay_lines == [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
             if calibration_banner:
                 self._overlay_label.setStyleSheet(_CALIBRATION_OVERLAY_STYLE)
                 self._overlay_label.setMinimumWidth(360)
@@ -3288,9 +3802,9 @@ class ViewerWidget(QWidget):
     def _refresh_frame_overlays(self, *, extra_lines: tuple[str, ...] = ()) -> None:
         self.clear_frame_overlay()
         if self._needs_calibration_prompt():
-            self.append_frame_overlay(CALIBRATION_PROMPT_OVERLAY)
+            self.append_frame_overlay(tr(CALIBRATION_PROMPT_OVERLAY_KEY))
         elif self._auto_calibration_ok():
-            self.append_frame_overlay(CALIBRATION_SUCCESS_OVERLAY)
+            self.append_frame_overlay(tr(CALIBRATION_SUCCESS_OVERLAY_KEY))
         frame_index = self._contour_frame_index()
         spacing, spacing_calibrated = self._effective_pixel_spacing()
         if frame_index is not None:
@@ -3334,15 +3848,18 @@ class ViewerWidget(QWidget):
                 measurements.append(measurement)
         return measurements
 
+    @_prof
     def _clear_persistent_linear_calipers(self) -> None:
-        for line_item, marker_item in self._persistent_linear_graphics:
-            self._view.removeItem(line_item)
-            self._view.removeItem(marker_item)
+        for item in self._persistent_linear_graphics:
+            self._view.removeItem(item[0])
+            self._view.removeItem(item[1])
+            self._view.removeItem(item[2])
         self._persistent_linear_graphics.clear()
         for item in self._persistent_caliper_label_items:
             self._view.removeItem(item)
         self._persistent_caliper_label_items.clear()
 
+    @_prof
     def _render_persistent_linear_calipers(self) -> None:
         self._clear_persistent_linear_calipers()
         frame_index = self._contour_frame_index()
@@ -3351,12 +3868,14 @@ class ViewerWidget(QWidget):
         for measurement in self._linear_measurements_for_frame(frame_index):
             if measurement.start is None or measurement.end is None:
                 continue
-            line_item, marker_item = self._create_linear_graphics_items(
+            key = (measurement.label, measurement.frame_index if measurement.frame_index is not None else -1)
+            line_item, start_node, end_node = self._create_linear_graphics_items(
                 measurement.start,
                 measurement.end,
+                key,
             )
-            self._persistent_linear_graphics.append((line_item, marker_item))
-            if self._show_caliper_labels_on_frame:
+            self._persistent_linear_graphics.append((line_item, start_node, end_node, key))
+            if self._show_caliper_inline_labels:
                 self._update_caliper_label_graphics(
                     measurement.start, measurement.end,
                     color="#29b6f6", is_preview=False,
@@ -3366,7 +3885,8 @@ class ViewerWidget(QWidget):
         self,
         start: tuple[float, float],
         end: tuple[float, float],
-    ) -> tuple[pg.PlotDataItem, pg.ScatterPlotItem]:
+        caliper_key: tuple[str, int],
+    ) -> tuple[pg.PlotDataItem, _CaliperNodeItem, _CaliperNodeItem]:
         pen = self._caliper_pen("#29b6f6")
         line_item = pg.PlotDataItem(pen=pen)
         line_item.setZValue(24)
@@ -3374,18 +3894,17 @@ class ViewerWidget(QWidget):
         line_item.setAcceptHoverEvents(False)
         line_item.setData([start[0], end[0]], [start[1], end[1]])
         self._view.addItem(line_item)
-        marker_item = pg.ScatterPlotItem(
-            symbol="+",
-            size=12,
-            pen=pen,
-            brush=pg.mkBrush("#29b6f6"),
+        start_node = _CaliperNodeItem(
+            self, caliper_key, 0, start, pen,
         )
-        marker_item.setZValue(25)
-        marker_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-        marker_item.setAcceptHoverEvents(False)
-        marker_item.setData([start[0], end[0]], [start[1], end[1]])
-        self._view.addItem(marker_item)
-        return line_item, marker_item
+        start_node.setZValue(30)
+        self._view.addItem(start_node)
+        end_node = _CaliperNodeItem(
+            self, caliper_key, 1, end, pen,
+        )
+        end_node.setZValue(30)
+        self._view.addItem(end_node)
+        return line_item, start_node, end_node
 
     def _pixel_spacing(self) -> tuple[float, float] | None:
         spacing, _calibrated = self._effective_pixel_spacing()
@@ -3515,9 +4034,9 @@ class ViewerWidget(QWidget):
             self._update_calibration_preview(y, y)
             self._update_calibration_horizontal_guides(y)
             if self._calibration_kind in {"spectral", "doppler_velocity"}:
-                self._measurement_label.setText("Спектр: 2-й клик — низ шкалы скорости")
+                self._measurement_label.setText(tr("viewer.spectral_click_end"))
             else:
-                self._measurement_label.setText("Калибровка: 2-й клик — нижняя метка")
+                self._measurement_label.setText(tr("viewer.calibration_click_end"))
             return True
 
         length_px = abs(y - self._calibration_start_y)
@@ -3534,8 +4053,8 @@ class ViewerWidget(QWidget):
         default_span = self._doppler_cal_kind.default_velocity_span_cm_s
         span_cm_s, accepted = QInputDialog.getDouble(
             self,
-            "Калибровка спектрального Doppler",
-            "Полный диапазон шкалы скорости (см/с), например 200 для ±100:",
+            tr("viewer.calibration_spectral_title"),
+            tr("viewer.calibration_spectral_prompt"),
             default_span,
             1.0,
             1000.0,
@@ -3560,7 +4079,7 @@ class ViewerWidget(QWidget):
             self.apply_doppler_calibration_state(state)
             self._doppler_pending_roi = None
             self._doppler_pending_baseline_y = None
-            self._measurement_label.setText("Doppler: калибровка завершена")
+            self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
             self.spectral_calibration_completed.emit(velocity_span)
             return
 
@@ -3615,7 +4134,7 @@ class ViewerWidget(QWidget):
         span_ms, accepted = QInputDialog.getDouble(
             self,
             "M-mode time scale",
-            "Известный интервал времени (мс) между метками:",
+            tr("viewer.mmode_time_prompt"),
             1000.0,
             1.0,
             10000.0,
@@ -3631,8 +4150,8 @@ class ViewerWidget(QWidget):
     def _prompt_mmode_depth_calibration(self, length_px: float) -> None:
         known_cm, accepted = QInputDialog.getDouble(
             self,
-            "Калибровка M-режима",
-            "Известное расстояние по глубине (см):",
+            tr("viewer.mmode_calibration_title"),
+            tr("viewer.mmode_depth_prompt"),
             1.0,
             0.01,
             100.0,
@@ -3653,8 +4172,8 @@ class ViewerWidget(QWidget):
     def _prompt_calibration_distance(self, length_px: float) -> None:
         known_cm, accepted = QInputDialog.getDouble(
             self,
-            "Калибровка по шкале глубины",
-            "Известное расстояние (см), например 5 для отметок 0–5 см:",
+            tr("viewer.calibration_depth_title"),
+            tr("viewer.calibration_distance_prompt"),
             5.0,
             0.01,
             1000.0,
@@ -3694,13 +4213,13 @@ class ViewerWidget(QWidget):
             and self._mmode_calibration_state is not None
             and not self._mmode_calibration_state.roi.contains(click[0], click[1])
         ):
-            self._measurement_label.setText("TAPSE: клик внутри полосы M-режима")
+            self._measurement_label.setText(tr("viewer.tapse_click_in_mmode"))
             return True
 
         if self._linear_caliper_start is None:
             self._linear_caliper_start = click
             self._update_linear_caliper_preview(click, click)
-            self._measurement_label.setText(f"{self._current_caliper_label()}: 2-й клик — конец")
+            self._measurement_label.setText(tr("viewer.linear_caliper_click_end", label=self._current_caliper_label()))
             return True
 
         start = self._linear_caliper_start
@@ -3712,8 +4231,9 @@ class ViewerWidget(QWidget):
         self,
         start: tuple[float, float],
         end: tuple[float, float],
+        label: str | None = None,
     ) -> tuple[float, float]:
-        if self._current_caliper_label() in self._vertical_caliper_labels:
+        if (label or self._current_caliper_label()) in self._vertical_caliper_labels:
             end_y = end[1]
             if self._mmode_calibration_state is not None:
                 roi = self._mmode_calibration_state.roi
@@ -3814,8 +4334,7 @@ class ViewerWidget(QWidget):
             [start[0], end[0]],
             [start[1], end[1]],
         )
-        if self._show_caliper_labels_on_frame:
-            self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True)
+        self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True)
 
     def _update_caliper_label_graphics(
         self,
@@ -3900,7 +4419,7 @@ class ViewerWidget(QWidget):
             return
         if self._linear_caliper_start is None:
             label = self._current_caliper_label()
-            self._measurement_label.setText(f"{label}: 1-й клик — начало")
+            self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=label))
             return
         self._update_linear_caliper_label_preview(
             self._linear_caliper_start,
@@ -3928,8 +4447,12 @@ class ViewerWidget(QWidget):
         self._clear_linear_caliper_graphics()
         if self._caliper_sequence:
             next_label = self._caliper_sequence.pop(0)
-            self._begin_linear_caliper(next_label)
-            self._measurement_label.setText(f"{next_label}: 1-й клик — начало")
+            # Chain: next segment starts where this one ended
+            self._linear_caliper_start = end
+            self._set_caliper_label(next_label)
+            self._linear_caliper_active = True
+            self._update_linear_caliper_preview(end, end)
+            self._measurement_label.setText(tr("viewer.linear_caliper_click_end", label=next_label))
         else:
             self._linear_caliper_active = False
             if self._caliper_sequence_size > 1:
@@ -3941,10 +4464,190 @@ class ViewerWidget(QWidget):
         measurements = list(self._stored_linear_measurements.values())
         self.linear_measurements_changed.emit(measurements)
 
+    # ── Caliper node drag (endpoint correction) ────────────────────
+
+    def _begin_caliper_node_drag(
+        self,
+        caliper_key: tuple[str, int],
+        endpoint_index: int,
+        x: float,
+        y: float,
+    ) -> None:
+        if self._linear_caliper_active:
+            return
+        measurement = self._stored_linear_measurements.get(caliper_key)
+        if measurement is None:
+            return
+        self._caliper_drag_active = True
+        self._caliper_drag_key = caliper_key
+        self._caliper_drag_node = endpoint_index
+        self._caliper_drag_original = measurement
+        self._caliper_drag_persistent_items: list | None = None
+        for item in self._persistent_linear_graphics:
+            if len(item) >= 4 and item[3] == caliper_key:
+                self._caliper_drag_persistent_items = item
+                line_item, start_node, end_node, _ = item
+                line_item.setPen(self._caliper_pen("#ffb300"))
+                start_node.setPen(self._caliper_pen("#ffb300"))
+                end_node.setPen(self._caliper_pen("#ffb300"))
+                break
+
+    def _apply_caliper_node_drag(self, x: float, y: float) -> None:
+        if not self._caliper_drag_active or self._caliper_drag_key is None:
+            return
+        measurement = self._stored_linear_measurements.get(self._caliper_drag_key)
+        if measurement is None:
+            return
+        if self._caliper_drag_node == 0:
+            new_end = measurement.end
+            new_start = self._constrain_linear_endpoint(
+                new_end, (x, y), label=measurement.label,
+            )
+        else:
+            new_start = measurement.start
+            new_end = self._constrain_linear_endpoint(
+                measurement.start, (x, y), label=measurement.label,
+            )
+        updated = self._linear_measurement_from_endpoints(
+            new_start, new_end, measurement.label,
+        )
+        self._stored_linear_measurements[self._caliper_drag_key] = updated
+        if self._caliper_drag_persistent_items is not None:
+            line_item, start_node, end_node, _ = self._caliper_drag_persistent_items
+            line_item.setData(
+                [new_start[0], new_end[0]],
+                [new_start[1], new_end[1]],
+            )
+            start_node.setData([new_start[0]], [new_start[1]])
+            end_node.setData([new_end[0]], [new_end[1]])
+        self._update_caliper_label_graphics(
+            new_start, new_end, color="#ffb300", is_preview=True,
+        )
+        self._measurement_label.setText(
+            updated.display_text(length_unit=self._length_display_unit)
+        )
+        self._update_results_overlay_for_caliper_drag(updated)
+
+    def _finish_caliper_node_drag(self, *, cancel: bool = False) -> None:
+        if not self._caliper_drag_active:
+            return
+        if cancel and self._caliper_drag_original is not None and self._caliper_drag_key is not None:
+            self._stored_linear_measurements[self._caliper_drag_key] = self._caliper_drag_original
+        if self._caliper_drag_persistent_items is not None:
+            line_item, start_node, end_node, _ = self._caliper_drag_persistent_items
+            line_item.show()
+            start_node.show()
+            end_node.show()
+        self._caliper_drag_active = False
+        self._caliper_drag_key = None
+        self._caliper_drag_node = None
+        self._caliper_drag_original = None
+        self._caliper_drag_persistent_items = None
+        self._clear_linear_caliper_graphics()
+        self._emit_stored_linear_measurements()
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
+
+    def _update_results_overlay_for_caliper_drag(self, measurement: "LinearMeasurement") -> None:
+        if self._results_overlay_label is None:
+            return
+        lines: list[str] = []
+        for m in self._stored_linear_measurements.values():
+            lines.append(m.display_text(length_unit=self._length_display_unit))
+        text = "\n".join(lines)
+        self._results_overlay_label.setText(text)
+        self._results_overlay_label.adjustSize()
+        self._results_overlay_label.show()
+        self._results_overlay_label.raise_()
+
+    def _handle_caliper_drag_release(self, ev) -> bool:
+        if not self._caliper_drag_active:
+            return False
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._finish_caliper_node_drag()
+            return True
+        return False
+
+    def _select_caliper(self, caliper_key: tuple[str, int] | None) -> None:
+        old_key = self._selected_caliper_key
+        if old_key == caliper_key:
+            return
+        self._selected_caliper_key = caliper_key
+        for item in self._persistent_linear_graphics:
+            if len(item) >= 4:
+                is_selected = item[3] == caliper_key
+                item[1].set_selected(is_selected)
+                item[2].set_selected(is_selected)
+
+    @_prof
+    def _delete_selected_caliper(self) -> bool:
+        if self._selected_caliper_key is None:
+            return False
+        key = self._selected_caliper_key
+        if key in self._stored_linear_measurements:
+            del self._stored_linear_measurements[key]
+        self._selected_caliper_key = None
+        self._emit_stored_linear_measurements()
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
+        return True
+
+    @_prof
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key.Key_Escape:
+            if self._caliper_drag_active:
+                self._finish_caliper_node_drag(cancel=True)
+                event.accept()
+                return
+        if event.key() == Qt.Key.Key_Delete:
+            if self._delete_selected_caliper():
+                event.accept()
+                return
+        if (event.key() == Qt.Key.Key_D
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier
+                and event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+            self.toggle_debug_overlay()
+            event.accept()
+            return
+        if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_Plus or event.key() == Qt.Key.Key_Equal:
+                modes = ["fit", "100%", "200%"]
+                idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
+                self._zoom_mode = modes[min(idx + 1, len(modes) - 1)]
+                self._zoom_factor = 1.0
+                self._apply_zoom_mode()
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_Minus:
+                modes = ["fit", "100%", "200%"]
+                idx = modes.index(self._zoom_mode) if self._zoom_mode in modes else 0
+                self._zoom_mode = modes[max(idx - 1, 0)]
+                self._zoom_factor = 1.0
+                self._apply_zoom_mode()
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_0:
+                self._zoom_mode = "fit"
+                self._zoom_factor = 1.0
+                self._apply_zoom_mode()
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
     def _set_caliper_label(self, label: str) -> None:
         if label not in self._caliper_labels:
             self._caliper_labels.append(label)
         self._caliper_label_index = self._caliper_labels.index(label)
+
+    def _step_back(self) -> None:
+        current = self._timeline_slider.value()
+        if current > 0:
+            self._timeline_slider.setValue(current - 1)
+
+    def _step_forward(self) -> None:
+        current = self._timeline_slider.value()
+        if current < self._timeline_slider.maximum():
+            self._timeline_slider.setValue(current + 1)
 
     def _on_timeline_changed(self, value: int) -> None:
         if self._syncing_state:
@@ -3988,25 +4691,37 @@ class ViewerWidget(QWidget):
         self._sync_display_control_enabled = sync_enabled  # type: ignore[attr-defined]
         sync_enabled()
 
+    @_prof
     def _update_levels(self) -> None:
         if self._current_frame is None or not self._window_level_enabled:
             return
-        frame = np.asarray(self._current_frame, dtype=float)
+        frame = np.asarray(self._current_frame)
         if frame.size == 0:
             return
         dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
-        low, high = compute_display_levels(
-            frame,
-            dr_low_pct=dr_low,
-            dr_high_pct=dr_high,
-            window_scale=self._window_slider.value() / 100.0,
-            level_offset=(self._level_slider.value() - 50) / 50.0,
-        )
+        window_scale = self._window_slider.value() / 100.0
+        level_offset = (self._level_slider.value() - 50) / 50.0
         if self._is_color_frame and self._color_source_rgb is not None:
+            low, high = compute_display_levels(
+                np.asarray(frame, dtype=float),
+                dr_low_pct=dr_low,
+                dr_high_pct=dr_high,
+                window_scale=window_scale,
+                level_offset=level_offset,
+            )
             display = apply_window_level_rgb(self._color_source_rgb, low, high)
             self._image_item.setImage(display, autoLevels=False)
         else:
-            self._image_item.setLevels((low, high))
+            from echo_personal_tool.infrastructure.pixel_utils import apply_wl_lut
+
+            display = apply_wl_lut(
+                frame,
+                dr_low_pct=dr_low,
+                dr_high_pct=dr_high,
+                window_scale=window_scale,
+                level_offset=level_offset,
+            )
+            self._image_item.setImage(display, autoLevels=False)
         self._invalidate_edge_map_cache()
 
     def set_magnetic_snap_enabled(self, enabled: bool) -> None:

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import QEvent, QSignalBlocker, Qt
+from PySide6.QtCore import QEvent, QPoint, QSignalBlocker, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,22 +19,29 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QMainWindow,
+    QMenu,
     QMessageBox,
+    QSplitter,
     QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
 )
-from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
-from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+from echo_personal_tool.infrastructure.server_client_factory import (
+    make_dicom_query_service,
+    make_dicom_web_client,
+)
 from echo_personal_tool.infrastructure.server_settings import load_server_settings
+from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.infrastructure.user_preferences import (
     UserPreferences,
     load_user_preferences,
@@ -56,10 +66,37 @@ logger = logging.getLogger(__name__)
 _TOOL_PANEL_WIDTH = 280
 
 
+@dataclass
+class LayoutConfig:
+    """Immutable snapshot — always replace, never mutate in place."""
+    swap_places: bool = False
+    gallery_horizontal: bool = False
+    activity_bar: bool = False
+    status_bar_visible: bool = True
+    multiview: bool = False
+
+
 def _loaded_file_label(instance: InstanceMetadata) -> str:
     if instance.path is not None:
         return instance.path.name
     return instance.sop_instance_uid
+
+
+def apply_maximized_to_work_area(window: QMainWindow) -> None:
+    """Maximize within the screen work area (taskbar-safe on Windows)."""
+    screen = window.screen() or QApplication.primaryScreen()
+    if screen is None:
+        window.showMaximized()
+        window._user_maximized = True  # type: ignore[attr-defined]
+        return
+    geo = screen.availableGeometry()
+    if sys.platform == "win32":
+        window.show()
+        window.setGeometry(geo)
+        window._user_maximized = True  # type: ignore[attr-defined]
+        return
+    window.showMaximized()
+    window._user_maximized = True  # type: ignore[attr-defined]
 
 
 class MainWindow(QMainWindow):
@@ -77,6 +114,7 @@ class MainWindow(QMainWindow):
         user_preferences: UserPreferences | None = None,
     ) -> None:
         super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle("ECHO Personal Tool")
         self._user_preferences = user_preferences or load_user_preferences()
         self._click_to_frame_started_at: float | None = None
@@ -85,10 +123,23 @@ class MainWindow(QMainWindow):
         self._rv_fac_awaiting_es = False
         self._instance_overlay_cache: dict[str, str] = {}
         self._instance_overlay_positions: dict[str, tuple[float, float]] = {}
+        self._study_overlay_positions: dict[str, tuple[float, float]] = {}
+        self._current_overlay_study_uid: str | None = None
         self._overlay_sync_instance_uid: str | None = None
         self._last_overlay_state: ViewerState | None = None
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
+        self._layout_config = self._load_layout_state()
+        self._bottom_container: QWidget | None = None
+        self._viewer2: ViewerWidget | None = None
+        self._viewer2_instance: InstanceMetadata | None = None
+        self._viewer2_frame_index: int = 0
+        self._viewer2_playing: bool = False
+        self._viewer2_total_frames: int = 0
+        self._active_viewer: ViewerWidget | None = None
+        self._activity_bar = None
+        self._user_maximized = False
+        self._slider_navigating = False
 
         self._controller = controller or AppController()
         orthanc_root = Path.home() / ".echo-personal-tool" / "orthanc"
@@ -98,6 +149,7 @@ class MainWindow(QMainWindow):
         self._controller.scan_failed.connect(self._on_scan_failed)
         self._controller.frame_loaded.connect(self._on_frame_loaded)
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
+        self._controller.scroll_settled.connect(self._on_scroll_settled)
         self._controller.status_message.connect(self._show_status)
         apply_echopac_theme(
             font_size=self._user_preferences.ui_font_size,
@@ -106,34 +158,38 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
-        root_layout = QVBoxLayout(central)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        self._root_layout = QVBoxLayout(central)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setSpacing(0)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._system_bar = SystemBar()
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
-        root_layout.addWidget(self._system_bar)
+        self._root_layout.addWidget(self._system_bar)
 
-        content = QWidget()
-        root_layout.addWidget(content, stretch=1)
-        content_layout = QHBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
+        self._content_widget = QWidget()
+        self._root_layout.addWidget(self._content_widget, stretch=1)
+        self._content_layout = QHBoxLayout(self._content_widget)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
 
         self._gallery = ThumbnailGalleryWidget()
         self._gallery.set_thumbnail_loader(self._controller.load_thumbnail)
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
-        content_layout.addWidget(self._gallery)
+        self._gallery.instance_selected.connect(self._on_instance_selected)
+        self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
 
-        center = QWidget()
-        center_layout = QVBoxLayout(center)
-        center_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._content_splitter.setHandleWidth(2)
 
         self._viewer = ViewerWidget()
+        self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
         self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
-        self._viewer.frame_selected.connect(self._controller.state_manager.set_frame)
+        self._viewer.frame_selected.connect(self._on_slider_frame_selected)
+        self._viewer.scroll_frame_selected.connect(
+            lambda index: self._controller.state_manager.set_frame(index, scroll=True)
+        )
         self._viewer.contour_completed.connect(self._on_contour_completed)
         self._viewer.contour_landmark_rejected.connect(self._show_status)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
@@ -160,21 +216,13 @@ class MainWindow(QMainWindow):
             self._on_results_overlay_position_changed
         )
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
+        self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
-        center_layout.addWidget(self._viewer, stretch=1)
-
         self._ste_dialog: SteResultsDialog | None = None
-        content_layout.addWidget(center, stretch=1)
 
         self._tool_panel = ToolPanel()
         self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
-        content_layout.addWidget(self._tool_panel)
 
-        content_layout.setStretch(0, 0)
-        content_layout.setStretch(1, 1)
-        content_layout.setStretch(2, 0)
-
-        self._gallery.instance_selected.connect(self._on_instance_selected)
         self._viewer.set_state(self._controller.state_manager.snapshot)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         self._viewer.bind_display_controls(
@@ -192,13 +240,13 @@ class MainWindow(QMainWindow):
 
         status = QStatusBar()
         self.setStatusBar(status)
-        self._show_status("Ready — open a study; tools: Measures / Controls (right)")
+        self._show_status(tr("status.startup"))
         self._install_shortcuts()
+        self._rebuild_layout()
 
     def _install_shortcuts(self) -> None:
         """Window-level shortcuts that work when the viewer or browser has focus."""
         bindings: list[tuple[str, object]] = [
-            ("Space", self._toggle_playback_shortcut),
             ("L", self._viewer.toggle_linear_caliper),
             ("C", self._start_manual_contour_shortcut),
             ("M", self._start_model_contour_shortcut),
@@ -208,40 +256,50 @@ class MainWindow(QMainWindow):
             ("Escape", self._cancel_active_tool),
             ("Backspace", self._delete_current_contour),
             ("Delete", self._delete_current_contour),
+            ("`", self._toggle_gallery_shortcut),
+            ("F11", self._toggle_fullscreen_shortcut),
+            ("Up", self._gallery.select_previous_instance),
+            ("Down", self._gallery.select_next_instance),
         ]
         for sequence, handler in bindings:
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(handler)
 
+    @_prof
     def _toggle_playback_shortcut(self) -> None:
-        if not self._controller.state_manager.snapshot.decode_in_progress:
-            self._controller.toggle_playback()
+        if self._controller.state_manager.snapshot.decode_in_progress:
+            return
+        self._controller.toggle_playback()
 
+    @_prof
     def _start_manual_contour_shortcut(self) -> None:
         if self._viewer.start_contour():
-            self._show_status("Manual contour: click MA septal, lateral, then apex")
+            self._show_status(tr("status.manual_contour"))
         else:
-            self._show_status("Load a frame first (or finish the active contour)")
+            self._show_status(tr("status.load_frame_or_finish_contour"))
 
+    @_prof
     def _start_model_contour_shortcut(self) -> None:
         start_mode = self._viewer.start_model_contour()
         if start_mode:
             self._viewer.clear_frame_overlay()
             self._viewer.append_frame_overlay("MBS-lite: MA septal → lateral → apex")
-            self._show_status("MBS-lite: click MA septal, lateral, apex")
+            self._show_status(tr("status.mbs_lite_contour"))
         else:
-            self._show_status("Load a frame first (or finish the active contour)")
+            self._show_status(tr("status.load_frame_or_finish_contour"))
 
+    @_prof
     def _request_auto_segment_shortcut(self) -> None:
         if self._viewer.get_doppler_tool_mode() != "none":
             return
         if not self._controller.is_lv_auto_session_active():
-            self._show_status("Выберите LV Auto → EDV/ESV")
+            self._show_status(tr("status.select_lv_auto"))
             return
         if not self._controller.state_manager.snapshot.is_playing:
             self._controller.request_auto_segment()
 
+    @_prof
     def _finish_active_tool_shortcut(self) -> None:
         pending = self._viewer.pending_ai_review_contour()
         if pending is not None:
@@ -255,21 +313,355 @@ class MainWindow(QMainWindow):
         if self._viewer.finish_contour():
             return
 
+    @_prof
     def _cancel_active_tool(self) -> None:
         if self._viewer.discard_pending_ai_contour():
             self._controller.on_contours_changed(self._viewer.contours())
-            self._show_status("AI контур отменён — нажмите LV Auto EDV/ESV")
+            self._show_status(tr("status.ai_contour_cancelled"))
             return
         self._viewer.cancel_active_tool()
 
+    @_prof
     def _delete_current_contour(self) -> None:
+        if self._viewer._delete_selected_caliper():
+            self._show_status(tr("status.caliper_deleted"))
+            return
         if self._viewer.delete_contour_for_current_phase():
             self._controller.on_contours_changed(self._viewer.contours())
-            self._show_status("Contour deleted")
+            self._show_status(tr("status.contour_deleted"))
 
+    def _toggle_gallery_shortcut(self) -> None:
+        self._gallery.toggle_collapse()
+
+    def _toggle_fullscreen_shortcut(self) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+            self._gallery.show()
+            if not self._layout_config.activity_bar:
+                self._tool_panel.show()
+        else:
+            self._gallery.hide()
+            self._tool_panel.hide()
+            self.showFullScreen()
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+            self._user_maximized = False
+        else:
+            apply_maximized_to_work_area(self)
+        self._system_bar.update_maximize_button(self.isMaximized())
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._system_bar.update_maximize_button(self.isMaximized())
+            if self.isMaximized() and self._user_maximized:
+                screen = self.screen() or QApplication.primaryScreen()
+                if screen is not None:
+                    geo = screen.availableGeometry()
+                    if self.geometry() != geo:
+                        self.setGeometry(geo)
+        super().changeEvent(event)
+
+    def _load_layout_state(self) -> LayoutConfig:
+        raw = self._user_preferences.layout_state_json
+        if not raw:
+            return LayoutConfig()
+        try:
+            cfg = LayoutConfig(**json.loads(raw))
+            return cfg
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return LayoutConfig()
+
+    def reset_layout_to_default(self) -> None:
+        self._layout_config = LayoutConfig()
+        self._rebuild_layout()
+
+    def _save_layout_state(self) -> None:
+        self._user_preferences.layout_state_json = json.dumps(asdict(self._layout_config))
+        save_user_preferences(self._user_preferences)
+
+    def _show_layout_menu(self) -> None:
+        menu = QMenu(self._system_bar._btn_layout)
+        menu.setObjectName("layoutMenu")
+        items = [
+            ("swap_places", tr("layout.swap_places")),
+            ("gallery_horizontal", tr("layout.gallery_horizontal")),
+            ("activity_bar", tr("layout.activity_bar_mode")),
+            ("status_bar_visible", tr("layout.status_bar_mode")),
+            ("multiview", tr("layout.multiview_mode")),
+        ]
+        for attr, tooltip in items:
+            action = menu.addAction(tooltip)
+            action.setCheckable(True)
+            action.setChecked(getattr(self._layout_config, attr))
+            action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
+        menu.exec(self._system_bar._btn_layout.mapToGlobal(
+            QPoint(0, self._system_bar._btn_layout.height())
+        ))
+
+    def _on_layout_toggle(self, attr: str, checked: bool) -> None:
+        from dataclasses import replace
+        self._layout_config = replace(self._layout_config, **{attr: checked})
+        self._rebuild_layout()
+
+    def _release_content_layout(self) -> None:
+        """Remove widgets from the horizontal content row without destroying them."""
+        while self._content_layout.count():
+            item = self._content_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(self._content_widget)
+
+    def _teardown_bottom_gallery(self) -> None:
+        """Reparent gallery before deleting the bottom strip (avoids destroying gallery)."""
+        if self._bottom_container is None:
+            return
+        bottom_layout = self._bottom_container.layout()
+        if bottom_layout is not None:
+            while bottom_layout.count():
+                item = bottom_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.setParent(self._content_widget)
+        self._root_layout.removeWidget(self._bottom_container)
+        self._bottom_container.deleteLater()
+        self._bottom_container = None
+
+    def _clear_splitter(self, splitter: QSplitter) -> None:
+        while splitter.count():
+            child = splitter.widget(0)
+            child.setParent(self._content_widget)
+
+    def _apply_layout_visibility(
+        self,
+        cfg: LayoutConfig,
+        *,
+        use_splitter: bool,
+        left: QWidget | None,
+        right: QWidget | None,
+    ) -> None:
+        self._viewer.show()
+        if cfg.multiview and self._viewer2 is not None:
+            self._viewer2.show()
+
+        if cfg.gallery_horizontal:
+            if self._bottom_container is not None:
+                self._bottom_container.show()
+            self._gallery.show()
+        elif left is self._gallery or right is self._gallery:
+            self._gallery.show()
+
+        if cfg.activity_bar:
+            if self._activity_bar is not None:
+                self._activity_bar.show()
+            if not use_splitter and self._tool_panel not in (left, right):
+                self._tool_panel.hide()
+        else:
+            if self._activity_bar is not None:
+                self._activity_bar.hide()
+            if use_splitter or self._tool_panel in (left, right):
+                self._tool_panel.show()
+
+    def _rebuild_layout(self) -> None:
+        cfg = self._layout_config
+        self._content_widget.setUpdatesEnabled(False)
+        try:
+            self._release_content_layout()
+            self._teardown_bottom_gallery()
+            self._clear_splitter(self._content_splitter)
+
+            if cfg.activity_bar:
+                self._ensure_activity_bar()
+
+            use_splitter = (
+                not cfg.activity_bar
+                and not cfg.gallery_horizontal
+                and not cfg.multiview
+                and not cfg.swap_places
+            )
+
+            if cfg.multiview:
+                self._ensure_viewer2()
+                self._content_splitter.addWidget(self._viewer)
+                self._content_splitter.addWidget(self._viewer2)
+                self._content_splitter.setHandleWidth(2)
+                self._content_splitter.blockSignals(True)
+                self._content_splitter.setSizes([800, 800])
+                self._content_splitter.blockSignals(False)
+                center: QWidget = self._content_splitter
+            elif use_splitter:
+                self._content_splitter.blockSignals(True)
+                self._content_splitter.addWidget(self._viewer)
+                self._content_splitter.addWidget(self._tool_panel)
+                self._content_splitter.setStretchFactor(0, 1)
+                self._content_splitter.setStretchFactor(1, 0)
+                self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                self._content_splitter.blockSignals(False)
+                center = self._content_splitter
+            else:
+                center = self._viewer
+
+            if not cfg.multiview:
+                self._detach_viewer2()
+
+            left = self._decide_left(cfg)
+            right = self._decide_right(cfg)
+
+            if left is not None:
+                left.show()
+                self._content_layout.addWidget(left)
+            if center is not None:
+                center.show()
+                self._content_layout.addWidget(center, stretch=1)
+            if right is not None:
+                right.show()
+                self._content_layout.addWidget(right)
+
+            if cfg.gallery_horizontal:
+                self._gallery.set_horizontal_mode(True)
+                self._bottom_container = QWidget()
+                bottom_layout = QHBoxLayout(self._bottom_container)
+                bottom_layout.setContentsMargins(0, 0, 0, 0)
+                bottom_layout.addWidget(self._gallery)
+                if self.statusBar() is not None:
+                    status_index = self._root_layout.indexOf(self.statusBar())
+                    self._root_layout.insertWidget(status_index, self._bottom_container)
+                else:
+                    self._root_layout.addWidget(self._bottom_container)
+            else:
+                self._gallery.set_horizontal_mode(False)
+
+            self.statusBar().setVisible(cfg.status_bar_visible)
+            self._apply_layout_visibility(cfg, use_splitter=use_splitter, left=left, right=right)
+            if cfg.activity_bar:
+                self._restore_activity_tool_panel_if_needed()
+            elif self._activity_bar is not None:
+                self._activity_bar.set_active(None)
+            self._save_layout_state()
+        finally:
+            self._content_widget.setUpdatesEnabled(True)
+
+    def _clear_content_layout(self) -> None:
+        """Backward-compatible alias for tests."""
+        self._release_content_layout()
+
+    def _decide_left(self, cfg: LayoutConfig) -> QWidget | None:
+        if cfg.activity_bar and cfg.swap_places:
+            return self._activity_bar
+        if cfg.swap_places:
+            return self._tool_panel
+        if cfg.activity_bar:
+            return None if cfg.gallery_horizontal else self._gallery
+        if cfg.gallery_horizontal:
+            return None
+        return self._gallery
+
+    def _decide_right(self, cfg: LayoutConfig) -> QWidget | None:
+        if cfg.activity_bar and not cfg.swap_places:
+            return self._activity_bar
+        if cfg.activity_bar and cfg.swap_places:
+            return None if cfg.gallery_horizontal else self._gallery
+        if cfg.swap_places:
+            return None if cfg.gallery_horizontal else self._gallery
+        if cfg.gallery_horizontal or cfg.multiview:
+            return self._tool_panel
+        return None
+
+    def _ensure_viewer2(self) -> None:
+        if self._viewer2 is not None:
+            try:
+                _ = self._viewer2.width()
+                return
+            except RuntimeError:
+                self._viewer2 = None
+        self._viewer2 = ViewerWidget()
+        self._viewer2.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
+        self._viewer2.installEventFilter(self)
+        self._viewer2._graphics.installEventFilter(self)
+        self._viewer2._view.installEventFilter(self)
+        self._viewer2.play_pause_requested.connect(self._toggle_viewer2_playback)
+        self._viewer2.frame_selected.connect(self._on_viewer2_frame_selected)
+        self._viewer2.scroll_frame_selected.connect(self._on_viewer2_frame_selected)
+        self._viewer2.contour_completed.connect(self._on_contour_completed)
+        self._viewer2.contours_changed.connect(self._controller.on_contours_changed)
+        # Sync viewer2 state from controller's current instance
+        self._sync_viewer2_state()
+
+    def _detach_viewer2(self) -> None:
+        if self._viewer2 is None:
+            return
+        try:
+            self._viewer2.hide()
+        except RuntimeError:
+            self._viewer2 = None
+
+    def _ensure_activity_bar(self) -> None:
+        if self._activity_bar is not None:
+            return
+        from echo_personal_tool.presentation.activity_bar import ActivityBar
+        self._activity_bar = ActivityBar()
+        self._activity_bar.tab_activated.connect(self._on_activity_tab_activated)
+        self._activity_bar.tab_deactivated.connect(self._on_activity_tab_deactivated)
+        self._activity_bar.action_requested.connect(self._on_activity_action)
+
+    def _on_activity_action(self, action: str) -> None:
+        if action == "caliper":
+            self._on_caliper_requested()
+        elif action == "lv2d":
+            self._on_lv2d_all_diastole()
+        elif action == "esv":
+            self._on_lv2d_es()
+        elif action == "edv":
+            self._on_measure_action(
+                MeasurementAction.MANUAL_SIMPSON, "A4C", "ED", ""
+            )
+        elif action == "es":
+            self._on_measure_action(
+                MeasurementAction.MANUAL_SIMPSON, "A4C", "ES", ""
+            )
+
+    def _remove_tool_panel_from_content_layout(self) -> None:
+        idx = self._content_layout.indexOf(self._tool_panel)
+        if idx >= 0:
+            self._content_layout.takeAt(idx)
+
+    def _attach_tool_panel_after(self, anchor: QWidget) -> None:
+        bar_idx = self._content_layout.indexOf(anchor)
+        if bar_idx < 0:
+            return
+        self._remove_tool_panel_from_content_layout()
+        self._content_layout.insertWidget(bar_idx + 1, self._tool_panel)
+
+    def _restore_activity_tool_panel_if_needed(self) -> None:
+        if self._activity_bar is None or not self._layout_config.activity_bar:
+            return
+        for name, button in self._activity_bar._buttons.items():
+            if button.isChecked():
+                self._on_activity_tab_activated(name)
+                return
+
+    def _on_activity_tab_activated(self, tab: str) -> None:
+        tab_map = {"measures": 0, "controls": 1, "properties": 2, "dicom": 3}
+        if tab in tab_map:
+            self._tool_panel._tabs.setCurrentIndex(tab_map[tab])
+        self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        if self._activity_bar is not None:
+            if self._content_layout.indexOf(self._activity_bar) >= 0:
+                self._attach_tool_panel_after(self._activity_bar)
+            elif self._content_layout.indexOf(self._tool_panel) < 0:
+                self._content_layout.addWidget(self._tool_panel)
+        self._tool_panel.show()
+
+    def _on_activity_tab_deactivated(self, tab: str) -> None:
+        self._tool_panel.hide()
+        self._remove_tool_panel_from_content_layout()
+
+    @_prof
     def _show_references(self) -> None:
         show_ase_reference_dialog(self)
 
+    @_prof
     def _show_user_preferences(self) -> None:
         show_user_preferences_dialog(self, on_apply=self._apply_user_preferences)
 
@@ -277,6 +669,11 @@ class MainWindow(QMainWindow):
         self._user_preferences = preferences
         if not preferences.results_overlay_custom_position:
             self._instance_overlay_positions.clear()
+            self._study_overlay_positions.clear()
+            self._current_overlay_study_uid = None
+        from echo_personal_tool.infrastructure.i18n import set_language
+        set_language(preferences.language)
+        self._reload_ui_language()
         app = QApplication.instance()
         if app is not None:
             app.setFont(ui_font(point_size=preferences.ui_font_size))
@@ -284,16 +681,26 @@ class MainWindow(QMainWindow):
             font_size=preferences.ui_font_size,
             theme=preferences.theme_mode,
         )
+        self._system_bar.reload_icons()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(
                 preferences.magnetic_snap_enabled
             )
+        self._tool_panel.set_auto_play(preferences.auto_play)
         self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
+        self._sync_results_overlay(self._controller.state_manager.snapshot)
+
+    def _reload_ui_language(self) -> None:
+        self._system_bar.reload_text()
+        if self._activity_bar is not None:
+            self._activity_bar.reload_text()
+        self._viewer.reload_text()
+        self._tool_panel.reload_text()
         self._sync_results_overlay(self._controller.state_manager.snapshot)
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
@@ -305,8 +712,21 @@ class MainWindow(QMainWindow):
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None:
             self._instance_overlay_positions[instance.sop_instance_uid] = (x_ratio, y_ratio)
+        if self._viewer._results_overlay_label._pinned:
+            study_uid = self._controller._resolve_study_uid(instance)
+            self._study_overlay_positions[study_uid] = (x_ratio, y_ratio)
 
     def _restore_results_overlay_position(self, instance_uid: str | None) -> None:
+        instance = self._controller.state_manager.snapshot.instance
+        study_uid = self._controller._resolve_study_uid(instance)
+        if study_uid != self._current_overlay_study_uid:
+            self._current_overlay_study_uid = study_uid
+            if study_uid in self._study_overlay_positions:
+                x_ratio, y_ratio = self._study_overlay_positions[study_uid]
+                self._viewer.set_results_overlay_position(x_ratio, y_ratio, custom=True)
+                return
+            self._viewer.reset_results_overlay_to_default()
+            return
         if instance_uid and instance_uid in self._instance_overlay_positions:
             x_ratio, y_ratio = self._instance_overlay_positions[instance_uid]
             self._viewer.set_results_overlay_position(x_ratio, y_ratio, custom=True)
@@ -337,8 +757,10 @@ class MainWindow(QMainWindow):
         log_path = directory / "scan_errors.log"
         self._controller.open_folder(directory, error_log_path=log_path)
 
+    @_prof
     def _open_folder(self) -> None:
-        directory = QFileDialog.getExistingDirectory(self, "Select study folder")
+        from echo_personal_tool.infrastructure.i18n import tr
+        directory = QFileDialog.getExistingDirectory(self, tr("dialog.select_folder"))
         if not directory:
             return
         folder = Path(directory)
@@ -346,20 +768,59 @@ class MainWindow(QMainWindow):
         save_user_preferences(self._user_preferences)
         self.open_folder_path(folder)
 
+    def _on_export_mp4_requested(self, instance: object) -> None:
+        if not isinstance(instance, InstanceMetadata) or instance.path is None:
+            return
+        dest, _ = QFileDialog.getSaveFileName(
+            self, tr("dialog.export_mp4.title"), "", "MP4 (*.mp4)",
+        )
+        if not dest:
+            return
+        if instance.media_format == "mp4":
+            import shutil as _shutil
+            _shutil.copy2(str(instance.path), dest)
+            self._show_status(tr("status.mp4_copied", dest=dest))
+            return
+        from echo_personal_tool.application.workers.mp4_export_worker import (
+            Mp4ExportWorker,
+        )
+        self._show_status(tr("status.mp4_exporting"))
+        worker = Mp4ExportWorker(
+            source_path=Path(instance.path),
+            dest_path=dest,
+            media_format=instance.media_format,
+            frame_time_ms=instance.frame_time_ms,
+            parent=self,
+        )
+        worker.signals.progress.connect(self._on_mp4_export_progress)
+        worker.signals.finished.connect(self._on_mp4_export_finished)
+        worker.signals.failed.connect(self._on_mp4_export_failed)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_mp4_export_progress(self, current: int, total: int) -> None:
+        self._show_status(tr("status.mp4_export_progress", current=current, total=total))
+
+    def _on_mp4_export_finished(self, path: str) -> None:
+        self._show_status(tr("status.mp4_exported", path=path))
+
+    def _on_mp4_export_failed(self, error: str) -> None:
+        QMessageBox.warning(self, tr("dialog.export_error.title"), error)
+        self._show_status(tr("status.mp4_export_failed"))
+
+    @_prof
     def _open_orthanc_dialog(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import exec_animated
         settings = load_server_settings()
-        if settings.use_mock:
-            client = FakeDicomWebClient()
-            dialog = OrthancStudyDialog(client, self._orthanc_cache, self)
-        else:
-            client = OrthancDicomWebClient.from_settings(settings)
-            dialog = OrthancStudyDialog(
-                client,
-                self._orthanc_cache,
-                self,
-                server_settings=settings,
-            )
-        dialog.exec()
+        client = make_dicom_web_client(settings)
+        query_service = make_dicom_query_service(settings)
+        dialog = OrthancStudyDialog(
+            client,
+            self._orthanc_cache,
+            self,
+            server_settings=settings,
+            query_service=query_service,
+        )
+        exec_animated(dialog)
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         logger.info(
@@ -382,14 +843,33 @@ class MainWindow(QMainWindow):
         else:
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
 
+    def _send_to_server(self) -> None:
+        studies = self._controller.studies
+        if not studies:
+            QMessageBox.information(
+                self,
+                tr("dialog.dicom_upload.title"),
+                tr("dialog.dicom_upload.no_files"),
+            )
+            return
+        run_dicom_upload_dialog(self, studies, load_server_settings())
+
     def closeEvent(self, event: QCloseEvent) -> None:
         self._orthanc_cache.clear_all()
         super().closeEvent(event)
 
+    @_prof
     def _on_studies_loaded(self, studies: object) -> None:
         study_list = list(studies)  # type: ignore[arg-type]
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
+        self._instance_overlay_cache.clear()
+        self._instance_overlay_positions.clear()
+        self._study_overlay_positions.clear()
+        self._current_overlay_study_uid = None
+        self._overlay_sync_instance_uid = None
+        self._last_overlay_state = None
+        self._viewer.set_results_overlay("")
         populate_started_at = perf_counter()
         self._gallery.populate(study_list)
         populate_elapsed_ms = (perf_counter() - populate_started_at) * 1000.0
@@ -401,10 +881,19 @@ class MainWindow(QMainWindow):
         self._gallery.request_visible_previews()
 
     def _on_scan_failed(self, message: str) -> None:
-        QMessageBox.warning(self, "Scan failed", message)
+        from echo_personal_tool.infrastructure.i18n import tr
+        QMessageBox.warning(self, tr("error.scan_failed"), message)
 
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
+            return
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            if not self._layout_config.multiview:
+                from dataclasses import replace
+                self._layout_config = replace(self._layout_config, multiview=True)
+                self._rebuild_layout()
+            self._load_instance_into_viewer2(selected)
             return
         self._click_to_frame_started_at = perf_counter()
         previous = self._controller.state_manager.snapshot.instance
@@ -415,6 +904,9 @@ class MainWindow(QMainWindow):
             if self._viewer.results_overlay_custom_position():
                 x_ratio, y_ratio = self._viewer.results_overlay_position()
                 self._instance_overlay_positions[previous.sop_instance_uid] = (x_ratio, y_ratio)
+                if self._viewer._results_overlay_label._pinned:
+                    study_uid = self._controller._resolve_study_uid(previous)
+                    self._study_overlay_positions[study_uid] = (x_ratio, y_ratio)
             frame_index = self._controller.state_manager.snapshot.current_frame_index
             self._controller.save_doppler_for_frame(
                 previous.sop_instance_uid,
@@ -437,15 +929,125 @@ class MainWindow(QMainWindow):
         self._controller.load_instance(selected)
         self._restore_results_overlay_position(selected.sop_instance_uid)
 
+    def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
+        self._ensure_viewer2()
+        if instance.path is None:
+            return
+        self._viewer2_instance = instance
+        self._viewer2_frame_index = 0
+        self._load_viewer2_frame(0)
+
+    def _load_viewer2_frame(self, frame_index: int) -> None:
+        if self._viewer2 is None or self._viewer2_instance is None:
+            return
+        instance = self._viewer2_instance
+        cache = self._controller._frame_cache
+        if cache is not None and cache.is_ready(instance.path):
+            try:
+                pixels = cache.get(frame_index)
+                self._on_viewer2_frame_loaded(np.asarray(pixels), instance)
+                return
+            except (RuntimeError, IndexError):
+                pass
+        from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
+        worker = FrameLoaderWorker(
+            instance.path, frame_index, instance.media_format,
+            total_frames=instance.number_of_frames,
+        )
+        worker.signals.finished.connect(
+            lambda pixels, inst=instance: self._on_viewer2_frame_loaded(pixels, inst)
+        )
+        worker.signals.failed.connect(lambda msg: self._show_status(f"viewer2 load failed: {msg}"))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_viewer2_frame_selected(self, frame_index: int) -> None:
+        self._viewer2_frame_index = frame_index
+        self._load_viewer2_frame(frame_index)
+
+    def _on_viewer2_frame_loaded(self, pixels: object, instance: InstanceMetadata) -> None:
+        if self._viewer2 is None:
+            return
+        image = np.asarray(pixels)
+        self._viewer2.show_frame(image)
+
+    def _toggle_viewer2_playback(self) -> None:
+        """Toggle playback for viewer2 independently."""
+        if self._viewer2_instance is None or self._viewer2 is None:
+            return
+        self._viewer2_playing = not self._viewer2_playing
+        if self._viewer2_playing:
+            self._start_viewer2_playback()
+        else:
+            self._stop_viewer2_playback()
+
+    def _start_viewer2_playback(self) -> None:
+        """Start playback timer for viewer2."""
+        if not self._viewer2_playing or self._viewer2_instance is None:
+            return
+        instance = self._viewer2_instance
+        total = instance.number_of_frames or 1
+        self._viewer2_total_frames = total
+        frame_time_ms = instance.frame_time_ms or 33.3
+        self._viewer2_timer = QTimer(self)
+        self._viewer2_timer.setInterval(int(frame_time_ms))
+        self._viewer2_timer.timeout.connect(self._viewer2_tick)
+        self._viewer2_timer.start()
+
+    def _stop_viewer2_playback(self) -> None:
+        """Stop playback timer for viewer2."""
+        if hasattr(self, "_viewer2_timer") and self._viewer2_timer is not None:
+            self._viewer2_timer.stop()
+            self._viewer2_timer = None
+
+    def _viewer2_tick(self) -> None:
+        """Advance viewer2 by one frame during playback."""
+        if not self._viewer2_playing or self._viewer2_instance is None:
+            self._stop_viewer2_playback()
+            return
+        self._viewer2_frame_index += 1
+        if self._viewer2_frame_index >= self._viewer2_total_frames:
+            self._viewer2_frame_index = 0
+        self._load_viewer2_frame(self._viewer2_frame_index)
+
+    def _sync_viewer2_state(self) -> None:
+        """Sync viewer2 display with controller's current instance."""
+        if self._viewer2 is None:
+            return
+        state = self._controller.state_manager.snapshot
+        if state.instance is not None:
+            # Show same instance in viewer2 if not already loaded
+            if self._viewer2_instance != state.instance:
+                self._load_instance_into_viewer2(state.instance)
+        elif self._viewer2_instance is not None:
+            self._viewer2_instance = None
+            self._viewer2_playing = False
+            self._stop_viewer2_playback()
+
+    def _on_state_changed_for_viewer2(self, state: ViewerState) -> None:
+        """Sync viewer2 when main viewer changes instance."""
+        if self._viewer2 is None:
+            return
+        # If main viewer changed instance, sync viewer2 to show same instance
+        if state.instance is not None and self._viewer2_instance != state.instance:
+            self._load_instance_into_viewer2(state.instance)
+
+    @_prof
     def _on_frame_loaded(self, pixels: object) -> None:
-        if self._click_to_frame_started_at is not None:
+        instance_switch = self._click_to_frame_started_at is not None
+        if instance_switch:
             elapsed_ms = (perf_counter() - self._click_to_frame_started_at) * 1000.0
             logger.info("click_to_frame_loaded duration_ms=%.2f", elapsed_ms)
             self._click_to_frame_started_at = None
         image = np.asarray(pixels)
         is_playing = self._controller.state_manager.snapshot.is_playing
-        if is_playing:
+        scroll_active = self._controller.is_scroll_active()
+        slider_nav = self._slider_navigating
+        self._slider_navigating = False
+        if is_playing or scroll_active:
             self._viewer.show_frame_fast(image)
+        elif instance_switch:
+            self._viewer.show_frame_fast(image)
+            QTimer.singleShot(0, lambda: self._deferred_instance_switch_restore(image, is_playing))
         else:
             self._viewer.show_frame(image)
             self._viewer.reposition_overlays()
@@ -453,24 +1055,63 @@ class MainWindow(QMainWindow):
             self._restore_doppler_for_current_instance()
             self._restore_mmode_for_current_instance()
             self._sync_doppler_tool_availability()
+            if self._user_preferences.auto_play and not is_playing and not slider_nav:
+                self._controller.toggle_playback()
             if self._controller.needs_manual_calibration():
                 self._viewer._auto_calibration_succeeded = False
                 if self._controller.try_auto_depth_calibration(image):
                     self._viewer.show_calibration_ok_overlay()
                 elif self._viewer.start_calibration_caliper():
                     self._show_status(
-                        "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
+                        tr("status.calibration_click")
                     )
 
+    def _deferred_instance_switch_restore(self, image: np.ndarray, is_playing: bool) -> None:
+        self._viewer.show_frame(image)
+        self._viewer.reposition_overlays()
+        self._viewer.refresh_dicom_tags_overlay()
+        self._viewer._refresh_frame_overlays()
+        self._restore_doppler_for_current_instance()
+        self._restore_mmode_for_current_instance()
+        self._sync_doppler_tool_availability()
+        if self._user_preferences.auto_play and not is_playing:
+            self._controller.toggle_playback()
+        if self._controller.needs_manual_calibration():
+            self._viewer._auto_calibration_succeeded = False
+            if self._controller.try_auto_depth_calibration(image):
+                self._viewer.show_calibration_ok_overlay()
+            elif self._viewer.start_calibration_caliper():
+                self._show_status(
+                    tr("status.calibration_click")
+                )
+
+    def _on_slider_frame_selected(self, index: int) -> None:
+        self._slider_navigating = True
+        self._controller.state_manager.set_frame(index)
+
+    @_prof
+    def _on_scroll_settled(self) -> None:
+        if self._controller.state_manager.snapshot.is_playing:
+            return
+        self._viewer.refresh_after_scroll()
+        self._viewer.reposition_overlays()
+        self._viewer.refresh_dicom_tags_overlay()
+        self._restore_doppler_for_current_instance()
+        self._restore_mmode_for_current_instance()
+        self._sync_doppler_tool_availability()
+
+    @_prof
     def _on_frame_load_failed(self, message: str) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
         self._click_to_frame_started_at = None
-        QMessageBox.warning(self, "Load failed", message)
+        QMessageBox.warning(self, tr("error.load_failed"), message)
 
     def _show_status(self, message: str) -> None:
         self._system_bar.set_status_message(message)
         if self.statusBar():
             self.statusBar().showMessage(message)
 
+    @_prof
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
@@ -493,6 +1134,33 @@ class MainWindow(QMainWindow):
         self._last_overlay_state = state
         if instance_changed:
             self._refresh_dicom_inspector()
+        self._update_properties_panel(state)
+
+    def _update_properties_panel(self, state: ViewerState) -> None:
+        """Update the properties panel with current instance info."""
+        panel = self._tool_panel.properties_panel
+        if state.instance is None:
+            panel.clear_all()
+            return
+        inst = state.instance
+        # Instance info
+        panel.update_instance_info(
+            modality=inst.modality or "",
+            series_desc=inst.series_description or "",
+            frame_rate=1000.0 / inst.frame_time_ms if inst.frame_time_ms else None,
+            pixel_spacing=f"{inst.pixel_spacing[0]:.2f}×{inst.pixel_spacing[1]:.2f} mm" if inst.pixel_spacing else "",
+        )
+        # Latest measurement
+        if state.linear_measurements:
+            m = state.linear_measurements[-1]
+            panel.update_measurement_info(
+                label=m.label,
+                value_mm=m.millimeter_length,
+                start=m.start,
+                end=m.end,
+            )
+        else:
+            panel.update_measurement_info()
 
     def _restore_doppler_for_current_frame(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -569,12 +1237,13 @@ class MainWindow(QMainWindow):
             return True
         if self._viewer.start_mmode_panel_calibration():
             self._show_status(
-                "M-mode: 1–2 клик — полоса M-режима, затем шкала глубины (не B-режим)"
+                tr("status.mmode_tapse_click")
             )
         else:
-            self._show_status("Сначала загрузите кадр с M-режимом")
+            self._show_status(tr("status.load_first_frame_mmode"))
         return False
 
+    @_prof
     def _sync_results_overlay(self, state: ViewerState) -> None:
         time_calibrated = self._viewer.is_doppler_time_calibrated()
         instance = state.instance
@@ -592,7 +1261,8 @@ class MainWindow(QMainWindow):
                 self._instance_overlay_cache[instance_uid] = fresh_text
                 display_text = fresh_text
             else:
-                display_text = self._instance_overlay_cache.get(instance_uid, "")
+                self._instance_overlay_cache.pop(instance_uid, None)
+                display_text = ""
         else:
             display_text = fresh_text
 
@@ -625,14 +1295,13 @@ class MainWindow(QMainWindow):
 
     def _ensure_doppler_ready(self, *, require_time: bool = False) -> bool:
         if self._viewer._current_frame is None:
-            self._show_status("Сначала загрузите кадр Doppler")
+            self._show_status(tr("status.load_first_frame_doppler"))
             return False
         if require_time:
             if self._viewer.is_doppler_time_calibrated():
                 return True
             self._show_status(
-                "Нет DICOM-тегов шкалы времени (PhysicalDeltaX, PhysicalUnitsX=с) "
-                "— DT/IVRT/VTI недоступны"
+                tr("status.doppler_no_time")
             )
             return False
         return True
@@ -640,6 +1309,7 @@ class MainWindow(QMainWindow):
     def _wire_ui(self) -> None:
         self._system_bar.open_folder_requested.connect(self._open_folder)
         self._system_bar.load_from_server_requested.connect(self._open_orthanc_dialog)
+        self._system_bar.send_to_server_requested.connect(self._send_to_server)
         self._system_bar.reset_session_requested.connect(self._on_reset_measurements_requested)
         self._system_bar.caliper_requested.connect(lambda: self._on_caliper_requested())
         self._system_bar.calibration_requested.connect(self._on_calibration_requested)
@@ -648,12 +1318,17 @@ class MainWindow(QMainWindow):
         )
         self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
+        self._system_bar.minimize_requested.connect(self.showMinimized)
+        self._system_bar.maximize_requested.connect(self._toggle_maximize)
+        self._system_bar.close_requested.connect(self.close)
+        self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.patient_metrics_changed.connect(
             self._controller.on_patient_metrics_changed
         )
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
+        self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
 
@@ -662,6 +1337,10 @@ class MainWindow(QMainWindow):
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(enabled)
         self._viewer.set_magnetic_snap_enabled(enabled)
+
+    def _on_auto_play_changed(self, enabled: bool) -> None:
+        self._user_preferences.auto_play = enabled
+        save_user_preferences(self._user_preferences)
 
     def _on_measure_action(
         self,
@@ -725,7 +1404,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.measure.clear_action_highlight()
         if self._viewer.start_generic_area_contour():
             self._viewer.clear_frame_overlay()
-            self._show_status("Площадь: клики по контуру, двойной щелчок — замкнуть; точки можно двигать")
+            self._show_status(tr("status.area_tool"))
         else:
             self._show_status("Load a frame first (or finish the active tool)")
 
@@ -733,7 +1412,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.measure.clear_action_highlight()
         if self._viewer.start_generic_volume_contour():
             self._viewer.clear_frame_overlay()
-            self._show_status("Объем: клики по контуру, двойной щелчок — замкнуть; точки можно двигать")
+            self._show_status(tr("status.volume_tool"))
         else:
             self._show_status("Load a frame first (or finish the active tool)")
 
@@ -741,36 +1420,35 @@ class MainWindow(QMainWindow):
         if not self._ensure_doppler_ready():
             return
         self._viewer.set_doppler_tool_mode("peak", peak_label=label or "E")
-        self._show_status(f"Doppler peak {label or 'E'}: один клик на огибающей")
+        self._show_status(tr("status.doppler_peak_tool", label=label or 'E'))
 
     def _on_doppler_mitral_inflow(self) -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
         if self._viewer.start_mitral_inflow_workflow():
-            self._show_status("Mitral inflow: E (пик) → DT (наклон/baseline) → A (пик)")
+            self._show_status(tr("status.mitral_inflow_tool"))
         else:
-            self._show_status("Сначала загрузите кадр Doppler")
+            self._show_status(tr("status.load_first_frame_doppler"))
 
     def _on_doppler_interval_tool(self, label: str | None = None) -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
         self._viewer.set_doppler_tool_mode("interval", interval_label=label or "DT")
-        self._show_status(f"Doppler interval {label or 'DT'}: 2 клика на baseline")
+        self._show_status(tr("status.doppler_interval_tool", label=label or 'DT'))
 
     def _on_doppler_trace_tool(self, trace_label: str = "VTI") -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
         self._viewer.set_doppler_tool_mode("trace", trace_label=trace_label)
         self._show_status(
-            f"Doppler {trace_label}: клик baseline (начало) → вести вдоль огибающей → "
-            "отпустить на baseline (конец)"
+            tr("status.doppler_trace_tool", trace_label=trace_label)
         )
 
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():
             return
         self._viewer.set_doppler_tool_mode("peak", peak_label="s_sept")
-        self._show_status("RV s': клик на пике septal TDI")
+        self._show_status(tr("status.rv_s_prime_tool"))
 
     def _on_rv_fac(self) -> None:
         phase = "ES" if self._rv_fac_awaiting_es else "ED"
@@ -780,7 +1458,7 @@ class MainWindow(QMainWindow):
             "A4C",
             overlay=f"RV FAC {phase}: TV lateral → septal → free wall",
             status=(
-                f"RV FAC {phase}: 1) TV lateral  2) TV septal  3) free wall · Enter — подтвердить"
+                f"RV FAC {phase}: 1) TV lateral  2) TV septal  3) free wall · Enter — {tr('status.ready_done', line='confirm')}"
             ),
         ):
             self._show_status("Load a frame first or cancel the active tool (Esc)")
@@ -791,18 +1469,19 @@ class MainWindow(QMainWindow):
 
     def _on_caliper_requested(self, label: str | None = None) -> None:
         if label and self._viewer.start_linear_caliper_for(label):
-            self._show_status(f"Linear caliper ({label}): 1-й клик — начало, 2-й — конец")
+            self._show_status(tr("status.linear_caliper_tool", label=label))
         elif (label := self._viewer.activate_generic_dist_caliper()):
-            self._show_status(f"Linear caliper ({label}): 1-й клик — начало, 2-й — конец")
+            self._show_status(tr("status.linear_caliper_tool", label=label))
         else:
             self._show_status("Load a frame first")
 
+    @_prof
     def _on_reset_measurements_requested(self) -> None:
         if self._user_preferences.confirm_reset:
             answer = QMessageBox.question(
                 self,
-                "Сброс измерений",
-                "Сбросить все измерения, контуры и калибровку текущей сессии?",
+                tr("status.reset_session_title"),
+                tr("status.reset_session_body"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -812,6 +1491,7 @@ class MainWindow(QMainWindow):
         self._rv_fac_awaiting_es = False
         self._instance_overlay_cache.clear()
         self._viewer.cancel_active_tool()
+        self._viewer.set_results_overlay("")
         self._viewer.clear_doppler_calibration_display()
         self._viewer.clear_doppler_measurements()
         self._viewer.clear_speckle_overlay()
@@ -819,8 +1499,10 @@ class MainWindow(QMainWindow):
             self._ste_dialog.clear()
         self._viewer.reset_dist_caliper_serial()
         self._controller.reset_measurements_and_calibration()
+        self._viewer.set_results_overlay("")
+        self._last_overlay_state = None
         if self._viewer._current_frame is None:
-            self._show_status("Измерения и калибровка сброшены")
+            self._show_status(tr("status.measurements_reset"))
             return
         if self._controller.needs_manual_calibration():
             self._viewer._auto_calibration_succeeded = False
@@ -832,9 +1514,9 @@ class MainWindow(QMainWindow):
             if self._viewer.start_doppler_scale_calibration():
                 self._show_status(self._viewer.doppler_calibration_prompt())
             else:
-                self._show_status("Сначала загрузите кадр Doppler")
+                self._show_status(tr("status.load_first_frame_doppler"))
         self._sync_doppler_tool_availability()
-        self._show_status("Измерения и калибровка сброшены")
+        self._show_status(tr("status.measurements_reset"))
 
     def _on_calibration_requested(self) -> None:
         if self._viewer._current_frame is None:
@@ -843,10 +1525,10 @@ class MainWindow(QMainWindow):
         self._viewer.toggle_calibration_caliper()
         if self._viewer.is_calibration_active:
             self._show_status(
-                "Калибровка B-режима: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
+                tr("status.calibration_bmode_click")
             )
         else:
-            self._show_status("Калибровка отменена")
+            self._show_status(tr("status.calibration_cancelled"))
 
     def _get_current_frame_index(self) -> int | None:
         snapshot = self._controller.state_manager.snapshot
@@ -860,7 +1542,7 @@ class MainWindow(QMainWindow):
             self._show_status("Load a frame first")
             return
         self._manual_ed_frame = idx
-        self._show_status(f"ED = кадр {idx}")
+        self._show_status(tr("status.ed_frame", idx=idx))
 
     def _mark_current_frame_as_es(self) -> None:
         idx = self._get_current_frame_index()
@@ -868,7 +1550,7 @@ class MainWindow(QMainWindow):
             self._show_status("Load a frame first")
             return
         self._manual_es_frame = idx
-        self._show_status(f"ES = кадр {idx}")
+        self._show_status(tr("status.es_frame", idx=idx))
 
     def _on_speckle_tracking_requested(self) -> None:
         if self._viewer._current_frame is None:
@@ -876,7 +1558,7 @@ class MainWindow(QMainWindow):
             return
         contour = self._viewer.get_lv_contour()
         if contour is None:
-            self._show_status("Сначала нарисуйте контур LV")
+            self._show_status(tr("status.speckle_no_contour"))
             return
         current_idx = self._get_current_frame_index() or 0
         cache = self._controller._frame_cache
@@ -888,8 +1570,9 @@ class MainWindow(QMainWindow):
             manual_es=self._manual_es_frame,
             n_frames=n_frames,
         )
-        if settings.exec() != QDialog.DialogCode.Accepted:
-            self._show_status("speckle tracking: отменено")
+        from echo_personal_tool.presentation.ui_animations import exec_animated
+        if exec_animated(settings) != QDialog.DialogCode.Accepted:
+            self._show_status(tr("status.speckle_cancelled"))
             return
         config = settings.get_config()
         config_preset = settings.selected_preset_name()
@@ -899,8 +1582,8 @@ class MainWindow(QMainWindow):
         if self._manual_ed_frame is not None and self._manual_es_frame is not None:
             phase_hint = f"ED={self._manual_ed_frame}, ES={self._manual_es_frame}"
         else:
-            phase_hint = "ED/ES: авто"
-        self._show_status(f"speckle tracking: вычисление… ({phase_hint})")
+            phase_hint = tr("status.speckle_phase_hint")
+        self._show_status(tr("status.speckle_compute", phase_hint=phase_hint))
         self._controller.run_speckle_tracking(
             contour,
             config=config,
@@ -956,7 +1639,7 @@ class MainWindow(QMainWindow):
         if self._viewer.start_doppler_scale_calibration():
             self._show_status(self._viewer.doppler_calibration_prompt())
         else:
-            self._show_status("Сначала загрузите кадр")
+            self._show_status(tr("status.load_first_frame"))
 
     def _on_manual_simpson_requested(self, view: str, phase: str) -> None:
         if self._viewer.start_contour(phase=phase, view=view, chamber="LV"):
@@ -970,11 +1653,11 @@ class MainWindow(QMainWindow):
 
     def _on_mbs_simpson_requested(self, view: str, phase: str) -> None:
         if view.upper() != "A4C":
-            self._show_status("A2C auto — в следующей версии")
+            self._show_status(tr("status.a2c_auto_next"))
             return
         self._controller.set_simpson_workflow_context(phase=phase, view=view, chamber="LV")
         self._viewer.clear_frame_overlay()
-        self._viewer.append_frame_overlay(f"LV Auto {view} {phase}: сегментация…")
+        self._viewer.append_frame_overlay(tr("status.lv_auto_segmenting", view=view, phase=phase))
         self._controller.request_auto_segment(phase=phase, view=view, chamber="LV")
 
     def _maybe_prompt_es_auto(
@@ -988,9 +1671,9 @@ class MainWindow(QMainWindow):
             return
         view_label = "4C" if view.upper() == "A4C" else "2C"
         es_name = "ESV Auto" if mode == "mbs" else "Systole"
-        status = f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})"
+        status = tr("status.lv_go_systole", es_name=es_name, view_label=view_label)
         if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-            status += " · нет PixelSpacing (K — калибровка, px / px³)"
+            status += tr("status.lv_no_pixel_spacing")
         self._show_status(status)
         self._viewer.append_frame_overlay(status)
 
@@ -1001,20 +1684,20 @@ class MainWindow(QMainWindow):
         self._tool_panel.measure.clear_action_highlight()
         if self._viewer.start_linear_caliper_sequence(("IVSd", "LVEDD", "LVPWd")):
             self._viewer.clear_frame_overlay()
-            self._viewer.append_frame_overlay("Диастола ЛЖ: МЖП → КДР ЛЖ → ЗСЛЖ")
-            self._show_status("МЖП (2 клика) → КДР ЛЖ (2 клика) → ЗСЛЖ (2 клика)")
+            self._viewer.append_frame_overlay(tr("status.lv_diastole_overlay"))
+            self._show_status(tr("status.lv_diastole_sequence"))
         else:
-            self._show_status("Загрузите кадр")
+            self._show_status(tr("status.load_frame"))
 
     def _on_linear_caliper_sequence_completed(self) -> None:
         self._tool_panel.measure.highlight_action(MeasurementAction.LV2D_ES)
-        self._show_status("Диастола ЛЖ завершена — нажмите КСР (2D)")
+        self._show_status(tr("status.lv_diastole_done"))
 
     def _on_lv2d_es(self) -> None:
         if self._viewer.start_linear_caliper_for("LVESD"):
-            self._show_status("Систола ЛЖ: разместите КСР ЛЖ")
+            self._show_status(tr("status.lv_systole_place"))
         else:
-            self._show_status("Загрузите кадр")
+            self._show_status(tr("status.load_frame"))
 
     def _has_chamber_contour(self, chamber: str, view: str, phase: str) -> bool:
         for contour in self._controller.state_manager.snapshot.contours:
@@ -1056,8 +1739,8 @@ class MainWindow(QMainWindow):
             "LA",
             "ES",
             "A4C",
-            overlay="LAV 4C: МК septal → lateral → apex",
-            status="LAV 4C: МК septal → lateral → apex (овальный контур)",
+            overlay=tr("status.lav4c_overlay"),
+            status=tr("status.lav4c_status"),
         ):
             pass
         else:
@@ -1072,8 +1755,8 @@ class MainWindow(QMainWindow):
                 "LA",
                 "ES",
                 "A2C",
-                overlay="LAV 2C: МК septal → lateral → apex",
-                status="LAV 2C: МК septal → lateral → apex (овальный контур)",
+                overlay=tr("status.lav2c_overlay"),
+                status=tr("status.lav2c_status"),
             ):
                 pass
             else:
@@ -1084,8 +1767,8 @@ class MainWindow(QMainWindow):
             "LA",
             "ES",
             "A4C",
-            overlay="LAV Bi: шаг 1 — LA 4C Simpson",
-            status="LAV Bi: шаг 1 — МК septal → lateral → apex",
+            overlay=tr("status.lavbi_overlay"),
+            status=tr("status.lavbi_status"),
         ):
             pass
         else:
@@ -1102,8 +1785,8 @@ class MainWindow(QMainWindow):
             "RA",
             "ES",
             "A4C",
-            overlay="S ПП: RA A4C ES — annulus septal → lateral → apex",
-            status="S ПП: annulus septal → lateral → apex",
+            overlay=tr("status.ra_s_overlay"),
+            status=tr("status.ra_s_status"),
         ):
             self._show_status("Load a frame first or cancel the active tool (Esc)")
 
@@ -1113,7 +1796,7 @@ class MainWindow(QMainWindow):
             "ES",
             "A4C",
             overlay="RAV 4C: TV septal → lateral → apex",
-            status="RAV 4C: TV septal → lateral → apex (овальный контур)",
+            status=tr("status.rav4c_status"),
         ):
             pass
         else:
@@ -1139,7 +1822,7 @@ class MainWindow(QMainWindow):
                 spacing_calibrated=calibrated,
             )
             if line:
-                self._show_status(f"Готово: {line}")
+                self._show_status(tr("status.ready_done", line=line))
             self._viewer._refresh_frame_overlays()
             self._sync_results_overlay(self._controller.state_manager.snapshot)
             return
@@ -1155,10 +1838,10 @@ class MainWindow(QMainWindow):
             self._tool_panel.measure.highlight_action(es_action, view=view, phase="ES")
             view_label = "4C" if view == "A4C" else "2C"
             es_name = "ESV Auto" if mode == "mbs" else "LVEF Simpson ESV"
-            extra_lines = (f"Нажмите {es_name} ({view_label})",)
-            status = f"Нажмите {es_name} ({view_label})"
+            extra_lines = (tr("status.press_es", es_name=es_name, view_label=view_label),)
+            status = tr("status.press_es", es_name=es_name, view_label=view_label)
             if self._controller.state_manager.snapshot.effective_pixel_spacing is None:
-                status += " · нет PixelSpacing (K — калибровка, px / px³)"
+                status += tr("status.lv_no_pixel_spacing")
             self._show_status(status)
         elif chamber == "LV" and contour.phase.upper() == "ES":
             self._tool_panel.measure.clear_action_highlight()
@@ -1167,7 +1850,7 @@ class MainWindow(QMainWindow):
                 self._tool_panel.measure.highlight_action(MeasurementAction.LAV_BI)
                 extra_lines = (
                     *extra_lines,
-                    "LAV Bi: перейдите на 2C ES и нажмите LAV 2C",
+                    tr("status.lavbi_go_2c"),
                 )
             elif contour.view.upper() == "A2C":
                 self._lav_bi_active = False
@@ -1238,7 +1921,7 @@ class MainWindow(QMainWindow):
             if phase == "ED":
                 self._rv_fac_awaiting_es = True
                 self._tool_panel.measure.highlight_action(MeasurementAction.RV_FAC)
-                extra_lines = (*extra_lines, "Перейдите на кадр систолы и нажмите FAC")
+                extra_lines = (*extra_lines, tr("status.press_fac"))
             elif phase == "ES":
                 self._rv_fac_awaiting_es = False
                 self._tool_panel.measure.clear_action_highlight()
@@ -1262,20 +1945,34 @@ class MainWindow(QMainWindow):
         if not self._ensure_mmode_ready_for_tapse():
             return
         if self._viewer.start_linear_caliper_for("TAPSE"):
-            self._show_status("RV TAPSE: вертикальный калипер в полосе M-режима")
+            self._show_status(tr("status.rv_tapse_tool"))
         else:
             self._show_status("Load a frame first")
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:  # type: ignore[override]
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
+                self._active_viewer = self._viewer
+            elif self._viewer2 is not None and watched in (
+                self._viewer2, self._viewer2._graphics, self._viewer2._view,
+            ):
+                self._active_viewer = self._viewer2
         if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 if self._handle_key_press(event):
                     return True
+            if self._viewer2 is not None and watched in (
+                self._viewer2, self._viewer2._graphics, self._viewer2._view,
+            ):
+                if self._handle_key_press(event):
+                    return True
         return super().eventFilter(watched, event)
 
+    @_prof
     def event(self, event) -> bool:  # type: ignore[override]
         if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Tab:
-            self._viewer.cycle_caliper_label()
+            v = self._active_viewer or self._viewer
+            v.cycle_caliper_label()
             event.accept()
             return True
         return super().event(event)
@@ -1286,20 +1983,23 @@ class MainWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def _handle_key_press(self, event: QKeyEvent) -> bool:
+        v = self._active_viewer or self._viewer
         if event.key() == Qt.Key.Key_Space:
-            if not self._controller.state_manager.snapshot.decode_in_progress:
-                self._controller.toggle_playback()
+            if self._controller.state_manager.snapshot.decode_in_progress:
+                event.accept()
+                return True
+            self._controller.toggle_playback()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_L and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            self._viewer.toggle_linear_caliper()
+            v.toggle_linear_caliper()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            self._viewer.toggle_calibration_caliper()
-            if self._viewer.is_calibration_active:
+            v.toggle_calibration_caliper()
+            if v.is_calibration_active:
                 self._show_status(
-                    "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)"
+                    tr("status.calibration_click")
                 )
             event.accept()
             return True
@@ -1308,21 +2008,21 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() == Qt.Key.Key_Tab:
-            self._viewer.cycle_caliper_label()
+            v.cycle_caliper_label()
             event.accept()
             return True
         if event.key() == Qt.Key.Key_C and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            if self._viewer.start_contour():
+            if v.start_contour():
                 self._show_status("Manual contour: click MA septal, lateral, then arc")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
             event.accept()
             return True
         if event.key() == Qt.Key.Key_M and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            if self._viewer.get_doppler_tool_mode() != "none":
-                self._viewer.set_doppler_tool_mode("peak")
+            if v.get_doppler_tool_mode() != "none":
+                v.set_doppler_tool_mode("peak")
                 self._show_status("Doppler peak (M)")
-            elif self._viewer.start_model_contour():
+            elif v.start_model_contour():
                 self._show_status("MBS-lite: click MA septal, lateral, then apex")
             else:
                 self._show_status("Load a frame first (or finish the active contour)")
@@ -1330,7 +2030,7 @@ class MainWindow(QMainWindow):
             return True
         if event.key() == Qt.Key.Key_T and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             if self._ensure_doppler_ready(require_time=True):
-                self._viewer.set_doppler_tool_mode("interval")
+                v.set_doppler_tool_mode("interval")
                 self._show_status("Doppler interval (T)")
             event.accept()
             return True
@@ -1340,9 +2040,9 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() == Qt.Key.Key_R and event.modifiers() == Qt.KeyboardModifier.NoModifier:
-            refined, mode = self._viewer.refine_active_open_contour()
+            refined, mode = v.refine_active_open_contour()
             if refined:
-                self._controller.on_contours_changed(self._viewer.contours())
+                self._controller.on_contours_changed(v.contours())
                 if mode.startswith(("step:", "complete")):
                     self._show_status(f"Refine {mode}")
                 elif mode == "gradient":
@@ -1350,7 +2050,7 @@ class MainWindow(QMainWindow):
                 else:
                     self._show_status("Geometry smooth (R)")
             else:
-                self._show_status("Нет LV open-arc контура на текущем кадре")
+                self._show_status(tr("status.no_lv_open_arc"))
             event.accept()
             return True
         if (
@@ -1361,17 +2061,17 @@ class MainWindow(QMainWindow):
             event.accept()
             return True
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            trace_active = self._viewer.get_doppler_tool_mode() == "trace"
-            if trace_active and self._viewer.finish_doppler_trace():
+            trace_active = v.get_doppler_tool_mode() == "trace"
+            if trace_active and v.finish_doppler_trace():
                 event.accept()
                 return True
-            if self._viewer.finish_contour():
+            if v.finish_contour():
                 event.accept()
                 return True
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            if self._viewer.delete_contour_for_current_phase():
-                self._controller.on_contours_changed(self._viewer.contours())
-                self._show_status("Contour deleted")
+            if v.delete_contour_for_current_phase():
+                self._controller.on_contours_changed(v.contours())
+                self._show_status(tr("status.contour_deleted"))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_Escape:

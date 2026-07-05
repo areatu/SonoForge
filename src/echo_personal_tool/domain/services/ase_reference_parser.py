@@ -4,10 +4,43 @@ from __future__ import annotations
 
 import html
 import re
+import sys
 from pathlib import Path
 
 
+def default_references_dir() -> Path:
+    """Return the bundled references directory, or project-tree fallback."""
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        candidate = base / "echo_personal_tool" / "resources" / "references"
+        if candidate.is_dir():
+            return candidate
+    for ancestor in Path(__file__).resolve().parents:
+        candidate = ancestor / "resources" / "references"
+        if candidate.is_dir():
+            return candidate
+    raise FileNotFoundError("resources/references/ not found in project tree")
+
+
+def scan_references_dir(directory: Path | None = None) -> list[tuple[str, Path, str]]:
+    """Scan *directory* for .md and .pdf files, return sorted (name, path, kind)."""
+    ref_dir = directory or default_references_dir()
+    docs: list[tuple[str, Path, str]] = []
+    for path in sorted(ref_dir.iterdir()):
+        if path.is_file() and path.suffix.lower() in (".md", ".pdf"):
+            kind = "pdf" if path.suffix.lower() == ".pdf" else "md"
+            docs.append((path.stem, path, kind))
+    return docs
+
+
 def default_ase_reference_path() -> Path:
+    try:
+        ref_dir = default_references_dir()
+        candidate = ref_dir / "References ASE+.md"
+        if candidate.is_file():
+            return candidate
+    except FileNotFoundError:
+        pass
     for ancestor in Path(__file__).resolve().parents:
         candidate = ancestor / "References ASE+.md"
         if candidate.is_file():

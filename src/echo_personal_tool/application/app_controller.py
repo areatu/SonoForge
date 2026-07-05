@@ -995,6 +995,7 @@ class AppController(QObject):
             session=session,
         )
         self._state_manager.set_measurement_snapshot(snapshot, emit=False)
+        self._state_manager.set_linear_measurements(session.linear_measurements, emit=False)
         self._state_manager.emit_state()
 
     def _build_measurement_snapshot(
