@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenuBar,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -112,7 +113,7 @@ class _DocTab(QWidget):
         self._btn_close.setIconSize(self._btn_close.sizeHint())
         self._btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_close.clicked.connect(self._on_close_clicked)
-        layout.addWidget(self._btn_close)
+        layout.addWidget(self._btn_close, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._active = False
         self._apply_style(False)
@@ -287,6 +288,8 @@ class AseReferenceDialog(QDialog):
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
         self._browser.setLineWrapMode(QTextBrowser.LineWrapMode.WidgetWidth)
+        self._browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._browser.customContextMenuRequested.connect(self._browser_context_menu)
         p = get_theme_palette()
         self._browser.document().setDefaultStyleSheet(
             f"body {{ color: {p['text']}; }}"
@@ -653,6 +656,28 @@ class AseReferenceDialog(QDialog):
                     lambda ii=idx: self._close_doc_tab(ii)
                 )
                 doc_idx += 1
+
+    def _browser_context_menu(self, pos: QPoint) -> None:
+        menu = QMenu(self)
+        cursor = self._browser.cursorForPosition(pos)
+        anchor = self._browser.anchorAt(pos)
+        if anchor:
+            copy_link = menu.addAction(tr("ase_refs.copy_link_location"))
+            copy_link.triggered.connect(
+                lambda: QApplication.clipboard().setText(anchor)
+            )
+            open_link = menu.addAction(tr("ase_refs.open_link"))
+            open_link.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(anchor)))
+            menu.addSeparator()
+        if self._browser.textCursor().hasSelection():
+            copy_action = menu.addAction(tr("ase_refs.copy"))
+            copy_action.triggered.connect(
+                lambda: QApplication.clipboard().setText(
+                    self._browser.textCursor().selectedText()
+                )
+            )
+        if menu.actions():
+            menu.exec(self._browser.mapToGlobal(pos))
 
     def _show_markdown(self, path: Path) -> None:
         self._browser.show()
