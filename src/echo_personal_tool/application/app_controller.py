@@ -1824,7 +1824,7 @@ class AppController(QObject):
         frame: np.ndarray,
         frame_index: int,
     ) -> None:
-        if frame_index != 0 or self._frozen_cine_segment_roi() is not None:
+        if self._frozen_cine_segment_roi() is not None:
             return
         roi = resolve_cine_segment_roi_xyxy(frame)
         self._cache_cine_segment_roi(roi)
