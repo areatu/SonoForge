@@ -746,8 +746,8 @@ class MainWindow(QMainWindow):
             return
         self._viewer.reset_results_overlay_to_default()
 
-    def _on_gold_export_requested(self, phase: str, frame_index: int) -> None:
-        self._controller.save_gold_annotation(phase=phase, frame_index=frame_index)
+    def _on_gold_export_requested(self, phase: str, frame_index: int, chamber: str) -> None:
+        self._controller.save_gold_annotation(phase=phase, frame_index=frame_index, chamber=chamber)
 
     def _wire_wl_persistence(self) -> None:
         for slider_widget in (

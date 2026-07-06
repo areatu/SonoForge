@@ -546,7 +546,7 @@ class ViewerWidget(QWidget):
     mmode_calibration_changed = Signal(object)
     mmode_time_calibration_completed = Signal(object)
     results_overlay_position_changed = Signal(float, float)
-    gold_export_requested = Signal(str, int)  # phase, frame_index
+    gold_export_requested = Signal(str, int, str)  # phase, frame_index, chamber
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1348,13 +1348,14 @@ class ViewerWidget(QWidget):
         frame_index = self._current_state.current_frame_index
         for contour in self._stored_contours:
             if (
-                contour.chamber == "LV"
+                contour.chamber in ("LV", "LA")
                 and contour.view == "A4C"
                 and not contour.review_pending
                 and contour.frame_index == frame_index
             ):
                 phase = contour.phase
                 if phase in ("ED", "ES"):
+                    chamber = contour.chamber
                     label = tr(
                         "viewer.context_save_gold",
                         phase=phase,
@@ -1362,7 +1363,7 @@ class ViewerWidget(QWidget):
                     )
                     menu.addAction(
                         label,
-                        lambda p=phase, fi=frame_index: self.gold_export_requested.emit(p, fi),
+                        lambda p=phase, fi=frame_index, ch=chamber: self.gold_export_requested.emit(p, fi, ch),
                     )
 
     def _save_viewer_image(self) -> None:

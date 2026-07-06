@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 
+_VALID_CHAMBERS = ("LV", "LA", "RA", "RV")
+
+
 def _validate_frame(frame: dict[str, Any]) -> None:
     required = ("frame_index", "phase", "points")
     for key in required:
@@ -17,10 +20,29 @@ def _validate_frame(frame: dict[str, Any]) -> None:
     if frame["phase"] not in ("ED", "ES"):
         msg = f"gold frame phase must be 'ED' or 'ES', got {frame['phase']!r}"
         raise ValueError(msg)
+    chamber = frame.get("chamber")
+    if chamber is not None and chamber.upper() not in _VALID_CHAMBERS:
+        msg = f"gold frame chamber must be one of {_VALID_CHAMBERS}, got {chamber!r}"
+        raise ValueError(msg)
     points = frame["points"]
     if not isinstance(points, list) or len(points) < 3:
         msg = "gold frame 'points' must be a list with at least 3 [x, y] pairs"
         raise ValueError(msg)
+
+
+def gold_filename(study_uid: str, chamber: str) -> str:
+    """Return gold JSON filename with chamber prefix: ``la_<uid>.json``."""
+    return f"{chamber.lower()}_{study_uid}.json"
+
+
+def parse_chamber_from_gold_path(path: Path) -> str:
+    """Extract chamber prefix from gold filename. Defaults to ``LV``."""
+    name = path.stem
+    for chamber in ("la", "lv", "ra", "rv"):
+        prefix = f"{chamber}_"
+        if name.startswith(prefix):
+            return chamber.upper()
+    return "LV"
 
 
 def save_gold(path: Path, data: dict[str, Any]) -> None:
@@ -80,6 +102,7 @@ def make_gold_frame(
     phase: str,
     points: list[list[float]],
     mitral_annulus: list[list[float]],
+    chamber: str = "LV",
     apex_landmark: list[float] | None = None,
     source: str = "ai_corrected",
     annotator: str = "",
@@ -92,6 +115,7 @@ def make_gold_frame(
         "frame_index": frame_index,
         "phase": phase,
         "view": view,
+        "chamber": chamber.upper(),
         "points": points,
         "mitral_annulus": mitral_annulus,
         "source": source,
@@ -112,6 +136,7 @@ def make_gold_study(
     study_id: str,
     instance_path: str,
     pixel_spacing_mm: list[float],
+    chamber: str = "LV",
     sop_instance_uid: str | None = None,
     scanner_vendor: str | None = None,
 ) -> dict[str, Any]:
@@ -120,6 +145,7 @@ def make_gold_study(
         "study_id": study_id,
         "instance_path": instance_path,
         "pixel_spacing_mm": pixel_spacing_mm,
+        "chamber": chamber.upper(),
         "frames": [],
     }
     if sop_instance_uid is not None:

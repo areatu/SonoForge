@@ -629,9 +629,10 @@ class AppController(QObject):
         self.status_message.emit(tr("app.contour_accepted", target_view=target_view, target_phase=target_phase))
         return True
 
-    def save_gold_annotation(self, *, phase: str, frame_index: int) -> None:
-        """Save the accepted LV contour on the given frame as gold annotation."""
+    def save_gold_annotation(self, *, phase: str, frame_index: int, chamber: str = "LV") -> None:
+        """Save the accepted contour on the given frame as gold annotation."""
         from echo_personal_tool.domain.services.gold_store import (
+            gold_filename,
             load_gold,
             make_gold_frame,
             make_gold_study,
@@ -639,6 +640,7 @@ class AppController(QObject):
             save_gold,
         )
 
+        chamber = chamber.upper()
         snapshot = self._state_manager.snapshot
         instance = snapshot.instance
         if instance is None or instance.media_format != "dicom":
@@ -661,13 +663,13 @@ class AppController(QObject):
 
         study_uid = self._resolve_study_uid(instance)
         gold_dir = gold_root / "gold"
-        gold_path = gold_dir / f"{study_uid}.json"
+        gold_path = gold_dir / gold_filename(study_uid, chamber)
 
-        # Find accepted LV contour on this frame
+        # Find accepted contour on this frame matching chamber
         contour = None
         for c in snapshot.contours:
             if (
-                c.chamber == "LV"
+                c.chamber == chamber
                 and c.view == "A4C"
                 and c.phase == phase
                 and c.frame_index == frame_index
@@ -685,6 +687,7 @@ class AppController(QObject):
         frame_data = make_gold_frame(
             frame_index=frame_index,
             phase=phase,
+            chamber=chamber,
             points=[list(p) for p in contour.points],
             mitral_annulus=[list(contour.mitral_annulus[0]), list(contour.mitral_annulus[1])],
             apex_landmark=list(contour.apex_landmark) if contour.apex_landmark else None,
@@ -703,6 +706,7 @@ class AppController(QObject):
                 study_id=study_uid,
                 instance_path=str(instance.path),
                 pixel_spacing_mm=ps_mm,
+                chamber=chamber,
                 sop_instance_uid=instance.sop_instance_uid,
             )
             merged = merge_frame_into_gold(merged, frame_data)

@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 from echo_personal_tool.domain.services.gold_store import (
+    gold_filename,
     load_gold,
     make_gold_frame,
     make_gold_study,
     merge_frame_into_gold,
+    parse_chamber_from_gold_path,
     save_gold,
 )
 
@@ -158,3 +160,111 @@ class TestMakeGoldStudy:
             scanner_vendor="GE",
         )
         assert study["optional"]["scanner_vendor"] == "GE"
+
+
+class TestGoldFilename:
+    def test_lv_filename(self) -> None:
+        assert gold_filename("1.2.3", "LV") == "lv_1.2.3.json"
+
+    def test_la_filename(self) -> None:
+        assert gold_filename("1.2.3", "LA") == "la_1.2.3.json"
+
+    def test_la_lowercase_input(self) -> None:
+        assert gold_filename("1.2.3", "la") == "la_1.2.3.json"
+
+
+class TestParseChamberFromGoldPath:
+    def test_la_prefix(self) -> None:
+        assert parse_chamber_from_gold_path(Path("la_1.2.3.json")) == "LA"
+
+    def test_lv_prefix(self) -> None:
+        assert parse_chamber_from_gold_path(Path("lv_1.2.3.json")) == "LV"
+
+    def test_no_prefix_defaults_lv(self) -> None:
+        assert parse_chamber_from_gold_path(Path("1.2.3.json")) == "LV"
+
+
+class TestMakeGoldFrameChamber:
+    def test_default_chamber_lv(self) -> None:
+        frame = make_gold_frame(
+            frame_index=0,
+            phase="ED",
+            points=[[0, 0], [1, 1], [2, 2]],
+            mitral_annulus=[[0, 0], [2, 0]],
+        )
+        assert frame["chamber"] == "LV"
+
+    def test_explicit_chamber_la(self) -> None:
+        frame = make_gold_frame(
+            frame_index=0,
+            phase="ES",
+            points=[[0, 0], [1, 1], [2, 2]],
+            mitral_annulus=[[0, 0], [2, 0]],
+            chamber="LA",
+        )
+        assert frame["chamber"] == "LA"
+
+    def test_chamber_uppercased(self) -> None:
+        frame = make_gold_frame(
+            frame_index=0,
+            phase="ED",
+            points=[[0, 0], [1, 1], [2, 2]],
+            mitral_annulus=[[0, 0], [2, 0]],
+            chamber="la",
+        )
+        assert frame["chamber"] == "LA"
+
+
+class TestMakeGoldStudyChamber:
+    def test_default_chamber_lv(self) -> None:
+        study = make_gold_study(
+            study_id="test",
+            instance_path="/path/to.dcm",
+            pixel_spacing_mm=[0.1, 0.1],
+        )
+        assert study["chamber"] == "LV"
+
+    def test_explicit_chamber_la(self) -> None:
+        study = make_gold_study(
+            study_id="test",
+            instance_path="/path/to.dcm",
+            pixel_spacing_mm=[0.1, 0.1],
+            chamber="LA",
+        )
+        assert study["chamber"] == "LA"
+
+
+class TestValidateFrameChamber:
+    def test_valid_chamber_la(self, tmp_path: Path) -> None:
+        data = {
+            "study_id": "x",
+            "chamber": "LA",
+            "frames": [
+                {
+                    "frame_index": 0,
+                    "phase": "ES",
+                    "chamber": "LA",
+                    "points": [[0, 0], [1, 1], [2, 2]],
+                }
+            ],
+        }
+        path = tmp_path / "la.json"
+        save_gold(path, data)
+        loaded = load_gold(path)
+        assert loaded["chamber"] == "LA"
+
+    def test_invalid_chamber_rejected(self, tmp_path: Path) -> None:
+        data = {
+            "study_id": "x",
+            "frames": [
+                {
+                    "frame_index": 0,
+                    "phase": "ED",
+                    "chamber": "XY",
+                    "points": [[0, 0], [1, 1], [2, 2]],
+                }
+            ],
+        }
+        path = tmp_path / "bad_chamber.json"
+        with pytest.raises(ValueError, match="chamber must be"):
+            save_gold(path, data)
