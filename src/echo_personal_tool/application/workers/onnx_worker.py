@@ -54,10 +54,13 @@ def run_segment_in_subprocess(
     models_dir_str: str,
     roi_xyxy: tuple[float, float, float, float] | None = None,
     crop_mode: str = "center_square",
+    manifest_section: str = "inference",
 ) -> bytes:
     """Picklable entry point for ProcessPoolExecutor subprocess inference."""
     frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape)
-    engine = OnnxInferenceEngine(models_dir=Path(models_dir_str))
+    engine = OnnxInferenceEngine(
+        models_dir=Path(models_dir_str), manifest_section=manifest_section,
+    )
     mask = engine.segment(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode)
     return np.ascontiguousarray(mask).tobytes()
 
@@ -78,6 +81,7 @@ class OnnxWorker(QRunnable):
         roi_xyxy: tuple[float, float, float, float] | None = None,
         crop_mode: str = "center_square",
         models_dir: Path | None = None,
+        manifest_section: str = "inference",
         timeout_sec: float | None = None,
         parent: QObject | None = None,
     ) -> None:
@@ -86,6 +90,7 @@ class OnnxWorker(QRunnable):
         self._roi_xyxy = roi_xyxy
         self._crop_mode = crop_mode
         self._models_dir = Path(models_dir) if models_dir is not None else _default_models_dir()
+        self._manifest_section = manifest_section
         self._timeout_sec = (
             float(timeout_sec) if timeout_sec is not None else _load_timeout_sec(self._models_dir)
         )
@@ -105,6 +110,7 @@ class OnnxWorker(QRunnable):
                 str(self._models_dir),
                 self._roi_xyxy,
                 self._crop_mode,
+                self._manifest_section,
             )
             mask_bytes = future.result(timeout=self._timeout_sec)
         except FuturesTimeoutError:

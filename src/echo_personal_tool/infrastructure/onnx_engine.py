@@ -60,8 +60,16 @@ def _load_manifest(models_dir: Path) -> dict[str, Any] | None:
         return json.load(handle)
 
 
-def _resolve_model_path(models_dir: Path, manifest: dict[str, Any]) -> Path | None:
-    active_model = manifest.get("active_model")
+def _resolve_model_path(
+    models_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    manifest_section: str = "inference",
+) -> Path | None:
+    section = manifest.get(manifest_section, {})
+    active_model = section.get("active_model") if isinstance(section, dict) else None
+    if not active_model:
+        active_model = manifest.get("active_model")
     if not active_model:
         return None
     models = manifest.get("models", {})
@@ -74,8 +82,15 @@ def _resolve_model_path(models_dir: Path, manifest: dict[str, Any]) -> Path | No
     return models_dir / str(filename)
 
 
-def _resolve_io_names(manifest: dict[str, Any]) -> tuple[str, str]:
-    active_model = manifest.get("active_model")
+def _resolve_io_names(
+    manifest: dict[str, Any],
+    *,
+    manifest_section: str = "inference",
+) -> tuple[str, str]:
+    section = manifest.get(manifest_section, {})
+    active_model = section.get("active_model") if isinstance(section, dict) else None
+    if not active_model:
+        active_model = manifest.get("active_model")
     models = manifest.get("models", {})
     entry = models.get(active_model, {}) if active_model else {}
     onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
@@ -114,16 +129,22 @@ class OnnxInferenceEngine:
         *,
         models_dir: Path | None = None,
         session: Any | None = None,
+        manifest_section: str = "inference",
     ) -> None:
         self._models_dir = models_dir or _default_models_dir()
         self._manifest = _load_manifest(self._models_dir)
+        self._manifest_section = manifest_section
         self._model_path = (
-            _resolve_model_path(self._models_dir, self._manifest)
+            _resolve_model_path(
+                self._models_dir, self._manifest, manifest_section=manifest_section,
+            )
             if self._manifest is not None
             else None
         )
         if self._manifest is not None:
-            self._input_name, self._output_name = _resolve_io_names(self._manifest)
+            self._input_name, self._output_name = _resolve_io_names(
+                self._manifest, manifest_section=manifest_section,
+            )
         else:
             self._input_name, self._output_name = "input", "logits"
         self._input_size = self._resolve_input_size()
@@ -218,7 +239,13 @@ class OnnxInferenceEngine:
         if self._manifest is None:
             return 112
         models = self._manifest.get("models", {})
-        active = self._manifest.get("active_model", "")
+        manifest_section = getattr(self, "_manifest_section", "inference")
+        section = self._manifest.get(manifest_section, {})
+        active = None
+        if isinstance(section, dict):
+            active = section.get("active_model")
+        if not active:
+            active = self._manifest.get("active_model", "")
         entry = models.get(active, {}) if isinstance(models, dict) else {}
         onnx_meta = entry.get("onnx", {}) if isinstance(entry, dict) else {}
         shape = onnx_meta.get("input_shape", [1, 3, 112, 112])

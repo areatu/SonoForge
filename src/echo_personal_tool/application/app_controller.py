@@ -2193,6 +2193,168 @@ class AppController(QObject):
             return
         self.status_message.emit(tr("app.segmentation_unavailable"))
 
+    # ── LA Auto Segment ────────────────────────────────────────────────
+
+    def request_la_auto_segment(self) -> None:
+        """Request LA auto-segmentation on the current A4C ES frame."""
+        from echo_personal_tool.domain.services.la_segmentation_service import (
+            explain_la_auto_reject_reason,
+            la_mask_to_contour,
+        )
+
+        if self._segment_in_progress:
+            self.status_message.emit(tr("status.segmentation_in_progress"))
+            return
+
+        state = self._state_manager.snapshot
+        if state.is_playing:
+            self.status_message.emit(tr("status.pause_before_segmentation"))
+            return
+
+        if self._current_frame_pixels is None or self._loaded_frame_index != state.current_frame_index:
+            self.status_message.emit(tr("status.frame_not_loaded"))
+            return
+
+        # LA auto is A4C ES only
+        view = "A4C"
+        phase = "ES"
+        chamber = "LA"
+
+        if not self._la_segmenter_available():
+            self.status_message.emit(tr("app.segmentation_unavailable"))
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        original_shape = (int(frame.shape[0]), int(frame.shape[1]))
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        media_format = (
+            self._current_instance.media_format if self._current_instance is not None else "dicom"
+        )
+        frame_index = state.current_frame_index
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame, instance_path, media_format=media_format, phase=phase,
+        )
+        self._last_segment_roi_xyxy = roi_xyxy
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        self._segment_in_progress = True
+        worker = OnnxWorker(
+            frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode,
+            manifest_section="la_inference", parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_la_auto_segment_finished,
+                phase, view, chamber, instance_path, frame_index, original_shape,
+            )
+        )
+        worker.signals.failed.connect(
+            partial(self._on_auto_segment_failed, instance_path, frame_index)
+        )
+        worker.signals.timed_out.connect(
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index)
+        )
+        self._thread_pool.start(worker)
+
+    def _la_segmenter_available(self) -> bool:
+        """Check if LA ONNX model is available."""
+        from echo_personal_tool.infrastructure.onnx_engine import _default_models_dir, _load_manifest, _resolve_model_path
+        models_dir = _default_models_dir()
+        manifest = _load_manifest(models_dir)
+        if manifest is None:
+            return False
+        path = _resolve_model_path(models_dir, manifest, manifest_section="la_inference")
+        return path is not None and path.is_file()
+
+    def _on_la_auto_segment_finished(
+        self,
+        phase: str,
+        view: str,
+        chamber: str,
+        instance_path: Path | None,
+        frame_index: int,
+        original_shape: tuple[int, int],
+        mask: object,
+    ) -> None:
+        """Post-inference: LA mask → contour → refine → reject gate → review."""
+        from echo_personal_tool.domain.services.la_segmentation_service import (
+            explain_la_auto_reject_reason,
+            la_mask_to_contour,
+        )
+
+        self._segment_in_progress = False
+        if not self._auto_segment_context_matches(instance_path, frame_index):
+            return
+        if not isinstance(mask, np.ndarray):
+            return
+
+        mask_pixels = int(np.count_nonzero(mask))
+        if mask_pixels < 80:
+            self.status_message.emit(tr("app.segmentation_mask_too_small"))
+            return
+
+        try:
+            open_points, annulus, apex = la_mask_to_contour(mask, num_nodes=32)
+        except ValueError as exc:
+            self.status_message.emit(tr("app.segmentation_no_contour"))
+            return
+
+        # Optional auto-refine (LA-specific elliptical template)
+        if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
+            from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
+
+            instance_uid = (
+                self._current_instance.sop_instance_uid if self._current_instance is not None else None
+            )
+            draft = Contour(
+                phase=phase, view=view, chamber=chamber,
+                mitral_annulus=annulus, apex_landmark=apex,
+                points=open_points, source="ai", num_nodes=32,
+                frame_index=frame_index, sop_instance_uid=instance_uid,
+            )
+            refined, _ = refine_open_arc_contour(
+                self._current_frame_pixels, draft, cine=False,
+            )
+            open_points = list(refined.points)
+            if refined.mitral_annulus is not None:
+                annulus = refined.mitral_annulus
+            if refined.apex_landmark is not None:
+                apex = refined.apex_landmark
+
+        instance_uid = (
+            self._current_instance.sop_instance_uid if self._current_instance is not None else None
+        )
+        contour = Contour(
+            phase=phase, view=view, chamber=chamber,
+            mitral_annulus=annulus, apex_landmark=apex,
+            points=open_points, source="ai", num_nodes=32,
+            frame_index=frame_index, sop_instance_uid=instance_uid,
+            review_pending=True, refine_step=0, refine_locked_indices=(),
+        )
+
+        pixel_spacing, _ = self._resolve_pixel_spacing(self._state_manager.snapshot)
+        reject_reason = explain_la_auto_reject_reason(
+            contour, pixel_spacing, mask_pixels=mask_pixels,
+        )
+        if reject_reason is not None:
+            self.status_message.emit(
+                tr("app.segmentation_reject", reason=reject_reason, mask=mask_pixels, arc=0)
+            )
+            return
+
+        review_status = tr("app.ai_review_prompt", view=view, phase=phase)
+        contours = [
+            existing for existing in self._state_manager.snapshot.contours
+            if not (existing.phase == phase and existing.view == view and existing.chamber == chamber)
+        ]
+        contours.append(contour)
+        self.status_message.emit(review_status)
+        self.on_contours_changed(contours)
+
     # ── Temporal Fusion ──────────────────────────────────────────────────
 
     def _maybe_start_temporal_fusion(

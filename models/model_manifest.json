@@ -73,6 +73,25 @@
       "status": "not_exported",
       "sha256": null,
       "file_size_bytes": null
+    },
+    "echonet_la_resnet50_224": {
+      "id": "echonet_la_resnet50_224",
+      "filename": "echonet_la_resnet50_224.onnx",
+      "architecture": "deeplabv3_resnet50",
+      "description": "LA cavity segmentation A4C ES (fine-tuned on LA gold)",
+      "onnx": {
+        "opset_version": 17,
+        "input_name": "input",
+        "output_name": "logits",
+        "input_shape": [1, 3, 224, 224],
+        "output_shape": [1, 1, 224, 224],
+        "output_type": "logits",
+        "postprocess": "sigmoid_then_threshold_0.5"
+      },
+      "status": "not_exported",
+      "sha256": null,
+      "file_size_bytes": null,
+      "export_script": "scripts/finetune_la_seg.py"
     }
   },
   "preprocessing": {
@@ -87,6 +106,11 @@
     "normalization_note": "v1.5: fixed_if_available uses calibrated mean/std when non-null, falls back to per_frame. Calibrate via scripts/calibrate_echonet_norm.py.",
     "fixed_mean": [0.124, 0.124, 0.124],
     "fixed_std": [0.116, 0.116, 0.116]
+  },
+  "la_inference": {
+    "active_model": "echonet_la_resnet50_224",
+    "crop_mode": "full_roi",
+    "auto_refine_after_segment": true
   },
   "inference": {
     "providers": [

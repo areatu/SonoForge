@@ -1386,6 +1386,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.LV2D_ES: self._on_lv2d_es,
             MeasurementAction.LA_DIAMETER: self._on_la_diameter,
             MeasurementAction.LAV_4C: self._on_lav_4c,
+            MeasurementAction.LAV_4C_AUTO: self._on_lav_4c_auto,
             MeasurementAction.LAV_BI: self._on_lav_bi,
             MeasurementAction.RA_DIAMETER: self._on_ra_diameter,
             MeasurementAction.RA_AREA: self._on_ra_area,
@@ -1761,6 +1762,12 @@ class MainWindow(QMainWindow):
             pass
         else:
             self._show_status("Load a frame first or cancel the active tool (Esc)")
+
+    def _on_lav_4c_auto(self) -> None:
+        """Trigger LA auto-segmentation on current A4C ES frame."""
+        self._viewer.clear_frame_overlay()
+        self._viewer.append_frame_overlay(tr("status.lav4c_auto_overlay"))
+        self._controller.request_la_auto_segment()
 
     def _on_lav_bi(self) -> None:
         has_a4c = self._has_chamber_contour("LA", "A4C", "ES")
