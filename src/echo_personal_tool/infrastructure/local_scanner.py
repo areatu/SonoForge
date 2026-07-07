@@ -24,6 +24,7 @@ from echo_personal_tool.infrastructure.media_formats import (
     is_ignored_scan_path,
     is_media_file,
 )
+from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.media_metadata_mapper import (
     JPEG_SERIES_DESCRIPTION,
     MP4_SERIES_DESCRIPTION,
@@ -115,7 +116,7 @@ class LocalMediaDirectoryScanner:
 
         series_list: list[SeriesMetadata] = []
         for series_uid, instances in dicom_by_series.items():
-            instances_sorted = tuple(sorted(instances, key=lambda i: i.sop_instance_uid))
+            instances_sorted = sort_instances(instances)
             first = instances_sorted[0]
             series_list.append(
                 SeriesMetadata(
@@ -128,7 +129,7 @@ class LocalMediaDirectoryScanner:
             )
 
         if mp4_instances:
-            mp4_sorted = tuple(sorted(mp4_instances, key=lambda i: i.path.name if i.path else ""))
+            mp4_sorted = sort_instances(mp4_instances)
             series_list.append(
                 SeriesMetadata(
                     series_uid=synthetic_series_uid(study_folder, "mp4"),
@@ -140,9 +141,7 @@ class LocalMediaDirectoryScanner:
             )
 
         if image_instances:
-            image_sorted = tuple(
-                sorted(image_instances, key=lambda i: i.path.name if i.path else "")
-            )
+            image_sorted = sort_instances(image_instances)
             series_list.append(
                 SeriesMetadata(
                     series_uid=synthetic_series_uid(study_folder, "jpeg"),
@@ -153,7 +152,7 @@ class LocalMediaDirectoryScanner:
                 )
             )
 
-        series_list.sort(key=lambda s: (s.modality, s.description))
+        sort_series_list(series_list)
         return StudyMetadata(
             study_uid=resolved_study_uid,
             study_datetime=resolved_study_datetime,

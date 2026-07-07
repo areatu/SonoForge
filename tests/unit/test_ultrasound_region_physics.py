@@ -23,12 +23,21 @@ def _region(**kwargs: object) -> Dataset:
     return region
 
 
-def test_doppler_data_types_include_spectral_code_2() -> None:
-    assert 2 in DOPPLER_DATA_TYPES
+def test_doppler_data_types_exclude_color_flow() -> None:
+    """Color Flow (2) should NOT be in spectral Doppler data types."""
+    assert 2 not in DOPPLER_DATA_TYPES
+    assert 3 in DOPPLER_DATA_TYPES  # PW
+    assert 4 in DOPPLER_DATA_TYPES  # CW
 
 
-def test_spectral_region_data_type_2_is_doppler() -> None:
+def test_color_flow_region_is_not_spectral_doppler() -> None:
+    """Color Flow (RegionDataType=2) should not be treated as spectral Doppler."""
     region = _region(RegionSpatialFormat=1, RegionDataType=2)
+    assert not is_spectral_doppler_region(region)
+
+
+def test_pw_doppler_region_is_spectral() -> None:
+    region = _region(RegionSpatialFormat=3, RegionDataType=3)
     assert is_spectral_doppler_region(region)
 
 

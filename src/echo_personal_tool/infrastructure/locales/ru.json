@@ -9,6 +9,7 @@
   "app.segmentation_unavailable": "сегментация недоступна — используйте ручной контур",
   "app.gold_saved": "Gold сохранён: {path} ({phase}, кадр {frame})",
   "app.gold_no_contour": "Нет принятого контура {chamber} для {phase} на текущем кадре",
+  "app.gold_no_annulus": "У контура {chamber} нет митрального кольца — завершите open arc",
   "app.gold_la_requires_es_a4c": "Gold для ЛА — только кадры A4C ES",
   "app.gold_path_invalid": "Папка для gold не задана или не существует — проверьте настройки",
   "app.speckle_compute": "speckle tracking: вычисление...",

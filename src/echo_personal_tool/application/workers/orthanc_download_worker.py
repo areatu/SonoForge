@@ -22,6 +22,7 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
+from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import (
     DownloadCancelled,
@@ -367,7 +368,7 @@ class OrthancDownloadWorker(QRunnable):
 
         series_list: list[SeriesMetadata] = []
         for series_uid, instances in instances_by_series.items():
-            instances_sorted = tuple(sorted(instances, key=lambda i: i.sop_instance_uid))
+            instances_sorted = sort_instances(instances)
             first = instances_sorted[0]
             series_list.append(
                 SeriesMetadata(
@@ -378,7 +379,7 @@ class OrthancDownloadWorker(QRunnable):
                     instances=instances_sorted,
                 )
             )
-        series_list.sort(key=lambda s: (s.modality, s.description))
+        sort_series_list(series_list)
 
         return [
             StudyMetadata(

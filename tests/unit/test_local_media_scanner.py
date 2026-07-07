@@ -90,6 +90,31 @@ def test_scan_multi_study_container(tmp_path: Path) -> None:
     assert len(studies) == 2
 
 
+def test_scan_dicom_instances_sorted_by_filename(tmp_path: Path) -> None:
+    study_uid = generate_uid()
+    series_uid = generate_uid()
+    write_synthetic_dicom(
+        tmp_path / "003.dcm",
+        study_uid=study_uid,
+        series_uid=series_uid,
+    )
+    write_synthetic_dicom(
+        tmp_path / "001.dcm",
+        study_uid=study_uid,
+        series_uid=series_uid,
+    )
+    write_synthetic_dicom(
+        tmp_path / "002.dcm",
+        study_uid=study_uid,
+        series_uid=series_uid,
+    )
+
+    studies = LocalMediaDirectoryScanner().scan(tmp_path)
+    instances = studies[0].series[0].instances
+    names = [inst.path.name for inst in instances if inst.path is not None]
+    assert names == ["001.dcm", "002.dcm", "003.dcm"]
+
+
 def test_local_scanner_builds_dicom_study_tree(tmp_path: Path) -> None:
     study_uid = generate_uid()
     write_synthetic_dicom(tmp_path / "a.dcm", study_uid=study_uid, series_uid=generate_uid())

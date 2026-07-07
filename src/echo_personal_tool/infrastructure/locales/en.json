@@ -9,6 +9,7 @@
   "app.segmentation_unavailable": "segmentation unavailable — use manual contour",
   "app.gold_saved": "Gold saved: {path} ({phase}, frame {frame})",
   "app.gold_no_contour": "No accepted {chamber} contour for {phase} on current frame",
+  "app.gold_no_annulus": "{chamber} contour has no mitral annulus — complete open arc first",
   "app.gold_la_requires_es_a4c": "LA gold supports A4C ES frames only",
   "app.gold_path_invalid": "Gold folder not set or does not exist — check settings",
   "app.speckle_compute": "speckle tracking: computing...",

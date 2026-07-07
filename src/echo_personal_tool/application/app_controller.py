@@ -633,11 +633,12 @@ class AppController(QObject):
         """Save the accepted contour on the given frame as gold annotation."""
         from echo_personal_tool.domain.services.gold_store import (
             gold_filename,
-            load_gold,
             make_gold_frame,
             make_gold_study,
             merge_frame_into_gold,
+            rebuild_manifest_from_gold_dir,
             save_gold,
+            try_load_gold,
         )
 
         chamber = chamber.upper()
@@ -673,24 +674,23 @@ class AppController(QObject):
         # Find accepted contour on this frame matching chamber
         contour = None
         for c in snapshot.contours:
-            if (
-                c.chamber == chamber
-                and c.view == "A4C"
-                and c.phase == phase
-                and c.frame_index == frame_index
-                and not c.review_pending
-            ):
-                contour = c
-                break
+            if not self._gold_contour_matches(c, chamber=chamber, phase=phase, frame_index=frame_index):
+                continue
+            contour = c
+            break
         if contour is None:
             self.status_message.emit(tr("app.gold_no_contour", phase=phase, chamber=chamber))
             return
         if chamber == "LA" and contour.view != "A4C":
             self.status_message.emit(tr("app.gold_la_requires_es_a4c"))
             return
+        if contour.mitral_annulus is None:
+            self.status_message.emit(tr("app.gold_no_annulus", chamber=chamber))
+            return
 
         pixel_spacing = snapshot.effective_pixel_spacing
         ps_mm = list(pixel_spacing) if pixel_spacing else [0.0, 0.0]
+        source = "ai_corrected" if contour.source == "ai" else "manual"
 
         frame_data = make_gold_frame(
             frame_index=frame_index,
@@ -699,15 +699,15 @@ class AppController(QObject):
             points=[list(p) for p in contour.points],
             mitral_annulus=[list(contour.mitral_annulus[0]), list(contour.mitral_annulus[1])],
             apex_landmark=list(contour.apex_landmark) if contour.apex_landmark else None,
-            source="ai_corrected",
+            source=source,
             annotator="",
             view="A4C",
             sop_instance_uid=instance.sop_instance_uid,
             instance_path=str(instance.path),
         )
 
-        if gold_path.exists():
-            existing = load_gold(gold_path)
+        existing = try_load_gold(gold_path)
+        if existing is not None:
             merged = merge_frame_into_gold(existing, frame_data)
         else:
             merged = make_gold_study(
@@ -722,57 +722,28 @@ class AppController(QObject):
         gold_path.parent.mkdir(parents=True, exist_ok=True)
         save_gold(gold_path, merged)
 
-        # Auto-update manifest
-        self._update_gold_manifest(gold_root, study_uid, instance, frame_index, phase)
+        rebuild_manifest_from_gold_dir(gold_root)
 
         self.status_message.emit(
             tr("app.gold_saved", phase=phase, frame=frame_index + 1, path=str(gold_path))
         )
 
-    def _update_gold_manifest(
-        self,
-        gold_root: Path,
-        study_uid: str,
-        instance,
-        frame_index: int,
+    @staticmethod
+    def _gold_contour_matches(
+        contour: Contour,
+        *,
+        chamber: str,
         phase: str,
-    ) -> None:
-        """Add/update study entry in bench/tier1/manifest.json."""
-        manifest_path = gold_root / "manifest.json"
-        if manifest_path.exists():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        else:
-            manifest = {"studies": []}
-
-        studies = manifest.get("studies", [])
-        existing = None
-        for s in studies:
-            if s.get("study_id") == study_uid:
-                existing = s
-                break
-
-        if existing is None:
-            entry = {
-                "study_id": study_uid,
-                "instance_path": str(instance.path),
-                "tags": {},
-            }
-            studies.append(entry)
-        else:
-            entry = existing
-
-        # Update ed_frame / es_frame
-        if phase == "ED":
-            entry["ed_frame"] = frame_index
-        elif phase == "ES":
-            entry["es_frame"] = frame_index
-
-        manifest["studies"] = studies
-        manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        manifest_path.write_text(
-            json.dumps(manifest, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        frame_index: int,
+        view: str = "A4C",
+    ) -> bool:
+        if contour.chamber != chamber or contour.view != view or contour.phase != phase:
+            return False
+        if contour.review_pending:
+            return False
+        if contour.frame_index is not None and contour.frame_index != frame_index:
+            return False
+        return True
 
     def _clear_fusion_state(self) -> None:
         """Clear temporal fusion state after accept/discard/instance change."""

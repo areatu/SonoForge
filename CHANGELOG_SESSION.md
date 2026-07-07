@@ -6,6 +6,16 @@
 
 ---
 
+## [2026-07-07 22:35] Gold merge fix — per-instance dedup + repair script
+- **Тип:** fix
+- **Файлы:** `gold_store.py`, `scripts/repair_gold_collisions.py`, `tests/unit/test_gold_store.py`
+- **Суть:** `merge_frame_into_gold` дедуплицирует по `(instance, phase)`, а не глобально по `(frame_index, phase)`; добавлены audit/dedupe/repair-from-backup и CLI `repair_gold_collisions.py`.
+
+## [2026-07-06 21:30] LA auto — QC fixes + spec alignment
+- **Тип:** fix
+- **Файлы:** `la_segmentation_service.py`, `app_controller.py`, `run_la_auto_bench.py`, `locales/{en,ru}.json`, `test_la_segmentation_service.py`, `docs/superpowers/specs/2026-07-06-la-auto-segmentation-design.md`
+- **Суть:** Подключён ellipse-fit residual (1−IoU), ROI и mask в QC; LA auto-refine читает `la_inference`; Save Gold для LA только ES/A4C; bench gate A с 5 ml или 8%; спека приведена к `gold/la_<uid>.json`.
+
 ## [2026-07-06 12:00] LV Auto Commercial Parity v2 — Phase 2a + 2b
 - **Тип:** feature
 - **Файлы:** `bench/`, `gold_store.py`, `bench_metrics.py`, `run_lv_auto_bench.py`, `onnx_engine.py`, `segment_roi.py`, `segmentation_service.py`, `lvef_simpson.py`, `user_preferences.py`, `viewer_widget.py`, `app_controller.py`, `main_window.py`, `model_manifest.json`, `locales/{ru,en}.json`
@@ -147,30 +157,6 @@
 - **Файлы:** `study_measurement_session.py`, `segment_roi.py`, `segmentation_service.py`, `app_controller.py`, `cine_segment_diagnostics.py`, `scripts/diagnose_cine_segment.py`, тесты
 - **Суть:** MP4: ROI фиксируется на frame 0 и перезаписывается при ED auto-segment; ES использует frozen ROI. MV-линия: отдельный Y для septal/lateral (percentile trim), A4C-guard annulus выше apex. CLI: `--freeze-roi-from-frame`.
 
-## [2026-06-19 28:00] Cine sector trim + center_square embed
-- **Тип:** fix
-- **Файлы:** `segment_roi.py`, `cine_segment_diagnostics.py`, `test_segment_roi.py`
-- **Суть:** MP4 ROI обрезается по ткани сектора (без чёрных полей); EchoNet снова center_square внутри ROI — маска шире и ближе к полости (DICOM_0027 f59: ~17k px vs ~8k).
-
-## [2026-06-19 27:30] Cine lateral trim ROI + annulus flip
-- **Тип:** fix
-- **Файлы:** `segment_roi.py`, `segmentation_service.py`, `app_controller.py`, `cine_segment_diagnostics.py`, `test_segment_roi.py`
-- **Суть:** MP4: обрезка боковых UI-полос (маска больше не на x≈1200); при annulus_y>apex_y — annulus_end=top. DICOM без изменений.
-
-## [2026-06-19 27:00] Cine auto-contour: full ROI + диагностика
-- **Тип:** feature
-- **Файлы:** `segment_roi.py`, `segmentation_service.py`, `cine_segment_diagnostics.py`, `app_controller.py`, `onnx_engine.py`, `onnx_worker.py`, `scripts/diagnose_cine_segment.py`, `tests/interactive/`, `tests/unit/test_segment_roi.py`
-- **Суть:** Для non-DICOM cine (MP4) — эвристика B-mode + full_roi embed; DICOM без изменений (center_square). Интерактивные тесты и CLI для диагностики ROI/маски/контура.
-
-## [2026-06-19 26:30] Откат cine ROI экспериментов (восстановлен DICOM auto)
-- **Тип:** fix
-- **Файлы:** `segmentation_service.py`, `frame_panel_parser.py`, `app_controller.py`, `lvef_simpson.py`, `mbs_lite_service.py`, `onnx_worker.py`, тесты
-- **Суть:** Откат изменений после «DICOM Фото контур не плохо»: снова DICOM-first ROI, center-square EchoNet embed, без heuristic-priority и OOB-gate; убраны 25:35 и 26:10 правки.
-
-## [2026-06-19 25:00] MV annulus из верхней полосы маски + drag MV
-- **Тип:** fix
-- **Файлы:** `segmentation_service.py`, `app_controller.py`, `viewer_widget.py`, `test_segmentation_service.py`
-- **Суть:** Annulus = верхнее отверстие полости (не longest chord/ось ЛЖ); ручной drag концов open-arc обновляет mitral_annulus и линию MV.
 
 ## [2026-06-24] DICOM tag dictionary + рефакторинг orthanc_dicom_json
 - **Тип:** feature + refactor

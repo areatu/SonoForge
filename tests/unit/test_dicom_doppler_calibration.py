@@ -36,10 +36,10 @@ def _doppler_region(
     return region
 
 
-def test_parse_spectral_dtype_2_time_only_when_velocity_units_missing() -> None:
+def test_parse_spectral_dtype_3_pw_time_only_when_velocity_units_missing() -> None:
     ds = Dataset()
     ds.SequenceOfUltrasoundRegions = [
-        _doppler_region(dtype=2, units_y=3, delta_y=0.024),
+        _doppler_region(dtype=3, units_y=3, delta_y=0.024),
     ]
     state = try_parse_from_dataset(ds)
     assert state is not None
@@ -50,15 +50,25 @@ def test_parse_spectral_dtype_2_time_only_when_velocity_units_missing() -> None:
     assert state.velocity_span_cm_s == 200.0
 
 
-def test_parse_prefers_dtype_2_over_tissue_region() -> None:
-    tissue = _doppler_region(dtype=1, units_y=3, delta_y=0.068)
-    spectral = _doppler_region(dtype=2, delta_x=0.03, units_y=3, delta_y=0.03)
+def test_parse_prefers_pw_over_tissue_region() -> None:
+    tissue = _doppler_region(dtype=0x11, units_y=3, delta_y=0.068)
+    spectral = _doppler_region(dtype=3, delta_x=0.03, units_y=3, delta_y=0.03)
     ds = Dataset()
     ds.SequenceOfUltrasoundRegions = [tissue, spectral]
     state = try_parse_from_dataset(ds)
     assert state is not None
     assert state.has_time_scale_from_dicom()
     assert abs(state.time_span_ms - 1000.0 * 0.03 * 1000.0) < 0.1
+
+
+def test_color_flow_region_not_treated_as_spectral() -> None:
+    """Color Flow (dtype=2) should not be used for spectral Doppler calibration."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=2, units_y=3, delta_y=0.024),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is None
 
 
 def test_parse_user_download_dicom_when_available() -> None:
@@ -69,7 +79,10 @@ def test_parse_user_download_dicom_when_available() -> None:
     for path in root.rglob("*.dcm"):
         ds = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         for region in ds.get("SequenceOfUltrasoundRegions") or []:
-            if int(region.get("RegionDataType", 0) or 0) == 2:
+            dt = int(region.get("RegionDataType", 0) or 0)
+            sf = int(region.get("RegionSpatialFormat", 0) or 0)
+            # Spectral Doppler: SpatialFormat=3 or DataType in PW/CW/TDI
+            if sf == 3 or dt in (3, 4, 0x10, 0x11):
                 doppler_files.append(path)
                 break
     if not doppler_files:

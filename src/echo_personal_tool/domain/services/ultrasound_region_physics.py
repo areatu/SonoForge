@@ -17,8 +17,9 @@ SPATIAL_2D = 1
 SPATIAL_M_MODE = 2
 SPATIAL_SPECTRAL = 3
 
-# RegionDataType — spectral / tissue Doppler (2 = Spectral per PS3.3)
-DOPPLER_DATA_TYPES = frozenset({2, 0x10, 0x11, 16, 17})
+# RegionDataType — spectral / tissue Doppler
+# 2 = Color Flow (NOT spectral), 3 = PW, 4 = CW, 0x10 = TDI, 0x11 = TDI_PW
+DOPPLER_DATA_TYPES = frozenset({3, 4, 0x10, 0x11})
 
 _SPATIAL_UNIT_CODES = frozenset(
     {
@@ -116,12 +117,14 @@ def spectral_doppler_region_priority(region: Dataset) -> int:
     if not is_spectral_doppler_region(region):
         return -1
     data_type = int(region.get("RegionDataType", 0) or 0)
-    if data_type == 2:
+    if data_type == 3:
         return 4
-    if data_type in {0x10, 16}:
+    if data_type == 4:
         return 3
-    if data_type in {0x11, 17}:
+    if data_type in {0x10, 16}:
         return 2
+    if data_type in {0x11, 17}:
+        return 1
     if int(region.get("RegionSpatialFormat", 0) or 0) == SPATIAL_SPECTRAL:
         return 3
     return 1

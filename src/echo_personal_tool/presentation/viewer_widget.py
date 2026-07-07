@@ -1351,7 +1351,7 @@ class ViewerWidget(QWidget):
                 contour.chamber in ("LV", "LA")
                 and contour.view == "A4C"
                 and not contour.review_pending
-                and contour.frame_index == frame_index
+                and (contour.frame_index is None or contour.frame_index == frame_index)
             ):
                 phase = contour.phase
                 if phase in ("ED", "ES"):

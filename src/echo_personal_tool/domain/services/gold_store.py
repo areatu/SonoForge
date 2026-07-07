@@ -57,6 +57,19 @@ def save_gold(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def try_load_gold(path: Path) -> dict[str, Any] | None:
+    """Load gold JSON if the file exists and contains valid data."""
+    if not path.is_file():
+        return None
+    raw = path.read_text(encoding="utf-8").strip()
+    if not raw:
+        return None
+    try:
+        return load_gold(path)
+    except (json.JSONDecodeError, ValueError, OSError):
+        return None
+
+
 def load_gold(path: Path) -> dict[str, Any]:
     """Load and validate gold annotation from JSON."""
     raw = path.read_text(encoding="utf-8")
@@ -70,25 +83,90 @@ def load_gold(path: Path) -> dict[str, Any]:
     return data
 
 
+def frame_instance_key(frame: dict[str, Any], *, study: dict[str, Any] | None = None) -> str:
+    """Stable per-DICOM identity for merge/dedup within a multi-instance gold study."""
+    sop_uid = frame.get("sop_instance_uid")
+    if sop_uid:
+        return str(sop_uid)
+    instance_path = frame.get("instance_path")
+    if instance_path:
+        return Path(str(instance_path)).name
+    if study is not None:
+        top = study.get("instance_path")
+        if top:
+            return Path(str(top)).name
+    return ""
+
+
+def backfill_frame_instance_paths(study: dict[str, Any]) -> None:
+    """Pin legacy frames without ``instance_path`` to the study-level path in-place."""
+    top = study.get("instance_path")
+    if not top:
+        return
+    for frame in study.get("frames", []):
+        if frame.get("instance_path") or frame.get("sop_instance_uid"):
+            continue
+        frame["instance_path"] = top
+
+
+def frame_merge_key(frame: dict[str, Any], *, study: dict[str, Any] | None = None) -> tuple[str, str]:
+    """Dedup key: one ED + one ES per DICOM instance, regardless of frame_index."""
+    return (frame_instance_key(frame, study=study), str(frame["phase"]).upper())
+
+
+def dedupe_gold_frames(
+    frames: list[dict[str, Any]],
+    *,
+    study: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Keep the latest frame per (instance, phase); drop global (frame_index, phase) collisions."""
+    study_copy = {**(study or {}), "frames": list(frames)}
+    backfill_frame_instance_paths(study_copy)
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for frame in study_copy.get("frames", []):
+        _validate_frame(frame)
+        key = frame_merge_key(frame, study=study_copy)
+        prev = latest.get(key)
+        if prev is None:
+            latest[key] = frame
+            continue
+        prev_at = str(prev.get("annotated_at", ""))
+        new_at = str(frame.get("annotated_at", ""))
+        if new_at >= prev_at:
+            latest[key] = frame
+    return list(latest.values())
+
+
 def merge_frame_into_gold(
     existing: dict[str, Any],
     frame_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Merge a new frame into existing gold data, deduplicating by frame_index + phase.
+    """Merge a new frame, deduplicating by (instance, phase) — not global frame_index.
+
+    Multiple DICOM cines in one study may share frame numbers; each instance keeps
+    its own ED/ES pair. Re-saving the same phase on the same DICOM replaces it.
+
+    Legacy frames without ``instance_path`` are pinned to the current study path
+    before merge so a later study-level path update cannot re-key them.
 
     If the frame has a different instance_path than the study-level one,
     update the study-level instance_path to the most recent file.
     """
     _validate_frame(frame_data)
-    frames: list[dict[str, Any]] = existing.get("frames", [])
-    key = (frame_data["frame_index"], frame_data["phase"])
+    existing = {**existing, "frames": list(existing.get("frames", []))}
+    backfill_frame_instance_paths(existing)
+    frames: list[dict[str, Any]] = existing["frames"]
+    key = frame_merge_key(frame_data, study=existing)
     for i, f in enumerate(frames):
-        if (f.get("frame_index"), f.get("phase")) == key:
+        if frame_merge_key(f, study=existing) == key:
             frames[i] = frame_data
-            return {**existing, "frames": frames}
+            result = {**existing, "frames": frames}
+            frame_path = frame_data.get("instance_path")
+            if frame_path and frame_path != existing.get("instance_path"):
+                result["instance_path"] = frame_path
+            return result
     frames.append(frame_data)
 
-    # Update top-level instance_path if frame comes from a different file
     result = {**existing, "frames": frames}
     frame_path = frame_data.get("instance_path")
     if frame_path and frame_path != existing.get("instance_path"):
@@ -156,3 +234,165 @@ def make_gold_study(
     if optional:
         data["optional"] = optional
     return data
+
+
+def rebuild_manifest_from_gold_dir(gold_root: Path) -> dict[str, Any]:
+    """Rebuild ``manifest.json`` from all ``gold/*_{study_uid}.json`` files."""
+    gold_dir = gold_root / "gold"
+    manifest: dict[str, Any] = {"studies": []}
+    if not gold_dir.is_dir():
+        manifest_path = gold_root / "manifest.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return manifest
+
+    by_study: dict[str, dict[str, Any]] = {}
+    for path in sorted(gold_dir.glob("*.json")):
+        gold = try_load_gold(path)
+        if gold is None:
+            continue
+        study_id = str(gold.get("study_id", ""))
+        if not study_id:
+            continue
+        chamber = str(gold.get("chamber") or parse_chamber_from_gold_path(path)).upper()
+        if study_id not in by_study:
+            by_study[study_id] = {
+                "study_id": study_id,
+                "instance_path": gold.get("instance_path", ""),
+                "tags": {},
+            }
+        entry = by_study[study_id]
+        if gold.get("instance_path"):
+            entry["instance_path"] = gold["instance_path"]
+        for frame in gold.get("frames", []):
+            phase = frame.get("phase")
+            frame_index = frame.get("frame_index")
+            if frame_index is None:
+                continue
+            if phase == "ED" and chamber == "LV":
+                entry["ed_frame"] = frame_index
+            elif phase == "ES":
+                if chamber == "LV":
+                    entry["es_frame"] = frame_index
+                elif "es_frame" not in entry:
+                    entry["es_frame"] = frame_index
+
+    manifest["studies"] = sorted(by_study.values(), key=lambda s: s.get("study_id", ""))
+    manifest_path = gold_root / "manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def remove_gold_frame(
+    gold_path: Path,
+    *,
+    frame_index: int,
+    phase: str,
+    instance_path: str | None = None,
+    sop_instance_uid: str | None = None,
+) -> bool:
+    """Remove one annotated frame from a gold file.
+
+    When ``instance_path`` or ``sop_instance_uid`` is given, only that DICOM's
+    frame is removed (required for multi-instance LV gold files).
+
+    If ``frames`` becomes empty, deletes the gold file.
+    Returns True when a matching frame was removed.
+    """
+    gold = try_load_gold(gold_path)
+    if gold is None:
+        return False
+    phase = phase.upper()
+    frames = gold.get("frames", [])
+    target_identity: str | None = None
+    if sop_instance_uid:
+        target_identity = sop_instance_uid
+    elif instance_path:
+        target_identity = Path(instance_path).name
+
+    def _matches(frame: dict[str, Any]) -> bool:
+        if frame.get("frame_index") != frame_index or frame.get("phase") != phase:
+            return False
+        if target_identity is None:
+            return True
+        return frame_instance_key(frame, study=gold) == target_identity
+
+    kept = [frame for frame in frames if not _matches(frame)]
+    if len(kept) == len(frames):
+        return False
+    if not kept:
+        gold_path.unlink(missing_ok=True)
+        return True
+    gold["frames"] = kept
+    save_gold(gold_path, gold)
+    return True
+
+
+def audit_gold_instance_completeness(
+    gold: dict[str, Any],
+    *,
+    phases: tuple[str, ...] = ("ED", "ES"),
+) -> dict[str, Any]:
+    """Per-DICOM ED/ES coverage report for a gold study dict."""
+    by_instance: dict[str, dict[str, Any]] = {}
+    for frame in gold.get("frames", []):
+        inst = frame_instance_key(frame, study=gold)
+        if not inst:
+            inst = "<unknown>"
+        entry = by_instance.setdefault(inst, {"instance": inst, "phases": {}})
+        entry["phases"][str(frame.get("phase")).upper()] = {
+            "frame_index": frame.get("frame_index"),
+            "annotated_at": frame.get("annotated_at"),
+            "instance_path": frame.get("instance_path"),
+        }
+
+    complete: list[str] = []
+    incomplete: list[dict[str, Any]] = []
+    for inst, entry in sorted(by_instance.items()):
+        have = set(entry["phases"])
+        missing = [p for p in phases if p not in have]
+        if missing:
+            incomplete.append({"instance": inst, "missing": missing, "have": entry["phases"]})
+        else:
+            complete.append(inst)
+
+    return {
+        "total_instances": len(by_instance),
+        "complete": complete,
+        "incomplete": incomplete,
+        "complete_count": len(complete),
+        "incomplete_count": len(incomplete),
+    }
+
+
+def repair_gold_from_backup(
+    current: dict[str, Any],
+    backup: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Merge frames from *backup* into *current* using per-instance phase keys.
+
+    Returns ``(repaired_gold, recovered_frames)`` where *recovered_frames* lists
+    frames present in backup but absent from current for the same (instance, phase).
+    """
+    current_keys = {
+        frame_merge_key(frame, study=current)
+        for frame in current.get("frames", [])
+    }
+    recovered: list[dict[str, Any]] = []
+    merged = {**current, "frames": list(current.get("frames", []))}
+    for frame in backup.get("frames", []):
+        key = frame_merge_key(frame, study=backup)
+        if key in current_keys:
+            continue
+        merged = merge_frame_into_gold(merged, frame)
+        current_keys.add(key)
+        recovered.append(frame)
+    merged["frames"] = dedupe_gold_frames(merged.get("frames", []), study=merged)
+    return merged, recovered

@@ -123,9 +123,13 @@ def run_bench(
     for study in studies:
         study_id = study["study_id"]
         instance_path = Path(study["instance_path"])
-        gold_path = gold_dir / f"{study_id}.json"
+        gold_path = gold_dir / f"lv_{study_id}.json"
+        if not gold_path.is_file():
+            legacy = gold_dir / f"{study_id}.json"
+            if legacy.is_file():
+                gold_path = legacy
 
-        if not gold_path.exists():
+        if not gold_path.is_file():
             print(f"  SKIP {study_id}: no gold file")
             continue
         gold = load_gold(gold_path)

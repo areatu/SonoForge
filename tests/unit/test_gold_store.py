@@ -8,13 +8,21 @@ from pathlib import Path
 import pytest
 
 from echo_personal_tool.domain.services.gold_store import (
+    dedupe_gold_frames,
     gold_filename,
     load_gold,
     make_gold_frame,
     make_gold_study,
     merge_frame_into_gold,
     parse_chamber_from_gold_path,
+    rebuild_manifest_from_gold_dir,
+    remove_gold_frame,
     save_gold,
+    try_load_gold,
+    frame_instance_key,
+    frame_merge_key,
+    audit_gold_instance_completeness,
+    repair_gold_from_backup,
 )
 
 
@@ -130,6 +138,33 @@ class TestMergeFrame:
         )
         merged = merge_frame_into_gold(sample_gold, new_frame)
         assert merged["instance_path"] == "/path/to/dicom.dcm"
+
+    def test_merge_same_frame_index_different_instances(self, sample_gold: dict) -> None:
+        """Different DICOM files may share frame_index+phase without overwriting."""
+        other_ed = make_gold_frame(
+            frame_index=12,
+            phase="ED",
+            points=[[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]],
+            mitral_annulus=[[0.0, 0.0], [10.0, 0.0]],
+            instance_path="/path/to/other.dcm",
+        )
+        merged = merge_frame_into_gold(sample_gold, other_ed)
+        assert len(merged["frames"]) == 2
+        keys = {frame_merge_key(f, study=merged) for f in merged["frames"]}
+        assert keys == {("dicom.dcm", "ED"), ("other.dcm", "ED")}
+
+    def test_merge_replaces_same_instance_phase(self, sample_gold: dict) -> None:
+        """Re-saving ED on the same DICOM replaces the previous ED frame."""
+        updated_ed = make_gold_frame(
+            frame_index=99,
+            phase="ED",
+            points=[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+            mitral_annulus=[[0.0, 0.0], [10.0, 0.0]],
+            instance_path="/path/to/dicom.dcm",
+        )
+        merged = merge_frame_into_gold(sample_gold, updated_ed)
+        assert len(merged["frames"]) == 1
+        assert merged["frames"][0]["frame_index"] == 99
 
     def test_make_gold_frame_includes_instance_path(self) -> None:
         frame = make_gold_frame(
@@ -268,3 +303,179 @@ class TestValidateFrameChamber:
         path = tmp_path / "bad_chamber.json"
         with pytest.raises(ValueError, match="chamber must be"):
             save_gold(path, data)
+
+
+class TestTryLoadGold:
+    def test_empty_file_returns_none(self, tmp_path: Path) -> None:
+        path = tmp_path / "empty.json"
+        path.write_text("", encoding="utf-8")
+        assert try_load_gold(path) is None
+
+    def test_invalid_json_returns_none(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text("{not json", encoding="utf-8")
+        assert try_load_gold(path) is None
+
+
+class TestRebuildManifest:
+    def test_rebuild_from_lv_and_la_gold(self, tmp_path: Path) -> None:
+        gold_dir = tmp_path / "gold"
+        gold_dir.mkdir()
+        lv = {
+            "study_id": "1.2.3",
+            "instance_path": "/dicom/lv.dcm",
+            "pixel_spacing_mm": [0.2, 0.2],
+            "chamber": "LV",
+            "frames": [
+                {"frame_index": 10, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]},
+                {"frame_index": 20, "phase": "ES", "points": [[0, 0], [1, 0], [0, 1]]},
+            ],
+        }
+        la = {
+            "study_id": "1.2.3",
+            "instance_path": "/dicom/la.dcm",
+            "pixel_spacing_mm": [0.2, 0.2],
+            "chamber": "LA",
+            "frames": [
+                {"frame_index": 21, "phase": "ES", "points": [[0, 0], [1, 0], [0, 1]]},
+            ],
+        }
+        save_gold(gold_dir / "lv_1.2.3.json", lv)
+        save_gold(gold_dir / "la_1.2.3.json", la)
+
+        manifest = rebuild_manifest_from_gold_dir(tmp_path)
+        assert len(manifest["studies"]) == 1
+        entry = manifest["studies"][0]
+        assert entry["study_id"] == "1.2.3"
+        assert entry["ed_frame"] == 10
+        assert entry["es_frame"] == 20
+
+
+class TestRemoveGoldFrame:
+    def test_remove_frame_updates_json(self, tmp_path: Path) -> None:
+        gold_dir = tmp_path / "gold"
+        gold_dir.mkdir()
+        path = gold_dir / "lv_1.2.3.json"
+        save_gold(
+            path,
+            {
+                "study_id": "1.2.3",
+                "instance_path": "/dicom/x.dcm",
+                "pixel_spacing_mm": [0.2, 0.2],
+                "chamber": "LV",
+                "frames": [
+                    {"frame_index": 10, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]},
+                    {"frame_index": 20, "phase": "ES", "points": [[0, 0], [1, 0], [0, 1]]},
+                ],
+            },
+        )
+        assert remove_gold_frame(path, frame_index=20, phase="ES") is True
+        loaded = load_gold(path)
+        assert len(loaded["frames"]) == 1
+        assert loaded["frames"][0]["phase"] == "ED"
+
+    def test_remove_last_frame_deletes_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "lv_1.2.3.json"
+        save_gold(
+            path,
+            {
+                "study_id": "1.2.3",
+                "instance_path": "/dicom/x.dcm",
+                "pixel_spacing_mm": [0.2, 0.2],
+                "frames": [
+                    {"frame_index": 10, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]},
+                ],
+            },
+        )
+        assert remove_gold_frame(path, frame_index=10, phase="ED") is True
+        assert not path.exists()
+
+
+class TestDedupeAndAudit:
+    def test_dedupe_keeps_latest_per_instance_phase(self) -> None:
+        frames = [
+            {
+                "frame_index": 10,
+                "phase": "ED",
+                "instance_path": "/a/gold1.dcm",
+                "points": [[0, 0], [1, 0], [0, 1]],
+                "annotated_at": "2026-07-07T10:00:00Z",
+            },
+            {
+                "frame_index": 20,
+                "phase": "ED",
+                "instance_path": "/a/gold1.dcm",
+                "points": [[0, 0], [1, 0], [0, 1]],
+                "annotated_at": "2026-07-07T11:00:00Z",
+            },
+            {
+                "frame_index": 10,
+                "phase": "ED",
+                "instance_path": "/a/gold2.dcm",
+                "points": [[0, 0], [1, 0], [0, 1]],
+                "annotated_at": "2026-07-07T09:00:00Z",
+            },
+        ]
+        out = dedupe_gold_frames(frames)
+        assert len(out) == 2
+        by_inst = {frame_instance_key(f): f for f in out}
+        assert by_inst["gold1.dcm"]["frame_index"] == 20
+
+    def test_audit_incomplete_instances(self) -> None:
+        gold = {
+            "study_id": "x",
+            "instance_path": "/a/gold1.dcm",
+            "frames": [
+                {
+                    "frame_index": 1,
+                    "phase": "ED",
+                    "instance_path": "/a/gold1.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
+                {
+                    "frame_index": 2,
+                    "phase": "ES",
+                    "instance_path": "/a/gold2.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
+            ],
+        }
+        report = audit_gold_instance_completeness(gold)
+        assert report["complete_count"] == 0
+        assert report["incomplete_count"] == 2
+
+    def test_repair_from_backup_recovers_missing_phase(self) -> None:
+        current = {
+            "study_id": "x",
+            "instance_path": "/a/gold1.dcm",
+            "frames": [
+                {
+                    "frame_index": 5,
+                    "phase": "ES",
+                    "instance_path": "/a/gold1.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
+            ],
+        }
+        backup = {
+            "study_id": "x",
+            "instance_path": "/a/gold1.dcm",
+            "frames": [
+                {
+                    "frame_index": 12,
+                    "phase": "ED",
+                    "instance_path": "/a/gold1.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
+                {
+                    "frame_index": 5,
+                    "phase": "ES",
+                    "instance_path": "/a/gold1.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
+            ],
+        }
+        repaired, recovered = repair_gold_from_backup(current, backup)
+        assert len(recovered) == 1
+        assert recovered[0]["phase"] == "ED"
+        assert audit_gold_instance_completeness(repaired)["complete_count"] == 1
