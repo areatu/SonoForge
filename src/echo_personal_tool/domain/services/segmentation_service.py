@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
@@ -860,6 +861,69 @@ def _fallback_annulus_sector_chord(
     return septal, lateral, apex
 
 
+_MA_ONNX_MODEL_PATH = Path(__file__).resolve().parent.parent.parent.parent.parent / "models" / "ma_landmark_224.onnx"
+_MA_ONNX_CROP = 224
+
+
+def _predict_ma_onnx_keypoints(
+    mask: np.ndarray,
+    frame_shape: tuple[int, int],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Run MA landmark ONNX and return (septal, lateral) in full-frame coords."""
+    import onnxruntime as ort
+
+    if not _MA_ONNX_MODEL_PATH.is_file():
+        msg = f"MA landmark ONNX not found: {_MA_ONNX_MODEL_PATH}"
+        raise FileNotFoundError(msg)
+
+    binary = np.asarray(mask) > 0
+    ys, xs = np.where(binary)
+    x_min, x_max = int(xs.min()), int(xs.max())
+    y_min, y_max = int(ys.min()), int(ys.max())
+
+    mid_x = (x_min + x_max) / 2.0
+    mid_y = (y_min + y_max) / 2.0
+    half = _MA_ONNX_CROP / 2.0
+    x0 = int(np.clip(mid_x - half, 0, max(frame_shape[1] - _MA_ONNX_CROP, 0)))
+    y0 = int(np.clip(mid_y - half, 0, max(frame_shape[0] - _MA_ONNX_CROP, 0)))
+
+    crop = mask[y0 : y0 + _MA_ONNX_CROP, x0 : x0 + _MA_ONNX_CROP]
+    if crop.shape[0] < _MA_ONNX_CROP or crop.shape[1] < _MA_ONNX_CROP:
+        padded = np.zeros((_MA_ONNX_CROP, _MA_ONNX_CROP), dtype=crop.dtype)
+        padded[: crop.shape[0], : crop.shape[1]] = crop
+        crop = padded
+    inp = (crop.astype(np.float32) / 255.0)[np.newaxis, np.newaxis, ...]
+
+    sess = ort.InferenceSession(str(_MA_ONNX_MODEL_PATH))
+    out = sess.run(None, {"input": inp})[0]  # (1, 2, 224, 224)
+
+    keypoints: list[tuple[float, float]] = []
+    for k in range(2):
+        hm = out[0, k]
+        py, px = np.unravel_index(hm.argmax(), hm.shape)
+        keypoints.append((float(px) + x0, float(py) + y0))
+
+    septal, lateral = keypoints
+    if septal[0] > lateral[0]:
+        septal, lateral = lateral, septal
+    return septal, lateral
+
+
+def _ma_onnx_fallback(
+    mask: np.ndarray,
+    original_shape: tuple[int, int],
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Fallback C: MA ONNX landmark regressor."""
+    binary = np.asarray(mask) > 0
+    ys, xs = np.where(binary)
+    y_min, y_max = int(ys.min()), int(ys.max())
+    height = y_max - y_min + 1
+
+    septal, lateral = _predict_ma_onnx_keypoints(mask, original_shape)
+    apex = (float(np.median(xs)), float(y_max - height * 0.04))
+    return septal, lateral, apex
+
+
 def open_arc_from_cavity_mask(
     mask: np.ndarray,
     *,
@@ -912,9 +976,16 @@ def open_arc_from_cavity_mask(
                 mask=component.astype(np.uint8),
             )
         except ValueError:
-            septal, lateral, apex = _fallback_annulus_sector_chord(
-                ys, xs, y_min=y_min, y_max=y_max,
-            )
+            try:
+                septal, lateral, apex = _fallback_annulus_sector_chord(
+                    ys, xs, y_min=y_min, y_max=y_max,
+                )
+            except ValueError:
+                # Fallback C: MA ONNX landmark regressor
+                frame_h, frame_w = original_shape or binary.shape[:2]
+                septal, lateral, apex = _ma_onnx_fallback(
+                    component.astype(np.uint8), (frame_h, frame_w),
+                )
 
     if view == "A4C" and annulus_end == "auto":
         annulus_mid_y = (septal[1] + lateral[1]) / 2.0
