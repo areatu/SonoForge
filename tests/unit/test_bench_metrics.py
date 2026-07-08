@@ -77,6 +77,10 @@ class TestZeroEditAccept:
     def test_none_lvef_low_iou(self) -> None:
         assert zero_edit_accept(None, 0.70) is False
 
+    def test_zero_edit_from_pair_delta(self) -> None:
+        """delta ≤ 5% → zero_edit even if IoU is low."""
+        assert zero_edit_accept(3.0, 0.65) is True
+
 
 class TestLightEditAccept:
     def test_zero_edits(self) -> None:
