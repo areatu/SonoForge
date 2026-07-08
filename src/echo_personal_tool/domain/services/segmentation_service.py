@@ -472,6 +472,108 @@ def _normalize_fixed(
     return normalized
 
 
+def _mask_boundary_points_in_band(
+    mask: np.ndarray,
+    y_low: int,
+    y_high: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Extract boundary pixel coords (ys, xs) of mask within a Y band."""
+    import cv2
+
+    band = np.zeros_like(mask)
+    y0 = max(0, y_low)
+    y1 = min(mask.shape[0], y_high + 1)
+    band[y0:y1, :] = mask[y0:y1, :]
+
+    if not band.any():
+        return np.array([], dtype=np.int32), np.array([], dtype=np.int32)
+
+    contours, _ = cv2.findContours(band, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return np.array([], dtype=np.int32), np.array([], dtype=np.int32)
+
+    largest = max(contours, key=cv2.contourArea)
+    pts = largest[:, 0, :]  # shape (N, 2) → columns are x, y
+    return pts[:, 1].astype(np.int32), pts[:, 0].astype(np.int32)
+
+
+def _snap_annulus_to_mask_boundary(
+    septal: tuple[float, float],
+    lateral: tuple[float, float],
+    mask: np.ndarray,
+    *,
+    basal_y_range: tuple[int, int],
+    search_radius_px: float = 12.0,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Snap annulus endpoints to nearest mask-boundary pixel in basal band.
+
+    Each endpoint searches only its half-plane (septal = left, lateral = right).
+    """
+    y_low, y_high = basal_y_range
+    bys, bxs = _mask_boundary_points_in_band(mask, y_low, y_high)
+    if bys.size == 0:
+        return septal, lateral
+
+    center_x = float(mask.shape[1]) / 2.0
+
+    def _snap_one(
+        point: tuple[float, float],
+        is_left: bool,
+    ) -> tuple[float, float]:
+        px, py = point
+        # Filter to correct half-plane
+        if is_left:
+            half_mask = bxs <= center_x
+        else:
+            half_mask = bxs >= center_x
+        if not np.any(half_mask):
+            return point
+        hys = bys[half_mask]
+        hxs = bxs[half_mask]
+        dists = np.sqrt((hxs - px) ** 2 + (hys - py) ** 2)
+        best = int(np.argmin(dists))
+        if dists[best] > search_radius_px:
+            return point
+        return (float(hxs[best]), float(hys[best]))
+
+    snapped_septal = _snap_one(septal, is_left=True)
+    snapped_lateral = _snap_one(lateral, is_left=False)
+
+    if snapped_septal[0] > snapped_lateral[0]:
+        snapped_septal, snapped_lateral = snapped_lateral, snapped_septal
+    return snapped_septal, snapped_lateral
+
+
+def _blend_annulus_with_arc_tips(
+    annulus: tuple[tuple[float, float], tuple[float, float]],
+    open_points: list[tuple[float, float]],
+    *,
+    max_blend_dist_px: float = 8.0,
+    blend_weight: float = 0.3,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Blend annulus endpoints toward open-arc first/last nodes when close."""
+    if not open_points or len(open_points) < 2:
+        return annulus
+
+    septal, lateral = annulus
+    first = open_points[0]
+    last = open_points[-1]
+
+    def _blend(
+        pt: tuple[float, float],
+        tip: tuple[float, float],
+    ) -> tuple[float, float]:
+        dist = math.hypot(tip[0] - pt[0], tip[1] - pt[1])
+        if dist > max_blend_dist_px or dist < 1e-6:
+            return pt
+        return (
+            pt[0] + blend_weight * (tip[0] - pt[0]),
+            pt[1] + blend_weight * (tip[1] - pt[1]),
+        )
+
+    return _blend(septal, first), _blend(lateral, last)
+
+
 def _trace_boundary(component: np.ndarray) -> list[tuple[int, int]]:
     """Outer boundary of the largest filled component (x, y) pixel coords."""
     import cv2
@@ -619,6 +721,7 @@ def _annulus_and_apex_from_mask_pixels(
     y_min: int,
     y_max: int,
     annulus_end: str = "auto",
+    mask: np.ndarray | None = None,
 ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
     """Annulus = wider cavity opening; apex = opposite narrow end (A4C)."""
     height = y_max - y_min + 1
@@ -641,10 +744,12 @@ def _annulus_and_apex_from_mask_pixels(
         annulus_mask = (ys >= bottom_band[0]) & (ys <= bottom_band[1])
         apex_mask = (ys >= y_min) & (ys <= y_min + apex_band)
         apex_y = float(y_min + apex_band / 2.0)
+        basal_y_range = (bottom_band[0], bottom_band[1])
     else:
         annulus_mask = (ys >= top_band[0]) & (ys <= top_band[1])
         apex_mask = (ys >= y_max - apex_band) & (ys <= y_max)
         apex_y = float(y_max - apex_band / 2.0)
+        basal_y_range = (top_band[0], top_band[1])
 
     ann_xs = xs[annulus_mask]
     ann_ys = ys[annulus_mask]
@@ -655,6 +760,13 @@ def _annulus_and_apex_from_mask_pixels(
     septal, lateral = _mitral_annulus_endpoints(
         ann_xs, ann_ys, prefer_high_y=annulus_at_bottom,
     )
+
+    # Boundary snap when full mask is available
+    if mask is not None:
+        septal, lateral = _snap_annulus_to_mask_boundary(
+            septal, lateral, mask, basal_y_range=basal_y_range,
+        )
+
     if np.any(apex_mask):
         apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
     else:
@@ -668,6 +780,7 @@ def _fallback_annulus_wider_band(
     *,
     y_min: int,
     y_max: int,
+    mask: np.ndarray | None = None,
 ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
     """Fallback A: wider annulus band (18% instead of 12%) for fragmented masks."""
     height = y_max - y_min + 1
@@ -685,10 +798,12 @@ def _fallback_annulus_wider_band(
         annulus_mask = (ys >= bottom_band[0]) & (ys <= bottom_band[1])
         apex_mask = (ys >= y_min) & (ys <= y_min + apex_band)
         apex_y = float(y_min + apex_band / 2.0)
+        basal_y_range = (bottom_band[0], bottom_band[1])
     else:
         annulus_mask = (ys >= top_band[0]) & (ys <= top_band[1])
         apex_mask = (ys >= y_max - apex_band) & (ys <= y_max)
         apex_y = float(y_max - apex_band / 2.0)
+        basal_y_range = (top_band[0], top_band[1])
 
     ann_xs = xs[annulus_mask]
     ann_ys = ys[annulus_mask]
@@ -699,6 +814,13 @@ def _fallback_annulus_wider_band(
     septal, lateral = _mitral_annulus_endpoints(
         ann_xs, ann_ys, trim_percentile=8.0, prefer_high_y=annulus_at_bottom,
     )
+
+    # Boundary snap when full mask is available
+    if mask is not None:
+        septal, lateral = _snap_annulus_to_mask_boundary(
+            septal, lateral, mask, basal_y_range=basal_y_range,
+        )
+
     if np.any(apex_mask):
         apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
     else:
@@ -781,11 +903,13 @@ def open_arc_from_cavity_mask(
     try:
         septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
             ys, xs, y_min=y_min, y_max=y_max, annulus_end=annulus_end,
+            mask=component.astype(np.uint8),
         )
     except ValueError:
         try:
             septal, lateral, apex = _fallback_annulus_wider_band(
                 ys, xs, y_min=y_min, y_max=y_max,
+                mask=component.astype(np.uint8),
             )
         except ValueError:
             septal, lateral, apex = _fallback_annulus_sector_chord(
@@ -798,6 +922,7 @@ def open_arc_from_cavity_mask(
             try:
                 septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
                     ys, xs, y_min=y_min, y_max=y_max, annulus_end="bottom",
+                    mask=component.astype(np.uint8),
                 )
             except ValueError:
                 pass  # keep the original flip result

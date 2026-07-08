@@ -409,3 +409,128 @@ def test_prepare_tensor_fixed_norm_falls_back_to_per_frame_when_none() -> None:
 
     assert tensor.shape == (1, 3, 32, 32)
 
+
+# --- Phase 2: MV boundary snap tests ---
+
+
+class TestMaskBoundaryPointsInBand:
+    def test_extracts_boundary_points_within_band(self) -> None:
+        from echo_personal_tool.domain.services.segmentation_service import (
+            _mask_boundary_points_in_band,
+        )
+
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[60:80, 20:80] = 1  # rectangle blob
+        ys, xs = _mask_boundary_points_in_band(mask, y_low=60, y_high=80)
+        assert len(ys) > 0
+        assert len(xs) == len(ys)
+        # All points should be on the boundary of the mask
+        for y, x in zip(ys, xs):
+            assert mask[y, x] == 1
+
+    def test_empty_band_returns_empty(self) -> None:
+        from echo_personal_tool.domain.services.segmentation_service import (
+            _mask_boundary_points_in_band,
+        )
+
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[10:20, 10:20] = 1
+        ys, xs = _mask_boundary_points_in_band(mask, y_low=60, y_high=80)
+        assert len(ys) == 0
+
+
+class TestSnapAnnulusToMaskBoundary:
+    def test_snap_moves_point_to_mask_edge(self) -> None:
+        from echo_personal_tool.domain.services.segmentation_service import (
+            _snap_annulus_to_mask_boundary,
+        )
+
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[70:90, 20:80] = 1  # basal band blob
+        septal, lateral = _snap_annulus_to_mask_boundary(
+            (35.0, 80.0), (65.0, 80.0), mask,
+            basal_y_range=(70, 90),
+        )
+        assert septal[0] < lateral[0]
+        # Points should be on or very near the mask boundary
+        sy, sx = int(round(septal[1])), int(round(septal[0]))
+        ly, lx = int(round(lateral[1])), int(round(lateral[0]))
+        assert 0 <= sy < 100 and 0 <= sx < 100
+        assert 0 <= ly < 100 and 0 <= lx < 100
+
+    def test_already_on_boundary_stays_close(self) -> None:
+        from echo_personal_tool.domain.services.segmentation_service import (
+            _snap_annulus_to_mask_boundary,
+        )
+
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[70:90, 20:80] = 1
+        # Points already on boundary (left edge = 20, right edge = 79)
+        septal, lateral = _snap_annulus_to_mask_boundary(
+            (20.0, 80.0), (79.0, 80.0), mask,
+            basal_y_range=(70, 90),
+        )
+        assert abs(septal[0] - 20.0) < 2.0
+        assert abs(lateral[0] - 79.0) < 2.0
+
+
+class TestBlendAnnulusWithArcTips:
+    def test_blends_when_close_to_arc_tip(self) -> None:
+        from echo_personal_tool.domain.services.segmentation_service import (
+            _blend_annulus_with_arc_tips,
+        )
+
+        annulus = ((20.0, 80.0), (80.0, 80.0))
+        open_points = [(22.0, 82.0), (50.0, 40.0), (78.0, 82.0)]
+        result = _blend_annulus_with_arc_tips(
+            annulus, open_points,
+            max_blend_dist_px=10.0,
+            blend_weight=0.3,
+        )
+        septal, lateral = result
+        # Should blend toward arc tips
+        assert abs(septal[0] - 20.0) < 5.0
+        assert abs(lateral[0] - 80.0) < 5.0
+
+    def test_no_blend_when_far_from_arc_tip(self) -> None:
+        from echo_personal_tool.domain.services.segmentation_service import (
+            _blend_annulus_with_arc_tips,
+        )
+
+        annulus = ((20.0, 80.0), (80.0, 80.0))
+        open_points = [(100.0, 10.0), (50.0, 40.0), (150.0, 10.0)]
+        result = _blend_annulus_with_arc_tips(
+            annulus, open_points,
+            max_blend_dist_px=5.0,
+            blend_weight=0.3,
+        )
+        septal, lateral = result
+        # Far from tips → no blend, stays at original
+        assert septal == annulus[0]
+        assert lateral == annulus[1]
+
+
+class TestSnapWiredIntoOpenArc:
+    def test_open_arc_snap_does_not_break_existing(self) -> None:
+        """Regression: existing sloped MV test still passes after snap wiring."""
+        from echo_personal_tool.domain.services.segmentation_service import (
+            open_arc_from_cavity_mask,
+        )
+
+        height, width = 400, 400
+        mask = np.zeros((height, width), dtype=np.uint8)
+        center_y, center_x, radius_y, radius_x = 220.0, 200.0, 150.0, 90.0
+        ys, xs = np.ogrid[:height, :width]
+        mask[
+            ((ys - center_y) ** 2 / radius_y**2 + (xs - center_x) ** 2 / radius_x**2) <= 1.0
+        ] = 1
+
+        open_points, annulus, apex = open_arc_from_cavity_mask(mask, num_nodes=32)
+        septal, lateral = annulus
+
+        annulus_y = (septal[1] + lateral[1]) / 2.0
+        assert annulus_y > apex[1]
+        assert abs(lateral[0] - septal[0]) > 20.0
+        assert open_points[0] == septal
+        assert open_points[-1] == lateral
+
