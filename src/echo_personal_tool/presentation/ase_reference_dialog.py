@@ -38,8 +38,10 @@ from echo_personal_tool.domain.services.ase_reference_parser import (
     markdown_to_html,
     scan_references_dir,
 )
+from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.echopac_theme import get_theme_palette
+from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
 logger = logging.getLogger(__name__)
@@ -268,6 +270,22 @@ class AseReferenceDialog(QDialog):
         self._tabs_layout = QHBoxLayout(self._tabs_widget)
         self._tabs_layout.setContentsMargins(4, 2, 4, 2)
         self._tabs_layout.setSpacing(2)
+
+        # Structured reference tab (first, non-closable)
+        self._btn_structured_tab = QPushButton("Справочник")
+        self._btn_structured_tab.setCheckable(True)
+        self._btn_structured_tab.setChecked(True)
+        self._btn_structured_tab.setCursor(Qt.CursorShape.PointingHandCursor)
+        p_tab = get_theme_palette()
+        self._btn_structured_tab.setStyleSheet(
+            f"QPushButton {{ border: none; padding: 4px 8px; background: transparent; "
+            f"color: {p_tab['text']}; }}"
+            f"QPushButton:checked {{ background: {p_tab['accent_tab']}; font-weight: bold; }}"
+            f"QPushButton:hover:!checked {{ background: {p_tab['bg_button_hover']}; }}"
+        )
+        self._btn_structured_tab.clicked.connect(self._show_structured_tab)
+        self._tabs_layout.addWidget(self._btn_structured_tab)
+
         self._tabs_layout.addStretch(1)
         self._btn_add_tab = QPushButton("+")
         self._btn_add_tab.setFixedSize(32, 24)
@@ -371,8 +389,23 @@ class AseReferenceDialog(QDialog):
         self._pdf_continuous_scroll.hide()
         self._pdf_toolbar.hide()
 
+        # ── Structured reference widget ──
+        try:
+            self._structured_widget = StructuredReferenceWidget(
+                ReferenceDataStore().load()
+            )
+        except Exception:  # noqa: BLE001
+            self._structured_widget = None
+        if self._structured_widget is not None:
+            self._structured_widget.hide()
+            root.addWidget(self._structured_widget, stretch=1)
+
         self._apply_font()
         self._load_default_documents()
+        self.showMaximized()
+        self._is_maximized = True
+        if self._structured_widget is not None:
+            self._structured_widget.set_maximized_mode(True)
 
     # ── Title bar ─────────────────────────────────────────────────
 
@@ -440,20 +473,13 @@ class AseReferenceDialog(QDialog):
     def _toggle_maximize(self) -> None:
         if self._is_maximized:
             self.showNormal()
+            # Restore geometry after showNormal completes
             if self._normal_geometry is not None:
                 self.setGeometry(self._normal_geometry)
-            self._is_maximized = False
-            self._btn_maximize.setIcon(QIcon(_load_icon("maximize")))
-            self._btn_maximize.setToolTip(tr("ase_refs.maximize"))
+                self._normal_geometry = None
         else:
             self._normal_geometry = self.geometry()
-            screen = self.screen() or QApplication.primaryScreen()
-            if screen is not None:
-                geo = screen.availableGeometry()
-                self.setGeometry(geo)
-            self._is_maximized = True
-            self._btn_maximize.setIcon(QIcon(_load_icon("restore")))
-            self._btn_maximize.setToolTip(tr("ase_refs.restore"))
+            self.showMaximized()
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
@@ -468,6 +494,22 @@ class AseReferenceDialog(QDialog):
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
         self._drag_pos = None
         super().mouseReleaseEvent(event)
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        if event.type() == event.Type.WindowStateChange:
+            from PySide6.QtGui import QIcon as _QIcon
+            is_now_maximized = self.isMaximized()
+            if is_now_maximized != self._is_maximized:
+                self._is_maximized = is_now_maximized
+                if is_now_maximized:
+                    self._btn_maximize.setIcon(_QIcon(_load_icon("restore")))
+                    self._btn_maximize.setToolTip(tr("ase_refs.restore"))
+                else:
+                    self._btn_maximize.setIcon(_QIcon(_load_icon("maximize")))
+                    self._btn_maximize.setToolTip(tr("ase_refs.maximize"))
+                if self._structured_widget is not None:
+                    self._structured_widget.set_maximized_mode(is_now_maximized)
+        super().changeEvent(event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if self._active_doc_index >= 0:
@@ -536,8 +578,8 @@ class AseReferenceDialog(QDialog):
             docs = [(md_path.name, md_path, "md")]
         for name, path, kind in docs:
             self._add_doc_tab(name, path, kind)
-        if self._documents:
-            self._switch_to_doc(0)
+        # Show structured reference tab by default (not the first document)
+        self._show_structured_tab()
 
     def _add_doc_tab(self, name: str, path: Path, kind: str) -> int:
         self._documents.append((name, path, kind))
@@ -558,6 +600,7 @@ class AseReferenceDialog(QDialog):
         self._active_doc_index = index
 
         # Update tab states
+        self._btn_structured_tab.setChecked(False)
         for i in range(self._tabs_layout.count()):
             widget = self._tabs_layout.itemAt(i).widget()
             if isinstance(widget, _DocTab):
@@ -683,6 +726,8 @@ class AseReferenceDialog(QDialog):
             menu.exec(self._browser.mapToGlobal(pos))
 
     def _show_markdown(self, path: Path) -> None:
+        if self._structured_widget is not None:
+            self._structured_widget.hide()
         self._browser.show()
         self._pdf_scroll.hide()
         self._pdf_continuous_scroll.hide()
@@ -700,6 +745,8 @@ class AseReferenceDialog(QDialog):
         self._apply_font()
 
     def _show_pdf(self, path: Path) -> None:
+        if self._structured_widget is not None:
+            self._structured_widget.hide()
         self._browser.hide()
         self._pdf_toolbar.show()
 
@@ -798,6 +845,25 @@ class AseReferenceDialog(QDialog):
     def _pdf_view_mode_changed(self, index: int) -> None:
         self._update_pdf_view_visibility()
         self._render_pdf()
+
+    def _show_structured_tab(self) -> None:
+        """Switch to structured reference view."""
+        if self._structured_widget is None:
+            return
+        self._browser.hide()
+        self._pdf_scroll.hide()
+        self._pdf_continuous_scroll.hide()
+        self._pdf_toolbar.hide()
+        self._structured_widget.show()
+        self._btn_structured_tab.setChecked(True)
+        self._active_doc_index = -1
+
+    def navigate_to_param(self, param_id: str) -> None:
+        """Switch to structured view and select the given parameter."""
+        if self._structured_widget is None:
+            return
+        self._show_structured_tab()
+        self._structured_widget.navigate_to_param(param_id)
 
     def _add_document(self) -> None:
         path_str, _ = QFileDialog.getOpenFileName(
