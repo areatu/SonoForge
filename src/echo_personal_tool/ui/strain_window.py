@@ -538,55 +538,65 @@ class BullseyeWidget(QWidget):
 
 
 class SummaryTable(QWidget):
-    """Summary metrics table (GLS, EF, volumes, HR)."""
+    """Summary metrics table — Samsung-style layout with 9 rows."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumWidth(220)
+        self.setMinimumWidth(240)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        title = QLabel("Summary")
+        title = QLabel("Сводная таблица")
         title.setStyleSheet("font-weight: bold; color: #e0e0e0; font-size: 12px;")
         layout.addWidget(title)
 
-        self._rows: dict[str, tuple[QLabel, QLabel]] = {}
+        self._rows: dict[str, tuple[QLabel, QLabel, str]] = {}
         row_defs = [
-            ("gls", "GLS (avg)", "--"),
-            ("gls_a4c", "GLS A4C", "--"),
-            ("gls_a2c", "GLS A2C", "--"),
-            ("gls_dao", "GLS DAO", "--"),
-            ("ef", "EF (biplane)", "--"),
-            ("edv", "EDV", "--"),
-            ("esv", "ESV", "--"),
-            ("hr", "Heart Rate", "--"),
+            ("gls", "Сред.ГлобПродДеф", "%"),
+            ("gls_a4c", "A4C ГлобПродДеф", "%"),
+            ("gls_a2c", "A2C ГлобПродДеф", "%"),
+            ("gls_dao", "ДАО ГлобПродДеф", "%"),
+            ("ef", "ФВ [дв-плоск]", "%"),
+            ("edv", "КДО [дв-плоск]", "мл"),
+            ("esv", "КСО [дв-плоск]", "мл"),
+            ("autozak", "АвтоЗАК", "мс"),
+            ("hr", "ЧСС", "bpm"),
         ]
-        for key, label_text, default_val in row_defs:
+        for key, label_text, unit in row_defs:
             row = QHBoxLayout()
             lbl = QLabel(label_text)
             lbl.setStyleSheet("color: #bdbdbd; font-size: 11px;")
-            val = QLabel(default_val)
+            val = QLabel("--")
             val.setStyleSheet("color: #ffd54f; font-weight: bold; font-size: 11px;")
             val.setAlignment(Qt.AlignmentFlag.AlignRight)
+            val.setMinimumWidth(60)
             row.addWidget(lbl)
             row.addStretch()
             row.addWidget(val)
             layout.addLayout(row)
-            self._rows[key] = (lbl, val)
+            self._rows[key] = (lbl, val, unit)
 
         layout.addStretch()
 
     def update_values(self, **kwargs: float | str | None) -> None:
-        """Update table values. Accepts: gls, gls_a4c, gls_a2c, gls_dao, ef, edv, esv, hr."""
+        """Update table values. Accepts: gls, gls_a4c, gls_a2c, gls_dao, ef, edv, esv, autozak, hr."""
         for key, val in kwargs.items():
             if key in self._rows:
-                _, val_label = self._rows[key]
+                _, val_label, unit = self._rows[key]
                 if val is None:
                     val_label.setText("--")
                 elif isinstance(val, str):
                     val_label.setText(val)
+                elif unit == "%":
+                    val_label.setText(f"{val:.1f}%")
+                elif unit == "мл":
+                    val_label.setText(f"{val:.1f} мл")
+                elif unit == "мс":
+                    val_label.setText(f"{val:.0f} мс")
+                elif unit == "bpm":
+                    val_label.setText(f"{val:.0f} bpm")
                 else:
                     val_label.setText(f"{val:.1f}")
 
@@ -755,9 +765,27 @@ class StrainWindow(QMainWindow):
             result.kernels_rejected_count,
         )
 
+        # Compute per-view GLS from segment strains
+        gls_a4c = None
+        gls_a2c = None
+        gls_dao = None
+        if result.segment_strain:
+            a4c_segs = [v for k, v in result.segment_strain.items() if k <= 6]
+            a2c_segs = [v for k, v in result.segment_strain.items() if 7 <= k <= 11]
+            dao_segs = [v for k, v in result.segment_strain.items() if k >= 12]
+            if a4c_segs:
+                gls_a4c = float(np.min(a4c_segs))
+            if a2c_segs:
+                gls_a2c = float(np.min(a2c_segs))
+            if dao_segs:
+                gls_dao = float(np.min(dao_segs))
+
         # Update summary table
         self._summary.update_values(
             gls=result.gls,
+            gls_a4c=gls_a4c,
+            gls_a2c=gls_a2c,
+            gls_dao=gls_dao,
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
 
