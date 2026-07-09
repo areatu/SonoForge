@@ -101,6 +101,133 @@ def compute_gls(
     return float(np.min(segment))
 
 
+def compute_weighted_longitudinal_strain_gl(
+    positions: np.ndarray,
+    ed_index: int,
+    pixel_spacing: tuple[float, float],
+    endo_indices: list[int],
+    ncc_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """Quality-weighted Green-Lagrange longitudinal strain.
+
+    Each segment's contribution to arc length is weighted by the average NCC
+    of its endpoints. Higher-quality kernels contribute more to the strain curve.
+
+    Args:
+        positions: (N_frames, N_kernels, 2) smoothed kernel positions.
+        ed_index: end-diastole frame index.
+        pixel_spacing: (row, col) mm per pixel.
+        endo_indices: indices of endocardial kernels.
+        ncc_weights: (N_kernels,) NCC scores per kernel. If None, equal weights.
+
+    Returns:
+        (N_frames,) longitudinal strain curve in percent.
+    """
+    n_frames = positions.shape[0]
+    n_endo = len(endo_indices)
+    if n_endo < 2:
+        return np.zeros(n_frames)
+
+    avg_spacing = np.mean(pixel_spacing)
+
+    if ncc_weights is None:
+        ncc_weights = np.ones(len(positions[0]), dtype=np.float64)
+
+    ed_pts = positions[ed_index, endo_indices, :]
+
+    # Compute weighted arc length at ED (L0)
+    l0 = 0.0
+    for j in range(n_endo - 1):
+        i1 = endo_indices[j]
+        i2 = endo_indices[j + 1]
+        dist = np.linalg.norm(ed_pts[j + 1] - ed_pts[j]) * avg_spacing
+        weight = (ncc_weights[i1] + ncc_weights[i2]) / 2.0
+        l0 += dist * weight
+
+    if l0 < 1e-6:
+        return np.zeros(n_frames)
+
+    strain = np.zeros(n_frames)
+    for t in range(n_frames):
+        pts_t = positions[t, endo_indices, :]
+        lt = 0.0
+        for j in range(n_endo - 1):
+            i1 = endo_indices[j]
+            i2 = endo_indices[j + 1]
+            dist = np.linalg.norm(pts_t[j + 1] - pts_t[j]) * avg_spacing
+            weight = (ncc_weights[i1] + ncc_weights[i2]) / 2.0
+            lt += dist * weight
+        ratio = lt / l0
+        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+
+    return strain
+
+
+def compute_weighted_radial_strain_gl(
+    positions: np.ndarray,
+    ed_index: int,
+    pixel_spacing: tuple[float, float],
+    endo_indices: list[int],
+    epi_indices: list[int],
+    ncc_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """Quality-weighted Green-Lagrange radial strain.
+
+    Each wall thickness measurement is weighted by the average NCC of its
+    endocardial and epicardial kernel pair.
+
+    Args:
+        positions: (N_frames, N_kernels, 2) smoothed kernel positions.
+        ed_index: end-diastole frame index.
+        pixel_spacing: (row, col) mm per pixel.
+        endo_indices: indices of endocardial kernels.
+        epi_indices: indices of epicardial kernels.
+        ncc_weights: (N_kernels,) NCC scores per kernel. If None, equal weights.
+
+    Returns:
+        (N_frames,) radial strain curve in percent.
+    """
+    n_frames = positions.shape[0]
+    n_pairs = min(len(endo_indices), len(epi_indices))
+    if n_pairs < 1:
+        return np.zeros(n_frames)
+
+    avg_spacing = np.mean(pixel_spacing)
+
+    if ncc_weights is None:
+        ncc_weights = np.ones(len(positions[0]), dtype=np.float64)
+
+    # Compute weighted wall thickness at ED (t0)
+    t0 = 0.0
+    for j in range(n_pairs):
+        i_endo = endo_indices[j]
+        i_epi = epi_indices[j]
+        endo_ed = positions[ed_index, i_endo, :]
+        epi_ed = positions[ed_index, i_epi, :]
+        thickness = np.linalg.norm(epi_ed - endo_ed) * avg_spacing
+        weight = (ncc_weights[i_endo] + ncc_weights[i_epi]) / 2.0
+        t0 += thickness * weight
+
+    if t0 < 1e-6:
+        return np.zeros(n_frames)
+
+    strain = np.zeros(n_frames)
+    for t in range(n_frames):
+        tt = 0.0
+        for j in range(n_pairs):
+            i_endo = endo_indices[j]
+            i_epi = epi_indices[j]
+            endo_t = positions[t, i_endo, :]
+            epi_t = positions[t, i_epi, :]
+            thickness = np.linalg.norm(epi_t - endo_t) * avg_spacing
+            weight = (ncc_weights[i_endo] + ncc_weights[i_epi]) / 2.0
+            tt += thickness * weight
+        ratio = tt / t0
+        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+
+    return strain
+
+
 def compute_strain_rate(
     strain_curve: np.ndarray,
     frame_times_ms: list[float] | np.ndarray,

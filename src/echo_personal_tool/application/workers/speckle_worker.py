@@ -36,6 +36,8 @@ from echo_personal_tool.domain.services.strain_computation import (
     compute_longitudinal_strain_gl,
     compute_radial_strain_gl,
     compute_strain_rate,
+    compute_weighted_longitudinal_strain_gl,
+    compute_weighted_radial_strain_gl,
 )
 from echo_personal_tool.domain.services.tracking_smoothing import (
     apply_motion_model,
@@ -197,8 +199,11 @@ class SpeckleTrackingWorker(QRunnable):
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]
 
-            window_long = compute_longitudinal_strain_gl(
-                smoothed, local_ed, self._pixel_spacing, endo_indices
+            # Use NCC weights from ED frame for quality-weighted strain
+            ed_ncc = ncc_matrix[local_ed].copy()
+
+            window_long = compute_weighted_longitudinal_strain_gl(
+                smoothed, local_ed, self._pixel_spacing, endo_indices, ed_ncc
             )
             if config.drift_compensation:
                 window_long = apply_drift_compensation(
@@ -211,12 +216,13 @@ class SpeckleTrackingWorker(QRunnable):
 
             n_pairs = min(len(endo_indices), len(epi_indices))
             if n_pairs > 0:
-                window_radial = compute_radial_strain_gl(
+                window_radial = compute_weighted_radial_strain_gl(
                     smoothed,
                     local_ed,
                     self._pixel_spacing,
                     endo_indices[:n_pairs],
                     epi_indices[:n_pairs],
+                    ed_ncc,
                 )
                 radial = _embed_window_curve(
                     window_radial, n_frames, phase_start, phase_end
