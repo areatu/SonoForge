@@ -85,6 +85,9 @@ def _smooth_contour(points: np.ndarray, n_output: int = 64) -> np.ndarray:
 class CinePanel(QWidget):
     """Single cine panel with image viewer, contour overlay, and info labels."""
 
+    kernel_moved = Signal(int, float, float)  # kernel_index, new_x, new_y
+    kernel_selected = Signal(int)  # kernel_index
+
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._title = title
@@ -140,9 +143,18 @@ class CinePanel(QWidget):
         self._ed_contour_item: pg.PlotDataItem | None = None
         self._es_contour_item: pg.PlotDataItem | None = None
         self._kernel_scatter: pg.ScatterPlotItem | None = None
+        self._selected_kernel_item: pg.ScatterPlotItem | None = None
         self._segment_labels: list[pg.TextItem] = []
         self._ecg_item: pg.PlotDataItem | None = None
         self._ecg_marker: pg.InfiniteLine | None = None
+
+        # Manual kernel editing state
+        self._kernel_positions: np.ndarray | None = None
+        self._selected_kernel_idx: int | None = None
+        self._edit_mode: bool = False
+
+        # Enable mouse events for kernel editing
+        self._plot.scene().sigMouseClicked.connect(self._on_mouse_clicked)
 
     @property
     def plot(self) -> pg.PlotWidget:
@@ -238,6 +250,98 @@ class CinePanel(QWidget):
 
         self._kernel_scatter.setZValue(10)
         self._plot.addItem(self._kernel_scatter)
+
+        # Store positions for mouse interaction
+        self._kernel_positions = positions.copy()
+
+    def set_edit_mode(self, enabled: bool) -> None:
+        """Enable/disable manual kernel editing mode."""
+        self._edit_mode = enabled
+        if not enabled:
+            self._deselect_kernel()
+
+    def _on_mouse_clicked(self, event) -> None:
+        """Handle mouse click for kernel selection."""
+        if not self._edit_mode or self._kernel_positions is None:
+            return
+
+        # Get click position in plot coordinates
+        pos = event.scenePos()
+        view_box = self._plot.getViewBox()
+        if view_box is None:
+            return
+
+        # Convert to plot coordinates
+        point = self._plot.mapToScene(pos)
+        # Use ViewBox.mapSceneToView for accurate coordinates
+        mouse_point = view_box.mapSceneToView(pos)
+        click_x = mouse_point.x()
+        click_y = mouse_point.y()
+
+        # Find nearest kernel
+        if len(self._kernel_positions) == 0:
+            return
+
+        distances = np.sqrt(
+            (self._kernel_positions[:, 0] - click_x) ** 2 +
+            (self._kernel_positions[:, 1] - click_y) ** 2
+        )
+        min_idx = np.argmin(distances)
+        min_dist = distances[min_idx]
+
+        # Select if within threshold (15 pixels)
+        if min_dist < 15:
+            self._select_kernel(min_idx)
+        else:
+            self._deselect_kernel()
+
+    def _select_kernel(self, idx: int) -> None:
+        """Highlight selected kernel."""
+        self._selected_kernel_idx = idx
+
+        # Remove old selection highlight
+        if self._selected_kernel_item is not None:
+            self._plot.removeItem(self._selected_kernel_item)
+
+        # Draw yellow highlight around selected kernel
+        if self._kernel_positions is not None and idx < len(self._kernel_positions):
+            x = [self._kernel_positions[idx, 0]]
+            y = [self._kernel_positions[idx, 1]]
+            self._selected_kernel_item = pg.ScatterPlotItem(
+                x=x, y=y, pen=pg.mkPen("#ffd54f", width=2),
+                brush=pg.mkBrush(255, 213, 79, 150), symbol="o", size=16
+            )
+            self._selected_kernel_item.setZValue(15)
+            self._plot.addItem(self._selected_kernel_item)
+
+        self.kernel_selected.emit(idx)
+
+    def _deselect_kernel(self) -> None:
+        """Clear kernel selection."""
+        self._selected_kernel_idx = None
+        if self._selected_kernel_item is not None:
+            self._plot.removeItem(self._selected_kernel_item)
+            self._selected_kernel_item = None
+
+    def move_selected_kernel(self, new_x: float, new_y: float) -> None:
+        """Move the selected kernel to a new position."""
+        if self._selected_kernel_idx is None or self._kernel_positions is None:
+            return
+
+        idx = self._selected_kernel_idx
+        if idx >= len(self._kernel_positions):
+            return
+
+        # Update position
+        old_x, old_y = self._kernel_positions[idx]
+        self._kernel_positions[idx, 0] = new_x
+        self._kernel_positions[idx, 1] = new_y
+
+        # Update visual
+        self._select_kernel(idx)
+
+        # Emit signal
+        self.kernel_moved.emit(idx, new_x, new_y)
 
     def show_segment_labels(
         self,
@@ -770,19 +874,32 @@ class ControlPanel(QWidget):
         layout.addWidget(qc_scroll)
 
         # Actions
-        group_actions = QGroupBox("Actions")
+        group_actions = QGroupBox("Действия")
         group_actions.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         actions_layout = QVBoxLayout()
 
-        self._btn_save = QPushButton("Save Deformation")
+        self._btn_edit_mode = QPushButton("Режим редактирования")
+        self._btn_edit_mode.setCheckable(True)
+        self._btn_edit_mode.toggled.connect(lambda c: self.display_mode_changed.emit("edit_mode" if c else "contour"))
+        actions_layout.addWidget(self._btn_edit_mode)
+
+        self._btn_undo = QPushButton("Отменить (Ctrl+Z)")
+        self._btn_undo.setEnabled(False)
+        actions_layout.addWidget(self._btn_undo)
+
+        self._btn_redo = QPushButton("Повторить (Ctrl+Y)")
+        self._btn_redo.setEnabled(False)
+        actions_layout.addWidget(self._btn_redo)
+
+        self._btn_save = QPushButton("Сохранить")
         self._btn_save.setEnabled(False)
         actions_layout.addWidget(self._btn_save)
 
-        self._btn_export = QPushButton("Export PNG")
+        self._btn_export = QPushButton("Экспорт PNG")
         self._btn_export.setEnabled(False)
         actions_layout.addWidget(self._btn_export)
 
-        self._btn_close = QPushButton("Close")
+        self._btn_close = QPushButton("Закрыть")
         actions_layout.addWidget(self._btn_close)
 
         group_actions.setLayout(actions_layout)
@@ -830,6 +947,8 @@ class StrainWindow(QMainWindow):
         self._control.display_mode_changed.connect(self._on_display_mode_changed)
         self._control.strain_metric_changed.connect(self._on_strain_metric_changed)
         self._control.qc_segment_toggled.connect(self._on_qc_segment_toggled)
+        self._control._btn_undo.clicked.connect(self._undo_kernel_move)
+        self._control._btn_redo.clicked.connect(self._redo_kernel_move)
         self._control._btn_close.clicked.connect(self.close)
         splitter.addWidget(self._control)
 
@@ -878,6 +997,13 @@ class StrainWindow(QMainWindow):
         # State
         self._result: StrainResult | None = None
         self._qc_accepted_segments: set[int] = set(range(1, 18))  # All segments accepted by default
+
+        # Undo/Redo stacks for kernel movements
+        self._undo_stack: list[tuple[int, float, float, float, float]] = []  # (idx, old_x, old_y, new_x, new_y)
+        self._redo_stack: list[tuple[int, float, float, float, float]] = []
+
+        # Connect panel signals
+        self._panel_a4c.kernel_moved.connect(lambda idx, x, y: self._on_kernel_moved("A4C", idx, x, y))
 
     def show_result(self, result: StrainResult) -> None:
         """Display strain results in quad-view layout."""
@@ -996,6 +1122,97 @@ class StrainWindow(QMainWindow):
 
         return ecg
 
+    def _on_kernel_moved(self, view: str, kernel_idx: int, new_x: float, new_y: float) -> None:
+        """Handle kernel movement from panel."""
+        if self._result is None or self._result.tracked_ed_positions is None:
+            return
+
+        # Find the actual kernel index in the full array
+        endo_indices = [i for i, k in enumerate(self._result.kernels) if k.layer == "endo"]
+        if kernel_idx >= len(endo_indices):
+            return
+
+        actual_idx = endo_indices[kernel_idx]
+        old_x = float(self._result.tracked_ed_positions[actual_idx, 0])
+        old_y = float(self._result.tracked_ed_positions[actual_idx, 1])
+
+        # Update position
+        self._result.tracked_ed_positions[actual_idx, 0] = new_x
+        self._result.tracked_ed_positions[actual_idx, 1] = new_y
+
+        # Add to undo stack
+        self._undo_stack.append((actual_idx, old_x, old_y, new_x, new_y))
+        self._redo_stack.clear()  # Clear redo stack on new action
+
+        # Update undo/redo button states
+        self._control._btn_undo.setEnabled(len(self._undo_stack) > 0)
+        self._control._btn_redo.setEnabled(False)
+
+        logger.info("Kernel %d moved: (%.1f, %.1f) -> (%.1f, %.1f)", actual_idx, old_x, old_y, new_x, new_y)
+
+    def _undo_kernel_move(self) -> None:
+        """Undo the last kernel movement."""
+        if not self._undo_stack or self._result is None:
+            return
+
+        idx, old_x, old_y, new_x, new_y = self._undo_stack.pop()
+
+        # Restore position
+        self._result.tracked_ed_positions[idx, 0] = old_x
+        self._result.tracked_ed_positions[idx, 1] = old_y
+
+        # Add to redo stack
+        self._redo_stack.append((idx, old_x, old_y, new_x, new_y))
+
+        # Update button states
+        self._control._btn_undo.setEnabled(len(self._undo_stack) > 0)
+        self._control._btn_redo.setEnabled(len(self._redo_stack) > 0)
+
+        # Re-render
+        self._update_panel_a4c()
+
+    def _redo_kernel_move(self) -> None:
+        """Redo the last undone kernel movement."""
+        if not self._redo_stack or self._result is None:
+            return
+
+        idx, old_x, old_y, new_x, new_y = self._redo_stack.pop()
+
+        # Apply position
+        self._result.tracked_ed_positions[idx, 0] = new_x
+        self._result.tracked_ed_positions[idx, 1] = new_y
+
+        # Add to undo stack
+        self._undo_stack.append((idx, old_x, old_y, new_x, new_y))
+
+        # Update button states
+        self._control._btn_undo.setEnabled(len(self._undo_stack) > 0)
+        self._control._btn_redo.setEnabled(len(self._redo_stack) > 0)
+
+        # Re-render
+        self._update_panel_a4c()
+
+    def _update_panel_a4c(self) -> None:
+        """Re-render A4C panel with current data."""
+        if self._result is None:
+            return
+
+        # Update kernels
+        endo_indices = [i for i, k in enumerate(self._result.kernels) if k.layer == "endo"]
+        endo_kernels = [self._result.kernels[i] for i in endo_indices]
+
+        if self._result.tracked_ed_positions is not None:
+            endo_positions = self._result.tracked_ed_positions[endo_indices]
+            if self._result.es_ncc_scores is not None and self._result.es_valid_mask is not None:
+                endo_ncc = self._result.es_ncc_scores[endo_indices]
+                endo_valid = self._result.es_valid_mask[endo_indices]
+                self._panel_a4c.show_kernels(endo_positions, endo_ncc, endo_valid)
+            else:
+                self._panel_a4c.show_kernels(endo_positions)
+
+            # Update segment labels
+            self._panel_a4c.show_segment_labels(endo_kernels, endo_positions)
+
     def _on_view_toggled(self, view: str, checked: bool) -> None:
         """Handle view checkbox toggle."""
         panel_map = {
@@ -1008,14 +1225,18 @@ class StrainWindow(QMainWindow):
             panel.setVisible(checked)
 
     def _on_display_mode_changed(self, mode: str) -> None:
-        """Switch between contour and curves display modes."""
+        """Switch between contour, curves, and edit mode."""
         if mode == "contour":
             self._stacked.setCurrentIndex(0)
+            self._panel_a4c.set_edit_mode(False)
         elif mode == "curves":
             self._stacked.setCurrentIndex(1)
             # Update curves view with current result
             if self._result is not None:
                 self._curves_view.set_strain_data(self._result)
+        elif mode == "edit_mode":
+            self._stacked.setCurrentIndex(0)
+            self._panel_a4c.set_edit_mode(True)
 
     def _on_strain_metric_changed(self, metric: str) -> None:
         """Switch between deformation, strain rate, and peak strain display."""
