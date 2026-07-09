@@ -278,6 +278,15 @@ class SpeckleTrackingWorker(QRunnable):
                 per_kernel, kernels, es_ncc if es_ncc is not None else np.ones(len(kernels))
             )
 
+            logger.info(
+                "STE segment_strain: %s, segment_quality: %s",
+                segment_strain, segment_quality,
+            )
+            logger.info(
+                "STE per_kernel (endo only): %s",
+                [f"{per_kernel[i]:.1f}" for i in endo_indices],
+            )
+
             n_kernels = len(kernels)
 
             # Quality gate: filter kernels by NCC quality
