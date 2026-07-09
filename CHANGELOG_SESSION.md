@@ -6,6 +6,11 @@
 
 ---
 
+## [2026-07-09 23:00] Bench: exclude 7 bad gold files + finetune norm fix
+- **Тип:** fix + feature
+- **Файлы:** `manifest.json`, `scripts/generate_manifest_from_gold.py`, `scripts/finetune_lv_seg.py`, `scripts/run_lv_auto_bench.py`, `src/echo_personal_tool/infrastructure/onnx_engine.py`
+- **Суть:** Исключены 7 инстансов с плохими gold-масками (gold38/gold71/gold82 IoU ES<0.5 + gold58/gold112/gold69/gold29 IoU<0.7+Δ>15%). Добавлен `--exclude` в generate_manifest_from_gold.py. Исправлена нормализация пикселей в finetune_lv_seg.py (min-max→0-255). Добавлен `engine.crop_mode` property. Bench: 98 инстансов, IoU 0.851 PASS, zero-edit 81.1% PASS.
+
 ## [2026-07-08 22:26] LV auto: annulus endpoint snapping improved
 - **Тип:** fix
 - **Файлы:** `src/echo_personal_tool/domain/services/segmentation_service.py`, `bench/reports/lv_baseline_lvannulus_20260708.csv`

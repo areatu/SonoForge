@@ -183,10 +183,14 @@ def build_model() -> nn.Module:
         model = torchvision.models.segmentation.deeplabv3_resnet50(
             pretrained=True,
         )
+    # Replace classifier: 21-class → 1-class with positive bias (encourage foreground)
     classifier = model.classifier[-1]
-    model.classifier[-1] = nn.Conv2d(
+    new_conv = nn.Conv2d(
         classifier.in_channels, 1, kernel_size=classifier.kernel_size,
     )
+    nn.init.zeros_(new_conv.bias)
+    nn.init.constant_(new_conv.bias, 1.0)  # positive bias → sigmoid(1)≈0.73 initially
+    model.classifier[-1] = new_conv
 
     # Freeze backbone, train only classifier head (ASPP + new 1-class conv)
     for param in model.parameters():
@@ -196,7 +200,7 @@ def build_model() -> nn.Module:
 
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total = sum(p.numel() for p in model.parameters())
-    print(f"Model: {trainable:,} trainable / {total:,} total params (ImageNet backbone)")
+    print(f"Model: {trainable:,} trainable / {total:,} total params (classifier only)")
     return model
 
 
@@ -224,9 +228,6 @@ def train_model(
 
     model.to(device)
     model.train()
-    if hasattr(model, "backbone"):
-        model.backbone.eval()
-
     print(f"Training: {len(dataset)} samples, {epochs} epochs, lr={lr}")
     for epoch in range(1, epochs + 1):
         total_loss = 0.0

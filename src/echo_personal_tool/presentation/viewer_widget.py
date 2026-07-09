@@ -523,7 +523,7 @@ class ResultsOverlayLabel(QLabel):
             self.pin_toggled.emit(self._pinned)
             event.accept()
             return
-        super().mouseReleaseEvent(event)
+        super().contextMenuEvent(event)
 
 
 class ViewerWidget(QWidget):
