@@ -891,13 +891,14 @@ class ControlPanel(QWidget):
         self._btn_redo.setEnabled(False)
         actions_layout.addWidget(self._btn_redo)
 
-        self._btn_save = QPushButton("Сохранить")
-        self._btn_save.setEnabled(False)
+        self._btn_save = QPushButton("Сохранить JSON")
         actions_layout.addWidget(self._btn_save)
 
-        self._btn_export = QPushButton("Экспорт PNG")
-        self._btn_export.setEnabled(False)
-        actions_layout.addWidget(self._btn_export)
+        self._btn_export_png = QPushButton("Экспорт PNG")
+        actions_layout.addWidget(self._btn_export_png)
+
+        self._btn_export_csv = QPushButton("Экспорт CSV")
+        actions_layout.addWidget(self._btn_export_csv)
 
         self._btn_close = QPushButton("Закрыть")
         actions_layout.addWidget(self._btn_close)
@@ -949,6 +950,9 @@ class StrainWindow(QMainWindow):
         self._control.qc_segment_toggled.connect(self._on_qc_segment_toggled)
         self._control._btn_undo.clicked.connect(self._undo_kernel_move)
         self._control._btn_redo.clicked.connect(self._redo_kernel_move)
+        self._control._btn_save.clicked.connect(self._save_json)
+        self._control._btn_export_png.clicked.connect(self._export_png)
+        self._control._btn_export_csv.clicked.connect(self._export_csv)
         self._control._btn_close.clicked.connect(self.close)
         splitter.addWidget(self._control)
 
@@ -1303,6 +1307,101 @@ class StrainWindow(QMainWindow):
                 self._result.segment_quality,
                 self._qc_accepted_segments,
             )
+
+    def _save_json(self) -> None:
+        """Save deformation data to JSON file."""
+        if self._result is None:
+            return
+
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Сохранить данные деформации", "", "JSON files (*.json)"
+        )
+        if not path:
+            return
+
+        import json
+        from pathlib import Path
+
+        data = {
+            "gls": self._result.gls,
+            "heart_rate_bpm": self._result.heart_rate_bpm,
+            "ed_index": self._result.ed_index,
+            "es_index": self._result.es_index,
+            "kernels_accepted": self._result.kernels_accepted_count,
+            "kernels_rejected": self._result.kernels_rejected_count,
+            "kernels_total": self._result.kernels_total_count,
+            "segment_strain": {str(k): v for k, v in (self._result.segment_strain or {}).items()},
+            "segment_quality": {str(k): v for k, v in (self._result.segment_quality or {}).items()},
+            "qc_accepted_segments": list(self._qc_accepted_segments),
+        }
+
+        # Add kernel positions if available
+        if self._result.tracked_ed_positions is not None:
+            data["kernel_positions_ed"] = self._result.tracked_ed_positions.tolist()
+        if self._result.tracked_es_positions is not None:
+            data["kernel_positions_es"] = self._result.tracked_es_positions.tolist()
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        logger.info("Saved deformation data to %s", path)
+
+    def _export_png(self) -> None:
+        """Export current view as PNG screenshot."""
+        from PySide6.QtWidgets import QFileDialog
+        from PySide6.QtGui import QPixmap
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Экспорт PNG", "", "PNG files (*.png)"
+        )
+        if not path:
+            return
+
+        # Capture the content area
+        content = self._stacked.currentWidget()
+        if content is None:
+            return
+
+        pixmap = content.grab()
+        pixmap.save(path, "PNG")
+        logger.info("Exported PNG to %s", path)
+
+    def _export_csv(self) -> None:
+        """Export strain values per segment to CSV."""
+        if self._result is None or self._result.segment_strain is None:
+            return
+
+        from PySide6.QtWidgets import QFileDialog
+        import csv
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Экспорт CSV", "", "CSV files (*.csv)"
+        )
+        if not path:
+            return
+
+        # Segment names
+        segment_names = {
+            1: "Basal septal", 2: "Basal lateral", 3: "Mid septal", 4: "Mid lateral",
+            5: "Apical septal", 6: "Apical lateral",
+            7: "Mid anterior", 8: "Anterolateral", 9: "Inferoseptal",
+            10: "Mid inferior", 11: "Inferolateral",
+            12: "Apical septal", 13: "Apical anterior", 14: "Apical inferior",
+            15: "Basal septal", 16: "Apical lateral", 17: "Apex",
+        }
+
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Segment ID", "Segment Name", "Strain (%)", "Quality", "Accepted"])
+            for seg_id in sorted(self._result.segment_strain.keys()):
+                strain = self._result.segment_strain[seg_id]
+                quality = self._result.segment_quality.get(seg_id, 0.0) if self._result.segment_quality else 0.0
+                accepted = seg_id in self._qc_accepted_segments
+                name = segment_names.get(seg_id, f"Segment {seg_id}")
+                writer.writerow([seg_id, name, f"{strain:.2f}", f"{quality:.3f}", accepted])
+
+        logger.info("Exported CSV to %s", path)
 
     def closeEvent(self, event) -> None:
         self.closed.emit()
