@@ -2654,10 +2654,10 @@ class AppController(QObject):
         )
 
         try:
-            frames = self._frame_cache.require_full_cine()
-        except IncompleteCineError:
+            frames = self._frame_cache.load_all_frames()
+        except IncompleteCineError as e:
             self.status_message.emit(
-                tr("app.speckle_reload_cine")
+                f"Speckle tracking: {e}"
             )
             return
 

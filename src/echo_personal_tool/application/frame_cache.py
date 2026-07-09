@@ -128,6 +128,54 @@ class FrameCache:
             )
         return np.stack([self._frame_store[i] for i in range(self._total_frames)])
 
+    def load_all_frames(self) -> np.ndarray:
+        """Load all frames from source if not already cached.
+
+        Returns the full frame array. Raises IncompleteCineError if source
+        is not set or cannot provide frames.
+        """
+        if self._total_frames == 0:
+            raise IncompleteCineError("No frames available")
+
+        # Already fully loaded
+        if len(self._frame_store) == self._total_frames:
+            return np.stack([self._frame_store[i] for i in range(self._total_frames)])
+
+        # Need to load missing frames from source
+        if self.source_path is None:
+            raise IncompleteCineError("No source path set")
+
+        from echo_personal_tool.infrastructure.dicom_session import DicomSession
+        import cv2
+
+        source = self.source_path
+        if source.suffix.lower() == ".mp4" or source.suffix.lower() == ".avi":
+            # Video file
+            cap = cv2.VideoCapture(str(source))
+            frames = []
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if frame.ndim == 3 and frame.shape[2] == 3:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                frames.append(frame)
+            cap.release()
+            if not frames:
+                raise IncompleteCineError("Could not read video frames")
+            result = np.stack(frames)
+        else:
+            # DICOM
+            session = DicomSession(source)
+            result = session.get_all_frames()
+
+        # Cache all frames
+        for i in range(result.shape[0]):
+            self._frame_store[i] = result[i]
+        self._cached_frames = result
+
+        return result
+
     def loaded_ahead(self, center: int) -> int:
         """Count loaded frames strictly after center (no wrap)."""
         if self._total_frames == 0:
