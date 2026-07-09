@@ -2648,21 +2648,14 @@ class AppController(QObject):
         from echo_personal_tool.application.workers.speckle_worker import (
             SpeckleTrackingWorker,
         )
-        from echo_personal_tool.domain.exceptions import IncompleteCineError
         from echo_personal_tool.domain.services.myocardial_zone import (
             create_myocardial_zone,
         )
 
-        try:
-            frames = self._frame_cache.load_all_frames()
-        except IncompleteCineError as e:
-            self.status_message.emit(
-                f"Speckle tracking: {e}"
-            )
-            return
-
-        if len(frames) < 3:
-            self.status_message.emit(tr("app.speckle_not_enough_frames"))
+        # Use cached frames directly — load_all_frames is too slow for main thread
+        frames = self._frame_cache.frames
+        if frames is None:
+            self.status_message.emit("Speckle tracking: загрузите cine-последовательность")
             return
 
         if contour is None:
