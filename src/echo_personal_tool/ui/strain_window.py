@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -405,7 +406,15 @@ class BullseyeWidget(QWidget):
         for seg_id, (ring, angle_idx) in self.SEGMENT_GEOMETRY.items():
             strain = self._segment_strains.get(seg_id, None)
 
-            if strain is not None:
+            # Check if segment is accepted by QC
+            is_accepted = True
+            if hasattr(self, '_qc_accepted_segments') and self._qc_accepted_segments is not None:
+                is_accepted = seg_id in self._qc_accepted_segments
+
+            if not is_accepted:
+                # Rejected segment: dark gray
+                color = QColor(60, 60, 60)
+            elif strain is not None:
                 color = self._strain_to_color(strain)
             else:
                 color = QColor(40, 40, 40)  # dark gray = no data
@@ -534,6 +543,19 @@ class BullseyeWidget(QWidget):
         """Update bull's eye with strain data."""
         self._segment_strains = segment_strain.copy()
         self._segment_quality = (segment_quality or {}).copy()
+        self._qc_accepted_segments: set[int] | None = None
+        self.update()  # Trigger repaint
+
+    def update_qc(
+        self,
+        segment_strain: dict[int, float],
+        segment_quality: dict[int, float] | None,
+        accepted_segments: set[int],
+    ) -> None:
+        """Update bull's eye with quality control information."""
+        self._segment_strains = segment_strain.copy()
+        self._segment_quality = (segment_quality or {}).copy()
+        self._qc_accepted_segments = accepted_segments.copy()
         self.update()  # Trigger repaint
 
     def clear(self) -> None:
@@ -612,6 +634,7 @@ class ControlPanel(QWidget):
     view_toggled = Signal(str, bool)  # view_name, checked
     display_mode_changed = Signal(str)  # "contour", "curves", "sr", "peak"
     strain_metric_changed = Signal(str)  # "deformation", "strain_rate", "peak"
+    qc_segment_toggled = Signal(int, bool)  # segment_id, accepted
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -713,6 +736,39 @@ class ControlPanel(QWidget):
         group_quality.setLayout(quality_layout)
         layout.addWidget(group_quality)
 
+        # Quality Control (per-segment checkboxes)
+        group_qc = QGroupBox("Quality Control")
+        group_qc.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        qc_layout = QVBoxLayout()
+        qc_layout.setSpacing(2)
+
+        self._qc_checkboxes: dict[int, QCheckBox] = {}
+        # AHA segment names in Russian (matching Bull's Eye)
+        qc_segments = [
+            (1, "БазПерг"), (2, "Базбок"), (3, "СрПерг"), (4, "Србок"),
+            (5, "АпПер"), (6, "АпЛат"), (7, "СрПер"), (8, "СрЛат"),
+            (9, "СрЗад"), (10, "СрНиж"), (11, "СрНижЛат"),
+            (12, "АпЗад"), (13, "АпПерВерх"), (14, "АпНиж"),
+            (15, "БазЗад"), (16, "АпЛат"), (17, "Апекс"),
+        ]
+        for seg_id, seg_name in qc_segments:
+            cb = QCheckBox(seg_name)
+            cb.setChecked(True)
+            cb.setStyleSheet("color: #e0e0e0; font-size: 10px;")
+            cb.toggled.connect(lambda checked, sid=seg_id: self.qc_segment_toggled.emit(sid, checked))
+            qc_layout.addWidget(cb)
+            self._qc_checkboxes[seg_id] = cb
+
+        group_qc.setLayout(qc_layout)
+
+        # Wrap in scroll area for many checkboxes
+        qc_scroll = QScrollArea()
+        qc_scroll.setWidget(group_qc)
+        qc_scroll.setWidgetResizable(True)
+        qc_scroll.setMaximumHeight(150)
+        qc_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        layout.addWidget(qc_scroll)
+
         # Actions
         group_actions = QGroupBox("Actions")
         group_actions.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
@@ -773,6 +829,7 @@ class StrainWindow(QMainWindow):
         self._control.view_toggled.connect(self._on_view_toggled)
         self._control.display_mode_changed.connect(self._on_display_mode_changed)
         self._control.strain_metric_changed.connect(self._on_strain_metric_changed)
+        self._control.qc_segment_toggled.connect(self._on_qc_segment_toggled)
         self._control._btn_close.clicked.connect(self.close)
         splitter.addWidget(self._control)
 
@@ -820,6 +877,7 @@ class StrainWindow(QMainWindow):
 
         # State
         self._result: StrainResult | None = None
+        self._qc_accepted_segments: set[int] = set(range(1, 18))  # All segments accepted by default
 
     def show_result(self, result: StrainResult) -> None:
         """Display strain results in quad-view layout."""
@@ -996,6 +1054,34 @@ class StrainWindow(QMainWindow):
                     self._result.segment_strain,
                     self._result.segment_quality,
                 )
+
+    def _on_qc_segment_toggled(self, segment_id: int, accepted: bool) -> None:
+        """Handle quality control checkbox toggle for a segment."""
+        if accepted:
+            self._qc_accepted_segments.add(segment_id)
+        else:
+            self._qc_accepted_segments.discard(segment_id)
+
+        # Recalculate GLS excluding rejected segments
+        if self._result is not None and self._result.segment_strain:
+            accepted_strains = [
+                strain for seg_id, strain in self._result.segment_strain.items()
+                if seg_id in self._qc_accepted_segments
+            ]
+            if accepted_strains:
+                gls_qc = float(np.min(accepted_strains))
+            else:
+                gls_qc = self._result.gls  # Fallback to original GLS
+
+            # Update summary table with QC-adjusted GLS
+            self._summary.update_values(gls=gls_qc)
+
+            # Update bull's eye (mark rejected segments as gray)
+            self._panel_bullseye.update_qc(
+                self._result.segment_strain,
+                self._result.segment_quality,
+                self._qc_accepted_segments,
+            )
 
     def closeEvent(self, event) -> None:
         self.closed.emit()
