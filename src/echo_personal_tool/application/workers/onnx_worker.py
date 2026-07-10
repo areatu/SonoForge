@@ -53,7 +53,10 @@ def _shutdown_executor() -> None:
     global _executor
     with _executor_lock:
         if _executor is not None:
-            _executor.shutdown(wait=False)
+            try:
+                _executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
             _executor = None
 
 
