@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import struct
 import threading
@@ -17,6 +18,17 @@ from pydicom.encaps import generate_frames, parse_basic_offsets
 logger = logging.getLogger(__name__)
 
 _thread_local = threading.local()
+_all_sessions: list[DicomSession] = []
+_cleanup_registered = False
+
+
+def _cleanup_all_sessions() -> None:
+    for session in _all_sessions:
+        try:
+            session.release()
+        except Exception:
+            pass
+    _all_sessions.clear()
 
 _UNCOMPRESSED_SYNTAXES = frozenset({
     "1.2.840.10008.1.2",
@@ -36,10 +48,15 @@ _PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
 
 
 def get_thread_dicom_session() -> DicomSession:
+    global _cleanup_registered
     session = getattr(_thread_local, "dicom_session", None)
     if session is None:
         session = DicomSession()
         _thread_local.dicom_session = session
+        _all_sessions.append(session)
+        if not _cleanup_registered:
+            atexit.register(_cleanup_all_sessions)
+            _cleanup_registered = True
     return session
 
 

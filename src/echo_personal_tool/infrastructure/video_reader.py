@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import bisect
 import threading
 from collections import deque
@@ -15,14 +16,30 @@ from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
 RING_BUFFER_SIZE = 50
 _KEYFRAME_SCAN_MAX_STEP = 120
 _thread_local = threading.local()
+_all_readers: list[VideoReader] = []
+_cleanup_registered = False
+
+
+def _cleanup_all_readers() -> None:
+    for reader in _all_readers:
+        try:
+            reader.release()
+        except Exception:
+            pass
+    _all_readers.clear()
 
 
 def get_thread_video_reader() -> VideoReader:
     """Return a VideoReader cached on the current worker thread."""
+    global _cleanup_registered
     reader = getattr(_thread_local, "video_reader", None)
     if reader is None:
         reader = VideoReader()
         _thread_local.video_reader = reader
+        _all_readers.append(reader)
+        if not _cleanup_registered:
+            atexit.register(_cleanup_all_readers)
+            _cleanup_registered = True
     return reader
 
 
