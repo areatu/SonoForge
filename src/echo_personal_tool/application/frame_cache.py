@@ -38,7 +38,7 @@ class FrameCache:
         if len(self._frame_store) == self._total_frames:
             result = np.stack([self._frame_store[i] for i in range(self._total_frames)])
         else:
-            result = np.stack([self._frame_store[i] for i in sorted(self._frame_store)])
+            result = np.stack([self._frame_store[i] for i in self._sorted_keys])
         self._cached_frames = result
         return result
 

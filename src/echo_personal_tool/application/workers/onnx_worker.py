@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import threading
 from concurrent.futures import ProcessPoolExecutor
@@ -44,7 +45,16 @@ def _get_executor() -> ProcessPoolExecutor:
     with _executor_lock:
         if _executor is None:
             _executor = ProcessPoolExecutor(max_workers=1)
+            atexit.register(_shutdown_executor)
         return _executor
+
+
+def _shutdown_executor() -> None:
+    global _executor
+    with _executor_lock:
+        if _executor is not None:
+            _executor.shutdown(wait=False)
+            _executor = None
 
 
 def run_segment_in_subprocess(
@@ -94,7 +104,7 @@ class OnnxWorker(QRunnable):
         self._timeout_sec = (
             float(timeout_sec) if timeout_sec is not None else _load_timeout_sec(self._models_dir)
         )
-        self.signals = OnnxWorkerSignals(parent)
+        self.signals = OnnxWorkerSignals()
         self.setAutoDelete(True)
 
     @Slot()
@@ -114,7 +124,11 @@ class OnnxWorker(QRunnable):
             )
             mask_bytes = future.result(timeout=self._timeout_sec)
         except FuturesTimeoutError:
-            future.cancel()
+            # The running subprocess can't be killed via ProcessPoolExecutor.
+            # Discard the stuck executor so the next submit() creates a fresh one.
+            global _executor
+            with _executor_lock:
+                _executor = None
             self.signals.timed_out.emit()
             return
         except Exception as exc:  # noqa: BLE001 - surface to UI

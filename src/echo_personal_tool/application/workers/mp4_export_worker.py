@@ -34,7 +34,7 @@ class Mp4ExportWorker(QRunnable):
         self._dest_path = dest_path
         self._media_format = media_format
         self._frame_time_ms = frame_time_ms
-        self.signals = Mp4ExportSignals(parent)
+        self.signals = Mp4ExportSignals()
         self.setAutoDelete(True)
 
     @Slot()

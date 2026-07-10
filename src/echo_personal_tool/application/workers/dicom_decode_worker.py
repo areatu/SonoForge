@@ -34,7 +34,7 @@ class DicomDecodeWorker(QRunnable):
         self._path = Path(path)
         self._request_id = request_id
         self._first_frame_only = first_frame_only
-        self.signals = DicomDecodeSignals(parent)
+        self.signals = DicomDecodeSignals()
         self.setAutoDelete(True)
 
     @Slot()

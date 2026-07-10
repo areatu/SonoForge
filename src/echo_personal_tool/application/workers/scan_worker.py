@@ -27,7 +27,7 @@ class ScanWorker(QRunnable):
         super().__init__()
         self._root = root
         self._error_log_path = error_log_path
-        self.signals = ScanSignals(parent)
+        self.signals = ScanSignals()
         self.setAutoDelete(True)
 
     @Slot()

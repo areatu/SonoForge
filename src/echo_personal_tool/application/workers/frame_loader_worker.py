@@ -47,7 +47,7 @@ class FrameLoaderWorker(QRunnable):
         self._media_format = media_format
         self._total_frames = total_frames
         self._batch_size = batch_size
-        self.signals = FrameLoaderSignals(parent)
+        self.signals = FrameLoaderSignals()
         self.setAutoDelete(True)
 
     @Slot()

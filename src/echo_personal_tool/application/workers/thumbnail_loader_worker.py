@@ -100,7 +100,7 @@ class ThumbnailLoaderWorker(QRunnable):
         self._media_format = media_format
         self._preview_size = int(preview_size)
         self._preview_only = bool(preview_only)
-        self.signals = ThumbnailLoaderSignals(parent)
+        self.signals = ThumbnailLoaderSignals()
         self.setAutoDelete(True)
 
     @Slot()

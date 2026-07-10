@@ -80,7 +80,7 @@ class OrthancDownloadWorker(QRunnable):
         self._cancelled = Event()
         self._thread_client: OrthancDicomWebClient | None = None
         self._lock = Lock()
-        self.signals = OrthancDownloadSignals(parent)
+        self.signals = OrthancDownloadSignals()
         self.setAutoDelete(True)
 
     def cancel(self) -> None:

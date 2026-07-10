@@ -883,6 +883,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         self._stop_viewer2_playback()
         self._viewer.disconnect_display_controls()
+        # Wait briefly for pending workers to finish so signals don't fire
+        # on destroyed C++ objects.  2s cap avoids hanging on stuck tasks.
+        pool = QThreadPool.globalInstance()
+        if pool.activeThreadCount() > 0:
+            pool.waitForDone(2000)
         self._orthanc_cache.clear_all()
         super().closeEvent(event)
 
@@ -984,8 +989,12 @@ class MainWindow(QMainWindow):
         )
         worker.signals.finished.connect(
             lambda pixels, inst=instance: self._on_viewer2_frame_loaded(pixels, inst)
+            if self._viewer2 is not None else None
         )
-        worker.signals.failed.connect(lambda msg: self._show_status(f"viewer2 load failed: {msg}"))
+        worker.signals.failed.connect(
+            lambda msg: self._show_status(f"viewer2 load failed: {msg}")
+            if self._viewer2 is not None else None
+        )
         QThreadPool.globalInstance().start(worker)
 
     def _on_viewer2_frame_selected(self, frame_index: int) -> None:

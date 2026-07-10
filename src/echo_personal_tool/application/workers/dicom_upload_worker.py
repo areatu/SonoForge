@@ -39,7 +39,7 @@ class DicomUploadWorker(QRunnable):
         self._files = files
         self._uploader = uploader
         self._stow_client = stow_client
-        self.signals = DicomUploadSignals(parent)
+        self.signals = DicomUploadSignals()
         self._cancelled = threading.Event()
         self.setAutoDelete(True)
 

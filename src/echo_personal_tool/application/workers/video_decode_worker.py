@@ -31,7 +31,7 @@ class VideoDecodeWorker(QRunnable):
         self._path = Path(path)
         self._request_id = request_id
         self._first_frame_only = first_frame_only
-        self.signals = VideoDecodeSignals(parent)
+        self.signals = VideoDecodeSignals()
         self.setAutoDelete(True)
 
     @Slot()
