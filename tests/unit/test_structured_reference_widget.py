@@ -93,7 +93,7 @@ def test_pathology_without_gradation_shows_parameters(widget):
     assert widget._table.rowCount() >= 1
 
 
-def test_table_updates_on_gradation_change(widget):
+def test_table_updates_on_pathology_selection(widget):
     widget._on_topic_clicked(widget._topics[0])
     widget._on_pathology_row_changed(0)
     assert widget._table.rowCount() >= 1
@@ -119,35 +119,30 @@ def test_search_filters_table(widget):
     assert widget._table.rowCount() >= 1
 
 
-def test_gradation_buttons_shown(widget):
-    """Selecting a pathology with gradations should show radio buttons."""
+def test_gradations_flattened_into_single_table(widget):
+    """Parameters from all gradations should appear in a single table."""
     widget._on_topic_clicked(widget._topics[0])  # aortic_valve
     widget._on_pathology_row_changed(0)  # aortic_regurgitation (has gradations)
-    assert widget._gradation_group.isVisible()
-    assert len(widget._gradation_radio_group.buttons()) >= 2
+    # Should have 1 unique parameter (ar_eroa) with combined gradation descriptions
+    assert widget._table.rowCount() >= 1
+    desc = widget._table.item(0, 3).text()
+    # Description should contain both gradation names
+    assert "Лёгкая" in desc
+    assert "Тяжёлая" in desc
 
 
-def test_gradation_buttons_hidden(widget):
-    """Selecting a pathology without gradations should hide radio buttons."""
-    widget._on_topic_clicked(widget._topics[1])  # left_ventricle
-    widget._on_pathology_row_changed(0)  # normal (no gradations)
-    assert not widget._gradation_group.isVisible()
-
-
-def test_gradation_change_updates_table(widget):
-    """Switching gradation should update parameter values."""
+def test_single_gradation_alone(widget):
+    """A pathology with one gradation should show its parameters."""
     widget._on_topic_clicked(widget._topics[0])  # aortic_valve
-    widget._on_pathology_row_changed(0)  # aortic_regurgitation
-    first_text = widget._table.item(0, 2).text()  # norm column
-    # Switch to second gradation (Тяжёлая)
-    if len(widget._gradation_radio_group.buttons()) > 1:
-        widget._gradation_radio_group.buttons()[1].click()
-        second_text = widget._table.item(0, 2).text()
-        assert first_text != second_text
+    widget._on_pathology_row_changed(1)  # aortic_stenosis (1 gradation)
+    assert widget._table.rowCount() >= 1
+    desc = widget._table.item(0, 3).text()
+    assert "Умеренный" in desc
 
 
-def test_navigate_to_param_with_gradation(widget):
-    """navigate_to_param should select correct gradation."""
+def test_navigate_to_param_no_gradation_selection(widget):
+    """navigate_to_param should navigate without selecting gradation UI."""
     widget.navigate_to_param("ar_eroa")
-    assert widget._current_gradation is not None
-    assert widget._current_gradation.name == "Лёгкая"
+    assert widget._table.rowCount() >= 1
+    # gradation is no longer a UI concept
+    assert widget._current_gradation is None

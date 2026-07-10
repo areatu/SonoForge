@@ -36,9 +36,14 @@ class PathologyRef:
     name: str = ""
     slug: str = ""
     description: str | None = None
-    image_path: str | None = None
+    image_paths: list[str] = field(default_factory=list)
     gradations: list[GradationRef] | None = None
     parameters: list[ParameterRef] | None = None
+
+    @property
+    def image_path(self) -> str | None:
+        """Backward-compatible: first image path or None."""
+        return self.image_paths[0] if self.image_paths else None
 
 
 @dataclass
@@ -80,17 +85,26 @@ def _parse_gradations(raw: list[dict]) -> list[GradationRef]:
 
 
 def _parse_pathologies(raw: list[dict]) -> list[PathologyRef]:
-    return [
-        PathologyRef(
+    result = []
+    for p in raw:
+        # Support image_paths (list), image_path (str), or neither
+        img = p.get("image_paths") or p.get("image_path")
+        if isinstance(img, list):
+            image_paths = img
+        elif isinstance(img, str):
+            image_paths = [img]
+        else:
+            image_paths = []
+
+        result.append(PathologyRef(
             name=p["name"],
             slug=p["slug"],
             description=p.get("description"),
-            image_path=p.get("image_path"),
+            image_paths=image_paths,
             gradations=_parse_gradations(p["gradations"]) if "gradations" in p else None,
             parameters=_parse_parameters(p.get("parameters", [])) if "parameters" in p else None,
-        )
-        for p in raw
-    ]
+        ))
+    return result
 
 
 class ReferenceDataStore:

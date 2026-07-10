@@ -1,6 +1,7 @@
 """Interactive structured reference browser widget."""
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,6 @@ from PySide6.QtCore import QEvent, QObject, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -75,6 +75,16 @@ _TOPIC_FULL_NAMES: dict[str, str] = {
 }
 
 
+class _ImageContainer(QWidget):
+    """QWidget that ignores child pixmap size hints so the layout stays stable."""
+
+    def sizeHint(self):
+        return QSize(200, 200)
+
+    def minimumSizeHint(self):
+        return QSize(100, 100)
+
+
 class StructuredReferenceWidget(QWidget):
     """Topic → pathology → gradation → parameter table with sex toggle and images."""
 
@@ -94,6 +104,8 @@ class StructuredReferenceWidget(QWidget):
         self._sex_male: bool = True
         self._age: int | None = None
         self._original_pixmap: QPixmap | None = None
+        self._image_paths: list[str] = []
+        self._current_image_index: int = 0
 
         self._build_ui()
 
@@ -226,19 +238,6 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.currentRowChanged.connect(self._on_pathology_row_changed)
         right_layout.addWidget(self._pathology_list)
 
-        # Gradation radio group — shown only when pathology has gradations
-        self._gradation_group = QGroupBox("Градация")
-        self._gradation_group.setStyleSheet(
-            f"QGroupBox {{ border: 1px solid {p['border']}; margin-top: 6px; padding-top: 14px; font-size: 13px; }}"
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 8px; padding: 0 4px; }}"
-        )
-        gradation_layout = QHBoxLayout(self._gradation_group)
-        gradation_layout.setContentsMargins(8, 4, 8, 4)
-        self._gradation_radio_group = QButtonGroup(self)
-        self._gradation_radio_group.idClicked.connect(self._on_gradation_changed)
-        self._gradation_group.hide()
-        right_layout.addWidget(self._gradation_group)
-
         # Middle: table (left) + image (right)
         content_row = QHBoxLayout()
         content_row.setSpacing(8)
@@ -261,14 +260,44 @@ class StructuredReferenceWidget(QWidget):
         self._table.itemSelectionChanged.connect(self._on_table_selection_changed)
         content_row.addWidget(self._table, stretch=1)
 
-        # Image (right half) — always visible
+        # Image (right half) — container overrides sizeHint() to prevent
+        # the pixmap from inflating the layout via Qt's size negotiation.
+        self._image_container = _ImageContainer()
+        image_layout = QVBoxLayout(self._image_container)
+        image_layout.setContentsMargins(0, 0, 0, 0)
         self._image_label = QLabel()
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setStyleSheet(
             f"border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 12px; color: {p['text_dim']};"
         )
         self._image_label.setText("Нет изображения")
-        content_row.addWidget(self._image_label, stretch=1)
+        image_layout.addWidget(self._image_label, stretch=1)
+
+        # Image navigation bar (< counter >)
+        nav_bar = QWidget()
+        nav_bar.setStyleSheet(f"background: {p['bg_panel']}; border-top: 1px solid {p['border']};")
+        nav_layout = QHBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 2, 4, 2)
+        nav_layout.setSpacing(4)
+        self._btn_img_prev = QPushButton("\u25C0")
+        self._btn_img_prev.setFixedSize(28, 22)
+        self._btn_img_prev.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_img_prev.clicked.connect(self._prev_image)
+        self._btn_img_prev.setEnabled(False)
+        self._image_counter_label = QLabel("0 / 0")
+        self._image_counter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._btn_img_next = QPushButton("\u25B6")
+        self._btn_img_next.setFixedSize(28, 22)
+        self._btn_img_next.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_img_next.clicked.connect(self._next_image)
+        self._btn_img_next.setEnabled(False)
+        nav_layout.addStretch(1)
+        nav_layout.addWidget(self._btn_img_prev)
+        nav_layout.addWidget(self._image_counter_label)
+        nav_layout.addWidget(self._btn_img_next)
+        nav_layout.addStretch(1)
+        image_layout.addWidget(nav_bar)
+        content_row.addWidget(self._image_container, stretch=1)
 
         right_layout.addLayout(content_row, stretch=1)
 
@@ -291,9 +320,11 @@ class StructuredReferenceWidget(QWidget):
     def _show_placeholder(self) -> None:
         self._pathology_list.clear()
         self._table.setRowCount(0)
-        self._gradation_group.hide()
         self._image_label.clear()
         self._image_label.setText("Нет изображения")
+        self._image_paths = []
+        self._current_image_index = 0
+        self._update_nav_buttons()
 
     def _scale_image(self) -> None:
         # Guard against recursive calls from resizeEvent
@@ -301,14 +332,16 @@ class StructuredReferenceWidget(QWidget):
             return
         self._scaling = True
         try:
-            label_width = self._image_label.width()
-            if label_width < 10:
+            cw = self._image_container.width()
+            ch = self._image_container.height()
+            if cw < 10 or ch < 10:
                 return
 
-            # Skip if width hasn't changed
-            if getattr(self, '_last_scale_width', None) == label_width:
+            # Skip if container size hasn't changed
+            cache_key = (cw, ch)
+            if getattr(self, '_last_scale_size', None) == cache_key:
                 return
-            self._last_scale_width = label_width
+            self._last_scale_size = cache_key
 
             if getattr(self, '_is_svg', False) and self._svg_text:
                 # Render SVG at actual display resolution using QSvgRenderer
@@ -324,8 +357,12 @@ class StructuredReferenceWidget(QWidget):
                         else:
                             aspect = 1.0
                         device_ratio = self.devicePixelRatioF()
-                        w = int(label_width * device_ratio)
+                        # Fit within container keeping aspect ratio
+                        w = int(cw * device_ratio)
                         h = int(w * aspect)
+                        if h > int(ch * device_ratio):
+                            h = int(ch * device_ratio)
+                            w = int(h / aspect)
                         image = QImage(w, h, QImage.Format.Format_ARGB32)
                         image.setDevicePixelRatio(device_ratio)
                         image.fill(0)
@@ -343,20 +380,17 @@ class StructuredReferenceWidget(QWidget):
                 pixmap = QPixmap()
                 pixmap.loadFromData(self._svg_text.encode("utf-8"))
                 if not pixmap.isNull():
-                    scaled = pixmap.scaledToWidth(label_width, Qt.TransformationMode.SmoothTransformation)
+                    scaled = pixmap.scaled(cw, ch, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                     self._image_label.setPixmap(scaled)
             elif self._original_pixmap is not None and not self._original_pixmap.isNull():
-                if self._original_pixmap.width() > label_width:
-                    scaled = self._original_pixmap.scaledToWidth(label_width, Qt.TransformationMode.SmoothTransformation)
-                    self._image_label.setPixmap(scaled)
-                else:
-                    self._image_label.setPixmap(self._original_pixmap)
+                scaled = self._original_pixmap.scaled(cw, ch, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self._image_label.setPixmap(scaled)
         finally:
             self._scaling = False
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self._last_scale_width = None
+        self._last_scale_size = None
         self._scale_image()
 
     def resizeEvent(self, event) -> None:
@@ -423,43 +457,34 @@ class StructuredReferenceWidget(QWidget):
         if row < 0 or self._current_topic is None:
             return
         self._current_pathology = self._current_topic.pathologies[row]
-
-        if self._current_pathology.gradations:
-            self._rebuild_gradation_buttons(self._current_pathology.gradations)
-            self._current_gradation = self._current_pathology.gradations[0]
-            self._gradation_group.show()
-        else:
-            self._current_gradation = None
-            self._gradation_group.hide()
+        self._current_gradation = None
 
         self._refresh_table()
         self._load_image()
         self._update_source()
 
-    def _rebuild_gradation_buttons(self, gradations: list[GradationRef]) -> None:
-        """Replace radio buttons in the gradation group for the given gradations."""
-        layout = self._gradation_group.layout()
-        # Remove existing buttons
-        for btn in self._gradation_radio_group.buttons():
-            self._gradation_radio_group.removeButton(btn)
-            layout.removeWidget(btn)
-            btn.deleteLater()
-        # Add new buttons
-        for i, grad in enumerate(gradations):
-            radio = QRadioButton(grad.name)
-            self._gradation_radio_group.addButton(radio, i)
-            layout.addWidget(radio)
-        # Auto-select first
-        if self._gradation_radio_group.buttons():
-            self._gradation_radio_group.buttons()[0].setChecked(True)
+    def _flatten_gradation_parameters(self, pathology) -> list:
+        """Combine parameters from all gradations into a single deduplicated list.
 
-    def _on_gradation_changed(self, button_id: int) -> None:
-        if self._current_pathology is None or not self._current_pathology.gradations:
-            return
-        if button_id < len(self._current_pathology.gradations):
-            self._current_gradation = self._current_pathology.gradations[button_id]
-            self._refresh_table()
-            self._update_source()
+        Parameters appearing in multiple gradations get their pathology_desc
+        updated with gradation name prefixes (e.g. "Лёгкая: <0.10").
+        """
+        seen: dict[str, ParameterRef] = {}
+        for grad in pathology.gradations:
+            for param in grad.parameters:
+                if param.id in seen:
+                    existing = seen[param.id]
+                    if param.pathology_desc:
+                        existing.pathology_desc = (
+                            (existing.pathology_desc or "")
+                            + " / " + f"{grad.name}: {param.pathology_desc}"
+                        ).lstrip(" /")
+                else:
+                    dup = copy.copy(param)
+                    if dup.pathology_desc:
+                        dup.pathology_desc = f"{grad.name}: {dup.pathology_desc}"
+                    seen[param.id] = dup
+        return list(seen.values())
 
     def _on_table_selection_changed(self) -> None:
         rows = self._table.selectionModel().selectedRows()
@@ -488,8 +513,8 @@ class StructuredReferenceWidget(QWidget):
     def _get_current_parameters(self) -> list:
         if self._current_pathology is None:
             return []
-        if self._current_gradation is not None:
-            return self._current_gradation.parameters
+        if self._current_pathology.gradations:
+            return self._flatten_gradation_parameters(self._current_pathology)
         if self._current_pathology.parameters is not None:
             return self._current_pathology.parameters
         return []
@@ -509,18 +534,34 @@ class StructuredReferenceWidget(QWidget):
         return ""
 
     def _load_image(self) -> None:
-        if self._current_pathology is None or not self._current_pathology.image_path:
+        if self._current_pathology is None or not self._current_pathology.image_paths:
+            self._image_label.clear()
+            self._image_label.setText("Нет изображения")
+            self._image_paths = []
+            self._current_image_index = 0
+            self._update_nav_buttons()
+            return
+
+        self._image_paths = self._current_pathology.image_paths
+        self._current_image_index = 0
+        self._show_current_image()
+        self._update_nav_buttons()
+
+    def _show_current_image(self) -> None:
+        """Display the image at _current_image_index."""
+        if not self._image_paths:
             self._image_label.clear()
             self._image_label.setText("Нет изображения")
             return
-        img_path = _IMAGES_DIR / self._current_pathology.image_path
+
+        path_str = self._image_paths[self._current_image_index]
+        img_path = _IMAGES_DIR / path_str
         if not img_path.is_file():
             self._image_label.clear()
-            self._image_label.setText(f"Изображение: {self._current_pathology.image_path}")
+            self._image_label.setText(f"Изображение: {path_str}")
             return
 
         if img_path.suffix.lower() == ".svg":
-            # SVG: replace colors with theme-adaptive colors
             p = get_theme_palette()
             self._svg_text = img_path.read_text(encoding="utf-8")
             self._svg_text = self._svg_text.replace("currentColor", p.get("text", "#f1f5f9"))
@@ -538,9 +579,26 @@ class StructuredReferenceWidget(QWidget):
             self._image_label.setText("Нет изображения")
             return
 
-        # Reset scale cache so image is re-rendered
-        self._last_scale_width = None
+        self._last_scale_size = None
         self._scale_image()
+
+    def _prev_image(self) -> None:
+        if self._current_image_index > 0:
+            self._current_image_index -= 1
+            self._show_current_image()
+            self._update_nav_buttons()
+
+    def _next_image(self) -> None:
+        if self._current_image_index < len(self._image_paths) - 1:
+            self._current_image_index += 1
+            self._show_current_image()
+            self._update_nav_buttons()
+
+    def _update_nav_buttons(self) -> None:
+        n = len(self._image_paths)
+        self._btn_img_prev.setEnabled(self._current_image_index > 0)
+        self._btn_img_next.setEnabled(self._current_image_index < n - 1)
+        self._image_counter_label.setText(f"{self._current_image_index + 1} / {n}" if n > 0 else "0 / 0")
 
     def _update_source(self) -> None:
         params = self._get_current_parameters()
@@ -565,17 +623,6 @@ class StructuredReferenceWidget(QWidget):
         if patho_idx < 0:
             return
         self._pathology_list.setCurrentRow(patho_idx)
-        # Select the specific gradation if applicable
-        if grad is not None and self._current_pathology and self._current_pathology.gradations:
-            grad_idx = next(
-                (i for i, g in enumerate(self._current_pathology.gradations) if g.name == grad.name),
-                -1,
-            )
-            if grad_idx >= 0 and grad_idx < len(self._gradation_radio_group.buttons()):
-                self._gradation_radio_group.buttons()[grad_idx].setChecked(True)
-                self._current_gradation = self._current_pathology.gradations[grad_idx]
-                self._refresh_table()
-                self._update_source()
 
     def set_maximized_mode(self, maximized: bool) -> None:
         """Update button labels and sizes for maximized/restored mode."""

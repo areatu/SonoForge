@@ -117,7 +117,6 @@ class _DocTab(QWidget):
         self._btn_close.clicked.connect(self._on_close_clicked)
         layout.addWidget(self._btn_close, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self._active = False
         self._apply_style(False)
         self._apply_close_style(False)
 
@@ -161,12 +160,11 @@ class _DocTab(QWidget):
         if not close_pixmap.isNull():
             self._btn_close.setIcon(QIcon(close_pixmap))
         self._btn_close.setStyleSheet(
-            f"QPushButton {{ border: none; padding: 0; background: transparent; }}"
+            f"QPushButton {{ border: none; padding: 0; background: transparent; }}\n"
             f"QPushButton:hover {{ background: {p['bg_button_hover']}; border-radius: 3px; }}"
         )
 
     def set_active(self, active: bool) -> None:
-        self._active = active
         self._btn_label.setChecked(active)
         self._apply_style(active)
 
@@ -653,12 +651,20 @@ class AseReferenceDialog(QDialog):
 
         del self._documents[index]
 
+        # Correct _active_doc_index after list shift
+        if index < self._active_doc_index:
+            self._active_doc_index -= 1
+        elif index == self._active_doc_index:
+            # Same index now points to the next item (shifted left)
+            if self._active_doc_index >= len(self._documents):
+                self._active_doc_index = len(self._documents) - 1
+        if self._active_doc_index >= len(self._documents):
+            self._active_doc_index = len(self._documents) - 1
+
         # Re-index remaining tab click signals
         self._reconnect_tab_signals()
 
         # Switch to adjacent tab
-        if self._active_doc_index >= len(self._documents):
-            self._active_doc_index = len(self._documents) - 1
         if self._active_doc_index >= 0:
             self._switch_to_doc(self._active_doc_index)
         else:

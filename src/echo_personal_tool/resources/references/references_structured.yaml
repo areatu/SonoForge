@@ -118,7 +118,8 @@ topics:
             source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
       - name: Диастолическая функция левого желудочка
         slug: lv_diastolic
-        image_path: diastolic_function.png
+        image_paths:
+          - Diastolic_dysfunc_LV.png
         parameters:
           - id: ea_ratio
             name: "Соотношение E/A"
@@ -171,7 +172,9 @@ topics:
             source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
       - name: Сегменты и кровоснабжение левого желудочка
         slug: lv_segments
-        image_path: coronary.jpeg
+        image_paths:
+          - LV_segments.png
+          - Coronar_artery_zone.png
         parameters:
           - id: seg_anterior
             name: "Передняя стенка"
@@ -482,7 +485,9 @@ topics:
     pathologies:
       - name: Первичная митральная регургитация
         slug: primary_mr
-        image_path: pisa_mr.png
+        image_paths:
+          - Mitral_regurgitation_1.png
+          - Mitral_regurgitation_2.png
         gradations:
           - name: Лёгкая
             parameters:
@@ -546,7 +551,9 @@ topics:
                 source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
       - name: Вторичная митральная регургитация
         slug: secondary_mr
-        image_path: pisa_mr.png
+        image_paths:
+          - Mitral_regurgitation_1.png
+          - Mitral_regurgitation_2.png
         gradations:
           - name: Лёгкая
             parameters:
@@ -592,6 +599,9 @@ topics:
                 source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
       - name: Митральный стеноз
         slug: mitral_stenosis
+        image_paths:
+          - Mitral_stenosis_1.png
+          - Mitral_stenosis_2.png
         parameters:
           - id: ms_area
             name: "Площадь МК"
@@ -641,6 +651,8 @@ topics:
     pathologies:
       - name: Аортальный стеноз
         slug: aortic_stenosis
+        image_paths:
+          - Aortic_stenosis.png
         gradations:
           - name: Лёгкий
             parameters:
@@ -707,7 +719,9 @@ topics:
                 source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
       - name: Аортальная регургитация
         slug: aortic_regurgitation
-        image_path: aortic_insuf.jpeg
+        image_paths:
+          - Aortic_regurgitation_1.png
+          - Aortic_regurgitation_2.png
         gradations:
           - name: Лёгкая
             parameters:
@@ -781,6 +795,8 @@ topics:
     pathologies:
       - name: Трикуспидальная регургитация
         slug: tricuspid_regurgitation
+        image_paths:
+          - Tricuspid_regurgitation.png
         gradations:
           - name: Лёгкая
             parameters:
@@ -844,6 +860,8 @@ topics:
                 source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
       - name: Трикуспидальный стеноз
         slug: tricuspid_stenosis
+        image_paths:
+          - Tricuspid_stenosis.png
         parameters:
           - id: ts_area
             name: "Площадь ТК"
@@ -896,6 +914,8 @@ topics:
                 source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
       - name: Легочный стеноз
         slug: pulmonary_stenosis
+        image_paths:
+          - Pulmonic_stenosis.png
         gradations:
           - name: Лёгкий
             parameters:
@@ -989,6 +1009,8 @@ topics:
             source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
       - name: Расслоение аорты
         slug: aortic_dissection
+        image_paths:
+          - Aortic_dissection.png
         parameters:
           - id: dissection_type
             name: "Тип расслоения"
@@ -1020,7 +1042,6 @@ topics:
     pathologies:
       - name: Общие показатели
         slug: general
-        image_path: test.svg
         parameters:
           - id: heart_rate
             name: "Частота сердечных сокращений (ЧСС)"
@@ -1074,7 +1095,7 @@ topics:
             name: "Угол допплера"
             unit: "°"
             norm_male: {low: null, high: null}
-            pathology_desc: "<20° —准确 измерение"
+            pathology_desc: "<20° — точное измерение"
             source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
           - id: pisa_radius
             name: "Радиус PISA"
@@ -1088,7 +1109,6 @@ topics:
     pathologies:
       - name: Митральная позиция
         slug: mitral_position
-        image_path: prosthetic_valves.png
         parameters:
           - id: mv_prosth_gradient_mean
             name: "Средний градиент"
@@ -1116,7 +1136,6 @@ topics:
             source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
       - name: Аортальная позиция
         slug: aortic_position
-        image_path: prosthetic_valves.png
         parameters:
           - id: av_prosth_gradient_mean
             name: "Средний градиент"
