@@ -111,6 +111,7 @@ class MeasurementPanel(QWidget):
         )
 
     def set_doppler_measurement(self, dto: DopplerMeasurementDTO | None) -> None:
+        """DEPRECATED: kept for API compat. Use update_from_state() instead."""
         if dto is None:
             self.set_measurement_snapshot(None)
             return

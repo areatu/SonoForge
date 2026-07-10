@@ -877,7 +877,6 @@ class ViewerWidget(QWidget):
         ):
             self._doppler.update_interval_preview_position(float(mapped.x()))
         if self._calibration_active:
-            mapped = self._view.mapSceneToView(scene_pos)
             if mapped is not None and self._current_frame is not None:
                 height = self._current_frame.shape[0]
                 raw_y = max(0.0, min(float(mapped.y()), float(height - 1)))
@@ -890,7 +889,6 @@ class ViewerWidget(QWidget):
                     self._update_calibration_horizontal_guides(snapped_y)
             return
         if self._linear_caliper_active and self._linear_caliper_start is not None:
-            mapped = self._view.mapSceneToView(scene_pos)
             if mapped is not None:
                 end = (float(mapped.x()), float(mapped.y()))
                 if self._linear_caliper_start is not None:
@@ -899,7 +897,6 @@ class ViewerWidget(QWidget):
                 self._update_linear_caliper_label_preview(self._linear_caliper_start, end)
             return
         if self._caliper_drag_active and QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
-            mapped = self._view.mapSceneToView(scene_pos)
             if mapped is not None:
                 self._apply_caliper_node_drag(float(mapped.x()), float(mapped.y()))
             return
@@ -908,7 +905,6 @@ class ViewerWidget(QWidget):
             return
         if self._drag_session is not None:
             if QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
-                mapped = self._view.mapSceneToView(scene_pos)
                 if mapped is not None:
                     contour_index, _, _, grab_index, _ = self._drag_session
                     self._apply_rbf_drag_step(
@@ -918,7 +914,6 @@ class ViewerWidget(QWidget):
                         grab_index=grab_index,
                     )
             return
-        mapped = self._view.mapSceneToView(scene_pos)
         if mapped is None:
             return
         self._update_contour_hover((float(mapped.x()), float(mapped.y())))
@@ -1454,7 +1449,7 @@ class ViewerWidget(QWidget):
             else None
         )
         # Cache display mode per instance to avoid re-detection
-        instance_key = id(frame) if frame.base is None else None
+        instance_key = frame.ctypes.data if hasattr(frame, 'ctypes') else id(frame)
         if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame, media_format,
@@ -4902,9 +4897,6 @@ class ViewerWidget(QWidget):
             sliders.append((external, internal))
             ext.setRange(internal.minimum(), internal.maximum())
             ext.setValue(internal.value())
-            ext.valueChanged.connect(internal.setValue)
-            internal.valueChanged.connect(ext.setValue)
-            ext.valueChanged.connect(self._update_levels)
 
         def sync_enabled() -> None:
             enabled = self._window_level_enabled
@@ -4914,7 +4906,24 @@ class ViewerWidget(QWidget):
 
         self._sync_display_control_enabled = sync_enabled  # type: ignore[attr-defined]
         self._external_wl_dr_sliders = (window_slider, level_slider, dr_slider)
+        self._external_wl_dr_slider_exts: list = []
+        for external, internal in sliders:
+            ext = external.slider()
+            self._external_wl_dr_slider_exts.append(ext)
+            ext.setRange(internal.minimum(), internal.maximum())
+            ext.setValue(internal.value())
+            ext.valueChanged.connect(internal.setValue)
+            internal.valueChanged.connect(ext.setValue)
+            ext.valueChanged.connect(self._update_levels)
         sync_enabled()
+
+    def disconnect_display_controls(self) -> None:
+        """Block external slider signals to prevent dangling references."""
+        for ext in getattr(self, '_external_wl_dr_slider_exts', []):
+            try:
+                ext.blockSignals(True)
+            except RuntimeError:
+                pass
 
     def _set_wl_dr_sliders(
         self, window: int, level: int, dr: int, *, update_display: bool = True,

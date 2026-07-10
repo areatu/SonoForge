@@ -1100,7 +1100,7 @@ class AppController(QObject):
     def clear_manual_calibration(self) -> None:
         if (
             self._state_manager.snapshot.manual_pixel_spacing is None
-            and self._resolve_study_uid() not in self._measurement_session._studies
+            and self._resolve_study_uid() not in self._measurement_session
         ):
             return
         study_uid = self._resolve_study_uid()
@@ -1274,7 +1274,7 @@ class AppController(QObject):
         )
         planimeter = planimeter_results_from_contours(
             contours,
-            pixel_spacing if spacing_calibrated else pixel_spacing,
+            pixel_spacing,
             spacing_calibrated=spacing_calibrated,
         )
         base_snapshot = MeasurementSnapshot(

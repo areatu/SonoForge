@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import weakref
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
@@ -69,7 +70,7 @@ class HoverButtonMixin(QObject):
     Kept for API compatibility — install() is harmless.
     """
 
-    _instances: dict[QWidget, HoverButtonMixin] = {}
+    _instances: weakref.WeakValueDictionary[QWidget, HoverButtonMixin] = weakref.WeakValueDictionary()
 
     def __init__(self, widget: QWidget) -> None:
         super().__init__(widget)

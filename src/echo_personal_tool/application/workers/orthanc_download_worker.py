@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from threading import Lock
+from threading import Event, Lock
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
@@ -77,14 +77,14 @@ class OrthancDownloadWorker(QRunnable):
         self._username = username
         self._password = password
         self._retrieve_service = retrieve_service
-        self._cancelled = False
+        self._cancelled = Event()
         self._thread_client: OrthancDicomWebClient | None = None
         self._lock = Lock()
         self.signals = OrthancDownloadSignals(parent)
         self.setAutoDelete(True)
 
     def cancel(self) -> None:
-        self._cancelled = True
+        self._cancelled.set()
         thread_client = self._thread_client
         if thread_client is not None:
             thread_client.cancel_inflight()
@@ -94,6 +94,7 @@ class OrthancDownloadWorker(QRunnable):
         _client: DicomWebClient = self._client
         if self._server_settings is not None or self._base_url:
             _client = self._make_thread_client()
+            self._thread_client = _client
 
         logger.info(
             "[DIAG] worker run study=%s series_uids=%s client_type=%s",
@@ -104,13 +105,13 @@ class OrthancDownloadWorker(QRunnable):
 
         try:
             if self._retrieve_service is not None:
-                self._retrieve_service.set_cancel_check(lambda: self._cancelled)
+                self._retrieve_service.set_cancel_check(lambda: self._cancelled.is_set())
 
             t_start = time.monotonic()
             all_instances: list[tuple[str, str]] = []
 
             for series_uid in self._series_uids:
-                if self._cancelled:
+                if self._cancelled.is_set():
                     self._finish_cancelled()
                     return
                 from echo_personal_tool.infrastructure.i18n import tr
@@ -137,7 +138,7 @@ class OrthancDownloadWorker(QRunnable):
                 and self._retrieve_service.default_source == "cmove"
             ):
                 for series_uid in self._series_uids:
-                    if self._cancelled:
+                    if self._cancelled.is_set():
                         self._finish_cancelled()
                         return
                     self.signals.status.emit(
@@ -172,7 +173,7 @@ class OrthancDownloadWorker(QRunnable):
             with ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_DOWNLOADS) as pool:
                 futures = {}
                 for series_uid, instance_uid in all_instances:
-                    if self._cancelled:
+                    if self._cancelled.is_set():
                         pool.shutdown(wait=False, cancel_futures=True)
                         self._finish_cancelled()
                         return
@@ -185,7 +186,7 @@ class OrthancDownloadWorker(QRunnable):
                     futures[future] = (series_uid, instance_uid)
 
                 for future in as_completed(futures):
-                    if self._cancelled:
+                    if self._cancelled.is_set():
                         pool.shutdown(wait=False, cancel_futures=True)
                         self._finish_cancelled()
                         return
@@ -241,7 +242,7 @@ class OrthancDownloadWorker(QRunnable):
         except DownloadCancelled:
             self._finish_cancelled()
         except Exception as exc:  # noqa: BLE001
-            if self._cancelled:
+            if self._cancelled.is_set():
                 self._finish_cancelled()
                 return
             self.signals.failed.emit(self._study_uid, str(exc))
@@ -269,7 +270,7 @@ class OrthancDownloadWorker(QRunnable):
         instance_uid: str,
     ) -> bytes | None:
         """Download single instance. Returns bytes or None on failure."""
-        if self._cancelled:
+        if self._cancelled.is_set():
             return None
 
         # Use retrieve service if available (supports DIMSE/C-GET/C-MOVE)

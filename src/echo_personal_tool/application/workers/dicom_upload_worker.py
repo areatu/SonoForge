@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Literal
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
@@ -39,11 +40,11 @@ class DicomUploadWorker(QRunnable):
         self._uploader = uploader
         self._stow_client = stow_client
         self.signals = DicomUploadSignals(parent)
-        self._cancelled = False
+        self._cancelled = threading.Event()
         self.setAutoDelete(True)
 
     def cancel(self) -> None:
-        self._cancelled = True
+        self._cancelled.set()
 
     @Slot()
     def run(self) -> None:
@@ -54,7 +55,7 @@ class DicomUploadWorker(QRunnable):
                 return
 
             if self._stow_client is not None:
-                if self._cancelled:
+                if self._cancelled.is_set():
                     self.signals.failed.emit("Upload cancelled")
                     return
                 result = self._stow_client.stow_instances(self._files)
@@ -65,7 +66,7 @@ class DicomUploadWorker(QRunnable):
             success = 0
             failed_uids: list[str] = []
             for i, dicom_bytes in enumerate(self._files):
-                if self._cancelled:
+                if self._cancelled.is_set():
                     self.signals.failed.emit("Upload cancelled")
                     return
                 if self._uploader is not None and self._uploader.upload_instance(dicom_bytes):

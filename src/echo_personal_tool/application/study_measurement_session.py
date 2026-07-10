@@ -151,6 +151,9 @@ class StudyMeasurementSessionStore:
     def clear(self) -> None:
         self._studies.clear()
 
+    def __contains__(self, study_uid: str) -> bool:
+        return study_uid in self._studies
+
     def get(self, study_uid: str) -> StudyMeasurementData:
         return self._studies.setdefault(study_uid, StudyMeasurementData())
 

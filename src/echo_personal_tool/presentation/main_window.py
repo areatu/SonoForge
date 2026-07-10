@@ -881,6 +881,8 @@ class MainWindow(QMainWindow):
         run_dicom_upload_dialog(self, studies, load_server_settings())
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._stop_viewer2_playback()
+        self._viewer.disconnect_display_controls()
         self._orthanc_cache.clear_all()
         super().closeEvent(event)
 
