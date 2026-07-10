@@ -229,8 +229,8 @@ class AppController(QObject):
         logger.info("scan_start root=%s", root)
         self.status_message.emit(tr("status.scanning_folder", path=str(root)))
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
-        worker.signals.finished.connect(self._on_studies_scanned)
-        worker.signals.failed.connect(self._on_scan_failed)
+        worker.signals.finished.connect(self._on_studies_scanned, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_scan_failed, Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def load_pre_scanned_studies(self, studies: list[StudyMetadata]) -> None:
@@ -362,10 +362,10 @@ class AppController(QObject):
             )
             self._frame_cache.set_total_frames(instance.path, total_frames)
             worker = DicomDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
-            worker.signals.first_frame_ready.connect(self._on_first_frame_ready)
-            worker.signals.progress.connect(self.decode_progress.emit)
-            worker.signals.finished.connect(self._on_dicom_decoded)
-            worker.signals.failed.connect(self._on_dicom_decode_failed)
+            worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
+            worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
+            worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
+            worker.signals.failed.connect(self._on_dicom_decode_failed, Qt.ConnectionType.QueuedConnection)
             self._thread_pool.start(worker)
             return
         if instance.media_format == "mp4":
@@ -375,10 +375,10 @@ class AppController(QObject):
             )
             self._frame_cache.set_total_frames(instance.path, total_frames)
             worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
-            worker.signals.first_frame_ready.connect(self._on_first_frame_ready)
-            worker.signals.progress.connect(self.decode_progress.emit)
-            worker.signals.finished.connect(self._on_dicom_decoded)
-            worker.signals.failed.connect(self._on_dicom_decode_failed)
+            worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
+            worker.signals.progress.connect(self.decode_progress.emit, Qt.ConnectionType.QueuedConnection)
+            worker.signals.finished.connect(self._on_dicom_decoded, Qt.ConnectionType.QueuedConnection)
+            worker.signals.failed.connect(self._on_dicom_decode_failed, Qt.ConnectionType.QueuedConnection)
             self._thread_pool.start(worker)
             return
 
@@ -434,8 +434,8 @@ class AppController(QObject):
                     media_format=instance.media_format,
                     parent=self,
                 )
-                worker.signals.finished.connect(self._on_thumbnail_loaded)
-                worker.signals.failed.connect(self._on_thumbnail_failed)
+                worker.signals.finished.connect(self._on_thumbnail_loaded, Qt.ConnectionType.QueuedConnection)
+                worker.signals.failed.connect(self._on_thumbnail_failed, Qt.ConnectionType.QueuedConnection)
                 self._thumbnail_in_flight[task.sop_instance_uid] = task.priority
                 self._thread_pool.start(worker)
 
@@ -516,8 +516,9 @@ class AppController(QObject):
         )
         worker.signals.batch_finished.connect(
             partial(self._on_leading_scan_batch_loaded, request_id, path, total)
-        )
-        worker.signals.failed.connect(partial(self._on_leading_scan_failed, request_id, path, total))
+        , Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.failed.connect(partial(self._on_leading_scan_failed, request_id, path, total), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _on_leading_scan_batch_loaded(self, request_id: int, path: Path, total: int, frames: list) -> None:
@@ -831,13 +832,16 @@ class AppController(QObject):
                 frame_index,
                 original_shape,
             )
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.failed.connect(
             partial(self._on_auto_segment_failed, instance_path, frame_index)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.timed_out.connect(
             partial(self._on_auto_segment_timed_out, instance_path, frame_index)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         self._thread_pool.start(worker)
 
     def on_doppler_markers_changed(self, dto: object) -> None:
@@ -1406,8 +1410,9 @@ class AppController(QObject):
                 self._current_instance.path,
                 state.current_frame_index,
             )
-        )
-        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id))
+        , Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _start_scroll_target_load(self, target: int, *, scroll: bool = False) -> None:
@@ -1436,8 +1441,9 @@ class AppController(QObject):
         self._batch_load_id = request_id
         worker.signals.batch_finished.connect(
             partial(self._on_scroll_target_loaded, request_id, self._current_instance.path)
-        )
-        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id))
+        , Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _mark_scroll_active(self) -> None:
@@ -1524,8 +1530,9 @@ class AppController(QObject):
         )
         worker.signals.batch_finished.connect(
             partial(self._on_scroll_neighbors_loaded, request_id, self._current_instance.path)
-        )
-        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id))
+        , Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _format_doppler_summary(self, dto: DopplerMeasurementDTO) -> str:
@@ -1591,8 +1598,9 @@ class AppController(QObject):
         )
         worker.signals.batch_finished.connect(
             partial(self._on_prefetch_batch_loaded, request_id, self._current_instance.path)
-        )
-        worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id))
+        , Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _on_prefetch_batch_loaded(
@@ -2253,13 +2261,16 @@ class AppController(QObject):
                 self._on_la_auto_segment_finished,
                 phase, view, chamber, instance_path, frame_index, original_shape,
             )
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.failed.connect(
             partial(self._on_auto_segment_failed, instance_path, frame_index)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.timed_out.connect(
             partial(self._on_auto_segment_timed_out, instance_path, frame_index)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         self._thread_pool.start(worker)
 
     def _la_segmenter_available(self) -> bool:
@@ -2442,10 +2453,12 @@ class AppController(QObject):
                 instance_path=instance_path,
                 neighbor_idx=neighbor_idx,
             )
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.failed.connect(
             partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         self._thread_pool.start(worker)
 
     def _on_neighbor_frame_loaded(
@@ -2492,13 +2505,16 @@ class AppController(QObject):
                 original_shape=original_shape,
                 phase=phase,
             )
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.failed.connect(
             partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.timed_out.connect(
             partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         self._thread_pool.start(worker)
 
     def _on_neighbor_segment_finished(
@@ -2714,8 +2730,8 @@ class AppController(QObject):
             manual_ed=manual_ed,
             manual_es=manual_es,
         )
-        worker.signals.finished.connect(self._on_speckle_tracking_finished)
-        worker.signals.error.connect(self._on_speckle_tracking_error)
+        worker.signals.finished.connect(self._on_speckle_tracking_finished, Qt.ConnectionType.QueuedConnection)
+        worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _on_speckle_tracking_finished(self, result: object) -> None:

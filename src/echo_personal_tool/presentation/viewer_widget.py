@@ -821,6 +821,8 @@ class ViewerWidget(QWidget):
         self._window_slider.setRange(1, 400)
         self._window_slider.setValue(100)
         self._window_slider.valueChanged.connect(self._update_levels)
+        # Per-instance WL/DR cache to preserve settings across playback
+        self._instance_wl_dr_cache: dict[str, tuple[int, int, int]] = {}
 
         self._level_slider = QSlider(Qt.Orientation.Horizontal)
         self._level_slider.setRange(0, 100)
@@ -1647,6 +1649,14 @@ class ViewerWidget(QWidget):
         previous_frame = self._current_state.current_frame_index if self._current_state else None
         frame_changed = previous_frame != viewer_state.current_frame_index
         if previous_instance != viewer_state.instance:
+            # Save WL/DR for the old instance
+            if previous_instance is not None:
+                old_uid = previous_instance.sop_instance_uid
+                self._instance_wl_dr_cache[old_uid] = (
+                    self._dr_slider.value(),
+                    self._window_slider.value(),
+                    self._level_slider.value(),
+                )
             self._clear_linear_caliper()
             self._clear_calibration_caliper()
             self._clear_persistent_linear_calipers()
@@ -1660,6 +1670,19 @@ class ViewerWidget(QWidget):
                 self._doppler_pending_roi = None
                 self._doppler_pending_baseline_y = None
             self.clear_doppler_calibration_display()
+            # Restore WL/DR for the new instance if cached
+            new_uid = viewer_state.instance.sop_instance_uid if viewer_state.instance else None
+            if new_uid and new_uid in self._instance_wl_dr_cache:
+                dr, window, level = self._instance_wl_dr_cache[new_uid]
+                self._dr_slider.blockSignals(True)
+                self._dr_slider.setValue(dr)
+                self._dr_slider.blockSignals(False)
+                self._window_slider.blockSignals(True)
+                self._window_slider.setValue(window)
+                self._window_slider.blockSignals(False)
+                self._level_slider.blockSignals(True)
+                self._level_slider.setValue(level)
+                self._level_slider.blockSignals(False)
         elif frame_changed:
             if previous_frame is not None and not self._syncing_state:
                 self.doppler_frame_changing.emit(

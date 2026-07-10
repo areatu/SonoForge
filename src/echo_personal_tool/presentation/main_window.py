@@ -818,9 +818,12 @@ class MainWindow(QMainWindow):
             frame_time_ms=instance.frame_time_ms,
             parent=self,
         )
-        worker.signals.progress.connect(self._on_mp4_export_progress)
-        worker.signals.finished.connect(self._on_mp4_export_finished)
-        worker.signals.failed.connect(self._on_mp4_export_failed)
+        worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.finished.connect(self._on_mp4_export_finished, Qt.ConnectionType.QueuedConnection)
+
+        worker.signals.failed.connect(self._on_mp4_export_failed, Qt.ConnectionType.QueuedConnection)
+
         QThreadPool.globalInstance().start(worker)
 
     def _on_mp4_export_progress(self, current: int, total: int) -> None:
@@ -990,11 +993,13 @@ class MainWindow(QMainWindow):
         worker.signals.finished.connect(
             lambda pixels, inst=instance: self._on_viewer2_frame_loaded(pixels, inst)
             if self._viewer2 is not None else None
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         worker.signals.failed.connect(
             lambda msg: self._show_status(f"viewer2 load failed: {msg}")
             if self._viewer2 is not None else None
-        )
+        , Qt.ConnectionType.QueuedConnection)
+
         QThreadPool.globalInstance().start(worker)
 
     def _on_viewer2_frame_selected(self, frame_index: int) -> None:

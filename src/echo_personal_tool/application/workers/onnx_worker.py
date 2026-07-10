@@ -125,10 +125,8 @@ class OnnxWorker(QRunnable):
             mask_bytes = future.result(timeout=self._timeout_sec)
         except FuturesTimeoutError:
             # The running subprocess can't be killed via ProcessPoolExecutor.
-            # Discard the stuck executor so the next submit() creates a fresh one.
-            global _executor
-            with _executor_lock:
-                _executor = None
+            # Don't discard the executor — the stuck task will eventually finish
+            # and the next submit() will queue behind it.  Just stop waiting.
             self.signals.timed_out.emit()
             return
         except Exception as exc:  # noqa: BLE001 - surface to UI
