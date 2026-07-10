@@ -1153,6 +1153,7 @@ class MainWindow(QMainWindow):
             )
         if instance_changed:
             self._overlay_sync_instance_uid = instance_uid
+            self._viewer._results_overlay_cleared = False
             self._restore_results_overlay_position(instance_uid)
             self._sync_results_overlay(state)
         elif content_changed:

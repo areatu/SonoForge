@@ -150,12 +150,16 @@ _RESULTS_OVERLAY_STYLE = (
 )
 
 
-def _results_overlay_style(font_size: int, opacity: float = 0.84) -> str:
+def _results_overlay_style(font_size: int, opacity: float = 0.70) -> str:
     alpha = int(max(0.0, min(1.0, opacity)) * 255)
     return (
-        _RESULTS_OVERLAY_STYLE
+        f" background-color: rgba(0, 0, 0, {alpha});"
+        + f" color: #e8eef4;"
+        + f" padding: 11px 18px;"
+        + f" font-family: '{FONT_FAMILY_MONO}', monospace;"
+        + f" border: 2px solid #3d7cb8;"
+        + f" border-radius: 5px;"
         + f" font-size: {font_size}px;"
-        + f" background-color: rgba(0, 0, 0, 0);"
     )
 _DEFAULT_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 180);"
@@ -450,6 +454,8 @@ class ResultsOverlayLabel(QLabel):
         super().__init__(parent)
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setOpenExternalLinks(False)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.linkActivated.connect(self._on_link_activated)
         self._x_ratio = 1.0
         self._y_ratio = DEFAULT_RESULTS_OVERLAY_Y_RATIO
         self._dragging = False
@@ -466,14 +472,30 @@ class ResultsOverlayLabel(QLabel):
     def position_ratios(self) -> tuple[float, float]:
         return self._x_ratio, self._y_ratio
 
+    def _link_at(self, pos) -> str | None:
+        """Return href of the <a> tag under *pos*, or None."""
+        from PySide6.QtGui import QTextDocument, QTextCursor
+        doc = self.findChild(QTextDocument)
+        if doc is None:
+            return None
+        layout = doc.documentLayout()
+        if layout is None:
+            return None
+        offset = layout.hitTest(pos, Qt.HitTestAccuracy.ExactHit)
+        if offset < 0:
+            return None
+        cursor = QTextCursor(doc)
+        cursor.setPosition(offset)
+        char_fmt = cursor.charFormat()
+        href = char_fmt.anchorHref()
+        return href if href else None
+
     @_prof
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
-            # Check for link click first
-            anchor = self.anchorAt(event.position().toPoint())
-            if anchor:
-                self.parameter_clicked.emit(anchor)
-                event.accept()
+            # Check if clicking on a link — if so, let TextBrowserInteraction handle it
+            if self._link_at(event.position().toPoint()):
+                super().mousePressEvent(event)
                 return
             self._dragging = True
             viewer = self.parent()
@@ -485,6 +507,10 @@ class ResultsOverlayLabel(QLabel):
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def _on_link_activated(self, href: str) -> None:
+        if href:
+            self.parameter_clicked.emit(href)
 
     @_prof
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
@@ -725,7 +751,7 @@ class ViewerWidget(QWidget):
         self._overlay_label.hide()
 
         self._results_overlay_label = ResultsOverlayLabel(self)
-        self._results_overlay_label.setStyleSheet(_results_overlay_style(20, 0.84))
+        self._results_overlay_label.setStyleSheet(_results_overlay_style(20, 0.70))
         self._results_overlay_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )

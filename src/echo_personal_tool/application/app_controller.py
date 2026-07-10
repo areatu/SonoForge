@@ -1190,7 +1190,7 @@ class AppController(QObject):
         return active.series_uid
 
     def compute_overlay_snapshot(self, state: ViewerState) -> MeasurementSnapshot | None:
-        """Recompute metrics from all study-wide measurements (for on-image overlay)."""
+        """Recompute metrics from study-wide measurements (for on-image overlay)."""
         instance = state.instance
         if instance is None:
             return None
@@ -1212,8 +1212,15 @@ class AppController(QObject):
                 study_uid,
                 instance.sop_instance_uid,
             )
+        # Filter contours to current instance so volumes use the correct pixel spacing.
+        # Fall back to study-wide contours when the current instance has none.
+        instance_uid = instance.sop_instance_uid
+        instance_contours = tuple(
+            c for c in session.contours if c.sop_instance_uid == instance_uid
+        )
+        contours = instance_contours if instance_contours else session.contours
         return self._build_measurement_snapshot(
-            contours=session.contours,
+            contours=contours,
             linear_measurements=session.linear_measurements,
             doppler_dto=doppler_dto,
             state=state,

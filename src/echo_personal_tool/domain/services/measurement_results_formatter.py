@@ -13,10 +13,10 @@ from echo_personal_tool.domain.services.indexed_results_formatter import (
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
-_COLOR异常 = "#ff6b6b"  # light red for out-of-range values on dark background
-_COLOR正常 = "#e8eef4"  # default text color (light on dark)
-_COLOR标签 = "#94a3b8"  # dimmed label color
-_COLOR单元 = "#94a3b8"  # dimmed unit color
+_COLOR_ABNORMAL = "#ff6b6b"  # light red for out-of-range values on dark background
+_COLOR_NORMAL = "#e8eef4"  # default text color (light on dark)
+_COLOR_LABEL = "#94a3b8"  # dimmed label color
+_COLOR_UNIT = "#94a3b8"  # dimmed unit color
 
 
 @_prof
@@ -163,12 +163,24 @@ _LABEL_TO_PARAM: dict[str, str] = {
 }
 
 
+_norm_store_cache: ReferenceDataStore | None = None
+
+
+def _get_norm_store() -> ReferenceDataStore:
+    global _norm_store_cache
+    if _norm_store_cache is None:
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore as _RDS,
+        )
+        _norm_store_cache = _RDS()
+        _norm_store_cache.load()
+    return _norm_store_cache
+
+
 def _norm_for_param(param_id: str, sex_male: bool = True):
     """Look up norm range from ReferenceDataStore by param_id."""
     try:
-        from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
-        store = ReferenceDataStore()
-        store.load()
+        store = _get_norm_store()
         result = store.lookup(param_id)
         if result is None:
             return None
@@ -196,6 +208,34 @@ def _is_outside(norm, value: float) -> bool:
     return False
 
 
+def _best_lav_index(indexed) -> float | None:
+    for candidate in (
+        indexed.lav_bi_index_ml_m2,
+        indexed.lav_area_length_index_ml_m2,
+        indexed.lav_4c_index_ml_m2,
+    ):
+        if candidate is not None:
+            return candidate
+    return None
+
+
+_INDEXED_LINEAR_I18N: dict[str, str] = {
+    "ivsd": "indexed.linear_ivsd",
+    "lvedd": "indexed.linear_lvedd",
+    "lvpwd": "indexed.linear_lvpwd",
+    "lvesd": "indexed.linear_lvesd",
+    "la": "indexed.linear_la",
+}
+
+
+def _indexed_linear_label(measurement_label: str) -> str:
+    key = measurement_label.casefold()
+    i18n_key = _INDEXED_LINEAR_I18N.get(key)
+    if i18n_key is not None:
+        return tr(i18n_key)
+    return f"{measurement_label}{tr('indexed.suffix')}"
+
+
 def _html_append(
     parts: list[str],
     label: str,
@@ -214,18 +254,18 @@ def _html_append(
 
     # Link to reference
     if param_id:
-        label_html = f'<a href="{param_id}" style="color:{_COLOR标签}; text-decoration:none;">{label}</a>'
+        label_html = f'<a href="{param_id}" style="color:{_COLOR_LABEL}; text-decoration:none;">{label}</a>'
     else:
-        label_html = f'<span style="color:{_COLOR标签};">{label}</span>'
+        label_html = f'<span style="color:{_COLOR_LABEL};">{label}</span>'
 
     # Check norm
     norm = _norm_for_param(param_id, sex_male) if param_id else None
     if _is_outside(norm, value):
-        val_html = f'<span style="color:{_COLOR异常};">{val_str}</span>'
+        val_html = f'<span style="color:{_COLOR_ABNORMAL};">{val_str}</span>'
     else:
-        val_html = f'<span style="color:{_COLOR正常};">{val_str}</span>'
+        val_html = f'<span style="color:{_COLOR_NORMAL};">{val_str}</span>'
 
-    parts.append(f'{label_html}: {val_html} <span style="color:{_COLOR单元};">{unit}</span>')
+    parts.append(f'{label_html}: {val_html} <span style="color:{_COLOR_UNIT};">{unit}</span>')
 
 
 @_prof
@@ -265,9 +305,9 @@ def format_results_overlay_html(
         _html_append(parts, tr("result.pgpeak"), dop.pgpeak_mmhg, "mmHg", param_id="tr_vmax", sex_male=sex_male)
         _html_append(parts, tr("result.tr_vmax"), dop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)
         if time_calibrated:
-            _html_append(parts, tr("result.vti"), dop.vti_cm, "cm")
-            _html_append(parts, tr("result.vmean"), dop.vmean_cm_s, "cm/s")
-            _html_append(parts, tr("result.pgmean"), dop.pgmean_mmhg, "mmHg")
+            _html_append(parts, tr("result.vti"), dop.vti_cm, "cm", param_id="vti", sex_male=sex_male)
+            _html_append(parts, tr("result.vmean"), dop.vmean_cm_s, "cm/s", param_id="vti", sex_male=sex_male)
+            _html_append(parts, tr("result.pgmean"), dop.pgmean_mmhg, "mmHg", param_id="vti", sex_male=sex_male)
 
     volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
 
@@ -322,20 +362,59 @@ def format_results_overlay_html(
         _html_append(parts, tr("result.fac"), snapshot.rv_fac_percent, "%", param_id="fac", sex_male=sex_male)
 
     if snapshot.diastology_grade:
-        parts.append(f'<span style="color:{_COLOR标签};">{snapshot.diastology_grade}</span>')
+        parts.append(f'<span style="color:{_COLOR_LABEL};">{snapshot.diastology_grade}</span>')
 
-    # Indexed results (no param links for indexed values)
-    indexed_lines: list[str] = []
-    append_indexed_for_overlay(indexed_lines, snapshot)
-    for line in indexed_lines:
-        parts.append(f'<span style="color:{_COLOR正常};">{line}</span>')
+    # Indexed results with param links for norm checking
+    indexed = snapshot.indexed
+    if indexed is not None:
+        bsa = indexed.bsa_m2
+        if bsa is not None:
+            _html_append(parts, tr("indexed.bsa"), bsa, "m²", decimals=2, param_id="lavi", sex_male=sex_male)
+        lav_index = _best_lav_index(indexed)
+        if lav_index is not None:
+            _html_append(parts, tr("indexed.lav_line"), lav_index, "mL/m²", param_id="lavi", sex_male=sex_male)
+        if indexed.rav_index_ml_m2 is not None:
+            _html_append(parts, tr("indexed.rav_line"), indexed.rav_index_ml_m2, "mL/m²", param_id="ra_area", sex_male=sex_male)
+        if indexed.lvmi_g_m2 is not None:
+            _html_append(parts, tr("indexed.lvmi_line"), indexed.lvmi_g_m2, "g/m²", param_id="lvmi", sex_male=sex_male)
+        lvef = snapshot.lvef
+        if lvef is not None:
+            if lvef.a4c and indexed.simpson_a4c_edvi_ml_m2 is not None:
+                _html_append(parts, tr("indexed.edv_4c"), indexed.simpson_a4c_edvi_ml_m2, "mL/m²", param_id="lvedvi", sex_male=sex_male)
+            if lvef.a4c and indexed.simpson_a4c_esvi_ml_m2 is not None:
+                _html_append(parts, tr("indexed.esv_4c"), indexed.simpson_a4c_esvi_ml_m2, "mL/m²", param_id="lvesvi", sex_male=sex_male)
+            if lvef.a2c and indexed.simpson_a2c_edvi_ml_m2 is not None:
+                _html_append(parts, tr("indexed.edv_2c"), indexed.simpson_a2c_edvi_ml_m2, "mL/m²", param_id="lvedvi", sex_male=sex_male)
+            if lvef.a2c and indexed.simpson_a2c_esvi_ml_m2 is not None:
+                _html_append(parts, tr("indexed.esv_2c"), indexed.simpson_a2c_esvi_ml_m2, "mL/m²", param_id="lvesvi", sex_male=sex_male)
+        teich = snapshot.teichholz
+        if teich is not None:
+            if indexed.teichholz_edvi_ml_m2 is not None:
+                _html_append(parts, tr("indexed.teichholz_ed"), indexed.teichholz_edvi_ml_m2, "mL/m²", param_id="lvedvi", sex_male=sex_male)
+            if indexed.teichholz_esvi_ml_m2 is not None:
+                _html_append(parts, tr("indexed.teichholz_es"), indexed.teichholz_esvi_ml_m2, "mL/m²", param_id="lvesvi", sex_male=sex_male)
+        for measurement in snapshot.linear_measurements:
+            if measurement.millimeter_length is None:
+                continue
+            indexed_mm_m2 = next(
+                (v for k, v in indexed.linear_index_mm_m2 if k.casefold() == measurement.label.casefold()),
+                None,
+            )
+            if indexed_mm_m2 is None:
+                continue
+            from echo_personal_tool.domain.services.indexed_results_formatter import should_show_indexed_linear
+            if should_show_indexed_linear(measurement.label, measurement.millimeter_length):
+                param_id_map = {"ivsd": "ivsd", "lvedd": "lvedd", "lvpwd": "lvpwd", "lvesd": "lvesd"}
+                param_id = param_id_map.get(measurement.label.casefold())
+                label_text = _indexed_linear_label(measurement.label)
+                _html_append(parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=param_id, sex_male=sex_male)
 
     for item in snapshot.planimeter:
         _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
     for measurement in snapshot.linear_measurements:
         text = measurement.display_text(length_unit=length_display_unit)
-        parts.append(f'<span style="color:{_COLOR正常};">{text}</span>')
+        parts.append(f'<span style="color:{_COLOR_NORMAL};">{text}</span>')
 
     return "<br>".join(parts)
 
