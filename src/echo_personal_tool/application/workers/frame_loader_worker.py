@@ -101,5 +101,6 @@ class FrameLoaderWorker(QRunnable):
             for i in range(self._frame_index, end):
                 pixels = session.decode_single_frame(i)
                 results.append((i, np.ascontiguousarray(pixels)))
+            session.release_heavy()
 
         self.signals.batch_finished.emit(results)

@@ -76,6 +76,10 @@ class DopplerAxisMapping:
     def velocity_cm_s_from_y(self, y: float) -> float:
         if self.plot_height <= 0.0:
             return 0.0
+        if self.baseline_y_px is not None and self.velocity_span_cm_s > 0.0:
+            pixels_per_cm_s = self.plot_height / self.velocity_span_cm_s
+            return -(y - self.baseline_y_px) / pixels_per_cm_s
+        # Fallback: zero at ROI center
         local_y = y - self.plot_origin_y
         span = self.velocity_max_cm_s - self.velocity_min_cm_s
         return self.velocity_max_cm_s - (local_y / self.plot_height) * span
@@ -83,6 +87,10 @@ class DopplerAxisMapping:
     def y_from_velocity_cm_s(self, velocity_cm_s: float) -> float:
         if self.plot_height <= 0.0:
             return self.plot_origin_y
+        if self.baseline_y_px is not None and self.velocity_span_cm_s > 0.0:
+            pixels_per_cm_s = self.plot_height / self.velocity_span_cm_s
+            return self.baseline_y_px - velocity_cm_s * pixels_per_cm_s
+        # Fallback: zero at ROI center
         span = self.velocity_max_cm_s - self.velocity_min_cm_s
         if span <= 0.0:
             return self.plot_origin_y + self.plot_height * 0.5

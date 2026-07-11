@@ -201,6 +201,8 @@ class OrthancDicomWebClient:
             results = lookup.json()
             if isinstance(results, list) and results:
                 orthanc_id = results[0]["ID"]
+            elif isinstance(results, dict) and "ID" in results:
+                orthanc_id = results["ID"]
             else:
                 orthanc_id = str(results)
             r = self._orthanc_client.get(f"instances/{orthanc_id}/file")

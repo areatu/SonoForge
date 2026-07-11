@@ -935,7 +935,7 @@ def _predict_ma_onnx_keypoints(
         padded = np.zeros((_MA_ONNX_CROP, _MA_ONNX_CROP), dtype=crop.dtype)
         padded[: crop.shape[0], : crop.shape[1]] = crop
         crop = padded
-    inp = (crop.astype(np.float32) / 255.0)[np.newaxis, np.newaxis, ...]
+    inp = crop.astype(np.float32)[np.newaxis, np.newaxis, ...]
 
     sess = ort.InferenceSession(str(_MA_ONNX_MODEL_PATH))
     out = sess.run(None, {"input": inp})[0]  # (1, 2, 224, 224)

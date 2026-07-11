@@ -71,6 +71,47 @@ def test_color_flow_region_not_treated_as_spectral() -> None:
     assert state is None
 
 
+def test_parse_velocity_only_no_time() -> None:
+    """Velocity-only DICOM (PhysicalDeltaY in cm/s, no valid PhysicalDeltaX)."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.0, units_x=3, delta_y=0.5, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.from_dicom_tags
+    assert state.velocity_from_dicom_tags
+    assert state.has_velocity_scale_from_dicom()
+    # time_span_ms may be None or 0 since delta_x=0
+    assert state.velocity_span_cm_s > 0
+
+
+def test_parse_velocity_and_time() -> None:
+    """Both velocity and time DICOM tags present."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.024, units_x=3, delta_y=0.5, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.has_time_scale_from_dicom()
+    assert state.has_velocity_scale_from_dicom()
+    assert state.velocity_span_cm_s > 0
+    assert state.time_span_ms > 0
+
+
+def test_parse_velocity_only_vendor_mis_tag() -> None:
+    """Vendor mis-tagged velocity units (units_y=7 treated as cm/s)."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.0, units_x=3, delta_y=0.3, units_y=7),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.velocity_from_dicom_tags
+    assert state.has_velocity_scale_from_dicom()
+
+
 def test_parse_user_download_dicom_when_available() -> None:
     root = Path("/home/areatu/Загрузки/Unknown Study")
     if not root.exists():
@@ -89,4 +130,4 @@ def test_parse_user_download_dicom_when_available() -> None:
         return
     state = try_parse_from_dataset(pydicom.dcmread(doppler_files[0], force=True))
     assert state is not None
-    assert state.has_time_scale_from_dicom()
+    assert state.has_time_scale_from_dicom() or state.has_velocity_scale_from_dicom()

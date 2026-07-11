@@ -2867,9 +2867,10 @@ class AppController(QObject):
         )
 
         # Use cached frames directly — load_all_frames is too slow for main thread
-        frames = self._frame_cache.frames
-        if frames is None:
-            self.status_message.emit("Speckle tracking: загрузите cine-последовательность")
+        try:
+            frames = self._frame_cache.require_full_cine()
+        except RuntimeError:
+            self.status_message.emit("Speckle tracking: загрузите полную cine-последовательность")
             return
 
         if contour is None:

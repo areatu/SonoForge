@@ -54,7 +54,7 @@ class LocalMediaDirectoryScanner:
             if study is not None:
                 studies.append(study)
 
-        studies.sort(key=lambda s: s.study_datetime, reverse=True)
+        studies.sort(key=lambda s: s.study_datetime or datetime.min, reverse=True)
         return studies
 
     def _scan_study_folder(self, study_folder: Path) -> StudyMetadata | None:
@@ -182,9 +182,15 @@ class LocalMediaDirectoryScanner:
         value = str(dataset.get("StudyInstanceUID", "") or "")
         return value or None
 
-    def _read_study_datetime(self, path: Path) -> datetime:
-        dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
-        return parse_study_datetime(dataset)
+    def _read_study_datetime(self, path: Path) -> datetime | None:
+        try:
+            dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+        except Exception:
+            return None
+        try:
+            return parse_study_datetime(dataset)
+        except Exception:
+            return None
 
     def _read_mp4_instance(
         self,

@@ -45,7 +45,7 @@ def try_parse_from_dataset(
     *,
     kind: DopplerKind = DopplerKind.SPECTRAL,
 ) -> DopplerCalibrationState | None:
-    """Build calibration from DICOM tags (time axis required; velocity optional)."""
+    """Build calibration from DICOM tags (time and/or velocity axis from region deltas)."""
     regions = dataset.get("SequenceOfUltrasoundRegions")
     if not regions:
         return None
@@ -69,12 +69,14 @@ def try_parse_from_dataset(
             continue
 
         time_span_ms = time_span_ms_from_region(roi.width, delta_x, units_x)
-        if time_span_ms is None:
-            continue
 
         velocity_span = None
         if delta_y is not None and units_y is not None:
             velocity_span = velocity_span_cm_s_from_region(roi.height, delta_y, units_y)
+
+        # Skip if neither time nor velocity could be computed
+        if time_span_ms is None and velocity_span is None:
+            continue
 
         baseline_y = roi.y0 + roi.height / 2.0
         if frame is not None:
@@ -90,7 +92,7 @@ def try_parse_from_dataset(
             roi,
             baseline_y,
             velocity_span_cm_s=velocity_span,
-            time_span_ms=time_span_ms,
+            time_span_ms=time_span_ms if time_span_ms is not None else 1000.0,
             kind=region_kind,
         )
         candidate = DopplerCalibrationState(
@@ -101,8 +103,9 @@ def try_parse_from_dataset(
             velocity_span_cm_s=candidate.velocity_span_cm_s,
             kind=candidate.kind,
             from_dicom_tags=True,
+            velocity_from_dicom_tags=velocity_span is not None,
         )
-        if candidate.has_time_scale_from_dicom():
+        if candidate.has_time_scale_from_dicom() or candidate.has_velocity_scale_from_dicom():
             return candidate
         if best is None:
             best = candidate

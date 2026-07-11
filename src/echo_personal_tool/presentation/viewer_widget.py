@@ -61,6 +61,9 @@ from echo_personal_tool.domain.services.depth_scale_detector import (
     detect_depth_scale_ticks,
     find_scale_ticks,
 )
+from echo_personal_tool.domain.services.doppler_grid_detector import (
+    detect_doppler_grid_lines,
+)
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.contour_edge_snap import (
     EdgeMap,
@@ -649,6 +652,7 @@ class ViewerWidget(QWidget):
         self._calibration_h_guide_start_item: pg.PlotDataItem | None = None
         self._calibration_h_guide_end_item: pg.PlotDataItem | None = None
         self._depth_tick_y_positions: list[float] = []
+        self._doppler_grid_line_positions: list[float] = []
         self._calibration_tick_snap_enabled: bool = True
         self._calibration_tick_snap_radius_px: float = 8.0
         self._auto_calibration_succeeded: bool = False
@@ -2217,7 +2221,7 @@ class ViewerWidget(QWidget):
                 kind=DopplerKind.SPECTRAL,
                 frame=self._current_frame,
             )
-            if parsed is not None and parsed.has_time_scale_from_dicom():
+            if parsed is not None and (parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom()):
                 self.apply_doppler_calibration_state(parsed, persist=True)
                 return True
         return False
@@ -2258,7 +2262,7 @@ class ViewerWidget(QWidget):
         if self._doppler_cal_step == "roi":
             if self._doppler_roi_corner1 is None:
                 self._doppler_roi_corner1 = (x, y)
-                self._measurement_label.setText(_DOPPLER_CAL_ROI_STEP2)
+                self._measurement_label.setText(_DOPPLER_CAL_ROI_STEP2_KEY)
                 return True
             roi = roi_from_corners(self._doppler_roi_corner1, (x, y))
             height, width = self._current_frame.shape[:2]
@@ -2278,7 +2282,7 @@ class ViewerWidget(QWidget):
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
-            self._measurement_label.setText(_DOPPLER_CAL_BASELINE)
+            self._measurement_label.setText(_DOPPLER_CAL_BASELINE_KEY)
             return True
 
         if self._doppler_cal_step == "baseline":
@@ -2305,10 +2309,19 @@ class ViewerWidget(QWidget):
         roi = self._doppler_pending_roi
         if roi is not None:
             self._calibration_x = min(roi.x1 - 4.0, float(width - 5))
+            # Detect grid lines in the spectrogram ROI for snap
+            self._doppler_grid_line_positions = detect_doppler_grid_lines(
+                self._current_frame,
+                x0=int(roi.x0),
+                y0=int(roi.y0),
+                width=int(roi.width),
+                height=int(roi.height),
+            )
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
+            self._doppler_grid_line_positions = []
         self._calibration_start_y = None
-        self._measurement_label.setText(_DOPPLER_CAL_VELOCITY)
+        self._measurement_label.setText(_DOPPLER_CAL_VELOCITY_KEY)
 
     def _handle_doppler_mouse_click(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:
@@ -3118,6 +3131,7 @@ class ViewerWidget(QWidget):
         self._calibration_start_y = None
         self._mmode_time_start_x = None
         self._calibration_kind = None
+        self._doppler_grid_line_positions = []
         self._clear_calibration_graphics()
         if not self._linear_caliper_active:
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
@@ -4290,7 +4304,10 @@ class ViewerWidget(QWidget):
             return True
 
         y = max(0.0, min(float(click[1]), float(height - 1)))
-        y = snap_y_to_nearest_tick(y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px)
+        if self._calibration_kind == "doppler_velocity" and self._doppler_grid_line_positions:
+            y = snap_y_to_nearest_tick(y, self._doppler_grid_line_positions, radius_px=self._calibration_tick_snap_radius_px)
+        else:
+            y = snap_y_to_nearest_tick(y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px)
         if self._calibration_start_y is None:
             self._calibration_start_y = y
             self._update_calibration_preview(y, y)

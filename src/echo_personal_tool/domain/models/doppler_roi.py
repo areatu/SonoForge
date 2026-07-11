@@ -57,6 +57,7 @@ class DopplerCalibrationState:
     velocity_span_cm_s: float = 200.0
     kind: DopplerKind = DopplerKind.SPECTRAL
     from_dicom_tags: bool = False
+    velocity_from_dicom_tags: bool = False
 
     def is_complete(self) -> bool:
         return self.has_velocity_scale() and self.time_span_ms > 0.0
@@ -73,6 +74,13 @@ class DopplerCalibrationState:
             self.from_dicom_tags
             and self.roi.width > 0.0
             and self.time_span_ms > 0.0
+        )
+
+    def has_velocity_scale_from_dicom(self) -> bool:
+        return (
+            self.velocity_from_dicom_tags
+            and self.roi.height > 0.0
+            and self.velocity_span_cm_s > 0.0
         )
 
     def is_dicom_trusted(self) -> bool:
