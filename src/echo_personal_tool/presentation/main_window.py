@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -64,6 +65,9 @@ from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 from echo_personal_tool.resources.bundled_fonts import ui_font
 
 logger = logging.getLogger(__name__)
+
+_FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
+_diag_log = logging.getLogger("echo_freeze_diag")
 
 _TOOL_PANEL_WIDTH = 280
 
@@ -1075,6 +1079,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_frame_loaded(self, pixels: object) -> None:
+        _ft0 = perf_counter() if _FREEZE_DIAG else 0
         instance_switch = self._click_to_frame_started_at is not None
         if instance_switch:
             elapsed_ms = (perf_counter() - self._click_to_frame_started_at) * 1000.0
@@ -1107,6 +1112,11 @@ class MainWindow(QMainWindow):
                     self._show_status(
                         tr("status.calibration_click")
                     )
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[frame_display] playing=%s scroll=%s render_ms=%.2f",
+                is_playing, scroll_active, (perf_counter() - _ft0) * 1000,
+            )
 
     def _deferred_instance_switch_restore(self, image: np.ndarray, is_playing: bool) -> None:
         self._viewer.show_frame(image)
@@ -1133,6 +1143,7 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_scroll_settled(self) -> None:
+        _t0 = perf_counter() if _FREEZE_DIAG else 0
         if self._controller.state_manager.snapshot.is_playing:
             return
         self._viewer.refresh_after_scroll()
@@ -1141,6 +1152,10 @@ class MainWindow(QMainWindow):
         self._restore_doppler_for_current_instance()
         self._restore_mmode_for_current_instance()
         self._sync_doppler_tool_availability()
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_settled] total_ms=%.2f", (perf_counter() - _t0) * 1000,
+            )
 
     @_prof
     def _on_frame_load_failed(self, message: str) -> None:

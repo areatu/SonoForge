@@ -98,6 +98,11 @@ from echo_personal_tool.infrastructure.system_profiler import (
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 _FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
+
+# ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
+import os as _os
+_FREEZE_DIAG = _os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
+_diag_log = logging.getLogger("echo_freeze_diag")
 logger = logging.getLogger(__name__)
 
 
@@ -164,14 +169,18 @@ class AppController(QObject):
         self._batch_target_frame: int = 0
         self._prefetch_request_id: int = 0
         self._prefetch_load_id: int = 0
+        self._prefetch_load_started_at: float = 0.0
         self._prefetch_batch_start: float = 0.0
         self._prefetch_ema_latency_ms: float = 0.0
+        self._diag_frame_counter: int = 0
         self._adaptive_batch_size: int = self._playback_config.batch_size
         self._scroll_load_id: int = 0
+        self._scroll_load_started_at: float = 0.0
         self._scroll_neighbor_load_id: int = 0
         self._scroll_active: bool = False
         self._scroll_settle_timer: QTimer | None = None
         self._last_pinned_frame: int | None = None
+        self._live_workers: set = set()
         self._segment_in_progress = False
         self._auto_segment_phase: str | None = None
         self._auto_segment_view: str = "A4C"
@@ -196,6 +205,28 @@ class AppController(QObject):
         self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
         self._state_manager.state_changed.connect(self._on_state_changed)
+
+    def _retain_worker(self, worker: FrameLoaderWorker) -> None:
+        """Prevent GC of a QRunnable until its QueuedConnection signals are delivered."""
+        # Safety: if too many workers are retained, force-release the oldest
+        # to prevent unbounded memory growth (each holds decoded numpy arrays).
+        if len(self._live_workers) > 8:
+            leaked = list(self._live_workers)[:len(self._live_workers) - 4]
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[retain_worker] LEAK DETECTED: force-releasing %d stale workers",
+                    len(leaked),
+                )
+            for w in leaked:
+                self._live_workers.discard(w)
+        self._live_workers.add(worker)
+
+    def _release_worker(self, worker: FrameLoaderWorker, *_args: object) -> None:
+        """Release a retained worker after its signals have been processed."""
+        self._live_workers.discard(worker)
+        if len(self._live_workers) == 0:
+            import gc
+            gc.collect()
 
     @property
     def studies(self) -> list[StudyMetadata]:
@@ -313,6 +344,10 @@ class AppController(QObject):
                 return
 
         self._frame_cache.clear()
+        # Free heavy DICOM buffers (pixel data, encapsulated frames) from
+        # all thread-local sessions when switching instances.
+        from echo_personal_tool.infrastructure.dicom_session import release_stale_sessions
+        release_stale_sessions()
         self._last_pinned_frame = None
         self._loaded_source_path = None
         self._loaded_frame_index = None
@@ -519,12 +554,16 @@ class AppController(QObject):
         , Qt.ConnectionType.QueuedConnection)
 
         worker.signals.failed.connect(partial(self._on_leading_scan_failed, request_id, path, total), Qt.ConnectionType.QueuedConnection)
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _on_leading_scan_batch_loaded(self, request_id: int, path: Path, total: int, frames: list) -> None:
-        if request_id != self._prefetch_load_id:
-            return
-        self._prefetch_load_id = 0
+        is_current = request_id == self._prefetch_load_id
+        if is_current:
+            self._prefetch_load_id = 0
+        # Always cache frames even for stale requests.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
         if path not in self._leading_static_frames:
@@ -1381,7 +1420,15 @@ class AppController(QObject):
             and self._pending_source_path == self._current_instance.path
             and self._pending_frame_index == state.current_frame_index
         ):
-            return
+            # Stale pending-load guard: force-clear if the worker hung.
+            if perf_counter() - self._scroll_load_started_at < self._PREFETCH_TIMEOUT_SEC:
+                return
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[request_frame] STALE pending_load_id=%d after %.1fs, clearing",
+                    self._pending_load_id, perf_counter() - self._scroll_load_started_at,
+                )
+            self._pending_load_id = 0
 
         if self._current_instance.media_format in ("dicom", "mp4") and self._frame_cache.frame_count() > 0:
             scroll = state.scroll_navigation and not state.is_playing
@@ -1413,6 +1460,9 @@ class AppController(QObject):
         , Qt.ConnectionType.QueuedConnection)
 
         worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _start_scroll_target_load(self, target: int, *, scroll: bool = False) -> None:
@@ -1423,9 +1473,15 @@ class AppController(QObject):
             self._invalidate_prefetch()
         self._scroll_neighbor_load_id = 0
         self._batch_target_frame = target
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_start] target=%d scroll=%d old_scroll_load=%d",
+                target, scroll, self._scroll_load_id,
+            )
         self._load_request_id += 1
         request_id = self._load_request_id
         self._scroll_load_id = request_id
+        self._scroll_load_started_at = perf_counter()
         self._pending_load_id = request_id
         self._pending_source_path = self._current_instance.path
         self._pending_frame_index = target
@@ -1444,6 +1500,9 @@ class AppController(QObject):
         , Qt.ConnectionType.QueuedConnection)
 
         worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _mark_scroll_active(self) -> None:
@@ -1533,6 +1592,9 @@ class AppController(QObject):
         , Qt.ConnectionType.QueuedConnection)
 
         worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _format_doppler_summary(self, dto: DopplerMeasurementDTO) -> str:
@@ -1550,13 +1612,30 @@ class AppController(QObject):
         self._prefetch_request_id += 1
         self._prefetch_load_id = 0
 
+    _PREFETCH_TIMEOUT_SEC = 1.0
+
     def _prefetch_playback_buffer(self, center: int) -> None:
         if self._current_instance is None or self._current_instance.path is None:
             return
         if not self._state_manager.snapshot.is_playing:
             return
         if self._prefetch_load_id != 0:
-            return
+            # Stale prefetch guard: if the worker hasn't completed within
+            # _PREFETCH_TIMEOUT_SEC, force-clear it to prevent playback stall.
+            stale_sec = perf_counter() - self._prefetch_load_started_at
+            if stale_sec < self._PREFETCH_TIMEOUT_SEC:
+                if _FREEZE_DIAG:
+                    _diag_log.warning(
+                        "[prefetch] center=%d BLOCKED by pending_load_id=%d (%.1fs old)",
+                        center, self._prefetch_load_id, stale_sec,
+                    )
+                return
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[prefetch] STALE timeout! clearing pending_load_id=%d after %.1fs",
+                    self._prefetch_load_id, stale_sec,
+                )
+            self._prefetch_load_id = 0
 
         cfg = self._playback_config
         ahead = self._frame_cache.loaded_ahead(center)
@@ -1586,6 +1665,7 @@ class AppController(QObject):
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id
         self._prefetch_load_id = request_id
+        self._prefetch_load_started_at = perf_counter()
         self._prefetch_batch_start = perf_counter()
 
         worker = FrameLoaderWorker(
@@ -1601,29 +1681,52 @@ class AppController(QObject):
         , Qt.ConnectionType.QueuedConnection)
 
         worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        self._retain_worker(worker)
+        worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[prefetch_submit] req=%d start=%d batch=%d active_threads=%d",
+                request_id, start, batch, self._thread_pool.activeThreadCount(),
+            )
         self._thread_pool.start(worker)
 
     def _on_prefetch_batch_loaded(
         self, request_id: int, path: Path, frames: list
     ) -> None:
-        if request_id != self._prefetch_load_id:
-            return
-        self._prefetch_load_id = 0
-        if self._current_instance is None or self._current_instance.path != path:
-            return
-        # Adaptive batch sizing: EMA of batch latency
-        if self._prefetch_batch_start > 0:
-            elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
-            self._prefetch_batch_start = 0.0
-            alpha = 0.3
-            self._prefetch_ema_latency_ms = (
-                alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
-            )
-            cfg = self._playback_config
-            if self._prefetch_ema_latency_ms < 10 and self._adaptive_batch_size < 16:
-                self._adaptive_batch_size += 2
-            elif self._prefetch_ema_latency_ms > 60 and self._adaptive_batch_size > 2:
-                self._adaptive_batch_size -= 1
+        is_current = request_id == self._prefetch_load_id
+        if is_current:
+            total_ms = (perf_counter() - self._prefetch_load_started_at) * 1000.0
+            self._prefetch_load_id = 0
+            if self._current_instance is None or self._current_instance.path != path:
+                return
+            # Adaptive batch sizing: EMA of batch latency
+            if self._prefetch_batch_start > 0:
+                elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
+                self._prefetch_batch_start = 0.0
+                alpha = 0.3
+                self._prefetch_ema_latency_ms = (
+                    alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
+                )
+                cfg = self._playback_config
+                if self._prefetch_ema_latency_ms < 10 and self._adaptive_batch_size < 16:
+                    self._adaptive_batch_size += 2
+                elif self._prefetch_ema_latency_ms > 60 and self._adaptive_batch_size > 2:
+                    self._adaptive_batch_size -= 1
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f ema=%.1fms batch_size=%d",
+                    request_id, len(frames), elapsed_ms if self._prefetch_batch_start == 0 else 0,
+                    total_ms, self._prefetch_ema_latency_ms, self._adaptive_batch_size,
+                )
+        else:
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[prefetch_batch] STALE req=%d (current=%d) frames=%d — caching anyway",
+                    request_id, self._prefetch_load_id, len(frames),
+                )
+        # Always cache frames even for stale requests — they may be
+        # needed if playback catches up to that region.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
         if self._state_manager.snapshot.is_playing:
@@ -1637,10 +1740,13 @@ class AppController(QObject):
         self.status_message.emit(tr("status.prefetch_failed", message=message))
 
     def _advance_playback(self) -> None:
+        _t0 = perf_counter() if _FREEZE_DIAG else 0
         state = self._state_manager.snapshot
         if not state.is_playing:
             return
         if self._pending_decode_id != 0:
+            if _FREEZE_DIAG:
+                _diag_log.warning("[advance] frame=%s PENDING_DECODE skip", state.current_frame_index)
             return
         if self._playback_warmup_pending:
             cfg = self._playback_config
@@ -1682,6 +1788,29 @@ class AppController(QObject):
                 self._last_frame_shown_at = perf_counter()
                 self._prefetch_playback_buffer(next_idx)
                 self._reschedule_playback_timer()
+                if _FREEZE_DIAG:
+                    _diag_log.warning(
+                        "[advance] frame=%d→%d cache_hit=True elapsed=%.2fms",
+                        current, next_idx, (perf_counter() - _t0) * 1000,
+                    )
+                    self._diag_frame_counter += 1
+                    if self._diag_frame_counter % 50 == 0:
+                        import os as _os
+                        proc = _os.getpid()
+                        try:
+                            with open(f"/proc/{proc}/status") as _f:
+                                for line in _f:
+                                    if line.startswith("VmRSS:"):
+                                        _diag_log.warning("[mem] %s", line.strip())
+                                        break
+                        except Exception:
+                            pass
+                        _diag_log.warning(
+                            "[mem] cache_frames=%d cache_bytes=%.1fMB live_workers=%d",
+                            len(self._frame_cache._frame_store),
+                            self._frame_cache.memory_bytes() / (1024 * 1024),
+                            len(self._live_workers),
+                        )
                 return
 
             # Double-next skip: if next frame is missing but next+1 is loaded, skip forward
@@ -1710,6 +1839,11 @@ class AppController(QObject):
 
             self._prefetch_playback_buffer(current)
             self._reschedule_playback_timer(poll=True)
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[advance] frame=%d cache_miss prefetch_pending elapsed=%.2fms",
+                    current, (perf_counter() - _t0) * 1000,
+                )
             return
 
         if self._pending_load_id != 0:
@@ -1745,6 +1879,11 @@ class AppController(QObject):
         pixels: np.ndarray,
     ) -> None:
         if request_id != self._pending_load_id:
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[frame_load_single] REJECTED req=%d current_pending=%d frame=%d",
+                    request_id, self._pending_load_id, frame_index,
+                )
             return
         if self._current_instance is None or self._current_instance.path != path:
             return
@@ -1764,6 +1903,12 @@ class AppController(QObject):
         frames: list,
     ) -> None:
         if request_id != self._scroll_load_id:
+            if _FREEZE_DIAG:
+                _diag_log.warning(
+                    "[scroll_target] REJECTED req=%d current_scroll_load=%d frames=%s",
+                    request_id, self._scroll_load_id,
+                    [idx for idx, _ in frames],
+                )
             return
         if self._current_instance is None or self._current_instance.path != path:
             return
@@ -1773,6 +1918,12 @@ class AppController(QObject):
         self._pending_source_path = None
         self._pending_frame_index = None
         target = self._batch_target_frame
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_target] OK req=%d target=%d frames=%s",
+                request_id, target, [idx for idx, _ in frames],
+            )
+        emitted = False
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
             if idx == target:
@@ -1780,6 +1931,12 @@ class AppController(QObject):
                 self._loaded_frame_index = idx
                 self._current_frame_pixels = pixels
                 self.frame_loaded.emit(pixels)
+                emitted = True
+        if not emitted and _FREEZE_DIAG:
+            _diag_log.warning(
+                "[scroll_target] NO_MATCH! target=%d not in frames=%s",
+                target, [idx for idx, _ in frames],
+            )
         self._maybe_start_scroll_neighbors(target)
 
     def _on_scroll_neighbors_loaded(
@@ -1820,6 +1977,11 @@ class AppController(QObject):
                 self.frame_loaded.emit(pixels)
 
     def _on_frame_load_failed(self, request_id: int, message: str) -> None:
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[load_failed] req=%d msg=%s pending=%d scroll=%d",
+                request_id, message, self._pending_load_id, self._scroll_load_id,
+            )
         is_current = False
         if request_id == self._pending_load_id:
             self._pending_load_id = 0
@@ -2458,6 +2620,9 @@ class AppController(QObject):
         worker.signals.failed.connect(
             partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
         , Qt.ConnectionType.QueuedConnection)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
 
         self._thread_pool.start(worker)
 

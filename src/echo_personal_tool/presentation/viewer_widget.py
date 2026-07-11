@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import math
+import os
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -171,6 +174,9 @@ _DEFAULT_OVERLAY_STYLE = (
 _MAGNETIC_SNAP_WEIGHT_THRESHOLD = 0.15
 _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
+
+_FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
+_diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
 
 
 class ContourViewBox(pg.ViewBox):
@@ -2942,6 +2948,7 @@ class ViewerWidget(QWidget):
         self.scroll_frame_selected.emit(index)
 
     def _handle_wheel(self, ev) -> bool:
+        _wt0 = time.perf_counter() if _FREEZE_DIAG else 0
         if self._current_state is None:
             return False
         if hasattr(ev, "angleDelta"):
@@ -2973,6 +2980,11 @@ class ViewerWidget(QWidget):
             return False
         ev.accept()
         self._pending_scroll_index = new_index
+        if _FREEZE_DIAG and _diag_log:
+            _diag_log.warning(
+                "[wheel] new_idx=%d elapsed=%.3fms",
+                new_index, (time.perf_counter() - _wt0) * 1000,
+            )
         if self._scroll_debounce_ms <= 0:
             self._emit_pending_scroll()
             return True

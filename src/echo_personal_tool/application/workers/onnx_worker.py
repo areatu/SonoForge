@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import atexit
 import json
+import logging
 import multiprocessing
 import os
 import signal
 import threading
+import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
@@ -15,9 +18,12 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
+_log = logging.getLogger(__name__)
+
 _DEFAULT_TIMEOUT_SEC = 2.0
 _pool: multiprocessing.pool.Pool | None = None
 _pool_lock = threading.Lock()
+_pool_shutting_down = False
 
 
 def _default_models_dir() -> Path:
@@ -44,6 +50,23 @@ def _load_timeout_sec(models_dir: Path) -> float:
 def _init_worker() -> None:
     """Suppress SIGINT in worker processes so parent can shut down cleanly."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+def _shutdown_pool() -> None:
+    global _pool, _pool_shutting_down
+    with _pool_lock:
+        if _pool is None or _pool_shutting_down:
+            return
+        _pool_shutting_down = True
+        pool = _pool
+    try:
+        pool.terminate()
+        pool.join(timeout=5)
+    except Exception:  # noqa: BLE001
+        _log.debug("pool shutdown error", exc_info=True)
+
+
+atexit.register(_shutdown_pool)
 
 
 def _get_pool() -> multiprocessing.pool.Pool:
@@ -126,11 +149,25 @@ class OnnxWorker(QRunnable):
                     self._manifest_section,
                 ),
             )
-            mask_bytes = async_result.get(timeout=self._timeout_sec)
-        except (FuturesTimeoutError, multiprocessing.TimeoutError):
-            self.signals.timed_out.emit()
-            return
         except Exception as exc:  # noqa: BLE001 - surface to UI
+            self.signals.failed.emit(str(exc))
+            return
+
+        # Poll without blocking the QThreadPool so other workers (FrameLoader,
+        # VideoDecode) keep running — fixes playback/scroll freezes.
+        deadline = time.monotonic() + self._timeout_sec
+        while True:
+            if async_result.ready():
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.signals.timed_out.emit()
+                return
+            time.sleep(min(0.05, remaining))
+
+        try:
+            mask_bytes = async_result.get(timeout=0)
+        except Exception as exc:  # noqa: BLE001
             self.signals.failed.emit(str(exc))
             return
 

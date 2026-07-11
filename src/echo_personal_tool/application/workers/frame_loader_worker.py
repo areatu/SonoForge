@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +16,8 @@ from echo_personal_tool.infrastructure.video_reader import get_thread_video_read
 
 logger = logging.getLogger(__name__)
 
-_DECODE_WORKERS = 4
+_FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
+_diag_log = logging.getLogger("echo_freeze_diag")
 
 
 class FrameLoaderSignals(QObject):
@@ -48,10 +50,11 @@ class FrameLoaderWorker(QRunnable):
         self._total_frames = total_frames
         self._batch_size = batch_size
         self.signals = FrameLoaderSignals()
-        self.setAutoDelete(True)
+        self.setAutoDelete(False)
 
     @Slot()
     def run(self) -> None:
+        _t0 = time.perf_counter() if _FREEZE_DIAG else 0
         try:
             if self._batch_size > 0 and self._media_format in ("dicom", "mp4"):
                 self._run_batch()
@@ -60,6 +63,12 @@ class FrameLoaderWorker(QRunnable):
         except Exception as exc:  # noqa: BLE001
             logger.exception("FrameLoader failed for %s", self._path)
             self.signals.failed.emit(str(exc))
+        if _FREEZE_DIAG:
+            _diag_log.warning(
+                "[loader] fmt=%s start=%d size=%d elapsed=%.1fms",
+                self._media_format, self._frame_index, self._batch_size or 1,
+                (time.perf_counter() - _t0) * 1000,
+            )
 
     def _run_single(self) -> None:
         if self._media_format == "mp4":
@@ -72,6 +81,7 @@ class FrameLoaderWorker(QRunnable):
             session = get_thread_dicom_session()
             session.open(self._path)
             pixels = session.decode_single_frame(self._frame_index)
+            session.release_heavy()
         self.signals.finished.emit(np.ascontiguousarray(pixels))
 
     def _run_batch(self) -> None:
@@ -85,19 +95,11 @@ class FrameLoaderWorker(QRunnable):
                 pixels = reader.read_frame(i)
                 results.append((i, np.ascontiguousarray(pixels)))
         elif self._media_format == "dicom":
-            # Parallel decode: each thread opens its own session (thread-local),
-            # _raw_bytes is immutable so concurrent reads are safe.
-            indices = list(range(self._frame_index, end))
-
-            def _decode_frame(idx: int) -> tuple[int, np.ndarray]:
-                session = get_thread_dicom_session()
-                session.open(self._path)
-                return idx, np.ascontiguousarray(session.decode_single_frame(idx))
-
-            with ThreadPoolExecutor(max_workers=_DECODE_WORKERS) as pool:
-                futures = {pool.submit(_decode_frame, i): i for i in indices}
-                for future in as_completed(futures):
-                    idx, pixels = future.result()
-                    results.append((idx, pixels))
+            # Sequential decode on a single session.
+            session = get_thread_dicom_session()
+            session.open(self._path)
+            for i in range(self._frame_index, end):
+                pixels = session.decode_single_frame(i)
+                results.append((i, np.ascontiguousarray(pixels)))
 
         self.signals.batch_finished.emit(results)

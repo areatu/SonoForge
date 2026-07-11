@@ -21,7 +21,7 @@ class _FakeSignal:
     def __init__(self) -> None:
         self._callbacks: list = []
 
-    def connect(self, callback) -> None:
+    def connect(self, callback, *args, **kwargs) -> None:
         self._callbacks.append(callback)
 
     def emit(self, *args) -> None:

@@ -214,3 +214,14 @@
   4. Удалены `download_series()` из `DicomWebClient` Protocol и `FakeDicomWebClient`.
   5. Удалён `_parse_multipart()` и неиспользуемые импорты из `orthanc_client.py`.
   6. Диагностический трейсинг `[DIAG]` на каждом этапе загрузки.
+
+## [2026-07-11 18:00] Fix: playback freeze + OOM (8 GiB → 1.8 GiB)
+- **Тип:** fix (критический)
+- **Файлы:** `onnx_worker.py`, `frame_loader_worker.py`, `dicom_session.py`, `app_controller.py`, `frame_cache.py`, `main_window.py`, `viewer_widget.py`
+- **Суть:**
+  1. **OnnxWorker** — заменён блокирующий `async_result.get()` на non-blocking polling (`ready()` + `sleep`), `setAutoDelete(False)` + atexit cleanup для Pool.
+  2. **FrameLoaderWorker** — убран `ThreadPoolExecutor(max_workers=4)` из `_run_batch` (cv2.imdecode не thread-safe → heap corruption → `free(): invalid pointer`). Sequential decode. `.copy()` в `_decode_uncompressed_frame` против use-after-free.
+  3. **DicomSession** — исправлен `release_stale_sessions()`: старая проверка `_raw_bytes is not None` пропускала сеансы где `_raw_bytes=None` (после `_ensure_pixel_data()`), хотя `_pixel_data_raw` (19 МБ) и `_encapsulated_frames` (19 МБ) оставались → **113 копий × 19 МБ = 8+ ГБ утечки**. Добавлен `release_heavy()` в `_run_single` и `_run_batch`. `_ensure_pixel_data()` освобождает `_raw_bytes` сразу после извлечения pixel data.
+  4. **AppController** — `_live_workers` set с safety cap (8) предотвращает GC QRunnable до обработки QueuedConnection signals. Stale prefetch timeout 1с. `_on_prefetch_batch_loaded` кэширует кадры всегда (даже stale request). `_PREFETCH_TIMEOUT_SEC` 3→1с.
+  5. **FrameCache** — `put()` вызывает `_evict()` при переполнении > `evict_window * 2`.
+  6. **Диагностика** — `ECHO_FREEZE_DIAG=1` включает tracemalloc + numpy array tracking + VmRSS мониторинг.

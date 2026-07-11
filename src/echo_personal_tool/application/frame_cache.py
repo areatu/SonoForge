@@ -86,6 +86,10 @@ class FrameCache:
             bisect.insort(self._sorted_keys, index)
         self._frame_store[index] = frame
         self._cached_frames = None
+        # Evict frames outside the window to prevent unbounded growth
+        # from stale prefetch loads or scroll overshoot.
+        if len(self._sorted_keys) > self._evict_window * 2:
+            self._evict()
 
     def clear(self) -> None:
         self.source_path = None

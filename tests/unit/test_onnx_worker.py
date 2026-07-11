@@ -66,10 +66,10 @@ class _PendingPool:
     """Return a result that never completes (for timeout tests)."""
 
     def apply_async(self, fn, args=(), kwargs=None):
-        import time
         from unittest.mock import MagicMock
 
         mock = MagicMock()
+        mock.ready.return_value = False
         mock.get.side_effect = lambda timeout=None: (_ for _ in ()).throw(
             __import__("multiprocessing").TimeoutError
         )

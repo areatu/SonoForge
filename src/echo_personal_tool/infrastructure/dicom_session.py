@@ -60,6 +60,24 @@ def get_thread_dicom_session() -> DicomSession:
     return session
 
 
+def release_stale_sessions(exclude: DicomSession | None = None) -> None:
+    """Free heavy buffers from ALL thread-local sessions except *exclude*.
+
+    After _ensure_pixel_data() runs, _raw_bytes is set to None but
+    _pixel_data_raw (19 MiB) and _encapsulated_frames remain.  The old
+    check ``s._raw_bytes is not None`` skipped these sessions, so heavy
+    buffers were NEVER freed → unbounded growth to 8+ GiB.
+    """
+    alive: list[DicomSession] = []
+    for s in _all_sessions:
+        if s is not exclude:
+            s.release_heavy()
+        else:
+            alive.append(s)
+    _all_sessions.clear()
+    _all_sessions.extend(alive)
+
+
 def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
     """Scan raw DICOM bytes for PixelData tag and extract its value. No pydicom parse."""
     pos = 132  # skip 128-byte preamble + "DICM"
@@ -220,13 +238,13 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
 def _decode_uncompressed_frame(
     pixel_data: bytes, offset: int, size: int, rows: int, cols: int, bytes_per_pixel: int
 ) -> np.ndarray:
-    """Decode a single uncompressed frame — zero-copy view into raw bytes."""
+    """Decode a single uncompressed frame — owned copy to avoid use-after-free."""
     raw = pixel_data[offset : offset + size]
     if bytes_per_pixel == 1:
-        return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols)
+        return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
     if bytes_per_pixel == 2:
-        return np.frombuffer(raw, dtype=np.uint16).reshape(rows, cols)
-    return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols, bytes_per_pixel)
+        return np.frombuffer(raw, dtype=np.uint16).reshape(rows, cols).copy()
+    return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols, bytes_per_pixel).copy()
 
 
 class DicomSession:
@@ -259,6 +277,11 @@ class DicomSession:
         resolved = Path(path).resolve()
         if self._open_path == resolved and self._metadata is not None:
             return
+        # When switching to a different file, release heavy buffers in ALL
+        # other thread-local sessions.  This is now safe because
+        # release_stale_sessions() no longer checks _raw_bytes — it frees
+        # _pixel_data_raw and _encapsulated_frames too.
+        release_stale_sessions(exclude=self)
         self.release()
         self._open_path = resolved
         self._raw_bytes = resolved.read_bytes()
@@ -301,6 +324,8 @@ class DicomSession:
         else:
             full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
             self._pixel_data_raw = bytes(full_ds.PixelData)
+        # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
+        self._raw_bytes = None
         if not self._is_uncompressed:
             self._encapsulated_frames, self._bot_offsets = _build_encapsulated_frame_index(
                 self._pixel_data_raw,
@@ -424,6 +449,15 @@ class DicomSession:
         self._bot_offsets = None
         self._extended_offsets = None
         self._transfer_syntax_uid = "1.2.840.10008.1.2.1"
+        self._first_frame = None
+
+    def release_heavy(self) -> None:
+        """Free large buffers while keeping metadata for future re-open."""
+        self._raw_bytes = None
+        self._pixel_data_raw = None
+        self._encapsulated_frames = None
+        self._bot_offsets = None
+        self._frames = None
         self._first_frame = None
 
 
