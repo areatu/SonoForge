@@ -32,7 +32,7 @@ def test_navigate_to_param(qtbot) -> None:
     dialog.navigate_to_param("lvef")
     widget = dialog._structured_widget
     assert widget._current_topic is not None
-    assert widget._table.rowCount() >= 1
+    assert len(widget._param_cards) >= 1
 
 
 def test_structured_tab_unchecked_on_doc_tab(qtbot) -> None:

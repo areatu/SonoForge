@@ -15,8 +15,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QPushButton,
     QRadioButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -85,8 +84,90 @@ class _ImageContainer(QWidget):
         return QSize(100, 100)
 
 
+class _ParameterCard(QWidget):
+    """Single parameter card showing name, unit, norm, and pathology description."""
+
+    def __init__(self, param, norm_text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._param = param
+        self._selected = False
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        p = get_theme_palette()
+        self.setStyleSheet(
+            f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
+            f"background: {p['bg_panel']}; }}"
+            f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        # Top row: parameter name + unit + norm
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+
+        name_label = QLabel(f"<b>{param.name}</b>")
+        name_label.setStyleSheet(f"font-size: 13px; color: {p['text']}; border: none;")
+        name_label.setWordWrap(True)
+        top_row.addWidget(name_label, stretch=1)
+
+        if param.unit:
+            unit_label = QLabel(param.unit)
+            unit_label.setStyleSheet(f"font-size: 12px; color: {p['text_dim']}; border: none;")
+            top_row.addWidget(unit_label)
+
+        if norm_text:
+            norm_label = QLabel(f"Норма: {norm_text}")
+            norm_label.setStyleSheet(f"font-size: 12px; color: {p['accent_tab']}; border: none; font-weight: bold;")
+            top_row.addWidget(norm_label)
+
+        layout.addLayout(top_row)
+
+        # Bottom row: pathology description
+        desc = param.pathology_desc or ""
+        if desc:
+            desc_label = QLabel(desc)
+            desc_label.setStyleSheet(
+                f"font-size: 13px; color: {p['text']}; border: none; "
+                f"background: {p['bg_control']}; border-radius: 3px; padding: 4px 8px;"
+            )
+            desc_label.setWordWrap(True)
+            layout.addWidget(desc_label)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._select()
+        super().mousePressEvent(event)
+
+    def _select(self) -> None:
+        # Find the parent widget and deselect others
+        parent = self.parent()
+        while parent is not None:
+            if isinstance(parent, StructuredReferenceWidget):
+                parent._on_card_selected(self)
+                break
+            parent = parent.parent()
+
+    def set_selected(self, selected: bool) -> None:
+        self._selected = selected
+        p = get_theme_palette()
+        if selected:
+            self.setStyleSheet(
+                f"_ParameterCard {{ border: 2px solid {p['accent_tab']}; border-radius: 4px; "
+                f"background: {p['bg_control']}; }}"
+            )
+        else:
+            self.setStyleSheet(
+                f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
+                f"background: {p['bg_panel']}; }}"
+                f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
+            )
+
+
 class StructuredReferenceWidget(QWidget):
-    """Topic → pathology → gradation → parameter table with sex toggle and images."""
+    """Topic → pathology → gradation → parameter cards with sex toggle and images."""
 
     param_clicked = Signal(str)  # future: overlay link
 
@@ -108,6 +189,10 @@ class StructuredReferenceWidget(QWidget):
         self._current_image_index: int = 0
 
         self._build_ui()
+
+    # Default section to open on first show
+    _DEFAULT_TOPIC_SLUG = "left_ventricle"
+    _DEFAULT_PATHOLOGY_SLUG = "lv_diastolic"
 
     def _build_ui(self) -> None:
         p = get_theme_palette()
@@ -238,27 +323,24 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.currentRowChanged.connect(self._on_pathology_row_changed)
         right_layout.addWidget(self._pathology_list)
 
-        # Middle: table (left) + image (right)
+        # Middle: cards (left) + image (right)
         content_row = QHBoxLayout()
         content_row.setSpacing(8)
 
-        # Table (left half)
-        self._table = QTableWidget()
-        self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(["Параметр", "Ед. изм.", "Норма", "Патология"])
-        self._table.setAlternatingRowColors(True)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.verticalHeader().hide()
-        self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setColumnWidth(0, 220)
-        self._table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; font-size: 13px; }}"
-            f"QTableWidget::item {{ padding: 4px; }}"
-            f"QHeaderView::section {{ background: {p['bg_control']}; padding: 4px; border: 1px solid {p['border']}; font-size: 13px; font-weight: bold; }}"
+        # Parameter cards (left half) in a scroll area
+        self._cards_scroll = QScrollArea()
+        self._cards_scroll.setWidgetResizable(True)
+        self._cards_scroll.setStyleSheet(
+            f"QScrollArea {{ border: none; background: transparent; }}"
         )
-        self._table.itemSelectionChanged.connect(self._on_table_selection_changed)
-        content_row.addWidget(self._table, stretch=1)
+        self._cards_container = QWidget()
+        self._cards_layout = QVBoxLayout(self._cards_container)
+        self._cards_layout.setContentsMargins(0, 0, 0, 0)
+        self._cards_layout.setSpacing(6)
+        self._cards_layout.addStretch(1)
+        self._cards_scroll.setWidget(self._cards_container)
+        self._param_cards: list[_ParameterCard] = []
+        content_row.addWidget(self._cards_scroll, stretch=1)
 
         # Image (right half) — container overrides sizeHint() to prevent
         # the pixmap from inflating the layout via Qt's size negotiation.
@@ -314,17 +396,41 @@ class StructuredReferenceWidget(QWidget):
         main_layout.addWidget(right_panel, stretch=1)
         root.addLayout(main_layout, stretch=1)
 
-        # Placeholder
-        self._show_placeholder()
+        # Open default section
+        self._open_default_section()
 
     def _show_placeholder(self) -> None:
         self._pathology_list.clear()
-        self._table.setRowCount(0)
+        self._clear_cards()
         self._image_label.clear()
         self._image_label.setText("Нет изображения")
         self._image_paths = []
         self._current_image_index = 0
         self._update_nav_buttons()
+
+    def _open_default_section(self) -> None:
+        """Select the default topic and pathology on startup."""
+        topic_idx = next(
+            (i for i, t in enumerate(self._topics) if t.slug == self._DEFAULT_TOPIC_SLUG),
+            -1,
+        )
+        if topic_idx < 0:
+            self._show_placeholder()
+            return
+        self._topic_buttons[topic_idx].click()
+        topic = self._topics[topic_idx]
+        patho_idx = next(
+            (i for i, p in enumerate(topic.pathologies) if p.slug == self._DEFAULT_PATHOLOGY_SLUG),
+            0,
+        )
+        self._pathology_list.setCurrentRow(patho_idx)
+
+    def _clear_cards(self) -> None:
+        """Remove all parameter cards from the container."""
+        for card in self._param_cards:
+            self._cards_layout.removeWidget(card)
+            card.deleteLater()
+        self._param_cards.clear()
 
     def _scale_image(self) -> None:
         # Guard against recursive calls from resizeEvent
@@ -353,17 +459,21 @@ class StructuredReferenceWidget(QWidget):
                     if renderer.isValid():
                         vb = renderer.viewBoxF()
                         if vb.width() > 0 and vb.height() > 0:
-                            aspect = vb.height() / vb.width()
+                            img_aspect = vb.height() / vb.width()
                         else:
-                            aspect = 1.0
+                            img_aspect = 1.0
                         device_ratio = self.devicePixelRatioF()
-                        # Fit within container keeping aspect ratio
-                        w = int(cw * device_ratio)
-                        h = int(w * aspect)
-                        if h > int(ch * device_ratio):
+                        # Smart scaling: fit by width or height based on image shape
+                        container_aspect = ch / cw if cw > 0 else 1.0
+                        if img_aspect >= container_aspect:
+                            # Image is tall or square — fit by height
                             h = int(ch * device_ratio)
-                            w = int(h / aspect)
-                        image = QImage(w, h, QImage.Format.Format_ARGB32)
+                            w = int(h / img_aspect)
+                        else:
+                            # Image is wide — fit by width
+                            w = int(cw * device_ratio)
+                            h = int(w * img_aspect)
+                        image = QImage(max(w, 1), max(h, 1), QImage.Format.Format_ARGB32)
                         image.setDevicePixelRatio(device_ratio)
                         image.fill(0)
                         painter = QPainter(image)
@@ -380,13 +490,27 @@ class StructuredReferenceWidget(QWidget):
                 pixmap = QPixmap()
                 pixmap.loadFromData(self._svg_text.encode("utf-8"))
                 if not pixmap.isNull():
-                    scaled = pixmap.scaled(cw, ch, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    scaled = self._smart_scale_pixmap(pixmap, cw, ch)
                     self._image_label.setPixmap(scaled)
             elif self._original_pixmap is not None and not self._original_pixmap.isNull():
-                scaled = self._original_pixmap.scaled(cw, ch, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                scaled = self._smart_scale_pixmap(self._original_pixmap, cw, ch)
                 self._image_label.setPixmap(scaled)
         finally:
             self._scaling = False
+
+    def _smart_scale_pixmap(self, pixmap: QPixmap, cw: int, ch: int) -> QPixmap:
+        """Scale pixmap to fill the container along the dominant axis.
+
+        Wide images fill the container width; tall images fill the height.
+        Uses KeepAspectRatioByExpanding so images are never smaller than the
+        container in their dominant dimension — avoids the "small image in a
+        big box" problem with pure KeepAspectRatio.
+        """
+        return pixmap.scaled(
+            cw, ch,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -429,13 +553,13 @@ class StructuredReferenceWidget(QWidget):
         self,
         results: list[tuple[TopicRef, PathologyRef, GradationRef | None, Any]],
     ) -> None:
-        self._table.setRowCount(len(results))
-        for row, (topic, patho, grad, param) in enumerate(results):
-            self._table.setItem(row, 0, QTableWidgetItem(param.name))
-            self._table.setItem(row, 1, QTableWidgetItem(param.unit))
+        self._clear_cards()
+        for topic, patho, grad, param in results:
             norm = self._format_norm(param)
-            self._table.setItem(row, 2, QTableWidgetItem(norm))
-            self._table.setItem(row, 3, QTableWidgetItem(patho.name + (f" ({grad.name})" if grad else "")))
+            card = _ParameterCard(param, norm)
+            card.setToolTip(f"{patho.name}" + (f" ({grad.name})" if grad else ""))
+            self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+            self._param_cards.append(card)
         self._image_label.clear()
         self._image_label.setText("Нет изображения")
 
@@ -448,7 +572,7 @@ class StructuredReferenceWidget(QWidget):
         for patho in topic.pathologies:
             self._pathology_list.addItem(patho.name)
         self._pathology_list.blockSignals(False)
-        self._table.setRowCount(0)
+        self._clear_cards()
         self._image_label.clear()
         self._image_label.setText("Нет изображения")
         self._source_label.clear()
@@ -486,29 +610,23 @@ class StructuredReferenceWidget(QWidget):
                     seen[param.id] = dup
         return list(seen.values())
 
-    def _on_table_selection_changed(self) -> None:
-        rows = self._table.selectionModel().selectedRows()
-        if not rows:
-            return
-        row = rows[0].row()
-        params = self._get_current_parameters()
-        if row < len(params):
-            param = params[row]
-            if param.source:
-                self._source_label.setText(param.source)
-            else:
-                self._source_label.clear()
+    def _on_card_selected(self, card: _ParameterCard) -> None:
+        """Handle card selection — update source label and highlight."""
+        for c in self._param_cards:
+            c.set_selected(c is card)
+        if card._param.source:
+            self._source_label.setText(card._param.source)
+        else:
+            self._source_label.clear()
 
     def _refresh_table(self) -> None:
         params = self._get_current_parameters()
-        self._table.setRowCount(len(params))
-        for row, param in enumerate(params):
-            self._table.setItem(row, 0, QTableWidgetItem(param.name))
-            self._table.setItem(row, 1, QTableWidgetItem(param.unit))
+        self._clear_cards()
+        for param in params:
             norm = self._format_norm(param)
-            self._table.setItem(row, 2, QTableWidgetItem(norm))
-            desc = param.pathology_desc or ""
-            self._table.setItem(row, 3, QTableWidgetItem(desc))
+            card = _ParameterCard(param, norm)
+            self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+            self._param_cards.append(card)
 
     def _get_current_parameters(self) -> list:
         if self._current_pathology is None:
@@ -608,8 +726,9 @@ class StructuredReferenceWidget(QWidget):
             self._source_label.setText("Источники: " + "; ".join(sources))
         else:
             self._source_label.clear()
-        # Clear row selection highlight when source changes
-        self._table.clearSelection()
+        # Clear card selection highlight when source changes
+        for card in self._param_cards:
+            card.set_selected(False)
 
     def navigate_to_param(self, param_id: str) -> None:
         result = self._store.lookup(param_id)

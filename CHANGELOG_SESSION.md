@@ -6,6 +6,14 @@
 
 ---
 
+## [2026-07-11 12:00] Reference: default section, smart scaling, card layout
+- **Тип:** feature + refactor
+- **Файлы:** `structured_reference_widget.py`, `test_structured_reference_widget.py`, `test_ase_reference_dialog.py`
+- **Суть:**
+  1. **Default section**: при открытии справочника автоматически выбирается «Левый желудочек → Диастолическая функция левого желудочка».
+  2. **Smart image scaling**: изображения масштабируются по доминирующей оси (широкие — по ширине, высокие — по высоте) через `KeepAspectRatioByExpanding` вместо простого `KeepAspectRatio`.
+  3. **Card layout**: таблица параметров заменена на карточки (`_ParameterCard`) с переносом текста — решает проблему обрезки длинных описаний патологий и мелкого шрифта.
+
 ## [2026-07-10 16:00] Structured Reference: multi-image + overlay enhancements
 - **Тип:** feature + fix
 - **Файлы:** `reference_data_store.py`, `structured_reference_widget.py`, `ase_reference_dialog.py`, `references_structured.yaml`, `measurement_results_formatter.py`, `viewer_widget.py`, `main_window.py`, `test_structured_reference_widget.py`, `docs/superpowers/specs/`, `docs/superpowers/plans/`, 14 новых PNG в `resources/references/images/`
