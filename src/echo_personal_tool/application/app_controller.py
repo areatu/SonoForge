@@ -317,18 +317,13 @@ class AppController(QObject):
         self._current_instance = instance
         self._clear_fusion_state()
         if (
-            not self._study_metrics_auto_filled
-            and instance.patient_height_m is not None
+            instance.patient_height_m is not None
             and instance.patient_weight_kg is not None
         ):
-            study_uid = self._resolve_study_uid()
-            session = self._measurement_session.get(study_uid)
-            if session.height_cm is None and session.weight_kg is None:
-                self.on_patient_metrics_changed(
-                    instance.patient_height_m * 100,
-                    instance.patient_weight_kg,
-                )
-                self._study_metrics_auto_filled = True
+            self.on_patient_metrics_changed(
+                instance.patient_height_m * 100,
+                instance.patient_weight_kg,
+            )
         self.status_message.emit(tr("status.loading", name=instance.path.name))
         total_frames = instance.number_of_frames
         frame_time_ms = instance.frame_time_ms or 33.3
