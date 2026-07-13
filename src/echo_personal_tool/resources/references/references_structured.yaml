@@ -1,1231 +1,1673 @@
 topics:
-  - name: Левый желудочек
-    slug: left_ventricle
-    pathologies:
-      - name: Масса миокарда левого желудочка
-        slug: lv_mass
-        parameters:
-          - id: lvm
-            name: "Масса миокарда ЛЖ (LVM)"
-            unit: "г"
-            norm_male: {low: 88, high: 224}
-            norm_female: {low: 66, high: 150}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lvmi
-            name: "Индекс массы миокарда (LVMI)"
-            unit: "г/м²"
-            norm_male: {low: 49, high: 115}
-            norm_female: {low: 43, high: 95}
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: rwt
-            name: "Относительная толщина стенок (RWT)"
-            unit: ""
-            norm_male: {low: 0.32, high: 0.42}
-            norm_female: {low: 0.32, high: 0.42}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-      - name: Размеры левого желудочка
-        slug: lv_dimensions
-        parameters:
-          - id: lvedd
-            name: "Конечно-диастолический диаметр (LVEDD)"
-            unit: "мм"
-            norm_male: {low: 42, high: 59}
-            norm_female: {low: 36, high: 51}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lvesd
-            name: "Конечно-систолический диаметр (LVESD)"
-            unit: "мм"
-            norm_male: {low: 25, high: 40}
-            norm_female: {low: 20, high: 35}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lvedvi
-            name: "Конечно-диастолический объём (LVEDVi)"
-            unit: "мл/м²"
-            norm_male: {low: 37, high: 97}
-            norm_female: {low: 32, high: 87}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lvesvi
-            name: "Конечно-систолический объём (LVESVi)"
-            unit: "мл/м²"
-            norm_male: {low: 12, high: 38}
-            norm_female: {low: 9, high: 32}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lvpwd
-            name: "Толщина задней стенки (LVPWd)"
-            unit: "мм"
-            norm_male: {low: 6, high: 11}
-            norm_female: {low: 6, high: 10}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: ivsd
-            name: "Толщина МЖП (IVSd)"
-            unit: "мм"
-            norm_male: {low: 6, high: 11}
-            norm_female: {low: 6, high: 10}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-      - name: Геометрия и гипертрофия левого желудочка
-        slug: lv_geometry
-        parameters:
-          - id: lvmi_hyp
-            name: "Индекс массы миокарда (LVMI)"
-            unit: "г/м²"
-            norm_male: {low: 49, high: 115}
-            norm_female: {low: 43, high: 95}
-            pathology_desc: ">115 (м) / >95 (ж) — гипертрофия"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: rwt_hyp
-            name: "Относительная толщина стенок (RWT)"
-            unit: ""
-            norm_male: {low: 0.32, high: 0.42}
-            norm_female: {low: 0.32, high: 0.42}
-            pathology_desc: ">0.42 — концентрическая; <0.32 — эксцентрическая"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lvpwd_hyp
-            name: "Толщина задней стенки (LVPWd)"
-            unit: "мм"
-            norm_male: {low: 6, high: 11}
-            norm_female: {low: 6, high: 10}
-            pathology_desc: ">11 — гипертрофия"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: ivsd_hyp
-            name: "Толщина МЖП (IVSd)"
-            unit: "мм"
-            norm_male: {low: 6, high: 11}
-            norm_female: {low: 6, high: 10}
-            pathology_desc: ">11 — гипертрофия"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-      - name: Фракция выброса левого желудочка
-        slug: lv_systolic
-        parameters:
-          - id: lvef
-            name: "Фракция выброса (LVEF, Симпсон)"
-            unit: "%"
-            norm_male: {low: 52, high: 72}
-            norm_female: {low: 54, high: 74}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: gls
-            name: "Глобальный продольный стрейн (GLS)"
-            unit: "%"
-            norm_male: {low: -20, high: -18}
-            norm_female: {low: -20, high: -18}
-            pathology_desc: ">-18 (менее отриц.) — нарушение"
-            source: "2022, ASE, Guideline for the Use of Echocardiography for the Assessment of Cardiac Function in Adults"
-          - id: fac
-            name: "Фракция укорочения (FAC)"
-            unit: "%"
-            norm_male: {low: 35, high: null}
-            norm_female: {low: 35, high: null}
-            pathology_desc: "<35% — нарушение систолической функции"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-      - name: Диастолическая функция левого желудочка
-        slug: lv_diastolic
-        image_paths:
-          - Diastolic_dysfunc_LV.png
-          - diastolic_function.png
-        parameters:
-          - id: ea_ratio
-            name: "Соотношение E/A"
-            unit: ""
-            norm_male: {low: 0.8, high: 2.0}
-            norm_female: {low: 0.8, high: 2.0}
-            pathology_desc: "<0.8 (I тип), >2.0 (III тип)"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-          - id: dt
-            name: "Время замедления E (DT)"
-            unit: "мс"
-            norm_male: {low: 160, high: 200}
-            norm_female: {low: 160, high: 200}
-            pathology_desc: "<160 или >200"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-          - id: e_e_prime_avg
-            name: "Среднее E/e'"
-            unit: ""
-            norm_male: {low: null, high: 10}
-            norm_female: {low: null, high: 10}
-            pathology_desc: "≥14 — повыш. давление; 10-14 — серая зона"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-          - id: e_prime_sept
-            name: "e' септальная"
-            unit: "см/с"
-            norm_male: {low: 7, high: null}
-            norm_female: {low: 7, high: null}
-            pathology_desc: "<7"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-          - id: e_prime_lat
-            name: "e' латеральная"
-            unit: "см/с"
-            norm_male: {low: 10, high: null}
-            norm_female: {low: 10, high: null}
-            pathology_desc: "<10"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-          - id: la_vol_index
-            name: "Объём ЛП (LAVi)"
-            unit: "мл/м²"
-            norm_male: {low: null, high: 34}
-            norm_female: {low: null, high: 34}
-            pathology_desc: "≥34 — повышение"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-          - id: tr_vmax
-            name: "Максимальная скорость ТР"
-            unit: "м/с"
-            norm_male: {low: null, high: 2.8}
-            norm_female: {low: null, high: 2.8}
-            pathology_desc: ">2.8 — лёгочная гипертензия"
-            source: "2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography"
-      - name: Сегменты и кровоснабжение левого желудочка
-        slug: lv_segments
-        image_paths:
-          - LV_segments.png
-          - Coronar_artery_zone.png
-          - coronary.jpeg
-        parameters:
-          - id: seg_anterior
-            name: "Передняя стенка"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "LAD (передняя нисходящая)"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: seg_septal
-            name: "Межжелудочковая перегородка"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "LAD / ПМЖВ (diagonal)"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: seg_lateral
-            name: "Боковая стенка"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "ОА ( circumflex) / diagonal"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: seg_inferior
-            name: "Нижняя стенка"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "ПКА (правая коронарная артерия)"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: seg_apical
-            name: "Апикальный сегмент"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "LAD / diagonal"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: seg_posterior
-            name: "Задняя стенка"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "ОА ( circumflex) / ПКА"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-
-  - name: Левое предсердие
-    slug: left_atrium
-    pathologies:
-      - name: Объем левого предсердия
-        slug: la_volume
-        parameters:
-          - id: lav
-            name: "Объём левого предсердия (LAV)"
-            unit: "мл"
-            norm_male: {low: null, high: 75}
-            norm_female: {low: null, high: 66}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: lavi
-            name: "Индексированый объём ЛП (LAVi)"
-            unit: "мл/м²"
-            norm_male: {low: null, high: 34}
-            norm_female: {low: null, high: 34}
-            pathology_desc: "35-41 лёгкое, 42-48 умеренное, >48 выраженное"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-      - name: Индекс объема левого предсердия
-        slug: la_volume_index
-        parameters:
-          - id: lavi_idx
-            name: "Индекс объёма ЛП (LAVi)"
-            unit: "мл/м²"
-            norm_male: {low: null, high: 34}
-            norm_female: {low: null, high: 34}
-            pathology_desc: "≥34 — повышение"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-      - name: Линейные размеры левого предсердия
-        slug: la_dimensions
-        parameters:
-          - id: la_lax
-            name: "Длина ЛП (ПЗК)"
-            unit: "мм"
-            norm_male: {low: null, high: 53}
-            norm_female: {low: null, high: 53}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: la_sax
-            name: "Ширина ЛП (КЖК)"
-            unit: "мм"
-            norm_male: {low: null, high: 40}
-            norm_female: {low: null, high: 38}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: la_antpost
-            name: "Передне-задний размер"
-            unit: "мм"
-            norm_male: {low: null, high: 40}
-            norm_female: {low: null, high: 38}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-
-  - name: Правый желудочек
-    slug: right_ventricle
-    pathologies:
-      - name: Размеры правого желудочка
-        slug: rv_dimensions
-        parameters:
-          - id: rvd1
-            name: "Базальный диаметр ПЖ (RVD1)"
-            unit: "мм"
-            norm_male: {low: null, high: 41}
-            norm_female: {low: null, high: 38}
-            pathology_desc: ">41 (м) / >38 (ж) — дилатация"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rvd2
-            name: "Средний диаметр ПЖ (RVD2)"
-            unit: "мм"
-            norm_male: {low: null, high: 35}
-            norm_female: {low: null, high: 33}
-            pathology_desc: ">35 (м) / >33 (ж)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rvd3
-            name: "Длина ПЖ (RVD3)"
-            unit: "мм"
-            norm_male: {low: null, high: 71}
-            norm_female: {low: null, high: 68}
-            pathology_desc: ">71 (м) / >68 (ж)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rv_wall
-            name: "Толщина стенки ПЖ"
-            unit: "мм"
-            norm_male: {low: null, high: 5}
-            norm_female: {low: null, high: 5}
-            pathology_desc: "≥5 — гипертрофия"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-      - name: Систолическая функция правого желудочка
-        slug: rv_systolic
-        parameters:
-          - id: tapss
-            name: "TAPSE"
-            unit: "мм"
-            norm_male: {low: 17, high: null}
-            norm_female: {low: 15, high: null}
-            pathology_desc: "<17 (м) / <15 (ж) — дисфункция"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: fac_rv
-            name: "FAC"
-            unit: "%"
-            norm_male: {low: 35, high: null}
-            norm_female: {low: 35, high: null}
-            pathology_desc: "<35% — дисфункция"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: s_prime_rv
-            name: "S' (TDI)"
-            unit: "см/с"
-            norm_male: {low: 9.5, high: null}
-            norm_female: {low: 9.5, high: null}
-            pathology_desc: "<9.5 — дисфункция"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rv_gls
-            name: "RV GLS"
-            unit: "%"
-            norm_male: {low: -20, high: null}
-            norm_female: {low: -20, high: null}
-            pathology_desc: ">-20 (менее отриц.) — дисфункция"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rimp
-            name: "RIMP / Tei"
-            unit: ""
-            norm_male: {low: null, high: 0.40}
-            norm_female: {low: null, high: 0.40}
-            pathology_desc: "≥0.40 — дисфункция"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-      - name: Диастолическая функция правого желудочка
-        slug: rv_diastolic
-        parameters:
-          - id: e_rv
-            name: "E-волна ПЖ"
-            unit: "см/с"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от возраста"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: a_rv
-            name: "A-волна ПЖ"
-            unit: "см/с"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от возраста"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: e_a_rv
-            name: "E/A ПЖ"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от возраста"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-      - name: Площадь и объем правого желудочка
-        slug: rv_volume
-        parameters:
-          - id: rvedv
-            name: "Конечно-диастолический объём ПЖ (RVEDV)"
-            unit: "мл"
-            norm_male: {low: 56, high: 133}
-            norm_female: {low: 46, high: 106}
-            pathology_desc: ">133 (м) / >106 (ж) — дилатация"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rvesv
-            name: "Конечно-систолический объём ПЖ (RVESV)"
-            unit: "мл"
-            norm_male: {low: 19, high: 56}
-            norm_female: {low: 16, high: 46}
-            pathology_desc: ">56 (м) / >46 (ж)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: rv_area
-            name: "Площадь ПЖ в 4-камерной позиции"
-            unit: "см²"
-            norm_male: {low: null, high: 18}
-            norm_female: {low: null, high: 18}
-            pathology_desc: ">18 — дилатация"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-      - name: Давление в легочной артерии
-        slug: pulmonary_pressure
-        parameters:
-          - id: spap
-            name: "Систолическое давление в ЛА (sPAP)"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: 35}
-            norm_female: {low: null, high: 35}
-            pathology_desc: "36-50 лёгкая, 51-60 умеренная, >60 тяжёлая"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: mpap
-            name: "Среднее давление в ЛА (mPAP)"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: 20}
-            norm_female: {low: null, high: 20}
-            pathology_desc: ">20 — лёгочная гипертензия"
-            source: "2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension"
-          - id: dpap
-            name: "Конечно-диастолическое давление в ЛА (dPAP)"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: 20}
-            norm_female: {low: null, high: 20}
-            pathology_desc: ">20 — повышение"
-            source: "2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension"
-      - name: Вероятность легочной гипертензии
-        slug: pulmonary_hypertension_prob
-        parameters:
-          - id: tr_vmax_ph
-            name: "Максимальная скорость ТР"
-            unit: "м/с"
-            norm_male: {low: null, high: 2.8}
-            norm_female: {low: null, high: 2.8}
-            pathology_desc: ">2.8 — вероятна лёгочная гипертензия"
-            source: "2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension"
-          - id: rv_sph
-            name: "Признаки перегрузки ПЖ"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "D-образная МЖП, дилатация ПЖ, смещение МЖП"
-            source: "2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension"
-
-  - name: Правое предсердие
-    slug: right_atrium
-    pathologies:
-      - name: Размеры правого предсердия
-        slug: ra_dimensions
-        parameters:
-          - id: ra_area
-            name: "Площадь правого предсердия"
-            unit: "см²"
-            norm_male: {low: null, high: 18}
-            norm_female: {low: null, high: 18}
-            pathology_desc: ">18 — расширение"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: ra_volume
-            name: "Объём правого предсердия (RAV)"
-            unit: "мл"
-            norm_male: {low: null, high: 39}
-            norm_female: {low: null, high: 33}
-            pathology_desc: ">39 (м) / >33 (ж)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: ra_lax
-            name: "Длина ПП (ПЗК)"
-            unit: "мм"
-            norm_male: {low: null, high: 53}
-            norm_female: {low: null, high: 50}
-            pathology_desc: ">53 (м) / >50 (ж)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: ra_sax
-            name: "Ширина ПП (КЖК)"
-            unit: "мм"
-            norm_male: {low: null, high: 45}
-            norm_female: {low: null, high: 43}
-            pathology_desc: ">45 (м) / >43 (ж)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-      - name: Давление в правом предсердии
-        slug: ra_pressure
-        parameters:
-          - id: rap
-            name: "Давление в правом предсердии (RAP)"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: 5}
-            norm_female: {low: null, high: 5}
-            pathology_desc: ">5 — повышение (венах: <8, 8-15, >15)"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: ivc_diameter
-            name: "Диаметр НПВ"
-            unit: "мм"
-            norm_male: {low: null, high: 21}
-            norm_female: {low: null, high: 21}
-            pathology_desc: ">21 — повышение RAP"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-          - id: ivc_collaps
-            name: "Коллапс НПВ на вдохе"
-            unit: "%"
-            norm_male: {low: null, high: null}
-            pathology_desc: "<50% — повышение RAP"
-            source: "2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults"
-
-  - name: Митральный клапан
-    slug: mitral_valve
-    pathologies:
-      - name: Первичная митральная регургитация
-        slug: primary_mr
-        image_paths:
-          - Mitral_regurgitation_1.png
-          - Mitral_regurgitation_2.png
-          - pisa_mr.png
-        gradations:
-          - name: Лёгкая
-            parameters:
-              - id: mr_eroa_primary
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "<0.20"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_rvol_primary
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "<30"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_vc_primary
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "<3"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Умеренная
-            parameters:
-              - id: mr_eroa_primary
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "0.20-0.39"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_rvol_primary
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "30-59 (перв.) / 30-44 (втор.)"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_vc_primary
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "3-7"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Тяжёлая
-            parameters:
-              - id: mr_eroa_primary
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "≥0.40"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_rvol_primary
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "≥60 (перв.) / ≥45 (втор.)"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_vc_primary
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "≥7"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-      - name: Вторичная митральная регургитация
-        slug: secondary_mr
-        image_paths:
-          - Mitral_regurgitation_1.png
-          - Mitral_regurgitation_2.png
-        gradations:
-          - name: Лёгкая
-            parameters:
-              - id: mr_eroa_secondary
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "<0.20"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_rvol_secondary
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "<30"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Умеренная
-            parameters:
-              - id: mr_eroa_secondary
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "0.20-0.39"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_rvol_secondary
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "30-44"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Тяжёлая
-            parameters:
-              - id: mr_eroa_secondary
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "≥0.40"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: mr_rvol_secondary
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "≥45"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-      - name: Митральный стеноз
-        slug: mitral_stenosis
-        image_paths:
-          - Mitral_stenosis_1.png
-          - Mitral_stenosis_2.png
-        parameters:
-          - id: ms_area
-            name: "Площадь МК"
-            unit: "см²"
-            norm_male: {low: 4.0, high: 6.0}
-            norm_female: {low: 4.0, high: 6.0}
-            pathology_desc: "1.0-1.5 умеренный, <1.0 тяжёлый"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: ms_mg
-            name: "Средний градиент"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: 5}
-            norm_female: {low: null, high: 5}
-            pathology_desc: "5-10 умеренный, >10 тяжёлый"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: ms_pht
-            name: "Полураспад PHT"
-            unit: "мс"
-            norm_male: {low: null, high: 150}
-            norm_female: {low: null, high: 150}
-            pathology_desc: "150-220 умеренный, >220 тяжёлый"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-      - name: Сегменты митрального калпана
-        slug: mitral_segments
-        parameters:
-          - id: p1
-            name: "P1 (латеральный)"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Анти-латеральная (АЛ) складка"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: p2
-            name: "P2 (средний)"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Центральная (медиальная) складка"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: p3
-            name: "P3 (медиальный)"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Анти-медиальная (АМ) складка"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-
-  - name: Аортальный клапан
-    slug: aortic_valve
-    pathologies:
-      - name: Аортальный стеноз
-        slug: aortic_stenosis
-        image_paths:
-          - Aortic_stenosis.png
-        gradations:
-          - name: Лёгкий
-            parameters:
-              - id: as_vmax
-                name: "Vmax"
-                unit: "м/с"
-                norm_male: {low: null, high: 2.5}
-                pathology_desc: "2.6 – 2.9"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_mg_aha
-                name: "Средний градиент (AHA/ACC)"
-                unit: "мм рт. ст."
-                norm_male: {low: null, high: 10}
-                pathology_desc: "< 20"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_mg_esc
-                name: "Средний градиент (ESC)"
-                unit: "мм рт. ст."
-                norm_male: {low: null, high: 10}
-                pathology_desc: "< 30"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_ava
-                name: "AVA"
-                unit: "см²"
-                norm_male: {low: 2.5, high: 3.5}
-                norm_female: {low: 2.5, high: 3.5}
-                pathology_desc: "> 1.5"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_ava_indexed
-                name: "AVA Indexed"
-                unit: "см²/м²"
-                norm_male: {low: 0.85, high: null}
-                norm_female: {low: 0.85, high: null}
-                pathology_desc: "> 0.85"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_dsi
-                name: "DSI"
-                unit: ""
-                norm_male: {low: 0.5, high: null}
-                pathology_desc: "> 0.5"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-          - name: Умеренный
-            parameters:
-              - id: as_vmax
-                name: "Vmax"
-                unit: "м/с"
-                norm_male: {low: null, high: 2.5}
-                pathology_desc: "3.0 – 4.0"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_mg_aha
-                name: "Средний градиент (AHA/ACC)"
-                unit: "мм рт. ст."
-                norm_male: {low: null, high: 10}
-                pathology_desc: "20 – 40"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_mg_esc
-                name: "Средний градиент (ESC)"
-                unit: "мм рт. ст."
-                norm_male: {low: null, high: 10}
-                pathology_desc: "30 – 50"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_ava
-                name: "AVA"
-                unit: "см²"
-                norm_male: {low: 2.5, high: 3.5}
-                norm_female: {low: 2.5, high: 3.5}
-                pathology_desc: "1.0 – 1.5"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_ava_indexed
-                name: "AVA Indexed"
-                unit: "см²/м²"
-                norm_male: {low: 0.85, high: null}
-                norm_female: {low: 0.85, high: null}
-                pathology_desc: "0.6 – 0.85"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_dsi
-                name: "DSI"
-                unit: ""
-                norm_male: {low: 0.5, high: null}
-                pathology_desc: "0.25 – 0.50"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-          - name: Тяжёлый
-            parameters:
-              - id: as_vmax
-                name: "Vmax"
-                unit: "м/с"
-                norm_male: {low: null, high: 2.5}
-                pathology_desc: "> 4.0"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_mg_aha
-                name: "Средний градиент (AHA/ACC)"
-                unit: "мм рт. ст."
-                norm_male: {low: null, high: 10}
-                pathology_desc: "> 40"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_mg_esc
-                name: "Средний градиент (ESC)"
-                unit: "мм рт. ст."
-                norm_male: {low: null, high: 10}
-                pathology_desc: "> 50"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_ava
-                name: "AVA"
-                unit: "см²"
-                norm_male: {low: 2.5, high: 3.5}
-                norm_female: {low: 2.5, high: 3.5}
-                pathology_desc: "< 1.0"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_ava_indexed
-                name: "AVA Indexed"
-                unit: "см²/м²"
-                norm_male: {low: 0.85, high: null}
-                norm_female: {low: 0.85, high: null}
-                pathology_desc: "< 0.6"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-              - id: as_dsi
-                name: "DSI"
-                unit: ""
-                norm_male: {low: 0.5, high: null}
-                pathology_desc: "< 0.25"
-                source: "Bonita Anderson, Echo Reference Values, March 2017"
-      - name: Аортальная регургитация
-        slug: aortic_regurgitation
-        image_paths:
-          - Aortic_regurgitation_1.png
-          - Aortic_regurgitation_2.png
-          - pisa_ar.png
-        gradations:
-          - name: Лёгкая
-            parameters:
-              - id: ar_eroa
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.10}
-                pathology_desc: "<0.10"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_rvol
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "<30"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_vc
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "<3"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_vena_contracta_width
-                name: "Ширина vena contracta"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "<3"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Умеренная
-            parameters:
-              - id: ar_eroa
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.10}
-                pathology_desc: "0.10-0.29"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_rvol
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "30-59"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_vc
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "3-6"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Тяжёлая
-            parameters:
-              - id: ar_eroa
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.10}
-                pathology_desc: "≥0.30"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_rvol
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "≥60"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: ar_vc
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "≥6"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-
-  - name: Трикуспидальный клапан
-    slug: tricuspid_valve
-    pathologies:
-      - name: Трикуспидальная регургитация
-        slug: tricuspid_regurgitation
-        image_paths:
-          - Tricuspid_regurgitation.png
-        gradations:
-          - name: Лёгкая
-            parameters:
-              - id: tr_eroa
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "<0.20"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: tr_rvol
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "<30"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: tr_vc
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "<3"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Умеренная
-            parameters:
-              - id: tr_eroa
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "0.20-0.39"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: tr_rvol
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "30-44"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: tr_vc
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "3-7"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Тяжёлая
-            parameters:
-              - id: tr_eroa
-                name: "EROA"
-                unit: "см²"
-                norm_male: {low: null, high: 0.20}
-                pathology_desc: "≥0.40"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: tr_rvol
-                name: "RVol"
-                unit: "мл"
-                norm_male: {low: null, high: 30}
-                pathology_desc: "≥45"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-              - id: tr_vc
-                name: "VC"
-                unit: "мм"
-                norm_male: {low: null, high: 3}
-                pathology_desc: "≥7"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-      - name: Трикуспидальный стеноз
-        slug: tricuspid_stenosis
-        image_paths:
-          - Tricuspid_stenosis.png
-        parameters:
-          - id: ts_area
-            name: "Площадь ТК"
-            unit: "см²"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от типа протеза"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: ts_mg
-            name: "Средний градиент"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: 5}
-            pathology_desc: ">5 — стеноз"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: ts_pht
-            name: "Полураспад PHT"
-            unit: "мс"
-            norm_male: {low: null, high: null}
-            pathology_desc: ">220 — тяжёлый стеноз"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-
-  - name: Лёгочный клапан
-    slug: pulmonary_valve
-    pathologies:
-      - name: Легочная регургитация
-        slug: pulmonary_regurgitation
-        gradations:
-          - name: Лёгкая
-            parameters:
-              - id: pr_severity
-                name: "Степень"
-                unit: ""
-                norm_male: {low: null, high: null}
-                pathology_desc: "Малая струя, нормальный ПЖ"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Умеренная
-            parameters:
-              - id: pr_severity
-                name: "Степень"
-                unit: ""
-                norm_male: {low: null, high: null}
-                pathology_desc: "Промежуточная"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-          - name: Тяжёлая
-            parameters:
-              - id: pr_severity
-                name: "Степень"
-                unit: ""
-                norm_male: {low: null, high: null}
-                pathology_desc: "Широкая струя, дилатация ПЖ"
-                source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-      - name: Легочный стеноз
-        slug: pulmonary_stenosis
-        image_paths:
-          - Pulmonic_stenosis.png
-        gradations:
-          - name: Лёгкий
-            parameters:
-              - id: ps_vmax
-                name: "Vmax"
-                unit: "м/с"
-                norm_male: {low: null, high: 2.0}
-                pathology_desc: "<3.0"
-                source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - name: Умеренный
-            parameters:
-              - id: ps_vmax
-                name: "Vmax"
-                unit: "м/с"
-                norm_male: {low: null, high: 2.0}
-                pathology_desc: "3.0-4.0"
-                source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - name: Тяжёлый
-            parameters:
-              - id: ps_vmax
-                name: "Vmax"
-                unit: "м/с"
-                norm_male: {low: null, high: 2.0}
-                pathology_desc: ">4.0"
-                source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-      - name: Легочный ствол
-        slug: pulmonary_trunk
-        parameters:
-          - id: pa_diameter
-            name: "Диаметр лёгочного ствола"
-            unit: "мм"
-            norm_male: {low: null, high: 29}
-            norm_female: {low: null, high: 27}
-            pathology_desc: ">29 (м) / >27 (ж) — дилатация"
-            source: "2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension"
-          - id: pa_rvot
-            name: "Диаметр ПЖОТ"
-            unit: "мм"
-            norm_male: {low: null, high: 30}
-            norm_female: {low: null, high: 28}
-            pathology_desc: ">30 (м) / >28 (ж)"
-            source: "2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension"
-
-  - name: Аорта
-    slug: aorta
-    pathologies:
-      - name: Размеры
-        slug: aortic_dimensions
-        parameters:
-          - id: asc_aorta
-            name: "Восходящая аорта (анулярный уровень)"
-            unit: "мм"
-            norm_male: {low: null, high: 40}
-            norm_female: {low: null, high: 36}
-            pathology_desc: "40-45 расширение, >45 аневризма"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: sinotubular
-            name: "Синотубулярное соединение"
-            unit: "мм"
-            norm_male: {low: null, high: 35}
-            norm_female: {low: null, high: 33}
-            pathology_desc: ">35 (м) / >33 (ж)"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: ascending_aorta
-            name: "Восходящая аорта (на уровне лёгочной артерии)"
-            unit: "мм"
-            norm_male: {low: null, high: 40}
-            norm_female: {low: null, high: 36}
-            pathology_desc: "40-45 расширение, >45 аневризма"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: aortic_arch
-            name: "Дуга аорты"
-            unit: "мм"
-            norm_male: {low: null, high: 30}
-            norm_female: {low: null, high: 28}
-            pathology_desc: ">30 (м) / >28 (ж)"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: descending_aorta
-            name: "Нисходящая аорта (грудная)"
-            unit: "мм"
-            norm_male: {low: null, high: 30}
-            norm_female: {low: null, high: 28}
-            pathology_desc: ">30 (м) / >28 (ж)"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: abdominal_aorta
-            name: "Брюшная аорта"
-            unit: "мм"
-            norm_male: {low: null, high: 30}
-            norm_female: {low: null, high: 28}
-            pathology_desc: ">30 (м) / >28 (ж)"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-      - name: Расслоение аорты
-        slug: aortic_dissection
-        image_paths:
-          - Aortic_dissection.png
-        parameters:
-          - id: dissection_type
-            name: "Тип расслоения"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Stanford A (восходящая), B (нисходящая)"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: dissection_intimal_flap
-            name: "Интимальный флаттер"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Визуализируется в ВОТ/ЧСВ позиции"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: dissection_lumens
-            name: "Истинный и ложный просветы"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Два просвета с кровотоком"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-          - id: dissection_pericardial_eff
-            name: "Перикардиальный выпот"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Наличие — осложнение типа A"
-            source: "2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease"
-
-  - name: Прочее
-    slug: other
-    pathologies:
-      - name: Общие показатели
-        slug: general
-        parameters:
-          - id: heart_rate
-            name: "Частота сердечных сокращений (ЧСС)"
-            unit: "уд/мин"
-            norm_male: {low: 60, high: 100}
-            norm_female: {low: 60, high: 100}
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: bsa
-            name: "Площадь поверхности тела (ППТ)"
-            unit: "м²"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Расчёт по DuBois: 0.007184 × рост^0.725 × вес^0.425"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: blood_pressure
-            name: "Артериальное давление (АД)"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: null}
-            pathology_desc: "Систолическое / Диастолическое"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-      - name: Параметры протезов
-        slug: prosthetic_params
-        parameters:
-          - id: prosth_type
-            name: "Тип протеза"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "Механический / Биологический"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: prosth_size
-            name: "Размер протеза"
-            unit: "мм"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от модели"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: prosth_year
-            name: "Год имплантации"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: ""
-            source: ""
-      - name: Методика измерений
-        slug: measurement_technique
-        parameters:
-          - id: simpson_method
-            name: "Метод Симпсона (модифицированный)"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "2D или 3D, 4-камерная + 2-камерная позиции"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: doppler_angle
-            name: "Угол допплера"
-            unit: "°"
-            norm_male: {low: null, high: null}
-            pathology_desc: "<20° — точное измерение"
-            source: "2015, ASE, Guidelines for the Standardization in Echocardiography"
-          - id: pisa_radius
-            name: "Радиус PISA"
-            unit: "мм"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Измерение от митральной/аортальной створки"
-            source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-
-  - name: Протезы клапанов
-    slug: prosthetic_valves
-    pathologies:
-      - name: Митральная позиция
-        slug: mitral_position
-        image_paths:
-          - Mitral_prosthetic_1.png
-          - Mitral_prosthetic_2.png
-        parameters:
-          - id: mv_prosth_gradient_mean
-            name: "Средний градиент"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: null}
-            pathology_desc: "Мех. протез: <5, Био: <8"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: mv_prosth_orifice
-            name: "Effective Orifice Area (EOA)"
-            unit: "см²"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от размера протеза"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: mv_prosth_pht
-            name: "Полураспад PHT"
-            unit: "мс"
-            norm_male: {low: null, high: null}
-            pathology_desc: "<130 норма, 130-220 подозрение, >220 стеноз"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: mv_prosth_regurg
-            name: "Парапротезная регургитация"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "VC <3 лёгкая, 3-6 умеренная, >6 тяжёлая"
-            source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
-      - name: Аортальная позиция
-        slug: aortic_position
-        image_paths:
-          - Aortic_prosthetic_1.png
-          - Aotric_prosthetic_2.png
-          - Aortic_prosthetic_3.png
-        parameters:
-          - id: av_prosth_gradient_mean
-            name: "Средний градиент"
-            unit: "мм рт. ст."
-            norm_male: {low: null, high: null}
-            pathology_desc: "Мех. протез: <20, Био: <30"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: av_prosth_orifice
-            name: "Effective Orifice Area (EOA)"
-            unit: "см²"
-            norm_male: {low: null, high: null}
-            pathology_desc: "Зависит от размера протеза"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: av_prosth_dvi
-            name: "Doppler Velocity Index (DVI)"
-            unit: ""
-            norm_male: {low: 0.35, high: null}
-            pathology_desc: "<0.35 — стеноз"
-            source: "2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease"
-          - id: av_prosth_regurg
-            name: "Парапротезная регургитация"
-            unit: ""
-            norm_male: {low: null, high: null}
-            pathology_desc: "VC <3 лёгкая, 3-6 умеренная, >6 тяжёлая"
-            source: "2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement"
+- name: Левый желудочек
+  slug: left_ventricle
+  pathologies:
+  - name: Масса миокарда левого желудочка
+    slug: lv_mass
+    parameters:
+    - id: lvm
+      name: Масса миокарда ЛЖ (LVM)
+      unit: г
+      norm_male:
+        low: 88
+        high: 224
+      norm_female:
+        low: 66
+        high: 150
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lvmi
+      name: Индекс массы миокарда (LVMI)
+      unit: г/м²
+      norm_male:
+        low: 49
+        high: 115
+      norm_female:
+        low: 43
+        high: 95
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: rwt
+      name: Относительная толщина стенок (RWT)
+      unit: ''
+      norm_male:
+        low: 0.32
+        high: 0.42
+      norm_female:
+        low: 0.32
+        high: 0.42
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+  - name: Размеры левого желудочка
+    slug: lv_dimensions
+    parameters:
+    - id: lvedd
+      name: Конечно-диастолический диаметр (LVEDD)
+      unit: мм
+      norm_male:
+        low: 42
+        high: 59
+      norm_female:
+        low: 36
+        high: 51
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lvesd
+      name: Конечно-систолический диаметр (LVESD)
+      unit: мм
+      norm_male:
+        low: 25
+        high: 40
+      norm_female:
+        low: 20
+        high: 35
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lvedvi
+      name: Конечно-диастолический объём (LVEDVi)
+      unit: мл/м²
+      norm_male:
+        low: 37
+        high: 97
+      norm_female:
+        low: 32
+        high: 87
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lvesvi
+      name: Конечно-систолический объём (LVESVi)
+      unit: мл/м²
+      norm_male:
+        low: 12
+        high: 38
+      norm_female:
+        low: 9
+        high: 32
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lvpwd
+      name: Толщина задней стенки (LVPWd)
+      unit: мм
+      norm_male:
+        low: 6
+        high: 11
+      norm_female:
+        low: 6
+        high: 10
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: ivsd
+      name: Толщина МЖП (IVSd)
+      unit: мм
+      norm_male:
+        low: 6
+        high: 11
+      norm_female:
+        low: 6
+        high: 10
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+  - name: Геометрия и гипертрофия левого желудочка
+    slug: lv_geometry
+    parameters:
+    - id: lvmi_hyp
+      name: Индекс массы миокарда (LVMI)
+      unit: г/м²
+      norm_male:
+        low: 49
+        high: 115
+      norm_female:
+        low: 43
+        high: 95
+      pathology_desc: '>115 (м) / >95 (ж) — гипертрофия'
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: rwt_hyp
+      name: Относительная толщина стенок (RWT)
+      unit: ''
+      norm_male:
+        low: 0.32
+        high: 0.42
+      norm_female:
+        low: 0.32
+        high: 0.42
+      pathology_desc: '>0.42 — концентрическая; <0.32 — эксцентрическая'
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lvpwd_hyp
+      name: Толщина задней стенки (LVPWd)
+      unit: мм
+      norm_male:
+        low: 6
+        high: 11
+      norm_female:
+        low: 6
+        high: 10
+      pathology_desc: '>11 — гипертрофия'
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: ivsd_hyp
+      name: Толщина МЖП (IVSd)
+      unit: мм
+      norm_male:
+        low: 6
+        high: 11
+      norm_female:
+        low: 6
+        high: 10
+      pathology_desc: '>11 — гипертрофия'
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+  - name: Фракция выброса левого желудочка
+    slug: lv_systolic
+    parameters:
+    - id: lvef
+      name: Фракция выброса (LVEF, Симпсон)
+      unit: '%'
+      norm_male:
+        low: 52
+        high: 72
+      norm_female:
+        low: 54
+        high: 74
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: gls
+      name: Глобальный продольный стрейн (GLS)
+      unit: '%'
+      norm_male:
+        low: -20
+        high: -18
+      norm_female:
+        low: -20
+        high: -18
+      pathology_desc: '>-18 (менее отриц.) — нарушение'
+      source: 2022, ASE, Guideline for the Use of Echocardiography for the Assessment of Cardiac Function in Adults
+    - id: fac
+      name: Фракция укорочения (FAC)
+      unit: '%'
+      norm_male:
+        low: 35
+        high: null
+      norm_female:
+        low: 35
+        high: null
+      pathology_desc: <35% — нарушение систолической функции
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+  - name: Диастолическая функция левого желудочка
+    slug: lv_diastolic
+    image_paths:
+    - Diastolic_dysfunc_LV.png
+    - diastolic_function.png
+    parameters:
+    - id: ea_ratio
+      name: Соотношение E/A
+      unit: ''
+      norm_male:
+        low: 0.8
+        high: 2.0
+      norm_female:
+        low: 0.8
+        high: 2.0
+      pathology_desc: <0.8 (I тип), >2.0 (III тип)
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+    - id: dt
+      name: Время замедления E (DT)
+      unit: мс
+      norm_male:
+        low: 160
+        high: 200
+      norm_female:
+        low: 160
+        high: 200
+      pathology_desc: <160 или >200
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+    - id: e_e_prime_avg
+      name: Среднее E/e'
+      unit: ''
+      norm_male:
+        low: null
+        high: 10
+      norm_female:
+        low: null
+        high: 10
+      pathology_desc: ≥14 — повыш. давление; 10-14 — серая зона
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+    - id: e_prime_sept
+      name: e' септальная
+      unit: см/с
+      norm_male:
+        low: 7
+        high: null
+      norm_female:
+        low: 7
+        high: null
+      pathology_desc: <7
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+    - id: e_prime_lat
+      name: e' латеральная
+      unit: см/с
+      norm_male:
+        low: 10
+        high: null
+      norm_female:
+        low: 10
+        high: null
+      pathology_desc: <10
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+    - id: la_vol_index
+      name: Объём ЛП (LAVi)
+      unit: мл/м²
+      norm_male:
+        low: null
+        high: 34
+      norm_female:
+        low: null
+        high: 34
+      pathology_desc: ≥34 — повышение
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+    - id: tr_vmax
+      name: Максимальная скорость ТР
+      unit: м/с
+      norm_male:
+        low: null
+        high: 2.8
+      norm_female:
+        low: null
+        high: 2.8
+      pathology_desc: '>2.8 — лёгочная гипертензия'
+      source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
+  - name: Сегменты и кровоснабжение левого желудочка
+    slug: lv_segments
+    image_paths:
+    - LV_segments.png
+    - Coronar_artery_zone.png
+    - coronary.jpeg
+    parameters:
+    - id: seg_anterior
+      name: Передняя стенка
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: LAD (передняя нисходящая)
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: seg_septal
+      name: Межжелудочковая перегородка
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: LAD / ПМЖВ (diagonal)
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: seg_lateral
+      name: Боковая стенка
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: ОА ( circumflex) / diagonal
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: seg_inferior
+      name: Нижняя стенка
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: ПКА (правая коронарная артерия)
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: seg_apical
+      name: Апикальный сегмент
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: LAD / diagonal
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: seg_posterior
+      name: Задняя стенка
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: ОА ( circumflex) / ПКА
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+- name: Левое предсердие
+  slug: left_atrium
+  pathologies:
+  - name: Объем левого предсердия
+    slug: la_volume
+    parameters:
+    - id: lav
+      name: Объём левого предсердия (LAV)
+      unit: мл
+      norm_male:
+        low: null
+        high: 75
+      norm_female:
+        low: null
+        high: 66
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: lavi
+      name: Индексированый объём ЛП (LAVi)
+      unit: мл/м²
+      norm_male:
+        low: null
+        high: 34
+      norm_female:
+        low: null
+        high: 34
+      pathology_desc: 35-41 лёгкое, 42-48 умеренное, >48 выраженное
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+  - name: Индекс объема левого предсердия
+    slug: la_volume_index
+    parameters:
+    - id: lavi_idx
+      name: Индекс объёма ЛП (LAVi)
+      unit: мл/м²
+      norm_male:
+        low: null
+        high: 34
+      norm_female:
+        low: null
+        high: 34
+      pathology_desc: ≥34 — повышение
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+  - name: Линейные размеры левого предсердия
+    slug: la_dimensions
+    parameters:
+    - id: la_lax
+      name: Длина ЛП (ПЗК)
+      unit: мм
+      norm_male:
+        low: null
+        high: 53
+      norm_female:
+        low: null
+        high: 53
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: la_sax
+      name: Ширина ЛП (КЖК)
+      unit: мм
+      norm_male:
+        low: null
+        high: 40
+      norm_female:
+        low: null
+        high: 38
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: la_antpost
+      name: Передне-задний размер
+      unit: мм
+      norm_male:
+        low: null
+        high: 40
+      norm_female:
+        low: null
+        high: 38
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+- name: Правый желудочек
+  slug: right_ventricle
+  pathologies:
+  - name: Размеры правого желудочка
+    slug: rv_dimensions
+    parameters:
+    - id: rvd1
+      name: Базальный диаметр ПЖ (RVD1)
+      unit: мм
+      norm_male:
+        low: null
+        high: 41
+      norm_female:
+        low: null
+        high: 38
+      pathology_desc: '>41 (м) / >38 (ж) — дилатация'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rvd2
+      name: Средний диаметр ПЖ (RVD2)
+      unit: мм
+      norm_male:
+        low: null
+        high: 35
+      norm_female:
+        low: null
+        high: 33
+      pathology_desc: '>35 (м) / >33 (ж)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rvd3
+      name: Длина ПЖ (RVD3)
+      unit: мм
+      norm_male:
+        low: null
+        high: 71
+      norm_female:
+        low: null
+        high: 68
+      pathology_desc: '>71 (м) / >68 (ж)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rv_wall
+      name: Толщина стенки ПЖ
+      unit: мм
+      norm_male:
+        low: null
+        high: 5
+      norm_female:
+        low: null
+        high: 5
+      pathology_desc: ≥5 — гипертрофия
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+  - name: Систолическая функция правого желудочка
+    slug: rv_systolic
+    parameters:
+    - id: tapss
+      name: TAPSE
+      unit: мм
+      norm_male:
+        low: 17
+        high: null
+      norm_female:
+        low: 15
+        high: null
+      pathology_desc: <17 (м) / <15 (ж) — дисфункция
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: fac_rv
+      name: FAC
+      unit: '%'
+      norm_male:
+        low: 35
+        high: null
+      norm_female:
+        low: 35
+        high: null
+      pathology_desc: <35% — дисфункция
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: s_prime_rv
+      name: S' (TDI)
+      unit: см/с
+      norm_male:
+        low: 9.5
+        high: null
+      norm_female:
+        low: 9.5
+        high: null
+      pathology_desc: <9.5 — дисфункция
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rv_gls
+      name: RV GLS
+      unit: '%'
+      norm_male:
+        low: -20
+        high: null
+      norm_female:
+        low: -20
+        high: null
+      pathology_desc: '>-20 (менее отриц.) — дисфункция'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rimp
+      name: RIMP / Tei
+      unit: ''
+      norm_male:
+        low: null
+        high: 0.4
+      norm_female:
+        low: null
+        high: 0.4
+      pathology_desc: ≥0.40 — дисфункция
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+  - name: Диастолическая функция правого желудочка
+    slug: rv_diastolic
+    parameters:
+    - id: e_rv
+      name: E-волна ПЖ
+      unit: см/с
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от возраста
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: a_rv
+      name: A-волна ПЖ
+      unit: см/с
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от возраста
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: e_a_rv
+      name: E/A ПЖ
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от возраста
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+  - name: Площадь и объем правого желудочка
+    slug: rv_volume
+    parameters:
+    - id: rvedv
+      name: Конечно-диастолический объём ПЖ (RVEDV)
+      unit: мл
+      norm_male:
+        low: 56
+        high: 133
+      norm_female:
+        low: 46
+        high: 106
+      pathology_desc: '>133 (м) / >106 (ж) — дилатация'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rvesv
+      name: Конечно-систолический объём ПЖ (RVESV)
+      unit: мл
+      norm_male:
+        low: 19
+        high: 56
+      norm_female:
+        low: 16
+        high: 46
+      pathology_desc: '>56 (м) / >46 (ж)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: rv_area
+      name: Площадь ПЖ в 4-камерной позиции
+      unit: см²
+      norm_male:
+        low: null
+        high: 18
+      norm_female:
+        low: null
+        high: 18
+      pathology_desc: '>18 — дилатация'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+  - name: Давление в легочной артерии
+    slug: pulmonary_pressure
+    parameters:
+    - id: spap
+      name: Систолическое давление в ЛА (sPAP)
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: 35
+      norm_female:
+        low: null
+        high: 35
+      pathology_desc: 36-50 лёгкая, 51-60 умеренная, >60 тяжёлая
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: mpap
+      name: Среднее давление в ЛА (mPAP)
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: 20
+      norm_female:
+        low: null
+        high: 20
+      pathology_desc: '>20 — лёгочная гипертензия'
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
+    - id: dpap
+      name: Конечно-диастолическое давление в ЛА (dPAP)
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: 20
+      norm_female:
+        low: null
+        high: 20
+      pathology_desc: '>20 — повышение'
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
+  - name: Вероятность легочной гипертензии
+    slug: pulmonary_hypertension_prob
+    parameters:
+    - id: tr_vmax_ph
+      name: Максимальная скорость ТР
+      unit: м/с
+      norm_male:
+        low: null
+        high: 2.8
+      norm_female:
+        low: null
+        high: 2.8
+      pathology_desc: '>2.8 — вероятна лёгочная гипертензия'
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
+    - id: rv_sph
+      name: Признаки перегрузки ПЖ
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: D-образная МЖП, дилатация ПЖ, смещение МЖП
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
+- name: Правое предсердие
+  slug: right_atrium
+  pathologies:
+  - name: Размеры правого предсердия
+    slug: ra_dimensions
+    parameters:
+    - id: ra_area
+      name: Площадь правого предсердия
+      unit: см²
+      norm_male:
+        low: null
+        high: 18
+      norm_female:
+        low: null
+        high: 18
+      pathology_desc: '>18 — расширение'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: ra_volume
+      name: Объём правого предсердия (RAV)
+      unit: мл
+      norm_male:
+        low: null
+        high: 39
+      norm_female:
+        low: null
+        high: 33
+      pathology_desc: '>39 (м) / >33 (ж)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: ra_lax
+      name: Длина ПП (ПЗК)
+      unit: мм
+      norm_male:
+        low: null
+        high: 53
+      norm_female:
+        low: null
+        high: 50
+      pathology_desc: '>53 (м) / >50 (ж)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: ra_sax
+      name: Ширина ПП (КЖК)
+      unit: мм
+      norm_male:
+        low: null
+        high: 45
+      norm_female:
+        low: null
+        high: 43
+      pathology_desc: '>45 (м) / >43 (ж)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+  - name: Давление в правом предсердии
+    slug: ra_pressure
+    parameters:
+    - id: rap
+      name: Давление в правом предсердии (RAP)
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: 5
+      norm_female:
+        low: null
+        high: 5
+      pathology_desc: '>5 — повышение (венах: <8, 8-15, >15)'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: ivc_diameter
+      name: Диаметр НПВ
+      unit: мм
+      norm_male:
+        low: null
+        high: 21
+      norm_female:
+        low: null
+        high: 21
+      pathology_desc: '>21 — повышение RAP'
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+    - id: ivc_collaps
+      name: Коллапс НПВ на вдохе
+      unit: '%'
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: <50% — повышение RAP
+      source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
+- name: Митральный клапан
+  slug: mitral_valve
+  pathologies:
+  - name: Первичная митральная регургитация
+    slug: primary_mr
+    image_paths:
+    - Mitral_regurgitation_1.png
+    - Mitral_regurgitation_2.png
+    - pisa_mr.png
+    gradations:
+    - name: Лёгкая
+      parameters:
+      - id: mr_eroa_primary
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: <0.20
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_rvol_primary
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: <30
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_vc_primary
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: <3
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Умеренная
+      parameters:
+      - id: mr_eroa_primary
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: 0.20-0.39
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_rvol_primary
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: 30-59 (перв.) / 30-44 (втор.)
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_vc_primary
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: 3-7
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Тяжёлая
+      parameters:
+      - id: mr_eroa_primary
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: ≥0.40
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_rvol_primary
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: ≥60 (перв.) / ≥45 (втор.)
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_vc_primary
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: ≥7
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+  - name: Вторичная митральная регургитация
+    slug: secondary_mr
+    image_paths:
+    - Mitral_regurgitation_1.png
+    - Mitral_regurgitation_2.png
+    gradations:
+    - name: Лёгкая
+      parameters:
+      - id: mr_eroa_secondary
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: <0.20
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_rvol_secondary
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: <30
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Умеренная
+      parameters:
+      - id: mr_eroa_secondary
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: 0.20-0.39
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_rvol_secondary
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: 30-44
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Тяжёлая
+      parameters:
+      - id: mr_eroa_secondary
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: ≥0.40
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: mr_rvol_secondary
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: ≥45
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+  - name: Митральный стеноз
+    slug: mitral_stenosis
+    image_paths:
+    - Mitral_stenosis_1.png
+    - Mitral_stenosis_2.png
+    parameters:
+    - id: ms_area
+      name: Площадь МК
+      unit: см²
+      norm_male:
+        low: 4.0
+        high: 6.0
+      norm_female:
+        low: 4.0
+        high: 6.0
+      pathology_desc: 1.0-1.5 умеренный, <1.0 тяжёлый
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: ms_mg
+      name: Средний градиент
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: 5
+      norm_female:
+        low: null
+        high: 5
+      pathology_desc: 5-10 умеренный, >10 тяжёлый
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: ms_pht
+      name: Полураспад PHT
+      unit: мс
+      norm_male:
+        low: null
+        high: 150
+      norm_female:
+        low: null
+        high: 150
+      pathology_desc: 150-220 умеренный, >220 тяжёлый
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+  - name: Сегменты митрального калпана
+    slug: mitral_segments
+    parameters:
+    - id: p1
+      name: P1 (латеральный)
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Анти-латеральная (АЛ) складка
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: p2
+      name: P2 (средний)
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Центральная (медиальная) складка
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: p3
+      name: P3 (медиальный)
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Анти-медиальная (АМ) складка
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+- name: Аортальный клапан
+  slug: aortic_valve
+  pathologies:
+  - name: Аортальный стеноз
+    slug: aortic_stenosis
+    image_paths:
+    - Aortic_stenosis.png
+    gradations:
+    - name: Лёгкий
+      parameters:
+      - id: as_vmax
+        name: Vmax
+        unit: м/с
+        norm_male:
+          low: null
+          high: 2.5
+        pathology_desc: 2.6 – 2.9
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_mg_aha
+        name: Средний градиент (AHA/ACC)
+        unit: мм рт. ст.
+        norm_male:
+          low: null
+          high: 10
+        pathology_desc: < 20
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_mg_esc
+        name: Средний градиент (ESC)
+        unit: мм рт. ст.
+        norm_male:
+          low: null
+          high: 10
+        pathology_desc: < 30
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_ava
+        name: AVA
+        unit: см²
+        norm_male:
+          low: 2.5
+          high: 3.5
+        norm_female:
+          low: 2.5
+          high: 3.5
+        pathology_desc: '> 1.5'
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_ava_indexed
+        name: AVA Indexed
+        unit: см²/м²
+        norm_male:
+          low: 0.85
+          high: null
+        norm_female:
+          low: 0.85
+          high: null
+        pathology_desc: '> 0.85'
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_dsi
+        name: DSI
+        unit: ''
+        norm_male:
+          low: 0.5
+          high: null
+        pathology_desc: '> 0.5'
+        source: Bonita Anderson, Echo Reference Values, March 2017
+    - name: Умеренный
+      parameters:
+      - id: as_vmax
+        name: Vmax
+        unit: м/с
+        norm_male:
+          low: null
+          high: 2.5
+        pathology_desc: 3.0 – 4.0
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_mg_aha
+        name: Средний градиент (AHA/ACC)
+        unit: мм рт. ст.
+        norm_male:
+          low: null
+          high: 10
+        pathology_desc: 20 – 40
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_mg_esc
+        name: Средний градиент (ESC)
+        unit: мм рт. ст.
+        norm_male:
+          low: null
+          high: 10
+        pathology_desc: 30 – 50
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_ava
+        name: AVA
+        unit: см²
+        norm_male:
+          low: 2.5
+          high: 3.5
+        norm_female:
+          low: 2.5
+          high: 3.5
+        pathology_desc: 1.0 – 1.5
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_ava_indexed
+        name: AVA Indexed
+        unit: см²/м²
+        norm_male:
+          low: 0.85
+          high: null
+        norm_female:
+          low: 0.85
+          high: null
+        pathology_desc: 0.6 – 0.85
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_dsi
+        name: DSI
+        unit: ''
+        norm_male:
+          low: 0.5
+          high: null
+        pathology_desc: 0.25 – 0.50
+        source: Bonita Anderson, Echo Reference Values, March 2017
+    - name: Тяжёлый
+      parameters:
+      - id: as_vmax
+        name: Vmax
+        unit: м/с
+        norm_male:
+          low: null
+          high: 2.5
+        pathology_desc: '> 4.0'
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_mg_aha
+        name: Средний градиент (AHA/ACC)
+        unit: мм рт. ст.
+        norm_male:
+          low: null
+          high: 10
+        pathology_desc: '> 40'
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_mg_esc
+        name: Средний градиент (ESC)
+        unit: мм рт. ст.
+        norm_male:
+          low: null
+          high: 10
+        pathology_desc: '> 50'
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_ava
+        name: AVA
+        unit: см²
+        norm_male:
+          low: 2.5
+          high: 3.5
+        norm_female:
+          low: 2.5
+          high: 3.5
+        pathology_desc: < 1.0
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_ava_indexed
+        name: AVA Indexed
+        unit: см²/м²
+        norm_male:
+          low: 0.85
+          high: null
+        norm_female:
+          low: 0.85
+          high: null
+        pathology_desc: < 0.6
+        source: Bonita Anderson, Echo Reference Values, March 2017
+      - id: as_dsi
+        name: DSI
+        unit: ''
+        norm_male:
+          low: 0.5
+          high: null
+        pathology_desc: < 0.25
+        source: Bonita Anderson, Echo Reference Values, March 2017
+  - name: Аортальная регургитация
+    slug: aortic_regurgitation
+    image_paths:
+    - Aortic_regurgitation_1.png
+    - Aortic_regurgitation_2.png
+    - pisa_ar.png
+    gradations:
+    - name: Лёгкая
+      parameters:
+      - id: ar_eroa
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.1
+        pathology_desc: <0.10
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_rvol
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: <30
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_vc
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: <3
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_vena_contracta_width
+        name: Ширина vena contracta
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: <3
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Умеренная
+      parameters:
+      - id: ar_eroa
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.1
+        pathology_desc: 0.10-0.29
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_rvol
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: 30-59
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_vc
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: 3-6
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Тяжёлая
+      parameters:
+      - id: ar_eroa
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.1
+        pathology_desc: ≥0.30
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_rvol
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: ≥60
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: ar_vc
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: ≥6
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+- name: Трикуспидальный клапан
+  slug: tricuspid_valve
+  pathologies:
+  - name: Трикуспидальная регургитация
+    slug: tricuspid_regurgitation
+    image_paths:
+    - Tricuspid_regurgitation.png
+    gradations:
+    - name: Лёгкая
+      parameters:
+      - id: tr_eroa
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: <0.20
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: tr_rvol
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: <30
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: tr_vc
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: <3
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Умеренная
+      parameters:
+      - id: tr_eroa
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: 0.20-0.39
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: tr_rvol
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: 30-44
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: tr_vc
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: 3-7
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Тяжёлая
+      parameters:
+      - id: tr_eroa
+        name: EROA
+        unit: см²
+        norm_male:
+          low: null
+          high: 0.2
+        pathology_desc: ≥0.40
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: tr_rvol
+        name: RVol
+        unit: мл
+        norm_male:
+          low: null
+          high: 30
+        pathology_desc: ≥45
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+      - id: tr_vc
+        name: VC
+        unit: мм
+        norm_male:
+          low: null
+          high: 3
+        pathology_desc: ≥7
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+  - name: Трикуспидальный стеноз
+    slug: tricuspid_stenosis
+    image_paths:
+    - Tricuspid_stenosis.png
+    parameters:
+    - id: ts_area
+      name: Площадь ТК
+      unit: см²
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от типа протеза
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: ts_mg
+      name: Средний градиент
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: 5
+      pathology_desc: '>5 — стеноз'
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: ts_pht
+      name: Полураспад PHT
+      unit: мс
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: '>220 — тяжёлый стеноз'
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+- name: Лёгочный клапан
+  slug: pulmonary_valve
+  pathologies:
+  - name: Легочная регургитация
+    slug: pulmonary_regurgitation
+    gradations:
+    - name: Лёгкая
+      parameters:
+      - id: pr_severity
+        name: Степень
+        unit: ''
+        norm_male:
+          low: null
+          high: null
+        pathology_desc: Малая струя, нормальный ПЖ
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Умеренная
+      parameters:
+      - id: pr_severity
+        name: Степень
+        unit: ''
+        norm_male:
+          low: null
+          high: null
+        pathology_desc: Промежуточная
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+    - name: Тяжёлая
+      parameters:
+      - id: pr_severity
+        name: Степень
+        unit: ''
+        norm_male:
+          low: null
+          high: null
+        pathology_desc: Широкая струя, дилатация ПЖ
+        source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+  - name: Легочный стеноз
+    slug: pulmonary_stenosis
+    image_paths:
+    - Pulmonic_stenosis.png
+    gradations:
+    - name: Лёгкий
+      parameters:
+      - id: ps_vmax
+        name: Vmax
+        unit: м/с
+        norm_male:
+          low: null
+          high: 2.0
+        pathology_desc: <3.0
+        source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - name: Умеренный
+      parameters:
+      - id: ps_vmax
+        name: Vmax
+        unit: м/с
+        norm_male:
+          low: null
+          high: 2.0
+        pathology_desc: 3.0-4.0
+        source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - name: Тяжёлый
+      parameters:
+      - id: ps_vmax
+        name: Vmax
+        unit: м/с
+        norm_male:
+          low: null
+          high: 2.0
+        pathology_desc: '>4.0'
+        source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+  - name: Легочный ствол
+    slug: pulmonary_trunk
+    parameters:
+    - id: pa_diameter
+      name: Диаметр лёгочного ствола
+      unit: мм
+      norm_male:
+        low: null
+        high: 29
+      norm_female:
+        low: null
+        high: 27
+      pathology_desc: '>29 (м) / >27 (ж) — дилатация'
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
+    - id: pa_rvot
+      name: Диаметр ПЖОТ
+      unit: мм
+      norm_male:
+        low: null
+        high: 30
+      norm_female:
+        low: null
+        high: 28
+      pathology_desc: '>30 (м) / >28 (ж)'
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
+- name: Аорта
+  slug: aorta
+  pathologies:
+  - name: Размеры
+    slug: aortic_dimensions
+    parameters:
+    - id: asc_aorta
+      name: Восходящая аорта (анулярный уровень)
+      unit: мм
+      norm_male:
+        low: null
+        high: 40
+      norm_female:
+        low: null
+        high: 36
+      pathology_desc: 40-45 расширение, >45 аневризма
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: sinotubular
+      name: Синотубулярное соединение
+      unit: мм
+      norm_male:
+        low: null
+        high: 35
+      norm_female:
+        low: null
+        high: 33
+      pathology_desc: '>35 (м) / >33 (ж)'
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: ascending_aorta
+      name: Восходящая аорта (на уровне лёгочной артерии)
+      unit: мм
+      norm_male:
+        low: null
+        high: 40
+      norm_female:
+        low: null
+        high: 36
+      pathology_desc: 40-45 расширение, >45 аневризма
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: aortic_arch
+      name: Дуга аорты
+      unit: мм
+      norm_male:
+        low: null
+        high: 30
+      norm_female:
+        low: null
+        high: 28
+      pathology_desc: '>30 (м) / >28 (ж)'
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: descending_aorta
+      name: Нисходящая аорта (грудная)
+      unit: мм
+      norm_male:
+        low: null
+        high: 30
+      norm_female:
+        low: null
+        high: 28
+      pathology_desc: '>30 (м) / >28 (ж)'
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: abdominal_aorta
+      name: Брюшная аорта
+      unit: мм
+      norm_male:
+        low: null
+        high: 30
+      norm_female:
+        low: null
+        high: 28
+      pathology_desc: '>30 (м) / >28 (ж)'
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+  - name: Расслоение аорты
+    slug: aortic_dissection
+    image_paths:
+    - Aortic_dissection.png
+    parameters:
+    - id: dissection_type
+      name: Тип расслоения
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Stanford A (восходящая), B (нисходящая)
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: dissection_intimal_flap
+      name: Интимальный флаттер
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Визуализируется в ВОТ/ЧСВ позиции
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: dissection_lumens
+      name: Истинный и ложный просветы
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Два просвета с кровотоком
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+    - id: dissection_pericardial_eff
+      name: Перикардиальный выпот
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Наличие — осложнение типа A
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
+- name: Прочее
+  slug: other
+  pathologies:
+  - name: Общие показатели
+    slug: general
+    parameters:
+    - id: heart_rate
+      name: Частота сердечных сокращений (ЧСС)
+      unit: уд/мин
+      norm_male:
+        low: 60
+        high: 100
+      norm_female:
+        low: 60
+        high: 100
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: bsa
+      name: Площадь поверхности тела (ППТ)
+      unit: м²
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: 'Расчёт по DuBois: 0.007184 × рост^0.725 × вес^0.425'
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: blood_pressure
+      name: Артериальное давление (АД)
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Систолическое / Диастолическое
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+  - name: Параметры протезов
+    slug: prosthetic_params
+    parameters:
+    - id: prosth_type
+      name: Тип протеза
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Механический / Биологический
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: prosth_size
+      name: Размер протеза
+      unit: мм
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от модели
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: prosth_year
+      name: Год имплантации
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+  - name: Методика измерений
+    slug: measurement_technique
+    parameters:
+    - id: simpson_method
+      name: Метод Симпсона (модифицированный)
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: 2D или 3D, 4-камерная + 2-камерная позиции
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: doppler_angle
+      name: Угол допплера
+      unit: °
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: <20° — точное измерение
+      source: 2015, ASE, Guidelines for the Standardization in Echocardiography
+    - id: pisa_radius
+      name: Радиус PISA
+      unit: мм
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Измерение от митральной/аортальной створки
+      source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+- name: Протезы клапанов
+  slug: prosthetic_valves
+  pathologies:
+  - name: Митральная позиция
+    slug: mitral_position
+    image_paths:
+    - Mitral_prosthetic_1.png
+    - Mitral_prosthetic_2.png
+    parameters:
+    - id: mv_prosth_gradient_mean
+      name: Средний градиент
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: 'Мех. протез: <5, Био: <8'
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: mv_prosth_orifice
+      name: Effective Orifice Area (EOA)
+      unit: см²
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от размера протеза
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: mv_prosth_pht
+      name: Полураспад PHT
+      unit: мс
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: <130 норма, 130-220 подозрение, >220 стеноз
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: mv_prosth_regurg
+      name: Парапротезная регургитация
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: VC <3 лёгкая, 3-6 умеренная, >6 тяжёлая
+      source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement
+  - name: Аортальная позиция
+    slug: aortic_position
+    image_paths:
+    - Aortic_prosthetic_1.png
+    - Aotric_prosthetic_2.png
+    - Aortic_prosthetic_3.png
+    parameters:
+    - id: av_prosth_gradient_mean
+      name: Средний градиент
+      unit: мм рт. ст.
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: 'Мех. протез: <20, Био: <30'
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: av_prosth_orifice
+      name: Effective Orifice Area (EOA)
+      unit: см²
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: Зависит от размера протеза
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: av_prosth_dvi
+      name: Doppler Velocity Index (DVI)
+      unit: ''
+      norm_male:
+        low: 0.35
+        high: null
+      pathology_desc: <0.35 — стеноз
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
+    - id: av_prosth_regurg
+      name: Парапротезная регургитация
+      unit: ''
+      norm_male:
+        low: null
+        high: null
+      pathology_desc: VC <3 лёгкая, 3-6 умеренная, >6 тяжёлая
+      source: 2017, ASE, Guidelines for the Evaluation of Valvular Regurgitation After Percutaneous Valve Repair or Replacement

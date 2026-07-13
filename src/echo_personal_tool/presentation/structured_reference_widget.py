@@ -746,20 +746,16 @@ class StructuredReferenceWidget(QWidget):
         self._render_flat_table()
 
     def _render_flat_table(self) -> None:
-        """Render parameters as a table: ID, Название, Ед., Норм М/Ж, Описание, Источник."""
+        """Render parameters as a table: Показатель, Норм М, Норм Ж (units combined)."""
         params = self._get_current_parameters()
         if not params:
             return
 
         p = get_theme_palette()
         columns = [
-            ("id", "ID"),
-            ("name", "Название"),
-            ("unit", "Ед."),
+            ("name", "Показатель"),
             ("norm_male", "Норм М"),
             ("norm_female", "Норм Ж"),
-            ("pathology_desc", "Описание"),
-            ("source", "Источник"),
         ]
 
         table = QTableWidget(len(params), len(columns))
@@ -767,14 +763,12 @@ class StructuredReferenceWidget(QWidget):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
         headers = [label for _, label in columns]
         table.setHorizontalHeaderLabels(headers)
-
-        # Set column widths: ID=80, Name=150, Unit=60, Norms=100, Desc=200, Source=150
-        col_widths = [80, 150, 60, 100, 100, 200, 150]
-        for i, w in enumerate(col_widths[:len(columns)]):
-            table.setColumnWidth(i, w)
 
         header_style = (
             f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
@@ -785,27 +779,25 @@ class StructuredReferenceWidget(QWidget):
         )
         table.setStyleSheet(
             f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
-            f"font-size: 13px; background: transparent; }}"
+            f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
             f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
         )
 
         for r, param in enumerate(params):
+            # Combine name with unit (e.g., "Длина ЛП (ПЗК) мм")
+            name_text = param.name
+            if param.unit:
+                name_text += f" ({param.unit})"
+
             norm_m = self._format_norm_range(param.norm_male)
             norm_f = self._format_norm_range(param.norm_female)
-            values = [
-                param.id,
-                param.name,
-                param.unit or "",
-                norm_m,
-                norm_f,
-                param.pathology_desc or "",
-                param.source or "",
-            ]
+
+            values = [name_text, norm_m, norm_f]
             for c, val in enumerate(values):
                 item = QTableWidgetItem(val)
                 item.setForeground(QColor(p['text']))
                 # Color-code norms and empty cells
-                if c in (3, 4) and val:
+                if c in (1, 2) and val:
                     item.setForeground(QColor(p['accent_tab']))
                 elif not val:
                     item.setForeground(QColor(p['text_dim']))
@@ -851,7 +843,7 @@ class StructuredReferenceWidget(QWidget):
         )
         table.setStyleSheet(
             f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
-            f"font-size: 13px; background: transparent; }}"
+            f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
             f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
         )
 

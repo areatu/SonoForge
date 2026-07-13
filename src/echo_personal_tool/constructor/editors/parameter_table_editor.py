@@ -121,6 +121,25 @@ class ParameterTableEditor(BaseEditor):
         btn_row.addStretch()
         header_layout.addLayout(btn_row)
 
+        # Column visibility toggles
+        vis_row = QHBoxLayout()
+        vis_label = QLabel("Показать:")
+        vis_label.setStyleSheet(f"color: {p['text']}; font-size: 11px;")
+        vis_row.addWidget(vis_label)
+
+        self._col_visibility: dict[str, bool] = {c[0]: True for c in self._columns}
+        self._col_checkboxes: dict[str, QCheckBox] = {}
+        from PySide6.QtWidgets import QCheckBox
+        for field, label in self._columns:
+            cb = QCheckBox(label)
+            cb.setChecked(True)
+            cb.setStyleSheet(f"color: {p['text']}; font-size: 11px;")
+            cb.stateChanged.connect(lambda state, f=field: self._toggle_column(f, state))
+            self._col_checkboxes[field] = cb
+            vis_row.addWidget(cb)
+        vis_row.addStretch()
+        header_layout.addLayout(vis_row)
+
         # Column indicator
         self._col_indicator = QLabel("Столбец: — | Перетащите заголовок для перемещения")
         self._col_indicator.setStyleSheet(f"color: {p['text_dim']}; font-size: 11px;")
@@ -299,6 +318,17 @@ class ParameterTableEditor(BaseEditor):
         col = self._columns.pop(old_visual)
         self._columns.insert(new_visual, col)
         self.parameters_changed.emit()
+
+    # ── Column visibility ──
+
+    def _toggle_column(self, field: str, state: int) -> None:
+        visible = state == Qt.CheckState.Checked.value
+        self._col_visibility[field] = visible
+        # Find column index and hide/show
+        for col, (f, _) in enumerate(self._columns):
+            if f == field:
+                self._table.setColumnHidden(col, not visible)
+                break
 
     # ── Add / Delete ──
 
