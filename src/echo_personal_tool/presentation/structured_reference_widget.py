@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -524,11 +525,16 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.setCurrentRow(patho_idx)
 
     def _clear_cards(self) -> None:
-        """Remove all parameter cards from the container."""
+        """Remove all parameter cards and tables from the container."""
         for card in self._param_cards:
             self._cards_layout.removeWidget(card)
             card.deleteLater()
         self._param_cards.clear()
+        # Also remove any tables that were added
+        while self._cards_layout.count() > 1:  # Keep stretch
+            item = self._cards_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
     def _scale_image(self) -> None:
         # Guard against recursive calls from resizeEvent
@@ -736,13 +742,76 @@ class StructuredReferenceWidget(QWidget):
             self._render_gradation_table()
             return
 
-        # Otherwise → one card per parameter (original behaviour)
+        # Otherwise → render flat parameter table (matching constructor style)
+        self._render_flat_table()
+
+    def _render_flat_table(self) -> None:
+        """Render parameters as a table: ID, Название, Ед., Норм М/Ж, Описание, Источник."""
         params = self._get_current_parameters()
-        for param in params:
-            norm = self._format_norm(param)
-            card = _ParameterCard(param, norm)
-            self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
-            self._param_cards.append(card)
+        if not params:
+            return
+
+        p = get_theme_palette()
+        columns = [
+            ("id", "ID"),
+            ("name", "Название"),
+            ("unit", "Ед."),
+            ("norm_male", "Норм М"),
+            ("norm_female", "Норм Ж"),
+            ("pathology_desc", "Описание"),
+            ("source", "Источник"),
+        ]
+
+        table = QTableWidget(len(params), len(columns))
+        table.verticalHeader().hide()
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        headers = [label for _, label in columns]
+        table.setHorizontalHeaderLabels(headers)
+
+        # Set column widths: ID=80, Name=150, Unit=60, Norms=100, Desc=200, Source=150
+        col_widths = [80, 150, 60, 100, 100, 200, 150]
+        for i, w in enumerate(col_widths[:len(columns)]):
+            table.setColumnWidth(i, w)
+
+        header_style = (
+            f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
+            f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
+        )
+        table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}"
+        )
+        table.setStyleSheet(
+            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
+            f"font-size: 13px; background: transparent; }}"
+            f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
+        )
+
+        for r, param in enumerate(params):
+            norm_m = self._format_norm_range(param.norm_male)
+            norm_f = self._format_norm_range(param.norm_female)
+            values = [
+                param.id,
+                param.name,
+                param.unit or "",
+                norm_m,
+                norm_f,
+                param.pathology_desc or "",
+                param.source or "",
+            ]
+            for c, val in enumerate(values):
+                item = QTableWidgetItem(val)
+                item.setForeground(QColor(p['text']))
+                # Color-code norms and empty cells
+                if c in (3, 4) and val:
+                    item.setForeground(QColor(p['accent_tab']))
+                elif not val:
+                    item.setForeground(QColor(p['text_dim']))
+                table.setItem(r, c, item)
+
+        self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
 
     def _render_gradation_table(self) -> None:
         """Render a single matrix table: rows = parameters, columns = gradations."""
@@ -766,14 +835,16 @@ class StructuredReferenceWidget(QWidget):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
 
         # Headers
         headers = ["Параметр"] + grad_names
         table.setHorizontalHeaderLabels(headers)
         header_style = (
             f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {p['text']}; border: none;"
+            f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
         )
         table.horizontalHeader().setStyleSheet(
             f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}"
@@ -808,12 +879,6 @@ class StructuredReferenceWidget(QWidget):
                 val_item.setForeground(QColor(p['text']))
                 table.setItem(r, 1 + g_idx, val_item)
 
-        table.resizeColumnsToContents()
-        # Ensure minimum column widths for readability
-        for c in range(n_cols):
-            if table.columnWidth(c) < 80:
-                table.setColumnWidth(c, 80)
-
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
 
     def _get_current_parameters(self) -> list:
@@ -830,6 +895,18 @@ class StructuredReferenceWidget(QWidget):
         norm = param.norm_female if not self._sex_male else param.norm_male
         if norm is None:
             norm = param.norm_male or param.norm_female
+        if norm is None:
+            return ""
+        if norm.low is not None and norm.high is not None:
+            return f"{norm.low}\u2013{norm.high}"
+        if norm.low is not None:
+            return f"\u2265{norm.low}"
+        if norm.high is not None:
+            return f"\u2264{norm.high}"
+        return ""
+
+    def _format_norm_range(self, norm) -> str:
+        """Format a NormRange directly (for table view)."""
         if norm is None:
             return ""
         if norm.low is not None and norm.high is not None:
