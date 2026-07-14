@@ -65,7 +65,8 @@ class MeasurementResultsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _export_pdf(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+        path, _ = styled_save_file(
             self,
             tr("measurement_results.save_pdf"),
             self._default_pdf_name,

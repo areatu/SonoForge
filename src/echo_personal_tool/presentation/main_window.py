@@ -797,7 +797,8 @@ class MainWindow(QMainWindow):
     @_prof
     def _open_folder(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
-        directory = QFileDialog.getExistingDirectory(self, tr("dialog.select_folder"))
+        from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+        directory = styled_select_directory(self, tr("dialog.select_folder"))
         if not directory:
             return
         folder = Path(directory)
@@ -808,7 +809,8 @@ class MainWindow(QMainWindow):
     def _on_export_mp4_requested(self, instance: object) -> None:
         if not isinstance(instance, InstanceMetadata) or instance.path is None:
             return
-        dest, _ = QFileDialog.getSaveFileName(
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+        dest, _ = styled_save_file(
             self, tr("dialog.export_mp4.title"), "", "MP4 (*.mp4)",
         )
         if not dest:

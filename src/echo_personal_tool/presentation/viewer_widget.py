@@ -1426,7 +1426,8 @@ class ViewerWidget(QWidget):
     def _save_viewer_image(self) -> None:
         if self._current_frame is None:
             return
-        path, _ = QFileDialog.getSaveFileName(
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+        path, _ = styled_save_file(
             self,
             tr("viewer.context_save_frame"),
             "",

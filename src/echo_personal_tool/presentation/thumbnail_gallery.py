@@ -372,8 +372,9 @@ class ThumbnailGalleryWidget(QListWidget):
     def _copy_source_file(self, instance: InstanceMetadata) -> None:
         if instance.path is None:
             return
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
         default_name = instance.path.name
-        dest, _ = QFileDialog.getSaveFileName(
+        dest, _ = styled_save_file(
             self, tr("gallery.save_file"), default_name,
         )
         if dest:

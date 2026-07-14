@@ -880,7 +880,8 @@ class AseReferenceDialog(QDialog):
         self._structured_widget.navigate_to_param(param_id)
 
     def _add_document(self) -> None:
-        path_str, _ = QFileDialog.getOpenFileName(
+        from echo_personal_tool.presentation.styled_dialogs import styled_open_file
+        path_str, _ = styled_open_file(
             self,
             tr("ase_refs.open_document"),
             "",

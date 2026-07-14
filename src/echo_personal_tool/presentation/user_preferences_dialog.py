@@ -355,8 +355,8 @@ class UserPreferencesDialog(QDialog):
         self.accept()
 
     def _browse_gold_path(self) -> None:
-        from PySide6.QtWidgets import QFileDialog
-        path = QFileDialog.getExistingDirectory(
+        from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+        path = styled_select_directory(
             self,
             tr("preferences.gold_browse_title"),
             self._gold_path.text() or str(Path.home()),
@@ -365,8 +365,8 @@ class UserPreferencesDialog(QDialog):
             self._gold_path.setText(path)
 
     def _browse_references_dir(self) -> None:
-        from PySide6.QtWidgets import QFileDialog
-        path = QFileDialog.getExistingDirectory(
+        from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+        path = styled_select_directory(
             self,
             tr("references_dir_browse_title"),
             self._refs_dir.text() or str(Path.home()),
