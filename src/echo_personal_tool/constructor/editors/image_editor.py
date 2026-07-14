@@ -248,7 +248,8 @@ class ImageEditor(BaseEditor):
         menu.exec(self._list.mapToGlobal(pos))
 
     def _add_image(self) -> None:
-        files, _ = QFileDialog.getOpenFileNames(
+        from echo_personal_tool.constructor.dialogs import styled_open_files
+        files = styled_open_files(
             self, "Добавить изображения", "",
             "Изображения (*.png *.jpg *.jpeg *.gif *.bmp *.svg)"
         )
