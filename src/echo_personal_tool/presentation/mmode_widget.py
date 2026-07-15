@@ -71,30 +71,21 @@ class MModeWidget(QWidget):
             toolbar.addWidget(btn)
         toolbar.addStretch(1)
 
+        self._close_btn = QPushButton("×")
+        self._close_btn.setFixedWidth(24)
+        self._close_btn.setFixedHeight(22)
+        self._close_btn.clicked.connect(self.close_requested.emit)
+        toolbar.addWidget(self._close_btn)
+
         # Set default speed
         default_label = "100 mm/s"
         self._speed_buttons[default_label].setChecked(True)
-
-        # Close button overlay in top-right corner
-        self._close_btn = QPushButton("×", self)
-        self._close_btn.setFixedSize(20, 20)
-        self._close_btn.setStyleSheet(
-            "QPushButton { background: rgba(0,0,0,0.5); color: white; "
-            "border: none; border-radius: 3px; font-size: 14px; font-weight: bold; }"
-            "QPushButton:hover { background: rgba(200,0,0,0.8); }"
-        )
-        self._close_btn.setToolTip("Close M-Mode")
-        self._close_btn.clicked.connect(self.close_requested.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(toolbar)
         layout.addWidget(self._plot)
-
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
-        super().resizeEvent(event)
-        self._close_btn.move(self.width() - 24, 2)
 
     def set_sweep_speed(self, label: str) -> None:
         new_width = _SWEEP_SPEEDS.get(label)
