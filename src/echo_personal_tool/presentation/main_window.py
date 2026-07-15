@@ -68,6 +68,7 @@ from echo_personal_tool.ui.strain_window import StrainWindow
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
+from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 from echo_personal_tool.resources.bundled_fonts import ui_font
 
@@ -154,6 +155,9 @@ class MainWindow(QMainWindow):
         self._activity_bar = None
         self._user_maximized = False
         self._slider_navigating = False
+        self._mmode_widget: MModeWidget | None = None
+        self._mmode_active = False
+        self._mmode_vertical_splitter: QSplitter | None = None
 
         self._controller = controller or AppController()
         orthanc_root = Path.home() / ".echo-personal-tool" / "orthanc"
@@ -278,6 +282,7 @@ class MainWindow(QMainWindow):
             ("Delete", self._delete_current_contour),
             ("`", self._toggle_gallery_shortcut),
             ("F11", self._toggle_fullscreen_shortcut),
+            ("Shift+M", self._toggle_mmode),
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
         ]
@@ -363,6 +368,42 @@ class MainWindow(QMainWindow):
             self._gallery.hide()
             self._tool_panel.hide()
             self.showFullScreen()
+
+    def _toggle_mmode(self) -> None:
+        self._mmode_active = not self._mmode_active
+        if self._mmode_active:
+            self._activate_mmode()
+        else:
+            self._deactivate_mmode()
+
+    def _activate_mmode(self) -> None:
+        if self._mmode_widget is None:
+            self._mmode_widget = MModeWidget()
+        self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._mmode_vertical_splitter.setHandleWidth(4)
+        self._mmode_vertical_splitter.addWidget(self._viewer)
+        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
+        self._mmode_vertical_splitter.setSizes([500, 500])
+        self._mmode_vertical_splitter.setStretchFactor(0, 1)
+        self._mmode_vertical_splitter.setStretchFactor(1, 1)
+
+        index = self._content_splitter.indexOf(self._viewer)
+        if index >= 0:
+            self._content_splitter.insertWidget(index, self._mmode_vertical_splitter)
+            self._content_splitter.setStretchFactor(index, 1)
+            self._mmode_vertical_splitter.show()
+
+    def _deactivate_mmode(self) -> None:
+        if self._mmode_vertical_splitter is None:
+            return
+        index = self._content_splitter.indexOf(self._mmode_vertical_splitter)
+        if index >= 0:
+            self._content_splitter.insertWidget(index, self._viewer)
+            self._content_splitter.setStretchFactor(index, 1)
+        self._mmode_vertical_splitter.deleteLater()
+        self._mmode_vertical_splitter = None
+        if self._mmode_widget is not None:
+            self._mmode_widget.clear_buffer()
 
     def _toggle_maximize(self) -> None:
         if self.isMaximized():
@@ -511,14 +552,33 @@ class MainWindow(QMainWindow):
                 self._content_splitter.blockSignals(False)
                 center: QWidget = self._content_splitter
             elif use_splitter:
-                self._content_splitter.blockSignals(True)
-                self._content_splitter.addWidget(self._viewer)
-                self._content_splitter.addWidget(self._tool_panel)
-                self._content_splitter.setStretchFactor(0, 1)
-                self._content_splitter.setStretchFactor(1, 0)
-                self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
-                self._content_splitter.blockSignals(False)
-                center = self._content_splitter
+                # M-mode: wrap viewer + MModeWidget in vertical splitter
+                if self._mmode_active and self._mmode_widget is not None:
+                    if self._mmode_vertical_splitter is None:
+                        self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+                        self._mmode_vertical_splitter.setHandleWidth(4)
+                    if self._mmode_vertical_splitter.indexOf(self._viewer) < 0:
+                        self._mmode_vertical_splitter.addWidget(self._viewer)
+                    if self._mmode_vertical_splitter.indexOf(self._mmode_widget) < 0:
+                        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
+                    self._mmode_vertical_splitter.setSizes([500, 500])
+                    self._mmode_vertical_splitter.setStretchFactor(0, 1)
+                    self._mmode_vertical_splitter.setStretchFactor(1, 1)
+                    self._content_splitter.addWidget(self._mmode_vertical_splitter)
+                    self._content_splitter.addWidget(self._tool_panel)
+                    self._content_splitter.setStretchFactor(0, 1)
+                    self._content_splitter.setStretchFactor(1, 0)
+                    self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                    center = self._content_splitter
+                else:
+                    self._content_splitter.blockSignals(True)
+                    self._content_splitter.addWidget(self._viewer)
+                    self._content_splitter.addWidget(self._tool_panel)
+                    self._content_splitter.setStretchFactor(0, 1)
+                    self._content_splitter.setStretchFactor(1, 0)
+                    self._content_splitter.setSizes([800, _TOOL_PANEL_WIDTH])
+                    self._content_splitter.blockSignals(False)
+                    center = self._content_splitter
             else:
                 center = self._viewer
 
