@@ -173,6 +173,7 @@ class AppController(QObject):
         self._current_frame_pixels: np.ndarray | None = None
         self._leading_static_frames: dict[Path, int] = {}
         self._batch_load_id: int = 0
+        self._mmode_active = False
         self._batch_target_frame: int = 0
         self._prefetch_request_id: int = 0
         self._prefetch_load_id: int = 0
@@ -628,6 +629,9 @@ class AppController(QObject):
 
     def toggle_playback(self) -> None:
         self.set_playing(not self._state_manager.snapshot.is_playing)
+
+    def toggle_mmode(self) -> None:
+        self._mmode_active = not self._mmode_active
 
     def set_playback_speed_multiplier(self, multiplier: float) -> None:
         self._playback_speed_multiplier = max(0.25, min(4.0, float(multiplier)))

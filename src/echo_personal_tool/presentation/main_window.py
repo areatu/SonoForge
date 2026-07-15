@@ -238,6 +238,8 @@ class MainWindow(QMainWindow):
             self._on_results_overlay_parameter_clicked
         )
         self._viewer.gold_export_requested.connect(self._on_gold_export_requested)
+        self._viewer.mmode_column_ready.connect(self._on_mmode_column_ready)
+        self._viewer.mmode_line_completed.connect(self._on_mmode_line_completed)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -829,6 +831,18 @@ class MainWindow(QMainWindow):
 
     def _on_gold_export_requested(self, phase: str, frame_index: int, chamber: str) -> None:
         self._controller.save_gold_annotation(phase=phase, frame_index=frame_index, chamber=chamber)
+
+    def _on_mmode_column_ready(self, column: object, frame_index: object) -> None:
+        if self._mmode_widget is not None and self._mmode_active:
+            import numpy as np
+            if isinstance(column, np.ndarray):
+                self._mmode_widget.on_new_column(column)
+
+    def _on_mmode_line_completed(self, start: object, end: object) -> None:
+        if self._mmode_widget is not None and isinstance(start, tuple) and isinstance(end, tuple):
+            cached_frames = self._controller.get_cached_frames() if hasattr(self._controller, 'get_cached_frames') else []
+            if cached_frames:
+                self._mmode_widget.recalculate_from_frames(cached_frames, start, end)
 
     def _wire_wl_persistence(self) -> None:
         for slider_widget in (
