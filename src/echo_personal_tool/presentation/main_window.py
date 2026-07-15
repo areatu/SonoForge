@@ -375,8 +375,16 @@ class MainWindow(QMainWindow):
         self._mmode_active = not self._mmode_active
         if self._mmode_active:
             self._activate_mmode()
+            try:
+                self._viewer.start_mmode_line()
+            except Exception:
+                pass
             self._show_status(tr("status.mmode_activated"))
         else:
+            try:
+                self._viewer.cancel_mmode_line()
+            except Exception:
+                pass
             self._deactivate_mmode()
             self._show_status(tr("status.mmode_deactivated"))
 
