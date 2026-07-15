@@ -1644,6 +1644,15 @@ class ViewerWidget(QWidget):
         sync_enabled = getattr(self, "_sync_display_control_enabled", None)
         if callable(sync_enabled):
             sync_enabled()
+        if (
+            self._current_frame is not None
+            and self._mmode_line_item is not None
+            and self._mmode_line_item.is_complete
+        ):
+            start, end = self._mmode_line_item.get_endpoints()
+            col = extract_mmode_column(self._current_frame, start, end, num_samples=256)
+            frame_idx = self._current_state.current_frame_index if self._current_state else 0
+            self.mmode_column_ready.emit(col, frame_idx)
 
     @_prof
     def refresh_after_scroll(self) -> None:
