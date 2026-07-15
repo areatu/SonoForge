@@ -375,8 +375,10 @@ class MainWindow(QMainWindow):
         self._mmode_active = not self._mmode_active
         if self._mmode_active:
             self._activate_mmode()
+            self._show_status(tr("status.mmode_activated"))
         else:
             self._deactivate_mmode()
+            self._show_status(tr("status.mmode_deactivated"))
 
     def _activate_mmode(self) -> None:
         if self._mmode_widget is None:
@@ -854,6 +856,7 @@ class MainWindow(QMainWindow):
             cached_frames = self._controller.get_cached_frames() if hasattr(self._controller, 'get_cached_frames') else []
             if cached_frames:
                 self._mmode_widget.recalculate_from_frames(cached_frames, start, end)
+            self._show_status(tr("status.mmode_line_placed"))
 
     def _wire_wl_persistence(self) -> None:
         for slider_widget in (
