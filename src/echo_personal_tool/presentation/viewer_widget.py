@@ -28,6 +28,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
+from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
@@ -237,6 +240,9 @@ class ContourViewBox(pg.ViewBox):
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_zone_press(ev):
+            ev.accept()
+            return
+        if self._viewer_widget is not None and self._viewer_widget._handle_mmode_line_click_from_event(ev):
             ev.accept()
             return
         super().mousePressEvent(ev)
@@ -593,6 +599,8 @@ class ViewerWidget(QWidget):
     results_overlay_position_changed = Signal(float, float)
     results_overlay_parameter_clicked = Signal(str)
     gold_export_requested = Signal(str, int, str)  # phase, frame_index, chamber
+    mmode_column_ready = Signal(object, object)  # (column: np.ndarray, frame_index: int)
+    mmode_line_completed = Signal(object, object)  # (start: tuple, end: tuple)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -637,6 +645,9 @@ class ViewerWidget(QWidget):
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
         self._doppler_pending_baseline_y: float | None = None
         self._mmode_time_start_x: float | None = None
+        self._mmode_line_active = False
+        self._mmode_line_item: MModeScanLineItem | None = None
+        self._mmode_line_click_step: Literal["start", "end"] | None = None
         self._vertical_caliper_labels = frozenset({"TAPSE"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
@@ -1516,6 +1527,14 @@ class ViewerWidget(QWidget):
             self._refresh_frame_panel_layout()
             self._configure_doppler_axis_for_frame()
             self._invalidate_edge_map_cache()
+            if (
+                self._mmode_line_item is not None
+                and self._mmode_line_item.is_complete
+            ):
+                start, end = self._mmode_line_item.get_endpoints()
+                col = extract_mmode_column(self._current_frame, start, end, num_samples=256)
+                frame_idx = self._current_state.current_frame_index if self._current_state else 0
+                self.mmode_column_ready.emit(col, frame_idx)
         self._update_debug_overlay()
         self._apply_zoom_mode()
 
@@ -2112,6 +2131,65 @@ class ViewerWidget(QWidget):
         self._calibration_start_y = None
         self._measurement_label.setText(tr("viewer.mmode_cal_depth"))
         return True
+
+    def start_mmode_line(self) -> None:
+        self._mmode_line_active = True
+        self._mmode_line_click_step = "start"
+        if self._mmode_line_item is not None:
+            self._mmode_line_item.remove_from_view(self._view)
+        self._mmode_line_item = MModeScanLineItem(viewer_widget=self)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def cancel_mmode_line(self) -> None:
+        if self._mmode_line_item is not None:
+            self._mmode_line_item.remove_from_view(self._view)
+        self._mmode_line_active = False
+        self._mmode_line_click_step = None
+        self._mmode_line_item = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def _handle_mmode_line_click(self, x: float, y: float) -> bool:
+        if not self._mmode_line_active or self._mmode_line_item is None:
+            return False
+        if self._mmode_line_click_step == "start":
+            self._mmode_line_item.set_start((x, y))
+            self._mmode_line_click_step = "end"
+            return True
+        elif self._mmode_line_click_step == "end":
+            self._mmode_line_item.set_end((x, y))
+            self._mmode_line_item.add_to_view(self._view)
+            self._mmode_line_active = False
+            self._mmode_line_click_step = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
+            return True
+        return False
+
+    def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
+        pass
+
+    def _mmode_node_dragging(self, endpoint_index: int, pos: tuple[float, float]) -> None:
+        if self._mmode_line_item is None:
+            return
+        if endpoint_index == 0:
+            self._mmode_line_item.move_start_to(pos)
+        else:
+            self._mmode_line_item.move_end_to(pos)
+        self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
+
+    def _end_mmode_node_drag(self, endpoint_index: int) -> None:
+        if self._mmode_line_item is not None:
+            self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
+
+    def _handle_mmode_line_click_from_event(self, ev) -> bool:
+        if not self._mmode_line_active:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click = self._map_view_event(ev)
+        if click is None:
+            return False
+        return self._handle_mmode_line_click(float(click[0]), float(click[1]))
 
     def _refresh_frame_panel_layout(self) -> None:
         self._frame_panel_layout = None
