@@ -284,7 +284,6 @@ class MainWindow(QMainWindow):
             ("Delete", self._delete_current_contour),
             ("`", self._toggle_gallery_shortcut),
             ("F11", self._toggle_fullscreen_shortcut),
-            ("Shift+M", self._toggle_mmode),
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
         ]
@@ -877,8 +876,10 @@ class MainWindow(QMainWindow):
             if instance is not None:
                 if instance.pixel_spacing is not None:
                     row_spacing_mm = instance.pixel_spacing[0]
-                    self._mmode_widget.set_depth_calibration_cm_per_pixel(row_spacing_mm / 10.0)
-                if instance.frame_time_ms is not None:
+                    # Sanity check: typical echo pixel_spacing is 0.05-1.0 mm/pixel
+                    if 0.01 <= row_spacing_mm <= 2.0:
+                        self._mmode_widget.set_depth_calibration_cm_per_pixel(row_spacing_mm / 10.0)
+                if instance.frame_time_ms is not None and instance.frame_time_ms > 0:
                     self._mmode_widget.set_time_calibration_ms_per_pixel(instance.frame_time_ms)
             self._show_status(tr("status.mmode_line_placed"))
 
