@@ -882,11 +882,9 @@ class MainWindow(QMainWindow):
                 spacing = state.effective_pixel_spacing
                 if spacing is None:
                     spacing = (0.1, 0.1)
-                import math
-                row_spacing_mm, col_spacing_mm = spacing[0], spacing[1]
-                dx = float(end[0]) - float(start[0])
-                dy = float(end[1]) - float(start[1])
-                depth_mm = math.sqrt((dx * col_spacing_mm) ** 2 + (dy * row_spacing_mm) ** 2)
+                row_spacing_mm = spacing[0]
+                dy = abs(float(end[1]) - float(start[1]))
+                depth_mm = dy * row_spacing_mm
             if depth_mm > 0:
                 self._mmode_widget.set_depth_range_mm(depth_mm)
             state = self._controller.state_manager.snapshot
