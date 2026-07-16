@@ -876,15 +876,13 @@ class MainWindow(QMainWindow):
             state = self._controller.state_manager.snapshot
             spacing = state.effective_pixel_spacing
             if spacing is None:
-                # Fallback: assume 0.1 mm/pixel (typical echo)
                 spacing = (0.1, 0.1)
             import math
-            row_spacing_mm = spacing[0]
+            row_spacing_mm, col_spacing_mm = spacing[0], spacing[1]
             dx = float(end[0]) - float(start[0])
             dy = float(end[1]) - float(start[1])
-            line_len_px = math.sqrt(dx * dx + dy * dy)
-            if line_len_px > 0:
-                depth_mm = line_len_px * row_spacing_mm
+            depth_mm = math.sqrt((dx * col_spacing_mm) ** 2 + (dy * row_spacing_mm) ** 2)
+            if depth_mm > 0:
                 self._mmode_widget.set_depth_range_mm(depth_mm)
             if state.instance is not None and state.instance.frame_time_ms is not None and state.instance.frame_time_ms > 0:
                 self._mmode_widget.set_time_calibration_ms_per_pixel(state.instance.frame_time_ms)
