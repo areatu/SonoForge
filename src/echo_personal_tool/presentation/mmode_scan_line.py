@@ -117,6 +117,18 @@ class MModeScanLineItem:
             self.line_end = mouse_pos
             self._update_graphics()
 
+    def update_preview_view(
+        self, start_view: tuple[float, float], end_view: tuple[float, float], view: pg.ViewBox, frame_height: float
+    ) -> None:
+        """Show preview line from start_view to end_view in view coords."""
+        self._remove_graphics()
+        pen = pg.mkPen(color="cyan", style=Qt.PenStyle.DashLine, width=1.5)
+        self._line_item = pg.PlotDataItem(pen=pen, antialias=True)
+        self._line_item.setZValue(24)
+        self._line_item.setData([start_view[0], end_view[0]], [start_view[1], end_view[1]])
+        self._start_node = _MModeNodeItem(self._viewer_widget, 0, start_view)
+        self.add_to_view(view)
+
     def add_to_view(self, view: pg.ViewBox) -> None:
         if self._line_item is not None:
             view.addItem(self._line_item)

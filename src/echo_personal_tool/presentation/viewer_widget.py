@@ -2174,16 +2174,30 @@ class ViewerWidget(QWidget):
         if self._mmode_line_click_step == "start":
             self._mmode_line_item.set_start((x, img_y))
             self._mmode_line_click_step = "end"
+            self._update_mmode_line_preview(x, y)
             return True
         elif self._mmode_line_click_step == "end":
             self._mmode_line_item.set_end((x, img_y))
             self._mmode_line_item.update_graphics_for_view(self._view, h)
-            self._mmode_line_active = False
-            self._mmode_line_click_step = None
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.setCursor(Qt.CursorShape.CrossCursor)
             self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
             return True
         return False
+
+    def _update_mmode_line_preview(self, mouse_x: float, mouse_y: float) -> None:
+        """Show preview of scan line from start to current mouse position."""
+        if self._mmode_line_item is None or self._mmode_line_item.line_start is None:
+            return
+        h = self._current_frame.shape[0] if self._current_frame is not None else 1.0
+        start_view = (self._mmode_line_item.line_start[0], h - self._mmode_line_item.line_start[1])
+        self._mmode_line_item.update_preview_view(start_view, (mouse_x, mouse_y), self._view, h)
+
+    def _handle_mmode_line_hover(self, x: float, y: float) -> bool:
+        """Update scan line preview when hovering during placement."""
+        if not self._mmode_line_active or self._mmode_line_click_step != "end":
+            return False
+        self._update_mmode_line_preview(x, y)
+        return True
 
     def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
         pass
@@ -3769,6 +3783,8 @@ class ViewerWidget(QWidget):
         cursor = self._map_view_event(ev)
         if cursor is None:
             return False
+        if self._handle_mmode_line_hover(float(cursor[0]), float(cursor[1])):
+            return True
         return self._update_contour_hover(cursor)
 
     def _update_contour_hover(self, cursor: tuple[float, float]) -> bool:
