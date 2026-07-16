@@ -6,6 +6,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
+from echo_personal_tool.domain.services.mmode_smoothing import (
+    log_compress,
+    spatial_smooth,
+    temporal_smooth,
+)
 
 _SWEEP_SPEEDS: dict[str, int] = {
     "25 mm/s": 128,
@@ -28,6 +33,7 @@ class MModeWidget(QWidget):
         self._scan_end: tuple[float, float] | None = None
         self._time_ms_per_pixel: float | None = None
         self._depth_mm_per_pixel: float | None = None
+        self._previous_column: np.ndarray | None = None
 
         self._image_buffer = np.zeros(
             (self._num_samples, self._buffer_width), dtype=np.uint8
@@ -116,7 +122,13 @@ class MModeWidget(QWidget):
 
     def on_new_column(self, column: np.ndarray) -> None:
         n = min(column.shape[0], self._num_samples)
-        self._image_buffer[:n, self._sweep_x] = column[:n]
+        col = column[:n]
+        # Smart smoothing pipeline: log → spatial → temporal
+        col = log_compress(col)
+        col = spatial_smooth(col, sigma=1.5)
+        col = temporal_smooth(col, self._previous_column, alpha=0.3)
+        self._previous_column = col.copy()
+        self._image_buffer[:n, self._sweep_x] = col.astype(np.uint8)
         self._sweep_x = (self._sweep_x + 1) % self._buffer_width
         self._image_item.setImage(self._image_buffer, autoLevels=True)
         # Sweep line position in physical X units
@@ -128,6 +140,7 @@ class MModeWidget(QWidget):
     def clear_buffer(self) -> None:
         self._image_buffer[:] = 0
         self._sweep_x = 0
+        self._previous_column = None
         self._image_item.setImage(self._image_buffer, autoLevels=True)
         self._sweep_line.setValue(0)
 

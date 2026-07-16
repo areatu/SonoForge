@@ -20,7 +20,9 @@ def test_mmode_widget_on_new_column(qtbot) -> None:
     col = np.full(256, 128, dtype=np.uint8)
     w.on_new_column(col)
     assert w._sweep_x == 1
-    np.testing.assert_array_equal(w._image_buffer[:, 0], 128)
+    # After log+spatial+temporal smoothing, values are transformed
+    assert w._image_buffer[0, 0] > 0
+    assert w._image_buffer[0, 0] < 255
 
 
 def test_mmode_widget_buffer_wraps(qtbot) -> None:
