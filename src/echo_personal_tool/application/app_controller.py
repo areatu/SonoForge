@@ -1276,7 +1276,7 @@ class AppController(QObject):
             return None
         study_uid = self._resolve_study_uid(instance)
         session = self._measurement_session.get(study_uid)
-        logger.warning(
+        logger.debug(
             "compute_overlay: uid=%s session_linear=%d",
             instance.sop_instance_uid, len(session.linear_measurements),
         )
@@ -1309,7 +1309,7 @@ class AppController(QObject):
         instance_linear = linear_measurements_for_instance(
             session.linear_measurements, instance_uid,
         )
-        logger.warning(
+        logger.debug(
             "compute_overlay: filtered=%d", len(instance_linear),
         )
         return self._build_measurement_snapshot(
@@ -1333,7 +1333,7 @@ class AppController(QObject):
         instance_linear = linear_measurements_for_instance(
             session.linear_measurements, instance_uid,
         )
-        logger.warning(
+        logger.debug(
             "_recompute: uid=%s session_total=%d filtered=%d",
             instance_uid, len(session.linear_measurements), len(instance_linear),
         )
