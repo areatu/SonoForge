@@ -648,6 +648,7 @@ class ViewerWidget(QWidget):
         self._mmode_line_active = False
         self._mmode_line_item: MModeScanLineItem | None = None
         self._mmode_line_click_step: Literal["start", "end"] | None = None
+        self._mmode_vertical_lock: bool = False
         self._vertical_caliper_labels = frozenset({"TAPSE"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
@@ -2155,6 +2156,8 @@ class ViewerWidget(QWidget):
         if self._mmode_line_item is not None:
             self._mmode_line_item.remove_from_view(self._view)
         self._mmode_line_item = MModeScanLineItem(viewer_widget=self)
+        if self._mmode_vertical_lock:
+            self._mmode_line_item.vertical_lock = True
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def cancel_mmode_line(self) -> None:
@@ -2203,6 +2206,12 @@ class ViewerWidget(QWidget):
         self._update_mmode_line_preview(x, y)
         return True
 
+    def set_mmode_vertical_lock(self, enabled: bool) -> None:
+        """Enable/disable vertical-only movement for M-mode scan line."""
+        self._mmode_vertical_lock = enabled
+        if self._mmode_line_item is not None:
+            self._mmode_line_item.vertical_lock = enabled
+
     def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
         pass
 
@@ -2212,6 +2221,16 @@ class ViewerWidget(QWidget):
         # Convert view coords to image coords
         h = self._current_frame.shape[0] if self._current_frame is not None else 1.0
         img_pos = (pos[0], h - pos[1])
+
+        # Apply vertical lock: keep original X, only update Y
+        if self._mmode_vertical_lock:
+            if endpoint_index == 0:
+                original = self._mmode_line_item.line_start
+            else:
+                original = self._mmode_line_item.line_end
+            if original is not None:
+                img_pos = (original[0], img_pos[1])
+
         if endpoint_index == 0:
             self._mmode_line_item.move_start_to(img_pos)
         else:

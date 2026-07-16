@@ -55,3 +55,32 @@ def test_vertical_lock_button_exists(qtbot):
     qtbot.addWidget(widget)
     assert hasattr(widget, '_vertical_lock_btn')
     assert widget._vertical_lock_btn.isCheckable()
+
+
+def test_viewer_widget_vertical_lock_flag():
+    from unittest.mock import MagicMock
+    from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+    viewer = ViewerWidget.__new__(ViewerWidget)
+    viewer._mmode_vertical_lock = False
+    assert viewer._mmode_vertical_lock is False
+
+
+def test_viewer_widget_set_mmode_vertical_lock():
+    from unittest.mock import MagicMock
+    from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+    viewer = ViewerWidget.__new__(ViewerWidget)
+    viewer._mmode_vertical_lock = False
+    mock_line_item = MagicMock()
+    viewer._mmode_line_item = mock_line_item
+    viewer.set_mmode_vertical_lock(True)
+    assert viewer._mmode_vertical_lock is True
+    assert mock_line_item.vertical_lock is True
+
+
+def test_viewer_widget_set_mmode_vertical_lock_no_item():
+    from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+    viewer = ViewerWidget.__new__(ViewerWidget)
+    viewer._mmode_vertical_lock = False
+    viewer._mmode_line_item = None
+    viewer.set_mmode_vertical_lock(True)
+    assert viewer._mmode_vertical_lock is True

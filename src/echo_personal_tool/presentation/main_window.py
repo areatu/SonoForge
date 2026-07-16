@@ -393,6 +393,9 @@ class MainWindow(QMainWindow):
         if self._mmode_widget is None:
             self._mmode_widget = MModeWidget()
             self._mmode_widget.deactivate_requested.connect(self._toggle_mmode)
+            self._mmode_widget.vertical_lock_toggled.connect(
+                self._viewer.set_mmode_vertical_lock
+            )
         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self._mmode_vertical_splitter.setHandleWidth(4)
         self._mmode_vertical_splitter.addWidget(self._viewer)
