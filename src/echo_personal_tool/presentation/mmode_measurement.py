@@ -146,6 +146,7 @@ class MModeMeasurementTool(QWidget):
         self.measurements: list[MModeMeasurement] = []
         self._items: list[MModeMeasurementItem] = []
         self._view_box: pg.ViewBox | None = None
+        self._preview_item: MModeMeasurementItem | None = None
 
     def set_view_box(self, view_box: pg.ViewBox) -> None:
         self._view_box = view_box
@@ -170,17 +171,25 @@ class MModeMeasurementTool(QWidget):
     def cancel(self) -> None:
         self._active_mode = None
         self._first_click = None
+        self._remove_preview()
 
     def on_click(self, x: float, y: float) -> bool:
         if self._active_mode is None or self._view_box is None:
             return False
         if self._first_click is None:
             self._first_click = (x, y)
+            # Show preview guide lines from first click
+            self._show_preview(x, y)
             return True
         # Second click — create measurement
         start = self._first_click
         end = (x, y)
         self._first_click = None
+        self._remove_preview()
+
+        # Apply vertical lock: second point uses first point's X
+        if self._active_mode == "vertical":
+            end = (start[0], end[1])
 
         m = MModeMeasurement(kind=self._active_mode, start=start, end=end)
 
@@ -198,6 +207,40 @@ class MModeMeasurementTool(QWidget):
         self.measurement_added.emit(m)
         return True
 
+    def on_hover(self, x: float, y: float) -> bool:
+        """Update preview guide lines during first-click hover."""
+        if self._active_mode is None or self._first_click is None or self._view_box is None:
+            return False
+        self._update_preview_guides(x, y)
+        return True
+
+    def _show_preview(self, x: float, y: float) -> None:
+        """Show perpendicular crosshair guide lines at first click position."""
+        if self._view_box is None:
+            return
+        self._remove_preview()
+        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+        self._preview_item = MModeMeasurementItem(self._view_box)
+        # Create a dummy vertical measurement for guide rendering
+        m = MModeMeasurement(kind="arbitrary", start=(x, y), end=(x, y))
+        self._preview_item.set_measurement(m)
+
+    def _update_preview_guides(self, x: float, y: float) -> None:
+        """Update preview to show crosshair at current mouse position."""
+        if self._preview_item is None or self._first_click is None:
+            return
+        sx, sy = self._first_click
+        # For vertical mode, fix X to first point
+        if self._active_mode == "vertical":
+            x = sx
+        m = MModeMeasurement(kind="arbitrary", start=(sx, sy), end=(x, y))
+        self._preview_item.set_measurement(m)
+
+    def _remove_preview(self) -> None:
+        if self._preview_item is not None:
+            self._preview_item.remove()
+            self._preview_item = None
+
     def clear(self) -> None:
         for item in self._items:
             item.remove()
@@ -205,3 +248,4 @@ class MModeMeasurementTool(QWidget):
         self.measurements.clear()
         self._active_mode = None
         self._first_click = None
+        self._remove_preview()

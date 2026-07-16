@@ -25,7 +25,6 @@ class MModeWidget(QWidget):
     sweep_speed_changed = Signal(int)
     deactivate_requested = Signal()
     measurement_added = Signal(object)
-    vertical_lock_toggled = Signal(bool)
 
     def __init__(self, buffer_width: int = 512, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -68,6 +67,7 @@ class MModeWidget(QWidget):
 
         # Enable mouse clicks on plot for measurements
         self._plot.scene().sigMouseClicked.connect(self._on_plot_clicked)
+        self._plot.scene().sigMouseMoved.connect(self._on_plot_hover)
 
         # Speed selector toolbar
         self._speed_buttons: dict[str, QPushButton] = {}
@@ -99,14 +99,6 @@ class MModeWidget(QWidget):
         self._clear_meas_btn.setFixedHeight(22)
         self._clear_meas_btn.clicked.connect(self._clear_measurements)
         toolbar.addWidget(self._clear_meas_btn)
-
-        # Vertical lock button
-        self._vertical_lock_btn = QPushButton("⋮ Вертикаль")
-        self._vertical_lock_btn.setFixedHeight(22)
-        self._vertical_lock_btn.setCheckable(True)
-        self._vertical_lock_btn.setToolTip("Фиксировать движение точек только по вертикали")
-        self._vertical_lock_btn.clicked.connect(self._on_vertical_lock_toggled)
-        toolbar.addWidget(self._vertical_lock_btn)
 
         self._close_btn = QPushButton("×")
         self._close_btn.setFixedWidth(24)
@@ -151,8 +143,16 @@ class MModeWidget(QWidget):
             return
         self._measurement_tool.on_click(float(mapped.x()), float(mapped.y()))
 
-    def _on_vertical_lock_toggled(self, checked: bool) -> None:
-        self.vertical_lock_toggled.emit(checked)
+    def _on_plot_hover(self, pos) -> None:
+        """Handle mouse hover for measurement preview."""
+        if self._measurement_tool._active_mode is None:
+            return
+        if self._measurement_tool._first_click is None:
+            return
+        mapped = self._view_box.mapSceneToView(pos)
+        if mapped is None:
+            return
+        self._measurement_tool.on_hover(float(mapped.x()), float(mapped.y()))
 
     def _start_vertical_measurement(self) -> None:
         self._measurement_tool.cancel()
