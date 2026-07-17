@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import openpyxl
 import yaml
 
 
@@ -18,11 +19,6 @@ def import_excel_file(path: Path) -> dict[str, Any]:
 
     Returns dict compatible with ReferenceModel.from_dict().
     """
-    try:
-        import openpyxl
-    except ImportError:
-        raise ImportError("Требуется openpyxl: pip install openpyxl")
-
     wb = openpyxl.load_workbook(str(path), data_only=True)
     topics = []
 

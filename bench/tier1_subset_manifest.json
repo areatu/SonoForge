@@ -1,0 +1,60 @@
+{
+  "studies": [
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold1.dcm",
+      "tags": {},
+      "ed_frame": 46,
+      "es_frame": 59
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold10.dcm",
+      "tags": {},
+      "ed_frame": 9,
+      "es_frame": 18
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold100.dcm",
+      "tags": {},
+      "ed_frame": 107,
+      "es_frame": 117
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold101.dcm",
+      "tags": {},
+      "ed_frame": 21,
+      "es_frame": 37
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold102.dcm",
+      "tags": {},
+      "es_frame": 79,
+      "ed_frame": 62
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold103.dcm",
+      "tags": {},
+      "ed_frame": 100,
+      "es_frame": 115
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold104.dcm",
+      "tags": {},
+      "ed_frame": 87,
+      "es_frame": 141
+    },
+    {
+      "study_id": "1.2.410.200001.1.1185.2062614048.1.20251111.1220602869.758.1",
+      "instance_path": "/home/areatu/ECHO2026_src/gold105.dcm",
+      "tags": {},
+      "es_frame": 97,
+      "ed_frame": 59
+    }
+  ]
+}

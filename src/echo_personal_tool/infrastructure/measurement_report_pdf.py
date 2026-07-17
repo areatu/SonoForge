@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
+
 from echo_personal_tool.resources.bundled_fonts import report_cyrillic_font_path
 
 
@@ -18,18 +24,6 @@ def export_measurement_report_pdf(
     font_size: int = 10,
 ) -> Path:
     """Write report text to a PDF file and return the path."""
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.units import mm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.pdfgen import canvas
-    except ImportError as exc:
-        raise PdfExportError(
-            "Для экспорта PDF установите зависимость reportlab: "
-            "pip install 'echo-personal-tool[phase2]'"
-        ) from exc
-
     font_name = _register_cyrillic_font(pdfmetrics, TTFont)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -203,7 +202,7 @@ class ImageEditor(BaseEditor):
 
     # ── Drag & Drop ──
 
-    def dragEnterEvent(self, event: Any) -> None:
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             self._drop_hint.setStyleSheet(
@@ -211,13 +210,13 @@ class ImageEditor(BaseEditor):
                 f"margin: 4px 8px; border-radius: 4px;"
             )
 
-    def dragLeaveEvent(self, event: Any) -> None:
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
         self._drop_hint.setStyleSheet(
             f"color: {get_theme_palette()['text_dim']}; border: 2px dashed {get_theme_palette()['border']}; "
             f"margin: 4px 8px; border-radius: 4px;"
         )
 
-    def dropEvent(self, event: Any) -> None:
+    def dropEvent(self, event: QDropEvent) -> None:
         self._drop_hint.setStyleSheet(
             f"color: {get_theme_palette()['text_dim']}; border: 2px dashed {get_theme_palette()['border']}; "
             f"margin: 4px 8px; border-radius: 4px;"

@@ -1,6 +1,6 @@
 [project]
 name = "echo-personal-tool"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Personal desktop echocardiography analysis tool"
 readme = "README.md"
 requires-python = ">=3.10,<3.12"
@@ -18,19 +18,19 @@ dependencies = [
     "psutil>=5.9",
     "pymupdf>=1.24",
     "pynetdicom>=2.0",
+    "pyyaml>=6.0",
+    "jsonschema>=4.0",
+    "onnxruntime>=1.17",
+    "reportlab>=4.0",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
-phase2 = [
-    "onnxruntime>=1.17",
-    "reportlab>=4.0",
-]
 dev = [
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
     "pytest-qt>=4.4",
     "ruff>=0.4",
-    "black>=24.0",
 ]
 
 [project.scripts]
@@ -39,6 +39,9 @@ echo-personal-tool = "echo_personal_tool.__main__:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/echo_personal_tool/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/echo_personal_tool"]
@@ -79,7 +82,3 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-
-[tool.black]
-line-length = 100
-target-version = ["py311"]

@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
+import onnxruntime as ort
 from scipy import ndimage
 
 from echo_personal_tool.domain.services.segmentation_service import (
@@ -16,27 +17,6 @@ from echo_personal_tool.domain.services.segmentation_service import (
     logits_to_mask,
     prepare_tensor,
 )
-
-if TYPE_CHECKING:
-    pass
-
-_ort_module: Any | None = None
-_ort_import_failed = False
-
-
-def _get_ort() -> Any | None:
-    """Return onnxruntime module if phase2 extra is installed."""
-    global _ort_module, _ort_import_failed
-    if _ort_import_failed:
-        return None
-    if _ort_module is None:
-        try:
-            import onnxruntime as ort
-        except ImportError:
-            _ort_import_failed = True
-            return None
-        _ort_module = ort
-    return _ort_module
 
 
 def _default_models_dir() -> Path:
@@ -100,10 +80,6 @@ def _resolve_io_names(
 
 
 def _create_session(model_path: Path) -> Any:
-    ort = _get_ort()
-    if ort is None:
-        msg = "onnxruntime is not installed (install with: uv sync --extra phase2)"
-        raise RuntimeError(msg)
     return ort.InferenceSession(
         str(model_path),
         providers=["CPUExecutionProvider"],
@@ -151,15 +127,14 @@ class OnnxInferenceEngine:
 
         if session is not None:
             self._session = session
-        elif self._model_path is not None and self._model_path.is_file() and _get_ort() is not None:
+        elif self._model_path is not None and self._model_path.is_file():
             self._session = _create_session(self._model_path)
         else:
             self._session = None
 
     def is_available(self) -> bool:
         return (
-            _get_ort() is not None
-            and self._manifest is not None
+            self._manifest is not None
             and self._model_path is not None
             and self._model_path.is_file()
         )

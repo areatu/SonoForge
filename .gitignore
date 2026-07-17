@@ -19,7 +19,6 @@ wheels/
 *.egg
 
 # Virtual environments
-.env
 .venv/
 env/
 venv/
@@ -27,14 +26,19 @@ ENV/
 env.bak/
 venv.bak/
 
-# Logs
-*.log
-logs/
-
 # Environment variables
 .env
 .env.local
 .env.*.local
+
+# Logs
+*.log
+logs/
+
+# Backup / temp files
+*.bak
+*.tmp
+*.swp
 
 # pytest
 .pytest_cache/
@@ -44,13 +48,21 @@ htmlcov/
 # mypy
 .mypy_cache/
 
+# Ruff
+.ruff_cache/
+
+# Benchmark outputs
+bench/reports/
+
 # Tooling / worktrees
 .tooling-venv/
 .worktrees/
-scan_errors.log
-uv.lock
-orthanc_analysis.md
-dicom_server.md
+
+# Agent tooling
+.mimocode/
+.claude/
+.opencode/
 
 # IDE config (contains MCP tokens)
 .cursor/
+.vscode/

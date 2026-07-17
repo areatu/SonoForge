@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QCloseEvent, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -267,25 +266,25 @@ class ConstructorDialog(QDialog):
 
     # ── Drag support ──
 
-    def mousePressEvent(self, event: Any) -> None:
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             title_bar = self.findChild(QWidget)
             if title_bar and title_bar.geometry().contains(event.pos()):
                 self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
                 event.accept()
 
-    def mouseMoveEvent(self, event: Any) -> None:
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
 
-    def mouseReleaseEvent(self, event: Any) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self._drag_pos = None
 
-    def mouseDoubleClickEvent(self, event: Any) -> None:
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         self._toggle_maximize()
 
-    def keyPressEvent(self, event: Any) -> None:
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         # Prevent Enter/Return from triggering dialog default button
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             focused = self.focusWidget()
@@ -297,7 +296,7 @@ class ConstructorDialog(QDialog):
             return
         super().keyPressEvent(event)
 
-    def closeEvent(self, event: Any) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self._constructor_widget._dirty:
             reply = QMessageBox.question(
                 self,

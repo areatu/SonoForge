@@ -190,6 +190,8 @@ topics:
     image_paths:
     - Diastolic_dysfunc_LV.png
     - Diastolog2.png
+    - Diastolic_other1.png
+    - Diastolic_other2.png
     parameters:
     - id: ea_ratio
       name: Соотношение E/A

@@ -705,6 +705,9 @@ topics:
   pathologies:
   - name: Первичная митральная регургитация
     slug: primary_mr
+    image_paths:
+    - MR111.png
+    - MR112.png
     gradations:
     - name: Лёгкая
       parameters:
