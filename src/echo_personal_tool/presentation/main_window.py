@@ -1110,6 +1110,14 @@ class MainWindow(QMainWindow):
             mmode_cal = self._viewer.get_mmode_calibration_state()
             if mmode_cal is not None:
                 self._controller.on_mmode_calibration_changed(mmode_cal)
+
+        # Reset M-mode when switching files
+        if self._mmode_active:
+            self._controller.set_playing(False)
+            self._viewer.cancel_mmode_line()
+            if self._mmode_widget is not None:
+                self._mmode_widget.clear_buffer()
+
         label = _loaded_file_label(selected)
         self._system_bar.set_study_context(label)
         self._viewer.set_results_overlay("")
