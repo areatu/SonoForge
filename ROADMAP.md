@@ -103,7 +103,6 @@
 | 4 | Общие → Площадь (замкнутый полигон) | [x] `planimeter.py`, `SPLINE_AREA` |
 | 5 | Общие → Объём (замкнутый полигон → Simpson) | [x] `SPLINE_VOLUME` |
 | 6 | LAV/RAV Simpson open-arc | [x] `chamber_simpson`, овальный шаблон `warp_elliptical_open_arc` |
-| — | ~~П. 7~~ | **Снят** — ошибочный пункт исходного запроса |
 
 ---
 

@@ -326,6 +326,9 @@ class MModeWidget(QWidget):
         """Scale ImageItem so axes show real physical units (mm / ms)."""
         width_px = self._buffer_width
         height_px = self._num_samples
+        # Disable auto SI prefix to prevent "kms" display
+        self._plot.getPlotItem().getAxis("bottom").autoSIPrefix = False
+        self._plot.getPlotItem().getAxis("left").autoSIPrefix = False
         # X: time axis
         if self._time_ms_per_pixel is not None and self._time_ms_per_pixel > 0:
             x_size = width_px * self._time_ms_per_pixel
