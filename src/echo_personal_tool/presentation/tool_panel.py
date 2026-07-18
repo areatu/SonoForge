@@ -245,6 +245,10 @@ class ToolPanel(QWidget):
         elif not visible and idx != -1:
             self._tabs.removeTab(idx)
 
+    def rebuild_menu_with_preferences(self, preferences) -> None:
+        """Rebuild the measures menu with updated preferences."""
+        self.measure._menu.rebuild_with_preferences(preferences)
+
     def load_dicom_inspector(self, path) -> None:
         """Load DICOM tags from a file path into the inspector."""
         self._tag_inspector.load_instance(path)

@@ -313,6 +313,25 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
         tabs.addTab(_scrollable_tab(other_form), tr("preferences.tab_other"))
 
+        # Experimental features tab
+        exp_form = QFormLayout()
+        self._show_strain = QCheckBox()
+        self._show_strain.setChecked(current.show_strain)
+        self._show_diastolic = QCheckBox()
+        self._show_diastolic.setChecked(current.show_diastolic_function)
+        self._show_doppler_mk_av = QCheckBox()
+        self._show_doppler_mk_av.setChecked(current.show_doppler_mk_av)
+        self._show_doppler_tk_pv = QCheckBox()
+        self._show_doppler_tk_pv.setChecked(current.show_doppler_tk_pv)
+        self._show_rv_s_prime = QCheckBox()
+        self._show_rv_s_prime.setChecked(current.show_rv_s_prime)
+        exp_form.addRow("Показать Стрейн", self._show_strain)
+        exp_form.addRow("Показать Диастолическую функцию", self._show_diastolic)
+        exp_form.addRow("Показать Doppler МК/АК", self._show_doppler_mk_av)
+        exp_form.addRow("Показать Doppler ТК/ЛК", self._show_doppler_tk_pv)
+        exp_form.addRow("Показать s' ПЖ", self._show_rv_s_prime)
+        tabs.addTab(_scrollable_tab(exp_form), "Экспериментальные")
+
         self._server_form = ServerSettingsForm()
         tabs.addTab(self._server_form, tr("preferences.tab_server"))
 
@@ -417,6 +436,11 @@ class UserPreferencesDialog(QDialog):
             gold_annotation_enabled=self._gold_enabled.isChecked(),
             gold_dataset_path=self._gold_path.text().strip(),
             references_dir=self._refs_dir.text().strip(),
+            show_strain=self._show_strain.isChecked(),
+            show_diastolic_function=self._show_diastolic.isChecked(),
+            show_doppler_mk_av=self._show_doppler_mk_av.isChecked(),
+            show_doppler_tk_pv=self._show_doppler_tk_pv.isChecked(),
+            show_rv_s_prime=self._show_rv_s_prime.isChecked(),
         )
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())

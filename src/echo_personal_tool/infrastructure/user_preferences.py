@@ -105,6 +105,12 @@ class UserPreferences:
     gold_annotation_enabled: bool = False
     gold_dataset_path: str = ""
     references_dir: str = ""
+    # Experimental features visibility
+    show_strain: bool = False
+    show_diastolic_function: bool = False
+    show_doppler_mk_av: bool = False
+    show_doppler_tk_pv: bool = False
+    show_rv_s_prime: bool = False
 
 
 def _settings_store() -> QSettings:
@@ -296,6 +302,11 @@ def load_user_preferences() -> UserPreferences:
         gold_annotation_enabled=_read_bool(store.value("gold_annotation_enabled"), False),
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),
+        show_strain=_read_bool(store.value("show_strain"), False),
+        show_diastolic_function=_read_bool(store.value("show_diastolic_function"), False),
+        show_doppler_mk_av=_read_bool(store.value("show_doppler_mk_av"), False),
+        show_doppler_tk_pv=_read_bool(store.value("show_doppler_tk_pv"), False),
+        show_rv_s_prime=_read_bool(store.value("show_rv_s_prime"), False),
     )
 
 

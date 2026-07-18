@@ -175,6 +175,39 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     ),
 )
 
+# Map group keys to preference flags for experimental features
+_EXPERIMENTAL_GROUPS: dict[str, str] = {
+    "menu.strain_group": "show_strain",
+    "menu.diastolic_group": "show_diastolic_function",
+    "menu.mv_group": "show_doppler_mk_av",
+    "menu.tv_group": "show_doppler_tk_pv",
+}
+
+
+def _filter_menu(
+    menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    preferences: "UserPreferences | None" = None,
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Filter menu based on user preferences for experimental features."""
+    if preferences is None:
+        return menu
+
+    filtered: list[tuple[str, tuple[_MenuButton, ...]]] = []
+    for group_key, buttons in menu:
+        pref_key = _EXPERIMENTAL_GROUPS.get(group_key)
+        if pref_key is not None:
+            show = getattr(preferences, pref_key, False)
+            if not show:
+                continue
+
+        # Filter individual buttons within groups
+        if group_key == "menu.rv_group":
+            if not preferences.show_rv_s_prime:
+                buttons = tuple(b for b in buttons if b.action != MeasurementAction.RV_S_PRIME)
+
+        filtered.append((group_key, buttons))
+    return tuple(filtered)
+
 
 def style_menu_button(button: QPushButton) -> None:
     button.setFixedHeight(_MENU_BUTTON_HEIGHT_PX)
@@ -294,6 +327,22 @@ class MeasuresMenuWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._preferences = None
+        self._blink_target: QPushButton | None = None
+        self._blink_on = False
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(500)
+        self._blink_timer.timeout.connect(self._toggle_blink)
+        self._build_menu()
+
+    def _build_menu(self) -> None:
+        """Build or rebuild the menu with current preferences."""
+        # Clear existing content
+        for section in self._sections if hasattr(self, '_sections') else []:
+            section.deleteLater()
+        self._sections = []
+        self._tool_buttons = []
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -303,15 +352,9 @@ class MeasuresMenuWidget(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
 
-        self._sections: list[MeasuresAccordionSection] = []
-        self._tool_buttons: list[tuple[QPushButton, _MenuButton]] = []
-        self._blink_target: QPushButton | None = None
-        self._blink_on = False
-        self._blink_timer = QTimer(self)
-        self._blink_timer.setInterval(500)
-        self._blink_timer.timeout.connect(self._toggle_blink)
+        filtered_menu = _filter_menu(_MENU, self._preferences)
 
-        for group_title, buttons in _MENU:
+        for group_title, buttons in filtered_menu:
             section = MeasuresAccordionSection(
                 group_title,
                 buttons,
@@ -325,9 +368,22 @@ class MeasuresMenuWidget(QWidget):
 
         layout.addStretch(1)
         scroll.setWidget(inner)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(scroll)
+
+        # Clear old layout if exists
+        if hasattr(self, '_outer_layout') and self._outer_layout is not None:
+            while self._outer_layout.count():
+                item = self._outer_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+        self._outer_layout = QVBoxLayout(self)
+        self._outer_layout.setContentsMargins(0, 0, 0, 0)
+        self._outer_layout.addWidget(scroll)
+
+    def set_preferences(self, preferences) -> None:
+        """Update preferences and rebuild menu."""
+        self._preferences = preferences
+        self._build_menu()
 
     def set_doppler_tool_availability(
         self,
@@ -348,6 +404,11 @@ class MeasuresMenuWidget(QWidget):
     def reload_text(self) -> None:
         for section in self._sections:
             section.reload_text()
+
+    def rebuild_with_preferences(self, preferences) -> None:
+        """Rebuild menu with new preferences."""
+        self._preferences = preferences
+        self._build_menu()
 
     def highlight_action(
         self,

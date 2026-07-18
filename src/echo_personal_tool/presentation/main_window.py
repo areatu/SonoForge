@@ -830,6 +830,7 @@ class MainWindow(QMainWindow):
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
+        self._tool_panel.rebuild_menu_with_preferences(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
 
     def _reload_ui_language(self) -> None:
