@@ -928,11 +928,10 @@ class MainWindow(QMainWindow):
         if ivsd is None or lvidd is None or lvpwd is None:
             return
         from echo_personal_tool.domain.calculations.teichholz_mmode import compute_teichholz_from_mmode
-        session = self._controller._measurement_session
-        study_uid = session._current_study_uid if session else None
-        data = session._studies.get(study_uid) if session and study_uid else None
-        height_cm = data.height_cm if data else None
-        weight_kg = data.weight_kg if data else None
+        study_uid = self._controller._current_study_uid
+        session = self._controller._measurement_session.get(study_uid) if study_uid else None
+        height_cm = session.height_cm if session else None
+        weight_kg = session.weight_kg if session else None
         result = compute_teichholz_from_mmode(
             ivsd_mm=ivsd, lvidd_mm=lvidd, lvpwd_mm=lvpwd,
             height_cm=height_cm, weight_kg=weight_kg,
@@ -948,6 +947,7 @@ class MainWindow(QMainWindow):
         if measurement.value_mm is None:
             return
         from echo_personal_tool.domain.calculations.teichholz_mmode import compute_teichholz_from_mmode
+        from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
         if self._mmode_widget is None:
             return
         ed_values = self._mmode_widget._measurement_tool.get_teichholz_ed_values()
@@ -955,16 +955,27 @@ class MainWindow(QMainWindow):
             return
         ivsd, lvidd, lvpwd = ed_values
         lvesd = measurement.value_mm
-        session = self._controller._measurement_session
-        study_uid = session._current_study_uid if session else None
-        data = session._studies.get(study_uid) if session and study_uid else None
-        height_cm = data.height_cm if data else None
-        weight_kg = data.weight_kg if data else None
+        study_uid = self._controller._current_study_uid
+        session = self._controller._measurement_session.get(study_uid) if study_uid else None
+        height_cm = session.height_cm if session else None
+        weight_kg = session.weight_kg if session else None
         result = compute_teichholz_from_mmode(
             ivsd_mm=ivsd, lvidd_mm=lvidd, lvpwd_mm=lvpwd,
             lvesd_mm=lvesd,
             height_cm=height_cm, weight_kg=weight_kg,
         )
+        # Store as linear measurements for overlay integration
+        instance = self._controller.state_manager.snapshot.instance
+        instance_uid = instance.sop_instance_uid if instance else ""
+        linear = (
+            LinearMeasurement(label="IVSd", pixel_length=0, millimeter_length=ivsd, sop_instance_uid=instance_uid),
+            LinearMeasurement(label="LVEDD", pixel_length=0, millimeter_length=lvidd, sop_instance_uid=instance_uid),
+            LinearMeasurement(label="LVPWd", pixel_length=0, millimeter_length=lvpwd, sop_instance_uid=instance_uid),
+            LinearMeasurement(label="LVESD", pixel_length=0, millimeter_length=lvesd, sop_instance_uid=instance_uid),
+        )
+        if study_uid:
+            self._controller._measurement_session.merge_linear_measurements(study_uid, linear)
+        self._sync_results_overlay(self._controller.state_manager.snapshot)
         lvmi_str = f"  ИММЛЖ={result.lvmi_g_m2:.1f} г/м²" if result.lvmi_g_m2 else ""
         self._show_status(
             f"Тейхольц: МЖП={result.ivsd_mm:.1f} ЗСЛЖ={result.lvpwd_mm:.1f} "
