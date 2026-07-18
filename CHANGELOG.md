@@ -13,7 +13,7 @@
 - `fix(mmode)`: fix Teichholz overlay integration — use `app_controller._current_study_uid`, store measurements as LinearMeasurement objects
 
 ### Refactor
-- `refactor`: replace commercial brand names (EchoPAC, TomTec, Samsung, GE, QLAB) с generic-названиями в коде и документации
+- `refactor`: replace commercial brand names (Standard, Research, Device, GE, Clinical) с generic-названиями в коде и документации
 - `refactor`: rename `echopac_theme.py` → `dark_theme.py`, functions → `apply_clinical_theme`, `build_clinical_stylesheet`, `preset_standard`, `preset_research`
 
 ### Chore
@@ -21,7 +21,7 @@
 - `chore`: dependencies fix — добавлены pyyaml, jsonschema, onnxruntime, reportlab, openpyxl в required; убран black; hatch version source
 - `docs`: update README — актуализация возможностей, требований, установки
 - `docs`: update ROADMAP — хронология major changes (июнь–июль 2026)
-- `fix`: update tests for renamed methods (preset_echo_pac → preset_standard, preset_tomtec → preset_research)
+- `fix`: update tests for renamed methods (preset_standard → preset_standard, preset_research → preset_research)
 
 ---
 
@@ -396,7 +396,7 @@
 ## 2026-06-21
 
 ### Features
-- `feat`: merge EchoPac UI в ONNX LV Auto branch
+- `feat`: merge Clinical UI в ONNX LV Auto branch
 - `feat`: stabilize ONNX LV auto-contour pipeline для DICOM A4C
 
 ---
@@ -423,7 +423,7 @@
 ## 2026-06-18
 
 ### Features
-- `feat`: Phase 2 EchoPac UI, ASE metrics, gradient refine, ONNX e2e
+- `feat`: Phase 2 Clinical UI, ASE metrics, gradient refine, ONNX e2e
 
 ---
 

@@ -63,7 +63,7 @@
 |------|-----------|--------|
 | 07-18 | **Project cleanup** — удаление debug-логов, old/, orphan-директорий, backup-файлов, кэшей | [x] |
 | 07-18 | **Dependencies fix** — добавлены pyyaml, jsonschema; убран black; hatch version source | [x] |
-| 07-18 | **Commercial names** — замена EchoPAC/TomTec/Samsung/GE/QLAB на generic-названия | [x] |
+| 07-18 | **Commercial names** — замена Standard/Research/Device/GE/Clinical на generic-названия | [x] |
 | 07-18 | **Phase2 → required** — onnxruntime, reportlab, openpyxl теперь обязательные зависимости | [x] |
 | 07-18 | **README update** — актуализация возможностей, требований, установки | [x] |
 
