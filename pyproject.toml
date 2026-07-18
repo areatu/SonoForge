@@ -3,6 +3,7 @@ name = "echo-personal-tool"
 dynamic = ["version"]
 description = "Personal desktop echocardiography analysis tool"
 readme = "README.md"
+license = "GPL-3.0-only"
 requires-python = ">=3.10,<3.12"
 dependencies = [
     "pyside6>=6.6",
