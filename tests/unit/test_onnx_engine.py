@@ -40,9 +40,6 @@ def test_is_available_true_when_manifest_and_model_exist(tmp_path: Path) -> None
     _write_manifest(models_dir)
 
     with patch(
-        "echo_personal_tool.infrastructure.onnx_engine._get_ort",
-        return_value=MagicMock(),
-    ), patch(
         "echo_personal_tool.infrastructure.onnx_engine._create_session",
     ) as mock_create:
         mock_create.return_value = MagicMock()
@@ -119,9 +116,6 @@ def test_segment_uses_cpu_provider_when_creating_session(tmp_path: Path) -> None
     onnx_path = _write_manifest(models_dir)
 
     with patch(
-        "echo_personal_tool.infrastructure.onnx_engine._get_ort",
-        return_value=MagicMock(),
-    ), patch(
         "echo_personal_tool.infrastructure.onnx_engine._create_session",
     ) as mock_create_session:
         mock_create_session.return_value = MagicMock()

@@ -177,15 +177,15 @@ class TestSpeckleConfig:
         assert config.bidirectional is True
         assert config.ed_anchored is True
 
-    def test_preset_echo_pac(self) -> None:
-        config = SpeckleConfig.preset_echo_pac()
+    def test_preset_standard(self) -> None:
+        config = SpeckleConfig.preset_standard()
         assert config.kernel_size == 12
         assert config.search_radius == 8
         assert config.bidirectional is True
         assert config.drift_compensation is True
 
-    def test_preset_tomtec(self) -> None:
-        config = SpeckleConfig.preset_tomtec()
+    def test_preset_research(self) -> None:
+        config = SpeckleConfig.preset_research()
         assert config.kernel_size == 18
         assert config.search_radius == 18
         assert config.spatial_smoothing == pytest.approx(1.2)
@@ -207,7 +207,7 @@ class TestBidirectionalTracking:
         n_frames = 20
         frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
         kernels = _make_test_kernels()
-        config = SpeckleConfig.preset_echo_pac()
+        config = SpeckleConfig.preset_standard()
 
         results = track_cine_bidirectional(frames, kernels, ed_index=0, config=config)
         positions, _ = extract_trajectories(results, kernels, ed_index=0)
@@ -222,7 +222,7 @@ class TestBidirectionalTracking:
         frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
         kernels = _make_test_kernels()
         config_fwd = SpeckleConfig.preset_debug()
-        config_bidi = SpeckleConfig.preset_echo_pac()
+        config_bidi = SpeckleConfig.preset_standard()
 
         fwd = track_cine(frames, kernels, config_fwd)
         bidi = track_cine_bidirectional(frames, kernels, ed_index=0, config=config_bidi)
@@ -235,7 +235,7 @@ class TestBidirectionalTracking:
         n_frames = 10
         frames = _make_synthetic_cine(n_frames, shift_per_frame=0.5)
         kernels = _make_test_kernels()
-        config = SpeckleConfig.preset_echo_pac()
+        config = SpeckleConfig.preset_standard()
         results = track_cine(frames, kernels, config)
         assert len(results) == n_frames - 1
         assert results[-1].reference_frame == 0
@@ -364,7 +364,7 @@ class TestCardiacCycleDetector:
             thickness_mm=8.0,
             pixel_spacing=(1.0, 1.0),
         )
-        ed, es = detect_ed_es_from_frames(frames, zone, SpeckleConfig.preset_echo_pac())
+        ed, es = detect_ed_es_from_frames(frames, zone, SpeckleConfig.preset_standard())
         assert ed in (2, 3, 4)
         assert es in (8, 9, 10)
         assert ed != es
