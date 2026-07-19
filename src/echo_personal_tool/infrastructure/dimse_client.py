@@ -73,6 +73,7 @@ class PynetdimseClient:
             called_ae=settings.dimse_called_ae,
             host=settings.dimse_host,
             port=settings.dimse_port,
+            timeout_s=settings.network_timeout,
             use_tls=settings.dimse_use_tls,
             tls_verify=settings.dimse_tls_verify,
             tls_ca_path=settings.dimse_tls_ca_path,

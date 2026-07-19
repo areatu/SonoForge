@@ -24,6 +24,7 @@ from echo_personal_tool.infrastructure.media_formats import (
     is_ignored_scan_path,
     is_media_file,
 )
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.media_metadata_mapper import (
     JPEG_SERIES_DESCRIPTION,
@@ -103,10 +104,11 @@ class LocalMediaDirectoryScanner:
             return None
 
         if len(study_uids_seen) > 1:
+            from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
             logger.warning(
                 "Multiple StudyInstanceUID values in %s: %s",
                 study_folder,
-                ", ".join(sorted(study_uids_seen)),
+                ", ".join(sanitize_uid(u) for u in sorted(study_uids_seen)),
             )
 
         resolved_study_uid = study_uid or synthetic_study_uid(study_folder)
@@ -161,6 +163,7 @@ class LocalMediaDirectoryScanner:
 
     def _read_dicom_instance(self, path: Path) -> InstanceMetadata | None:
         try:
+            validate_dicom_header(path)
             dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         except Exception as exc:  # noqa: BLE001
             self._log_scan_error(path, exc)

@@ -96,7 +96,8 @@ class EmbeddedStorageSCP:
         ds.save_as(buf, enforce_file_format=True)
         self.instances[sop_uid] = buf.getvalue()
 
-        logger.debug("Received instance %s (%d bytes)", sop_uid, len(self.instances[sop_uid]))
+        from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+        logger.debug("Received instance %s (%d bytes)", sanitize_uid(sop_uid), len(self.instances[sop_uid]))
         return 0x0000  # Success
 
     def shutdown(self) -> None:

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import onnxruntime as ort
@@ -79,6 +83,20 @@ def _resolve_io_names(
     return input_name, output_name
 
 
+def _verify_model_integrity(model_path: Path, expected_sha256: str | None) -> None:
+    """Check SHA256 of ONNX model against manifest. Logs warning on mismatch."""
+    if not expected_sha256:
+        return
+    actual = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        logger.warning(
+            "Model integrity mismatch: %s (expected %s…, got %s…)",
+            model_path.name,
+            expected_sha256[:16],
+            actual[:16],
+        )
+
+
 def _create_session(model_path: Path) -> Any:
     return ort.InferenceSession(
         str(model_path),
@@ -128,6 +146,8 @@ class OnnxInferenceEngine:
         if session is not None:
             self._session = session
         elif self._model_path is not None and self._model_path.is_file():
+            expected_sha256 = self._resolve_sha256()
+            _verify_model_integrity(self._model_path, expected_sha256)
             self._session = _create_session(self._model_path)
         else:
             self._session = None
@@ -235,3 +255,18 @@ class OnnxInferenceEngine:
         if isinstance(shape, (list, tuple)) and len(shape) >= 3:
             return int(shape[2])
         return 112
+
+    def _resolve_sha256(self) -> str | None:
+        """Resolve expected SHA256 hash from manifest for the active model."""
+        if self._manifest is None:
+            return None
+        models = self._manifest.get("models", {})
+        manifest_section = getattr(self, "_manifest_section", "inference")
+        section = self._manifest.get(manifest_section, {})
+        active = None
+        if isinstance(section, dict):
+            active = section.get("active_model")
+        if not active:
+            active = self._manifest.get("active_model", "")
+        entry = models.get(active, {}) if isinstance(models, dict) else {}
+        return entry.get("sha256") if isinstance(entry, dict) else None

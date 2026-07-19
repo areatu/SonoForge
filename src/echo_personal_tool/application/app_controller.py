@@ -499,7 +499,8 @@ class AppController(QObject):
         self._thumbnail_instances.pop(sop_instance_uid, None)
         if not self._first_preview_emitted:
             self._first_preview_emitted = True
-            logger.info("first_preview_emitted uid=%s", sop_instance_uid)
+            from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+            logger.info("first_preview_emitted uid=%s", sanitize_uid(sop_instance_uid))
         self.thumbnail_loaded.emit(sop_instance_uid, image)
         self._pump_thumbnail_queue()
 

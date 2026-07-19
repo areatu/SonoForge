@@ -103,14 +103,14 @@ class OrthancDicomWebClient:
         self._cancel_event = threading.Event()
 
     @classmethod
-    def from_settings(cls, settings: ServerSettings, *, timeout: float = 30.0) -> OrthancDicomWebClient:
+    def from_settings(cls, settings: ServerSettings, *, timeout: float | None = None) -> OrthancDicomWebClient:
         return cls(
             settings.url,
             settings.username,
             settings.password,
             auth_mode=settings.auth_mode,
             http_headers=parse_http_headers(settings.http_headers),
-            timeout=timeout,
+            timeout=timeout if timeout is not None else settings.network_timeout,
             stow_dicom_web_url=settings.stow_dicom_web_url,
         )
 

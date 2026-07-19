@@ -12,6 +12,7 @@ import pydicom
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import map_instance_metadata
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 
 _CACHE_MAX_ENTRIES = 32
 
@@ -54,6 +55,7 @@ class DicomReaderImpl:
     """Infrastructure implementation of IDicomReader."""
 
     def read_metadata(self, path: Path) -> InstanceMetadata:
+        validate_dicom_header(path)
         dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         return map_instance_metadata(dataset, path=path)
 
@@ -61,6 +63,7 @@ class DicomReaderImpl:
         cached = _pixel_cache.get(path, frame_index)
         if cached is not None:
             return cached
+        validate_dicom_header(path)
         session = get_thread_dicom_session()
         session.open(path)
         pixels = session.read_frame(frame_index)

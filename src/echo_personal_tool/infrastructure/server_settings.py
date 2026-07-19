@@ -50,6 +50,8 @@ class ServerSettings:
     dimse_scp_port: int = 11112
     dimse_scp_host: str = "127.0.0.1"  # bind address; PACS must reach this IP
     dimse_scp_ae_title: str = ""  # default: dimse_ae_title
+    # Network
+    network_timeout: float = 30.0
 
 
 # ── Profile management ──────────────────────────────────────────────
@@ -200,6 +202,7 @@ def load_server_settings() -> ServerSettings:
         dimse_scp_port=int(store.value("dimse_scp_port", 11112)),
         dimse_scp_host=str(store.value("dimse_scp_host", "127.0.0.1")),
         dimse_scp_ae_title=str(store.value("dimse_scp_ae_title", "")),
+        network_timeout=float(store.value("network_timeout", 30.0)),
     )
 
 
@@ -216,7 +219,8 @@ def reset_server_settings() -> None:
                 "query_source", "retrieval_source", "dimse_retrieval_mode",
                 "dimse_use_tls", "dimse_tls_verify", "dimse_tls_ca_path",
                 "dimse_tls_cert_path", "dimse_tls_key_path",
-                "dimse_scp_port", "dimse_scp_host", "dimse_scp_ae_title"):
+                "dimse_scp_port", "dimse_scp_host", "dimse_scp_ae_title",
+                "network_timeout"):
         store.remove(key)
     store.sync()
 
@@ -247,6 +251,7 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("dimse_scp_port", settings.dimse_scp_port)
     store.setValue("dimse_scp_host", settings.dimse_scp_host)
     store.setValue("dimse_scp_ae_title", settings.dimse_scp_ae_title)
+    store.setValue("network_timeout", settings.network_timeout)
     store.sync()
 
 
