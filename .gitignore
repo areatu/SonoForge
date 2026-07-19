@@ -64,6 +64,8 @@ bench/reports/
 .opencode/
 AGENTS.md
 .cursorrules
+.cursor/rules
+.vscode
 
 # IDE config (contains MCP tokens)
 .cursor/

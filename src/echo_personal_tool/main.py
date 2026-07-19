@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 
 # Memory diagnostics: log top allocations every 10s when ECHO_FREEZE_DIAG=1
 if os.environ.get("ECHO_FREEZE_DIAG") == "1":
@@ -51,10 +52,30 @@ for _logger_name in ("pylibjpeg", "pylibjpeg.utils", "pydicom"):
 if os.environ.get("ECHO_DEBUG"):
     logging.getLogger("echo_personal_tool").setLevel(logging.DEBUG)
 
+# ── First-run environment check ──
+# When running outside PyInstaller and outside a venv, check if deps/models
+# are available.  The bash launcher (sonoforge) handles this for normal installs;
+# this is a safety net for direct execution.
+_is_frozen = getattr(sys, "frozen", False)
+if not _is_frozen:
+    try:
+        from echo_personal_tool.infrastructure.runtime_setup import (
+            check_deps,
+            check_models,
+        )
+        if not check_deps():
+            print(
+                "SonoForge: missing Python dependencies.\n"
+                "Run the launcher: /opt/sonoforge/sonoforge\n"
+                "Or install: pip install -e .",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+    except ImportError:
+        pass
+
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
-
-from pathlib import Path
 
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
@@ -68,6 +89,18 @@ def main() -> int:
     patch_pyqtgraph_export_dialog()
     app = QApplication(sys.argv)
     app.setApplicationName("SonoForge")
+
+    # Check models after QApplication exists (can show Qt dialog)
+    if not _is_frozen:
+        try:
+            from echo_personal_tool.infrastructure.runtime_setup import (
+                check_models,
+                show_setup_dialog,
+            )
+            if not check_models():
+                show_setup_dialog()
+        except Exception:
+            pass
     ensure_bundled_fonts_loaded()
     preferences = load_user_preferences()
     app.setFont(ui_font(point_size=preferences.ui_font_size))
