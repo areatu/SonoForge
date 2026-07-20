@@ -50,7 +50,7 @@ jobs:
           dpkg-deb --contents "$DEB" | head -20
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sonoforge-deb
           path: dist/sonoforge_*.deb
@@ -101,13 +101,13 @@ jobs:
           dir dist\*.exe
 
       - name: Upload .zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sonoforge-windows-zip
           path: dist\*.zip
 
       - name: Upload .exe installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sonoforge-windows-exe
           path: dist\SonoForge-Setup.exe
