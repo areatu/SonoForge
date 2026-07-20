@@ -1,0 +1,26 @@
+# YAML 1.2
+# Citation File Format (CFF) for SonoForge
+# https://citation-file-format.github.io/
+---
+cff-version: 1.2.0
+title: "SonoForge"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - family-names: "Kuvilkin"
+    given-names: "Vitaliy"
+    website: "https://github.com/areatu"
+license: GPL-3.0-only
+repository-code: "https://github.com/areatu/SonoForge"
+abstract: "Desktop echocardiography analysis tool with AI-powered segmentation, DICOM viewing, cardiac measurements, and reference management."
+keywords:
+  - echocardiography
+  - cardiology
+  - medical imaging
+  - DICOM
+  - ONNX
+  - segmentation
+  - clinical decision support
+  - Qt
+date-released: "2026-07-20"
+version: "0.1.0"
