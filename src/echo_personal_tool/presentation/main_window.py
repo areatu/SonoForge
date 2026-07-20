@@ -10,7 +10,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 # Debug file logging
-_LOG_PATH = Path("/home/areatu/ECHO2026/errors_003.txt")
+_LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_LOG_PATH = _LOG_DIR / "errors.log"
 _file_handler = logging.FileHandler(str(_LOG_PATH), mode="a", encoding="utf-8")
 _file_handler.setLevel(logging.WARNING)
 _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
