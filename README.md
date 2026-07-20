@@ -1,335 +1,207 @@
+<div align="center">
+
 # SonoForge
 
-Персональный десктопный инструмент для просмотра и количественного анализа эхокардиографических исследований: **DICOM**, **MP4**, **JPEG/PNG**. Интерфейс и workflow ориентированы на ASE — без облака, локально на вашей машине.
+### Desktop Echocardiography Analysis Tool
 
-**Стек:** PySide6, PyQtGraph, pydicom, OpenCV, NumPy, SciPy, httpx, ONNX Runtime, reportlab, openpyxl — **Clean Architecture** (`domain` / `infrastructure` / `application` / `presentation`).
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![License GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-green?style=for-the-badge)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/areatu/SonoForge/ci.yml?style=for-the-badge&label=CI)](https://github.com/areatu/SonoForge/actions)
+[![Release](https://img.shields.io/github/v/release/areatu/SonoForge?style=for-the-badge&color=blue)](https://github.com/areatu/SonoForge/releases)
+[![DOI](https://img.shields.io/badge/DOI-10.5281/zenodo.XXXXXXX-blue?style=for-the-badge)](https://zenodo.org/)
 
 ---
 
-## Установка
+**DICOM** · **MP4** · **JPEG/PNG** — AI-powered cardiac measurements, offline, ASE-compliant.
 
-### Linux (.deb)
+[Installation](#installation) · [Features](#features) · [Quick Start](#quick-start) · [Documentation](#documentation) · [Contributing](#contributing)
+
+</div>
+
+---
+
+## 📦 Installation
+
+<details open>
+<summary><strong>Linux (.deb)</strong></summary>
 
 ```bash
-# Скачать .deb с GitHub Releases
+# Download
 wget https://github.com/areatu/SonoForge/releases/latest/download/sonoforge_*.deb
 
-# Установить
+# Install
 sudo dpkg -i sonoforge_*.deb
 
-# Запустить
+# Run
 sonoforge
 ```
 
-При первом запуске:
-- Создаётся виртуальное окружение
-- Устанавливаются зависимости (~940 MB)
-- Предлагается скачать AI-модели (~300 MB) — можно пропустить
+</details>
 
-### Windows (.zip)
+<details>
+<summary><strong>Windows (.zip)</strong></summary>
 
-1. Скачайте `SonoForge-*.zip` с [GitHub Releases](https://github.com/areatu/SonoForge/releases)
-2. Распакуйте в любую папку
-3. Запустите `SonoForge\bin\SonoForge.bat`
+1. Download `SonoForge-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Extract to any folder
+3. Run `SonoForge\bin\SonoForge.bat`
 
-**Требуется:** Python 3.10+ (скачать с [python.org](https://www.python.org/downloads/), поставить галочку "Add Python to PATH")
+> **Requires:** Python 3.10+ ([download](https://www.python.org/downloads/), check "Add to PATH")
 
-При первом запуске:
-- Создаётся виртуальное окружение
-- Устанавливаются зависимости (~940 MB)
-- Предлагается скачать AI-модели (~300 MB) — можно пропустить
+</details>
 
-### Из исходников (разработка)
+<details>
+<summary><strong>From Source (Development)</strong></summary>
 
 ```bash
 git clone https://github.com/areatu/SonoForge.git
 cd SonoForge
 
-# С uv (рекомендуется)
+# With uv (recommended)
 uv sync --extra dev
 uv run sonoforge
 
-# Или pip
-python -m venv .venv
-source .venv/bin/activate
+# Or pip
 pip install -e ".[dev]"
 python -m echo_personal_tool
 ```
 
----
+</details>
 
-## Возможности (обзор)
-
-| Область | Что реализовано |
-|---------|-----------------|
-| **Источники данных** | Локальная папка; **Orthanc DICOMweb** (QIDO-RS / WADO-RS / STOW-RS); **DIMSE** (C-ECHO, C-FIND, C-STORE, **C-GET**, **C-MOVE**); **TLS**; mock offline |
-| **Просмотр** | Gallery, 2D viewer, таймлайн, cine play/pause, W/L + DR |
-| **Производительность** | Lazy decode DICOM/MP4 (первый кадр мгновенно); prefetch при playback; LRU frame cache |
-| **Калибровка** | DICOM tags; ручная B-mode (см); **авто** по шкале глубины (MP4/JPEG); snap к тикам |
-| **Линейные измерения** | Калиперы ASE (LVEDD, IVSd, TAPSE…); подписи **вдоль линейки** в реальном времени |
-| **Объёмы / площади** | LV/LA/RA Simpson (open-arc), planimeter, generic area/volume |
-| **Doppler** | Пики, интервалы, VTI, mitral inflow; калибровка ROI/baseline/шкалы |
-| **M-Mode** | Калибровка, scan line, измерения, сглаживание |
-| **Контуры** | Ручной / MBS-lite / ONNX LV Auto; R-refine, magnetic snap, Bézier spline |
-| **Speckle tracking (STE)** | NCC block-matching, GLS, AHA 17 segments, strain curves, QC |
-| **ONNX** | LV Auto A4C (hotkey `I`), temporal fusion, review + gradient refine (`R`) |
-| **Отчёты** | Study overlay, индексы BSA, нормативы ASE, PDF export |
-| **Справочник ASE** | Интерактивный браузер с темами, патологиями, градациями, изображениями |
-| **Конструктор справочника** | Редактор параметров, импорт Excel, экспорт PDF/HTML, валидация YAML-схемы |
-| **UX** | Clinical theme (dark/light), hover lerp, dialog fade+scale, анимации, reduced-motion |
+> **Note:** First run creates a virtual environment, installs dependencies (~940 MB), and optionally downloads AI models (~300 MB).
 
 ---
 
-## Фишки и отличия
+## 🚀 Features
 
-### Быстрый просмотр cine (lazy loading)
+<table>
+<tr>
+<td width="50%">
 
-- При открытии DICOM/MP4 декодируется **только первый кадр** — UI отзывается сразу.
-- Скролл и playback подгружают кадры **по запросу** через фоновые workers.
-- **Prefetch-буфер** при воспроизведении: адаптивный размер под CPU/RAM.
-- **Leading static skip** — автоматический пропуск статичного lead-in.
+### 📊 Measurements
+- **Linear:** LVEDD, IVSd, TAPSE, RVOT...
+- **Volumes:** Simpson (open-arc), Planimeter
+- **Doppler:** Peaks, VTI, Intervals
+- **M-Mode:** Scan line, measurements, smoothing
+- **STE:** GLS, AHA segments, strain curves
 
-### Калибровка без лишних кликов
+</td>
+<td width="50%">
 
-- **Автокалибровка B-mode** для MP4/JPEG/PNG: детекция сантиметровых меток → mm/px.
-- При ручной калибровке — **magnetic snap** к тикам шкалы глубины.
-- DICOM: spacing из тегов (`PixelSpacing`, ultrasound regions, functional groups).
+### 🤖 AI Segmentation
+- **ONNX LV Auto** (`I` key)
+- **Temporal Fusion** (N±2 neighbors)
+- **LA Segmentation** (A4C ES)
+- **Mitral Annulus** landmark detection
+- **Active Contour Refine** (`R` key)
 
-### Линейные калиперы Clinical-style
+</td>
+</tr>
+<tr>
+<td>
 
-- Формат подписи: `LVEDD 52.3 mm` — обновление **в реальном времени**.
-- Текст **вдоль линейки**, без переворота.
-- Цепочки измерений (МЖП → КДР → ЗСЛЖ) с **blink** следующей кнопки.
+### 🏥 DICOM Integration
+- **DICOMweb:** QIDO-RS, WADO-RS, STOW-RS
+- **DIMSE:** C-FIND, C-GET, C-MOVE, C-STORE
+- **TLS** support
+- **Orthanc** integration
 
-### M-Mode
+</td>
+<td>
 
-- Калибровка времени/глубины из DICOM tags или вручную.
-- Scan line overlay, измерения расстояний и интервалов.
-- Сглаживание сигналов (Savitzky-Golay).
+### 📈 Reports
+- Study overlay with all measurements
+- BSA indices (LVMI, LAVi, RAVi)
+- ASE reference norms
+- PDF export
 
-### Speckle Tracking (STE)
+</td>
+</tr>
+</table>
 
-- Двухконтурная зона миокарда, NCC block-matching, **bidirectional ED-anchored** трекинг.
-- **GLS**, segment strain по AHA, strain curves, QC.
-- Пресеты: `standard`, `research` (настраиваемые параметры).
-
-### Контуры и AI
-
-- **Open-arc Simpson** — mitral annulus + apex.
-- **ONNX LV Auto**: `I` → маска → open-arc → review (`Enter`/`Esc`).
-- **Temporal Fusion**: neighbor-aware контур (N±2), mask vote, node clamp.
-- **R** — stepped border refine (±N px вдоль нормали) + edge snap.
-- **Magnetic snap** контуров к границам миокарда.
-- Bézier cubic spline для LV.
-
-### Справочник ASE
-
-- Интерактивный браузер с темами, патологиями, градациями.
-- Нормативы по полу/возрасту, изображения.
-- Конструктор справочника: редактирование, импорт Excel, экспорт PDF/HTML.
-
-### DICOMweb / DIMSE
-
-- Поиск (QIDO / C-FIND), скачивание: **WADO-RS**, **C-GET**, **C-MOVE**.
-- **STOW-RS** и **C-STORE** upload.
-- **TLS** для защищённых DIMSE-ассоциаций.
-- **DIMSE-only** режим (без DICOMweb URL).
-
-### Отчёты и нормативы
-
-- **Результаты** — сводка по study (LVEF, объёмы, Doppler, linear, RWT…).
-- Индексы **LVMI, LAVi, RAVi, EDVi/ESVi**.
-- Экспорт **PDF** (reportlab).
+> **See all features:** [Features Overview](#features-overview)
 
 ---
 
-## Горячие клавиши
+## 🏃 Quick Start
 
-| Клавиша | Действие |
-|---------|----------|
-| `Space` | Play / Pause cine |
-| `L` | Линейный калипер |
-| `Tab` | Сменить метку калипера (LVEDD → IVSd → …) |
-| `K` | Ручная калибровка B-mode |
-| `Shift+K` | Сброс ручной калибровки |
-| `C` | Ручной контур (open-arc) |
-| `M` | MBS-lite контур / Doppler peak |
-| `I` | LV Auto Segment (ONNX) |
-| `R` | Refine активного контура |
-| `T` | Doppler interval |
-| `V` | Doppler VTI trace |
-| `Enter` | Завершить контур / trace |
-| `Esc` | Отмена активного инструмента |
-| `Del` / `Backspace` | Удалить контур текущей фазы |
+1. **Open Folder** → DICOM/MP4/JPEG directory, or **Load from Server** → Orthanc
+2. **Gallery** → Select series → Frame opens in viewer
+3. **Measures** → Linear, Simpson, Doppler, M-Mode, STE, RV FAC...
+4. **Results** → Summary and PDF export
+
+### Keyboard Shortcuts
+
+| Key | Action | Key | Action |
+|-----|--------|-----|--------|
+| `Space` | Play/Pause | `I` | LV Auto Segment |
+| `L` | Linear caliper | `R` | Refine contour |
+| `K` | Manual calibration | `C` | Manual contour |
+| `T` | Doppler interval | `V` | VTI trace |
+| `Tab` | Next caliper label | `Esc` | Cancel tool |
 
 ---
 
-## Требования
+## 📚 Documentation
 
-- **Python 3.10–3.11** (для установки из исходников или .zip)
-- Linux / Windows (протестировано на Debian 12, Win 10)
-- ~500 MB RAM (ONNX модели загружаются по требованию)
-
-### Зависимости
-
-| Категория | Пакеты |
-|-----------|--------|
-| **GUI** | PySide6, PyQtGraph |
-| **DICOM** | pydicom, pylibjpeg (+openjpeg, libjpeg), pynetdicom |
-| **ML** | ONNX Runtime |
-| **Math** | NumPy, SciPy |
-| **Image** | OpenCV (headless) |
-| **HTTP** | httpx (DICOMweb) |
-| **PDF** | reportlab, PyMuPDF |
-| **Excel** | openpyxl |
-| **Data** | PyYAML, jsonschema |
-| **System** | psutil |
+| Document | Description |
+|----------|-------------|
+| [SECURITY.md](SECURITY.md) | PHI handling, data security, model integrity |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
+| [ROADMAP.md](ROADMAP.md) | Feature status |
+| [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specs |
+| [docs/superpowers/plans/](docs/superpowers/plans/) | Implementation plans |
 
 ---
 
-## Быстрый старт
+## 🏗️ Architecture
 
-1. **Open folder…** — папка с DICOM/MP4/JPEG, или **Загрузить с сервера…** — Orthanc.
-2. Выбрать серию в **Gallery** → кадр откроется в viewer.
-3. Для MP4/JPEG без DICOM-тегов: автокалибровка по шкале (или `K` вручную).
-4. **Measures** (справа) — линейные, Simpson, Doppler, M-Mode, STE, RV FAC…
-5. **Результаты** — сводка и PDF.
-
-### Orthanc DICOMweb / DIMSE
-
-Orthanc по умолчанию слушает **два порта**:
-
-| Порт | Протокол | Назначение |
-|------|----------|------------|
-| **8042** | HTTP | DICOMweb: QIDO-RS, WADO-RS, STOW-RS |
-| **4242** | TCP DIMSE | C-ECHO, C-FIND, C-STORE, C-GET, C-MOVE |
-
-Типичный URL DICOMweb: `http://127.0.0.1:8042/dicom-web`
-DIMSE: host `127.0.0.1`, port `4242`, Called AE `ORTHANC`, Calling AE `SONOFORGE`.
-
-**Публичный demo (read-only):**
-[https://orthanc.uclouvain.be/demo/dicom-web](https://orthanc.uclouvain.be/demo/dicom-web)
-
-1. **Настройки → Сервер…** — DICOMweb URL, DIMSE, STOW override, Mock offline.
-2. **Загрузить с сервера…** — QIDO / C-FIND; WADO-RS, C-GET или C-MOVE.
-3. **Отправить на сервер…** — STOW-RS или C-STORE.
-
-#### Режимы скачивания
-
-| Режим | Описание |
-|-------|----------|
-| **WADO-RS** | HTTP; по умолчанию |
-| **C-GET** | DIMSE (та же ассоциация); проще C-MOVE |
-| **C-MOVE** | Embedded Storage SCP (порт 11112); требует настройку modality |
-
-#### C-MOVE в Orthanc
-
-```json
-{
-  "DicomModalities": {
-    "SONOFORGE": ["SONOFORGE", "127.0.0.1", 11112]
-  }
-}
 ```
-
-#### TLS
-
-В настройках сервера: CA certificate, Client certificate + key, Verify server certificate.
-
-#### Integration-тесты
-
-```bash
-# DICOMweb smoke
-ECHO_ORTHANC=1 pytest tests/integration/test_orthanc_live.py -v
-
-# DIMSE
-ECHO_ORTHANC=1 ECHO_ORTHANC_DIMSE=1 pytest tests/integration/test_orthanc_live.py -v -k dimse
-
-# C-GET / C-MOVE
-ECHO_ORTHANC=1 ECHO_ORTHANC_RETRIEVAL=dimse pytest tests/integration/test_orthanc_live.py -k c_get
-ECHO_ORTHANC=1 ECHO_ORTHANC_RETRIEVAL=cmove pytest tests/integration/test_orthanc_live.py -k c_move
-```
-
-### ONNX (LV Auto)
-
-ONNX модели загружаются из `~/.local/share/sonoforge/models/` (установленная версия) или `models/` (из исходников). LV Auto (A4C) доступен по `I`.
-
-### Speckle Tracking
-
-1. Нарисовать контур LV (ED) на cine B-mode.
-2. Measures → **Speckle Tracking**.
-3. Диалог ED/ES → расчёт GLS, overlay, strain curves, QC.
-
----
-
-## Настройки (Preferences)
-
-- **Интерфейс:** шрифт UI, theme dark/light, скорость playback.
-- **Просмотр:** W/L presets, crosshair, подписи калиперов, DR sliders.
-- **Измерения:** единицы (mm/cm), magnetic snap, автокалибровка.
-- **Doppler:** auto-calibration из DICOM tags.
-- **Отчёты:** шрифт PDF, overlay результатов.
-- **STE:** пресеты (standard, research), drift compensation, wall thickness.
-
----
-
-## Разработка
-
-```bash
-# Запуск тестов
-uv run pytest
-
-# Линтер
-uv run ruff check src tests
-
-# Форматтер
-uv run ruff format src tests
-```
-
-Отладка: `.vscode/launch.json` → `echo_personal_tool`.
-
-Изолированные ветки: `git worktree add .worktrees/<name> -b feat/<name>`.
-
----
-
-## Структура проекта
-
-```text
 src/echo_personal_tool/
-├── domain/              # Модели, расчёты (Simpson, Doppler, STE, M-Mode) — без Qt
-│   ├── models/          # Contour, Doppler, Speckle, MMode, TemporalFusion
-│   ├── calculations/    # Simpson, Bernoulli, Teichholz, BSA, RWT, FAC
-│   └── services/        # Segmentation, tracking, gold store, reference data
-├── infrastructure/      # DICOM, Orthanc, ONNX, DIMSE, video, i18n
-├── application/         # AppController, workers (11 шт.), services
-├── presentation/        # MainWindow, Viewer, M-Mode, Doppler, STE, меню
-├── constructor/         # Редактор справочника (editors, exporters, importers)
-├── ui/                  # Strain window, strain curves
-└── resources/           # Шрифты, SVG-иконки, ASE справочник, изображения
+├── domain/           # Business logic (no Qt dependency)
+│   ├── models/       # Contour, Doppler, Speckle, MMode
+│   ├── calculations/ # Simpson, Bernoulli, Teichholz, BSA
+│   └── services/     # Segmentation, tracking, references
+├── infrastructure/   # DICOM, Orthanc, ONNX, DIMSE
+├── application/      # AppController, workers (11)
+├── presentation/     # MainWindow, Viewer, M-Mode, Doppler
+└── resources/        # Fonts, icons, ASE reference
 ```
 
 ---
 
-## Документация
+## 🛡️ Security
 
-| Документ | Назначение |
-|----------|------------|
-| [ROADMAP.md](ROADMAP.md) | Статус фич по коду |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Гайдлайны по контрибьюшену |
-| [SECURITY.md](SECURITY.md) | Безопасность и обработка PHI |
-| [docs/superpowers/specs/](docs/superpowers/specs/) | Спеки (STE, DICOMweb, lazy loading, M-Mode…) |
-| [docs/superpowers/plans/](docs/superpowers/plans/) | Планы реализации |
-| [docs/bench/](docs/bench/) | Бенчмарки производительности |
+> **Your data stays local.** SonoForge processes all DICOM data in memory — no PHI is written to disk, no cloud uploads, no telemetry.
+
+- ✅ DICOM file validation before parsing
+- ✅ SHA256 model integrity checks
+- ✅ Network timeouts for DICOMweb/DIMSE
+- ✅ PHI sanitization in logs
+
+See [SECURITY.md](SECURITY.md) for details.
 
 ---
 
-## Лицензия
+## 🤝 Contributing
 
-GPL-3.0 — см. [LICENSE](LICENSE).
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## Цитирование
+```bash
+# Run tests
+python -m pytest tests/
 
-Если вы используете SonoForge в научной работе, пожалуйста, цитируйте:
+# Lint
+ruff check src tests
+
+# Format
+ruff format src tests
+```
+
+---
+
+## 📜 Citation
+
+If you use SonoForge in your research, please cite:
 
 ```bibtex
 @software{kuvilkin2026sonoforge,
@@ -341,3 +213,19 @@ GPL-3.0 — см. [LICENSE](LICENSE).
   license      = {GPL-3.0}
 }
 ```
+
+---
+
+## 📄 License
+
+[GPL-3.0](LICENSE) — Free software, open source.
+
+---
+
+<div align="center">
+
+**Built with ❤️ for cardiology**
+
+[Report Bug](https://github.com/areatu/SonoForge/issues) · [Request Feature](https://github.com/areatu/SonoForge/issues) · [Discussions](https://github.com/areatu/SonoForge/discussions)
+
+</div>
