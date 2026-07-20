@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev rsvg-convert
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom numpy scipy opencv-python-headless httpx psutil pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+
+      - name: Run smoke tests
+        run: |
+          python -c "
+          import echo_personal_tool
+          print(f'Version: {echo_personal_tool.__version__}')
+          from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+          from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+          from echo_personal_tool.infrastructure.runtime_setup import get_setup_status
+          print('All imports OK')
+          "
+
+      - name: Build .deb (lite)
+        run: ./build/linux/build-lite.sh
+
+      - name: Verify .deb
+        run: |
+          DEB=$(ls dist/sonoforge_*.deb)
+          echo "Package: $DEB"
+          echo "Size: $(du -h "$DEB" | cut -f1)"
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB" | head -20
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonoforge-deb
+          path: dist/sonoforge_*.deb
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+          python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+
+      - name: Run smoke tests
+        run: |
+          python -c "
+          import echo_personal_tool
+          print(f'Version: {echo_personal_tool.__version__}')
+          from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+          from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+          print('All imports OK')
+          "
+
+      - name: Build with PyInstaller
+        run: |
+          python -m PyInstaller build/windows/build.spec --noconfirm --clean
+
+      - name: Verify build
+        run: |
+          ls -la dist/SonoForge/
+          echo "Build size:"
+          du -sh dist/SonoForge/
+
+      - name: Create .zip archive
+        run: |
+          Compress-Archive -Path dist/SonoForge/* -DestinationPath dist/SonoForge-Windows.zip
+
+      - name: Upload .zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonoforge-windows
+          path: dist/SonoForge-Windows.zip
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sonoforge-deb
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sonoforge-windows
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sonoforge_*.deb
+            SonoForge-Windows.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
