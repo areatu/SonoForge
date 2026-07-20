@@ -48,7 +48,17 @@ find_python() {
 
 PYTHON=$(find_python) || {
     err "Python ${PYTHON_MIN}+ not found."
-    err "Install: sudo apt install python3 python3-venv python3-pip"
+    echo ""
+    echo "Install Python:"
+    echo "  Ubuntu/Debian:  sudo apt install python3 python3-venv python3-pip"
+    echo "  Fedora:         sudo dnf install python3"
+    echo "  Arch:           sudo pacman -S python"
+    echo ""
+    read -p "Open Python download page? [Y/n] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        xdg-open "https://www.python.org/downloads/" 2>/dev/null || true
+    fi
     exit 1
 }
 info "Using: $PYTHON ($($PYTHON --version 2>&1))"
@@ -98,7 +108,7 @@ else
     ok "Dependencies up to date."
 fi
 
-# ── 4. Download models if missing ──
+# ── 4. Download models (optional) ──
 download_models() {
     local MAX_RETRIES=3
     local DOWNLOAD_OK=false
@@ -148,9 +158,19 @@ download_models() {
 }
 
 if [ ! -f "${MODELS_DIR}/model_manifest.json" ]; then
-    info "Downloading models (~300 MB)..."
-    mkdir -p "${MODELS_DIR}"
-    download_models || true
+    echo ""
+    info "AI models are required for automatic cardiac segmentation."
+    info "Download size: ~300 MB"
+    echo ""
+    read -p "Download models? [Y/n] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        mkdir -p "${MODELS_DIR}"
+        download_models || true
+    else
+        warn "Skipping models. AI segmentation will be unavailable."
+        warn "You can download later from: ${MODELS_RELEASE_URL}"
+    fi
 else
     ok "Models found."
 fi

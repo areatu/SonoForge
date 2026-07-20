@@ -29,14 +29,58 @@ if %errorlevel%==0 (
 )
 
 if "%PYTHON%"=="" (
-    echo [SonoForge] ERROR: Python 3.10+ not found.
-    echo Install: https://www.python.org/downloads/
-    echo Make sure to check "Add Python to PATH" during installation.
+    echo.
+    echo [SonoForge] Python 3.10+ is required but not found.
+    echo.
+    echo Options:
+    echo   1. Download Python from python.org (recommended)
+    echo   2. Try winget install (if available)
+    echo   3. Exit
+    echo.
+    set /p CHOICE="Select [1/2/3]: "
+
+    if "!CHOICE!"=="1" (
+        echo Opening Python download page...
+        start https://www.python.org/downloads/
+        echo.
+        echo After installing Python, make sure to:
+        echo   - Check "Add Python to PATH" during installation
+        echo   - Restart this launcher
+        pause
+        exit /b 1
+    ) else if "!CHOICE!"=="2" (
+        echo Trying winget install...
+        winget install Python.Python.3.11 --accept-package-agreements --accept-source-agreements
+        if %errorlevel%==0 (
+            echo Python installed. Please restart this launcher.
+            pause
+            exit /b 1
+        ) else (
+            echo winget install failed. Please install Python manually.
+            pause
+            exit /b 1
+        )
+    ) else (
+        exit /b 1
+    )
+)
+
+REM ── Check Python version ──
+for /f "tokens=2 delims=." %%a in ('%PYTHON% --version 2^>^&1') do set PYMAJOR=%%a
+for /f "tokens=3 delims=." %%a in ('%PYTHON% --version 2^>^&1') do set PYMINOR=%%a
+
+if %PYMAJOR% LSS 3 (
+    echo [SonoForge] ERROR: Python 3.10+ required, found Python %PYMAJOR%.%PYMINOR%
+    pause
+    exit /b 1
+)
+if %PYMINOR% LSS 10 (
+    echo [SonoForge] ERROR: Python 3.10+ required, found Python %PYMAJOR%.%PYMINOR%
     pause
     exit /b 1
 )
 
-echo [SonoForge] Using: %PYTHON%
+echo [SonoForge] Using: %PYTHON% (Python %PYMAJOR%.%PYMINOR%)
 
 REM ── 2. Create venv if missing ──
 if not exist "%VENV_DIR%" (
@@ -67,30 +111,40 @@ if "%NEED_INSTALL%"=="1" (
     echo [SonoForge] Dependencies up to date.
 )
 
-REM ── 4. Download models if missing ──
+REM ── 4. Download models (optional) ──
 if not exist "%MODELS_DIR%\model_manifest.json" (
-    echo [SonoForge] Downloading models (~300 MB)...
-    if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
+    echo.
+    echo [SonoForge] AI models are required for automatic cardiac segmentation.
+    echo [SonoForge] Download size: ~300 MB
+    echo.
+    set /p DOWNLOAD_MODELS="Download models? [Y/n]: "
 
-    REM Try curl first, then PowerShell
-    where curl >nul 2>&1
-    if %errorlevel%==0 (
-        curl -fSL --connect-timeout 30 --retry 2 --progress-bar -o "%DATA_DIR%\models.tar.gz" "%MODELS_URL%"
+    if /i "!DOWNLOAD_MODELS!" NEQ "n" (
+        echo [SonoForge] Downloading models...
+        if not exist "%MODELS_DIR%" mkdir "%MODELS_DIR%"
+
+        where curl >nul 2>&1
+        if %errorlevel%==0 (
+            curl -fSL --connect-timeout 30 --retry 2 --progress-bar -o "%DATA_DIR%\models.tar.gz" "%MODELS_URL%"
+        ) else (
+            powershell -Command "Invoke-WebRequest -Uri '%MODELS_URL%' -OutFile '%DATA_DIR%\models.tar.gz'"
+        )
+
+        if exist "%DATA_DIR%\models.tar.gz" (
+            echo [SonoForge] Extracting models...
+            tar -xzf "%DATA_DIR%\models.tar.gz" -C "%DATA_DIR%"
+            del "%DATA_DIR%\models.tar.gz"
+        )
+
+        if exist "%MODELS_DIR%\model_manifest.json" (
+            echo [SonoForge] Models ready.
+        ) else (
+            echo [SonoForge] Model download failed. AI segmentation will be unavailable.
+            echo [SonoForge] Download manually: %MODELS_URL%
+        )
     ) else (
-        powershell -Command "Invoke-WebRequest -Uri '%MODELS_URL%' -OutFile '%DATA_DIR%\models.tar.gz'"
-    )
-
-    if exist "%DATA_DIR%\models.tar.gz" (
-        echo [SonoForge] Extracting models...
-        tar -xzf "%DATA_DIR%\models.tar.gz" -C "%DATA_DIR%"
-        del "%DATA_DIR%\models.tar.gz"
-    )
-
-    if exist "%MODELS_DIR%\model_manifest.json" (
-        echo [SonoForge] Models ready.
-    ) else (
-        echo [SonoForge] Model download failed. Models will be unavailable.
-        echo [SonoForge] Download manually: %MODELS_URL%
+        echo [SonoForge] Skipping models. AI segmentation will be unavailable.
+        echo [SonoForge] You can download later from: %MODELS_URL%
     )
 ) else (
     echo [SonoForge] Models found.
