@@ -23,7 +23,7 @@ _BENCH = pytest.mark.skipif(
 
 _REAL_DICOM = Path(os.environ.get(
     "ECHO_REAL_DICOM",
-    r"/home/areatu/1ECHO2026 src/US003500.dcm",
+    "",
 ))
 
 

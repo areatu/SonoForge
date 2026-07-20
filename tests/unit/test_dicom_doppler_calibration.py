@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pydicom
@@ -113,7 +114,7 @@ def test_parse_velocity_only_vendor_mis_tag() -> None:
 
 
 def test_parse_user_download_dicom_when_available() -> None:
-    root = Path("/home/areatu/Загрузки/Unknown Study")
+    root = Path(os.environ.get("ECHO_TEST_DICOM_DIR", ""))
     if not root.exists():
         return
     doppler_files = []

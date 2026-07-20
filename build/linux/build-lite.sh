@@ -44,15 +44,17 @@ chmod 755 "${DEB_PKG}/opt/${APP_NAME}/bin/sonoforge"
 # Desktop entry
 cp scripts/sonoforge.desktop "${DEB_PKG}/usr/share/applications/"
 
-# Convert SVG icon to PNG
-ICON_SRC="src/echo_personal_tool/resources/icons/activity_measures.svg"
+# Convert logo to PNG for desktop icon
+ICON_SRC="src/echo_personal_tool/resources/logo.png"
 ICON_DST="${DEB_PKG}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
-if command -v rsvg-convert &>/dev/null; then
-    rsvg-convert -w 256 -h 256 "${ICON_SRC}" -o "${ICON_DST}"
-elif command -v convert &>/dev/null; then
-    convert -background none "${ICON_SRC}" -resize 256x256 "${ICON_DST}"
+if [ -f "${ICON_SRC}" ]; then
+    cp "${ICON_SRC}" "${ICON_DST}"
+elif command -v rsvg-convert &>/dev/null && [ -f "src/echo_personal_tool/resources/icons/activity_measures.svg" ]; then
+    rsvg-convert -w 256 -h 256 "src/echo_personal_tool/resources/icons/activity_measures.svg" -o "${ICON_DST}"
 else
-    cp "${ICON_SRC}" "${DEB_PKG}/usr/share/icons/hicolor/scalable/apps/${APP_NAME}.svg" 2>/dev/null || true
+    mkdir -p "${DEB_PKG}/usr/share/icons/hicolor/scalable/apps"
+    cp "src/echo_personal_tool/resources/icons/activity_measures.svg" \
+        "${DEB_PKG}/usr/share/icons/hicolor/scalable/apps/${APP_NAME}.svg" 2>/dev/null || true
     sed -i "s|Icon=${APP_NAME}|Icon=/usr/share/icons/hicolor/scalable/apps/${APP_NAME}.svg|" \
         "${DEB_PKG}/usr/share/applications/sonoforge.desktop"
 fi
