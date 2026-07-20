@@ -67,10 +67,9 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller
           python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
 
       - name: Run smoke tests
@@ -83,25 +82,14 @@ jobs:
           print('All imports OK')
           "
 
-      - name: Build with PyInstaller
-        run: |
-          python -m PyInstaller build/windows/build.spec --noconfirm --clean
-
-      - name: Verify build
-        run: |
-          ls -la dist/SonoForge/
-          echo "Build size:"
-          du -sh dist/SonoForge/
-
-      - name: Create .zip archive
-        run: |
-          Compress-Archive -Path dist/SonoForge/* -DestinationPath dist/SonoForge-Windows.zip
+      - name: Build lightweight package
+        run: build\windows\build-lite.bat
 
       - name: Upload .zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: sonoforge-windows
-          path: dist/SonoForge-Windows.zip
+          path: dist/SonoForge-*.zip
 
   release:
     needs: [build-linux, build-windows]
@@ -122,7 +110,7 @@ jobs:
         with:
           files: |
             sonoforge_*.deb
-            SonoForge-Windows.zip
+            SonoForge-*.zip
           generate_release_notes: true
           draft: false
           prerelease: false
