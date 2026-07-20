@@ -22,7 +22,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev rsvg-convert
+          sudo apt-get install -y dpkg-dev librsvg2-bin
 
       - name: Install Python dependencies
         run: |

@@ -93,12 +93,8 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 |----------|--------------|-------------|
 | **Linear (M-Mode/B-Mode)** | LVEDD, LVESD, IVSd, IVSs, LVPWd, LVPWs, TAPSE, RVOT, LA diameter | Standard ASE linear measurements with real-time caliper labels |
 | **Volumetric (Simpson Biplane)** | EDV, ESV, LVEF, LAVi, RAVi | Biplane Simpson's method with open-arc mitral annulus tracking |
-| **Doppler (Spectral)** | Mitral inflow (E, A, E/A), TVI, VTI, peak velocities, deceleration time | Full Doppler analysis with automated peak detection |
-| **Tissue Doppler (TDI)** | e', a', s', E/e' ratio | Diastolic function assessment per ASE guidelines |
 | **M-Mode** | Posterior wall thickness, LV dimensions, fractional shortening | Time-depth measurements with scan line overlay |
-| **Strain (STE)** | GLS (Global Longitudinal Strain), segmental strain, AHA 17-segment map | Speckle tracking echocardiography with NCC block-matching |
 | **RV Function** | FAC (Fractional Area Change), TAPSE, RV S' | Right ventricular assessment |
-| **Diastolic Function** | E/A ratio, E/e', TR velocity, LA volume index | Graded diastolic function assessment (Grade I-III) |
 | **LV Mass** | LVM, LVMI (indexed to BSA), RWT (Relative Wall Thickness) | Geometric and anatomical LV mass calculations |
 | **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
 
@@ -183,11 +179,7 @@ Full DICOM connectivity for seamless integration with hospital information syste
 |------|-----|-------------|
 | Linear Caliper | `L` | Distance measurement (LVEDD, IVSd, TAPSE, etc.) |
 | Simpson Biplane | `C` | LV volume measurement (open-arc contour) |
-| Doppler Peak | `M` | Spectral Doppler peak velocity |
-| Doppler Interval | `T` | Time interval measurement |
-| VTI Trace | `V` | Velocity-time integral tracing |
 | M-Mode | `M` | M-Mode trace and measurements |
-| Speckle Tracking | `STE` | GLS and strain analysis |
 
 ### 4. View Results
 
