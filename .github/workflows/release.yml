@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.2.1)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -117,6 +122,18 @@ jobs:
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.ref_name }}" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(git ls-remote --tags origin 'refs/tags/v*' | sort -t/ -k3 -V | tail -1 | sed 's|.*refs/tags/||')
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download Linux artifact
         uses: actions/download-artifact@v8
         with:
@@ -138,6 +155,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
           files: |
             sonoforge_*.deb
             SonoForge-*-Windows.zip
