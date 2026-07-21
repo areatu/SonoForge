@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
       - run: pip install -e ".[dev]"
       - name: Run tests (skip GUI)
-        run: pytest tests/unit/ -x -q --tb=short -m "not gui"
+        run: pytest tests/unit/ -q --tb=line -m "not gui" --no-header
 
   build:
     needs: [lint, test]
