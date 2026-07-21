@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 

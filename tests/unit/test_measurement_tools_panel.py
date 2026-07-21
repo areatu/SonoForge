@@ -1,6 +1,5 @@
 """Tests for measurement workflow tool buttons."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -16,6 +15,8 @@ from echo_personal_tool.presentation.main_window import MainWindow
 from echo_personal_tool.presentation.measurement_tools_panel import MeasurementToolsPanel
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+pytestmark = pytest.mark.gui
 
 
 def test_measurement_tools_panel_has_manual_and_mbs_buttons(qtbot) -> None:

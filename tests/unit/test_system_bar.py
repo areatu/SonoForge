@@ -1,12 +1,13 @@
 """Tests for SystemBar widget."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import QPushButton
 
 from echo_personal_tool.presentation.system_bar import SystemBar
+
+pytestmark = pytest.mark.gui
 
 
 def test_system_bar_emits_caliper_requested(qtbot) -> None:

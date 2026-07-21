@@ -1,10 +1,11 @@
 """Tests for ASE reference dialog."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
 from echo_personal_tool.presentation.ase_reference_dialog import AseReferenceDialog
+
+pytestmark = pytest.mark.gui
 
 
 def test_reference_dialog_shows_structured_by_default(qtbot) -> None:

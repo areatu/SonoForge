@@ -1,6 +1,5 @@
 """Tests for persistent user preferences."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -12,6 +11,8 @@ from echo_personal_tool.infrastructure.user_preferences import (
     resolve_wl_values,
     save_user_preferences,
 )
+
+pytestmark = pytest.mark.gui
 
 
 def test_default_user_preferences() -> None:

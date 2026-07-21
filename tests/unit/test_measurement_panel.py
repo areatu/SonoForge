@@ -1,6 +1,5 @@
 """Unit tests for the measurement summary panel."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -16,6 +15,8 @@ from echo_personal_tool.domain.models import (
     ViewerState,
 )
 from echo_personal_tool.presentation.measurement_panel import MeasurementPanel
+
+pytestmark = pytest.mark.gui
 
 
 def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:

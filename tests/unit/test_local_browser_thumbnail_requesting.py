@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication

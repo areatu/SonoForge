@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtCore import QCoreApplication
 

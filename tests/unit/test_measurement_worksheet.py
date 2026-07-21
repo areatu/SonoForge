@@ -1,6 +1,5 @@
 """Tests for MeasurementWorksheet."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -11,6 +10,8 @@ from echo_personal_tool.domain.models.measurements import (
 )
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measurement_worksheet import MeasurementWorksheet
+
+pytestmark = pytest.mark.gui
 
 
 def test_worksheet_emits_action_on_click(qtbot) -> None:

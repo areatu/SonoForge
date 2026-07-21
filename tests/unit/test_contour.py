@@ -1,6 +1,5 @@
 """Contour domain model and point handling tests."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -11,6 +10,8 @@ import numpy as np
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+pytestmark = pytest.mark.gui
 
 
 def _sample_instance() -> InstanceMetadata:

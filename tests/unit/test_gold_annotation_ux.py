@@ -1,6 +1,5 @@
 """Tests for gold annotation UX (QSettings round-trip, context menu logic)."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -9,6 +8,8 @@ from echo_personal_tool.infrastructure.user_preferences import (
     load_user_preferences,
     save_user_preferences,
 )
+
+pytestmark = pytest.mark.gui
 
 
 class TestGoldPreferences:

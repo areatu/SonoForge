@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication

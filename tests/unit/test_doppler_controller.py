@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 

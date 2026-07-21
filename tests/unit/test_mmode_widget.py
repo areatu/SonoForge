@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 

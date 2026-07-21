@@ -1,6 +1,5 @@
 """Unit tests for the Doppler widget."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -13,6 +12,8 @@ from echo_personal_tool.domain.models import (
     DopplerTrace,
 )
 from echo_personal_tool.presentation.doppler_widget import DopplerWidget
+
+pytestmark = pytest.mark.gui
 
 
 def test_tool_mode_round_trip(qtbot) -> None:

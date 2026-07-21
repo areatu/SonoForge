@@ -1,6 +1,5 @@
 """Tests for bundled DejaVu fonts."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -13,6 +12,8 @@ from echo_personal_tool.resources.bundled_fonts import (
     ensure_bundled_fonts_loaded,
     report_cyrillic_font_path,
 )
+
+pytestmark = pytest.mark.gui
 
 
 def test_bundled_fonts_register_in_qt(qapp: QApplication) -> None:

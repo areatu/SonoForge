@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
 pytestmark = pytest.mark.gui
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication

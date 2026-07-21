@@ -1,6 +1,5 @@
 """MainWindow Doppler integration tests (single ViewerWidget)."""
-pytestmark = pytest.mark.gui
-import pytest
+
 
 from __future__ import annotations
 
@@ -13,6 +12,8 @@ from PySide6.QtCore import Qt
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.presentation.main_window import MainWindow
+
+pytestmark = pytest.mark.gui
 
 
 def _make_window(qtbot) -> MainWindow:
