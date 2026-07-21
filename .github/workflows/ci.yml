@@ -42,8 +42,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0
       - run: pip install -e ".[dev]"
-      - run: pytest tests/unit/ -x -q --tb=short
+      - name: Run tests with xvfb
+        run: xvfb-run pytest tests/unit/ -x -q --tb=short
 
   build:
     needs: [lint, test]
