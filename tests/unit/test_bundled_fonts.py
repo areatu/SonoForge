@@ -1,6 +1,5 @@
 """Tests for bundled DejaVu fonts."""
 
-
 from __future__ import annotations
 
 import pytest

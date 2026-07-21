@@ -1,6 +1,5 @@
 """Unit tests for the measurement summary panel."""
 
-
 from __future__ import annotations
 
 import pytest

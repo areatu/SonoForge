@@ -1,6 +1,5 @@
 """Tests for MeasurementWorksheet."""
 
-
 from __future__ import annotations
 
 import pytest

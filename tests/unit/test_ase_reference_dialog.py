@@ -1,6 +1,5 @@
 """Tests for ASE reference dialog."""
 
-
 from __future__ import annotations
 
 import pytest

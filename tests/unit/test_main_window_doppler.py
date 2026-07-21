@@ -1,6 +1,5 @@
 """MainWindow Doppler integration tests (single ViewerWidget)."""
 
-
 from __future__ import annotations
 
 from datetime import datetime

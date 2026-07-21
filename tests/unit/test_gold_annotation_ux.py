@@ -1,6 +1,5 @@
 """Tests for gold annotation UX (QSettings round-trip, context menu logic)."""
 
-
 from __future__ import annotations
 
 import pytest

@@ -1,6 +1,5 @@
 """Contour domain model and point handling tests."""
 
-
 from __future__ import annotations
 
 from pathlib import Path

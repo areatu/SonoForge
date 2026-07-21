@@ -1,6 +1,5 @@
 """Tests for persistent user preferences."""
 
-
 from __future__ import annotations
 
 import pytest
