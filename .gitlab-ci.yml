@@ -1,0 +1,101 @@
+# GitLab CI/CD pipeline for SonoForge
+# Stages: lint → test → build → release
+
+stages:
+  - lint
+  - test
+  - build
+  - release
+
+# ─── Default settings ────────────────────────────────────────────
+default:
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+# ─── Lint stage ──────────────────────────────────────────────────
+lint:ruff:
+  stage: lint
+  image: python:3.11-slim
+  tags:
+    - linux
+  before_script:
+    - pip install ruff
+  script:
+    - ruff check src/ tests/
+    - ruff format --check src/ tests/
+  allow_failure: false
+
+# ─── Test stage (matrix) ─────────────────────────────────────────
+.test_template: &test_template
+  stage: test
+  before_script:
+    - pip install -e ".[dev]"
+  script:
+    - pytest tests/unit/ -x -q --tb=short
+  artifacts:
+    when: always
+    paths:
+      - tests-results/
+    reports:
+      junit: tests-results/junit.xml
+
+test:linux:
+  <<: *test_template
+  image: python:3.11-slim
+  tags:
+    - linux
+
+test:macos:
+  <<: *test_template
+  image: macos-13:latest  # or specific runner tag
+  tags:
+    - macos
+  before_script:
+    - brew install python@3.11
+    - pip3 install -e ".[dev]"
+
+test:windows:
+  <<: *test_template
+  tags:
+    - windows
+  before_script:
+    - pip install -e ".[dev]"
+  script:
+    - python -m pytest tests/unit/ -x -q --tb=short
+
+# ─── Build stage (wheel for each platform) ──────────────────────
+build:wheel:
+  stage: build
+  image: python:3.11-slim
+  tags:
+    - linux
+  before_script:
+    - pip install hatch
+  script:
+    - hatch build
+  artifacts:
+    paths:
+      - dist/*.whl
+      - dist/*.tar.gz
+    expire_in: 30 days
+
+# ─── Release stage (tag-triggered) ───────────────────────────────
+release:create:
+  stage: release
+  image: python:3.11-slim
+  tags:
+    - linux
+  dependencies:
+    - build:wheel
+  before_script:
+    - pip install twine
+  script:
+    - twine upload dist/* --skip-existing
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  environment:
+    name: production
+    url: https://gitlab.com/areatu/SonoForge/-/releases
