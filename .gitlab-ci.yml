@@ -1,5 +1,7 @@
 # GitLab CI/CD pipeline for SonoForge
 # Stages: lint → test → build → release
+# Shared runners: Linux (GitLab.com SaaS)
+# Self-hosted runners needed: macOS, Windows
 
 stages:
   - lint
@@ -19,8 +21,6 @@ default:
 lint:ruff:
   stage: lint
   image: python:3.11-slim
-  tags:
-    - linux
   before_script:
     - pip install ruff
   script:
@@ -28,7 +28,7 @@ lint:ruff:
     - ruff format --check src/ tests/
   allow_failure: false
 
-# ─── Test stage (matrix) ─────────────────────────────────────────
+# ─── Test stage ──────────────────────────────────────────────────
 .test_template: &test_template
   stage: test
   before_script:
@@ -42,36 +42,38 @@ lint:ruff:
     reports:
       junit: tests-results/junit.xml
 
+# Linux (shared runner)
 test:linux:
   <<: *test_template
   image: python:3.11-slim
-  tags:
-    - linux
 
+# macOS (requires self-hosted runner with tag: macos)
 test:macos:
   <<: *test_template
-  image: macos-13:latest  # or specific runner tag
   tags:
     - macos
   before_script:
     - brew install python@3.11
     - pip3 install -e ".[dev]"
+  rules:
+    - when: manual
+      allow_failure: true
 
+# Windows (requires self-hosted runner with tag: windows)
 test:windows:
   <<: *test_template
   tags:
     - windows
-  before_script:
-    - pip install -e ".[dev]"
   script:
     - python -m pytest tests/unit/ -x -q --tb=short
+  rules:
+    - when: manual
+      allow_failure: true
 
-# ─── Build stage (wheel for each platform) ──────────────────────
+# ─── Build stage ─────────────────────────────────────────────────
 build:wheel:
   stage: build
   image: python:3.11-slim
-  tags:
-    - linux
   before_script:
     - pip install hatch
   script:
@@ -86,8 +88,6 @@ build:wheel:
 release:create:
   stage: release
   image: python:3.11-slim
-  tags:
-    - linux
   dependencies:
     - build:wheel
   before_script:
