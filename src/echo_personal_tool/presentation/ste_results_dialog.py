@@ -6,6 +6,7 @@ import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.segment_quality_panel import SegmentQualityPanel
 from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
 
@@ -15,7 +16,7 @@ class SteResultsDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("STE Results")
+        self.setWindowTitle(tr("dialog.ste_results.title"))
         self.setFixedSize(950, 520)
         self.setWindowFlags(Qt.WindowType.Window)
 

@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.infrastructure.i18n import tr
+
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
 
 
@@ -32,7 +34,7 @@ class SpeckleSettingsDialog(QDialog):
         n_frames: int = 0,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Speckle Settings")
+        self.setWindowTitle(tr("dialog.speckle_settings.title"))
 
         self._preset_combo = QComboBox(self)
         self._preset_combo.addItem("Standard", "standard")

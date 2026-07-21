@@ -11,6 +11,7 @@ from echo_personal_tool.domain.services.mmode_smoothing import (
     spatial_smooth,
     temporal_smooth,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool
 
 _SWEEP_SPEEDS: dict[str, int] = {
@@ -206,7 +207,7 @@ class MModeWidget(QWidget):
             btn.setChecked(False)
         self._teichholz_es_btn.setChecked(False)
         self._teichholz_ed_btn.setChecked(True)
-        self._teichholz_status.setText("Кликните: МЖП → КДР → ЗСЛЖ")
+        self._teichholz_status.setText(tr("mmode.teichholz_click"))
         self._measurement_tool.start_teichholz_ed()
 
     def _start_teichholz_es(self) -> None:
@@ -216,7 +217,7 @@ class MModeWidget(QWidget):
             btn.setChecked(False)
         self._teichholz_ed_btn.setChecked(False)
         self._teichholz_es_btn.setChecked(True)
-        self._teichholz_status.setText("Измерьте КСР (вертикально)")
+        self._teichholz_status.setText(tr("mmode.teichholz_measure_es"))
         self._measurement_tool.start_teichholz_es()
 
     def _clear_measurements(self) -> None:
@@ -232,14 +233,14 @@ class MModeWidget(QWidget):
         """Handle completion of 3 ED calipers."""
         self._teichholz_ed_btn.setChecked(False)
         self._teichholz_es_btn.setEnabled(True)
-        self._teichholz_status.setText("ED готово! Нажмите КСР для измерения КСР")
+        self._teichholz_status.setText(tr("mmode.teichholz_ed_done"))
         self.teichholz_ed_complete.emit(measurements)
 
     def _on_teichholz_es_complete(self, measurement) -> None:
         """Handle completion of ESV caliper."""
         self._teichholz_es_btn.setChecked(False)
         self._teichholz_es_btn.setEnabled(False)
-        self._teichholz_status.setText("Тейхольц: все измерения готовы")
+        self._teichholz_status.setText(tr("mmode.teichholz_all_done"))
         self.teichholz_es_complete.emit(measurement)
 
     def _on_teichholz_es_highlight(self) -> None:

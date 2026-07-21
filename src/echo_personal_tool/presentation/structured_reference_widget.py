@@ -32,6 +32,7 @@ from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
     TopicRef,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 _IMAGES_DIR = Path(__file__).resolve().parents[1] / "resources" / "references" / "images"
@@ -503,7 +504,7 @@ class StructuredReferenceWidget(QWidget):
         self._image_label.setStyleSheet(
             f"border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 12px; color: {p['text_dim']};"
         )
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
         image_layout.addWidget(self._image_label, stretch=1)
 
         # Image navigation bar (< counter >)
@@ -554,7 +555,7 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.clear()
         self._clear_cards()
         self._image_label.clear()
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
         self._image_paths = []
         self._current_image_index = 0
         self._update_nav_buttons()
@@ -728,7 +729,7 @@ class StructuredReferenceWidget(QWidget):
             self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
             self._param_cards.append(card)
         self._image_label.clear()
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
 
     def _on_topic_clicked(self, topic: TopicRef) -> None:
         self._current_topic = topic
@@ -741,7 +742,7 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.blockSignals(False)
         self._clear_cards()
         self._image_label.clear()
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
         self._source_label.clear()
 
     def _on_pathology_row_changed(self, row: int) -> None:
@@ -959,7 +960,7 @@ class StructuredReferenceWidget(QWidget):
     def _load_image(self) -> None:
         if self._current_pathology is None or not self._current_pathology.image_paths:
             self._image_label.clear()
-            self._image_label.setText("Нет изображения")
+            self._image_label.setText(tr("reference.no_image"))
             self._image_paths = []
             self._current_image_index = 0
             self._update_nav_buttons()
@@ -974,7 +975,7 @@ class StructuredReferenceWidget(QWidget):
         """Display the image at _current_image_index."""
         if not self._image_paths:
             self._image_label.clear()
-            self._image_label.setText("Нет изображения")
+            self._image_label.setText(tr("reference.no_image"))
             return
 
         path_str = self._image_paths[self._current_image_index]
@@ -999,7 +1000,7 @@ class StructuredReferenceWidget(QWidget):
 
         if not self._is_svg and self._original_pixmap.isNull():
             self._image_label.clear()
-            self._image_label.setText("Нет изображения")
+            self._image_label.setText(tr("reference.no_image"))
             return
 
         self._last_scale_size = None
@@ -1027,7 +1028,7 @@ class StructuredReferenceWidget(QWidget):
         params = self._get_current_parameters()
         sources = sorted({p.source for p in params if p.source})
         if sources:
-            self._source_label.setText("Источники: " + "; ".join(sources))
+            self._source_label.setText(tr("reference.sources") + "; ".join(sources))
         else:
             self._source_label.clear()
         # Clear card selection highlight when source changes
