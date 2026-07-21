@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import logging
+import os
 import sys
 from functools import partial
 from pathlib import Path
+from time import perf_counter
+
+import numpy as np
 
 # Debug file logging for measurement flow tracing
-import os
 _LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _LOG_PATH = _LOG_DIR / "errors.log"
@@ -18,9 +20,6 @@ _file_handler = logging.FileHandler(str(_LOG_PATH), mode="w", encoding="utf-8")
 _file_handler.setLevel(logging.WARNING)
 _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_file_handler)
-from time import perf_counter
-
-import numpy as np
 from PySide6.QtCore import Qt, QObject, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 

@@ -60,6 +60,7 @@ testpaths = ["tests"]
 markers = [
     "integration: tests requiring real DICOM files on disk or live Orthanc (ECHO_ORTHANC=1)",
     "interactive: manual cine segmentation diagnostics (MP4 without DICOM tags)",
+    "gui: tests requiring PySide6 QApplication (CI: skip with -m 'not gui')",
 ]
 addopts = "-q -m 'not interactive'"
 filterwarnings = [
