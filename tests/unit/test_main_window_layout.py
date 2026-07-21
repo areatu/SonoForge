@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, replace
 
 import pytest
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController

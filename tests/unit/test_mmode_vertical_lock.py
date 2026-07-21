@@ -1,4 +1,6 @@
 from __future__ import annotations
+pytestmark = pytest.mark.gui
+import pytest
 
 from unittest.mock import MagicMock
 

@@ -1,4 +1,6 @@
 """MainWindow Doppler integration tests (single ViewerWidget)."""
+pytestmark = pytest.mark.gui
+import pytest
 
 from __future__ import annotations
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+pytestmark = pytest.mark.gui
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.contour_geometry import (

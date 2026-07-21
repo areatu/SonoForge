@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+pytestmark = pytest.mark.gui
 
 from echo_personal_tool.infrastructure import server_settings as ss
 from echo_personal_tool.infrastructure.server_settings import (

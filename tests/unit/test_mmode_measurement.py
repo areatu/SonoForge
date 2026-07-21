@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pyqtgraph as pg
 import pytest
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool

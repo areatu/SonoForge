@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool

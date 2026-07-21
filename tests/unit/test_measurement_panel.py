@@ -1,4 +1,6 @@
 """Unit tests for the measurement summary panel."""
+pytestmark = pytest.mark.gui
+import pytest
 
 from __future__ import annotations
 

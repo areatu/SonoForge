@@ -1,4 +1,6 @@
 """Tests for bundled DejaVu fonts."""
+pytestmark = pytest.mark.gui
+import pytest
 
 from __future__ import annotations
 

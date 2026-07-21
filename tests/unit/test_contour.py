@@ -1,4 +1,6 @@
 """Contour domain model and point handling tests."""
+pytestmark = pytest.mark.gui
+import pytest
 
 from __future__ import annotations
 

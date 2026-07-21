@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication, QDialog, QGraphicsOpacityEffect, QPushButton
 
 from echo_personal_tool.presentation.ui_animations import (

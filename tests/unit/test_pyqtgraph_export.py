@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+pytestmark = pytest.mark.gui
 from pyqtgraph import exporters as pg_exporters
 from pyqtgraph.exporters.CSVExporter import CSVExporter
 from pyqtgraph.exporters.ImageExporter import ImageExporter

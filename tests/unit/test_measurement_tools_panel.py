@@ -1,4 +1,6 @@
 """Tests for measurement workflow tool buttons."""
+pytestmark = pytest.mark.gui
+import pytest
 
 from __future__ import annotations
 
