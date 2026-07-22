@@ -342,9 +342,11 @@ class DicomSession:
             # Ensure file_meta exists with Transfer Syntax UID
             if not hasattr(full_ds, "file_meta") or full_ds.file_meta is None:
                 from pydicom.dataset import FileMetaDataset
+
                 full_ds.file_meta = FileMetaDataset()
             if not hasattr(full_ds.file_meta, "TransferSyntaxUID") or full_ds.file_meta.TransferSyntaxUID is None:
                 from pydicom.uid import ImplicitVRLittleEndian
+
                 full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
             self._pixel_data_raw = bytes(full_ds.PixelData)
         # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
@@ -431,9 +433,11 @@ class DicomSession:
         # Ensure file_meta exists with Transfer Syntax UID
         if not hasattr(full_ds, "file_meta") or full_ds.file_meta is None:
             from pydicom.dataset import FileMetaDataset
+
             full_ds.file_meta = FileMetaDataset()
         if not hasattr(full_ds.file_meta, "TransferSyntaxUID") or full_ds.file_meta.TransferSyntaxUID is None:
             from pydicom.uid import ImplicitVRLittleEndian
+
             full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
         pixel_array = full_ds.pixel_array
         frames = stack_pixel_array(pixel_array)

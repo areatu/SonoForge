@@ -40,7 +40,9 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def _patch_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     kr = types.ModuleType("keyring")
     _stored: dict[str, str] = {}
-    kr.set_password = staticmethod(lambda svc, user, pw: _stored.update({f"{svc}:{user}": pw}) if pw else _stored.pop(f"{svc}:{user}", None))
+    kr.set_password = staticmethod(
+        lambda svc, user, pw: _stored.update({f"{svc}:{user}": pw}) if pw else _stored.pop(f"{svc}:{user}", None)
+    )
     kr.get_password = staticmethod(lambda svc, user: _stored.get(f"{svc}:{user}"))
     kr.delete_password = staticmethod(lambda svc, user: _stored.pop(f"{svc}:{user}", None))
     kr_errors = types.ModuleType("keyring.errors")

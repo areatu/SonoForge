@@ -16,7 +16,11 @@ _MP4_FOURCCS = ["mp4v", "XVID", "avc1", "H264", ""]
 
 
 def _open_video_writer(
-    dest: str, fourcc_str: str, fps: float, w: int, h: int,
+    dest: str,
+    fourcc_str: str,
+    fps: float,
+    w: int,
+    h: int,
 ) -> cv2.VideoWriter:
     """Try multiple fourcc codes until VideoWriter opens successfully."""
     for code in _MP4_FOURCCS:
@@ -26,8 +30,7 @@ def _open_video_writer(
             return writer
         writer.release()
     raise OSError(
-        f"cv2.VideoWriter cannot open {dest} with any supported codec. "
-        f"Install ffmpeg or a codec pack (K-Lite)."
+        f"cv2.VideoWriter cannot open {dest} with any supported codec. Install ffmpeg or a codec pack (K-Lite)."
     )
 
 
