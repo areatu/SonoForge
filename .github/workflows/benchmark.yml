@@ -33,8 +33,11 @@ jobs:
       - name: Run benchmarks
         run: |
           pytest tests/benchmark/ --benchmark-json=benchmark-results.json --benchmark-save=latest -q 2>&1 || true
-          # Create results dir if no benchmark tests exist yet
           mkdir -p benchmarks
+          # Create empty results if no benchmarks ran
+          if [ ! -s benchmark-results.json ]; then
+            echo '{"benchmarks":[]}' > benchmark-results.json
+          fi
 
       - name: Store benchmark results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

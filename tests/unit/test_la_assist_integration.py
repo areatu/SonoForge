@@ -1,13 +1,11 @@
 """Tests for AI-assisted manual LA contour integration."""
 
+
 import numpy as np
 import pytest
-from dataclasses import replace
 
-from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.la_segmentation_service import (
     la_landmarks_from_mask_or_user,
-    la_mask_to_contour,
 )
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
