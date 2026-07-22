@@ -11,6 +11,25 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 logger = logging.getLogger(__name__)
 
+# Preferred fourcc codes for MP4 output — Windows often lacks mp4v codec.
+_MP4_FOURCCS = ["mp4v", "XVID", "avc1", "H264", ""]
+
+
+def _open_video_writer(
+    dest: str, fourcc_str: str, fps: float, w: int, h: int,
+) -> cv2.VideoWriter:
+    """Try multiple fourcc codes until VideoWriter opens successfully."""
+    for code in _MP4_FOURCCS:
+        fourcc = cv2.VideoWriter_fourcc(*code) if code else 0
+        writer = cv2.VideoWriter(dest, fourcc, fps, (w, h))
+        if writer.isOpened():
+            return writer
+        writer.release()
+    raise OSError(
+        f"cv2.VideoWriter cannot open {dest} with any supported codec. "
+        f"Install ffmpeg or a codec pack (K-Lite)."
+    )
+
 
 class Mp4ExportSignals(QObject):
     progress = Signal(int, int)  # current_frame, total_frames
@@ -59,8 +78,7 @@ class Mp4ExportWorker(QRunnable):
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(self._dest_path, fourcc, fps, (w, h))
+            writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
             try:
                 i = 0
                 while True:
@@ -96,8 +114,7 @@ class Mp4ExportWorker(QRunnable):
 
         fps = 1000.0 / self._frame_time_ms if self._frame_time_ms else 30.0
         h, w = first_frame.shape[:2]
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(self._dest_path, fourcc, fps, (w, h))
+        writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
         try:
             bgr = self._to_bgr(first_frame)
             writer.write(bgr)
@@ -118,8 +135,7 @@ class Mp4ExportWorker(QRunnable):
     def _write_single_frame(self, frame: np.ndarray, total: int) -> None:
         fps = 1000.0 / self._frame_time_ms if self._frame_time_ms else 30.0
         h, w = frame.shape[:2]
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(self._dest_path, fourcc, fps, (w, h))
+        writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
         try:
             bgr = self._to_bgr(frame)
             writer.write(bgr)
