@@ -34,18 +34,11 @@ jobs:
         run: |
           pytest tests/benchmark/ --benchmark-json=benchmark-results.json --benchmark-save=latest -q 2>&1 || true
           mkdir -p benchmarks
-          # Check if any benchmarks were collected
-          if grep -q '"benchmarks": *\[\]' benchmark-results.json 2>/dev/null; then
-            echo "No benchmarks found, skipping upload"
-            echo "has_benchmarks=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_benchmarks=true" >> $GITHUB_OUTPUT
-          fi
-        id: benchmark_check
 
       - name: Store benchmark results
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.benchmark_check.outputs.has_benchmarks == 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
         with:
           name: SonoForge Benchmarks
           tool: 'pytest'
@@ -58,8 +51,9 @@ jobs:
           summary-always: true
 
       - name: Comment on PR
-        if: github.event_name == 'pull_request' && steps.benchmark_check.outputs.has_benchmarks == 'true'
+        if: github.event_name == 'pull_request'
         uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
         with:
           name: SonoForge Benchmarks
           tool: 'pytest'
