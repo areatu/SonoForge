@@ -2830,9 +2830,7 @@ class ViewerWidget(QWidget):
             return
         # Connect signal (once)
         if not getattr(self, "_la_assist_connected", False):
-            self._controller_ref.la_assist_contour_ready.connect(
-                self._on_la_assist_contour_ready
-            )
+            self._controller_ref.la_assist_contour_ready.connect(self._on_la_assist_contour_ready)
             self._la_assist_connected = True
 
         self._controller_ref.request_la_assist_for_manual(

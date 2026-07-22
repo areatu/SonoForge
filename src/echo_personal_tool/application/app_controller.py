@@ -2710,14 +2710,12 @@ class AppController(QObject):
             )
 
             # Blend AI landmarks with user landmarks
-            blended_septal, blended_lateral, blended_apex = (
-                la_landmarks_from_mask_or_user(
-                    mask,
-                    user_septal=user_septal,
-                    user_lateral=user_lateral,
-                    user_apex=user_apex,
-                    blend_factor=0.7,
-                )
+            blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
+                mask,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                blend_factor=0.7,
             )
 
             # Build contour from blended landmarks
