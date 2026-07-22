@@ -2798,7 +2798,67 @@ class ViewerWidget(QWidget):
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
+
+        # --- Trigger LA assist for A4C ES manual contour ---
+        if (
+            chamber == "LA"
+            and self._active_contour_view == "A4C"
+            and (self._active_contour_phase or "ED") == "ES"
+            and hasattr(self, "_controller_ref")
+            and self._controller_ref is not None
+        ):
+            self._request_la_assist_for_manual(
+                septal=septal,
+                lateral=lateral,
+                apex=apex,
+                frame_index=self._contour_frame_index(),
+            )
+        # --- END NEW ---
+
         return True
+
+    def _request_la_assist_for_manual(
+        self,
+        *,
+        septal: tuple[float, float],
+        lateral: tuple[float, float],
+        apex: tuple[float, float],
+        frame_index: int,
+    ) -> None:
+        """Request LA AI assist for the current manual contour."""
+        if not hasattr(self, "_controller_ref") or self._controller_ref is None:
+            return
+        # Connect signal (once)
+        if not getattr(self, "_la_assist_connected", False):
+            self._controller_ref.la_assist_contour_ready.connect(
+                self._on_la_assist_contour_ready
+            )
+            self._la_assist_connected = True
+
+        self._controller_ref.request_la_assist_for_manual(
+            frame_index=frame_index,
+            user_septal=septal,
+            user_lateral=lateral,
+            user_apex=apex,
+        )
+
+    def _on_la_assist_contour_ready(self, contour) -> None:
+        """Replace current LA contour with AI-assisted version."""
+        if contour.chamber != "LA":
+            return
+        # Find and replace the existing LA contour
+        for i, c in enumerate(self._contours):
+            if c.chamber == "LA" and c.view == contour.view and c.phase == contour.phase:
+                self._contours[i] = contour
+                self._refresh_contour_display(i)
+                # Apply magnetic snap to refine edges
+                self._apply_magnetic_snap_to_contour(
+                    i,
+                    np.ones(len(contour.points)),
+                    grab_index=None,
+                )
+                self.contours_changed.emit(self.contours())
+                break
 
     def finish_contour(self) -> bool:
         if not self._contour_mode_active or self._active_contour_item is None:
