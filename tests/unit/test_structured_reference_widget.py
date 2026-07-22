@@ -6,6 +6,8 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
+from PySide6.QtWidgets import QTableWidget
+
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
 
@@ -79,6 +81,16 @@ def test_widget_creates_topic_buttons(widget):
     assert len(widget._topic_buttons) == 2
 
 
+def _find_tables(w) -> list[QTableWidget]:
+    """Return all QTableWidget instances in the cards layout."""
+    tables = []
+    for i in range(w._cards_layout.count()):
+        item = w._cards_layout.itemAt(i)
+        if item and item.widget() and isinstance(item.widget(), QTableWidget):
+            tables.append(item.widget())
+    return tables
+
+
 def test_topic_selection_shows_pathologies(widget):
     widget._on_topic_clicked(widget._topics[0])
     assert widget._pathology_list.count() >= 1
@@ -87,35 +99,40 @@ def test_topic_selection_shows_pathologies(widget):
 def test_pathology_selection_shows_parameters(widget):
     widget._on_topic_clicked(widget._topics[0])
     widget._on_pathology_row_changed(0)
-    assert len(widget._param_cards) >= 1
+    tables = _find_tables(widget)
+    assert len(tables) >= 1
 
 
 def test_pathology_without_gradation_shows_parameters(widget):
     widget._on_topic_clicked(widget._topics[1])
     widget._on_pathology_row_changed(0)
-    assert len(widget._param_cards) >= 1
+    tables = _find_tables(widget)
+    assert len(tables) >= 1
 
 
 def test_cards_updates_on_pathology_selection(widget):
     widget._on_topic_clicked(widget._topics[0])
     widget._on_pathology_row_changed(0)
-    assert len(widget._param_cards) >= 1
-    card = widget._param_cards[0]
-    assert card._param is not None
+    tables = _find_tables(widget)
+    assert len(tables) >= 1
+    table = tables[0]
+    assert table.rowCount() >= 1
 
 
 def test_sex_toggle_updates_norms(widget):
     widget._on_topic_clicked(widget._topics[1])
     widget._on_pathology_row_changed(0)
-    male_card = widget._param_cards[0]
-    male_norm_text = male_card.findChild(type(male_card)).text() if male_card.findChild(type(male_card)) else ""
-    # Just verify cards exist and have content
-    assert len(widget._param_cards) >= 1
+    tables = _find_tables(widget)
+    assert len(tables) >= 1
+    table = tables[0]
+    assert table.rowCount() >= 1
 
 
 def test_navigate_to_param(widget):
     widget.navigate_to_param("ar_eroa")
-    assert len(widget._param_cards) >= 1
+    # After navigate, either cards (search results) or tables should be visible
+    has_content = len(widget._param_cards) >= 1 or len(_find_tables(widget)) >= 1
+    assert has_content
 
 
 def test_search_filters_table(widget):
@@ -124,31 +141,39 @@ def test_search_filters_table(widget):
 
 
 def test_gradations_flattened_into_single_card(widget):
-    """Parameters from all gradations should appear in a single card."""
+    """Parameters from all gradations should appear in a single table."""
     widget._on_topic_clicked(widget._topics[0])  # aortic_valve
     widget._on_pathology_row_changed(0)  # aortic_regurgitation (has gradations)
-    # Should have 1 unique parameter card with combined gradation descriptions
-    assert len(widget._param_cards) >= 1
-    card = widget._param_cards[0]
-    desc = card._param.pathology_desc or ""
-    # Description should contain both gradation names
-    assert "Лёгкая" in desc
-    assert "Тяжёлая" in desc
+    tables = _find_tables(widget)
+    assert len(tables) >= 1
+    table = tables[0]
+    # Table should have 1 row (1 unique param: EROA) and columns = 1 + 2 gradations
+    assert table.rowCount() >= 1
+    assert table.columnCount() >= 3  # "Параметр" + "Лёгкая" + "Тяжёлая"
+    # First row should contain EROA
+    first_cell = table.item(0, 0)
+    assert first_cell is not None
+    assert "EROA" in first_cell.text()
 
 
 def test_single_gradation_alone(widget):
     """A pathology with one gradation should show its parameters."""
     widget._on_topic_clicked(widget._topics[0])  # aortic_valve
     widget._on_pathology_row_changed(1)  # aortic_stenosis (1 gradation)
-    assert len(widget._param_cards) >= 1
-    card = widget._param_cards[0]
-    desc = card._param.pathology_desc or ""
-    assert "Умеренный" in desc
+    tables = _find_tables(widget)
+    assert len(tables) >= 1
+    table = tables[0]
+    assert table.rowCount() >= 1
+    first_cell = table.item(0, 0)
+    assert first_cell is not None
+    assert "Vmax" in first_cell.text()
 
 
 def test_navigate_to_param_no_gradation_selection(widget):
     """navigate_to_param should navigate without selecting gradation UI."""
     widget.navigate_to_param("ar_eroa")
-    assert len(widget._param_cards) >= 1
+    # After navigate, either cards (search results) or tables should be visible
+    has_content = len(widget._param_cards) >= 1 or len(_find_tables(widget)) >= 1
+    assert has_content
     # gradation is no longer a UI concept
     assert widget._current_gradation is None

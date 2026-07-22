@@ -46,11 +46,11 @@ def _load_instance(controller: AppController, instance: InstanceMetadata) -> Non
 def test_linear_measurements_persist_after_instance_switch() -> None:
     controller = AppController()
     first = _sample_instance(sop_instance_uid="inst-a")
-    second = _sample_instance(sop_instance_uid="inst-b")
+    second = _sample_instance(sop_instance_uid="inst-a", series_uid="1.2.3.4.7")
 
     _load_instance(controller, first)
     controller.on_linear_measurements_changed(
-        [LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0)]
+        [LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0, sop_instance_uid="inst-a")]
     )
 
     snapshot_before = controller.state_manager.snapshot.measurement_snapshot

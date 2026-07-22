@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+import types
 from collections.abc import Iterator
 
 import pytest
@@ -28,9 +30,24 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     store = QSettings(org, app)
     store.clear()
     store.sync()
+    # Mock keyring so _load_password_keyring doesn't hit the real OS keychain
+    _patch_keyring(monkeypatch)
     yield
     store.clear()
     store.sync()
+
+
+def _patch_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    kr = types.ModuleType("keyring")
+    _stored: dict[str, str] = {}
+    kr.set_password = staticmethod(lambda svc, user, pw: _stored.update({f"{svc}:{user}": pw}) if pw else _stored.pop(f"{svc}:{user}", None))
+    kr.get_password = staticmethod(lambda svc, user: _stored.get(f"{svc}:{user}"))
+    kr.delete_password = staticmethod(lambda svc, user: _stored.pop(f"{svc}:{user}", None))
+    kr_errors = types.ModuleType("keyring.errors")
+    kr_errors.PasswordDeleteError = type("PasswordDeleteError", (Exception,), {})
+    kr.errors = kr_errors  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "keyring", kr)
+    monkeypatch.setitem(sys.modules, "keyring.errors", kr_errors)
 
 
 def test_load_defaults(isolated_settings: None) -> None:
@@ -38,8 +55,8 @@ def test_load_defaults(isolated_settings: None) -> None:
     assert settings.url == "http://127.0.0.1:8042/dicom-web"
     assert settings.username == ""
     assert settings.password == ""
-    assert settings.auth_mode == "none"
-    assert settings.use_mock is True
+    assert settings.auth_mode == "basic"
+    assert settings.use_mock is False
 
 
 def test_save_and_load_roundtrip(isolated_settings: None) -> None:

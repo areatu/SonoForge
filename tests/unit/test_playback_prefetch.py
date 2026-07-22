@@ -144,6 +144,7 @@ def test_prefetch_batch_capped_by_radius(qapp, monkeypatch, tmp_path) -> None:
         scroll_debounce_ms=80,
         scroll_batch_size=3,
     )
+    controller._adaptive_batch_size = 8
     mp4 = tmp_path / "c.mp4"
     mp4.write_bytes(b"\x00")
     inst = _mp4_instance(mp4, frames=100)

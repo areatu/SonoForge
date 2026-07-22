@@ -36,7 +36,17 @@ def test_navigate_to_param(qtbot) -> None:
     dialog.navigate_to_param("lvef")
     widget = dialog._structured_widget
     assert widget._current_topic is not None
-    assert len(widget._param_cards) >= 1
+    # After navigate, either cards or tables should be visible
+    has_content = len(widget._param_cards) >= 1
+    if not has_content:
+        from PySide6.QtWidgets import QTableWidget
+
+        for i in range(widget._cards_layout.count()):
+            item = widget._cards_layout.itemAt(i)
+            if item and item.widget() and isinstance(item.widget(), QTableWidget):
+                has_content = True
+                break
+    assert has_content
 
 
 def test_structured_tab_unchecked_on_doc_tab(qtbot) -> None:

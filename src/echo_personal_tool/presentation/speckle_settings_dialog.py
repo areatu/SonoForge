@@ -16,9 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
-
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 class SpeckleSettingsDialog(QDialog):

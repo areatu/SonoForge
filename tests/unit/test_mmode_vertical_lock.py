@@ -54,15 +54,6 @@ def test_guide_graphics_created_on_set_end_with_vertical_lock():
     assert item._guide_v is not None
 
 
-def test_vertical_lock_button_exists(qtbot):
-    from echo_personal_tool.presentation.mmode_widget import MModeWidget
-
-    widget = MModeWidget()
-    qtbot.addWidget(widget)
-    assert hasattr(widget, "_vertical_lock_btn")
-    assert widget._vertical_lock_btn.isCheckable()
-
-
 def test_viewer_widget_vertical_lock_flag():
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 

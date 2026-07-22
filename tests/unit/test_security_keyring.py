@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+import types
 from collections.abc import Iterator
 
 import pytest
@@ -35,53 +37,35 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 class TestKeyringHelpers:
-    def test_save_and_load_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_save_and_load_password(self, isolated_settings: None, monkeypatch: pytest.MonkeyPatch) -> None:
         # Mock keyring to avoid OS keychain dependency
         stored: dict[str, str] = {}
 
-        class MockKeyring:
-            @staticmethod
-            def set_password(service: str, username: str, password: str) -> None:
-                stored[f"{service}:{username}"] = password
-
-            @staticmethod
-            def get_password(service: str, username: str) -> str | None:
-                return stored.get(f"{service}:{username}")
-
-            @staticmethod
-            def delete_password(service: str, username: str) -> None:
-                stored.pop(f"{service}:{username}", None)
-
-            class errors:
-                class PasswordDeleteError(Exception):
-                    pass
-
-        monkeypatch.setattr("keyring", MockKeyring())
+        kr = types.ModuleType("keyring")
+        kr.set_password = staticmethod(lambda svc, user, pw: stored.update({f"{svc}:{user}": pw}))
+        kr.get_password = staticmethod(lambda svc, user: stored.get(f"{svc}:{user}"))
+        kr.delete_password = staticmethod(lambda svc, user: stored.pop(f"{svc}:{user}", None))
+        kr_errors = types.ModuleType("keyring.errors")
+        kr_errors.PasswordDeleteError = type("PasswordDeleteError", (Exception,), {})
+        kr.errors = kr_errors  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "keyring", kr)
+        monkeypatch.setitem(sys.modules, "keyring.errors", kr_errors)
 
         _save_password_keyring("testuser", "secret123")
         assert _load_password_keyring("testuser") == "secret123"
 
-    def test_delete_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_delete_password(self, isolated_settings: None, monkeypatch: pytest.MonkeyPatch) -> None:
         stored: dict[str, str] = {}
 
-        class MockKeyring:
-            @staticmethod
-            def set_password(service: str, username: str, password: str) -> None:
-                stored[f"{service}:{username}"] = password
-
-            @staticmethod
-            def get_password(service: str, username: str) -> str | None:
-                return stored.get(f"{service}:{username}")
-
-            @staticmethod
-            def delete_password(service: str, username: str) -> None:
-                stored.pop(f"{service}:{username}", None)
-
-            class errors:
-                class PasswordDeleteError(Exception):
-                    pass
-
-        monkeypatch.setattr("keyring", MockKeyring())
+        kr = types.ModuleType("keyring")
+        kr.set_password = staticmethod(lambda svc, user, pw: stored.update({f"{svc}:{user}": pw}))
+        kr.get_password = staticmethod(lambda svc, user: stored.get(f"{svc}:{user}"))
+        kr.delete_password = staticmethod(lambda svc, user: stored.pop(f"{svc}:{user}", None))
+        kr_errors = types.ModuleType("keyring.errors")
+        kr_errors.PasswordDeleteError = type("PasswordDeleteError", (Exception,), {})
+        kr.errors = kr_errors  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "keyring", kr)
+        monkeypatch.setitem(sys.modules, "keyring.errors", kr_errors)
 
         _save_password_keyring("testuser", "secret123")
         _save_password_keyring("testuser", "")

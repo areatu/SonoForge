@@ -40,7 +40,7 @@ def test_measurement_tools_panel_has_manual_and_mbs_buttons(qtbot) -> None:
         "S ПП",
         "ОПП",
         "TAPSE",
-        "ПЖ основание",
+        "ПЖ базальный",
     }
 
 

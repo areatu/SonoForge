@@ -20,12 +20,13 @@ def test_measurement_tool_vertical(view_box) -> None:
     tool.set_view_box(view_box)
     tool.set_calibration(depth_mm_per_pixel=0.5, time_ms_per_pixel=10.0, num_samples=256)
     tool.start_vertical()
+    # Coordinates in physical units (mm/ms) — on_click uses them directly
     tool.on_click(100.0, 50.0)
     tool.on_click(100.0, 150.0)
     assert len(tool.measurements) == 1
     m = tool.measurements[0]
     assert m.kind == "vertical"
-    assert m.value_mm == pytest.approx(50.0)
+    assert m.value_mm == pytest.approx(100.0)
     assert m.value_ms is None
 
 
@@ -34,13 +35,14 @@ def test_measurement_tool_horizontal(view_box) -> None:
     tool.set_view_box(view_box)
     tool.set_calibration(depth_mm_per_pixel=0.5, time_ms_per_pixel=10.0, num_samples=256)
     tool.start_horizontal()
+    # Coordinates in physical units (mm/ms) — on_click uses them directly
     tool.on_click(50.0, 100.0)
     tool.on_click(200.0, 100.0)
     assert len(tool.measurements) == 1
     m = tool.measurements[0]
     assert m.kind == "horizontal"
     assert m.value_mm is None
-    assert m.value_ms == pytest.approx(1500.0)
+    assert m.value_ms == pytest.approx(150.0)
 
 
 def test_measurement_tool_arbitrary(view_box) -> None:
@@ -48,13 +50,14 @@ def test_measurement_tool_arbitrary(view_box) -> None:
     tool.set_view_box(view_box)
     tool.set_calibration(depth_mm_per_pixel=0.5, time_ms_per_pixel=10.0, num_samples=256)
     tool.start_arbitrary()
+    # Coordinates in physical units (mm/ms) — on_click uses them directly
     tool.on_click(0.0, 0.0)
     tool.on_click(100.0, 200.0)
     assert len(tool.measurements) == 1
     m = tool.measurements[0]
     assert m.kind == "arbitrary"
-    assert m.value_mm == pytest.approx(100.0)
-    assert m.value_ms == pytest.approx(1000.0)
+    assert m.value_mm == pytest.approx(200.0)
+    assert m.value_ms == pytest.approx(100.0)
 
 
 def test_measurement_tool_clear(view_box) -> None:

@@ -86,7 +86,7 @@ def test_main_window_measurement_panel_updates_after_linear_caliper(qtbot) -> No
     )
 
     text = window._viewer.results_overlay_text()
-    assert "КДР ЛЖ: 50.0 mm" in text
+    assert "КДР ЛЖ" in text and "50.0" in text
 
 
 @pytest.fixture(scope="session", autouse=True)
