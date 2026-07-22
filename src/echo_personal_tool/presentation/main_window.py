@@ -1712,6 +1712,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.LA_DIAMETER: self._on_la_diameter,
             MeasurementAction.LAV_4C: self._on_lav_4c,
             MeasurementAction.LAV_4C_AUTO: self._on_lav_4c_auto,
+            MeasurementAction.LAV_4C_AI_PLUS: self._on_lav_4c_ai_plus,
             MeasurementAction.LAV_BI: self._on_lav_bi,
             MeasurementAction.RA_DIAMETER: self._on_ra_diameter,
             MeasurementAction.RA_AREA: self._on_ra_area,
@@ -2125,6 +2126,16 @@ class MainWindow(QMainWindow):
         self._viewer.clear_frame_overlay()
         self._viewer.append_frame_overlay(tr("status.lav4c_auto_overlay"))
         self._controller.request_la_auto_segment()
+
+    def _on_lav_4c_ai_plus(self) -> None:
+        """Start AI-assisted manual LA contour: 3 clicks → AI refinement."""
+        self._start_chamber_contour(
+            "LA",
+            "ES",
+            "A4C",
+            overlay=tr("status.lav4c_ai_plus_overlay"),
+            status=tr("status.lav4c_ai_plus_status"),
+        )
 
     def _on_lav_bi(self) -> None:
         has_a4c = self._has_chamber_contour("LA", "A4C", "ES")
