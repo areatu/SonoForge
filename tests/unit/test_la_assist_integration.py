@@ -1,6 +1,5 @@
 """Tests for AI-assisted manual LA contour integration."""
 
-
 import numpy as np
 import pytest
 
@@ -44,9 +43,7 @@ def test_manual_contour_starts_as_ellipse():
 
 def test_ai_landmarks_differ_from_geometric(synthetic_la_mask):
     """AI-derived landmarks should differ from pure geometric ellipse."""
-    ai_septal, ai_lateral, ai_apex = la_landmarks_from_mask_or_user(
-        synthetic_la_mask
-    )
+    ai_septal, ai_lateral, ai_apex = la_landmarks_from_mask_or_user(synthetic_la_mask)
     # AI landmarks come from mask, not from user clicks
     assert ai_septal is not None
     assert ai_lateral is not None

@@ -129,9 +129,7 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
                 for member in tar.getmembers():
                     member_path = (abs_dest / member.name).resolve()
                     if not str(member_path).startswith(str(abs_dest)):
-                        raise ValueError(
-                            f"Tar member escapes target dir: {member.name}"
-                        )
+                        raise ValueError(f"Tar member escapes target dir: {member.name}")
                 tar.extractall(path=_DATA_DIR)
 
         if (_MODELS_DIR / "model_manifest.json").is_file():
