@@ -119,6 +119,47 @@ def _la_landmarks_from_mask(
 
 
 # ---------------------------------------------------------------------------
+# Landmark blending: AI mask + user clicks
+# ---------------------------------------------------------------------------
+
+
+def la_landmarks_from_mask_or_user(
+    mask: np.ndarray,
+    *,
+    user_septal: tuple[float, float] | None = None,
+    user_lateral: tuple[float, float] | None = None,
+    user_apex: tuple[float, float] | None = None,
+    blend_factor: float = 0.7,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Extract LA landmarks from AI mask, optionally blending with user clicks.
+
+    Returns (septal, lateral, apex). If user landmarks are None,
+    uses pure AI landmarks. Otherwise blends: result = AI * blend_factor + user * (1 - blend_factor).
+    """
+    component = _largest_component(np.asarray(mask) > 0)
+    ai_septal, ai_lateral, ai_apex = _la_landmarks_from_mask(component)
+
+    if user_septal is None or user_lateral is None or user_apex is None:
+        return ai_septal, ai_lateral, ai_apex
+
+    def _blend(
+        ai: tuple[float, float],
+        user: tuple[float, float],
+        w: float,
+    ) -> tuple[float, float]:
+        return (
+            ai[0] * w + user[0] * (1 - w),
+            ai[1] * w + user[1] * (1 - w),
+        )
+
+    return (
+        _blend(ai_septal, user_septal, blend_factor),
+        _blend(ai_lateral, user_lateral, blend_factor),
+        _blend(ai_apex, user_apex, blend_factor),
+    )
+
+
+# ---------------------------------------------------------------------------
 # la_mask_to_contour — main public API
 # ---------------------------------------------------------------------------
 
