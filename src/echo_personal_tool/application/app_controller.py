@@ -179,6 +179,7 @@ class AppController(QObject):
         self._prefetch_load_started_at: float = 0.0
         self._prefetch_batch_start: float = 0.0
         self._prefetch_ema_latency_ms: float = 0.0
+        self._prefetch_cooldown_until: float = 0.0
         self._diag_frame_counter: int = 0
         self._adaptive_batch_size: int = self._playback_config.batch_size
         self._scroll_load_id: int = 0
@@ -1667,6 +1668,8 @@ class AppController(QObject):
             return
         if not self._state_manager.snapshot.is_playing:
             return
+        if perf_counter() < self._prefetch_cooldown_until:
+            return
         if self._prefetch_load_id != 0:
             # Stale prefetch guard: if the worker hasn't completed within
             # _PREFETCH_TIMEOUT_SEC, force-clear it to prevent playback stall.
@@ -1794,6 +1797,7 @@ class AppController(QObject):
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
+        self._prefetch_cooldown_until = perf_counter() + 5.0
         self.status_message.emit(tr("status.prefetch_failed", message=message))
 
     def _advance_playback(self) -> None:

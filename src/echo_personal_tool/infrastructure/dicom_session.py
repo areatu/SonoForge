@@ -295,6 +295,8 @@ class DicomSession:
         # _pixel_data_raw and _encapsulated_frames too.
         release_stale_sessions(exclude=self)
         self.release()
+        if not resolved.is_file():
+            raise FileNotFoundError(f"DICOM file not found: {resolved}")
         self._open_path = resolved
         self._raw_bytes = resolved.read_bytes()
         self._metadata = pydicom.dcmread(BytesIO(self._raw_bytes), stop_before_pixels=True, force=True)
