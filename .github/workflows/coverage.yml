@@ -41,10 +41,14 @@ jobs:
             --cov-report=term-missing \
             -q --tb=line -m "not gui" --no-header
 
-      - name: Coverage summary
-        run: |
-          echo "Coverage report generated"
-          echo "Download the coverage-report artifact for details"
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+          format: cobertura
+          flag-name: unittests
+          parallel: true
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
