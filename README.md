@@ -9,7 +9,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/areatu/SonoForge/ci.yml?style=for-the-badge&label=CI)](https://github.com/areatu/SonoForge/actions)
 [![Release](https://img.shields.io/github/v/release/areatu/SonoForge?style=for-the-badge&color=blue)](https://github.com/areatu/SonoForge/releases)
 [![Coverage Status](https://img.shields.io/badge/Coverage-Coveralls-yellow?style=for-the-badge&logo=coveralls&logoColor=white)](https://coveralls.io/github/areatu/SonoForge?branch=main)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21497897.svg)](https://doi.org/10.5281/zenodo.21497897)
+[![DOI](https://zenodo.org/badge/1262306651.svg)](https://doi.org/10.5281/zenodo.21463212)
 
 ---
 
