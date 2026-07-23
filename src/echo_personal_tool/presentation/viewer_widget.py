@@ -2899,8 +2899,58 @@ class ViewerWidget(QWidget):
                     np.ones(len(contour.points)),
                     grab_index=None,
                 )
+                # Apply optical flow refinement in background
+                self._apply_optical_flow_refinement(i)
                 self.contours_changed.emit(self.contours())
                 break
+
+    def _apply_optical_flow_refinement(self, contour_index: int) -> None:
+        """Launch optical flow refinement for a contour in a background thread."""
+        if contour_index < 0 or contour_index >= len(self._contours):
+            return
+        contour = self._contours[contour_index]
+        if self._current_state is None or self._current_state.instance is None:
+            return
+        instance = self._current_state.instance
+        if instance.path is None:
+            return
+        # Only refine open-arc contours (LV/LA)
+        if not contour.is_open_arc or len(contour.points) < 4:
+            return
+
+        from PySide6.QtCore import QThreadPool
+
+        from echo_personal_tool.application.workers.optical_flow_refine_worker import (
+            OpticalFlowRefineWorker,
+        )
+
+        worker = OpticalFlowRefineWorker(
+            source_path=instance.path,
+            media_format=instance.media_format,
+            contour_points=list(contour.points),
+            current_frame_idx=self._current_state.current_frame_index or 0,
+            total_frames=instance.number_of_frames,
+            frame_time_ms=instance.frame_time_ms,
+        )
+        worker.signals.finished.connect(
+            lambda points, idx=contour_index: self._on_optical_flow_refined(idx, points),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_optical_flow_refined(self, contour_index: int, refined_points: list) -> None:
+        """Apply optical flow refined points to the contour."""
+        if contour_index < 0 or contour_index >= len(self._contours):
+            return
+        contour = self._contours[contour_index]
+        if len(refined_points) != len(contour.points):
+            return
+        # Update contour points
+        contour.points[:] = refined_points
+        self._upsert_stored_contour(contour)
+        # Re-render
+        self._render_contours_for_current_frame()
+        self.contours_changed.emit(self.contours())
 
     def finish_contour(self) -> bool:
         if not self._contour_mode_active or self._active_contour_item is None:
