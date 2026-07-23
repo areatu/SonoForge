@@ -2889,7 +2889,10 @@ class ViewerWidget(QWidget):
         for i, c in enumerate(self._contours):
             if c.chamber == "LA" and c.view == contour.view and c.phase == contour.phase:
                 self._contours[i] = contour
-                self._refresh_contour_display(i)
+                # Update stored contour too
+                self._upsert_stored_contour(contour)
+                # Re-render all contours for current frame
+                self._render_contours_for_current_frame()
                 # Apply magnetic snap to refine edges
                 self._apply_magnetic_snap_to_contour(
                     i,
