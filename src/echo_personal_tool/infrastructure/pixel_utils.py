@@ -228,3 +228,16 @@ def despeckle_frame(frame: np.ndarray) -> np.ndarray:
     if frame.ndim != 2 or frame.dtype != np.uint8:
         return frame
     return cv2.bilateralFilter(frame, d=5, sigmaColor=50, sigmaSpace=50)
+
+
+def despeckle_color_frame(frame: np.ndarray) -> np.ndarray:
+    """Apply bilateral filter to a color (H, W, 3) uint8 frame.
+
+    Filters each channel independently to reduce speckle while preserving edges.
+    """
+    if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
+        return frame
+    result = np.empty_like(frame)
+    for ch in range(3):
+        result[:, :, ch] = cv2.bilateralFilter(frame[:, :, ch], d=5, sigmaColor=50, sigmaSpace=50)
+    return result

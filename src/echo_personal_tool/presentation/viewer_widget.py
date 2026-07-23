@@ -706,6 +706,8 @@ class ViewerWidget(QWidget):
         self._ghost_neighbor_index: int = 0
         self._ghost_items: list[pg.PlotDataItem] = []
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
+        self._contour_simpson_items: list[pg.PlotDataItem] = []
+        self._contour_pen_simpson = pg.mkPen("#ffb300", width=1, style=Qt.PenStyle.DashLine)
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
@@ -1467,6 +1469,9 @@ class ViewerWidget(QWidget):
 
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+            if self._despeckle_enabled:
+                from echo_personal_tool.infrastructure.pixel_utils import despeckle_color_frame
+                self._color_source_rgb = despeckle_color_frame(self._color_source_rgb)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
@@ -1600,6 +1605,9 @@ class ViewerWidget(QWidget):
             frame_data_ptr = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
             if frame_data_ptr != self._last_color_frame_ptr:
                 self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+                if self._despeckle_enabled:
+                    from echo_personal_tool.infrastructure.pixel_utils import despeckle_color_frame
+                    self._color_source_rgb = despeckle_color_frame(self._color_source_rgb)
                 self._last_color_frame_ptr = frame_data_ptr
             self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
@@ -3377,9 +3385,12 @@ class ViewerWidget(QWidget):
         for ma_item in self._contour_ma_items:
             if ma_item is not None:
                 self._view.removeItem(ma_item)
+        for simpson_item in self._contour_simpson_items:
+            self._view.removeItem(simpson_item)
         self._contour_items.clear()
         self._contour_nodes.clear()
         self._contour_ma_items.clear()
+        self._contour_simpson_items.clear()
         self._contours.clear()
 
     def _clear_contours(self) -> None:
@@ -3595,12 +3606,76 @@ class ViewerWidget(QWidget):
             ma_item.setData([septal[0], lateral[0]], [septal[1], lateral[1]])
             self._view.addItem(ma_item)
 
+        # Simpson visualization for confirmed LV contours
+        if (
+            contour.chamber.upper() == "LV"
+            and contour.is_open_arc
+            and not contour.review_pending
+        ):
+            self._append_simpson_lines(contour)
+
         node_items: list[_ContourNodeItem] = []
         for point_index, point in enumerate(contour.points):
             node = _ContourNodeItem(self, contour_index, point_index, point, pen)
             self._view.addItem(node)
             node_items.append(node)
         return line_item, ma_item, node_items
+
+    def _append_simpson_lines(self, contour: Contour) -> None:
+        """Add central axis + transverse disk lines for Simpson visualization."""
+        from echo_personal_tool.domain.calculations.lvef_simpson import (
+            compute_simpson_lines,
+        )
+
+        lines = compute_simpson_lines(contour)
+        if lines is None:
+            return
+
+        # Central axis line (MV midpoint → apex)
+        base, tip = lines.central_line
+        central_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+        central_item.setZValue(15)
+        central_item.setData([base[0], tip[0]], [base[1], tip[1]])
+        self._view.addItem(central_item)
+        self._contour_simpson_items.append(central_item)
+
+        # Transverse disk lines
+        for left, right in lines.disk_lines:
+            disk_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+            disk_item.setZValue(15)
+            disk_item.setData([left[0], right[0]], [left[1], right[1]])
+            self._view.addItem(disk_item)
+            self._contour_simpson_items.append(disk_item)
+
+    def _update_simpson_lines(self, contour_index: int, contour: Contour) -> None:
+        """Remove old Simpson lines and re-render from updated contour."""
+        from echo_personal_tool.domain.calculations.lvef_simpson import (
+            compute_simpson_lines,
+        )
+
+        # Remove all existing Simpson lines
+        for item in self._contour_simpson_items:
+            self._view.removeItem(item)
+        self._contour_simpson_items.clear()
+
+        # Compute and render new lines
+        lines = compute_simpson_lines(contour)
+        if lines is None:
+            return
+
+        base, tip = lines.central_line
+        central_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+        central_item.setZValue(15)
+        central_item.setData([base[0], tip[0]], [base[1], tip[1]])
+        self._view.addItem(central_item)
+        self._contour_simpson_items.append(central_item)
+
+        for left, right in lines.disk_lines:
+            disk_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+            disk_item.setZValue(15)
+            disk_item.setData([left[0], right[0]], [left[1], right[1]])
+            self._view.addItem(disk_item)
+            self._contour_simpson_items.append(disk_item)
 
     def _reindex_contour_nodes(self) -> None:
         for contour_index, node_items in enumerate(self._contour_nodes):
@@ -4207,6 +4282,14 @@ class ViewerWidget(QWidget):
         else:
             x_values, y_values = self._contour_xy(contour, closed=closed)
         self._contour_items[contour_index].setData(x_values, y_values)
+        # Update Simpson lines if this is a confirmed LV contour
+        if (
+            not during_drag
+            and contour.chamber.upper() == "LV"
+            and contour.is_open_arc
+            and not contour.review_pending
+        ):
+            self._update_simpson_lines(contour_index, contour)
 
     def _resolve_contour_phase(self) -> str:
         return "ED"

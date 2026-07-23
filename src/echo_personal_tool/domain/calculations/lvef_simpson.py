@@ -485,3 +485,52 @@ def _find_width_perpendicular_to_axis(
         return 0.0
 
     return max(intersections) - min(intersections)
+
+
+# ── Simpson visualization lines ────────────────────────────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class SimpsonLines:
+    """Geometry for Simpson disc visualization overlay."""
+
+    central_line: tuple[tuple[float, float], tuple[float, float]]
+    disk_lines: list[tuple[tuple[float, float], tuple[float, float]]]
+
+
+def compute_simpson_lines(contour: Contour) -> SimpsonLines | None:
+    """Compute central axis + paired disk lines for a confirmed LV contour.
+
+    Each disk line connects a pair of symmetric contour points:
+    point[i] ↔ point[N-1-i].  Number of lines = N // 2.
+    Returns None when the contour lacks mitral_annulus or has too few points.
+    All coordinates are in **pixel** space (same as contour.points).
+    """
+    if contour.mitral_annulus is None or len(contour.points) < 4:
+        return None
+
+    points = list(contour.points)
+    n = len(points)
+    septal, lateral = contour.mitral_annulus
+    base = ((septal[0] + lateral[0]) / 2.0, (septal[1] + lateral[1]) / 2.0)
+
+    # Apex: point farthest from the MA chord line
+    def _point_line_distance(px: float, py: float) -> float:
+        dx = lateral[0] - septal[0]
+        dy = lateral[1] - septal[1]
+        chord_len = math.hypot(dx, dy)
+        if chord_len < 1e-6:
+            return 0.0
+        return abs(dy * px - dx * py + lateral[0] * septal[1] - lateral[1] * septal[0]) / chord_len
+
+    apex = max(points, key=lambda p: _point_line_distance(p[0], p[1]))
+
+    # Pair points symmetrically: point[i] ↔ point[N-1-i]
+    num_lines = n // 2
+    disk_lines: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for i in range(num_lines):
+        left = (float(points[i][0]), float(points[i][1]))
+        right = (float(points[n - 1 - i][0]), float(points[n - 1 - i][1]))
+        disk_lines.append((left, right))
+
+    return SimpsonLines(central_line=(base, apex), disk_lines=disk_lines)

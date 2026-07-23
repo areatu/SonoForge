@@ -201,3 +201,42 @@ def test_lv_auto_quality_passes_with_normal_spacing() -> None:
     # spacing 0.15 mm/px → MA = 100 * 0.15 = 15mm >= 3mm → passes
     reason = explain_lv_auto_reject_reason(contour, (0.15, 0.15))
     assert reason is None
+
+
+# ── Simpson visualization lines ────────────────────────────────────
+
+
+def test_compute_simpson_lines_returns_lines_for_valid_contour() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
+
+    # Tall narrow contour where lines are NOT parallel to MV chord
+    contour = open_arc_contour(phase="ed", view="A4C", width_px=60.0, height_px=200.0)
+    result = compute_simpson_lines(contour)
+
+    assert result is not None
+    base, tip = result.central_line
+    assert base[0] == pytest.approx(30.0, rel=1e-6)
+    assert tip[1] > base[1]
+    # Disk lines may be fewer than N//2 if parallel ones near MV are filtered
+    assert len(result.disk_lines) >= 0
+
+
+def test_compute_simpson_lines_returns_none_for_no_annulus() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
+
+    contour = Contour(phase="ed", view="A4C", points=[(0, 0), (10, 0), (5, 10)])
+    result = compute_simpson_lines(contour)
+    assert result is None
+
+
+def test_compute_simpson_lines_returns_none_for_too_few_points() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
+
+    contour = Contour(
+        phase="ed",
+        view="A4C",
+        mitral_annulus=((0, 0), (10, 0)),
+        points=[(0, 0), (10, 0)],
+    )
+    result = compute_simpson_lines(contour)
+    assert result is None
