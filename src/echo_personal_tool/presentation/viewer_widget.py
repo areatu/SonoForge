@@ -730,6 +730,8 @@ class ViewerWidget(QWidget):
         self._color_source_rgb: np.ndarray | None = None
         self._window_level_enabled = True
         self._cached_levels_key: tuple[int, int, int] | None = None
+        self._cached_display_low: float | None = None
+        self._cached_display_high: float | None = None
         self._last_color_frame_ptr: int | None = None
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
@@ -1453,13 +1455,21 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        # Cache display mode per instance to avoid re-detection
-        instance_key = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
+        # Cache display mode per INSTANCE (file), not per frame.
+        instance_uid = None
+        if self._current_state is not None and self._current_state.instance is not None:
+            instance_uid = self._current_state.instance.sop_instance_uid
+        instance_key = instance_uid or id(frame)
         if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame,
                 media_format,
             )
+            self._display_mode_cache_key = instance_key
+            # Invalidate cached levels when switching to a new file/instance
+            self._cached_display_low = None
+            self._cached_display_high = None
+            self._cached_levels_key = None
             self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
@@ -1470,8 +1480,8 @@ class ViewerWidget(QWidget):
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
             if self._despeckle_enabled:
-                from echo_personal_tool.infrastructure.pixel_utils import despeckle_color_frame
-                self._color_source_rgb = despeckle_color_frame(self._color_source_rgb)
+                from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+                self._color_source_rgb = decolor_frame(self._color_source_rgb)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
@@ -1583,14 +1593,22 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        # Cache display mode per instance to avoid re-detection every frame
-        instance_key = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
+        # Cache display mode per INSTANCE (file), not per frame.
+        # Using id(frame) caused re-detection every frame → color/grayscale flickering.
+        instance_uid = None
+        if self._current_state is not None and self._current_state.instance is not None:
+            instance_uid = self._current_state.instance.sop_instance_uid
+        instance_key = instance_uid or id(frame)
         if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame,
                 media_format,
             )
             self._display_mode_cache_key = instance_key
+            # Invalidate cached levels when switching to a new file
+            self._cached_display_low = None
+            self._cached_display_high = None
+            self._cached_levels_key = None
         channel_order = "rgb" if media_format == "dicom" else "bgr"
 
         levels_key = (
@@ -1606,8 +1624,8 @@ class ViewerWidget(QWidget):
             if frame_data_ptr != self._last_color_frame_ptr:
                 self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
                 if self._despeckle_enabled:
-                    from echo_personal_tool.infrastructure.pixel_utils import despeckle_color_frame
-                    self._color_source_rgb = despeckle_color_frame(self._color_source_rgb)
+                    from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+                    self._color_source_rgb = decolor_frame(self._color_source_rgb)
                 self._last_color_frame_ptr = frame_data_ptr
             self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
@@ -5309,10 +5327,26 @@ class ViewerWidget(QWidget):
         frame = np.asarray(self._current_frame)
         if frame.size == 0:
             return
-        dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
-        window_scale = self._window_slider.value() / 100.0
-        level_offset = (self._level_slider.value() - 50) / 50.0
-        if self._is_color_frame and self._color_source_rgb is not None:
+
+        # Cache key: slider values
+        sliders_key = (
+            self._window_slider.value(),
+            self._level_slider.value(),
+            self._dr_slider.value(),
+        )
+
+        # Use cached levels if sliders haven't changed
+        if (
+            self._cached_display_low is not None
+            and self._cached_display_high is not None
+            and self._cached_levels_key == sliders_key
+        ):
+            low, high = self._cached_display_low, self._cached_display_high
+        else:
+            # Compute new levels from current frame
+            dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
+            window_scale = self._window_slider.value() / 100.0
+            level_offset = (self._level_slider.value() - 50) / 50.0
             low, high = compute_display_levels(
                 np.asarray(frame, dtype=float),
                 dr_low_pct=dr_low,
@@ -5320,20 +5354,61 @@ class ViewerWidget(QWidget):
                 window_scale=window_scale,
                 level_offset=level_offset,
             )
+
+            # Check if this is an outlier frame (too dark, too bright, too flat)
+            is_outlier = self._is_levels_outlier(low, high, frame)
+
+            if not is_outlier:
+                # Cache good levels
+                self._cached_display_low = low
+                self._cached_display_high = high
+                self._cached_levels_key = sliders_key
+            elif self._cached_display_low is not None:
+                # Use previously cached levels instead of outlier
+                low, high = self._cached_display_low, self._cached_display_high
+
+        # Apply levels to current frame
+        if self._is_color_frame and self._color_source_rgb is not None:
             display = apply_window_level_rgb(self._color_source_rgb, low, high)
             self._image_item.setImage(display, autoLevels=False)
         else:
-            from echo_personal_tool.infrastructure.pixel_utils import apply_wl_lut
+            import cv2
+            from echo_personal_tool.infrastructure.pixel_utils import _grayscale_source_array
 
-            display = apply_wl_lut(
-                frame,
-                dr_low_pct=dr_low,
-                dr_high_pct=dr_high,
-                window_scale=window_scale,
-                level_offset=level_offset,
-            )
+            src = _grayscale_source_array(frame)
+            span = max(high - low, 1.0)
+            if src.dtype == np.uint16:
+                lut = np.clip(
+                    (np.arange(65536, dtype=np.float64) - low) / span * 255.0,
+                    0.0, 255.0,
+                ).astype(np.uint8)
+                display = lut[src]
+            else:
+                src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
+                lut = np.clip(
+                    (np.arange(256, dtype=np.float64) - low) / span * 255.0,
+                    0.0, 255.0,
+                ).astype(np.uint8)
+                display = cv2.LUT(src_u8, lut)
             self._image_item.setImage(display, autoLevels=False)
         self._invalidate_edge_map_cache()
+
+    def _is_levels_outlier(self, low: float, high: float, frame: np.ndarray) -> bool:
+        """Check if computed levels indicate an outlier frame (too dark/bright/flat)."""
+        # Check 1: Range too narrow (likely a near-empty or saturated frame)
+        pixel_range = high - low
+        if pixel_range < 10.0:
+            return True
+        # Check 2: Mean brightness too extreme
+        flat = np.asarray(frame, dtype=np.float64).ravel()
+        mean_val = float(np.mean(flat))
+        if mean_val < 5.0 or mean_val > 250.0:
+            return True
+        # Check 3: Too little variation (flat image)
+        std_val = float(np.std(flat))
+        if std_val < 3.0:
+            return True
+        return False
 
     def set_magnetic_snap_enabled(self, enabled: bool) -> None:
         self._magnetic_snap_enabled = bool(enabled)

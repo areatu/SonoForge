@@ -94,9 +94,9 @@ class ControlsTab(QWidget):
         self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
         self._magnetic_snap_check.toggled.connect(self.magnetic_snap_changed.emit)
 
-        self._despeckle_check = QCheckBox("Despeckle (bilateral filter)")
+        self._despeckle_check = QCheckBox("Grayscale (remove color)")
         self._despeckle_check.setChecked(False)
-        self._despeckle_check.setToolTip("Reduce speckle noise while preserving edges")
+        self._despeckle_check.setToolTip("Remove color from Doppler, ECG overlays — display in grayscale")
         self._despeckle_check.toggled.connect(self.despeckle_changed.emit)
 
         layout = QVBoxLayout(self)

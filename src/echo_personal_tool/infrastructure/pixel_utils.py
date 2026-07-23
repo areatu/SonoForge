@@ -220,24 +220,27 @@ def reference_wl_display_uint8(
 
 
 def despeckle_frame(frame: np.ndarray) -> np.ndarray:
-    """Apply bilateral filter to reduce ultrasound speckle noise.
-
-    Preserves edges while smoothing homogeneous regions. Parameters tuned
-    for typical B-mode echo images (grayscale uint8).
-    """
+    """Apply bilateral filter to reduce ultrasound speckle noise."""
     if frame.ndim != 2 or frame.dtype != np.uint8:
         return frame
     return cv2.bilateralFilter(frame, d=5, sigmaColor=50, sigmaSpace=50)
 
 
-def despeckle_color_frame(frame: np.ndarray) -> np.ndarray:
-    """Apply bilateral filter to a color (H, W, 3) uint8 frame.
+def decolor_frame(frame: np.ndarray) -> np.ndarray:
+    """Remove color overlays (Doppler, ECG, hard-overlays) from a frame.
 
-    Filters each channel independently to reduce speckle while preserving edges.
+    Strategy: detect high-saturation pixels (colored overlays) and set them
+    to black, so colored overlays disappear entirely. Low-saturation pixels
+    (B-mode tissue) are converted to grayscale normally.
     """
-    if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
+    if frame.ndim != 3 or frame.shape[2] < 3 or frame.dtype != np.uint8:
         return frame
-    result = np.empty_like(frame)
-    for ch in range(3):
-        result[:, :, ch] = cv2.bilateralFilter(frame[:, :, ch], d=5, sigmaColor=50, sigmaSpace=50)
-    return result
+    # Convert to grayscale for B-mode content
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Detect colored overlay pixels via HSV saturation
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    saturation = hsv[:, :, 1]
+    overlay_mask = saturation > 40
+    # Set overlay pixels to black
+    gray[overlay_mask] = 0
+    return gray
