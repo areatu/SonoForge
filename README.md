@@ -8,7 +8,8 @@
 [![License GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-green?style=for-the-badge)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/areatu/SonoForge/ci.yml?style=for-the-badge&label=CI)](https://github.com/areatu/SonoForge/actions)
 [![Release](https://img.shields.io/github/v/release/areatu/SonoForge?style=for-the-badge&color=blue)](https://github.com/areatu/SonoForge/releases)
-[![DOI](https://img.shields.io/badge/DOI-10.5281/zenodo.XXXXXXX-blue?style=for-the-badge)](https://zenodo.org/)
+[![Coverage Status](https://img.shields.io/badge/Coverage-Coveralls-yellow?style=for-the-badge&logo=coveralls&logoColor=white)](https://coveralls.io/github/areatu/SonoForge?branch=main)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21497897.svg)](https://doi.org/10.5281/zenodo.21497897)
 
 ---
 
