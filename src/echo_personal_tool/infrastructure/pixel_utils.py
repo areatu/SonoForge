@@ -217,3 +217,14 @@ def reference_wl_display_uint8(
     span = max(high - low, 1.0)
     out = np.clip((gray_f - low) / span * 255.0, 0.0, 255.0)
     return out.astype(np.uint8)
+
+
+def despeckle_frame(frame: np.ndarray) -> np.ndarray:
+    """Apply bilateral filter to reduce ultrasound speckle noise.
+
+    Preserves edges while smoothing homogeneous regions. Parameters tuned
+    for typical B-mode echo images (grayscale uint8).
+    """
+    if frame.ndim != 2 or frame.dtype != np.uint8:
+        return frame
+    return cv2.bilateralFilter(frame, d=5, sigmaColor=50, sigmaSpace=50)

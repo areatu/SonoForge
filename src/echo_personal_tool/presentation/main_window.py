@@ -831,6 +831,11 @@ class MainWindow(QMainWindow):
         self._user_preferences.magnetic_snap_enabled = enabled
         save_user_preferences(self._user_preferences)
 
+    def _on_despeckle_changed(self, enabled: bool) -> None:
+        self._viewer.set_despeckle_enabled(enabled)
+        self._user_preferences.despeckle_enabled = enabled
+        save_user_preferences(self._user_preferences)
+
     def _on_results_overlay_position_changed(self, x_ratio: float, y_ratio: float) -> None:
         self._last_overlay_position = (x_ratio, y_ratio)
         instance = self._controller.state_manager.snapshot.instance
@@ -1237,6 +1242,7 @@ class MainWindow(QMainWindow):
             self._viewer.cancel_mmode_line()
             if self._mmode_widget is not None:
                 self._mmode_widget.clear_buffer()
+                self._mmode_widget.clear_calibration()
             # Restart M-mode line placement for new file
             self._viewer.start_mmode_line()
 
@@ -1661,6 +1667,7 @@ class MainWindow(QMainWindow):
         self._system_bar.caliper_requested.connect(lambda: self._on_caliper_requested())
         self._system_bar.calibration_requested.connect(self._on_calibration_requested)
         self._system_bar.doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
+        self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
         self._system_bar.minimize_requested.connect(self.showMinimized)
@@ -1671,15 +1678,23 @@ class MainWindow(QMainWindow):
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
+        self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
+        self._apply_despeckle_from_preferences()
 
     def _apply_magnetic_snap_from_preferences(self) -> None:
         enabled = self._user_preferences.magnetic_snap_enabled
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(enabled)
         self._viewer.set_magnetic_snap_enabled(enabled)
+
+    def _apply_despeckle_from_preferences(self) -> None:
+        enabled = self._user_preferences.despeckle_enabled
+        with QSignalBlocker(self._tool_panel.controls._despeckle_check):
+            self._tool_panel.controls._despeckle_check.setChecked(enabled)
+        self._viewer.set_despeckle_enabled(enabled)
 
     def _on_auto_play_changed(self, enabled: bool) -> None:
         self._user_preferences.auto_play = enabled
@@ -1872,6 +1887,64 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.calibration_bmode_click"))
         else:
             self._show_status(tr("status.calibration_cancelled"))
+
+    def _on_heart_rate_requested(self) -> None:
+        snapshot = self._controller.state_manager.snapshot
+        if snapshot.instance is None:
+            self._show_status("Load a cine first")
+            return
+        from PySide6.QtCore import QThreadPool
+
+        from echo_personal_tool.application.workers.heart_rate_worker import (
+            HeartRateWorker,
+        )
+
+        # Collect contour areas for area-time method
+        contour_areas: list[float] | None = None
+        contour_frame_indices: list[int] | None = None
+        contours = self._viewer.contours()
+        if contours:
+            from echo_personal_tool.domain.services.contour_geometry import (
+                polygon_area_mm2,
+            )
+
+            pixel_spacing = snapshot.instance.pixel_spacing or (1.0, 1.0)
+            areas: list[float] = []
+            indices: list[int] = []
+            for c in contours:
+                if c.chamber == "LV" and len(c.points) >= 3:
+                    area = polygon_area_mm2(c.points, pixel_spacing)
+                    areas.append(area)
+                    indices.append(c.frame_index)
+            if len(areas) >= 4:
+                contour_areas = areas
+                contour_frame_indices = indices
+
+        worker = HeartRateWorker(
+            source_path=snapshot.instance.path,
+            media_format=snapshot.instance.media_format,
+            frame_time_ms=snapshot.instance.frame_time_ms,
+            contour_areas=contour_areas,
+            contour_frame_indices=contour_frame_indices,
+        )
+        worker.signals.finished.connect(self._on_heart_rate_result, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_heart_rate_failed, Qt.ConnectionType.QueuedConnection)
+        self._show_status("Estimating heart rate…")
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_heart_rate_result(self, bpm: float, confidence: float, method: str) -> None:
+        method_label = {"optical_flow": "Optical Flow", "area_time": "Area-Time", "combined": "Combined"}.get(method, method)
+        msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
+        self._show_status(msg)
+        overlay = self._viewer.results_overlay_text()
+        hr_line = f"HR: {bpm:.0f} BPM"
+        if overlay:
+            self._viewer.set_results_overlay(f"{overlay}\n{hr_line}")
+        else:
+            self._viewer.set_results_overlay(hr_line)
+
+    def _on_heart_rate_failed(self, error: str) -> None:
+        self._show_status(f"HR estimation failed: {error}")
 
     def _get_current_frame_index(self) -> int | None:
         snapshot = self._controller.state_manager.snapshot

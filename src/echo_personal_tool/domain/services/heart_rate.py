@@ -50,14 +50,14 @@ def estimate_hr_optical_flow(
     gray = [_to_gray(f) for f in frames]
     h, w = gray[0].shape
 
-    # Default ROI: center 60% of frame (covers LV region typically)
+    # Default ROI: center 40% of frame (focused on LV region)
     if roi_xyxy is not None:
         x0, y0, x1, y1 = roi_xyxy
         x0, y0 = max(0, x0), max(0, y1)
         x1, y1 = min(w, x1), min(h, y1)
     else:
-        margin_x = int(w * 0.2)
-        margin_y = int(h * 0.2)
+        margin_x = int(w * 0.3)
+        margin_y = int(h * 0.3)
         x0, y0 = margin_x, margin_y
         x1, y1 = w - margin_x, h - margin_y
 

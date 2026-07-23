@@ -109,6 +109,7 @@ class UserPreferences:
     show_doppler_mk_av: bool = False
     show_doppler_tk_pv: bool = False
     show_rv_s_prime: bool = False
+    despeckle_enabled: bool = False
 
 
 def _settings_store() -> QSettings:
@@ -303,6 +304,7 @@ def load_user_preferences() -> UserPreferences:
         show_doppler_mk_av=_read_bool(store.value("show_doppler_mk_av"), False),
         show_doppler_tk_pv=_read_bool(store.value("show_doppler_tk_pv"), False),
         show_rv_s_prime=_read_bool(store.value("show_rv_s_prime"), False),
+        despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
     )
 
 

@@ -749,6 +749,7 @@ class ViewerWidget(QWidget):
         self._interesting_dicom_tags: tuple[str, ...] = ()
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
+        self._despeckle_enabled = False
         self._results_overlay_custom_position = False
         self._results_overlay_cleared = False
         self._results_overlay_position_just_restored = False
@@ -1082,6 +1083,7 @@ class ViewerWidget(QWidget):
         self._magnetic_snap_weight_threshold = preferences.magnetic_snap_weight_threshold
         self._magnetic_snap_release_strength = preferences.magnetic_snap_release_strength
         self._magnetic_snap_release_max_radial_px = preferences.magnetic_snap_release_max_radial_px
+        self._despeckle_enabled = preferences.despeckle_enabled
         self._rebuild_contour_pens(preferences)
         self._refresh_caliper_line_pens()
         self._refresh_rendered_contour_pens()
@@ -1459,6 +1461,9 @@ class ViewerWidget(QWidget):
             self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
+        if self._despeckle_enabled:
+            from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+            self._current_frame = despeckle_frame(self._current_frame)
 
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
@@ -1615,6 +1620,9 @@ class ViewerWidget(QWidget):
                 )
             else:
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
+            if self._despeckle_enabled:
+                from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+                self._current_frame = despeckle_frame(self._current_frame)
             self._image_item.setImage(self._current_frame, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
@@ -5249,6 +5257,15 @@ class ViewerWidget(QWidget):
 
     def magnetic_snap_enabled(self) -> bool:
         return self._magnetic_snap_enabled
+
+    def set_despeckle_enabled(self, enabled: bool) -> None:
+        self._despeckle_enabled = bool(enabled)
+        # Re-render current frame with updated filter
+        if self._current_frame is not None:
+            self._update_levels()
+
+    def despeckle_enabled(self) -> bool:
+        return self._despeckle_enabled
 
     def _grayscale_frame_for_edges(self) -> np.ndarray | None:
         if self._current_frame is None:

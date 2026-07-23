@@ -100,6 +100,7 @@ class SystemBar(QWidget):
     doppler_calibration_requested = Signal()
     settings_requested = Signal()
     references_requested = Signal()
+    heart_rate_requested = Signal()
     minimize_requested = Signal()
     maximize_requested = Signal()
     close_requested = Signal()
@@ -168,6 +169,12 @@ class SystemBar(QWidget):
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_references.setToolTip("Справочник нормативных значений ASE")
         self._btn_references.clicked.connect(self.references_requested.emit)
+
+        btn_heart_rate = QPushButton("HR")
+        btn_heart_rate.setIcon(_load_icon("heart_rate"))
+        btn_heart_rate.setToolTip("Estimate heart rate from cine (Optical Flow / Area-Time)")
+        btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
+        self._btn_heart_rate = btn_heart_rate
 
         btn_reset = QPushButton("Reset")
         btn_reset.setIcon(_load_icon("refresh"))
@@ -257,6 +264,7 @@ class SystemBar(QWidget):
             btn_caliper,
             btn_calibration,
             btn_doppler_calibration,
+            btn_heart_rate,
             self._btn_references,
             btn_reset,
             self._btn_layout,
@@ -314,6 +322,7 @@ class SystemBar(QWidget):
         self._btn_caliper.setIcon(_load_icon("straighten"))
         self._btn_calibration.setIcon(_load_icon("tune"))
         self._btn_doppler_calibration.setIcon(_load_icon("show_chart"))
+        self._btn_heart_rate.setIcon(_load_icon("heart_rate"))
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_reset.setIcon(_load_icon("refresh"))
         self._btn_layout.setIcon(_load_icon("layout"))

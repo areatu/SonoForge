@@ -696,6 +696,33 @@ QHeaderView::section {{
 QHeaderView::section:hover {{
     background: {p["bg_button_hover"]};
 }}
+QMessageBox {{
+    background-color: {p["bg_panel"]};
+    color: {p["text"]};
+}}
+QMessageBox QLabel {{
+    color: {p["text"]};
+}}
+QMessageBox QPushButton {{
+    background-color: {p["bg_button"]};
+    color: {p["text"]};
+    border: 1px solid {p["border"]};
+    padding: 6px 16px;
+    min-width: 60px;
+    border-radius: 4px;
+}}
+QMessageBox QPushButton:hover {{
+    background-color: {p["bg_button_hover"]};
+}}
+QMessageBox QPushButton:pressed {{
+    background-color: {p["bg_button_pressed"]};
+}}
+QMessageBox QLabel#qt_msgbox_label {{
+    color: {p["text"]};
+}}
+QMessageBox QLabel#qt_msgbox_icon {{
+    background: transparent;
+}}
 """
 
 
