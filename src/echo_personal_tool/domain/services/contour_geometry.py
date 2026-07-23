@@ -466,8 +466,15 @@ def smooth_open_arc(
     iterations: int = SMOOTH_OPEN_ARC_ITERATIONS,
     blend: float = SMOOTH_OPEN_ARC_BLEND,
     pinned_indices: frozenset[int] | set[int] | None = None,
+    taubin: bool = False,
+    taubin_mu: float = -0.53,
 ) -> list[tuple[float, float]]:
-    """Laplacian smooth interior nodes; MA endpoints and pinned nodes stay fixed."""
+    """Smooth interior nodes; MA endpoints and pinned nodes stay fixed.
+
+    When *taubin* is True, uses Taubin lambda-mu smoothing which
+    alternates positive (lambda) and negative (mu) steps to preserve
+    contour area and prevent shrinkage.
+    """
     del apex
     if len(points) < 3:
         return [(float(x), float(y)) for x, y in points]
@@ -487,8 +494,21 @@ def smooth_open_arc(
                 continue
             neighbor_x = 0.5 * (coords[index - 1][0] + coords[index + 1][0])
             neighbor_y = 0.5 * (coords[index - 1][1] + coords[index + 1][1])
+            # Lambda step: positive smoothing
             next_coords[index][0] = (1.0 - blend) * coords[index][0] + blend * neighbor_x
             next_coords[index][1] = (1.0 - blend) * coords[index][1] + blend * neighbor_y
+
+        if taubin:
+            # Mu step: anti-shrinkage (move back slightly)
+            for index in range(1, len(next_coords) - 1):
+                if index in pinned:
+                    continue
+                neighbor_x = 0.5 * (next_coords[index - 1][0] + next_coords[index + 1][0])
+                neighbor_y = 0.5 * (next_coords[index - 1][1] + next_coords[index + 1][1])
+                mu_blend = abs(taubin_mu)
+                next_coords[index][0] = (1.0 - mu_blend) * next_coords[index][0] + mu_blend * neighbor_x
+                next_coords[index][1] = (1.0 - mu_blend) * next_coords[index][1] + mu_blend * neighbor_y
+
         next_coords[0] = [float(septal[0]), float(septal[1])]
         next_coords[-1] = [float(lateral[0]), float(lateral[1])]
         coords = next_coords

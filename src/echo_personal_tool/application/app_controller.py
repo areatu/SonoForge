@@ -125,6 +125,7 @@ class AppController(QObject):
     decode_finished = Signal()
     speckle_result_ready = Signal(object)
     scroll_settled = Signal()
+    la_assist_contour_ready = Signal(object)
 
     def __init__(
         self,
@@ -2287,6 +2288,10 @@ class AppController(QObject):
             annulus_max_shift_ratio_ed=tf.get("annulus_max_shift_ratio_ed", 0.015),
             annulus_max_shift_ratio_es=tf.get("annulus_max_shift_ratio_es", 0.012),
             apex_direction_lock=tf.get("apex_direction_lock", True),
+            confidence_weighted=tf.get("confidence_weighted", True),
+            outlier_rejection=tf.get("outlier_rejection", True),
+            max_neighbor_shift_ratio=tf.get("max_neighbor_shift_ratio", 0.15),
+            min_confidence_score=tf.get("min_confidence_score", 0.3),
         )
 
     def _on_auto_segment_finished(
@@ -2623,6 +2628,128 @@ class AppController(QObject):
         self.status_message.emit(review_status)
         self.on_contours_changed(contours)
 
+    # ── LA Assist for Manual Contour ────────────────────────────────────
+
+    def request_la_assist_for_manual(
+        self,
+        *,
+        frame_index: int,
+        user_septal: tuple[float, float],
+        user_lateral: tuple[float, float],
+        user_apex: tuple[float, float],
+    ) -> None:
+        """Run LA inference to assist manual contour placement.
+
+        Blends AI-derived landmarks with user-provided ones, then
+        creates a contour with the blended shape.
+        """
+        if not self._la_segmenter_available():
+            return
+
+        if self._current_frame_pixels is None:
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase="ES",
+        )
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        worker = OnnxWorker(
+            frame,
+            roi_xyxy=roi_xyxy,
+            crop_mode=crop_mode,
+            manifest_section="la_inference",
+            parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_la_assist_finished,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                frame_index=frame_index,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.failed.connect(
+            lambda err: logger.warning("[LA-assist] inference failed: %s", err),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.timed_out.connect(
+            lambda: logger.warning("[LA-assist] inference timed out"),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def _on_la_assist_finished(
+        self,
+        result: dict,
+        *,
+        user_septal: tuple[float, float],
+        user_lateral: tuple[float, float],
+        user_apex: tuple[float, float],
+        frame_index: int,
+    ) -> None:
+        """Handle LA inference result for manual contour assist."""
+        mask = result.get("mask")
+        if mask is None or mask.sum() < 80:
+            return  # Fallback: keep geometric ellipse
+
+        try:
+            from echo_personal_tool.domain.services.la_segmentation_service import (
+                la_landmarks_from_mask_or_user,
+            )
+            from echo_personal_tool.domain.services.mbs_lite_service import (
+                fit_contour_from_landmarks,
+            )
+
+            # Blend AI landmarks with user landmarks
+            blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
+                mask,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                blend_factor=0.7,
+            )
+
+            # Build contour from blended landmarks
+            contour = fit_contour_from_landmarks(
+                septal=blended_septal,
+                lateral=blended_lateral,
+                apex=blended_apex,
+                phase="ES",
+                view="A4C",
+                chamber="LA",
+            )
+            contour = dataclasses.replace(
+                contour,
+                source="manual",
+                frame_index=frame_index,
+                review_pending=False,
+            )
+
+            # Emit for viewer to pick up
+            self.la_assist_contour_ready.emit(contour)
+
+        except Exception:
+            logger.warning("[LA-assist] failed to build contour from blended landmarks", exc_info=True)
+
     # ── Temporal Fusion ──────────────────────────────────────────────────
 
     def _maybe_start_temporal_fusion(
@@ -2895,6 +3022,19 @@ class AppController(QObject):
             self._fusion_result = dataclasses.replace(result, fused_contour=fused_contour)
 
         # Replace pending contour with fused contour
+        # Quality gate: reject fused contour if it fails geometry checks
+        from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
+
+        pixel_spacing = None
+        if self._current_instance is not None:
+            ps = getattr(self._current_instance, "pixel_spacing", None)
+            if ps is not None:
+                pixel_spacing = (ps[0], ps[1]) if len(ps) >= 2 else None
+        reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
+        if reject_reason is not None:
+            logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
+            fused_contour = center_contour
+
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours

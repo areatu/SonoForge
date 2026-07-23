@@ -18,6 +18,7 @@ class ActiveContourConfig:
     step_size: float = 0.35
     max_iterations: int = 80
     gradient_samples: int = 17
+    convergence_tol: float = 0.1  # stop when total displacement < tol px
 
 
 def refine_open_arc(
@@ -51,7 +52,7 @@ def refine_open_arc(
     offsets = np.linspace(-radius, radius, cfg.gradient_samples)
 
     for _ in range(cfg.max_iterations):
-        moved = False
+        total_displacement = 0.0
         next_points = [point[:] for point in points]
         for index in range(1, len(points) - 1):
             px, py = points[index]
@@ -77,8 +78,7 @@ def refine_open_arc(
 
             delta_x = cfg.step_size * force_x
             delta_y = cfg.step_size * force_y
-            if abs(delta_x) > 1e-6 or abs(delta_y) > 1e-6:
-                moved = True
+            total_displacement += abs(delta_x) + abs(delta_y)
             next_x = _clamp(px + delta_x, 0.0, width - 1.0)
             next_y = _clamp(py + delta_y, 0.0, height - 1.0)
             next_points[index] = [next_x, next_y]
@@ -86,7 +86,7 @@ def refine_open_arc(
         next_points[0] = [float(annulus[0][0]), float(annulus[0][1])]
         next_points[-1] = [float(annulus[1][0]), float(annulus[1][1])]
         points = next_points
-        if not moved:
+        if total_displacement < cfg.convergence_tol:
             break
 
     return [(point[0], point[1]) for point in points]

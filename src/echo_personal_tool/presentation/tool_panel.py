@@ -77,6 +77,7 @@ class ControlsTab(QWidget):
     """Window / Level / DR sliders (Clinical controls)."""
 
     magnetic_snap_changed = Signal(bool)
+    despeckle_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -93,6 +94,11 @@ class ControlsTab(QWidget):
         self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
         self._magnetic_snap_check.toggled.connect(self.magnetic_snap_changed.emit)
 
+        self._despeckle_check = QCheckBox("Grayscale (remove color)")
+        self._despeckle_check.setChecked(False)
+        self._despeckle_check.setToolTip("Remove color from Doppler, ECG overlays — display in grayscale")
+        self._despeckle_check.toggled.connect(self.despeckle_changed.emit)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 12, 8, 8)
         layout.setSpacing(10)
@@ -100,6 +106,7 @@ class ControlsTab(QWidget):
         layout.addWidget(self.level_slider)
         layout.addWidget(self.dr_slider)
         layout.addWidget(self._magnetic_snap_check)
+        layout.addWidget(self._despeckle_check)
         layout.addStretch(1)
 
 
@@ -199,6 +206,7 @@ class ToolPanel(QWidget):
     auto_play_changed = Signal(bool)
     results_requested = Signal()
     magnetic_snap_changed = Signal(bool)
+    despeckle_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -223,6 +231,7 @@ class ToolPanel(QWidget):
         self.measure.auto_play_changed.connect(self.auto_play_changed.emit)
         self.measure.results_requested.connect(self.results_requested.emit)
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
+        self.controls.despeckle_changed.connect(self.despeckle_changed.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

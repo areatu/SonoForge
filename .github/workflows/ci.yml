@@ -53,12 +53,19 @@ jobs:
       # Linux: run with virtual display
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
-        run: pytest tests/unit/ -q --tb=line -m "not gui" --no-header
+        run: pytest tests/unit/ -q --tb=line -m "not gui" --no-header --cov=src/echo_personal_tool --cov-report=xml
 
       # macOS/Windows: run directly (no xvfb needed)
       - name: Run tests (macOS/Windows)
         if: runner.os != 'Linux'
         run: pytest tests/unit/ -q --tb=line -m "not gui" --no-header
+
+      # Linux: upload coverage to Coveralls
+      - name: Upload coverage to Coveralls
+        if: runner.os == 'Linux'
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+        run: coveralls --service=github
 
   build:
     needs: [lint, test]

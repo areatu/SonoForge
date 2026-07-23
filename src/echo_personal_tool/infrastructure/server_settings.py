@@ -254,6 +254,8 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("url", settings.url.strip())
     store.setValue("username", settings.username)
     _save_password_keyring(settings.username, settings.password)
+    # Ensure password never persists in QSettings
+    _purge_password_from_qsettings()
     store.setValue("auth_mode", settings.auth_mode)
     store.setValue("http_headers", settings.http_headers)
     store.setValue("use_mock", settings.use_mock)
@@ -281,9 +283,13 @@ def save_server_settings(settings: ServerSettings) -> None:
 
 # ── Keyring helpers ────────────────────────────────────────────────
 
+import logging as _logging
+
+_keyring_logger = _logging.getLogger(__name__)
+
 
 def _save_password_keyring(username: str, password: str) -> None:
-    """Store password in OS keychain, falling back to QSettings."""
+    """Store password in OS keychain only. Never falls back to QSettings."""
     try:
         import keyring
 
@@ -294,20 +300,17 @@ def _save_password_keyring(username: str, password: str) -> None:
                 keyring.delete_password(_SERVICE_NAME, username)
             except keyring.errors.PasswordDeleteError:
                 pass
+        # Clean up any stale password that may have leaked into QSettings
+        _purge_password_from_qsettings()
         return
     except Exception:
-        pass
-    # Fallback: store in QSettings when keyring is unavailable
-    store = _settings_store()
-    if password:
-        store.setValue("password", password)
-    else:
-        store.remove("password")
-    store.sync()
+        _keyring_logger.warning(
+            "keyring unavailable — password NOT saved (OS keychain required)"
+        )
 
 
 def _load_password_keyring(username: str) -> str:
-    """Load password from OS keychain, falling back to QSettings."""
+    """Load password from OS keychain only. Never reads from QSettings."""
     try:
         import keyring
 
@@ -316,5 +319,12 @@ def _load_password_keyring(username: str) -> str:
             return pwd
     except Exception:
         pass
-    # Fallback: load from QSettings
-    return str(_settings_store().value("password", ""))
+    return ""
+
+
+def _purge_password_from_qsettings() -> None:
+    """Remove stale password key from QSettings if present."""
+    store = _settings_store()
+    if store.contains("password"):
+        store.remove("password")
+        store.sync()

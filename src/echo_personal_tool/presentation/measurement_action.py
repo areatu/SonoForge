@@ -34,5 +34,6 @@ class MeasurementAction(StrEnum):
     DOPPLER_MITRAL_INFLOW = "doppler_mitral_inflow"
     AUTO_SEGMENT = "auto_segment"
     LAV_4C_AUTO = "lav_4c_auto"
+    LAV_4C_AI_PLUS = "lav_4c_ai_plus"
     SPECKLE_TRACKING = "speckle_tracking"
     MMODE = "mmode"

@@ -706,6 +706,8 @@ class ViewerWidget(QWidget):
         self._ghost_neighbor_index: int = 0
         self._ghost_items: list[pg.PlotDataItem] = []
         self._contour_ma_items: list[pg.PlotDataItem | None] = []
+        self._contour_simpson_items: list[pg.PlotDataItem] = []
+        self._contour_pen_simpson = pg.mkPen("#ffb300", width=1, style=Qt.PenStyle.DashLine)
         self._active_contour_view = "A4C"
         self._frame_overlay_lines: list[str] = []
         self._pending_viewer_state: ViewerState | None = None
@@ -728,6 +730,8 @@ class ViewerWidget(QWidget):
         self._color_source_rgb: np.ndarray | None = None
         self._window_level_enabled = True
         self._cached_levels_key: tuple[int, int, int] | None = None
+        self._cached_display_low: float | None = None
+        self._cached_display_high: float | None = None
         self._last_color_frame_ptr: int | None = None
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
@@ -749,6 +753,7 @@ class ViewerWidget(QWidget):
         self._interesting_dicom_tags: tuple[str, ...] = ()
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
+        self._despeckle_enabled = False
         self._results_overlay_custom_position = False
         self._results_overlay_cleared = False
         self._results_overlay_position_just_restored = False
@@ -1082,6 +1087,7 @@ class ViewerWidget(QWidget):
         self._magnetic_snap_weight_threshold = preferences.magnetic_snap_weight_threshold
         self._magnetic_snap_release_strength = preferences.magnetic_snap_release_strength
         self._magnetic_snap_release_max_radial_px = preferences.magnetic_snap_release_max_radial_px
+        self._despeckle_enabled = preferences.despeckle_enabled
         self._rebuild_contour_pens(preferences)
         self._refresh_caliper_line_pens()
         self._refresh_rendered_contour_pens()
@@ -1449,19 +1455,33 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        # Cache display mode per instance to avoid re-detection
-        instance_key = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
+        # Cache display mode per INSTANCE (file), not per frame.
+        instance_uid = None
+        if self._current_state is not None and self._current_state.instance is not None:
+            instance_uid = self._current_state.instance.sop_instance_uid
+        instance_key = instance_uid or id(frame)
         if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame,
                 media_format,
             )
             self._display_mode_cache_key = instance_key
+            # Invalidate cached levels when switching to a new file/instance
+            self._cached_display_low = None
+            self._cached_display_high = None
+            self._cached_levels_key = None
+            self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
+        if self._despeckle_enabled:
+            from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+            self._current_frame = despeckle_frame(self._current_frame)
 
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+            if self._despeckle_enabled:
+                from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+                self._color_source_rgb = decolor_frame(self._color_source_rgb)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
@@ -1573,14 +1593,22 @@ class ViewerWidget(QWidget):
             if self._current_state is not None and self._current_state.instance is not None
             else None
         )
-        # Cache display mode per instance to avoid re-detection every frame
-        instance_key = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
+        # Cache display mode per INSTANCE (file), not per frame.
+        # Using id(frame) caused re-detection every frame → color/grayscale flickering.
+        instance_uid = None
+        if self._current_state is not None and self._current_state.instance is not None:
+            instance_uid = self._current_state.instance.sop_instance_uid
+        instance_key = instance_uid or id(frame)
         if not hasattr(self, "_display_mode_cache_key") or self._display_mode_cache_key != instance_key:
             self._is_color_frame, self._window_level_enabled = self._resolve_display_mode(
                 frame,
                 media_format,
             )
             self._display_mode_cache_key = instance_key
+            # Invalidate cached levels when switching to a new file
+            self._cached_display_low = None
+            self._cached_display_high = None
+            self._cached_levels_key = None
         channel_order = "rgb" if media_format == "dicom" else "bgr"
 
         levels_key = (
@@ -1595,6 +1623,9 @@ class ViewerWidget(QWidget):
             frame_data_ptr = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
             if frame_data_ptr != self._last_color_frame_ptr:
                 self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+                if self._despeckle_enabled:
+                    from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+                    self._color_source_rgb = decolor_frame(self._color_source_rgb)
                 self._last_color_frame_ptr = frame_data_ptr
             self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
@@ -1615,6 +1646,9 @@ class ViewerWidget(QWidget):
                 )
             else:
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
+            if self._despeckle_enabled:
+                from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+                self._current_frame = despeckle_frame(self._current_frame)
             self._image_item.setImage(self._current_frame, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
@@ -2718,6 +2752,7 @@ class ViewerWidget(QWidget):
             return False
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -2797,8 +2832,75 @@ class ViewerWidget(QWidget):
             )
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        if contour.is_open_arc:
+            self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
+
+        # --- Trigger LA assist for A4C ES manual contour ---
+        if (
+            chamber == "LA"
+            and self._active_contour_view == "A4C"
+            and (self._active_contour_phase or "ED") == "ES"
+            and hasattr(self, "_controller_ref")
+            and self._controller_ref is not None
+        ):
+            self._request_la_assist_for_manual(
+                septal=septal,
+                lateral=lateral,
+                apex=apex,
+                frame_index=self._contour_frame_index(),
+            )
+        # --- END NEW ---
+
         return True
+
+    def _request_la_assist_for_manual(
+        self,
+        *,
+        septal: tuple[float, float],
+        lateral: tuple[float, float],
+        apex: tuple[float, float],
+        frame_index: int,
+    ) -> None:
+        """Request LA AI assist for the current manual contour."""
+        if not hasattr(self, "_controller_ref") or self._controller_ref is None:
+            return
+        # Connect signal (once)
+        if not getattr(self, "_la_assist_connected", False):
+            self._controller_ref.la_assist_contour_ready.connect(self._on_la_assist_contour_ready)
+            self._la_assist_connected = True
+
+        self._controller_ref.request_la_assist_for_manual(
+            frame_index=frame_index,
+            user_septal=septal,
+            user_lateral=lateral,
+            user_apex=apex,
+        )
+
+    def _on_la_assist_contour_ready(self, contour) -> None:
+        """Replace current LA contour with AI-assisted version."""
+        if contour.chamber != "LA":
+            return
+        # Guard: ignore stale assist results if user moved to a different frame
+        current_frame = self._contour_frame_index()
+        if contour.frame_index is not None and current_frame is not None and contour.frame_index != current_frame:
+            return
+        # Find and replace the existing LA contour
+        for i, c in enumerate(self._contours):
+            if c.chamber == "LA" and c.view == contour.view and c.phase == contour.phase:
+                self._contours[i] = contour
+                # Update stored contour too
+                self._upsert_stored_contour(contour)
+                # Re-render all contours for current frame
+                self._render_contours_for_current_frame()
+                # Apply magnetic snap to refine edges
+                self._apply_magnetic_snap_to_contour(
+                    i,
+                    np.ones(len(contour.points)),
+                    grab_index=None,
+                )
+                self.contours_changed.emit(self.contours())
+                break
 
     def finish_contour(self) -> bool:
         if not self._contour_mode_active or self._active_contour_item is None:
@@ -3304,9 +3406,12 @@ class ViewerWidget(QWidget):
         for ma_item in self._contour_ma_items:
             if ma_item is not None:
                 self._view.removeItem(ma_item)
+        for simpson_item in self._contour_simpson_items:
+            self._view.removeItem(simpson_item)
         self._contour_items.clear()
         self._contour_nodes.clear()
         self._contour_ma_items.clear()
+        self._contour_simpson_items.clear()
         self._contours.clear()
 
     def _clear_contours(self) -> None:
@@ -3522,12 +3627,76 @@ class ViewerWidget(QWidget):
             ma_item.setData([septal[0], lateral[0]], [septal[1], lateral[1]])
             self._view.addItem(ma_item)
 
+        # Simpson visualization for confirmed LV contours
+        if (
+            contour.chamber.upper() == "LV"
+            and contour.is_open_arc
+            and not contour.review_pending
+        ):
+            self._append_simpson_lines(contour)
+
         node_items: list[_ContourNodeItem] = []
         for point_index, point in enumerate(contour.points):
             node = _ContourNodeItem(self, contour_index, point_index, point, pen)
             self._view.addItem(node)
             node_items.append(node)
         return line_item, ma_item, node_items
+
+    def _append_simpson_lines(self, contour: Contour) -> None:
+        """Add central axis + transverse disk lines for Simpson visualization."""
+        from echo_personal_tool.domain.calculations.lvef_simpson import (
+            compute_simpson_lines,
+        )
+
+        lines = compute_simpson_lines(contour)
+        if lines is None:
+            return
+
+        # Central axis line (MV midpoint → apex)
+        base, tip = lines.central_line
+        central_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+        central_item.setZValue(15)
+        central_item.setData([base[0], tip[0]], [base[1], tip[1]])
+        self._view.addItem(central_item)
+        self._contour_simpson_items.append(central_item)
+
+        # Transverse disk lines
+        for left, right in lines.disk_lines:
+            disk_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+            disk_item.setZValue(15)
+            disk_item.setData([left[0], right[0]], [left[1], right[1]])
+            self._view.addItem(disk_item)
+            self._contour_simpson_items.append(disk_item)
+
+    def _update_simpson_lines(self, contour_index: int, contour: Contour) -> None:
+        """Remove old Simpson lines and re-render from updated contour."""
+        from echo_personal_tool.domain.calculations.lvef_simpson import (
+            compute_simpson_lines,
+        )
+
+        # Remove all existing Simpson lines
+        for item in self._contour_simpson_items:
+            self._view.removeItem(item)
+        self._contour_simpson_items.clear()
+
+        # Compute and render new lines
+        lines = compute_simpson_lines(contour)
+        if lines is None:
+            return
+
+        base, tip = lines.central_line
+        central_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+        central_item.setZValue(15)
+        central_item.setData([base[0], tip[0]], [base[1], tip[1]])
+        self._view.addItem(central_item)
+        self._contour_simpson_items.append(central_item)
+
+        for left, right in lines.disk_lines:
+            disk_item = pg.PlotDataItem(pen=self._contour_pen_simpson)
+            disk_item.setZValue(15)
+            disk_item.setData([left[0], right[0]], [left[1], right[1]])
+            self._view.addItem(disk_item)
+            self._contour_simpson_items.append(disk_item)
 
     def _reindex_contour_nodes(self) -> None:
         for contour_index, node_items in enumerate(self._contour_nodes):
@@ -4134,6 +4303,14 @@ class ViewerWidget(QWidget):
         else:
             x_values, y_values = self._contour_xy(contour, closed=closed)
         self._contour_items[contour_index].setData(x_values, y_values)
+        # Update Simpson lines if this is a confirmed LV contour
+        if (
+            not during_drag
+            and contour.chamber.upper() == "LV"
+            and contour.is_open_arc
+            and not contour.review_pending
+        ):
+            self._update_simpson_lines(contour_index, contour)
 
     def _resolve_contour_phase(self) -> str:
         return "ED"
@@ -5153,10 +5330,26 @@ class ViewerWidget(QWidget):
         frame = np.asarray(self._current_frame)
         if frame.size == 0:
             return
-        dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
-        window_scale = self._window_slider.value() / 100.0
-        level_offset = (self._level_slider.value() - 50) / 50.0
-        if self._is_color_frame and self._color_source_rgb is not None:
+
+        # Cache key: slider values
+        sliders_key = (
+            self._window_slider.value(),
+            self._level_slider.value(),
+            self._dr_slider.value(),
+        )
+
+        # Use cached levels if sliders haven't changed
+        if (
+            self._cached_display_low is not None
+            and self._cached_display_high is not None
+            and self._cached_levels_key == sliders_key
+        ):
+            low, high = self._cached_display_low, self._cached_display_high
+        else:
+            # Compute new levels from current frame
+            dr_low, dr_high = dr_percentiles_from_slider(self._dr_slider.value())
+            window_scale = self._window_slider.value() / 100.0
+            level_offset = (self._level_slider.value() - 50) / 50.0
             low, high = compute_display_levels(
                 np.asarray(frame, dtype=float),
                 dr_low_pct=dr_low,
@@ -5164,26 +5357,76 @@ class ViewerWidget(QWidget):
                 window_scale=window_scale,
                 level_offset=level_offset,
             )
+
+            # Check if this is an outlier frame (too dark, too bright, too flat)
+            is_outlier = self._is_levels_outlier(low, high, frame)
+
+            if not is_outlier:
+                # Cache good levels
+                self._cached_display_low = low
+                self._cached_display_high = high
+                self._cached_levels_key = sliders_key
+            elif self._cached_display_low is not None:
+                # Use previously cached levels instead of outlier
+                low, high = self._cached_display_low, self._cached_display_high
+
+        # Apply levels to current frame
+        if self._is_color_frame and self._color_source_rgb is not None:
             display = apply_window_level_rgb(self._color_source_rgb, low, high)
             self._image_item.setImage(display, autoLevels=False)
         else:
-            from echo_personal_tool.infrastructure.pixel_utils import apply_wl_lut
+            import cv2
+            from echo_personal_tool.infrastructure.pixel_utils import _grayscale_source_array
 
-            display = apply_wl_lut(
-                frame,
-                dr_low_pct=dr_low,
-                dr_high_pct=dr_high,
-                window_scale=window_scale,
-                level_offset=level_offset,
-            )
+            src = _grayscale_source_array(frame)
+            span = max(high - low, 1.0)
+            if src.dtype == np.uint16:
+                lut = np.clip(
+                    (np.arange(65536, dtype=np.float64) - low) / span * 255.0,
+                    0.0, 255.0,
+                ).astype(np.uint8)
+                display = lut[src]
+            else:
+                src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
+                lut = np.clip(
+                    (np.arange(256, dtype=np.float64) - low) / span * 255.0,
+                    0.0, 255.0,
+                ).astype(np.uint8)
+                display = cv2.LUT(src_u8, lut)
             self._image_item.setImage(display, autoLevels=False)
         self._invalidate_edge_map_cache()
+
+    def _is_levels_outlier(self, low: float, high: float, frame: np.ndarray) -> bool:
+        """Check if computed levels indicate an outlier frame (too dark/bright/flat)."""
+        # Check 1: Range too narrow (likely a near-empty or saturated frame)
+        pixel_range = high - low
+        if pixel_range < 10.0:
+            return True
+        # Check 2: Mean brightness too extreme
+        flat = np.asarray(frame, dtype=np.float64).ravel()
+        mean_val = float(np.mean(flat))
+        if mean_val < 5.0 or mean_val > 250.0:
+            return True
+        # Check 3: Too little variation (flat image)
+        std_val = float(np.std(flat))
+        if std_val < 3.0:
+            return True
+        return False
 
     def set_magnetic_snap_enabled(self, enabled: bool) -> None:
         self._magnetic_snap_enabled = bool(enabled)
 
     def magnetic_snap_enabled(self) -> bool:
         return self._magnetic_snap_enabled
+
+    def set_despeckle_enabled(self, enabled: bool) -> None:
+        self._despeckle_enabled = bool(enabled)
+        # Re-render current frame with updated filter
+        if self._current_frame is not None:
+            self._update_levels()
+
+    def despeckle_enabled(self) -> bool:
+        return self._despeckle_enabled
 
     def _grayscale_frame_for_edges(self) -> np.ndarray | None:
         if self._current_frame is None:
@@ -5257,6 +5500,31 @@ class ViewerWidget(QWidget):
         )
         contour.points[:] = snapped
         self._snap_open_arc_endpoints(contour)
+
+    def _auto_snap_new_contour(self, contour: Contour) -> None:
+        """Apply magnetic edge snap to a freshly placed contour (after 3-point placement)."""
+        if not self._magnetic_snap_enabled:
+            return
+        if not contour.is_open_arc:
+            return
+        frame_index = self._contour_frame_index()
+        instance_uid = self._current_instance_uid()
+        for i, c in enumerate(self._contours):
+            if (
+                c is contour
+                or (c.frame_index == frame_index and c.chamber == contour.chamber)
+            ) and (
+                instance_uid is None
+                or c.sop_instance_uid is None
+                or c.sop_instance_uid == instance_uid
+            ):
+                self._apply_magnetic_snap_to_contour(
+                    i,
+                    np.ones(len(contour.points)),
+                    grab_index=None,
+                )
+                self._refresh_rendered_contour_geometry(i)
+                break
 
     def _current_caliper_label(self) -> str:
         return self._caliper_labels[self._caliper_label_index]

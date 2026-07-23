@@ -33,12 +33,12 @@ jobs:
       - name: Run benchmarks
         run: |
           pytest tests/benchmark/ --benchmark-json=benchmark-results.json --benchmark-save=latest -q 2>&1 || true
-          # Create results dir if no benchmark tests exist yet
           mkdir -p benchmarks
 
       - name: Store benchmark results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
         with:
           name: SonoForge Benchmarks
           tool: 'pytest'
@@ -53,6 +53,7 @@ jobs:
       - name: Comment on PR
         if: github.event_name == 'pull_request'
         uses: benchmark-action/github-action-benchmark@v1
+        continue-on-error: true
         with:
           name: SonoForge Benchmarks
           tool: 'pytest'

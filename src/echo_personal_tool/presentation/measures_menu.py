@@ -106,6 +106,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.la_lavir", MeasurementAction.LA_DIAMETER),
             _btn("menu.lav_4c", MeasurementAction.LAV_4C),
+            _btn("menu.lav_4c_ai_plus", MeasurementAction.LAV_4C_AI_PLUS),
             _btn("menu.lav_bi", MeasurementAction.LAV_BI),
         ),
     ),

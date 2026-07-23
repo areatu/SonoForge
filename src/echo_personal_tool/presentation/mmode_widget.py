@@ -290,6 +290,12 @@ class MModeWidget(QWidget):
         self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
         self._sweep_line.setValue(0)
 
+    def clear_calibration(self) -> None:
+        """Reset time/depth calibration so the next file starts fresh."""
+        self._time_ms_per_pixel = None
+        self._depth_mm_per_pixel = None
+        self._apply_image_rect()
+
     def recalculate_from_frames(
         self,
         frames: list[np.ndarray],
