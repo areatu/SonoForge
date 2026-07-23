@@ -478,7 +478,7 @@ def temporal_fuse(
         fused_apex,
         phase=phase,
     )
-    smoothed = smooth_open_arc(refined, fused_annulus, apex=fused_apex, iterations=4, blend=0.0)
+    smoothed = smooth_open_arc(refined, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
 
     fused_contour = Contour(
         phase=center_contour.phase,

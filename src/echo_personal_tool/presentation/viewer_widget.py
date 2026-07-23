@@ -2718,6 +2718,7 @@ class ViewerWidget(QWidget):
             return False
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -2797,6 +2798,8 @@ class ViewerWidget(QWidget):
             )
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        if contour.is_open_arc:
+            self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
 
         # --- Trigger LA assist for A4C ES manual contour ---
@@ -2843,6 +2846,10 @@ class ViewerWidget(QWidget):
     def _on_la_assist_contour_ready(self, contour) -> None:
         """Replace current LA contour with AI-assisted version."""
         if contour.chamber != "LA":
+            return
+        # Guard: ignore stale assist results if user moved to a different frame
+        current_frame = self._contour_frame_index()
+        if contour.frame_index is not None and current_frame is not None and contour.frame_index != current_frame:
             return
         # Find and replace the existing LA contour
         for i, c in enumerate(self._contours):
@@ -5315,6 +5322,31 @@ class ViewerWidget(QWidget):
         )
         contour.points[:] = snapped
         self._snap_open_arc_endpoints(contour)
+
+    def _auto_snap_new_contour(self, contour: Contour) -> None:
+        """Apply magnetic edge snap to a freshly placed contour (after 3-point placement)."""
+        if not self._magnetic_snap_enabled:
+            return
+        if not contour.is_open_arc:
+            return
+        frame_index = self._contour_frame_index()
+        instance_uid = self._current_instance_uid()
+        for i, c in enumerate(self._contours):
+            if (
+                c is contour
+                or (c.frame_index == frame_index and c.chamber == contour.chamber)
+            ) and (
+                instance_uid is None
+                or c.sop_instance_uid is None
+                or c.sop_instance_uid == instance_uid
+            ):
+                self._apply_magnetic_snap_to_contour(
+                    i,
+                    np.ones(len(contour.points)),
+                    grab_index=None,
+                )
+                self._refresh_rendered_contour_geometry(i)
+                break
 
     def _current_caliper_label(self) -> str:
         return self._caliper_labels[self._caliper_label_index]

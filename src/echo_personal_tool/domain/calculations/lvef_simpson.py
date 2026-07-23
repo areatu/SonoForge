@@ -100,8 +100,31 @@ def format_contour_overlay(
 _MIN_LV_AUTO_ANNULUS_PX = 20.0
 _MIN_LV_AUTO_LONG_AXIS_PX = 15.0
 _MIN_LV_AUTO_ARC_SPAN_PX = 8.0
-_MIN_LV_AUTO_ANNULUS_MM = 3.0
+_MIN_LV_AUTO_ANNULUS_MM = 5.0
 _MIN_ARC_DEPTH_RATIO = 0.15
+
+
+def _contour_self_intersects(points: list[tuple[float, float]]) -> bool:
+    """Check if the open-arc contour self-intersects (excluding consecutive segments)."""
+    n = len(points)
+    if n < 4:
+        return False
+    segments = [(points[i], points[i + 1]) for i in range(n - 1)]
+    for i in range(len(segments)):
+        (ax, ay), (bx, by) = segments[i]
+        for j in range(i + 2, len(segments)):
+            # Skip adjacent segments (they share an endpoint)
+            if j == i + 1:
+                continue
+            (cx, cy), (dx, dy) = segments[j]
+            denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx)
+            if abs(denom) < 1e-10:
+                continue
+            t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / denom
+            u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / denom
+            if 0.0 < t < 1.0 and 0.0 < u < 1.0:
+                return True
+    return False
 
 
 def _contour_annulus_length_px(contour: Contour) -> float:
@@ -216,6 +239,10 @@ def explain_lv_auto_reject_reason(
             rx0, ry0, rx1, ry1 = roi_xyxy
             if not (rx0 <= centroid[0] <= rx1 and ry0 <= centroid[1] <= ry1):
                 return "центр контура вне ROI — проверьте выделение сектора"
+
+    # v3: self-intersection check
+    if _contour_self_intersects(contour.points):
+        return "контур самопересекается — попробуйте другой кадр или перерисуйте"
 
     return None
 

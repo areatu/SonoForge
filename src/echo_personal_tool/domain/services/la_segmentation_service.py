@@ -15,7 +15,7 @@ from echo_personal_tool.domain.services.contour_geometry import (
 )
 from echo_personal_tool.domain.services.mbs_lite_service import (
     _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
-    _warp_elliptical_open_arc,
+    _warp_superellipse_open_arc,
 )
 
 # ---------------------------------------------------------------------------
@@ -187,8 +187,8 @@ def la_mask_to_contour(
     component = _largest_component(binary)
     septal, lateral, apex = _la_landmarks_from_mask(component)
 
-    # Fit elliptical open arc (LA-specific half-ellipse template)
-    template = _warp_elliptical_open_arc(
+    # Fit superellipse open arc (LA-specific template, adaptive shape)
+    template = _warp_superellipse_open_arc(
         septal,
         lateral,
         apex,

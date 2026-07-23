@@ -2288,6 +2288,10 @@ class AppController(QObject):
             annulus_max_shift_ratio_ed=tf.get("annulus_max_shift_ratio_ed", 0.015),
             annulus_max_shift_ratio_es=tf.get("annulus_max_shift_ratio_es", 0.012),
             apex_direction_lock=tf.get("apex_direction_lock", True),
+            confidence_weighted=tf.get("confidence_weighted", True),
+            outlier_rejection=tf.get("outlier_rejection", True),
+            max_neighbor_shift_ratio=tf.get("max_neighbor_shift_ratio", 0.15),
+            min_confidence_score=tf.get("min_confidence_score", 0.3),
         )
 
     def _on_auto_segment_finished(
@@ -2677,8 +2681,14 @@ class AppController(QObject):
             ),
             Qt.ConnectionType.QueuedConnection,
         )
-        worker.signals.failed.connect(lambda err: None, Qt.ConnectionType.QueuedConnection)
-        worker.signals.timed_out.connect(lambda: None, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(
+            lambda err: logger.warning("[LA-assist] inference failed: %s", err),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.timed_out.connect(
+            lambda: logger.warning("[LA-assist] inference timed out"),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.setAutoDelete(False)
         self._retain_worker(worker)
@@ -2737,8 +2747,8 @@ class AppController(QObject):
             # Emit for viewer to pick up
             self.la_assist_contour_ready.emit(contour)
 
-        except (ValueError, Exception):
-            pass  # Silently fall back to geometric ellipse
+        except Exception:
+            logger.warning("[LA-assist] failed to build contour from blended landmarks", exc_info=True)
 
     # ── Temporal Fusion ──────────────────────────────────────────────────
 
@@ -3012,6 +3022,19 @@ class AppController(QObject):
             self._fusion_result = dataclasses.replace(result, fused_contour=fused_contour)
 
         # Replace pending contour with fused contour
+        # Quality gate: reject fused contour if it fails geometry checks
+        from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
+
+        pixel_spacing = None
+        if self._current_instance is not None:
+            ps = getattr(self._current_instance, "pixel_spacing", None)
+            if ps is not None:
+                pixel_spacing = (ps[0], ps[1]) if len(ps) >= 2 else None
+        reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
+        if reject_reason is not None:
+            logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
+            fused_contour = center_contour
+
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours
