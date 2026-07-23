@@ -50,15 +50,15 @@ jobs:
 
       - run: pip install -e ".[dev]"
 
-      # Linux: run with virtual display
+      # Linux: run with virtual display (xvfb-run for Qt tests)
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
-        run: pytest tests/unit/ -q --tb=line -m "not gui" --no-header --cov=src/echo_personal_tool --cov-report=xml
+        run: xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml
 
-      # macOS/Windows: run directly (no xvfb needed)
+      # macOS/Windows: run directly
       - name: Run tests (macOS/Windows)
         if: runner.os != 'Linux'
-        run: pytest tests/unit/ -q --tb=line -m "not gui" --no-header
+        run: pytest tests/unit/ -q --tb=line --no-header
 
       # Linux: upload coverage to Coveralls
       - name: Upload coverage to Coveralls
