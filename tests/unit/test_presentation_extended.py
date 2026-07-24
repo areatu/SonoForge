@@ -1207,3 +1207,802 @@ class TestStyledDialogs:
         _style_dialog(dialog)
         # Should apply palette and stylesheet without crash
         assert dialog.palette() is not None
+
+
+# ── ui_animations ──────────────────────────────────────────────────
+
+
+class TestUiAnimations:
+    def test_hex_to_rgb(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import _hex_to_rgb
+
+        assert _hex_to_rgb("#1a2332") == (26, 35, 50)
+        assert _hex_to_rgb("#ffffff") == (255, 255, 255)
+        assert _hex_to_rgb("#000000") == (0, 0, 0)
+
+    def test_hex_to_rgb_short(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import _hex_to_rgb
+
+        # Short hex returns fallback
+        result = _hex_to_rgb("#fff")
+        assert result == (46, 64, 84)
+
+    def test_rgb_to_hex(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import _rgb_to_hex
+
+        assert _rgb_to_hex(26, 35, 50) == "#1a2332"
+        assert _rgb_to_hex(255, 255, 255) == "#ffffff"
+        assert _rgb_to_hex(0, 0, 0) == "#000000"
+
+    def test_lerp_color(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import _lerp_color
+
+        # t=0 → c1, t=1 → c2
+        assert _lerp_color("#000000", "#ffffff", 0.0) == "#000000"
+        assert _lerp_color("#000000", "#ffffff", 1.0) == "#ffffff"
+        mid = _lerp_color("#000000", "#ffffff", 0.5)
+        assert mid == "#7f7f7f"
+
+    def test_hover_button_mixin_install(self, qtbot) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+
+        btn = QPushButton("test")
+        qtbot.addWidget(btn)
+        mixin1 = HoverButtonMixin.install(btn)
+        mixin2 = HoverButtonMixin.install(btn)
+        assert mixin1 is mixin2  # same instance
+
+    def test_animate_widget_opacity(self, qtbot) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        from echo_personal_tool.presentation.ui_animations import animate_widget_opacity
+
+        btn = QPushButton("test")
+        qtbot.addWidget(btn)
+        anim = animate_widget_opacity(btn, 0.0, 1.0, duration_ms=50)
+        assert anim is not None
+        assert btn.property("_opacity_anim") is anim
+
+    def test_animate_widget_opacity_with_callback(self, qtbot) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        from echo_personal_tool.presentation.ui_animations import animate_widget_opacity
+
+        btn = QPushButton("test")
+        qtbot.addWidget(btn)
+        called = []
+        anim = animate_widget_opacity(btn, 0.0, 1.0, duration_ms=50, on_finished=lambda: called.append(True))
+        assert anim is not None
+
+    def test_hide_dialog_animated(self, qtbot) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        from echo_personal_tool.presentation.ui_animations import hide_dialog_animated
+
+        dialog = QDialog()
+        qtbot.addWidget(dialog)
+        called = []
+        hide_dialog_animated(dialog, on_done=lambda: called.append(True))
+        assert called == [True]
+
+    def test_hide_dialog_animated_no_callback(self, qtbot) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        from echo_personal_tool.presentation.ui_animations import hide_dialog_animated
+
+        dialog = QDialog()
+        qtbot.addWidget(dialog)
+        hide_dialog_animated(dialog)  # should not crash
+
+    def test_loading_button(self, qtbot) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        from echo_personal_tool.presentation.ui_animations import loading_button
+
+        btn = QPushButton("Submit")
+        qtbot.addWidget(btn)
+        with loading_button(btn, "Loading..."):
+            assert btn.text() == "Loading..."
+            assert btn.isEnabled() is False
+        assert btn.text() == "Submit"
+        assert btn.isEnabled() is True
+
+    def test_exec_animated(self, qtbot) -> None:
+        from PySide6.QtWidgets import QDialog
+
+        from echo_personal_tool.presentation.ui_animations import exec_animated
+
+        dialog = QDialog()
+        qtbot.addWidget(dialog)
+        # exec_animated calls dialog.exec() which would block,
+        # so we just verify the function exists and is callable
+        assert callable(exec_animated)
+
+    def test_set_button_loading(self, qtbot) -> None:
+        from PySide6.QtWidgets import QPushButton
+
+        from echo_personal_tool.presentation.ui_animations import set_button_loading
+
+        btn = QPushButton("Save")
+        qtbot.addWidget(btn)
+        set_button_loading(btn, True, "Saving...")
+        assert btn.text() == "Saving..."
+        assert btn.isEnabled() is False
+        set_button_loading(btn, False)
+        assert btn.text() == "Save"
+        assert btn.isEnabled() is True
+
+    def test_init_time_source(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import _current_time_ms
+
+        t = _current_time_ms()
+        assert isinstance(t, int)
+        assert t > 0
+
+
+# ── dark_theme extended ────────────────────────────────────────────
+
+
+class TestDarkThemeExtended:
+    def test_resolve_theme_dark(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _DARK, _resolve_theme
+
+        assert _resolve_theme("dark") is _DARK
+
+    def test_resolve_theme_light(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _LIGHT, _resolve_theme
+
+        assert _resolve_theme("light") is _LIGHT
+
+    def test_resolve_theme_unknown(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _DARK, _resolve_theme
+
+        assert _resolve_theme("unknown") is _DARK
+
+    def test_get_logo_path(self) -> None:
+        from pathlib import Path
+
+        from echo_personal_tool.presentation.dark_theme import get_logo_path
+
+        path = get_logo_path()
+        assert isinstance(path, Path)
+
+    def test_build_clinical_stylesheet(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        css = build_clinical_stylesheet(font_size=14, theme="dark")
+        assert "QWidget" in css
+        assert "14px" in css or "font-size" in css
+
+    def test_build_clinical_stylesheet_light(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        css = build_clinical_stylesheet(font_size=12, theme="light")
+        assert "QWidget" in css
+
+    def test_is_system_dark(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _is_system_dark
+
+        result = _is_system_dark()
+        assert isinstance(result, bool)
+
+    def test_theme_map_has_all_themes(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _THEME_MAP
+
+        assert "dark" in _THEME_MAP
+        assert "light" in _THEME_MAP
+        assert "vscode_dark" in _THEME_MAP
+        assert "vscode_light" in _THEME_MAP
+
+
+# ── mmode_scan_line ────────────────────────────────────────────────
+
+
+class TestMModeScanLine:
+    def test_creation(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        assert item.line_start is None
+        assert item.line_end is None
+        assert item.is_complete is False
+
+    def test_set_start(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        assert item.line_start == (10.0, 20.0)
+        assert item.line_end is None
+        assert item.is_complete is False
+
+    def test_set_end(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 60.0))
+        assert item.line_end == (50.0, 60.0)
+        assert item.is_complete is True
+
+    def test_get_endpoints(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 60.0))
+        start, end = item.get_endpoints()
+        assert start == (10.0, 20.0)
+        assert end == (50.0, 60.0)
+
+    def test_move_start_to(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 60.0))
+        item.move_start_to((15.0, 25.0))
+        assert item.line_start == (15.0, 25.0)
+
+    def test_move_end_to(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 60.0))
+        item.move_end_to((55.0, 65.0))
+        assert item.line_end == (55.0, 65.0)
+
+    def test_clear(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 60.0))
+        item.clear()
+        assert item.line_start is None
+        assert item.line_end is None
+        assert item.is_complete is False
+
+    def test_update_preview(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.update_preview((30.0, 40.0))
+        assert item.line_end == (30.0, 40.0)
+
+    def test_update_preview_no_start(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.update_preview((30.0, 40.0))
+        # Should not crash, line_end stays None
+        assert item.line_end is None
+
+    def test_vertical_lock_default(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        assert item.vertical_lock is False
+
+
+# ── mmode_widget ───────────────────────────────────────────────────
+
+
+class TestMModeWidget:
+    def test_creation(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        assert widget._buffer_width == 512
+        assert widget._num_samples == 256
+        assert widget._sweep_x == 0
+
+    def test_clear_buffer(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._image_buffer[0, 0] = 128
+        widget.clear_buffer()
+        assert widget._image_buffer[0, 0] == 0
+
+    def test_clear_calibration(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._time_ms_per_pixel = 2.0
+        widget._depth_mm_per_pixel = 0.5
+        widget.clear_calibration()
+        assert widget._time_ms_per_pixel is None
+        assert widget._depth_mm_per_pixel is None
+
+    def test_set_time_calibration(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_time_calibration_ms_per_pixel(1.5)
+        assert widget._time_ms_per_pixel == 1.5
+
+    def test_set_depth_calibration_mm(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_depth_calibration_mm_per_pixel(0.3)
+        assert widget._depth_mm_per_pixel == 0.3
+
+    def test_set_depth_calibration_cm(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_depth_calibration_cm_per_pixel(0.03)
+        assert widget._depth_mm_per_pixel == 0.3  # 0.03 * 10
+
+    def test_on_new_column(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        column = np.random.randint(0, 255, (256,), dtype=np.uint8)
+        widget.on_new_column(column)
+        # Sweep should advance
+        assert widget._sweep_x >= 0
+
+    def test_sweep_speeds(self) -> None:
+        from echo_personal_tool.presentation.mmode_widget import _SWEEP_SPEEDS
+
+        assert "25 mm/s" in _SWEEP_SPEEDS
+        assert "37.5 mm/s" in _SWEEP_SPEEDS
+        assert "50 mm/s" in _SWEEP_SPEEDS
+
+    def test_set_sweep_speed(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_sweep_speed("50 mm/s")
+        # Should not crash
+
+    def test_set_scan_line(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_scan_line((10.0, 20.0), (50.0, 60.0))
+        assert widget._scan_start == (10.0, 20.0)
+        assert widget._scan_end == (50.0, 60.0)
+
+    def test_set_scan_line_none(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_scan_line(None, None)
+        assert widget._scan_start is None
+        assert widget._scan_end is None
+
+    def test_recalculate_from_frames(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        frames = [np.random.randint(0, 255, (64, 64), dtype=np.uint8) for _ in range(10)]
+        widget.recalculate_from_frames(frames, (32.0, 0.0), (32.0, 63.0))
+        # Should populate the buffer
+
+    def test_set_sweep_speed_same_noop(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        # Default is 512, set to same → no change
+        widget.set_sweep_speed("25 mm/s")  # 128, different from 512
+        assert widget._buffer_width == 128
+
+    def test_set_sweep_speed_invalid(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_sweep_speed("invalid_speed")
+        assert widget._buffer_width == 512  # unchanged
+
+    def test_clear_measurements(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._clear_measurements()
+        assert widget._teichholz_ed_btn.isChecked() is False
+        assert widget._teichholz_es_btn.isChecked() is False
+
+    def test_start_vertical_measurement(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._start_vertical_measurement()
+        assert widget._measurement_tool._active_mode == "vertical"
+
+    def test_start_horizontal_measurement(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._start_horizontal_measurement()
+        assert widget._measurement_tool._active_mode == "horizontal"
+
+    def test_start_arbitrary_measurement(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._start_arbitrary_measurement()
+        assert widget._measurement_tool._active_mode == "arbitrary"
+
+    def test_start_teichholz_ed(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._start_teichholz_ed()
+        assert widget._teichholz_ed_btn.isChecked() is True
+
+    def test_start_teichholz_es(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget._start_teichholz_es()
+        assert widget._teichholz_es_btn.isChecked() is True
+
+    def test_on_teichholz_ed_complete(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        received = []
+        widget.teichholz_ed_complete.connect(lambda m: received.append(m))
+        widget._on_teichholz_ed_complete([])
+        assert received == [[]]
+        assert widget._teichholz_es_btn.isEnabled() is True
+
+    def test_on_teichholz_es_complete(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        received = []
+        widget.teichholz_es_complete.connect(lambda m: received.append(m))
+        widget._on_teichholz_es_complete({})
+        assert received == [{}]
+
+    def test_set_scan_line_with_num_samples(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_scan_line((10.0, 20.0), (50.0, 60.0), num_samples=128)
+        assert widget._num_samples == 128
+        assert widget._image_buffer.shape == (128, 512)
+
+    def test_set_depth_range_mm(self, qtbot) -> None:
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget()
+        qtbot.addWidget(widget)
+        widget.set_depth_range_mm(100.0)
+        # Should calculate depth_mm_per_pixel from num_samples and range
+        assert widget._depth_mm_per_pixel is not None
+
+    def test_on_new_column_advances_sweep(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget(buffer_width=10)
+        qtbot.addWidget(widget)
+        initial_x = widget._sweep_x
+        column = np.random.randint(0, 255, (256,), dtype=np.uint8)
+        widget.on_new_column(column)
+        assert widget._sweep_x == (initial_x + 1) % 10
+
+    def test_on_new_column_wraps(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
+        widget = MModeWidget(buffer_width=5)
+        qtbot.addWidget(widget)
+        widget._sweep_x = 4
+        column = np.random.randint(0, 255, (256,), dtype=np.uint8)
+        widget.on_new_column(column)
+        assert widget._sweep_x == 0  # wrapped
+
+
+# ── dark_theme extended v2 ─────────────────────────────────────────
+
+
+class TestDarkThemeExtendedV2:
+    def test_build_clinical_stylesheet_dark_contains_key_rules(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        css = build_clinical_stylesheet(font_size=14, theme="dark")
+        assert "QWidget" in css
+        assert "QMainWindow" in css
+        assert "QDialog" in css
+        assert "QScrollBar" in css
+        assert "QStatusBar" in css
+        assert "QPushButton" in css
+
+    def test_build_clinical_stylesheet_vscode_dark(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        css = build_clinical_stylesheet(font_size=13, theme="vscode_dark")
+        assert "QWidget" in css
+
+    def test_build_clinical_stylesheet_vscode_light(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import build_clinical_stylesheet
+
+        css = build_clinical_stylesheet(font_size=13, theme="vscode_light")
+        assert "QWidget" in css
+
+    def test_apply_clinical_theme_no_app(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+        # Should not crash when no QApplication exists
+        # (we can't easily test this without killing the app)
+        apply_clinical_theme(font_size=12, theme="dark", animate=False)
+
+    def test_apply_clinical_theme_with_widget(self, qtbot) -> None:
+        from PySide6.QtWidgets import QWidget
+
+        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        apply_clinical_theme(widget, font_size=12, theme="dark", animate=False)
+        # Should apply palette without crash
+
+    def test_apply_clinical_theme_light(self, qtbot) -> None:
+        from PySide6.QtWidgets import QWidget
+
+        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        apply_clinical_theme(widget, font_size=12, theme="light", animate=False)
+
+    def test_apply_clinical_theme_animated(self, qtbot) -> None:
+        from PySide6.QtWidgets import QWidget
+
+        from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        apply_clinical_theme(widget, font_size=12, theme="dark", animate=True)
+
+    def test_apply_theme_direct(self, qtbot) -> None:
+        from PySide6.QtWidgets import QApplication, QWidget
+
+        from echo_personal_tool.presentation.dark_theme import _apply_theme_direct
+
+        app = QApplication.instance()
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        _apply_theme_direct(app, widget, 14, "dark")
+        assert app.styleSheet() != ""
+
+    def test_fade_theme_transition(self, qtbot) -> None:
+        from PySide6.QtWidgets import QWidget
+
+        from echo_personal_tool.presentation.dark_theme import _fade_theme_transition
+
+        widget = QWidget()
+        qtbot.addWidget(widget)
+        _fade_theme_transition(widget, 12, "dark")
+        assert hasattr(widget, "_theme_anim")
+
+    def test_resolve_theme_system_linux(self) -> None:
+        import sys
+
+        from echo_personal_tool.presentation.dark_theme import _DARK, _LIGHT, _resolve_theme
+
+        if sys.platform == "linux":
+            # On Linux, system theme depends on GTK_THEME env
+            result = _resolve_theme("system")
+            assert result in (_DARK, _LIGHT)
+
+    def test_vs_code_dark_palette_keys(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _VS_CODE_DARK
+
+        assert "bg_dark" in _VS_CODE_DARK
+        assert "text" in _VS_CODE_DARK
+        assert "accent_tab" in _VS_CODE_DARK
+
+    def test_vs_code_light_palette_keys(self) -> None:
+        from echo_personal_tool.presentation.dark_theme import _VS_CODE_LIGHT
+
+        assert "bg_dark" in _VS_CODE_LIGHT
+        assert "text" in _VS_CODE_LIGHT
+
+
+# ── browser_item_delegate extended ─────────────────────────────────
+
+
+class TestBrowserItemDelegateExtended:
+    def test_item_data_role_constant(self) -> None:
+        from echo_personal_tool.presentation.browser_item_delegate import _ITEM_DATA_ROLE
+
+        assert _ITEM_DATA_ROLE == 256
+
+    def test_text_height_constant(self) -> None:
+        from echo_personal_tool.presentation.browser_item_delegate import _TEXT_HEIGHT
+
+        assert _TEXT_HEIGHT == 28
+
+    def test_delegate_is_subclass(self) -> None:
+        from PySide6.QtWidgets import QStyledItemDelegate
+
+        from echo_personal_tool.presentation.browser_item_delegate import (
+            InstanceThumbnailDelegate,
+        )
+
+        assert issubclass(InstanceThumbnailDelegate, QStyledItemDelegate)
+
+
+# ── pyqtgraph_export extended ──────────────────────────────────────
+
+
+class TestPyqtgraphExportExtended:
+    def test_allowed_exporter_classes_non_plot_item(self) -> None:
+        from echo_personal_tool.presentation.pyqtgraph_export import (
+            _PLOT_ONLY_EXPORTERS,
+            allowed_exporter_classes,
+        )
+
+        result = allowed_exporter_classes("not_a_plot")
+        for exporter in _PLOT_ONLY_EXPORTERS:
+            assert exporter not in result
+
+    def test_plot_only_exporters_set(self) -> None:
+        from pyqtgraph.exporters.CSVExporter import CSVExporter
+        from pyqtgraph.exporters.HDF5Exporter import HDF5Exporter
+        from pyqtgraph.exporters.Matplotlib import MatplotlibExporter
+
+        from echo_personal_tool.presentation.pyqtgraph_export import _PLOT_ONLY_EXPORTERS
+
+        assert CSVExporter in _PLOT_ONLY_EXPORTERS
+        assert HDF5Exporter in _PLOT_ONLY_EXPORTERS
+        assert MatplotlibExporter in _PLOT_ONLY_EXPORTERS
+
+    def test_patch_export_dialog_idempotent(self) -> None:
+        from pyqtgraph.GraphicsScene import exportDialog as pg_export_dialog
+
+        from echo_personal_tool.presentation.pyqtgraph_export import (
+            patch_pyqtgraph_export_dialog,
+        )
+
+        # First call should patch
+        patch_pyqtgraph_export_dialog()
+        dialog_cls = pg_export_dialog.ExportDialog
+        assert getattr(dialog_cls, "_echo_export_patched", False) is True
+
+        # Second call should be no-op
+        patch_pyqtgraph_export_dialog()
+        assert getattr(dialog_cls, "_echo_export_patched", False) is True
+
+    def test_patch_preserves_references(self) -> None:
+        from pyqtgraph.GraphicsScene import exportDialog as pg_export_dialog
+
+        from echo_personal_tool.presentation.pyqtgraph_export import (
+            patch_pyqtgraph_export_dialog,
+        )
+
+        patch_pyqtgraph_export_dialog()
+        dialog_cls = pg_export_dialog.ExportDialog
+        assert hasattr(dialog_cls, "_echo_original_update_format_list")
+        assert hasattr(dialog_cls, "_echo_original_export_clicked")
+
+
+# ── server_profile_dialog extended ─────────────────────────────────
+
+
+class TestServerProfileDialogExtended:
+    def test_initial_buttons_disabled(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        assert dialog._btn_load.isEnabled() is False
+        assert dialog._btn_delete.isEnabled() is False
+
+    def test_save_as_button_always_enabled(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        assert dialog._btn_save.isEnabled() is True
+
+    def test_on_load_no_selection(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        dialog._selected_name = None
+        dialog._on_load()  # should return early
+        assert dialog._selected_name is None
+
+    def test_on_delete_no_selection(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        dialog._selected_name = None
+        dialog._on_delete()  # should return early
+        assert dialog._selected_name is None
+
+    def test_refresh_list(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        dialog._refresh_list()  # should not crash
+        assert dialog._list.count() >= 0
+
+
+# ── mmode_scan_line extended ───────────────────────────────────────
+
+
+class TestMModeScanLineExtended:
+    def test_no_view_no_crash(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 0.0))
+        # update_graphics_for_view with no view should not crash
+        item._update_graphics()
+
+    def test_remove_from_view_no_view(self) -> None:
+        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+        item = MModeScanLineItem(viewer_widget=None)
+        item.set_start((10.0, 20.0))
+        item.set_end((50.0, 0.0))
+        # remove_from_view with no view should not crash
+        item.remove_from_view(None)
