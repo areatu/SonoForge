@@ -2083,3 +2083,173 @@ class TestServerProfileDialogV2:
         ):
             dialog._refresh_list()
         assert dialog._list.count() == 2
+
+
+# ── structured_reference_widget ────────────────────────────────────
+
+
+class TestStructuredReferenceWidgetHelpers:
+    def test_parse_pathology_rows_gradation(self) -> None:
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            _ParameterCard,
+        )
+
+        desc = "Лёгкая: <0.20 / Умеренная: 0.20-0.39 / Тяжёлая: ≥0.40"
+        rows = _ParameterCard._parse_pathology_rows(desc, "%")
+        assert len(rows) == 3
+        assert rows[0][0] == "Лёгкая"
+        assert "%" in rows[0][1]
+
+    def test_parse_pathology_rows_simple(self) -> None:
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            _ParameterCard,
+        )
+
+        desc = ">115 (м) / >95 (ж) — гипертрофия"
+        rows = _ParameterCard._parse_pathology_rows(desc, "")
+        assert len(rows) == 1
+
+    def test_parse_pathology_rows_with_unit(self) -> None:
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            _ParameterCard,
+        )
+
+        desc = "Минимальная: <40 / Умеренная: 40-59 / Выраженная: ≥60"
+        rows = _ParameterCard._parse_pathology_rows(desc, "мм")
+        assert len(rows) == 3
+        assert "мм" in rows[0][1]
+
+    def test_creation(self, qtbot, tmp_path) -> None:
+        import yaml
+
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore,
+        )
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            StructuredReferenceWidget,
+        )
+
+        yaml_content = {"topics": [{"name": "Test", "slug": "test", "pathologies": []}]}
+        yaml_path = tmp_path / "refs.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content), encoding="utf-8")
+
+        store = ReferenceDataStore(yaml_path)
+        store.load()
+        widget = StructuredReferenceWidget(store)
+        qtbot.addWidget(widget)
+        assert widget is not None
+
+    def test_format_norm_with_params(self, qtbot, tmp_path) -> None:
+        import yaml
+
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore,
+        )
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            StructuredReferenceWidget,
+        )
+
+        yaml_content = {"topics": [{"name": "Test", "slug": "test", "pathologies": []}]}
+        yaml_path = tmp_path / "refs.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content), encoding="utf-8")
+
+        store = ReferenceDataStore(yaml_path)
+        store.load()
+        widget = StructuredReferenceWidget(store)
+        qtbot.addWidget(widget)
+        from types import SimpleNamespace
+
+        param = SimpleNamespace(norm_male=SimpleNamespace(low=60.0, high=100.0), norm_female=None)
+        result = widget._format_norm(param)
+        assert "60.0" in result
+
+    def test_format_norm_none(self, qtbot, tmp_path) -> None:
+        import yaml
+
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore,
+        )
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            StructuredReferenceWidget,
+        )
+
+        yaml_content = {"topics": [{"name": "Test", "slug": "test", "pathologies": []}]}
+        yaml_path = tmp_path / "refs.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content), encoding="utf-8")
+
+        store = ReferenceDataStore(yaml_path)
+        store.load()
+        widget = StructuredReferenceWidget(store)
+        qtbot.addWidget(widget)
+        from types import SimpleNamespace
+
+        param = SimpleNamespace(norm_male=None, norm_female=None)
+        result = widget._format_norm(param)
+        assert isinstance(result, str)
+
+    def test_format_norm_range(self, qtbot, tmp_path) -> None:
+        import yaml
+
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore,
+        )
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            StructuredReferenceWidget,
+        )
+
+        yaml_content = {"topics": [{"name": "Test", "slug": "test", "pathologies": []}]}
+        yaml_path = tmp_path / "refs.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content), encoding="utf-8")
+
+        store = ReferenceDataStore(yaml_path)
+        store.load()
+        widget = StructuredReferenceWidget(store)
+        qtbot.addWidget(widget)
+        from types import SimpleNamespace
+
+        norm = SimpleNamespace(low=60.0, high=100.0)
+        result = widget._format_norm_range(norm)
+        assert "60.0" in result
+        assert "100.0" in result
+
+    def test_format_norm_range_none(self, qtbot, tmp_path) -> None:
+        import yaml
+
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore,
+        )
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            StructuredReferenceWidget,
+        )
+
+        yaml_content = {"topics": [{"name": "Test", "slug": "test", "pathologies": []}]}
+        yaml_path = tmp_path / "refs.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content), encoding="utf-8")
+
+        store = ReferenceDataStore(yaml_path)
+        store.load()
+        widget = StructuredReferenceWidget(store)
+        qtbot.addWidget(widget)
+        result = widget._format_norm_range(None)
+        assert isinstance(result, str)
+
+    def test_get_current_parameters_empty(self, qtbot, tmp_path) -> None:
+        import yaml
+
+        from echo_personal_tool.domain.services.reference_data_store import (
+            ReferenceDataStore,
+        )
+        from echo_personal_tool.presentation.structured_reference_widget import (
+            StructuredReferenceWidget,
+        )
+
+        yaml_content = {"topics": [{"name": "Test", "slug": "test", "pathologies": []}]}
+        yaml_path = tmp_path / "refs.yaml"
+        yaml_path.write_text(yaml.dump(yaml_content), encoding="utf-8")
+
+        store = ReferenceDataStore(yaml_path)
+        store.load()
+        widget = StructuredReferenceWidget(store)
+        qtbot.addWidget(widget)
+        params = widget._get_current_parameters()
+        assert isinstance(params, list)
