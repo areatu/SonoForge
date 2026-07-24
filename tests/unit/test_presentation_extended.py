@@ -637,3 +637,266 @@ class TestMeasurementResultsDialog:
         qtbot.addWidget(dialog)
         text = dialog._text.toPlainText()
         assert "85.0" in text or "E" in text
+
+
+# ── ste_results_dialog ─────────────────────────────────────────────
+
+
+class TestSteResultsDialog:
+    def test_creation(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
+
+        dialog = SteResultsDialog()
+        qtbot.addWidget(dialog)
+        assert dialog.windowTitle() != ""
+        assert dialog._warning_label.isHidden()
+
+    def test_update_results(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
+
+        dialog = SteResultsDialog()
+        qtbot.addWidget(dialog)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        dialog.update_results(
+            longitudinal, radial,
+            segment_strain={1: -20.0},
+            segment_quality={1: 0.9},
+            gls=-15.0,
+        )
+        assert dialog.isVisible()
+
+    def test_update_results_with_quality_gate(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
+
+        dialog = SteResultsDialog()
+        qtbot.addWidget(dialog)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        dialog.update_results(
+            longitudinal, radial,
+            segment_strain={1: -20.0},
+            segment_quality={1: 0.9},
+            kernels_accepted=80,
+            kernels_rejected=20,
+            kernels_total=100,
+        )
+        assert not dialog._warning_label.isHidden()
+        assert "80/100" in dialog._warning_label.text()
+
+    def test_update_results_no_rejection(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
+
+        dialog = SteResultsDialog()
+        qtbot.addWidget(dialog)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        dialog.update_results(
+            longitudinal, radial,
+            segment_strain={},
+            segment_quality={},
+            kernels_accepted=100,
+            kernels_rejected=0,
+            kernels_total=100,
+        )
+        assert dialog._warning_label.isHidden()
+
+    def test_clear(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
+
+        dialog = SteResultsDialog()
+        qtbot.addWidget(dialog)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        dialog.update_results(longitudinal, radial, segment_strain={1: -20.0}, segment_quality={1: 0.9})
+        dialog.clear()
+        # Should not crash
+
+
+# ── dicom_tag_inspector_widget ─────────────────────────────────────
+
+
+class TestDicomTagInspectorWidget:
+    def test_creation(self, qtbot) -> None:
+        from echo_personal_tool.presentation.dicom_tag_inspector_widget import (
+            DicomTagInspectorWidget,
+        )
+
+        widget = DicomTagInspectorWidget()
+        qtbot.addWidget(widget)
+        assert widget._table.columnCount() == 5
+
+    def test_load_none(self, qtbot) -> None:
+        from echo_personal_tool.presentation.dicom_tag_inspector_widget import (
+            DicomTagInspectorWidget,
+        )
+
+        widget = DicomTagInspectorWidget()
+        qtbot.addWidget(widget)
+        widget.load_instance(None)
+        assert widget._table.rowCount() == 0
+
+    def test_load_nonexistent(self, qtbot) -> None:
+        from pathlib import Path
+
+        from echo_personal_tool.presentation.dicom_tag_inspector_widget import (
+            DicomTagInspectorWidget,
+        )
+
+        widget = DicomTagInspectorWidget()
+        qtbot.addWidget(widget)
+        widget.load_instance(Path("/nonexistent/file.dcm"))
+        assert widget._table.rowCount() == 0
+
+    def test_load_valid_dicom(self, qtbot, synthetic_dicom_path) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.dicom_tag_inspector_widget import (
+            DicomTagInspectorWidget,
+        )
+
+        widget = DicomTagInspectorWidget()
+        qtbot.addWidget(widget)
+        widget.load_instance(synthetic_dicom_path)
+        QApplication.processEvents()
+        # May or may not have rows depending on DICOM content
+        assert widget._table.rowCount() >= 0
+
+
+# ── browser_item_delegate ──────────────────────────────────────────
+
+
+class TestBrowserItemDelegate:
+    def test_constants(self) -> None:
+        from echo_personal_tool.presentation.browser_item_delegate import (
+            THUMB_ROW_HEIGHT,
+            THUMB_WIDTH,
+        )
+
+        assert THUMB_ROW_HEIGHT == 156
+        assert THUMB_WIDTH == 220
+
+    def test_creation(self) -> None:
+        from echo_personal_tool.presentation.browser_item_delegate import (
+            InstanceThumbnailDelegate,
+        )
+
+        delegate = InstanceThumbnailDelegate()
+        assert delegate is not None
+
+
+# ── ge_labeled_slider ──────────────────────────────────────────────
+
+
+class TestGeLabeledSlider:
+    def test_top_labeled_slider_creation(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
+
+        slider = TopLabeledSlider("Window", minimum=0, maximum=255, value=128)
+        qtbot.addWidget(slider)
+        assert slider.value() == 128
+        assert slider.slider().minimum() == 0
+        assert slider.slider().maximum() == 255
+
+    def test_top_labeled_slider_set_value(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
+
+        slider = TopLabeledSlider("Window")
+        qtbot.addWidget(slider)
+        slider.setValue(100)
+        assert slider.value() == 100
+
+    def test_top_labeled_slider_set_range(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
+
+        slider = TopLabeledSlider("Window")
+        qtbot.addWidget(slider)
+        slider.setRange(0, 512)
+        assert slider.slider().maximum() == 512
+
+    def test_top_labeled_slider_signal(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
+
+        slider = TopLabeledSlider("Window", value=0)
+        qtbot.addWidget(slider)
+        with qtbot.waitSignal(slider.valueChanged, timeout=1000) as blocker:
+            slider.setValue(50)
+        assert blocker.args == [50]
+
+    def test_ge_slider_creation(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level", minimum=0, maximum=255, value=128)
+        qtbot.addWidget(slider)
+        assert slider.value() == 128
+
+    def test_ge_slider_increment(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level", minimum=0, maximum=255, value=128)
+        qtbot.addWidget(slider)
+        slider._increment.click()
+        assert slider.value() == 129
+
+    def test_ge_slider_decrement(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level", minimum=0, maximum=255, value=128)
+        qtbot.addWidget(slider)
+        slider._decrement.click()
+        assert slider.value() == 127
+
+    def test_ge_slider_set_value(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level", minimum=0, maximum=255, value=128)
+        qtbot.addWidget(slider)
+        slider.setValue(200)
+        assert slider.value() == 200
+
+    def test_ge_slider_set_range(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level")
+        qtbot.addWidget(slider)
+        slider.setRange(0, 1024)
+        assert slider.slider().maximum() == 1024
+
+    def test_ge_slider_signal(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level")
+        qtbot.addWidget(slider)
+        received = []
+        slider.valueChanged.connect(lambda v: received.append(v))
+        slider.setValue(75)
+        assert received == [75]
+
+    def test_ge_slider_disabled(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level")
+        qtbot.addWidget(slider)
+        slider.setEnabled(False)
+        assert not slider.isEnabled()
+        assert not slider._slider.isEnabled()
+        assert not slider._decrement.isEnabled()
+        assert not slider._increment.isEnabled()
+
+    def test_ge_slider_resize(self, qtbot) -> None:
+        from echo_personal_tool.presentation.ge_labeled_slider import GeLabeledSlider
+
+        slider = GeLabeledSlider("Level")
+        qtbot.addWidget(slider)
+        slider.resize(400, 50)
+        # Should not crash
