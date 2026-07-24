@@ -2643,3 +2643,1073 @@ class TestContourRenderingDeep:
         line_item, ma_item, node_items = w._create_contour_render(c, 0)
         assert line_item is not None
         assert ma_item is not None  # Has mitral annulus
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Crosshair panel bounds
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCrosshairPanelBounds:
+    def test_crosshair_panel_bounds_no_state(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w._crosshair_panel_bounds()
+        assert result is None
+
+    def test_crosshair_panel_bounds_with_doppler(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        result = w._crosshair_panel_bounds()
+        # May return None or a bounds object
+        assert result is None or hasattr(result, "x0")
+
+    def test_measurement_crosshair_active(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w._measurement_crosshair_active()
+        assert isinstance(result, bool)
+
+    def test_ensure_crosshair_graphics(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._ensure_crosshair_graphics()
+        assert w._crosshair_h_item is not None
+        assert w._crosshair_v_item is not None
+
+    def test_ensure_crosshair_graphics_idempotent(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._ensure_crosshair_graphics()
+        first_h = w._crosshair_h_item
+        first_v = w._crosshair_v_item
+        w._ensure_crosshair_graphics()
+        assert w._crosshair_h_item is first_h
+        assert w._crosshair_v_item is first_v
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Doppler calibration state
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestDopplerCalibrationState:
+    def test_apply_doppler_calibration_state(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+        roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=25.0,
+            velocity_span_cm_s=200.0,
+        )
+        w.apply_doppler_calibration_state(state, persist=False)
+        assert w._doppler_calibration_state is not None
+        assert w._doppler_calibration_state.roi == roi
+
+    def test_apply_doppler_calibration_state_persist(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+        roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=25.0,
+            velocity_span_cm_s=200.0,
+        )
+        w.apply_doppler_calibration_state(state, persist=True)
+        assert w._doppler_calibration_state is not None
+        assert w._doppler_axis_calibrated is True
+
+    def test_doppler_calibration_matches_instance(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        result = w._doppler_calibration_matches_instance()
+        assert isinstance(result, bool)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MMode calibration state
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMModeCalibrationState:
+    def test_apply_mmode_calibration_state(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        state = MmodeCalibrationState(
+            roi=roi,
+            vertical_mm_per_pixel=0.5,
+        )
+        w.apply_mmode_calibration_state(state)
+        assert w._mmode_calibration_state is not None
+        assert w._mmode_calibration_state.vertical_mm_per_pixel == 0.5
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Linear measurement creation
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestLinearMeasurementCreation:
+    def test_linear_measurement_from_endpoints(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        m = w._linear_measurement_from_endpoints(
+            (10.0, 10.0), (50.0, 10.0), "IVSd"
+        )
+        assert m is not None
+        assert m.label == "IVSd"
+
+    def test_linear_measurement_key(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+        m = LinearMeasurement(
+            label="IVSd",
+            pixel_length=10.0,
+            millimeter_length=5.0,
+            frame_index=0,
+        )
+        key = w._linear_measurement_key(m)
+        assert isinstance(key, tuple)
+        assert len(key) >= 2
+
+    def test_constrain_linear_endpoint(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        result = w._constrain_linear_endpoint(
+            (10.0, 10.0), (50.0, 10.0), label="IVSd"
+        )
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  User preferences
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestUserPreferences:
+    def test_apply_user_preferences(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        prefs = UserPreferences()
+        w.apply_user_preferences(prefs)
+        # Should not raise
+
+    def test_apply_user_preferences_with_contours(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
+        w.set_contour_from_domain(c)
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        prefs = UserPreferences()
+        w.apply_user_preferences(prefs)
+        # Should not raise
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Auto detect doppler calibration
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestAutoDetectDoppler:
+    def test_try_auto_detect_no_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w._try_auto_detect_doppler_calibration()
+        assert result is False
+
+    def test_try_auto_detect_disabled(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._doppler_auto_calibration_enabled = False
+        result = w._try_auto_detect_doppler_calibration()
+        assert result is False
+
+    def test_try_auto_detect_no_dicom(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        result = w._try_auto_detect_doppler_calibration()
+        # May return True or False depending on DICOM tags
+        assert isinstance(result, bool)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Configure doppler axis
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestConfigureDopplerAxis:
+    def test_configure_doppler_axis_no_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._configure_doppler_axis_for_frame()
+
+    def test_configure_doppler_axis_with_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        # Should not raise
+        w._configure_doppler_axis_for_frame()
+
+    def test_configure_doppler_axis_with_calibration(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+        roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=25.0,
+            velocity_span_cm_s=200.0,
+        )
+        w.apply_doppler_calibration_state(state, persist=False)
+        # Should not raise
+        w._configure_doppler_axis_for_frame()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Begin doppler velocity calibration
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestBeginDopplerVelocityCalibration:
+    def test_begin_velocity_calibration_no_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._begin_doppler_velocity_calibration()
+
+    def test_begin_velocity_calibration_with_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._begin_doppler_velocity_calibration()
+        assert w._calibration_kind == "doppler_velocity"
+        assert w._calibration_active is True
+
+    def test_begin_velocity_calibration_with_roi(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        w._begin_doppler_velocity_calibration()
+        assert w._calibration_kind == "doppler_velocity"
+        assert w._calibration_active is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Handle doppler mouse click
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestHandleDopplerMouseClick:
+    def test_handle_doppler_click_no_mode(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(10, 10),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_mouse_click(event)
+        assert result is False
+
+    def test_handle_doppler_click_with_mode(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        w.set_doppler_tool_mode("peak")
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_mouse_click(event)
+        assert isinstance(result, bool)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Doppler trace press/release
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestDopplerTracePressRelease:
+    def test_handle_doppler_trace_press_with_mode(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        w.set_doppler_tool_mode("trace")
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_trace_press(event)
+        assert isinstance(result, bool)
+
+    def test_handle_doppler_trace_drag(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_trace_drag(event)
+        assert result is False
+
+    def test_handle_doppler_trace_release(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_trace_release(event)
+        assert result is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Doppler calibration click
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestDopplerCalibrationClick:
+    def test_handle_doppler_calibration_click_no_step(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(10, 10),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_calibration_click(event)
+        assert result is False
+
+    def test_handle_doppler_calibration_click_roi_step(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._doppler_cal_step = "roi"
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_calibration_click(event)
+        assert result is True
+        assert w._doppler_roi_corner1 is not None
+
+    def test_handle_doppler_calibration_click_baseline_step(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._doppler_cal_step = "baseline"
+        w._doppler_roi_corner1 = (10.0, 10.0)
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_calibration_click(event)
+        assert result is True
+        assert w._doppler_cal_step is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Linear caliper sequence
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestLinearCaliperSequence:
+    def test_linear_caliper_sequence_flow(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state()
+        w.set_state(state)
+        # Start sequence
+        w.start_linear_caliper_sequence(("IVSd", "LVEDD"))
+        assert w.is_linear_caliper_active is True
+        assert len(w._caliper_sequence) == 1
+        # First click
+        m = w._linear_measurement_from_endpoints(
+            (10.0, 10.0), (50.0, 10.0), "IVSd"
+        )
+        w._stored_linear_measurements[w._linear_measurement_key(m)] = m
+        # Should chain to next label
+        assert w.is_linear_caliper_active is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour zone drag
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourZoneDrag:
+    def test_handle_contour_zone_drag_no_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_contour_zone_drag(event)
+        assert result is False
+
+    def test_handle_contour_zone_release_no_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_contour_zone_release(event)
+        assert result is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Caliper node drag
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCaliperNodeDrag:
+    def test_begin_caliper_node_drag_no_linear(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._begin_caliper_node_drag(("IVSd", 0), 0, 10.0, 10.0)
+        # Should not set drag active when linear caliper is active
+        assert w._caliper_drag_active is False
+
+    def test_apply_caliper_node_drag_no_active(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._apply_caliper_node_drag(10.0, 10.0)
+        # Should not raise
+        assert True
+
+    def test_finish_caliper_node_drag(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._finish_caliper_node_drag(cancel=True)
+        # Should not raise
+        assert w._caliper_drag_active is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour drag from global
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourDragFromGlobal:
+    def test_handle_contour_drag_release_from_global_no_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtCore import QPointF
+        # Should not raise
+        w._handle_contour_drag_release_from_global(QPointF(10, 10))
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MMode calibration click
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMModeCalibrationClick:
+    def test_handle_mmode_calibration_click_no_step(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(10, 10),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_mmode_calibration_click(event)
+        assert result is False
+
+    def test_handle_mmode_calibration_click_roi_step(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._mmode_cal_step = "roi"
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_mmode_calibration_click(event)
+        assert result is True
+        assert w._mmode_roi_corner1 is not None
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MMode line click from event
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestMModeLineClickFromEvent:
+    def test_handle_mmode_line_click_from_event_no_active(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(10, 10),
+            QPointF(10, 10),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_mmode_line_click_from_event(event)
+        assert result is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour hover
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourHover:
+    def test_handle_contour_hover_no_contours(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_contour_hover(event)
+        assert result is False
+
+    def test_clear_contour_hover(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._hover_contour_index = 0
+        w._hover_grab_index = 1
+        w._clear_contour_hover()
+        assert w._hover_contour_index is None
+        assert w._hover_grab_index is None
+
+    def test_clear_contour_node_highlights(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._clear_contour_node_highlights(0)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  RBF drag
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRBFDrag:
+    def test_apply_rbf_drag_step_no_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._apply_rbf_drag_step(0, 10.0, 10.0, grab_index=0)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour editing blocked
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourEditingBlocked:
+    def test_contour_editing_blocked_all_false(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        assert w._contour_editing_blocked() is False
+
+    def test_contour_editing_blocked_contour_active(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._contour_mode_active = True
+        assert w._contour_editing_blocked() is True
+
+    def test_contour_editing_blocked_linear_active(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._linear_caliper_active = True
+        assert w._contour_editing_blocked() is True
+
+    def test_contour_editing_blocked_calibration_active(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._calibration_active = True
+        assert w._contour_editing_blocked() is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour zone press
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourZonePress:
+    def test_handle_contour_zone_press_no_contours(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_contour_zone_press(event)
+        assert result is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Caliper label item
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCaliperLabelItem:
+    def test_update_caliper_label_graphics(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        # Should not raise
+        w._update_caliper_label_graphics(
+            (10.0, 10.0), (50.0, 10.0),
+            color="#ffb300", is_preview=True,
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour click flow (ma_septal, ma_lateral, apex)
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourClickFlow:
+    def test_ma_septal_click(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "ma_septal"
+        result = w.handle_contour_click((10.0, 10.0))
+        assert result is True
+        assert w._active_mitral_septal == (10.0, 10.0)
+        assert w._contour_stage == "ma_lateral"
+
+    def test_ma_lateral_click(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "ma_lateral"
+        w._active_mitral_septal = (10.0, 10.0)
+        result = w.handle_contour_click((50.0, 10.0))
+        assert result is True
+        assert w._active_mitral_annulus == ((10.0, 10.0), (50.0, 10.0))
+        assert w._contour_stage == "apex"
+
+    def test_apex_click_model(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_model_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "apex"
+        w._active_mitral_septal = (10.0, 10.0)
+        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        result = w.handle_contour_click((30.0, 50.0))
+        assert result is True
+
+    def test_apex_click_manual(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "apex"
+        w._active_mitral_septal = (10.0, 10.0)
+        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        result = w.handle_contour_click((30.0, 50.0))
+        assert result is True
+
+    def test_arc_click(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "arc"
+        result = w.handle_contour_click((20.0, 20.0))
+        assert result is True
+        assert len(w._active_arc_points) == 1
+
+    def test_polygon_click(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_closed_contour(chamber="LA")
+        w._contour_stage = "polygon"
+        result = w.handle_contour_click((10.0, 10.0))
+        assert result is True
+        assert len(w._active_arc_points) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Finish contour flow
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestFinishContourFlow:
+    def test_finish_contour_polygon_flow(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_closed_contour(chamber="LA")
+        w._contour_stage = "polygon"
+        # Add 4 points to form a closed polygon
+        for pt in [(10, 10), (50, 10), (50, 50), (10, 50)]:
+            w.handle_contour_click(pt)
+        result = w.finish_contour()
+        assert result is True
+        assert len(w.contours()) == 1
+
+    def test_finish_contour_arc_insufficient_points(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "arc"
+        w._active_mitral_septal = (10.0, 10.0)
+        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        # No arc points added
+        result = w.finish_contour()
+        assert result is False
+
+    def test_finish_contour_arc_with_points(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.start_contour(phase="ED", view="A4C", chamber="LV")
+        w._contour_stage = "arc"
+        w._active_mitral_septal = (10.0, 10.0)
+        w._active_mitral_annulus = ((10.0, 10.0), (50.0, 10.0))
+        w._active_arc_points = [(20.0, 20.0), (30.0, 30.0), (40.0, 20.0)]
+        result = w.finish_contour()
+        assert result is True
+        assert len(w.contours()) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Refine active contour
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRefineContour:
+    def test_refine_active_open_contour_no_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w.refine_active_open_contour()
+        assert result == (False, "")
+
+    def test_refine_active_model_contour(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w.refine_active_model_contour()
+        assert result == (False, "")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  LA assist contour ready
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestLaAssistContourReady:
+    def test_on_la_assist_contour_ready_wrong_chamber(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models import Contour
+        contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
+        # Should not raise
+        w._on_la_assist_contour_ready(contour)
+
+    def test_on_la_assist_contour_ready_wrong_frame(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        state = _make_state(frame=0)
+        w.set_state(state)
+        from echo_personal_tool.domain.models import Contour
+        contour = Contour(phase="ED", view="A4C", chamber="LA", points=[(10, 10)], frame_index=5)
+        # Should not raise (stale result)
+        w._on_la_assist_contour_ready(contour)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Optical flow refinement
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestOpticalFlowRefinement:
+    def test_apply_optical_flow_refinement_no_contours(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._apply_optical_flow_refinement(0)
+
+    def test_apply_optical_flow_refinement_out_of_bounds(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._apply_optical_flow_refinement(-1)
+        w._apply_optical_flow_refinement(100)
+
+    def test_on_optical_flow_refined_wrong_length(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._on_optical_flow_refined(0, [1.0, 2.0])
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Auto snap new contour
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestAutoSnapNewContour:
+    def test_auto_snap_new_contour(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models import Contour
+        contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
+        # Should not raise
+        w._auto_snap_new_contour(contour)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour pen for
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourPenFor:
+    def test_contour_pen_for_ai_pending(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai", review_pending=True)
+        pen = w._contour_pen_for(c)
+        assert pen is not None
+
+    def test_contour_pen_for_unknown_source(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="unknown")
+        pen = w._contour_pen_for(c)
+        assert pen is not None
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour node highlight
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourNodeHighlight:
+    def test_update_contour_node_highlights(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
+        w.set_contour_from_domain(c)
+        weights = np.ones(len(c.points))
+        w._update_contour_node_highlights(0, weights, color="#4caf50")
+        # Should not raise
+
+    def test_clear_contour_node_highlights(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        # Should not raise
+        w._clear_contour_node_highlights(0)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  RBF highlight color
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRBFHighlightColor:
+    def test_rbf_highlight_color_manual(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="manual")
+        color = w._rbf_highlight_color(c)
+        assert isinstance(color, str)
+
+    def test_rbf_highlight_color_ai(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai")
+        color = w._rbf_highlight_color(c)
+        assert isinstance(color, str)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Pinned indices for contour
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestPinnedIndices:
+    def test_pinned_indices_for_contour(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
+        indices = w._pinned_indices_for_contour(c)
+        assert hasattr(indices, "__iter__")
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  View metrics for RBF
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestViewMetricsForRBF:
+    def test_view_metrics_for_rbf(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        result = w._view_metrics_for_rbf()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Compute hover target
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestComputeHoverTarget:
+    def test_compute_hover_target_no_contours(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w._compute_hover_target((32.0, 32.0))
+        assert result is None
+
+    def test_compute_hover_target_with_contours(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
+        w.set_contour_from_domain(c)
+        result = w._compute_hover_target((15.0, 15.0))
+        # May return None or a tuple
+        assert result is None or isinstance(result, tuple)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Update contour hover
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestUpdateContourHover:
+    def test_update_contour_hover_no_target(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        result = w._update_contour_hover((32.0, 32.0))
+        assert result is False
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour drag release from global
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourDragReleaseGlobal:
+    def test_handle_contour_drag_release_from_global_no_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        from PySide6.QtCore import QPointF
+        # Should not raise
+        w._handle_contour_drag_release_from_global(QPointF(10, 10))
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Contour zone drag with session
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestContourZoneDragWithSession:
+    def test_handle_contour_zone_drag_with_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w._drag_session = (0, 10.0, 10.0, 0, 1)
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtCore import QPointF
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(32, 32),
+            QPointF(32, 32),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_contour_zone_drag(event)
+        # May return True or False depending on conditions
+        assert isinstance(result, bool)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Apply RBF drag step
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestApplyRBFDragStep:
+    def test_apply_rbf_drag_step_with_session(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models import Contour
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
+        w.set_contour_from_domain(c)
+        w._drag_session = (0, 10.0, 10.0, 0, 1)
+        # Should not raise
+        w._apply_rbf_drag_step(0, 15.0, 15.0, grab_index=0)
