@@ -900,3 +900,310 @@ class TestGeLabeledSlider:
         qtbot.addWidget(slider)
         slider.resize(400, 50)
         # Should not crash
+
+
+# ── speckle_settings_dialog ────────────────────────────────────────
+
+
+class TestSpeckleSettingsDialog:
+    def test_creation(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        assert dialog.windowTitle() != ""
+
+    def test_default_preset(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        assert dialog.selected_preset_name() == "standard"
+
+    def test_select_research_preset(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._preset_combo.setCurrentIndex(1)
+        assert dialog.selected_preset_name() == "research"
+
+    def test_select_debug_preset(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._preset_combo.setCurrentIndex(2)
+        assert dialog.selected_preset_name() == "debug"
+
+    def test_get_config_standard(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        config = dialog.get_config()
+        assert config.drift_compensation is True
+        assert config.wall_thickness_mm == 8.0
+
+    def test_get_config_research(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._preset_combo.setCurrentIndex(1)
+        config = dialog.get_config()
+        assert config.kernel_size == 18
+
+    def test_get_config_debug(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._preset_combo.setCurrentIndex(2)
+        config = dialog.get_config()
+        assert config.bidirectional is False
+
+    def test_manual_ed_auto(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        assert dialog.manual_ed is None  # auto by default
+
+    def test_manual_ed_manual(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog(n_frames=30)
+        qtbot.addWidget(dialog)
+        dialog._ed_auto_check.setChecked(False)
+        dialog._ed_spin.setValue(5)
+        assert dialog.manual_ed == 5
+
+    def test_manual_es_auto(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        assert dialog.manual_es is None
+
+    def test_manual_es_manual(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog(n_frames=30)
+        qtbot.addWidget(dialog)
+        dialog._es_auto_check.setChecked(False)
+        dialog._es_spin.setValue(15)
+        assert dialog.manual_es == 15
+
+    def test_with_manual_ed_es(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog(n_frames=30, manual_ed=5, manual_es=15)
+        qtbot.addWidget(dialog)
+        assert dialog.manual_ed == 5
+        assert dialog.manual_es == 15
+        assert not dialog._ed_auto_check.isChecked()
+        assert not dialog._es_auto_check.isChecked()
+
+    def test_drift_compensation_toggle(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._drift_compensation_check.setChecked(False)
+        config = dialog.get_config()
+        assert config.drift_compensation is False
+
+    def test_wall_thickness(self, qtbot) -> None:
+        from echo_personal_tool.presentation.speckle_settings_dialog import (
+            SpeckleSettingsDialog,
+        )
+
+        dialog = SpeckleSettingsDialog()
+        qtbot.addWidget(dialog)
+        dialog._wall_thickness_spin.setValue(10.0)
+        config = dialog.get_config()
+        assert config.wall_thickness_mm == 10.0
+
+
+# ── strain_curve_widget ────────────────────────────────────────────
+
+
+class TestStrainCurveWidget:
+    def test_creation(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        assert "GLS: --" in widget._gls_label.text()
+
+    def test_set_strain_data(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        widget.set_strain_data(longitudinal, radial, ed_index=0, es_index=15)
+        # Should not crash
+
+    def test_set_strain_data_with_window(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        widget.set_strain_data(
+            longitudinal, radial,
+            ed_index=5, es_index=20,
+            window_start=5, window_end=25,
+        )
+
+    def test_set_strain_data_empty(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        widget.set_strain_data(np.array([]), np.array([]))
+        # Should call clear
+
+    def test_set_gls_value(self, qtbot) -> None:
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        widget.set_gls_value(-18.5)
+        assert "GLS: -18.5%" in widget._gls_label.text()
+
+    def test_clear(self, qtbot) -> None:
+        import numpy as np
+
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        longitudinal = np.linspace(0, -0.2, 30)
+        radial = np.linspace(0, 0.1, 30)
+        widget.set_strain_data(longitudinal, radial)
+        widget.clear()
+        assert "GLS: --" in widget._gls_label.text()
+        assert widget._ed_line is None
+        assert widget._es_line is None
+
+    def test_clear_no_lines(self, qtbot) -> None:
+        from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+
+        widget = StrainCurveWidget()
+        qtbot.addWidget(widget)
+        widget.clear()  # Should not crash even without lines
+
+
+# ── server_profile_dialog ──────────────────────────────────────────
+
+
+class TestServerProfileDialog:
+    def test_creation(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        assert dialog.windowTitle() != ""
+        assert dialog._btn_load.isEnabled() is False
+        assert dialog._btn_delete.isEnabled() is False
+
+    def test_selected_settings_default(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        assert dialog.selected_settings == settings
+
+    def test_selection_enables_buttons(self, qtbot) -> None:
+        from PySide6.QtWidgets import QListWidgetItem
+
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        item = QListWidgetItem("test_profile")
+        item.setData(256, "test_profile")
+        dialog._list.addItem(item)
+        dialog._list.setCurrentItem(item)
+        assert dialog._btn_load.isEnabled() is True
+        assert dialog._btn_delete.isEnabled() is True
+
+    def test_clear_selection(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        dialog._on_selection_changed(None, None)
+        assert dialog._btn_load.isEnabled() is False
+        assert dialog._btn_delete.isEnabled() is False
+
+
+# ── styled_dialogs ─────────────────────────────────────────────────
+
+
+class TestStyledDialogs:
+    def test_style_dialog(self, qtbot) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        from echo_personal_tool.presentation.styled_dialogs import _style_dialog
+
+        dialog = QFileDialog()
+        qtbot.addWidget(dialog)
+        _style_dialog(dialog)
+        # Should apply palette and stylesheet without crash
+        assert dialog.palette() is not None
