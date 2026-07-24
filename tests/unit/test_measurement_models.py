@@ -7,13 +7,17 @@ import dataclasses
 import pytest
 
 from echo_personal_tool.domain.models import (
+    ChamberSimpsonResult,
     DopplerResults,
+    IndexedMeasurements,
+    LaVolumeResult,
     LinearMeasurement,
     LvefResult,
     LvViewMetrics,
     MeasurementSnapshot,
     TeichholzResult,
 )
+from echo_personal_tool.domain.models.measurements import PlanimeterResult
 
 
 def test_doppler_results_defaults() -> None:
@@ -148,3 +152,151 @@ def test_measurement_snapshot_populated() -> None:
 def test_measurement_models_are_frozen(instance: object) -> None:
     with pytest.raises(dataclasses.FrozenInstanceError):
         instance.doppler = None  # type: ignore[attr-defined]
+
+
+# ── LaVolumeResult ─────────────────────────────────────────────────
+
+
+class TestLaVolumeResult:
+    def test_defaults(self) -> None:
+        result = LaVolumeResult()
+        assert result.volume_ml is None
+        assert result.area_cm2 is None
+        assert result.length_cm is None
+        assert result.method == "area_length"
+
+    def test_populated(self) -> None:
+        result = LaVolumeResult(volume_ml=55.0, area_cm2=18.0, length_cm=4.5)
+        assert result.volume_ml == 55.0
+        assert result.area_cm2 == 18.0
+        assert result.length_cm == 4.5
+
+    def test_frozen(self) -> None:
+        result = LaVolumeResult()
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.volume_ml = 100.0  # type: ignore[misc]
+
+
+# ── ChamberSimpsonResult ───────────────────────────────────────────
+
+
+class TestChamberSimpsonResult:
+    def test_minimal(self) -> None:
+        result = ChamberSimpsonResult(chamber="LA")
+        assert result.chamber == "LA"
+        assert result.a4c is None
+        assert result.a2c is None
+        assert result.area_cm2 is None
+        assert result.max_volume_ml is None
+        assert result.ef_percent is None
+        assert result.method is None
+
+    def test_populated(self) -> None:
+        result = ChamberSimpsonResult(
+            chamber="LV",
+            a4c=LvViewMetrics(edv_ml=120.0, esv_ml=45.0),
+            a2c=LvViewMetrics(edv_ml=115.0, esv_ml=42.0),
+            area_cm2=25.0,
+            max_volume_ml=120.0,
+            ef_percent=62.5,
+            method="simpson_biplan",
+        )
+        assert result.chamber == "LV"
+        assert result.a4c.edv_ml == 120.0
+        assert result.ef_percent == 62.5
+
+    def test_frozen(self) -> None:
+        result = ChamberSimpsonResult(chamber="RA")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.chamber = "RV"  # type: ignore[misc]
+
+
+# ── IndexedMeasurements ────────────────────────────────────────────
+
+
+class TestIndexedMeasurements:
+    def test_minimal(self) -> None:
+        result = IndexedMeasurements(bsa_m2=1.8)
+        assert result.bsa_m2 == 1.8
+        assert result.simpson_edvi_ml_m2 is None
+        assert result.lvmi_g_m2 is None
+        assert result.linear_index_mm_m2 == ()
+
+    def test_populated(self) -> None:
+        result = IndexedMeasurements(
+            bsa_m2=1.9,
+            simpson_edvi_ml_m2=65.0,
+            simpson_esvi_ml_m2=25.0,
+            lvmi_g_m2=95.0,
+            linear_index_mm_m2=(("IVSd", 5.0), ("LVIDd", 25.0)),
+        )
+        assert result.bsa_m2 == 1.9
+        assert result.simpson_edvi_ml_m2 == 65.0
+        assert result.lvmi_g_m2 == 95.0
+        assert len(result.linear_index_mm_m2) == 2
+
+    def test_frozen(self) -> None:
+        result = IndexedMeasurements(bsa_m2=1.8)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.bsa_m2 = 2.0  # type: ignore[misc]
+
+
+# ── PlanimeterResult ───────────────────────────────────────────────
+
+
+class TestPlanimeterResult:
+    def test_creation(self) -> None:
+        result = PlanimeterResult(label="LA", kind="area", value=18.5, unit="cm2")
+        assert result.label == "LA"
+        assert result.kind == "area"
+        assert result.value == 18.5
+        assert result.unit == "cm2"
+
+    def test_frozen(self) -> None:
+        result = PlanimeterResult(label="LV", kind="volume", value=120.0, unit="ml")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            result.value = 200.0  # type: ignore[misc]
+
+
+# ── MeasurementSnapshot additional fields ──────────────────────────
+
+
+class TestMeasurementSnapshotExtended:
+    def test_with_la_volume(self) -> None:
+        la = LaVolumeResult(volume_ml=55.0)
+        snapshot = MeasurementSnapshot(la_volume=la)
+        assert snapshot.la_volume.volume_ml == 55.0
+
+    def test_with_chamber_simpson(self) -> None:
+        simpson = ChamberSimpsonResult(chamber="LA", ef_percent=55.0)
+        snapshot = MeasurementSnapshot(la_simpson=simpson)
+        assert snapshot.la_simpson.chamber == "LA"
+        assert snapshot.la_simpson.ef_percent == 55.0
+
+    def test_with_indexed(self) -> None:
+        indexed = IndexedMeasurements(bsa_m2=1.8, lvmi_g_m2=90.0)
+        snapshot = MeasurementSnapshot(indexed=indexed)
+        assert snapshot.indexed.bsa_m2 == 1.8
+
+    def test_with_planimeter(self) -> None:
+        p1 = PlanimeterResult(label="LA", kind="area", value=18.0, unit="cm2")
+        p2 = PlanimeterResult(label="LV", kind="volume", value=120.0, unit="ml")
+        snapshot = MeasurementSnapshot(planimeter=(p1, p2))
+        assert len(snapshot.planimeter) == 2
+
+    def test_diastology_and_rv_fac(self) -> None:
+        snapshot = MeasurementSnapshot(
+            diastology_grade="Grade II",
+            rv_fac_percent=45.0,
+            lvm_g=180.0,
+            rwt=0.42,
+        )
+        assert snapshot.diastology_grade == "Grade II"
+        assert snapshot.rv_fac_percent == 45.0
+        assert snapshot.lvm_g == 180.0
+        assert snapshot.rwt == 0.42
+
+    def test_height_weight(self) -> None:
+        snapshot = MeasurementSnapshot(height_cm=175.0, weight_kg=70.0)
+        assert snapshot.height_cm == 175.0
+        assert snapshot.weight_kg == 70.0
