@@ -2006,3 +2006,80 @@ class TestMModeScanLineExtended:
         item.set_end((50.0, 0.0))
         # remove_from_view with no view should not crash
         item.remove_from_view(None)
+
+
+# ── server_profile_dialog v2 ───────────────────────────────────────
+
+
+class TestServerProfileDialogV2:
+    def test_on_load_with_selected_no_profile(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        dialog._selected_name = "nonexistent_profile"
+        with (
+            patch("echo_personal_tool.presentation.server_profile_dialog.load_profile", return_value=None),
+            patch("echo_personal_tool.presentation.server_profile_dialog.QMessageBox"),
+        ):
+            dialog._on_load()
+
+    def test_on_load_empty_name_noop(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        dialog._selected_name = None
+        dialog._on_load()
+        # Should return early without crash
+
+    def test_on_save_as_empty_name_noop(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        with patch(
+            "echo_personal_tool.presentation.server_profile_dialog.QInputDialog",
+        ) as mock_input:
+            mock_input.getText.return_value = ("", False)
+            dialog._on_save_as()
+        # Should return early
+
+    def test_selected_settings_property(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        assert dialog.selected_settings is settings
+
+    def test_list_profiles_called(self, qtbot) -> None:
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+        from echo_personal_tool.presentation.server_profile_dialog import (
+            ServerProfileDialog,
+        )
+
+        settings = ServerSettings()
+        dialog = ServerProfileDialog(settings)
+        qtbot.addWidget(dialog)
+        with patch(
+            "echo_personal_tool.presentation.server_profile_dialog.list_profiles",
+            return_value={"p1": {}, "p2": {}},
+        ):
+            dialog._refresh_list()
+        assert dialog._list.count() == 2
