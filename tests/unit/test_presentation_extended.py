@@ -345,6 +345,131 @@ class TestPropertiesPanel:
         assert not panel._instance_group.isHidden()
         assert panel._instance_form.rowCount() >= 3  # height, weight, BMI
 
+    def test_update_instance_all_fields(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_instance_info(
+            modality="US",
+            series_desc="A4C Cine",
+            frame_rate=30.0,
+            pixel_spacing="0.5 x 0.5 mm",
+            number_of_frames=30,
+            patient_height_m=1.75,
+            patient_weight_kg=70.0,
+            media_format="mp4",
+            frame_time_ms=33.3,
+        )
+        assert not panel._instance_group.isHidden()
+        # modality, format, series, frame_rate, frame_time, frames, spacing, height, weight, BMI = 10
+        assert panel._instance_form.rowCount() >= 8
+
+    def test_update_instance_dicom_hides_format(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_instance_info(modality="US", media_format="dicom")
+        # Format row should NOT be added for dicom
+        assert panel._instance_form.rowCount() == 1  # only modality
+
+    def test_update_instance_zero_frame_rate_hidden(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_instance_info(modality="US", frame_rate=0.0)
+        assert panel._instance_form.rowCount() == 1  # only modality
+
+    def test_update_instance_single_frame_hidden(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_instance_info(modality="US", number_of_frames=1)
+        assert panel._instance_form.rowCount() == 1  # only modality
+
+    def test_update_measurement_with_points(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_measurement_info(
+            label="IVSd",
+            value_mm=9.5,
+            start=(10.0, 20.0),
+            end=(10.0, 50.0),
+        )
+        assert not panel._measurement_group.isHidden()
+        # label + value + pixel_length = 3 rows
+        assert panel._measurement_form.rowCount() == 3
+
+    def test_update_measurement_label_only(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_measurement_info(label="IVSd")
+        assert panel._measurement_form.rowCount() == 1
+
+    def test_update_contour_with_area(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_contour_info(
+            chamber="LV",
+            phase="ED",
+            point_count=32,
+            area_px=1500.0,
+        )
+        assert not panel._contour_group.isHidden()
+        # chamber + phase + points + area = 4 rows
+        assert panel._contour_form.rowCount() == 4
+
+    def test_update_contour_chamber_only(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_contour_info(chamber="LV")
+        assert panel._contour_form.rowCount() == 1
+
+    def test_clear_form_removes_rows(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_instance_info(modality="US", series_desc="A4C")
+        assert panel._instance_form.rowCount() >= 2
+        # Update again - should clear first
+        panel.update_instance_info(modality="CT")
+        assert panel._instance_form.rowCount() == 1
+
+    def test_zero_height_weight_no_bmi(self, qtbot) -> None:
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.show()
+        panel.update_instance_info(
+            modality="US",
+            patient_height_m=0.0,
+            patient_weight_kg=0.0,
+        )
+        # No BMI row when height/weight are 0
+        assert panel._instance_form.rowCount() == 1  # only modality
+
 
 # ── measurement_results_dialog ─────────────────────────────────────
 
@@ -373,3 +498,142 @@ class TestMeasurementResultsDialog:
         text = dialog._text.toPlainText()
         assert isinstance(text, str)
         assert len(text) > 0
+
+    def test_none_snapshot(self, qtbot) -> None:
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(None)
+        qtbot.addWidget(dialog)
+        text = dialog._text.toPlainText()
+        assert isinstance(text, str)
+
+    def test_custom_pdf_name(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(
+            MeasurementSnapshot(), default_pdf_name="custom_report.pdf",
+        )
+        qtbot.addWidget(dialog)
+        assert dialog._default_pdf_name == "custom_report.pdf"
+
+    def test_custom_font_size(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(
+            MeasurementSnapshot(), pdf_font_size=14,
+        )
+        qtbot.addWidget(dialog)
+        assert dialog._pdf_font_size == 14
+
+    def test_export_pdf_cancel(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(MeasurementSnapshot())
+        qtbot.addWidget(dialog)
+        with patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+            return_value=("", ""),
+        ):
+            dialog._export_pdf()  # should return early, no crash
+
+    def test_export_pdf_adds_extension(self, qtbot, tmp_path) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(MeasurementSnapshot())
+        qtbot.addWidget(dialog)
+        output = tmp_path / "report"
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(output), ""),
+            ),
+            patch(
+                "echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf",
+            ) as mock_export,
+            patch(
+                "echo_personal_tool.presentation.measurement_results_dialog.QDesktopServices",
+            ),
+        ):
+            dialog._export_pdf()
+            # Should add .pdf extension
+            call_args = mock_export.call_args
+            assert str(output.with_suffix(".pdf")) in str(call_args)
+
+    def test_export_pdf_success(self, qtbot, tmp_path) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(MeasurementSnapshot())
+        qtbot.addWidget(dialog)
+        output = tmp_path / "report.pdf"
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(output), ""),
+            ),
+            patch(
+                "echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf",
+            ),
+            patch(
+                "echo_personal_tool.presentation.measurement_results_dialog.QDesktopServices",
+            ) as mock_desktop,
+        ):
+            dialog._export_pdf()
+            mock_desktop.openUrl.assert_called_once()
+
+    def test_export_pdf_error(self, qtbot, tmp_path) -> None:
+        from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+        from echo_personal_tool.infrastructure.measurement_report_pdf import PdfExportError
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        dialog = MeasurementResultsDialog(MeasurementSnapshot())
+        qtbot.addWidget(dialog)
+        output = tmp_path / "report.pdf"
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(output), ""),
+            ),
+            patch(
+                "echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf",
+                side_effect=PdfExportError("font error"),
+            ),
+            patch(
+                "echo_personal_tool.presentation.measurement_results_dialog.QMessageBox",
+            ) as mock_msgbox,
+        ):
+            dialog._export_pdf()
+            mock_msgbox.warning.assert_called_once()
+
+    def test_populated_snapshot(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.measurements import (
+            DopplerResults,
+            MeasurementSnapshot,
+        )
+        from echo_personal_tool.presentation.measurement_results_dialog import (
+            MeasurementResultsDialog,
+        )
+
+        snapshot = MeasurementSnapshot(doppler=DopplerResults(e_cm_s=85.0, a_cm_s=60.0))
+        dialog = MeasurementResultsDialog(snapshot)
+        qtbot.addWidget(dialog)
+        text = dialog._text.toPlainText()
+        assert "85.0" in text or "E" in text
