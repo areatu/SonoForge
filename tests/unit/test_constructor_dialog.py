@@ -56,6 +56,8 @@ def dialog(qtbot, yaml_file) -> ConstructorDialog:
                 yaml_file,
             ):
                 d = ConstructorDialog()
+    # Prevent closeEvent from blocking on QMessageBox.question()
+    d.closeEvent = MagicMock()
     qtbot.addWidget(d)
     return d
 
