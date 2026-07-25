@@ -84,6 +84,7 @@ class ConstructorDialog(QDialog):
         self._drag_pos: QPoint | None = None
         self._is_maximized = False
         self._normal_geometry: Any = None
+        self._skip_close_prompt = False
 
         # Storage
         self._yaml_path = _YAML_PATH
@@ -294,12 +295,16 @@ class ConstructorDialog(QDialog):
         super().keyPressEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._skip_close_prompt:
+            event.accept()
+            return
         if self._constructor_widget._dirty:
             reply = QMessageBox.question(
                 self,
                 "Несохранённые изменения",
                 "Есть несохранённые изменения. Сохранить перед закрытием?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self._constructor_widget.save()

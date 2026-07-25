@@ -16,6 +16,7 @@ import pytest
 pytestmark = pytest.mark.security
 
 from echo_personal_tool.infrastructure.onnx_engine import (
+    ModelIntegrityError,
     OnnxInferenceEngine,
     _load_manifest,
     _resolve_model_path,
@@ -34,12 +35,11 @@ class TestModelIntegrityVerification:
             _verify_model_integrity(model, expected)
         assert "integrity mismatch" not in caplog.text.lower()
 
-    def test_mismatched_hash_logs_warning(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    def test_mismatched_hash_raises_error(self, tmp_path: Path) -> None:
         model = tmp_path / "model.onnx"
         model.write_bytes(b"fake model data")
-        with caplog.at_level(logging.WARNING):
+        with pytest.raises(ModelIntegrityError, match="integrity check failed"):
             _verify_model_integrity(model, "0" * 64)
-        assert "integrity mismatch" in caplog.text.lower()
 
     def test_none_hash_skips_check(self, tmp_path: Path) -> None:
         model = tmp_path / "model.onnx"
@@ -51,15 +51,14 @@ class TestModelIntegrityVerification:
         model.write_bytes(b"data")
         _verify_model_integrity(model, "")
 
-    def test_tampered_model_detected(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    def test_tampered_model_detected(self, tmp_path: Path) -> None:
         original = tmp_path / "model.onnx"
         original.write_bytes(b"original model content")
         expected = hashlib.sha256(original.read_bytes()).hexdigest()
         tampered = tmp_path / "tampered.onnx"
         tampered.write_bytes(b"tampered model content")
-        with caplog.at_level(logging.WARNING):
+        with pytest.raises(ModelIntegrityError, match="integrity check failed"):
             _verify_model_integrity(tampered, expected)
-        assert "integrity mismatch" in caplog.text.lower()
 
     def test_empty_model_file_hash(self, tmp_path: Path) -> None:
         model = tmp_path / "empty.onnx"
