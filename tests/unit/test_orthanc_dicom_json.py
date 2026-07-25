@@ -12,7 +12,6 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     tag_value,
 )
 
-
 # ── Existing tests ─────────────────────────────────────────────────
 
 

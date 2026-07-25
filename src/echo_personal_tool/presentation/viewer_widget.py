@@ -5426,6 +5426,7 @@ class ViewerWidget(QWidget):
             self._image_item.setImage(display, autoLevels=False)
         else:
             import cv2
+
             from echo_personal_tool.infrastructure.pixel_utils import _grayscale_source_array
 
             src = _grayscale_source_array(frame)

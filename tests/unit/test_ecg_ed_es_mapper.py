@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from echo_personal_tool.domain.models.ecg import EcEDFrameMapping, RPeakResult
+from echo_personal_tool.domain.models.ecg import RPeakResult
 from echo_personal_tool.domain.services.ecg_ed_es_mapper import map_rpeaks_to_frames
 
 

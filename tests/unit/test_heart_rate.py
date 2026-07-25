@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 
 from echo_personal_tool.domain.services.heart_rate import (
-    HeartRateResult,
     _autocorrelation_bpm,
     _find_local_minima,
     estimate_hr_area_time,

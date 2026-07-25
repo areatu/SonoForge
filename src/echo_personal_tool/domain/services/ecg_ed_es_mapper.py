@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
-
 from echo_personal_tool.domain.models.ecg import EcEDFrameMapping, RPeakResult
 
 

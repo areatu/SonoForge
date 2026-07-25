@@ -1,0 +1,300 @@
+"""Unit tests for presentation/doppler_overlay.py."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
+
+from echo_personal_tool.domain.models import (
+    DopplerIntervalMarker,
+    DopplerMeasurementDTO,
+    DopplerPeakMarker,
+    DopplerTrace,
+)
+from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+
+pytestmark = pytest.mark.gui
+
+
+@pytest.fixture(autouse=True)
+def _setup_qapp():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
+
+
+@pytest.fixture()
+def mock_plot():
+    plot = MagicMock()
+    plot.items = []
+    plot.addItem = lambda item: plot.items.append(item)
+    plot.removeItem = MagicMock()
+    plot.plot_height = 200
+    plot.plot_width = 1000
+    return plot
+
+
+@pytest.fixture()
+def overlay(mock_plot):
+    from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
+
+    return DopplerOverlayTools(mock_plot)
+
+
+class TestConstruction:
+    def test_creates_with_default_mode(self, overlay):
+        assert overlay.get_tool_mode() == "none"
+        assert overlay._peak_markers == []
+        assert overlay._interval_markers == []
+        assert overlay._traces == []
+        assert not overlay.has_trace_onset()
+        assert not overlay.has_pending_interval_start()
+
+    def test_default_axis_mapping(self, overlay):
+        mapping = overlay.axis_mapping()
+        assert isinstance(mapping, DopplerAxisMapping)
+
+
+class TestSetToolMode:
+    def test_set_peak_mode(self, overlay):
+        overlay.set_tool_mode("peak")
+        assert overlay.get_tool_mode() == "peak"
+
+    def test_set_interval_mode(self, overlay):
+        overlay.set_tool_mode("interval")
+        assert overlay.get_tool_mode() == "interval"
+
+    def test_set_trace_mode(self, overlay):
+        overlay.set_tool_mode("trace")
+        assert overlay.get_tool_mode() == "trace"
+
+    def test_invalid_mode_raises(self, overlay):
+        with pytest.raises(ValueError, match="Unsupported Doppler tool mode"):
+            overlay.set_tool_mode("invalid")
+
+    def test_set_same_mode_noop(self, overlay):
+        overlay.set_tool_mode("peak")
+        overlay.set_tool_mode("peak")
+        assert overlay.get_tool_mode() == "peak"
+
+    def test_set_none_clears_partial_state(self, overlay):
+        overlay.set_tool_mode("peak")
+        overlay._active_partial_points = [(1.0, 2.0)]
+        overlay.set_tool_mode("none")
+        assert overlay._active_partial_points == []
+
+
+class TestCancelActiveTool:
+    def test_cancels_active_mode(self, overlay):
+        overlay.set_tool_mode("peak")
+        result = overlay.cancel_active_tool()
+        assert result is True
+        assert overlay.get_tool_mode() == "none"
+
+    def test_returns_false_when_already_none(self, overlay):
+        result = overlay.cancel_active_tool()
+        assert result is False
+
+    def test_clears_workflow(self, overlay):
+        overlay.start_mitral_inflow_workflow()
+        overlay.cancel_active_tool()
+        assert overlay._workflow is None
+
+
+class TestPeakLabel:
+    def test_set_peak_label(self, overlay):
+        overlay.set_peak_label("E", single_shot=True)
+        assert overlay._peak_label_index == 0
+        assert overlay._single_shot_peak is True
+
+    def test_invalid_peak_label_raises(self, overlay):
+        with pytest.raises(ValueError, match="Unsupported label"):
+            overlay.set_peak_label("INVALID")
+
+    def test_set_interval_label(self, overlay):
+        overlay.set_interval_label("DT", single_shot=True)
+        assert overlay._interval_label_index == 0
+
+    def test_invalid_interval_label_raises(self, overlay):
+        with pytest.raises(ValueError, match="Unsupported label"):
+            overlay.set_interval_label("INVALID")
+
+
+class TestHandleClick:
+    def test_none_mode_returns_false(self, overlay):
+        result = overlay.handle_click(100.0, 50.0)
+        assert result is False
+
+    def test_peak_mode_adds_marker(self, overlay):
+        overlay.set_tool_mode("peak")
+        result = overlay.handle_click(100.0, 50.0)
+        assert result is True
+        assert len(overlay._peak_markers) == 1
+
+    def test_interval_first_click_sets_start(self, overlay):
+        overlay.set_tool_mode("interval")
+        result = overlay.handle_click(100.0, 50.0)
+        assert result is True
+        assert overlay.has_pending_interval_start()
+
+    def test_interval_second_click_adds_marker(self, overlay):
+        overlay.set_tool_mode("interval")
+        overlay.handle_click(100.0, 50.0)
+        result = overlay.handle_click(200.0, 50.0)
+        assert result is True
+        assert len(overlay._interval_markers) == 1
+        assert not overlay.has_pending_interval_start()
+
+
+class TestTraceClick:
+    def test_trace_first_click_near_baseline(self, overlay):
+        overlay.set_tool_mode("trace")
+        # First click must be near baseline
+        baseline_y = overlay._baseline_plot_y_px()
+        result = overlay.handle_click(100.0, baseline_y)
+        assert result is True
+        assert overlay.has_trace_onset()
+
+    def test_trace_first_click_far_from_baseline_rejected(self, overlay):
+        overlay.set_tool_mode("trace")
+        result = overlay.handle_click(100.0, 10.0)
+        assert result is False
+
+    def test_trace_double_click_finishes(self, overlay):
+        overlay.set_tool_mode("trace")
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(100.0, baseline_y)
+        overlay.handle_click(200.0, 50.0)
+        overlay.handle_click(300.0, baseline_y)
+        result = overlay.handle_click(300.0, baseline_y, double=True)
+        assert isinstance(result, bool)
+
+
+class TestSetTraceLabel:
+    def test_set_trace_label(self, overlay):
+        overlay.set_trace_label("VTI MV")
+        assert overlay._trace_label == "VTI MV"
+
+    def test_empty_label_defaults_to_vti(self, overlay):
+        overlay.set_trace_label("")
+        assert overlay._trace_label == "VTI"
+
+    def test_unknown_label_allowed(self, overlay):
+        overlay.set_trace_label("CustomVTI")
+        assert overlay._trace_label == "CustomVTI"
+
+
+class TestPrefillIntervalStart:
+    def test_sets_start_time(self, overlay):
+        overlay.prefill_interval_start(500.0)
+        assert overlay.has_pending_interval_start()
+
+    def test_sets_preview(self, overlay):
+        overlay.prefill_interval_start(500.0)
+        overlay.set_tool_mode("interval")
+        assert overlay._interval_preview_item is not None
+
+
+class TestMitralInflowWorkflow:
+    def test_starts_workflow(self, overlay):
+        overlay.start_mitral_inflow_workflow()
+        assert overlay._workflow is not None
+        assert overlay.get_tool_mode() == "peak"
+
+    def test_workflow_prompt(self, overlay):
+        overlay.start_mitral_inflow_workflow()
+        prompt = overlay.workflow_prompt()
+        assert prompt is not None
+
+    def test_workflow_none_when_not_active(self, overlay):
+        assert overlay.workflow_prompt() is None
+
+
+class TestGetMeasurementDto:
+    def test_returns_empty_dto(self, overlay):
+        dto = overlay.get_measurement_dto()
+        assert isinstance(dto, DopplerMeasurementDTO)
+        assert dto.peaks == ()
+        assert dto.intervals == ()
+        assert dto.traces == ()
+
+    def test_returns_populated_dto(self, overlay):
+        overlay.set_tool_mode("peak")
+        overlay.handle_click(100.0, 50.0)
+        dto = overlay.get_measurement_dto()
+        assert len(dto.peaks) == 1
+
+
+class TestLoadMeasurementDto:
+    def test_loads_dto(self, overlay):
+        dto = DopplerMeasurementDTO(
+            peaks=(DopplerPeakMarker(label="E", time_ms=100.0, velocity_cm_s=80.0),),
+            intervals=(DopplerIntervalMarker(label="DT", start_time_ms=100.0, end_time_ms=300.0),),
+            traces=(),
+        )
+        overlay.load_measurement_dto(dto)
+        assert len(overlay._peak_markers) == 1
+        assert len(overlay._interval_markers) == 1
+
+
+class TestClearMeasurements:
+    def test_clears_all(self, overlay):
+        overlay.set_tool_mode("peak")
+        overlay.handle_click(100.0, 50.0)
+        overlay.clear_measurements()
+        assert len(overlay._peak_markers) == 0
+        assert len(overlay._interval_markers) == 0
+        assert len(overlay._traces) == 0
+        assert overlay.get_tool_mode() == "none"
+
+    def test_keep_calibration_graphics(self, overlay):
+        overlay.clear_measurements(keep_calibration_graphics=True)
+        assert len(overlay._peak_markers) == 0
+
+
+class TestSetAxisMapping:
+    def test_sets_new_mapping(self, overlay):
+        mapping = DopplerAxisMapping(time_span_ms=2000.0)
+        overlay.set_axis_mapping(mapping)
+        assert overlay.axis_mapping() is mapping
+
+
+class TestTracePrompt:
+    def test_trace_prompt_in_peak_mode(self, overlay):
+        overlay.set_tool_mode("peak")
+        assert overlay.trace_prompt() is None
+
+    def test_trace_prompt_in_trace_mode(self, overlay):
+        overlay.set_tool_mode("trace")
+        prompt = overlay.trace_prompt()
+        assert prompt is not None
+        assert "VTI" in prompt
+
+
+class TestConsumeTraceClickSuppression:
+    def test_returns_false_when_not_suppressed(self, overlay):
+        assert overlay.consume_trace_click_suppression() is False
+
+    def test_returns_true_and_resets(self, overlay):
+        overlay._trace_suppress_click = True
+        assert overlay.consume_trace_click_suppression() is True
+        assert overlay.consume_trace_click_suppression() is False
+
+
+class TestHandleClickInTraceMode:
+    def test_double_click_near_baseline(self, overlay):
+        overlay.set_tool_mode("trace")
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(100.0, baseline_y)
+        result = overlay.handle_click(200.0, baseline_y, double=True)
+        assert isinstance(result, bool)
+
+    def test_double_click_far_from_baseline(self, overlay):
+        overlay.set_tool_mode("trace")
+        result = overlay.handle_click(100.0, 10.0, double=True)
+        assert result is False
