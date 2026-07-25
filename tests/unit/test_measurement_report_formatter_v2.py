@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -169,7 +169,6 @@ class TestCinePanel:
         panel.move_selected_kernel(50.0, 60.0)  # no-op, no crash
 
     def test_show_segment_labels(self):
-        from echo_personal_tool.ui.strain_window import CinePanel
 
         panel = self._make_panel()
         kernels = [MagicMock(aha_segment=1), MagicMock(aha_segment=2)]

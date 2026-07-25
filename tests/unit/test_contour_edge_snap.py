@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 from echo_personal_tool.domain.services.contour_edge_snap import (
-    EdgeMap,
     EdgeSnapConfig,
     _clamp,
     _sample_bilinear,

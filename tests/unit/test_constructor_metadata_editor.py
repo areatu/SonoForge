@@ -27,7 +27,7 @@ _THEME = {
 
 
 @pytest.fixture
-def editor(qtbot) -> "MetadataEditor":
+def editor(qtbot) -> MetadataEditor:
     from echo_personal_tool.constructor.editors.metadata_editor import MetadataEditor
 
     with patch(

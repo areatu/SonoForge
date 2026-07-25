@@ -165,4 +165,5 @@ def test_load_locales_missing_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 @pytest.fixture(autouse=True)
 def restore_russian() -> None:
     yield
+    i18n_mod._load_locales()
     set_language("ru")

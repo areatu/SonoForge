@@ -9,8 +9,8 @@ import cv2
 import numpy as np
 
 from echo_personal_tool.application.workers.mp4_export_worker import (
-    Mp4ExportWorker,
     _MP4_FOURCCS,
+    Mp4ExportWorker,
     _open_video_writer,
 )
 

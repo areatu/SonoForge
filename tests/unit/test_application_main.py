@@ -9,12 +9,9 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 def test_logging_config_setup() -> None:

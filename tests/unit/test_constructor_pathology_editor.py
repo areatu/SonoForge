@@ -35,7 +35,7 @@ def pathologies() -> list[PathologyModel]:
 
 
 @pytest.fixture
-def editor(qtbot) -> "PathologyEditor":
+def editor(qtbot) -> PathologyEditor:
     from echo_personal_tool.constructor.editors.pathology_editor import PathologyEditor
 
     with patch(

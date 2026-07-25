@@ -15,7 +15,6 @@ from echo_personal_tool.domain.models.speckle import (
     TrackingResult,
 )
 
-
 # ── TrackingKernel ─────────────────────────────────────────────────
 
 

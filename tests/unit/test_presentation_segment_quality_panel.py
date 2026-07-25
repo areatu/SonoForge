@@ -91,7 +91,6 @@ class TestUpdateResults:
         assert fg == panel._LOW_QUALITY_FG
 
     def test_good_quality_no_highlight(self):
-        from PySide6.QtGui import QColor
 
         from echo_personal_tool.presentation.segment_quality_panel import SegmentQualityPanel
 

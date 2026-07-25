@@ -5,7 +5,6 @@ Tests properties, helper methods, and callback paths that don't need full Qt inf
 
 from __future__ import annotations
 
-import dataclasses
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +13,8 @@ import numpy as np
 import pytest
 
 pytestmark = pytest.mark.gui
+from datetime import UTC
+
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
@@ -225,11 +226,12 @@ def test_accept_ai_contour_review(qapp, monkeypatch):
     ctrl._state_manager.set_frame(0)
 
     # Set up studies so _resolve_study_uid works
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),
@@ -267,11 +269,12 @@ def test_on_contours_changed(qapp, monkeypatch):
         series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),
@@ -293,11 +296,12 @@ def test_on_contours_changed_tags_uid(qapp, monkeypatch):
         series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),
@@ -333,11 +337,12 @@ def test_on_linear_measurements_changed(qapp, monkeypatch):
         series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),
@@ -405,11 +410,12 @@ def test_needs_manual_calibration_mp4_no_spacing(qapp, monkeypatch):
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     ctrl._current_instance = inst
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),
@@ -481,8 +487,9 @@ def test_resolve_study_uid_no_instance(qapp, monkeypatch):
 
 def test_resolve_study_uid_with_study(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     inst = InstanceMetadata(
         sop_instance_uid="uid1", series_uid="s1", modality="US",
         number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
@@ -490,7 +497,7 @@ def test_resolve_study_uid_with_study(qapp, monkeypatch):
     )
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),
@@ -508,11 +515,12 @@ def test_load_first_instance_of_series_not_found(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     failed = []
     ctrl.frame_load_failed.connect(failed.append)
-    from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
+    from datetime import datetime
+
+    from echo_personal_tool.domain.models import StudyMetadata
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(),
     )
     ctrl.load_first_instance_of_series(study, "nonexistent")
@@ -523,11 +531,12 @@ def test_load_first_instance_of_series_empty_instances(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     failed = []
     ctrl.frame_load_failed.connect(failed.append)
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(),
@@ -598,11 +607,12 @@ def test_on_doppler_markers_changed_valid(qapp, monkeypatch):
         series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
+    from datetime import datetime
+
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
-    from datetime import datetime, timezone
     study = StudyMetadata(
         study_uid="study1",
-        study_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
         series=(SeriesMetadata(
             series_uid="s1", study_uid="study1", modality="US",
             description="T", instances=(inst,),

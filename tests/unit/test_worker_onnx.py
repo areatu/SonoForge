@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -16,10 +15,10 @@ from PySide6.QtWidgets import QApplication
 pytest.importorskip("pytestqt")
 
 from echo_personal_tool.application.workers.onnx_worker import (
-    OnnxWorkerSignals,
-    OnnxWorker,
-    _load_timeout_sec,
     _DEFAULT_TIMEOUT_SEC,
+    OnnxWorker,
+    OnnxWorkerSignals,
+    _load_timeout_sec,
     run_segment_in_subprocess,
 )
 

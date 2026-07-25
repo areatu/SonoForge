@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -305,8 +305,9 @@ class TestThumbnailGalleryWidget:
         w.close()
 
     def test_item_clicked_with_non_instance(self):
-        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
         from PySide6.QtWidgets import QListWidgetItem
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 
         w = ThumbnailGalleryWidget()
         item = QListWidgetItem()

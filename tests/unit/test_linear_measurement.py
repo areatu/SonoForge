@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from echo_personal_tool.domain.models.linear_measurement import (

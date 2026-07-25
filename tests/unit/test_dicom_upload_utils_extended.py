@@ -6,8 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from echo_personal_tool.application.dicom_upload_utils import collect_dicom_bytes
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.domain.models.contour import Contour

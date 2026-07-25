@@ -644,7 +644,6 @@ class TestMeasurementResultsDialog:
 
 class TestSteResultsDialog:
     def test_creation(self, qtbot) -> None:
-        import numpy as np
 
         from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
 
@@ -1057,7 +1056,6 @@ class TestSpeckleSettingsDialog:
 
 class TestStrainCurveWidget:
     def test_creation(self, qtbot) -> None:
-        import numpy as np
 
         from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
 
@@ -1690,7 +1688,6 @@ class TestMModeWidget:
         assert received == [{}]
 
     def test_set_scan_line_with_num_samples(self, qtbot) -> None:
-        import numpy as np
 
         from echo_personal_tool.presentation.mmode_widget import MModeWidget
 

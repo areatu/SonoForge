@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
@@ -18,8 +16,8 @@ from echo_personal_tool.domain.services.measurement_results_formatter import (
     _append,
     _best_lav_index,
     _html_append,
-    _is_outside,
     _indexed_linear_label,
+    _is_outside,
     format_results_overlay,
     format_results_overlay_html,
     invalidate_norm_cache,

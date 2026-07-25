@@ -15,7 +15,6 @@ from echo_personal_tool.domain.models.metadata import (
     StudyMetadata,
 )
 
-
 # ── InstanceRef ────────────────────────────────────────────────────
 
 

@@ -12,7 +12,6 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 
-
 # ── DopplerKind ────────────────────────────────────────────────────
 
 

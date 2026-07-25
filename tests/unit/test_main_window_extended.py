@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, replace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,7 +19,6 @@ from echo_personal_tool.presentation.main_window import (
     MainWindow,
     _loaded_file_label,
 )
-
 
 # ── _loaded_file_label ─────────────────────────────────────────────
 

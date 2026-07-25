@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -295,14 +295,12 @@ class TestOnContourCompleted:
 
 class TestHasChamberContour:
     def test_no_contours(self, main_window):
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
 
         new_state = replace(main_window._controller.state_manager.snapshot, contours=())
         main_window._controller.state_manager.snapshot = new_state
         assert main_window._has_chamber_contour("LV", "A4C", "ED") is False
 
     def test_matching_contour(self, main_window):
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
 
         c = MagicMock()
         c.chamber = "LV"
@@ -313,7 +311,6 @@ class TestHasChamberContour:
         assert main_window._has_chamber_contour("LV", "A4C", "ED") is True
 
     def test_no_match(self, main_window):
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
 
         c = MagicMock()
         c.chamber = "RA"
@@ -446,7 +443,6 @@ class TestGetCurrentFrameIndex:
         assert main_window._get_current_frame_index() is None
 
     def test_with_instance(self, main_window):
-        from echo_personal_tool.domain.models.viewer_state import ViewerState
 
         mock_inst = MagicMock()
         mock_inst.sop_instance_uid = "test"

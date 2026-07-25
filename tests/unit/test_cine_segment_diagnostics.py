@@ -18,7 +18,6 @@ from echo_personal_tool.domain.services.cine_segment_diagnostics import (
     render_diagnostic_overlay,
 )
 
-
 # ── CineSegmentDiagnosticReport ────────────────────────────────────
 
 

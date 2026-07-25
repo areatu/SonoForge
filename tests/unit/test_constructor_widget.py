@@ -8,13 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from echo_personal_tool.constructor.models import (
-    NormRangeModel,
-    ParameterModel,
-    PathologyModel,
-    ReferenceModel,
-    TopicModel,
-)
 from echo_personal_tool.constructor.storage.yaml_storage import YamlStorage
 
 pytestmark = pytest.mark.gui
@@ -70,7 +63,7 @@ def yaml_file(tmp_path: Path, sample_data: dict) -> Path:
 
 
 @pytest.fixture
-def widget(qtbot, yaml_file) -> "ConstructorWidget":
+def widget(qtbot, yaml_file) -> ConstructorWidget:
     with patch(
         "echo_personal_tool.constructor.constructor_widget.get_theme_palette",
         return_value=_THEME,

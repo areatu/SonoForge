@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.application.study_measurement_session import (
     StudyMeasurementData,
     StudyMeasurementSessionStore,
     aggregate_doppler_by_instance,
     contour_key,
     contours_for_instance,
-    merge_contours,
     merge_doppler_dtos,
     merge_doppler_intervals,
     merge_doppler_peaks,
@@ -24,9 +21,8 @@ from echo_personal_tool.domain.models.doppler import (
     DopplerPeakMarker,
     DopplerTrace,
 )
-from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerKind, DopplerSpectrogramRoi
+from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
-
 
 # ── contour_key ──────────────────────────────────────────────────────
 

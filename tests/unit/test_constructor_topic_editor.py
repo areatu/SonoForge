@@ -36,7 +36,7 @@ def topics() -> list[TopicModel]:
 
 
 @pytest.fixture
-def editor(qtbot) -> "TopicEditor":
+def editor(qtbot) -> TopicEditor:
     from echo_personal_tool.constructor.editors.topic_editor import TopicEditor
 
     with patch(

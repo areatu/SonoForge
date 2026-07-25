@@ -220,8 +220,8 @@ class TestParameterTableEditor:
             ParameterTableEditor,
         )
         from echo_personal_tool.constructor.models.reference_model import (
-            PathologyModel,
             ParameterModel,
+            PathologyModel,
         )
 
         editor = ParameterTableEditor()

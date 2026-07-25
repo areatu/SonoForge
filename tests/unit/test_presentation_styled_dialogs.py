@@ -32,7 +32,6 @@ _DARK_PALETTE = {
 
 def _make_mockFileDialog(*, accepted=False):
     """Create a mock QFileDialog with DialogCode enum set correctly."""
-    from PySide6.QtWidgets import QFileDialog
 
     mock_cls = MagicMock()
     mock_dialog = MagicMock()

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 import numpy as np
 import pytest
 
@@ -20,7 +18,6 @@ from echo_personal_tool.presentation.viewer_widget import (
     ViewerWidget,
     _results_overlay_style,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  Helpers
@@ -1609,8 +1606,8 @@ class TestContourEditing:
 
 class TestWheelEvent:
     def _make_wheel_event(self, angle_delta_y=120, modifiers=Qt.KeyboardModifier.NoModifier):
-        from PySide6.QtGui import QWheelEvent
         from PySide6.QtCore import QPoint, QPointF
+        from PySide6.QtGui import QWheelEvent
         return QWheelEvent(
             QPointF(0, 0), QPointF(0, 0),
             QPoint(0, 0), QPoint(0, angle_delta_y),
@@ -1936,8 +1933,8 @@ class TestResizeEvent:
     def test_resize_event(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        from PySide6.QtGui import QResizeEvent
         from PySide6.QtCore import QSize
+        from PySide6.QtGui import QResizeEvent
         event = QResizeEvent(QSize(640, 480), QSize(320, 240))
         w.resizeEvent(event)
         # Should not raise
@@ -2267,8 +2264,8 @@ class TestContourDragSession:
 class TestContourZoneOps:
     def test_handle_contour_zone_press_no_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -2282,8 +2279,8 @@ class TestContourZoneOps:
 
     def test_handle_contour_zone_release(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2304,8 +2301,8 @@ class TestContourZoneOps:
 class TestDopplerTraceOps:
     def test_handle_doppler_trace_press_no_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -2319,8 +2316,8 @@ class TestDopplerTraceOps:
 
     def test_handle_doppler_trace_release(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2341,8 +2338,8 @@ class TestDopplerTraceOps:
 class TestCaliperDragRelease:
     def test_handle_caliper_drag_release_no_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2363,8 +2360,8 @@ class TestCaliperDragRelease:
 class TestContourDragRelease:
     def test_handle_contour_drag_release_no_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2746,8 +2743,8 @@ class TestMModeCalibrationState:
     def test_apply_mmode_calibration_state(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
         roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         state = MmodeCalibrationState(
             roi=roi,
@@ -2925,8 +2922,8 @@ class TestBeginDopplerVelocityCalibration:
 class TestHandleDopplerMouseClick:
     def test_handle_doppler_click_no_mode(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -2944,8 +2941,8 @@ class TestHandleDopplerMouseClick:
         state = _make_state()
         w.set_state(state)
         w.set_doppler_tool_mode("peak")
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -2970,8 +2967,8 @@ class TestDopplerTracePressRelease:
         state = _make_state()
         w.set_state(state)
         w.set_doppler_tool_mode("trace")
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -2985,8 +2982,8 @@ class TestDopplerTracePressRelease:
 
     def test_handle_doppler_trace_drag(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -3000,8 +2997,8 @@ class TestDopplerTracePressRelease:
 
     def test_handle_doppler_trace_release(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(32, 32),
@@ -3022,8 +3019,8 @@ class TestDopplerTracePressRelease:
 class TestDopplerCalibrationClick:
     def test_handle_doppler_calibration_click_no_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -3039,8 +3036,8 @@ class TestDopplerCalibrationClick:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._doppler_cal_step = "roi"
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3060,8 +3057,8 @@ class TestDopplerCalibrationClick:
         w._doppler_roi_corner1 = (10.0, 10.0)
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
         w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3107,8 +3104,8 @@ class TestLinearCaliperSequence:
 class TestContourZoneDrag:
     def test_handle_contour_zone_drag_no_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -3122,8 +3119,8 @@ class TestContourZoneDrag:
 
     def test_handle_contour_zone_release_no_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(32, 32),
@@ -3182,8 +3179,8 @@ class TestContourDragFromGlobal:
 class TestMModeCalibrationClick:
     def test_handle_mmode_calibration_click_no_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -3199,8 +3196,8 @@ class TestMModeCalibrationClick:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._mmode_cal_step = "roi"
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3222,8 +3219,8 @@ class TestMModeCalibrationClick:
 class TestMModeLineClickFromEvent:
     def test_handle_mmode_line_click_from_event_no_active(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -3244,8 +3241,8 @@ class TestMModeLineClickFromEvent:
 class TestContourHover:
     def test_handle_contour_hover_no_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -3317,8 +3314,8 @@ class TestContourEditingBlocked:
 class TestContourZonePress:
     def test_handle_contour_zone_press_no_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3683,8 +3680,8 @@ class TestContourZoneDragWithSession:
     def test_handle_contour_zone_drag_with_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w._drag_session = (0, 10.0, 10.0, 0, 1)
-        from PySide6.QtGui import QMouseEvent
         from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
