@@ -201,8 +201,10 @@ class TestOnSourceChanged:
         dialog._on_source_changed()
 
     def test_persist_query_source(self, dialog):
-        with patch("echo_personal_tool.presentation.orthanc_study_dialog.load_server_settings") as mock_load, \
-             patch("echo_personal_tool.presentation.orthanc_study_dialog.save_server_settings"):
+        with (
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.load_server_settings") as mock_load,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.save_server_settings"),
+        ):
             mock_load.return_value = MagicMock(query_source="dicomweb")
             dialog._persist_query_source("dicomweb")
             # No change, should not save
@@ -306,6 +308,5 @@ class TestResetAfterDownload:
 class TestReject:
     def test_reject_when_not_downloading(self, dialog):
         dialog._downloading = False
-        with patch.object(dialog._force_close_timer, "stop"), \
-             patch("PySide6.QtWidgets.QDialog.reject"):
+        with patch.object(dialog._force_close_timer, "stop"), patch("PySide6.QtWidgets.QDialog.reject"):
             dialog.reject()

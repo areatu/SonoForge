@@ -1933,7 +1933,9 @@ class MainWindow(QMainWindow):
         QThreadPool.globalInstance().start(worker)
 
     def _on_heart_rate_result(self, bpm: float, confidence: float, method: str) -> None:
-        method_label = {"optical_flow": "Optical Flow", "area_time": "Area-Time", "combined": "Combined"}.get(method, method)
+        method_label = {"optical_flow": "Optical Flow", "area_time": "Area-Time", "combined": "Combined"}.get(
+            method, method
+        )
         msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
         self._show_status(msg)
         overlay = self._viewer.results_overlay_text()

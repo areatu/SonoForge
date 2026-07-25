@@ -124,7 +124,9 @@ class TestSaveProfile:
         return_value={},
     )
     @patch("echo_personal_tool.presentation.server_profile_dialog.save_profile")
-    @patch("echo_personal_tool.presentation.server_profile_dialog.QInputDialog.getText", return_value=("NewProfile", True))
+    @patch(
+        "echo_personal_tool.presentation.server_profile_dialog.QInputDialog.getText", return_value=("NewProfile", True)
+    )
     def test_save_new_profile(self, mock_input, mock_save, mock_list):
         from echo_personal_tool.presentation.server_profile_dialog import ServerProfileDialog
 

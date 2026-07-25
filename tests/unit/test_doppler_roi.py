@@ -110,14 +110,18 @@ class TestDopplerCalibrationState:
     def test_is_not_complete_zero_velocity(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, velocity_span_cm_s=0.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
         )
         assert state.is_complete() is False
 
     def test_is_not_complete_zero_time(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, time_span_ms=0.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            time_span_ms=0.0,
         )
         assert state.is_complete() is False
 
@@ -134,35 +138,45 @@ class TestDopplerCalibrationState:
     def test_has_time_scale_from_dicom(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, from_dicom_tags=True,
+            roi=roi,
+            baseline_y_px=50.0,
+            from_dicom_tags=True,
         )
         assert state.has_time_scale_from_dicom() is True
 
     def test_no_time_scale_from_dicom_when_not_dicom(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, from_dicom_tags=False,
+            roi=roi,
+            baseline_y_px=50.0,
+            from_dicom_tags=False,
         )
         assert state.has_time_scale_from_dicom() is False
 
     def test_has_velocity_scale_from_dicom(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, velocity_from_dicom_tags=True,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_from_dicom_tags=True,
         )
         assert state.has_velocity_scale_from_dicom() is True
 
     def test_is_dicom_trusted(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, from_dicom_tags=True,
+            roi=roi,
+            baseline_y_px=50.0,
+            from_dicom_tags=True,
         )
         assert state.is_dicom_trusted() is True
 
     def test_not_dicom_trusted_when_incomplete(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, from_dicom_tags=True,
+            roi=roi,
+            baseline_y_px=50.0,
+            from_dicom_tags=True,
             velocity_span_cm_s=0.0,
         )
         assert state.is_dicom_trusted() is False
@@ -170,7 +184,9 @@ class TestDopplerCalibrationState:
     def test_tissue_kind(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0, kind=DopplerKind.TISSUE,
+            roi=roi,
+            baseline_y_px=50.0,
+            kind=DopplerKind.TISSUE,
         )
         assert state.kind == DopplerKind.TISSUE
 

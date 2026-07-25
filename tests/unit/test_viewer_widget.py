@@ -469,6 +469,7 @@ class TestResultsOverlay:
 class TestContourViewBox:
     def test_creates(self, qtbot) -> None:
         from PySide6.QtWidgets import QWidget
+
         parent = QWidget()
         qtbot.addWidget(parent)
         vb = ContourViewBox()
@@ -538,6 +539,7 @@ class TestFrameAndStateIntegration:
 class TestKeyPress:
     def _make_key_event(self, key, modifiers=Qt.KeyboardModifier.NoModifier):
         from PySide6.QtGui import QKeyEvent
+
         return QKeyEvent(QEvent.Type.KeyPress, key, modifiers)
 
     def test_plus_zooms_in(self, qtbot) -> None:
@@ -716,6 +718,7 @@ class TestContourOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(
             phase="ED",
             view="A4C",
@@ -730,6 +733,7 @@ class TestContourOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contours = [
             Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)]),
             Contour(phase="ES", view="A4C", chamber="LV", points=[(15, 15), (25, 25)]),
@@ -741,6 +745,7 @@ class TestContourOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         w.set_contour_from_domain(contour)
         result = w.contours()
@@ -751,6 +756,7 @@ class TestContourOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         w.set_contour_from_domain(Contour(phase="ED", view="A4C", chamber="LA", points=[(10, 10)]))
         w.set_contour_from_domain(Contour(phase="ED", view="A4C", chamber="LV", points=[(20, 20)]))
         lv = w.get_lv_contour()
@@ -761,6 +767,7 @@ class TestContourOperations:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         w.set_contour_from_domain(Contour(phase="ED", view="A4C", chamber="LA", points=[(10, 10)]))
         assert w.get_lv_contour() is None
 
@@ -1070,6 +1077,7 @@ class TestWindowLevel:
     def test_apply_window_level_preferences(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
         prefs = UserPreferences()
         w._apply_window_level_preferences(prefs)
         # Should not raise
@@ -1233,6 +1241,7 @@ class TestFrameOverlayRefresh:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.viewer_widget import CALIBRATION_PROMPT_OVERLAY_KEY
+
         w._frame_overlay_lines = [tr(CALIBRATION_PROMPT_OVERLAY_KEY)]
         w._refresh_frame_overlay()
         assert w._overlay_label.isVisible()
@@ -1242,6 +1251,7 @@ class TestFrameOverlayRefresh:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.viewer_widget import CALIBRATION_SUCCESS_OVERLAY_KEY
+
         w._frame_overlay_lines = [tr(CALIBRATION_SUCCESS_OVERLAY_KEY)]
         w._refresh_frame_overlay()
         assert w._overlay_label.isVisible()
@@ -1396,6 +1406,7 @@ class TestContourRenderingInternals:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         w.set_contour_from_domain(contour)
         idx = w._find_stored_contour_index(contour)
@@ -1405,6 +1416,7 @@ class TestContourRenderingInternals:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         other = Contour(phase="ES", view="A4C", chamber="LA", points=[(20, 20)])
         w.set_contour_from_domain(contour)
@@ -1414,6 +1426,7 @@ class TestContourRenderingInternals:
     def test_upsert_stored_contour_new(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         w._upsert_stored_contour(contour)
         assert len(w._stored_contours) == 1
@@ -1421,6 +1434,7 @@ class TestContourRenderingInternals:
     def test_upsert_stored_contour_update(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c1 = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         c2 = Contour(phase="ED", view="A4C", chamber="LV", points=[(20, 20)])
         w._upsert_stored_contour(c1)
@@ -1442,6 +1456,7 @@ class TestContourRenderingInternals:
     def test_tag_contour_instance_no_uid(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         result = w._tag_contour_instance(contour)
         assert result is contour
@@ -1497,6 +1512,7 @@ class TestContourOperationsDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         # Use different phases/views/chambers to avoid deduplication
         phases = ["ED", "ES"]
         views = ["A4C", "A2C"]
@@ -1514,6 +1530,7 @@ class TestContourOperationsDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c1 = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         w.set_contour_from_domain(c1)
         assert len(w.contours()) == 1
@@ -1526,6 +1543,7 @@ class TestContourOperationsDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         w.set_contour_from_domain(c)
         contours = w.contours()
@@ -1537,6 +1555,7 @@ class TestContourOperationsDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         w.set_contour_from_domain(Contour(phase="ED", view="A4C", chamber="LA", points=[(10, 10)]))
         w.set_contour_from_domain(Contour(phase="ED", view="A4C", chamber="RV", points=[(20, 20)]))
         w.set_contour_from_domain(Contour(phase="ED", view="A4C", chamber="LV", points=[(30, 30)]))
@@ -1608,11 +1627,16 @@ class TestWheelEvent:
     def _make_wheel_event(self, angle_delta_y=120, modifiers=Qt.KeyboardModifier.NoModifier):
         from PySide6.QtCore import QPoint, QPointF
         from PySide6.QtGui import QWheelEvent
+
         return QWheelEvent(
-            QPointF(0, 0), QPointF(0, 0),
-            QPoint(0, 0), QPoint(0, angle_delta_y),
-            Qt.MouseButton.NoButton, modifiers,
-            Qt.ScrollPhase.NoScrollPhase, False,
+            QPointF(0, 0),
+            QPointF(0, 0),
+            QPoint(0, 0),
+            QPoint(0, angle_delta_y),
+            Qt.MouseButton.NoButton,
+            modifiers,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
         )
 
     def test_handle_wheel_no_state(self, qtbot) -> None:
@@ -1869,6 +1893,7 @@ class TestContourPen:
     def test_contour_pen_for_manual(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="manual")
         pen = w._contour_pen_for(c)
         assert pen is not None
@@ -1876,6 +1901,7 @@ class TestContourPen:
     def test_contour_pen_for_ai(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai")
         pen = w._contour_pen_for(c)
         assert pen is not None
@@ -1883,6 +1909,7 @@ class TestContourPen:
     def test_contour_pen_for_model(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="model")
         pen = w._contour_pen_for(c)
         assert pen is not None
@@ -1897,6 +1924,7 @@ class TestContourXY:
     def test_contour_xy_closed(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 10), (20, 20)])
         x, y = w._contour_xy(c, closed=True)
         # Returns resampled points (DEFAULT_NODE_COUNT=128)
@@ -1907,6 +1935,7 @@ class TestContourXY:
     def test_contour_xy_open(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 10), (20, 20)])
         x, y = w._contour_xy(c, closed=False)
         assert len(x) > 0
@@ -1915,8 +1944,11 @@ class TestContourXY:
     def test_contour_xy_open_arc(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(
-            phase="ED", view="A4C", chamber="LV",
+            phase="ED",
+            view="A4C",
+            chamber="LV",
             points=[(10, 10), (20, 10), (20, 20)],
             mitral_annulus=((5, 5), (25, 5)),
         )
@@ -1935,6 +1967,7 @@ class TestResizeEvent:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from PySide6.QtCore import QSize
         from PySide6.QtGui import QResizeEvent
+
         event = QResizeEvent(QSize(640, 480), QSize(320, 240))
         w.resizeEvent(event)
         # Should not raise
@@ -2038,6 +2071,7 @@ class TestContourPenRebuild:
     def test_rebuild_contour_pens(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
         prefs = UserPreferences()
         w._rebuild_contour_pens(prefs)
         # Pens should be recreated
@@ -2266,6 +2300,7 @@ class TestContourZoneOps:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -2281,6 +2316,7 @@ class TestContourZoneOps:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2303,6 +2339,7 @@ class TestDopplerTraceOps:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -2318,6 +2355,7 @@ class TestDopplerTraceOps:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2340,6 +2378,7 @@ class TestCaliperDragRelease:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2362,6 +2401,7 @@ class TestContourDragRelease:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(10, 10),
@@ -2377,6 +2417,7 @@ class TestContourDragRelease:
         w = _make_viewer(qtbot)
         # Should not raise even without session
         from PySide6.QtCore import QPointF
+
         w._handle_contour_drag_release_from_global(QPointF(10, 10))
 
 
@@ -2390,6 +2431,7 @@ class TestAutoSnap:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         # Should not raise
         w._auto_snap_new_contour(contour)
@@ -2405,6 +2447,7 @@ class TestMagneticSnap:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
         w.set_contour_from_domain(contour)
         weights = np.ones(len(contour.points))
@@ -2594,6 +2637,7 @@ class TestContourRenderingDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
         # Should not raise
@@ -2603,6 +2647,7 @@ class TestContourRenderingDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
         assert len(w._contour_items) > 0
@@ -2613,6 +2658,7 @@ class TestContourRenderingDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         initial_count = len(w._contour_items)
         w._append_rendered_contour(c)
@@ -2622,6 +2668,7 @@ class TestContourRenderingDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         line_item, ma_item, node_items = w._create_contour_render(c, 0)
         assert line_item is not None
@@ -2632,8 +2679,11 @@ class TestContourRenderingDeep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(
-            phase="ED", view="A4C", chamber="LV",
+            phase="ED",
+            view="A4C",
+            chamber="LV",
             points=[(10, 10), (20, 20), (30, 30)],
             mitral_annulus=((5, 5), (35, 5)),
         )
@@ -2698,6 +2748,7 @@ class TestDopplerCalibrationState:
             DopplerCalibrationState,
             DopplerSpectrogramRoi,
         )
+
         roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         state = DopplerCalibrationState(
             roi=roi,
@@ -2715,6 +2766,7 @@ class TestDopplerCalibrationState:
             DopplerCalibrationState,
             DopplerSpectrogramRoi,
         )
+
         roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         state = DopplerCalibrationState(
             roi=roi,
@@ -2745,6 +2797,7 @@ class TestMModeCalibrationState:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
         from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+
         roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         state = MmodeCalibrationState(
             roi=roi,
@@ -2766,15 +2819,14 @@ class TestLinearMeasurementCreation:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         state = _make_state()
         w.set_state(state)
-        m = w._linear_measurement_from_endpoints(
-            (10.0, 10.0), (50.0, 10.0), "IVSd"
-        )
+        m = w._linear_measurement_from_endpoints((10.0, 10.0), (50.0, 10.0), "IVSd")
         assert m is not None
         assert m.label == "IVSd"
 
     def test_linear_measurement_key(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+
         m = LinearMeasurement(
             label="IVSd",
             pixel_length=10.0,
@@ -2788,9 +2840,7 @@ class TestLinearMeasurementCreation:
     def test_constrain_linear_endpoint(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        result = w._constrain_linear_endpoint(
-            (10.0, 10.0), (50.0, 10.0), label="IVSd"
-        )
+        result = w._constrain_linear_endpoint((10.0, 10.0), (50.0, 10.0), label="IVSd")
         assert isinstance(result, tuple)
         assert len(result) == 2
 
@@ -2805,6 +2855,7 @@ class TestUserPreferences:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
         prefs = UserPreferences()
         w.apply_user_preferences(prefs)
         # Should not raise
@@ -2813,9 +2864,11 @@ class TestUserPreferences:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
         prefs = UserPreferences()
         w.apply_user_preferences(prefs)
         # Should not raise
@@ -2875,6 +2928,7 @@ class TestConfigureDopplerAxis:
             DopplerCalibrationState,
             DopplerSpectrogramRoi,
         )
+
         roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         state = DopplerCalibrationState(
             roi=roi,
@@ -2908,6 +2962,7 @@ class TestBeginDopplerVelocityCalibration:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
         w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         w._begin_doppler_velocity_calibration()
         assert w._calibration_kind == "doppler_velocity"
@@ -2924,6 +2979,7 @@ class TestHandleDopplerMouseClick:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -2943,6 +2999,7 @@ class TestHandleDopplerMouseClick:
         w.set_doppler_tool_mode("peak")
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -2969,6 +3026,7 @@ class TestDopplerTracePressRelease:
         w.set_doppler_tool_mode("trace")
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -2984,6 +3042,7 @@ class TestDopplerTracePressRelease:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -2999,6 +3058,7 @@ class TestDopplerTracePressRelease:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(32, 32),
@@ -3021,6 +3081,7 @@ class TestDopplerCalibrationClick:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -3038,6 +3099,7 @@ class TestDopplerCalibrationClick:
         w._doppler_cal_step = "roi"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3056,9 +3118,11 @@ class TestDopplerCalibrationClick:
         w._doppler_cal_step = "baseline"
         w._doppler_roi_corner1 = (10.0, 10.0)
         from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
         w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3088,9 +3152,7 @@ class TestLinearCaliperSequence:
         assert w.is_linear_caliper_active is True
         assert len(w._caliper_sequence) == 1
         # First click
-        m = w._linear_measurement_from_endpoints(
-            (10.0, 10.0), (50.0, 10.0), "IVSd"
-        )
+        m = w._linear_measurement_from_endpoints((10.0, 10.0), (50.0, 10.0), "IVSd")
         w._stored_linear_measurements[w._linear_measurement_key(m)] = m
         # Should chain to next label
         assert w.is_linear_caliper_active is True
@@ -3106,6 +3168,7 @@ class TestContourZoneDrag:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -3121,6 +3184,7 @@ class TestContourZoneDrag:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonRelease,
             QPointF(32, 32),
@@ -3167,6 +3231,7 @@ class TestContourDragFromGlobal:
     def test_handle_contour_drag_release_from_global_no_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
+
         # Should not raise
         w._handle_contour_drag_release_from_global(QPointF(10, 10))
 
@@ -3181,6 +3246,7 @@ class TestMModeCalibrationClick:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -3198,6 +3264,7 @@ class TestMModeCalibrationClick:
         w._mmode_cal_step = "roi"
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3221,6 +3288,7 @@ class TestMModeLineClickFromEvent:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(10, 10),
@@ -3243,6 +3311,7 @@ class TestContourHover:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -3316,6 +3385,7 @@ class TestContourZonePress:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(32, 32),
@@ -3339,8 +3409,10 @@ class TestCaliperLabelItem:
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         # Should not raise
         w._update_caliper_label_graphics(
-            (10.0, 10.0), (50.0, 10.0),
-            color="#ffb300", is_preview=True,
+            (10.0, 10.0),
+            (50.0, 10.0),
+            color="#ffb300",
+            is_preview=True,
         )
 
 
@@ -3479,6 +3551,7 @@ class TestLaAssistContourReady:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
         # Should not raise
         w._on_la_assist_contour_ready(contour)
@@ -3489,6 +3562,7 @@ class TestLaAssistContourReady:
         state = _make_state(frame=0)
         w.set_state(state)
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LA", points=[(10, 10)], frame_index=5)
         # Should not raise (stale result)
         w._on_la_assist_contour_ready(contour)
@@ -3527,6 +3601,7 @@ class TestAutoSnapNewContour:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         contour = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         # Should not raise
         w._auto_snap_new_contour(contour)
@@ -3541,6 +3616,7 @@ class TestContourPenFor:
     def test_contour_pen_for_ai_pending(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai", review_pending=True)
         pen = w._contour_pen_for(c)
         assert pen is not None
@@ -3548,6 +3624,7 @@ class TestContourPenFor:
     def test_contour_pen_for_unknown_source(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="unknown")
         pen = w._contour_pen_for(c)
         assert pen is not None
@@ -3563,6 +3640,7 @@ class TestContourNodeHighlight:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
         w.set_contour_from_domain(c)
         weights = np.ones(len(c.points))
@@ -3584,6 +3662,7 @@ class TestRBFHighlightColor:
     def test_rbf_highlight_color_manual(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="manual")
         color = w._rbf_highlight_color(c)
         assert isinstance(color, str)
@@ -3591,6 +3670,7 @@ class TestRBFHighlightColor:
     def test_rbf_highlight_color_ai(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)], source="ai")
         color = w._rbf_highlight_color(c)
         assert isinstance(color, str)
@@ -3605,6 +3685,7 @@ class TestPinnedIndices:
     def test_pinned_indices_for_contour(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
         indices = w._pinned_indices_for_contour(c)
         assert hasattr(indices, "__iter__")
@@ -3639,6 +3720,7 @@ class TestComputeHoverTarget:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
         w.set_contour_from_domain(c)
         result = w._compute_hover_target((15.0, 15.0))
@@ -3667,6 +3749,7 @@ class TestContourDragReleaseGlobal:
     def test_handle_contour_drag_release_from_global_no_session(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         from PySide6.QtCore import QPointF
+
         # Should not raise
         w._handle_contour_drag_release_from_global(QPointF(10, 10))
 
@@ -3682,6 +3765,7 @@ class TestContourZoneDragWithSession:
         w._drag_session = (0, 10.0, 10.0, 0, 1)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
+
         event = QMouseEvent(
             QEvent.Type.MouseMove,
             QPointF(32, 32),
@@ -3705,6 +3789,7 @@ class TestApplyRBFDragStep:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
+
         c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20), (30, 30)])
         w.set_contour_from_domain(c)
         w._drag_session = (0, 10.0, 10.0, 0, 1)

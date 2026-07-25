@@ -81,19 +81,27 @@ class TestIsOutside:
 
 class TestBestLavIndex:
     def test_returns_first_available(self) -> None:
-        idx = type("Idx", (), {
-            "lav_bi_index_ml_m2": 30.0,
-            "lav_area_length_index_ml_m2": None,
-            "lav_4c_index_ml_m2": None,
-        })()
+        idx = type(
+            "Idx",
+            (),
+            {
+                "lav_bi_index_ml_m2": 30.0,
+                "lav_area_length_index_ml_m2": None,
+                "lav_4c_index_ml_m2": None,
+            },
+        )()
         assert _best_lav_index(idx) == 30.0
 
     def test_returns_none_when_all_none(self) -> None:
-        idx = type("Idx", (), {
-            "lav_bi_index_ml_m2": None,
-            "lav_area_length_index_ml_m2": None,
-            "lav_4c_index_ml_m2": None,
-        })()
+        idx = type(
+            "Idx",
+            (),
+            {
+                "lav_bi_index_ml_m2": None,
+                "lav_area_length_index_ml_m2": None,
+                "lav_4c_index_ml_m2": None,
+            },
+        )()
         assert _best_lav_index(idx) is None
 
 
@@ -218,6 +226,7 @@ class TestFormatResultsOverlayHtml:
 
     def test_with_indexed(self) -> None:
         from echo_personal_tool.domain.models.measurements import IndexedMeasurements
+
         idx = IndexedMeasurements(bsa_m2=1.85, lvmi_g_m2=95.0)
         snap = _snap(indexed=idx)
         result = format_results_overlay_html(snap)

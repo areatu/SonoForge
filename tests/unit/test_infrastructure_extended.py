@@ -137,9 +137,7 @@ class TestReferenceModelExtended:
                         {
                             "name": "P",
                             "slug": "p",
-                            "parameters": [
-                                {"id": "p1", "name": "P1", "unit": "mm"}
-                            ],
+                            "parameters": [{"id": "p1", "name": "P1", "unit": "mm"}],
                         }
                     ],
                 }

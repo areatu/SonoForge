@@ -87,6 +87,7 @@ class TestFormatMeasurementReport:
 
     def test_with_la_volume_fallback(self) -> None:
         from echo_personal_tool.domain.models.measurements import LaVolumeResult
+
         snap = _snap(la_volume=LaVolumeResult(volume_ml=50.0))
         result = format_measurement_report(snap)
         assert "Левое предсердие" in result

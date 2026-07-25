@@ -55,10 +55,10 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml
 
-      # macOS/Windows: run directly
+      # macOS/Windows: run without GUI tests (no xvfb available)
       - name: Run tests (macOS/Windows)
         if: runner.os != 'Linux'
-        run: pytest tests/unit/ -q --tb=line --no-header
+        run: pytest tests/unit/ -q --tb=line --no-header -m "not gui"
 
       # Linux: upload coverage to Coveralls
       - name: Upload coverage to Coveralls

@@ -185,10 +185,7 @@ class TestQidoSeriesCt:
 
 class TestWadoInstanceMetadata:
     def test_parse_metadata(self, wado_instance_metadata) -> None:
-        instances = parse_instances(
-            [{"00080018": {"vr": "UI", "Value": ["1.2.3"]}}],
-            "1.2.3", "1.2.4"
-        )
+        instances = parse_instances([{"00080018": {"vr": "UI", "Value": ["1.2.3"]}}], "1.2.3", "1.2.4")
         assert len(instances) == 1
 
     def test_metadata_has_required_fields(self, wado_instance_metadata) -> None:

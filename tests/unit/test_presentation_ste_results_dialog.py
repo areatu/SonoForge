@@ -46,7 +46,8 @@ class TestUpdateResults:
         long = np.array([0.0, -5.0, -10.0, -8.0])
         radial = np.array([0.0, 3.0, 6.0, 4.0])
         dialog.update_results(
-            long, radial,
+            long,
+            radial,
             segment_strain={1: -20.0, 2: -15.0},
             segment_quality={1: 0.8, 2: 0.7},
             gls=-18.0,

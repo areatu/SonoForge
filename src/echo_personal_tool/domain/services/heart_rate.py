@@ -43,8 +43,9 @@ def estimate_hr_optical_flow(
     4. Autocorrelation → dominant period → BPM.
     """
     if len(frames) < 4:
-        return HeartRateResult(bpm=0.0, method="optical_flow", confidence=0.0,
-                               es_intervals_ms=[], frame_rate=fps, num_frames_used=0)
+        return HeartRateResult(
+            bpm=0.0, method="optical_flow", confidence=0.0, es_intervals_ms=[], frame_rate=fps, num_frames_used=0
+        )
 
     gray = [_to_gray(f) for f in frames]
     h, w = gray[0].shape
@@ -61,17 +62,23 @@ def estimate_hr_optical_flow(
         x1, y1 = w - margin_x, h - margin_y
 
     if x1 - x0 < 10 or y1 - y0 < 10:
-        return HeartRateResult(bpm=0.0, method="optical_flow", confidence=0.0,
-                               es_intervals_ms=[], frame_rate=fps, num_frames_used=0)
+        return HeartRateResult(
+            bpm=0.0, method="optical_flow", confidence=0.0, es_intervals_ms=[], frame_rate=fps, num_frames_used=0
+        )
 
     # Compute flow magnitude signal
     magnitudes = []
     for i in range(len(gray) - 1):
         flow = cv2.calcOpticalFlowFarneback(
-            gray[i], gray[i + 1],
+            gray[i],
+            gray[i + 1],
             None,
-            pyr_scale=0.5, levels=3, winsize=15,
-            iterations=3, poly_n=5, poly_sigma=1.2,
+            pyr_scale=0.5,
+            levels=3,
+            winsize=15,
+            iterations=3,
+            poly_n=5,
+            poly_sigma=1.2,
             flags=0,
         )
         # Magnitude in ROI
@@ -87,8 +94,14 @@ def estimate_hr_optical_flow(
     freq_high = bpm_high / 60.0
     nyquist = fps / 2.0
     if nyquist <= freq_low:
-        return HeartRateResult(bpm=0.0, method="optical_flow", confidence=0.0,
-                               es_intervals_ms=[], frame_rate=fps, num_frames_used=len(frames))
+        return HeartRateResult(
+            bpm=0.0,
+            method="optical_flow",
+            confidence=0.0,
+            es_intervals_ms=[],
+            frame_rate=fps,
+            num_frames_used=len(frames),
+        )
 
     # Normalize frequencies
     Wn = [freq_low / nyquist, min(freq_high / nyquist, 0.99)]
@@ -128,8 +141,9 @@ def estimate_hr_area_time(
                    (needed when areas are from sparse sampling).
     """
     if len(contour_areas) < 4:
-        return HeartRateResult(bpm=0.0, method="area_time", confidence=0.0,
-                               es_intervals_ms=[], frame_rate=fps, num_frames_used=0)
+        return HeartRateResult(
+            bpm=0.0, method="area_time", confidence=0.0, es_intervals_ms=[], frame_rate=fps, num_frames_used=0
+        )
 
     areas = np.array(contour_areas, dtype=np.float64)
 
@@ -168,9 +182,14 @@ def estimate_hr_area_time(
     # Heart rate from median interval
     median_interval_ms = float(np.median(es_intervals_ms))
     if median_interval_ms <= 0:
-        return HeartRateResult(bpm=0.0, method="area_time", confidence=0.0,
-                               es_intervals_ms=es_intervals_ms, frame_rate=fps,
-                               num_frames_used=len(contour_areas))
+        return HeartRateResult(
+            bpm=0.0,
+            method="area_time",
+            confidence=0.0,
+            es_intervals_ms=es_intervals_ms,
+            frame_rate=fps,
+            num_frames_used=len(contour_areas),
+        )
 
     bpm = 60000.0 / median_interval_ms
 
@@ -196,7 +215,9 @@ def estimate_hr_area_time(
 
 def _to_gray(frame: np.ndarray) -> np.ndarray:
     if frame.ndim == 3:
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.shape[2] == 3 else np.mean(frame, axis=2).astype(np.uint8)
+        return (
+            cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.shape[2] == 3 else np.mean(frame, axis=2).astype(np.uint8)
+        )
     return frame.astype(np.uint8)
 
 
@@ -215,18 +236,18 @@ def _autocorrelation_bpm(signal_1d: np.ndarray, fps: float) -> tuple[float, floa
     # Autocorrelation via FFT
     fft = np.fft.rfft(sig, n=2 * n)
     acf = np.fft.irfft(fft * np.conj(fft))[:n]
-    acf = acf / (std ** 2 * n)
+    acf = acf / (std**2 * n)
 
     # Search range: 40–200 BPM
     min_lag = int(60.0 / 200.0 * fps)  # fastest heart rate
-    max_lag = int(60.0 / 40.0 * fps)   # slowest heart rate
+    max_lag = int(60.0 / 40.0 * fps)  # slowest heart rate
     min_lag = max(min_lag, 1)
     max_lag = min(max_lag, n - 1)
 
     if min_lag >= max_lag:
         return 0.0, 0.0, 0.0
 
-    search_region = acf[min_lag:max_lag + 1]
+    search_region = acf[min_lag : max_lag + 1]
     if len(search_region) == 0:
         return 0.0, 0.0, 0.0
 

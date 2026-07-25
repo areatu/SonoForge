@@ -516,7 +516,8 @@ class TestMeasurementResultsDialog:
         )
 
         dialog = MeasurementResultsDialog(
-            MeasurementSnapshot(), default_pdf_name="custom_report.pdf",
+            MeasurementSnapshot(),
+            default_pdf_name="custom_report.pdf",
         )
         qtbot.addWidget(dialog)
         assert dialog._default_pdf_name == "custom_report.pdf"
@@ -528,7 +529,8 @@ class TestMeasurementResultsDialog:
         )
 
         dialog = MeasurementResultsDialog(
-            MeasurementSnapshot(), pdf_font_size=14,
+            MeasurementSnapshot(),
+            pdf_font_size=14,
         )
         qtbot.addWidget(dialog)
         assert dialog._pdf_font_size == 14
@@ -662,7 +664,8 @@ class TestSteResultsDialog:
         longitudinal = np.linspace(0, -0.2, 30)
         radial = np.linspace(0, 0.1, 30)
         dialog.update_results(
-            longitudinal, radial,
+            longitudinal,
+            radial,
             segment_strain={1: -20.0},
             segment_quality={1: 0.9},
             gls=-15.0,
@@ -679,7 +682,8 @@ class TestSteResultsDialog:
         longitudinal = np.linspace(0, -0.2, 30)
         radial = np.linspace(0, 0.1, 30)
         dialog.update_results(
-            longitudinal, radial,
+            longitudinal,
+            radial,
             segment_strain={1: -20.0},
             segment_quality={1: 0.9},
             kernels_accepted=80,
@@ -699,7 +703,8 @@ class TestSteResultsDialog:
         longitudinal = np.linspace(0, -0.2, 30)
         radial = np.linspace(0, 0.1, 30)
         dialog.update_results(
-            longitudinal, radial,
+            longitudinal,
+            radial,
             segment_strain={},
             segment_quality={},
             kernels_accepted=100,
@@ -1085,9 +1090,12 @@ class TestStrainCurveWidget:
         longitudinal = np.linspace(0, -0.2, 30)
         radial = np.linspace(0, 0.1, 30)
         widget.set_strain_data(
-            longitudinal, radial,
-            ed_index=5, es_index=20,
-            window_start=5, window_end=25,
+            longitudinal,
+            radial,
+            ed_index=5,
+            es_index=20,
+            window_start=5,
+            window_end=25,
         )
 
     def test_set_strain_data_empty(self, qtbot) -> None:

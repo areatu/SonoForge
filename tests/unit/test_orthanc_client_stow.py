@@ -48,13 +48,15 @@ class TestStowWithRealFixtures:
 
     def test_stow_success_with_transport(self, stow_success) -> None:
         """Test STOW with real success fixture."""
+
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=stow_success)
 
         transport = httpx.MockTransport(handler)
         client = OrthancDicomWebClient(
             "http://orthanc/dicom-web",
-            "user", "pass",
+            "user",
+            "pass",
         )
         client._client = httpx.Client(
             base_url="http://orthanc/dicom-web/",
@@ -69,13 +71,15 @@ class TestStowWithRealFixtures:
 
     def test_stow_partial_failure_with_transport(self, stow_partial_failure) -> None:
         """Test STOW with partial failure fixture."""
+
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=stow_partial_failure)
 
         transport = httpx.MockTransport(handler)
         client = OrthancDicomWebClient(
             "http://orthanc/dicom-web",
-            "user", "pass",
+            "user",
+            "pass",
         )
         client._client = httpx.Client(
             base_url="http://orthanc/dicom-web/",

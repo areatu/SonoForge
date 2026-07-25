@@ -97,9 +97,7 @@ def test_load_all_frames_from_video(tmp_path: Path) -> None:
     cache.set_total_frames(tmp_path / "clip.mp4", total)
 
     mock_reader = MagicMock()
-    mock_reader.read_frame.side_effect = [
-        np.zeros((4, 4), dtype=np.uint8) for _ in range(total)
-    ]
+    mock_reader.read_frame.side_effect = [np.zeros((4, 4), dtype=np.uint8) for _ in range(total)]
 
     with patch(
         "echo_personal_tool.infrastructure.video_reader.get_thread_video_reader",
@@ -119,9 +117,7 @@ def test_load_all_frames_from_dicom(tmp_path: Path) -> None:
     cache.set_total_frames(tmp_path / "clip.dcm", total)
 
     mock_session = MagicMock()
-    mock_session.decode_single_frame.side_effect = [
-        np.ones((4, 4), dtype=np.uint8) * i for i in range(total)
-    ]
+    mock_session.decode_single_frame.side_effect = [np.ones((4, 4), dtype=np.uint8) * i for i in range(total)]
 
     with patch(
         "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",

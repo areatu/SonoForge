@@ -62,8 +62,10 @@ class TestTimeConversion:
 class TestVelocityConversion:
     def test_velocity_with_baseline(self) -> None:
         m = DopplerAxisMapping(
-            baseline_y_px=100.0, velocity_span_cm_s=200.0,
-            plot_height=100.0, plot_origin_y=50.0,
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
+            plot_height=100.0,
+            plot_origin_y=50.0,
         )
         # y = baseline → velocity = 0
         v = m.velocity_cm_s_from_y(100.0)
@@ -71,7 +73,8 @@ class TestVelocityConversion:
 
     def test_velocity_above_baseline_is_positive(self) -> None:
         m = DopplerAxisMapping(
-            baseline_y_px=100.0, velocity_span_cm_s=200.0,
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
             plot_height=100.0,
         )
         v = m.velocity_cm_s_from_y(50.0)  # above baseline → positive
@@ -79,7 +82,8 @@ class TestVelocityConversion:
 
     def test_y_from_velocity_with_baseline(self) -> None:
         m = DopplerAxisMapping(
-            baseline_y_px=100.0, velocity_span_cm_s=200.0,
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
             plot_height=100.0,
         )
         y = m.y_from_velocity_cm_s(0.0)
@@ -87,7 +91,8 @@ class TestVelocityConversion:
 
     def test_roundtrip_with_baseline(self) -> None:
         m = DopplerAxisMapping(
-            baseline_y_px=100.0, velocity_span_cm_s=200.0,
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
             plot_height=100.0,
         )
         y = m.y_from_velocity_cm_s(50.0)
@@ -96,16 +101,20 @@ class TestVelocityConversion:
 
     def test_velocity_without_baseline(self) -> None:
         m = DopplerAxisMapping(
-            plot_height=100.0, plot_origin_y=0.0,
-            velocity_min_cm_s=-100.0, velocity_max_cm_s=100.0,
+            plot_height=100.0,
+            plot_origin_y=0.0,
+            velocity_min_cm_s=-100.0,
+            velocity_max_cm_s=100.0,
         )
         v = m.velocity_cm_s_from_y(0.0)
         assert v == pytest.approx(100.0)  # top of plot = max velocity
 
     def test_y_from_velocity_without_baseline(self) -> None:
         m = DopplerAxisMapping(
-            plot_height=100.0, plot_origin_y=0.0,
-            velocity_min_cm_s=-100.0, velocity_max_cm_s=100.0,
+            plot_height=100.0,
+            plot_origin_y=0.0,
+            velocity_min_cm_s=-100.0,
+            velocity_max_cm_s=100.0,
         )
         y = m.y_from_velocity_cm_s(100.0)
         assert y == pytest.approx(0.0)

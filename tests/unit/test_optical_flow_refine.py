@@ -40,7 +40,10 @@ class TestRefineContourWithOpticalFlow:
         frames = _make_frames(n=15)
         contour = _make_contour(n=12)
         result = refine_contour_with_optical_flow(
-            frames, contour, current_frame_idx=7, fps=30.0,
+            frames,
+            contour,
+            current_frame_idx=7,
+            fps=30.0,
         )
         assert len(result) == len(contour)
 
@@ -48,7 +51,10 @@ class TestRefineContourWithOpticalFlow:
         frames = _make_frames(n=15)
         contour = _make_contour(n=8)
         result = refine_contour_with_optical_flow(
-            frames, contour, current_frame_idx=5, fps=30.0,
+            frames,
+            contour,
+            current_frame_idx=5,
+            fps=30.0,
         )
         for pt in result:
             assert isinstance(pt, tuple)
@@ -59,7 +65,11 @@ class TestRefineContourWithOpticalFlow:
         frames = _make_frames(n=15, h=32, w=32)
         contour = [(1.0, 1.0), (30.0, 1.0), (30.0, 30.0), (1.0, 30.0)]
         result = refine_contour_with_optical_flow(
-            frames, contour, current_frame_idx=5, fps=30.0, roi_half_size=5,
+            frames,
+            contour,
+            current_frame_idx=5,
+            fps=30.0,
+            roi_half_size=5,
         )
         # Points at (1,1) are too close to edge
         assert result[0] == contour[0]
@@ -68,8 +78,12 @@ class TestRefineContourWithOpticalFlow:
         frames = _make_frames(n=20)
         contour = _make_contour(n=10)
         result = refine_contour_with_optical_flow(
-            frames, contour, current_frame_idx=10, fps=30.0,
-            max_shift_px=1.0, shift_fraction=1.0,
+            frames,
+            contour,
+            current_frame_idx=10,
+            fps=30.0,
+            max_shift_px=1.0,
+            shift_fraction=1.0,
         )
         for orig, refined in zip(contour, result):
             dist = math.hypot(refined[0] - orig[0], refined[1] - orig[1])
@@ -79,7 +93,10 @@ class TestRefineContourWithOpticalFlow:
         frames = _make_frames(n=10)
         contour = _make_contour()
         result = refine_contour_with_optical_flow(
-            frames, contour, current_frame_idx=100, fps=30.0,
+            frames,
+            contour,
+            current_frame_idx=100,
+            fps=30.0,
         )
         assert len(result) == len(contour)
 

@@ -131,8 +131,10 @@ class TestComputePairLvef:
 
     def test_no_spacing(self) -> None:
         result = _compute_pair_lvef(
-            self._make_contour("ed"), self._make_contour("es"),
-            self._make_contour("ed"), self._make_contour("es"),
+            self._make_contour("ed"),
+            self._make_contour("es"),
+            self._make_contour("ed"),
+            self._make_contour("es"),
             spacing=None,
         )
         assert result["lvef_skip_reason"] == "no_pixel_spacing"
@@ -140,16 +142,20 @@ class TestComputePairLvef:
 
     def test_missing_auto(self) -> None:
         result = _compute_pair_lvef(
-            None, self._make_contour("es"),
-            self._make_contour("ed"), self._make_contour("es"),
+            None,
+            self._make_contour("es"),
+            self._make_contour("ed"),
+            self._make_contour("es"),
             spacing=(0.5, 0.5),
         )
         assert result["lvef_skip_reason"] == "missing_auto"
 
     def test_missing_gold(self) -> None:
         result = _compute_pair_lvef(
-            self._make_contour("ed"), self._make_contour("es"),
-            None, self._make_contour("es"),
+            self._make_contour("ed"),
+            self._make_contour("es"),
+            None,
+            self._make_contour("es"),
             spacing=(0.5, 0.5),
         )
         assert result["lvef_skip_reason"] == "missing_gold"

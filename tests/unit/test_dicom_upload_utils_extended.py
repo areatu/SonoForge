@@ -120,6 +120,7 @@ def test_collect_skips_non_dicom_format(tmp_path: Path) -> None:
     )
     # Override media_format
     from dataclasses import replace
+
     study_inst = inst
     mp4_inst = replace(study_inst, media_format="mp4")
     mp4_series = replace(series, instances=(mp4_inst,))

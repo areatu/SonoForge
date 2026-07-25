@@ -70,10 +70,12 @@ def main_window(mock_controller):
         results_overlay_custom_position=False,
         language="ru",
     )
-    with patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"), \
-         patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs), \
-         patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""), \
-         patch.object(mock_controller, "compute_overlay_snapshot", return_value=None):
+    with (
+        patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+        patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
+        patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+        patch.object(mock_controller, "compute_overlay_snapshot", return_value=None),
+    ):
         w = MainWindow(controller=mock_controller)
     yield w
     w.close()
@@ -253,16 +255,20 @@ class TestOnLayoutToggle:
 
 class TestOnMagneticSnapChanged:
     def test_updates_viewer(self, main_window):
-        with patch("echo_personal_tool.presentation.main_window.save_user_preferences"), \
-             patch.object(main_window._viewer, "set_magnetic_snap_enabled") as mock:
+        with (
+            patch("echo_personal_tool.presentation.main_window.save_user_preferences"),
+            patch.object(main_window._viewer, "set_magnetic_snap_enabled") as mock,
+        ):
             main_window._on_magnetic_snap_changed(True)
             mock.assert_called_with(True)
 
 
 class TestOnDespeckleChanged:
     def test_updates_viewer(self, main_window):
-        with patch("echo_personal_tool.presentation.main_window.save_user_preferences"), \
-             patch.object(main_window._viewer, "set_despeckle_enabled") as mock:
+        with (
+            patch("echo_personal_tool.presentation.main_window.save_user_preferences"),
+            patch.object(main_window._viewer, "set_despeckle_enabled") as mock,
+        ):
             main_window._on_despeckle_changed(True)
             mock.assert_called_with(True)
 
@@ -288,8 +294,10 @@ class TestOnContourCompleted:
         # Replace snapshot with one that has contours
         new_state = replace(main_window._controller.state_manager.snapshot, contours=(contour,))
         main_window._controller.state_manager.snapshot = new_state
-        with patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""), \
-             patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None):
+        with (
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+        ):
             main_window._on_contour_completed(contour)
 
 
@@ -420,9 +428,7 @@ class TestOpenFolderPath:
 class TestOnGoldExportRequested:
     def test_calls_controller(self, main_window):
         main_window._on_gold_export_requested("ED", 0, "LV")
-        main_window._controller.save_gold_annotation.assert_called_once_with(
-            phase="ED", frame_index=0, chamber="LV"
-        )
+        main_window._controller.save_gold_annotation.assert_called_once_with(phase="ED", frame_index=0, chamber="LV")
 
 
 class TestOnHeartRateResult:

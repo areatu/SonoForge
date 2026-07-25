@@ -108,6 +108,7 @@ class TestBuildTLSContext:
         ssl_cx, host = result
         assert host == "127.0.0.1"
         import ssl
+
         assert ssl_cx.verify_mode == ssl.CERT_REQUIRED
 
     def test_tls_verify_false(self):
@@ -115,6 +116,7 @@ class TestBuildTLSContext:
         result = client._build_tls_context(use_tls=True, verify=False)
         assert result is not None
         import ssl
+
         assert result[0].verify_mode == ssl.CERT_NONE
 
 

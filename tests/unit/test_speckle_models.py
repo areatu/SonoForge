@@ -30,8 +30,12 @@ class TestTrackingKernel:
 
     def test_custom(self) -> None:
         k = TrackingKernel(
-            center=(50.0, 60.0), radius=15, node_index=5,
-            layer="epi", aha_segment=3, arc_length_param=0.75,
+            center=(50.0, 60.0),
+            radius=15,
+            node_index=5,
+            layer="epi",
+            aha_segment=3,
+            arc_length_param=0.75,
         )
         assert k.radius == 15
         assert k.layer == "epi"
@@ -51,8 +55,10 @@ class TestMyocardialZone:
         endo = np.array([[10, 20], [30, 40], [50, 60]], dtype=np.float64)
         epi = np.array([[12, 22], [32, 42], [52, 62]], dtype=np.float64)
         zone = MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
         )
         assert zone.thickness_mm == 8.0
         assert zone.pixel_spacing == (0.5, 0.5)
@@ -63,8 +69,10 @@ class TestMyocardialZone:
         endo = np.array([[1, 2]], dtype=np.float64)
         epi = np.array([[3, 4]], dtype=np.float64)
         zone = MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=5.0, pixel_spacing=(1.0, 1.0),
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=5.0,
+            pixel_spacing=(1.0, 1.0),
         )
         # Mutating original should not affect zone
         endo[0, 0] = 999
@@ -72,8 +80,10 @@ class TestMyocardialZone:
 
     def test_frozen(self) -> None:
         zone = MyocardialZone(
-            endo_points=np.zeros((2, 2)), epi_points=np.zeros((2, 2)),
-            thickness_mm=5.0, pixel_spacing=(1.0, 1.0),
+            endo_points=np.zeros((2, 2)),
+            epi_points=np.zeros((2, 2)),
+            thickness_mm=5.0,
+            pixel_spacing=(1.0, 1.0),
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             zone.thickness_mm = 10.0  # type: ignore[misc]
@@ -175,7 +185,8 @@ class TestStrainResult:
         zone = MyocardialZone(
             endo_points=np.zeros((3, 2)),
             epi_points=np.ones((3, 2)),
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
         )
         result = StrainResult(
             longitudinal=np.array([-0.2]),

@@ -20,7 +20,10 @@ def _setup_qapp():
 
 
 class TestMeasurementResultsDialogConstruction:
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Test Report")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report",
+        return_value="Test Report",
+    )
     def test_creates_with_report(self, mock_format):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 
@@ -30,14 +33,18 @@ class TestMeasurementResultsDialogConstruction:
         assert dlg._text.toPlainText() == "Test Report"
         assert dlg._text.isReadOnly()
 
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="No data")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="No data"
+    )
     def test_custom_font_size(self, mock_format):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 
         dlg = MeasurementResultsDialog(snapshot=None, pdf_font_size=14)
         assert dlg._pdf_font_size == 14
 
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report"
+    )
     def test_custom_pdf_name(self, mock_format):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 
@@ -49,7 +56,9 @@ class TestExportPdfSuccess:
     @patch("echo_personal_tool.presentation.measurement_results_dialog.QDesktopServices.openUrl")
     @patch("echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf")
     @patch("echo_personal_tool.presentation.styled_dialogs.styled_save_file", return_value=("/tmp/report.pdf", "PDF"))
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report"
+    )
     def test_exports_pdf(self, mock_format, mock_save, mock_export, mock_open):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 
@@ -61,7 +70,9 @@ class TestExportPdfSuccess:
     @patch("echo_personal_tool.presentation.measurement_results_dialog.QDesktopServices.openUrl")
     @patch("echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf")
     @patch("echo_personal_tool.presentation.styled_dialogs.styled_save_file", return_value=("/tmp/report", "PDF"))
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report"
+    )
     def test_appends_pdf_extension(self, mock_format, mock_save, mock_export, mock_open):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 
@@ -74,12 +85,16 @@ class TestExportPdfSuccess:
 
 class TestExportPdfCancelled:
     @patch("echo_personal_tool.presentation.styled_dialogs.styled_save_file", return_value=("", ""))
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report"
+    )
     def test_cancel_does_nothing(self, mock_format, mock_save):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 
         dlg = MeasurementResultsDialog(snapshot=None)
-        with patch("echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf") as mock_export:
+        with patch(
+            "echo_personal_tool.presentation.measurement_results_dialog.export_measurement_report_pdf"
+        ) as mock_export:
             dlg._export_pdf()
             mock_export.assert_not_called()
 
@@ -93,7 +108,9 @@ class TestExportPdfError:
         side_effect=PdfExportError("write failed"),
     )
     @patch("echo_personal_tool.presentation.styled_dialogs.styled_save_file", return_value=("/tmp/report.pdf", "PDF"))
-    @patch("echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report")
+    @patch(
+        "echo_personal_tool.presentation.measurement_results_dialog.format_measurement_report", return_value="Report"
+    )
     def test_shows_warning_on_error(self, mock_format, mock_save, mock_export, mock_warn):
         from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 

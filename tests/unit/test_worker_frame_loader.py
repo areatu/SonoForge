@@ -114,9 +114,7 @@ class TestRunSingle:
 
         assert len(finished) == 1
 
-    @patch(
-        "echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session"
-    )
+    @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_dicom_single(self, mock_get_session):
         session = MagicMock()
         pixels = np.zeros((64, 64), dtype=np.uint8)
@@ -161,9 +159,7 @@ class TestRunBatch:
         assert batch_results[0][0][0] == 5
         assert batch_results[0][2][0] == 7
 
-    @patch(
-        "echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session"
-    )
+    @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_batch_dicom(self, mock_get_session):
         session = MagicMock()
         frames = [np.zeros((10, 10), dtype=np.uint8) + i for i in range(4)]
@@ -186,9 +182,7 @@ class TestRunBatch:
         assert len(batch_results[0]) == 4
         session.release_heavy.assert_called_once()
 
-    @patch(
-        "echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session"
-    )
+    @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_batch_dicom_clips_to_actual_count(self, mock_get_session):
         session = MagicMock()
         session.frame_count = 3
@@ -259,16 +253,12 @@ class TestExceptionHandling:
         assert len(failed) == 1
         assert "file missing" in failed[0]
 
-    @patch(
-        "echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session"
-    )
+    @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_failed_emit_runtime_error_swallowed(self, mock_get_session):
         session = MagicMock()
         session.open.side_effect = ValueError("bad")
         mock_get_session.return_value = session
 
         worker = FrameLoaderWorker(Path("/tmp/src.dcm"), media_format="dicom")
-        with patch.object(
-            type(worker.signals.failed), "emit", side_effect=RuntimeError("deleted")
-        ):
+        with patch.object(type(worker.signals.failed), "emit", side_effect=RuntimeError("deleted")):
             worker.run()

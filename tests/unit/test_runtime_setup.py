@@ -122,9 +122,7 @@ class TestDownloadModels:
             patch.object(rs_mod, "_download_file"),
             patch("tarfile.open") as mock_tar,
         ):
-            mock_tar.return_value.__enter__ = MagicMock(
-                return_value=MagicMock(getmembers=MagicMock(return_value=[]))
-            )
+            mock_tar.return_value.__enter__ = MagicMock(return_value=MagicMock(getmembers=MagicMock(return_value=[])))
             mock_tar.return_value.__exit__ = MagicMock(return_value=False)
             (models_dir / "model_manifest.json").write_text("{}")
             result = rs_mod.download_models()

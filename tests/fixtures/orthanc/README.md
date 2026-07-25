@@ -48,6 +48,7 @@ from pathlib import Path
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "orthanc"
 
+
 def test_parse_studies():
     with open(FIXTURES / "qido" / "studies_single.json") as f:
         data = json.load(f)

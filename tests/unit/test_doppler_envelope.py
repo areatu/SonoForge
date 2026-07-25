@@ -92,8 +92,12 @@ class TestTraceEnvelope:
         for col in range(10, 110):
             gray[15, col] = 200
         result = trace_envelope(
-            gray, _roi(), baseline_y_px=30.0, num_samples=20,
-            start_at_baseline=False, above_baseline=True,
+            gray,
+            _roi(),
+            baseline_y_px=30.0,
+            num_samples=20,
+            start_at_baseline=False,
+            above_baseline=True,
         )
         if len(result) >= 2:
             assert result[0][1] != pytest.approx(30.0, abs=0.1)
@@ -105,7 +109,10 @@ class TestTraceEnvelope:
             row = min(59, baseline + (col - 10) // 4)
             gray[row, col] = 200
         result = trace_envelope(
-            gray, _roi(), baseline_y_px=float(baseline), num_samples=20,
+            gray,
+            _roi(),
+            baseline_y_px=float(baseline),
+            num_samples=20,
             above_baseline=False,
         )
         assert len(result) >= 2

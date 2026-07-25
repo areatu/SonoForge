@@ -81,18 +81,23 @@ class TestPlanimeterResultsFromContours:
 
     def test_lv_contour_ignored(self):
         result = planimeter_results_from_contours(
-            (_lv_contour(),), (1.0, 1.0), spacing_calibrated=True,
+            (_lv_contour(),),
+            (1.0, 1.0),
+            spacing_calibrated=True,
         )
         assert result == ()
 
     def test_multiple_contours(self):
         contours = (_area_contour(), _volume_contour())
-        with patch(
-            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_cm2",
-            return_value=10.0,
-        ), patch(
-            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_ml",
-            return_value=50.0,
+        with (
+            patch(
+                "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_cm2",
+                return_value=10.0,
+            ),
+            patch(
+                "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_ml",
+                return_value=50.0,
+            ),
         ):
             result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
         assert len(result) == 2

@@ -304,9 +304,7 @@ def _save_password_keyring(username: str, password: str) -> None:
         _purge_password_from_qsettings()
         return
     except Exception:
-        _keyring_logger.warning(
-            "keyring unavailable — password NOT saved (OS keychain required)"
-        )
+        _keyring_logger.warning("keyring unavailable — password NOT saved (OS keychain required)")
 
 
 def _load_password_keyring(username: str) -> str:

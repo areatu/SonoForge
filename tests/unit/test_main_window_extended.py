@@ -26,16 +26,25 @@ from echo_personal_tool.presentation.main_window import (
 class TestLoadedFileLabel:
     def test_with_path(self) -> None:
         inst = InstanceMetadata(
-            sop_instance_uid="1.2.3", series_uid="1.2.4", modality="US",
-            number_of_frames=1, pixel_spacing=None, frame_time_ms=None,
-            series_description="x", path=Path("/data/patient/scan.dcm"),
+            sop_instance_uid="1.2.3",
+            series_uid="1.2.4",
+            modality="US",
+            number_of_frames=1,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="x",
+            path=Path("/data/patient/scan.dcm"),
         )
         assert _loaded_file_label(inst) == "scan.dcm"
 
     def test_without_path(self) -> None:
         inst = InstanceMetadata(
-            sop_instance_uid="1.2.3.4.5", series_uid="1.2.4", modality="US",
-            number_of_frames=1, pixel_spacing=None, frame_time_ms=None,
+            sop_instance_uid="1.2.3.4.5",
+            series_uid="1.2.4",
+            modality="US",
+            number_of_frames=1,
+            pixel_spacing=None,
+            frame_time_ms=None,
             series_description="x",
         )
         assert _loaded_file_label(inst) == "1.2.3.4.5"
@@ -55,8 +64,11 @@ class TestLayoutConfig:
 
     def test_all_true(self) -> None:
         cfg = LayoutConfig(
-            swap_places=True, gallery_horizontal=True,
-            activity_bar=True, status_bar_visible=True, multiview=True,
+            swap_places=True,
+            gallery_horizontal=True,
+            activity_bar=True,
+            status_bar_visible=True,
+            multiview=True,
         )
         assert cfg.swap_places is True
         assert cfg.multiview is True
@@ -117,9 +129,12 @@ class TestLoadLayoutState:
 
     def test_valid_json(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = json.dumps({
-            "swap_places": True, "gallery_horizontal": True,
-        })
+        window._user_preferences.layout_state_json = json.dumps(
+            {
+                "swap_places": True,
+                "gallery_horizontal": True,
+            }
+        )
         cfg = window._load_layout_state()
         assert cfg.swap_places is True
         assert cfg.gallery_horizontal is True
@@ -132,9 +147,11 @@ class TestLoadLayoutState:
 
     def test_unknown_field_returns_default(self, qtbot) -> None:
         window = self._make_window(qtbot)
-        window._user_preferences.layout_state_json = json.dumps({
-            "unknown_field": True,
-        })
+        window._user_preferences.layout_state_json = json.dumps(
+            {
+                "unknown_field": True,
+            }
+        )
         cfg = window._load_layout_state()
         assert cfg == LayoutConfig()
 

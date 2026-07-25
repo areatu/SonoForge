@@ -78,15 +78,13 @@ class TestExtractChannelSamples:
     def test_multi_channel(self) -> None:
         # 3 channels, 4 samples → interleaved
         data = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], dtype=np.int16)
-        result = _extract_channel_samples(data, channel_number=1, n_channels=3,
-                                          bits_allocated=16, interpretation="SS")
+        result = _extract_channel_samples(data, channel_number=1, n_channels=3, bits_allocated=16, interpretation="SS")
         assert result is not None
         np.testing.assert_array_equal(result, np.array([2.0, 5.0, 8.0, 11.0]))
 
     def test_single_channel(self) -> None:
         data = np.array([10, 20, 30], dtype=np.int16)
-        result = _extract_channel_samples(data, channel_number=0, n_channels=1,
-                                          bits_allocated=16, interpretation="SS")
+        result = _extract_channel_samples(data, channel_number=0, n_channels=1, bits_allocated=16, interpretation="SS")
         assert result is not None
         np.testing.assert_array_equal(result, np.array([10.0, 20.0, 30.0]))
 

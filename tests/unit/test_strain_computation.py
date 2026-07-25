@@ -42,8 +42,7 @@ def _make_positions(
         ratio = 1.0 - (contraction_ratio * t / n_frames)
         for i in range(n_total):
             r = 20.0 if i in endo_indices else 28.0
-            pos[t, i, :] = [cx + r * ratio * np.cos(angle := 2 * np.pi * i / n_total),
-                            cy + r * ratio * np.sin(angle)]
+            pos[t, i, :] = [cx + r * ratio * np.cos(angle := 2 * np.pi * i / n_total), cy + r * ratio * np.sin(angle)]
     return pos
 
 

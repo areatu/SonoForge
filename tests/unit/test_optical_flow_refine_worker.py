@@ -75,6 +75,7 @@ class TestOpticalFlowRefineWorkerRun:
             qapp.processEvents()
 
             import time
+
             time.sleep(0.3)
             qapp.processEvents()
 
@@ -94,6 +95,7 @@ class TestOpticalFlowRefineWorkerRun:
             qapp.processEvents()
 
             import time
+
             time.sleep(0.3)
             qapp.processEvents()
 
@@ -124,6 +126,7 @@ class TestLoadNeighborFrames:
         w = _make_worker(media_format="mp4", current_frame_idx=10, total_frames=20)
 
         captured_indices = []
+
         def fake_mp4(indices):
             captured_indices.extend(indices)
             return [np.zeros((64, 64), dtype=np.uint8) for _ in indices]
@@ -141,7 +144,9 @@ class TestLoadFromMp4Worker:
         mock_cap = MagicMock()
         mock_cap.isOpened.return_value = False
 
-        with patch("echo_personal_tool.application.workers.optical_flow_refine_worker.cv2.VideoCapture", return_value=mock_cap):
+        with patch(
+            "echo_personal_tool.application.workers.optical_flow_refine_worker.cv2.VideoCapture", return_value=mock_cap
+        ):
             result = w._load_from_mp4([0, 1, 2])
         assert result == []
 
@@ -153,8 +158,13 @@ class TestLoadFromMp4Worker:
         mock_cap.isOpened.return_value = True
         mock_cap.read.side_effect = [(True, f) for f in frames] + [(False, None)]
 
-        with patch("echo_personal_tool.application.workers.optical_flow_refine_worker.cv2.VideoCapture", return_value=mock_cap):
-            with patch("echo_personal_tool.application.workers.optical_flow_refine_worker.cv2.cvtColor", return_value=np.zeros((64, 64), dtype=np.uint8)):
+        with patch(
+            "echo_personal_tool.application.workers.optical_flow_refine_worker.cv2.VideoCapture", return_value=mock_cap
+        ):
+            with patch(
+                "echo_personal_tool.application.workers.optical_flow_refine_worker.cv2.cvtColor",
+                return_value=np.zeros((64, 64), dtype=np.uint8),
+            ):
                 result = w._load_from_mp4([1, 3])
         # Should only include frames at indices 1 and 3
         assert len(result) == 2

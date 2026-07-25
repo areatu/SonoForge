@@ -28,8 +28,8 @@ class TestBandpassFilter:
         signal = np.sin(2 * np.pi * 1.0 * t)
         result = _bandpass_filter(signal, fs, low=5.0, high=15.0)
         # Power should be reduced
-        power_in = np.sum(signal ** 2)
-        power_out = np.sum(result ** 2)
+        power_in = np.sum(signal**2)
+        power_out = np.sum(result**2)
         assert power_out < power_in
 
     def test_passthrough_on_error(self) -> None:

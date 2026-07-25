@@ -143,17 +143,37 @@ class TestTopicLabels:
     def test_all_expected_topics_have_labels(self):
         from echo_personal_tool.presentation.structured_reference_widget import _TOPIC_LABELS
 
-        expected = {"left_ventricle", "left_atrium", "right_ventricle", "right_atrium",
-                     "mitral_valve", "aortic_valve", "tricuspid_valve", "pulmonary_valve",
-                     "aorta", "prosthetic_valves", "other"}
+        expected = {
+            "left_ventricle",
+            "left_atrium",
+            "right_ventricle",
+            "right_atrium",
+            "mitral_valve",
+            "aortic_valve",
+            "tricuspid_valve",
+            "pulmonary_valve",
+            "aorta",
+            "prosthetic_valves",
+            "other",
+        }
         assert expected.issubset(set(_TOPIC_LABELS.keys()))
 
     def test_all_expected_topics_have_icons(self):
         from echo_personal_tool.presentation.structured_reference_widget import _TOPIC_ICONS
 
-        expected = {"left_ventricle", "left_atrium", "right_ventricle", "right_atrium",
-                     "mitral_valve", "aortic_valve", "tricuspid_valve", "pulmonary_valve",
-                     "aorta", "prosthetic_valves", "other"}
+        expected = {
+            "left_ventricle",
+            "left_atrium",
+            "right_ventricle",
+            "right_atrium",
+            "mitral_valve",
+            "aortic_valve",
+            "tricuspid_valve",
+            "pulmonary_valve",
+            "aorta",
+            "prosthetic_valves",
+            "other",
+        }
         assert expected.issubset(set(_TOPIC_ICONS.keys()))
 
     def test_all_expected_topics_have_full_names(self):

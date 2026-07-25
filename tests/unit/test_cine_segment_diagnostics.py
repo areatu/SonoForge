@@ -52,12 +52,25 @@ class TestCineSegmentDiagnosticReport:
 
     def test_frozen(self) -> None:
         report = CineSegmentDiagnosticReport(
-            source_path=None, frame_index=0, frame_shape=(100, 100),
-            media_format="mp4", roi_xyxy=None, crop_mode="none",
-            crop_y0=0, crop_x0=0, crop_height=100, crop_width=100,
-            mask_pixels=0, mask_bbox=None, mask_centroid_xy=None,
-            annulus_mid_y=None, apex_y=None, arc_point_count=0,
-            arc_span_px=None, arc_depth_px=None, reject_reason=None,
+            source_path=None,
+            frame_index=0,
+            frame_shape=(100, 100),
+            media_format="mp4",
+            roi_xyxy=None,
+            crop_mode="none",
+            crop_y0=0,
+            crop_x0=0,
+            crop_height=100,
+            crop_width=100,
+            mask_pixels=0,
+            mask_bbox=None,
+            mask_centroid_xy=None,
+            annulus_mid_y=None,
+            apex_y=None,
+            arc_point_count=0,
+            arc_span_px=None,
+            arc_depth_px=None,
+            reject_reason=None,
             onnx_available=False,
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
@@ -146,12 +159,25 @@ class TestArcSpanPx:
 class TestCollectIssues:
     def _make_report(self, **kwargs) -> CineSegmentDiagnosticReport:
         defaults = dict(
-            source_path=None, frame_index=0, frame_shape=(100, 100),
-            media_format="mp4", roi_xyxy=None, crop_mode="none",
-            crop_y0=0, crop_x0=0, crop_height=100, crop_width=100,
-            mask_pixels=200, mask_bbox=None, mask_centroid_xy=None,
-            annulus_mid_y=None, apex_y=None, arc_point_count=0,
-            arc_span_px=None, arc_depth_px=None, reject_reason=None,
+            source_path=None,
+            frame_index=0,
+            frame_shape=(100, 100),
+            media_format="mp4",
+            roi_xyxy=None,
+            crop_mode="none",
+            crop_y0=0,
+            crop_x0=0,
+            crop_height=100,
+            crop_width=100,
+            mask_pixels=200,
+            mask_bbox=None,
+            mask_centroid_xy=None,
+            annulus_mid_y=None,
+            apex_y=None,
+            arc_point_count=0,
+            arc_span_px=None,
+            arc_depth_px=None,
+            reject_reason=None,
             onnx_available=False,
         )
         defaults.update(kwargs)
@@ -229,13 +255,26 @@ class TestCollectIssues:
 class TestFormatDiagnosticReport:
     def test_basic(self) -> None:
         report = CineSegmentDiagnosticReport(
-            source_path="/video.mp4", frame_index=0, frame_shape=(480, 640),
-            media_format="mp4", roi_xyxy=(10.0, 20.0, 300.0, 400.0),
-            crop_mode="echonet", crop_y0=20, crop_x0=10, crop_height=380,
-            crop_width=290, mask_pixels=500, mask_bbox=(50, 30, 250, 350),
-            mask_centroid_xy=(150.0, 200.0), annulus_mid_y=80.0,
-            apex_y=350.0, arc_point_count=32, arc_span_px=200.0,
-            arc_depth_px=60.0, reject_reason=None, onnx_available=True,
+            source_path="/video.mp4",
+            frame_index=0,
+            frame_shape=(480, 640),
+            media_format="mp4",
+            roi_xyxy=(10.0, 20.0, 300.0, 400.0),
+            crop_mode="echonet",
+            crop_y0=20,
+            crop_x0=10,
+            crop_height=380,
+            crop_width=290,
+            mask_pixels=500,
+            mask_bbox=(50, 30, 250, 350),
+            mask_centroid_xy=(150.0, 200.0),
+            annulus_mid_y=80.0,
+            apex_y=350.0,
+            arc_point_count=32,
+            arc_span_px=200.0,
+            arc_depth_px=60.0,
+            reject_reason=None,
+            onnx_available=True,
         )
         text = format_diagnostic_report(report)
         assert "/video.mp4" in text
@@ -244,13 +283,27 @@ class TestFormatDiagnosticReport:
 
     def test_with_issues(self) -> None:
         report = CineSegmentDiagnosticReport(
-            source_path=None, frame_index=0, frame_shape=(100, 100),
-            media_format="mp4", roi_xyxy=None, crop_mode="none",
-            crop_y0=0, crop_x0=0, crop_height=100, crop_width=100,
-            mask_pixels=0, mask_bbox=None, mask_centroid_xy=None,
-            annulus_mid_y=None, apex_y=None, arc_point_count=0,
-            arc_span_px=None, arc_depth_px=None, reject_reason=None,
-            onnx_available=False, issues=("issue one", "issue two"),
+            source_path=None,
+            frame_index=0,
+            frame_shape=(100, 100),
+            media_format="mp4",
+            roi_xyxy=None,
+            crop_mode="none",
+            crop_y0=0,
+            crop_x0=0,
+            crop_height=100,
+            crop_width=100,
+            mask_pixels=0,
+            mask_bbox=None,
+            mask_centroid_xy=None,
+            annulus_mid_y=None,
+            apex_y=None,
+            arc_point_count=0,
+            arc_span_px=None,
+            arc_depth_px=None,
+            reject_reason=None,
+            onnx_available=False,
+            issues=("issue one", "issue two"),
         )
         text = format_diagnostic_report(report)
         assert "issues:" in text

@@ -56,8 +56,10 @@ class TestTemporalFusionConfig:
 
     def test_custom_values(self) -> None:
         cfg = TemporalFusionConfig(
-            window=4, vote_threshold=5,
-            max_node_shift_ratio_ed=0.05, max_node_shift_ratio_es=0.04,
+            window=4,
+            vote_threshold=5,
+            max_node_shift_ratio_ed=0.05,
+            max_node_shift_ratio_es=0.04,
         )
         assert cfg.window == 4
         assert cfg.max_node_shift_ratio("ED") == 0.05

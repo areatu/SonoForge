@@ -24,11 +24,7 @@ def map_rpeaks_to_frames(
     Returns:
         EcEDFrameMapping with ED/ES frame indices.
     """
-    if (
-        r_peak_result is None
-        or len(r_peak_result.r_peak_indices) == 0
-        or r_peak_result.confidence < 0.3
-    ):
+    if r_peak_result is None or len(r_peak_result.r_peak_indices) == 0 or r_peak_result.confidence < 0.3:
         return EcEDFrameMapping(
             ed_frame_index=0,
             es_frame_index=max(1, n_frames // 3),

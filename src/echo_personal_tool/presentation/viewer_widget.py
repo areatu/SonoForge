@@ -1475,12 +1475,14 @@ class ViewerWidget(QWidget):
         self._current_frame = to_grayscale_array(frame)
         if self._despeckle_enabled:
             from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+
             self._current_frame = despeckle_frame(self._current_frame)
 
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
             if self._despeckle_enabled:
                 from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+
                 self._color_source_rgb = decolor_frame(self._color_source_rgb)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
@@ -1625,6 +1627,7 @@ class ViewerWidget(QWidget):
                 self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
                 if self._despeckle_enabled:
                     from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+
                     self._color_source_rgb = decolor_frame(self._color_source_rgb)
                 self._last_color_frame_ptr = frame_data_ptr
             self._current_frame = to_grayscale_array(frame)
@@ -1648,6 +1651,7 @@ class ViewerWidget(QWidget):
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             if self._despeckle_enabled:
                 from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
+
                 self._current_frame = despeckle_frame(self._current_frame)
             self._image_item.setImage(self._current_frame, autoLevels=False)
             if self._window_level_enabled:
@@ -3678,11 +3682,7 @@ class ViewerWidget(QWidget):
             self._view.addItem(ma_item)
 
         # Simpson visualization for confirmed LV contours
-        if (
-            contour.chamber.upper() == "LV"
-            and contour.is_open_arc
-            and not contour.review_pending
-        ):
+        if contour.chamber.upper() == "LV" and contour.is_open_arc and not contour.review_pending:
             self._append_simpson_lines(contour)
 
         node_items: list[_ContourNodeItem] = []
@@ -4354,12 +4354,7 @@ class ViewerWidget(QWidget):
             x_values, y_values = self._contour_xy(contour, closed=closed)
         self._contour_items[contour_index].setData(x_values, y_values)
         # Update Simpson lines if this is a confirmed LV contour
-        if (
-            not during_drag
-            and contour.chamber.upper() == "LV"
-            and contour.is_open_arc
-            and not contour.review_pending
-        ):
+        if not during_drag and contour.chamber.upper() == "LV" and contour.is_open_arc and not contour.review_pending:
             self._update_simpson_lines(contour_index, contour)
 
     def _resolve_contour_phase(self) -> str:
@@ -5434,14 +5429,16 @@ class ViewerWidget(QWidget):
             if src.dtype == np.uint16:
                 lut = np.clip(
                     (np.arange(65536, dtype=np.float64) - low) / span * 255.0,
-                    0.0, 255.0,
+                    0.0,
+                    255.0,
                 ).astype(np.uint8)
                 display = lut[src]
             else:
                 src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
                 lut = np.clip(
                     (np.arange(256, dtype=np.float64) - low) / span * 255.0,
-                    0.0, 255.0,
+                    0.0,
+                    255.0,
                 ).astype(np.uint8)
                 display = cv2.LUT(src_u8, lut)
             self._image_item.setImage(display, autoLevels=False)
@@ -5561,13 +5558,8 @@ class ViewerWidget(QWidget):
         frame_index = self._contour_frame_index()
         instance_uid = self._current_instance_uid()
         for i, c in enumerate(self._contours):
-            if (
-                c is contour
-                or (c.frame_index == frame_index and c.chamber == contour.chamber)
-            ) and (
-                instance_uid is None
-                or c.sop_instance_uid is None
-                or c.sop_instance_uid == instance_uid
+            if (c is contour or (c.frame_index == frame_index and c.chamber == contour.chamber)) and (
+                instance_uid is None or c.sop_instance_uid is None or c.sop_instance_uid == instance_uid
             ):
                 self._apply_magnetic_snap_to_contour(
                     i,

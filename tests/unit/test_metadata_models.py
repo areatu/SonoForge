@@ -84,8 +84,12 @@ class TestInstanceMetadata:
 
     def test_frozen(self) -> None:
         meta = InstanceMetadata(
-            sop_instance_uid="1", series_uid="2", modality="US",
-            number_of_frames=1, pixel_spacing=None, frame_time_ms=None,
+            sop_instance_uid="1",
+            series_uid="2",
+            modality="US",
+            number_of_frames=1,
+            pixel_spacing=None,
+            frame_time_ms=None,
             series_description="x",
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
@@ -98,8 +102,12 @@ class TestInstanceMetadata:
 class TestSeriesMetadata:
     def test_creation(self) -> None:
         inst = InstanceMetadata(
-            sop_instance_uid="1.2.3", series_uid="1.2.4", modality="US",
-            number_of_frames=1, pixel_spacing=None, frame_time_ms=None,
+            sop_instance_uid="1.2.3",
+            series_uid="1.2.4",
+            modality="US",
+            number_of_frames=1,
+            pixel_spacing=None,
+            frame_time_ms=None,
             series_description="frame",
         )
         series = SeriesMetadata(
@@ -115,15 +123,21 @@ class TestSeriesMetadata:
 
     def test_empty_instances(self) -> None:
         series = SeriesMetadata(
-            series_uid="1", study_uid="2", modality="US",
-            description="empty", instances=(),
+            series_uid="1",
+            study_uid="2",
+            modality="US",
+            description="empty",
+            instances=(),
         )
         assert series.instances == ()
 
     def test_frozen(self) -> None:
         series = SeriesMetadata(
-            series_uid="1", study_uid="2", modality="US",
-            description="x", instances=(),
+            series_uid="1",
+            study_uid="2",
+            modality="US",
+            description="x",
+            instances=(),
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             series.description = "y"  # type: ignore[misc]
@@ -145,12 +159,18 @@ class TestStudyMetadata:
 
     def test_with_series(self) -> None:
         s1 = SeriesMetadata(
-            series_uid="s1", study_uid="st1", modality="US",
-            description="A4C", instances=(),
+            series_uid="s1",
+            study_uid="st1",
+            modality="US",
+            description="A4C",
+            instances=(),
         )
         s2 = SeriesMetadata(
-            series_uid="s2", study_uid="st1", modality="US",
-            description="A2C", instances=(),
+            series_uid="s2",
+            study_uid="st1",
+            modality="US",
+            description="A2C",
+            instances=(),
         )
         study = StudyMetadata(
             study_uid="st1",
@@ -163,7 +183,9 @@ class TestStudyMetadata:
 
     def test_frozen(self) -> None:
         study = StudyMetadata(
-            study_uid="1", study_datetime=datetime.now(), series=(),
+            study_uid="1",
+            study_datetime=datetime.now(),
+            series=(),
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             study.study_uid = "2"  # type: ignore[misc]

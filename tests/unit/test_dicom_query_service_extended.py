@@ -67,10 +67,18 @@ class _MockDimse:
 
 def test_web_exception_returns_empty() -> None:
     web = _MockWeb(fail=True)
-    dimse = _MockDimse(studies=[StudyInfo(
-        study_uid="1", patient_name="TEST", patient_id="1",
-        study_date="20240101", study_description="Test", series_count=1,
-    )])
+    dimse = _MockDimse(
+        studies=[
+            StudyInfo(
+                study_uid="1",
+                patient_name="TEST",
+                patient_id="1",
+                study_date="20240101",
+                study_description="Test",
+                series_count=1,
+            )
+        ]
+    )
     svc = DicomQueryService(web=web, dimse=dimse, source=QuerySource.DICOMWEB)
     assert svc.query_studies() == []
 
@@ -85,8 +93,12 @@ def test_auto_web_exception_fallback_to_dimse() -> None:
     """Auto mode: web raises → falls back to dimse."""
     web = _MockWeb(fail=True)
     study = StudyInfo(
-        study_uid="1", patient_name="TEST", patient_id="1",
-        study_date="20240101", study_description="Test", series_count=1,
+        study_uid="1",
+        patient_name="TEST",
+        patient_id="1",
+        study_date="20240101",
+        study_description="Test",
+        series_count=1,
     )
     dimse = _MockDimse(studies=[study])
     svc = DicomQueryService(web=web, dimse=dimse, source=QuerySource.AUTO)
@@ -103,8 +115,12 @@ def test_auto_both_empty_returns_empty() -> None:
 
 def test_auto_web_returns_results_skips_dimse() -> None:
     study = StudyInfo(
-        study_uid="1", patient_name="TEST", patient_id="1",
-        study_date="20240101", study_description="Test", series_count=1,
+        study_uid="1",
+        patient_name="TEST",
+        patient_id="1",
+        study_date="20240101",
+        study_description="Test",
+        series_count=1,
     )
     web = _MockWeb(studies=[study])
     dimse = _MockDimse(studies=[study])
