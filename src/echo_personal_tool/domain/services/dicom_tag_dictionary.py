@@ -374,7 +374,26 @@ _add(
 _add(0x0400, 0x0550, "DataSetTrailingPadding", "UT", "Dataset Trailing Padding")
 
 # ── Waveform (5400xxxx) ──────────────────────────────────────────────────────
+_add(0x5400, 0x0010, "WaveformSequence", "SQ", "Waveform Sequence")
+_add(0x5400, 0x0020, "WaveformChannel", "US", "Waveform Channel Number")
 _add(0x5400, 0x0100, "WaveformSampleValue", "US/SS", "Waveform Sample Value")
+_add(0x5400, 0x0110, "ChannelMinimumValue", "SS/US", "Channel Minimum Value")
+_add(0x5400, 0x0112, "ChannelMaximumValue", "SS/US", "Channel Maximum Value")
+_add(0x5400, 0x1004, "WaveformBitsAllocated", "US", "Waveform Bits Allocated")
+_add(0x5400, 0x1006, "WaveformSampleInterpretation", "CS", "Waveform Sample Interpretation")
+_add(0x5400, 0x100A, "WaveformPaddingValue", "OW/US", "Waveform Padding Value")
+
+# ── Waveform Channel Definition ─────────────────────────────────────────────
+_add(0x003A, 0x001A, "WaveformSampleRate", "DS", "Waveform Sample Rate")
+_add(0x003A, 0x0200, "ChannelDefinitionSequence", "SQ", "Channel Definition Sequence")
+_add(0x003A, 0x0202, "WaveformChannelNumber", "IS", "Waveform Channel Number")
+_add(0x003A, 0x0204, "ChannelLabel", "LO", "Channel Label")
+_add(0x003A, 0x0206, "ChannelSourceSequence", "SQ", "Channel Source Sequence")
+_add(0x003A, 0x0208, "ChannelBaseline", "SS", "Channel Baseline")
+_add(0x003A, 0x0210, "ChannelSensitivity", "DS", "Channel Sensitivity")
+_add(0x003A, 0x0211, "ChannelSensitivityUnitsSequence", "SQ", "Channel Sensitivity Units Sequence")
+_add(0x003A, 0x0212, "ChannelSensitivityCorrectionFactor", "DS", "Channel Sensitivity Correction Factor")
+_add(0x003A, 0x0213, "ChannelBaseline", "DS", "Channel Baseline")
 
 # ── Common Private Tags (vendor-specific but widely used in echo) ────────────
 _add(0x0009, 0x0010, "PrivateCreator", "LO", "Private Creator")
