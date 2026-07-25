@@ -46,6 +46,7 @@ def test_main_returns_zero_on_normal_exit() -> None:
         patch("echo_personal_tool.main.apply_maximized_to_work_area"),
         patch("echo_personal_tool.presentation.dark_theme.get_logo_path", return_value=Path("/fake/logo.png")),
         patch("echo_personal_tool.main.ui_font", return_value=MagicMock()),
+        patch("echo_personal_tool.infrastructure.runtime_setup.check_models", return_value=True),
     ):
         mock_prefs.return_value = SimpleNamespace(
             startup_mode="new_window",
@@ -77,6 +78,7 @@ def test_main_last_folder_opens_on_startup() -> None:
         patch("echo_personal_tool.main.QTimer") as mock_timer,
         patch("echo_personal_tool.presentation.dark_theme.get_logo_path", return_value=Path("/fake/logo.png")),
         patch("echo_personal_tool.main.ui_font", return_value=MagicMock()),
+        patch("echo_personal_tool.infrastructure.runtime_setup.check_models", return_value=True),
     ):
         mock_prefs.return_value = SimpleNamespace(
             startup_mode="last_folder",
@@ -111,6 +113,7 @@ def test_main_prints_profiler_on_exit() -> None:
         patch("echo_personal_tool.main.apply_maximized_to_work_area"),
         patch("echo_personal_tool.presentation.dark_theme.get_logo_path", return_value=Path("/fake/logo.png")),
         patch("echo_personal_tool.main.ui_font", return_value=MagicMock()),
+        patch("echo_personal_tool.infrastructure.runtime_setup.check_models", return_value=True),
     ):
         mock_prefs.return_value = SimpleNamespace(
             startup_mode="new_window",
