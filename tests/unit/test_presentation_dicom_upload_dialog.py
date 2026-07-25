@@ -47,7 +47,7 @@ class TestRunDicomUploadDialogNoProtocol:
 class TestRunDicomUploadDialogUserCancels:
     @patch("echo_personal_tool.presentation.dicom_upload_dialog.collect_dicom_bytes", return_value=[b"data"])
     @patch("echo_personal_tool.presentation.dicom_upload_dialog.stow_upload_available", return_value=True)
-    @patch("echo_personal_tool.presentation.dicom_upload_dialog.exec_animated", return_value=0)  # Rejected
+    @patch("echo_personal_tool.presentation.ui_animations.exec_animated", return_value=0)  # Rejected
     def test_returns_when_user_cancels(self, mock_exec, mock_stow, mock_collect):
         from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 
@@ -59,7 +59,7 @@ class TestRunDicomUploadDialogUserCancels:
 class TestRunDicomUploadDialogMakeUploadTargetsFails:
     @patch("echo_personal_tool.presentation.dicom_upload_dialog.collect_dicom_bytes", return_value=[b"data"])
     @patch("echo_personal_tool.presentation.dicom_upload_dialog.stow_upload_available", return_value=True)
-    @patch("echo_personal_tool.presentation.dicom_upload_dialog.exec_animated", return_value=1)  # Accepted
+    @patch("echo_personal_tool.presentation.ui_animations.exec_animated", return_value=1)  # Accepted
     @patch(
         "echo_personal_tool.presentation.dicom_upload_dialog.make_upload_targets",
         side_effect=ValueError("bad config"),
