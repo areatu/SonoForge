@@ -1,4 +1,4 @@
-"""Unit tests for Doppler spectral envelope tracing."""
+"""Tests for doppler_envelope tracing functions."""
 
 from __future__ import annotations
 
@@ -12,82 +12,106 @@ from echo_personal_tool.domain.services.doppler_envelope import (
 )
 
 
-def _make_spectrogram(
-    h: int = 50, w: int = 100, baseline_row: int = 25, signal_above: bool = True,
-) -> np.ndarray:
-    """Synthetic spectrogram: bright ridge above (or below) baseline."""
-    spec = np.zeros((h, w), dtype=np.uint8)
-    for col in range(w):
-        if signal_above:
-            # Bright ridge at baseline_row - 5
-            peak_row = max(0, baseline_row - 5)
-        else:
-            peak_row = min(h - 1, baseline_row + 5)
-        # Spread intensity around peak
-        for dr in range(-3, 4):
-            r = peak_row + dr
-            if 0 <= r < h:
-                spec[r, col] = 200 - abs(dr) * 30
-    return spec
-
-
-class TestTraceEnvelope:
-    def test_returns_empty_for_1d_input(self) -> None:
-        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=10, height=10)
-        assert trace_envelope(np.zeros(10), roi, 5.0) == ()
-
-    def test_returns_empty_when_num_samples_too_low(self) -> None:
-        spec = _make_spectrogram()
-        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
-        assert trace_envelope(spec, roi, 25.0, num_samples=1) == ()
-
-    def test_returns_tuple_of_tuples(self) -> None:
-        spec = _make_spectrogram()
-        roi = DopplerSpectrogramRoi(x0=10, y0=5, width=80, height=40)
-        result = trace_envelope(spec, roi, 25.0, num_samples=20)
-        assert isinstance(result, tuple)
-        if len(result) > 0:
-            assert isinstance(result[0], tuple)
-            assert len(result[0]) == 2
-
-    def test_trace_points_are_ordered_by_x(self) -> None:
-        spec = _make_spectrogram()
-        roi = DopplerSpectrogramRoi(x0=10, y0=5, width=80, height=40)
-        result = trace_envelope(spec, roi, 25.0, num_samples=20)
-        if len(result) >= 2:
-            xs = [p[0] for p in result]
-            assert xs == sorted(xs)
-
-    def test_start_at_baseline_prepends_baseline_point(self) -> None:
-        spec = _make_spectrogram()
-        roi = DopplerSpectrogramRoi(x0=10, y0=5, width=80, height=40)
-        result = trace_envelope(spec, roi, 25.0, num_samples=20, start_at_baseline=True)
-        if len(result) >= 2:
-            # First point should be on the baseline
-            assert result[0][1] == 25.0
-
-    def test_empty_spectrogram_returns_empty(self) -> None:
-        spec = np.zeros((50, 100), dtype=np.uint8)
-        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
-        result = trace_envelope(spec, roi, 25.0, num_samples=20)
-        assert result == ()
-
-    def test_above_baseline_false(self) -> None:
-        spec = _make_spectrogram(signal_above=False)
-        roi = DopplerSpectrogramRoi(x0=10, y0=5, width=80, height=40)
-        result = trace_envelope(spec, roi, 25.0, num_samples=20, above_baseline=False)
-        assert isinstance(result, tuple)
+def _roi(x0=0, y0=0, w=100, h=50):
+    return DopplerSpectrogramRoi(x0=x0, y0=y0, width=w, height=h)
 
 
 class TestTraceEnvelopeAboveBaseline:
-    def test_normal_labels_are_above(self) -> None:
-        assert trace_envelope_above_baseline("VTI LV") is True
-        assert trace_envelope_above_baseline("VTI RV") is True
-        assert trace_envelope_above_baseline("") is True
+    """trace_envelope_above_baseline: TR/PR envelopes are below baseline."""
 
-    def test_tr_pr_labels_are_below(self) -> None:
-        assert trace_envelope_above_baseline("VTI TR") is False
-        assert trace_envelope_above_baseline("VTI PR") is False
-        assert trace_envelope_above_baseline("tr") is False
-        assert trace_envelope_above_baseline("Pr") is False
+    @pytest.mark.parametrize("label", ["VTI TR", "vti tr", "TR", "tr", "PR", "pr", "VTI PR"])
+    def test_below_baseline_labels(self, label):
+        assert trace_envelope_above_baseline(label) is False
+
+    @pytest.mark.parametrize("label", ["VTI", "LVOT", "MV", "AAo", "vti", ""])
+    def test_above_baseline_labels(self, label):
+        assert trace_envelope_above_baseline(label) is True
+
+    def test_whitespace_handling(self):
         assert trace_envelope_above_baseline("  VTI TR  ") is False
+        assert trace_envelope_above_baseline("  VTI  ") is True
+
+
+class TestTraceEnvelope:
+    """trace_envelope: column-wise intensity ridge extraction."""
+
+    def test_returns_tuple(self):
+        gray = np.random.randint(0, 50, size=(60, 120), dtype=np.uint8)
+        result = trace_envelope(gray, _roi(), baseline_y_px=30.0, num_samples=16)
+        assert isinstance(result, tuple)
+
+    def test_empty_for_3d_input(self):
+        rgb = np.random.randint(0, 50, size=(60, 120, 3), dtype=np.uint8)
+        result = trace_envelope(rgb, _roi(), baseline_y_px=30.0)
+        assert result == ()
+
+    def test_few_samples_returns_empty(self):
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        result = trace_envelope(gray, _roi(), baseline_y_px=30.0, num_samples=1)
+        assert result == ()
+
+    def test_uniform_low_intensity_returns_empty(self):
+        gray = np.full((60, 120), 5, dtype=np.uint8)
+        result = trace_envelope(gray, _roi(), baseline_y_px=30.0, num_samples=16)
+        assert result == ()
+
+    def test_bright_signal_above_baseline(self):
+        """A bright diagonal ridge should produce trace points."""
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        baseline = 30
+        # Create a strong diagonal signal above baseline
+        for col in range(10, 110):
+            row = max(0, baseline - (col - 10) // 4)
+            gray[row, col] = 200
+        result = trace_envelope(gray, _roi(), baseline_y_px=float(baseline), num_samples=20)
+        assert len(result) >= 2
+
+    def test_points_are_float_tuples(self):
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        for col in range(10, 110):
+            gray[15, col] = 200
+        result = trace_envelope(gray, _roi(), baseline_y_px=30.0, num_samples=20)
+        if len(result) >= 2:
+            for pt in result:
+                assert isinstance(pt, tuple)
+                assert len(pt) == 2
+                assert isinstance(pt[0], float)
+                assert isinstance(pt[1], float)
+
+    def test_start_at_baseline_prepend(self):
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        for col in range(10, 110):
+            gray[15, col] = 200
+        result = trace_envelope(gray, _roi(), baseline_y_px=30.0, num_samples=20, start_at_baseline=True)
+        if len(result) >= 2:
+            # First point should be on the baseline
+            assert result[0][1] == pytest.approx(30.0, abs=0.1)
+
+    def test_start_at_baseline_false(self):
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        for col in range(10, 110):
+            gray[15, col] = 200
+        result = trace_envelope(
+            gray, _roi(), baseline_y_px=30.0, num_samples=20,
+            start_at_baseline=False, above_baseline=True,
+        )
+        if len(result) >= 2:
+            assert result[0][1] != pytest.approx(30.0, abs=0.1)
+
+    def test_below_baseline_mode(self):
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        baseline = 20
+        for col in range(10, 110):
+            row = min(59, baseline + (col - 10) // 4)
+            gray[row, col] = 200
+        result = trace_envelope(
+            gray, _roi(), baseline_y_px=float(baseline), num_samples=20,
+            above_baseline=False,
+        )
+        assert len(result) >= 2
+
+    def test_roi_clamped_to_image(self):
+        gray = np.zeros((40, 60), dtype=np.uint8)
+        roi = _roi(x0=0, y0=0, w=200, h=200)
+        result = trace_envelope(gray, roi, baseline_y_px=10.0, num_samples=16)
+        assert isinstance(result, tuple)

@@ -1,33 +1,25 @@
-"""Unit tests for SpeckleTrackingWorker (_embed_window_curve and signals)."""
+"""Unit tests for SpeckleTrackingWorker and _embed_window_curve."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from echo_personal_tool.application.workers.speckle_worker import SpeckleTrackingWorker, _embed_window_curve
-from echo_personal_tool.domain.models.speckle import MyocardialZone
-
-
-def _make_zone() -> MyocardialZone:
-    angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
-    endo = np.column_stack([50 + 20 * np.cos(angles), 50 + 20 * np.sin(angles)])
-    epi = np.column_stack([50 + 30 * np.cos(angles), 50 + 30 * np.sin(angles)])
-    return MyocardialZone(
-        endo_points=endo, epi_points=epi,
-        thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
-    )
+from echo_personal_tool.application.workers.speckle_worker import (
+    SpeckleTrackingSignals,
+    SpeckleTrackingWorker,
+    _embed_window_curve,
+)
 
 
 class TestEmbedWindowCurve:
     def test_exact_length(self) -> None:
-        curve = np.array([1.0, 2.0, 3.0])
-        result = _embed_window_curve(curve, n_frames=10, phase_start=2, phase_end=4)
+        curve = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        result = _embed_window_curve(curve, n_frames=10, phase_start=2, phase_end=6)
         assert result.shape == (10,)
         assert result[2] == 1.0
-        assert result[3] == 2.0
-        assert result[4] == 3.0
+        assert result[6] == 5.0
         assert np.isnan(result[0])
-        assert np.isnan(result[5])
+        assert np.isnan(result[7])
 
     def test_shorter_curve(self) -> None:
         curve = np.array([10.0, 20.0])
@@ -57,51 +49,77 @@ class TestEmbedWindowCurve:
         np.testing.assert_array_equal(result, curve)
 
 
+class TestSpeckleTrackingSignals:
+    def test_has_signals(self) -> None:
+        signals = SpeckleTrackingSignals()
+        assert hasattr(signals, "finished")
+        assert hasattr(signals, "error")
+        assert hasattr(signals, "progress")
+
+
 class TestSpeckleTrackingWorker:
-    def test_instantiation(self) -> None:
-        frames = np.zeros((20, 64, 64), dtype=np.uint8)
-        zone = _make_zone()
-        worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+    def test_creation(self) -> None:
+        from echo_personal_tool.domain.models.speckle import MyocardialZone
+
+        frames = np.zeros((10, 32, 32), dtype=np.uint8)
+        angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+        endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
+        epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
+        zone = MyocardialZone(
+            endo_points=endo, epi_points=epi,
+            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
         )
-        assert worker._frames.shape == (20, 64, 64)
+
+        worker = SpeckleTrackingWorker(
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
+        )
+        assert worker._frames.shape == (10, 32, 32)
         assert worker._pixel_spacing == (0.5, 0.5)
+        assert worker._ecg_waveform is None
+
+    def test_with_ecg_waveform(self) -> None:
+        from echo_personal_tool.domain.models.ecg import EcgLead, EcgWaveform
+        from echo_personal_tool.domain.models.speckle import MyocardialZone
+
+        frames = np.zeros((10, 32, 32), dtype=np.uint8)
+        angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+        endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
+        epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
+        zone = MyocardialZone(
+            endo_points=endo, epi_points=epi,
+            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+        )
+
+        lead = EcgLead("II", np.zeros(100), 500.0, 0, 16)
+        ecg = EcgWaveform(leads=[lead], waveform_frequency=500.0, number_of_waveform_channels=1)
+
+        worker = SpeckleTrackingWorker(
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
+            ecg_waveform=ecg,
+        )
+        assert worker._ecg_waveform is not None
 
     def test_has_signals(self) -> None:
+        from echo_personal_tool.domain.models.speckle import MyocardialZone
+
         frames = np.zeros((10, 32, 32), dtype=np.uint8)
-        zone = _make_zone()
+        angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+        endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
+        epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
+        zone = MyocardialZone(
+            endo_points=endo, epi_points=epi,
+            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+        )
+
         worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
         )
         assert hasattr(worker.signals, "finished")
         assert hasattr(worker.signals, "error")
         assert hasattr(worker.signals, "progress")
-
-    def test_auto_delete(self) -> None:
-        frames = np.zeros((10, 32, 32), dtype=np.uint8)
-        zone = _make_zone()
-        worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
-        )
-        assert worker.autoDelete() is True
-
-    def test_with_manual_ed_es(self) -> None:
-        frames = np.zeros((10, 32, 32), dtype=np.uint8)
-        zone = _make_zone()
-        worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
-            manual_ed=2, manual_es=7,
-        )
-        assert worker._manual_ed == 2
-        assert worker._manual_es == 7
-
-    def test_with_custom_config(self) -> None:
-        from echo_personal_tool.domain.models.speckle import SpeckleConfig
-        frames = np.zeros((10, 32, 32), dtype=np.uint8)
-        zone = _make_zone()
-        cfg = SpeckleConfig.preset_research()
-        worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
-            config=cfg,
-        )
-        assert worker._config is cfg

@@ -1080,8 +1080,11 @@ class StrainWindow(QMainWindow):
         n_frames = len(result.longitudinal) if result.longitudinal is not None else 0
         self._panel_a4c.set_frame(result.es_index, n_frames)
 
-        # ECG trace (generate synthetic if not available)
-        ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
+        # ECG trace (use real ECG if available, otherwise synthetic)
+        if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0:
+            ecg = result.ecg_trace_for_display
+        else:
+            ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
         self._panel_a4c.show_ecg_trace(ecg, current_frame=result.es_index)
 
         # Placeholder panels — show same data for now

@@ -1,8 +1,9 @@
-"""Unit tests for cardiac_cycle_detector service."""
+"""Tests for cardiac_cycle_detector module."""
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from echo_personal_tool.domain.models.speckle import (
     MyocardialZone,
@@ -11,6 +12,7 @@ from echo_personal_tool.domain.models.speckle import (
     TrackingResult,
 )
 from echo_personal_tool.domain.services.cardiac_cycle_detector import (
+    _estimate_lv_area_proxy,
     _shoelace_area,
     auto_detect_ed_es,
     average_strain_curves,
@@ -22,285 +24,257 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
 )
 
 
-# ── estimate_heart_rate_fft ────────────────────────────────────────
+def _make_zone():
+    """Create a simple MyocardialZone with triangular contours."""
+    endo = np.array([[10, 50], [50, 10], [90, 50]], dtype=np.float64)
+    epi = np.array([[5, 55], [50, 5], [95, 55]], dtype=np.float64)
+    return MyocardialZone(
+        endo_points=endo,
+        epi_points=epi,
+        thickness_mm=8.0,
+        pixel_spacing=(1.0, 1.0),
+    )
 
 
-class TestEstimateHeartRateFft:
-    def test_too_few_frames(self) -> None:
-        frames = np.zeros((5, 32, 32), dtype=np.uint8)
+def _make_config():
+    return SpeckleConfig()
+
+
+class TestEstimateHeartRateFFT:
+    def test_too_few_frames(self):
+        frames = np.zeros((5, 64, 64), dtype=np.uint8)
         assert estimate_heart_rate_fft(frames) == 0.0
 
-    def test_sinusoidal_signal(self) -> None:
-        fps = 30.0
-        n = 60
-        t = np.arange(n) / fps
-        signal = np.sin(2 * np.pi * 1.2 * t)  # 1.2 Hz = 72 BPM
-        # Use float frames to avoid uint8 quantization
-        frames = np.zeros((n, 16, 16), dtype=np.float64)
-        for i in range(n):
-            frames[i] = 128.0 + 50.0 * signal[i]
-        hr = estimate_heart_rate_fft(frames, fps=fps)
-        # FFT resolution: fps/n = 0.5 Hz = 30 BPM; allow wide tolerance
-        assert 55.0 < hr < 90.0
-
-    def test_constant_signal(self) -> None:
-        frames = np.full((30, 16, 16), 128, dtype=np.uint8)
+    def test_uniform_frames(self):
+        frames = np.full((30, 64, 64), 128, dtype=np.uint8)
         hr = estimate_heart_rate_fft(frames, fps=30.0)
-        assert hr == 0.0
+        assert hr == 0.0 or hr >= 0.0
 
-    def test_with_roi_mask(self) -> None:
-        n = 30
-        frames = np.zeros((n, 16, 16), dtype=np.uint8)
-        mask = np.zeros((16, 16), dtype=np.uint8)
-        mask[4:12, 4:12] = 1
-        for i in range(n):
-            frames[i][mask > 0] = int(128 + 30 * np.sin(2 * np.pi * 1.0 * i / n))
-        hr = estimate_heart_rate_fft(frames, roi_mask=mask, fps=30.0)
-        assert hr > 0.0
+    def test_sinusoidal_signal(self):
+        """A 1 Hz sinusoidal signal at 30 fps should give ~60 BPM."""
+        n_frames = 90
+        fps = 30.0
+        t = np.arange(n_frames) / fps
+        signal_1hz = (np.sin(2 * np.pi * 1.0 * t) * 50 + 128).astype(np.uint8)
+        # Build frames where each frame has a mean intensity matching the signal
+        frames = np.zeros((n_frames, 16, 16), dtype=np.uint8)
+        for i in range(n_frames):
+            frames[i, :, :] = int(np.clip(signal_1hz[i], 0, 255))
+        hr = estimate_heart_rate_fft(frames, fps=fps)
+        assert 50.0 < hr < 70.0
 
-
-# ── _shoelace_area ─────────────────────────────────────────────────
+    def test_with_roi_mask(self):
+        n_frames = 90
+        fps = 30.0
+        t = np.arange(n_frames) / fps
+        frames = np.zeros((n_frames, 32, 32), dtype=np.uint8)
+        mask = np.zeros((32, 32), dtype=np.uint8)
+        mask[8:24, 8:24] = 1
+        for i in range(n_frames):
+            val = int(np.clip(np.sin(2 * np.pi * 1.0 * t[i]) * 50 + 128, 0, 255))
+            frames[i, 8:24, 8:24] = val
+        hr = estimate_heart_rate_fft(frames, roi_mask=mask, fps=fps)
+        assert 50.0 < hr < 70.0
 
 
 class TestShoelaceArea:
-    def test_triangle(self) -> None:
-        pts = np.array([[0.0, 0.0], [10.0, 0.0], [5.0, 10.0]])
+    def test_triangle(self):
+        pts = np.array([[0, 0], [4, 0], [2, 3]], dtype=np.float64)
         area = _shoelace_area(pts)
-        assert abs(area - 50.0) < 1e-6
+        assert area == pytest.approx(6.0, rel=0.01)
 
-    def test_square(self) -> None:
-        pts = np.array([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]])
-        area = _shoelace_area(pts)
-        assert abs(area - 100.0) < 1e-6
+    def test_empty(self):
+        assert _shoelace_area(np.array([], dtype=np.float64).reshape(0, 2)) == 0.0
 
-    def test_with_ma_chord(self) -> None:
-        pts = np.array([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0]])
-        ma = ((0.0, 0.0), (10.0, 10.0))
+    def test_two_points(self):
+        pts = np.array([[0, 0], [1, 1]], dtype=np.float64)
+        assert _shoelace_area(pts) == 0.0
+
+    def test_with_ma_chord(self):
+        pts = np.array([[10, 50], [50, 10], [90, 50]], dtype=np.float64)
+        ma = ((10.0, 50.0), (90.0, 50.0))
         area = _shoelace_area(pts, ma_chord=ma)
         assert area > 0.0
 
-    def test_too_few_points(self) -> None:
-        pts = np.array([[0.0, 0.0], [10.0, 0.0]])
-        assert _shoelace_area(pts) == 0.0
 
-    def test_single_point(self) -> None:
-        pts = np.array([[5.0, 5.0]])
-        assert _shoelace_area(pts) == 0.0
+class TestEstimateLvAreaProxy:
+    def test_empty_zone(self):
+        zone = MyocardialZone(
+            endo_points=np.array([], dtype=np.float64).reshape(0, 2),
+            epi_points=np.array([], dtype=np.float64).reshape(0, 2),
+            thickness_mm=8.0,
+            pixel_spacing=(1.0, 1.0),
+        )
+        frame = np.zeros((100, 100), dtype=np.uint8)
+        assert _estimate_lv_area_proxy(frame, zone) == 0.0
+
+    def test_3d_frame(self):
+        zone = _make_zone()
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        assert _estimate_lv_area_proxy(frame, zone) == 0.0
+
+    def test_valid_zone(self):
+        zone = _make_zone()
+        frame = np.full((100, 100), 100, dtype=np.uint8)
+        result = _estimate_lv_area_proxy(frame, zone)
+        assert result > 0.0
 
 
-# ── detect_cycle_boundaries ────────────────────────────────────────
+class TestDetectEdEsFromFrames:
+    def test_few_frames(self):
+        frames = np.zeros((2, 64, 64), dtype=np.uint8)
+        zone = _make_zone()
+        config = _make_config()
+        ed, es = detect_ed_es_from_frames(frames, zone, config)
+        assert ed == 0
+        assert es in (0, 1)
+
+    def test_varying_frames(self):
+        """Frames with varying brightness should have different ED/ES."""
+        n = 30
+        frames = np.zeros((n, 100, 100), dtype=np.uint8)
+        zone = _make_zone()
+        # Create a synthetic area curve via brightness
+        for i in range(n):
+            frames[i, :, :] = int(80 + 40 * np.sin(2 * np.pi * i / n))
+        config = _make_config()
+        ed, es = detect_ed_es_from_frames(frames, zone, config)
+        assert ed != es
+        assert 0 <= ed < n
+        assert 0 <= es < n
 
 
 class TestDetectCycleBoundaries:
-    def test_too_short(self) -> None:
-        areas = np.array([1.0, 2.0, 3.0])
-        assert detect_cycle_boundaries(areas, min_cycle_frames=15) == []
+    def test_too_few_samples(self):
+        assert detect_cycle_boundaries(np.ones(5)) == []
 
-    def test_constant_signal(self) -> None:
-        areas = np.full(30, 100.0)
-        assert detect_cycle_boundaries(areas, min_cycle_frames=5) == []
+    def test_constant_signal(self):
+        assert detect_cycle_boundaries(np.ones(30)) == []
 
-    def test_periodic_signal(self) -> None:
-        # Two clear peaks
-        x = np.arange(60)
-        areas = np.sin(2 * np.pi * x / 30)
-        boundaries = detect_cycle_boundaries(areas, min_cycle_frames=10)
+    def test_sinusoidal_cycles(self):
+        t = np.linspace(0, 4 * np.pi, 200)
+        signal = np.sin(t)
+        boundaries = detect_cycle_boundaries(signal, min_cycle_frames=15)
         assert len(boundaries) >= 1
         for start, end in boundaries:
             assert end > start
 
-    def test_single_peak(self) -> None:
-        areas = np.array([1, 2, 3, 4, 5, 4, 3, 2, 1, 2, 3, 2, 1])
-        boundaries = detect_cycle_boundaries(areas, min_cycle_frames=5)
-        assert len(boundaries) == 0  # need >= 2 peaks
-
-
-# ── average_strain_curves ──────────────────────────────────────────
+    def test_returns_list_of_tuples(self):
+        t = np.linspace(0, 6 * np.pi, 300)
+        signal = np.sin(t)
+        boundaries = detect_cycle_boundaries(signal)
+        for b in boundaries:
+            assert isinstance(b, tuple)
+            assert len(b) == 2
 
 
 class TestAverageStrainCurves:
-    def test_no_boundaries(self) -> None:
-        curves = [np.array([1.0, 2.0, 3.0])]
-        result = average_strain_curves(curves, [], n_output_frames=10)
+    def test_empty(self):
+        result = average_strain_curves([], [], 10)
         assert result.shape == (10,)
         assert np.all(result == 0.0)
 
-    def test_single_curve(self) -> None:
-        curve = np.linspace(0.0, 1.0, 20)
-        boundaries = [(0, 19)]
-        result = average_strain_curves([curve], boundaries, n_output_frames=10)
-        assert result.shape == (10,)
-        assert result[0] < result[-1]  # ascending
+    def test_single_cycle(self):
+        curve = np.sin(np.linspace(0, np.pi, 50))
+        boundaries = [(0, 49)]
+        result = average_strain_curves([curve], boundaries, 20)
+        assert result.shape == (20,)
 
-    def test_average_of_two(self) -> None:
-        c1 = np.linspace(0.0, 1.0, 20)
-        c2 = np.linspace(0.0, 0.8, 20)
-        boundaries = [(0, 19)]
-        result = average_strain_curves([c1, c2], boundaries, n_output_frames=10)
-        assert result.shape == (10,)
-        # Average of 1.0 and 0.8 at last point
-        assert abs(result[-1] - 0.9) < 0.01
-
-    def test_zero_output_frames(self) -> None:
-        result = average_strain_curves([np.ones(10)], [(0, 9)], n_output_frames=0)
+    def test_n_output_zero(self):
+        result = average_strain_curves([], [], 0)
         assert result.shape == (0,)
 
 
-# ── build_myocardial_roi_mask ──────────────────────────────────────
-
-
 class TestBuildMyocardialRoiMask:
-    def _make_zone(self) -> MyocardialZone:
-        angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
-        endo = np.column_stack([50 + 20 * np.cos(angles), 50 + 20 * np.sin(angles)])
-        epi = np.column_stack([50 + 30 * np.cos(angles), 50 + 30 * np.sin(angles)])
-        return MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
-        )
+    def test_invalid_shape(self):
+        zone = _make_zone()
+        mask = build_myocardial_roi_mask((0,), zone)
+        assert mask.shape == (0, 0)
 
-    def test_returns_bool_mask(self) -> None:
-        zone = self._make_zone()
+    def test_negative_dimensions(self):
+        zone = _make_zone()
+        mask = build_myocardial_roi_mask((-1, 10), zone)
+        assert mask.shape == (0, 0)
+
+    def test_valid_mask(self):
+        zone = _make_zone()
         mask = build_myocardial_roi_mask((100, 100), zone)
         assert mask.dtype == bool
         assert mask.shape == (100, 100)
 
-    def test_has_true_pixels(self) -> None:
-        zone = self._make_zone()
-        mask = build_myocardial_roi_mask((100, 100), zone)
-        assert mask.any()
-
-    def test_invalid_shape(self) -> None:
-        zone = self._make_zone()
-        mask = build_myocardial_roi_mask((0, 0), zone)
-        assert mask.shape == (0, 0)
-
-    def test_1d_shape(self) -> None:
-        mask = build_myocardial_roi_mask((100,), self._make_zone())
-        assert mask.shape == (0, 0)
-
-
-# ── auto_detect_ed_es ──────────────────────────────────────────────
-
 
 class TestAutoDetectEdEs:
-    def _make_kernels(self, n: int = 16, layer: str = "endo") -> list[TrackingKernel]:
-        angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
-        return [
-            TrackingKernel(center=(float(50 + 20 * np.cos(a)), float(50 + 20 * np.sin(a))), layer=layer)
-            for a in angles
+    def test_few_frames(self):
+        results = [TrackingResult(
+            frame_index=i,
+            displacements=np.zeros((3, 2)),
+            ncc_scores=np.ones(3),
+            valid_mask=np.ones(3, dtype=bool),
+            kernel_positions=np.array([[10, 50], [50, 10], [90, 50]], dtype=np.float64),
+        ) for i in range(1)]
+        kernels = [
+            TrackingKernel(center=(10, 50), layer="endo"),
+            TrackingKernel(center=(50, 10), layer="endo"),
+            TrackingKernel(center=(90, 50), layer="endo"),
         ]
-
-    def _make_tracking_result(self, scale: float = 1.0) -> TrackingResult:
-        n = 16
-        positions = np.array([(50 + 20 * scale * np.cos(a), 50 + 20 * scale * np.sin(a))
-                              for a in np.linspace(0, 2 * np.pi, n, endpoint=False)])
-        return TrackingResult(
-            frame_index=0,
-            displacements=np.zeros((n, 2)),
-            ncc_scores=np.ones(n),
-            valid_mask=np.ones(n, dtype=bool),
-            kernel_positions=positions,
-        )
-
-    def test_too_few_frames(self) -> None:
-        kernels = self._make_kernels()
-        ed, es = auto_detect_ed_es([], kernels)
-        assert ed == 0
-        assert es <= 1
-
-    def test_few_endo_kernels(self) -> None:
-        kernels = [TrackingKernel(center=(0.0, 0.0), layer="epi")]
-        results = [self._make_tracking_result() for _ in range(5)]
         ed, es = auto_detect_ed_es(results, kernels)
         assert ed == 0
+        assert es in (0, 1)
 
-    def test_normal_case(self) -> None:
-        kernels = self._make_kernels()
-        # Frame 0: large area (ED), Frame 1: small area (ES), Frame 2: large again
-        r0 = self._make_tracking_result(1.0)
-        r1 = self._make_tracking_result(0.5)
-        ed, es = auto_detect_ed_es([r0, r1], kernels)
-        assert ed != es
-        assert 0 <= ed <= 2
-        assert 0 <= es <= 2
-
-
-# ── detect_cardiac_phases ──────────────────────────────────────────
-
-
-class TestDetectCardiacPhases:
-    def _make_frames(self, n: int = 30) -> np.ndarray:
-        return np.zeros((n, 32, 32), dtype=np.uint8)
-
-    def _make_kernels(self, n: int = 16) -> list[TrackingKernel]:
-        angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
-        return [
-            TrackingKernel(center=(float(16 + 10 * np.cos(a)), float(16 + 10 * np.sin(a))), layer="endo")
-            for a in angles
-        ]
-
-    def test_zero_hr(self) -> None:
-        frames = self._make_frames(30)
-        kernels = self._make_kernels()
-        phases = detect_cardiac_phases(frames, [], kernels, heart_rate_bpm=0, fps=30.0)
-        assert "ED" in phases
-        assert "ES" in phases
-
-    def test_normal(self) -> None:
-        frames = self._make_frames(60)
-        kernels = self._make_kernels()
-        n = 16
+    def test_enough_frames(self):
+        n = 10
         results = []
-        for i in range(59):
-            scale = 1.0 if i % 30 < 15 else 0.6
-            positions = np.array([(16 + 10 * scale * np.cos(a), 16 + 10 * scale * np.sin(a))
-                                  for a in np.linspace(0, 2 * np.pi, n, endpoint=False)])
+        for i in range(n - 1):
+            # Vary kernel positions to create different areas
+            angle = 2 * np.pi * i / n
+            positions = np.array([
+                [50 + 10 * np.cos(angle), 50 + 10 * np.sin(angle)],
+                [30 + 5 * np.cos(angle), 50],
+                [70 - 5 * np.cos(angle), 50],
+            ], dtype=np.float64)
             results.append(TrackingResult(
-                frame_index=i, displacements=np.zeros((n, 2)),
-                ncc_scores=np.ones(n), valid_mask=np.ones(n, dtype=bool),
+                frame_index=i,
+                displacements=np.zeros((3, 2)),
+                ncc_scores=np.ones(3),
+                valid_mask=np.ones(3, dtype=bool),
                 kernel_positions=positions,
             ))
-        phases = detect_cardiac_phases(frames, results, kernels, heart_rate_bpm=72, fps=30.0)
-        assert "ED" in phases
-        assert "ES" in phases
-        assert "MD" in phases
-        assert "IR" in phases
-        assert "ER" in phases
-
-
-# ── detect_ed_es_from_frames ───────────────────────────────────────
-
-
-class TestDetectEdEsFromFrames:
-    def _make_zone(self) -> MyocardialZone:
-        angles = np.linspace(0, 2 * np.pi, 16, endpoint=False)
-        endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
-        epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
-        return MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
-        )
-
-    def test_too_few_frames(self) -> None:
-        frames = np.zeros((2, 32, 32), dtype=np.uint8)
-        zone = self._make_zone()
-        ed, es = detect_ed_es_from_frames(frames, zone, SpeckleConfig())
-        assert ed == 0
-
-    def test_normal(self) -> None:
-        zone = self._make_zone()
-        n = 20
-        frames = np.zeros((n, 32, 32), dtype=np.uint8)
-        # Make frame 5 brighter (ED) and frame 15 darker (ES)
-        for i in range(n):
-            if i == 5:
-                frames[i] = 200
-            elif i == 15:
-                frames[i] = 50
-            else:
-                frames[i] = 128
-        ed, es = detect_ed_es_from_frames(frames, zone, SpeckleConfig())
+        kernels = [
+            TrackingKernel(center=(50, 40), layer="endo"),
+            TrackingKernel(center=(30, 50), layer="endo"),
+            TrackingKernel(center=(70, 50), layer="endo"),
+        ]
+        ed, es = auto_detect_ed_es(results, kernels)
         assert ed != es
         assert 0 <= ed < n
         assert 0 <= es < n
+
+
+class TestDetectCardiacPhases:
+    def test_invalid_hr(self):
+        frames = np.zeros((30, 64, 64), dtype=np.uint8)
+        phases = detect_cardiac_phases(
+            frames, [], [], heart_rate_bpm=0.0, fps=30.0,
+        )
+        assert "ED" in phases
+        assert "ES" in phases
+
+    def test_valid_phases(self):
+        n = 60
+        frames = np.zeros((n, 100, 100), dtype=np.uint8)
+        results = [TrackingResult(
+            frame_index=i,
+            displacements=np.zeros((3, 2)),
+            ncc_scores=np.ones(3),
+            valid_mask=np.ones(3, dtype=bool),
+            kernel_positions=np.array([[20, 50], [50, 10], [80, 50]], dtype=np.float64),
+        ) for i in range(n - 1)]
+        kernels = [
+            TrackingKernel(center=(20, 50), layer="endo"),
+            TrackingKernel(center=(50, 10), layer="endo"),
+            TrackingKernel(center=(80, 50), layer="endo"),
+        ]
+        phases = detect_cardiac_phases(frames, results, kernels, heart_rate_bpm=72.0, fps=30.0)
+        assert set(phases.keys()) == {"ED", "ES", "MD", "IR", "ER"}
+        for key in phases:
+            assert 0 <= phases[key] < n

@@ -285,8 +285,11 @@ class StrainCurvesView(QWidget):
                             seg_strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
                     segment_curves[seg_id] = seg_strain
 
-        # Generate synthetic ECG
-        ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
+        # ECG trace (use real ECG if available, otherwise synthetic)
+        if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0:
+            ecg = result.ecg_trace_for_display
+        else:
+            ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
 
         # Update A4C panel
         a4c_curves = {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A4C"]}

@@ -83,6 +83,7 @@ class SpeckleTrackingWorker(QRunnable):
         config_preset: str = "standard",
         manual_ed: int | None = None,
         manual_es: int | None = None,
+        ecg_waveform=None,
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -93,6 +94,7 @@ class SpeckleTrackingWorker(QRunnable):
         self._config_preset = config_preset
         self._manual_ed = manual_ed
         self._manual_es = manual_es
+        self._ecg_waveform = ecg_waveform
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
@@ -112,14 +114,35 @@ class SpeckleTrackingWorker(QRunnable):
 
             manual_phases = self._manual_ed is not None and self._manual_es is not None
             logger.info(
-                "STE: manual_ed=%s manual_es=%s n_frames=%d",
+                "STE: manual_ed=%s manual_es=%s n_frames=%d ecg=%s",
                 self._manual_ed,
                 self._manual_es,
                 n_frames,
+                self._ecg_waveform is not None,
             )
+            ed_es_source = "image"
+            r_peak_result = None
+
             if manual_phases:
                 global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
                 global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
+            elif self._ecg_waveform is not None:
+                # ECG-based ED/ES detection
+                from echo_personal_tool.domain.services.ecg_ed_es_mapper import map_rpeaks_to_frames
+                from echo_personal_tool.domain.services.ecg_rpeak_detector import detect_r_peaks
+
+                ecg_signal = self._ecg_waveform.as_voltage_mv()
+                if len(ecg_signal) > 0:
+                    r_peak_result = detect_r_peaks(
+                        ecg_signal,
+                        self._ecg_waveform.waveform_frequency,
+                    )
+                    mapping = map_rpeaks_to_frames(r_peak_result, frame_time_ms, n_frames)
+                    global_ed = mapping.ed_frame_index
+                    global_es = mapping.es_frame_index
+                    ed_es_source = mapping.source
+                else:
+                    global_ed, global_es = detect_ed_es_from_frames(self._frames, self._zone, config)
             else:
                 global_ed, global_es = detect_ed_es_from_frames(self._frames, self._zone, config)
                 global_ed = int(np.clip(global_ed, 0, n_frames - 1))
@@ -353,6 +376,12 @@ class SpeckleTrackingWorker(QRunnable):
             )
 
             last = tracking_results[-1] if tracking_results else None
+
+            # Prepare ECG trace for display
+            ecg_trace_display = None
+            if self._ecg_waveform is not None:
+                ecg_trace_display = self._ecg_waveform.as_voltage_mv()
+
             result = StrainResult(
                 longitudinal=longitudinal,
                 radial=radial,
@@ -387,6 +416,10 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels_accepted_count=n_accepted,
                 kernels_rejected_count=n_rejected,
                 kernels_total_count=n_kernels,
+                ecg_waveform=self._ecg_waveform,
+                r_peak_result=r_peak_result,
+                ed_es_source=ed_es_source,
+                ecg_trace_for_display=ecg_trace_display,
             )
             self.signals.finished.emit(result)
 

@@ -1,4 +1,4 @@
-"""Unit tests for M-mode calibration from ultrasound panels."""
+"""Tests for mmode_calibration.mmode_state_from_panel."""
 
 from __future__ import annotations
 
@@ -10,66 +10,60 @@ from echo_personal_tool.domain.models.frame_panels import (
     PanelKind,
     UltrasoundPanel,
 )
-from echo_personal_tool.domain.services.mmode_calibration import (
-    mmode_state_from_panel,
-)
-from echo_personal_tool.domain.services.ultrasound_region_physics import (
-    PHYSICAL_UNIT_MM,
-    PHYSICAL_UNIT_SEC,
-)
+from echo_personal_tool.domain.services.mmode_calibration import mmode_state_from_panel
 
 
-def _make_mmode_panel(
-    vertical_mm_per_pixel: float = 1.0,
-    include_vertical: bool = True,
-) -> UltrasoundPanel:
-    bounds = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=100.0, height=50.0)
+def _m_mode_panel(vertical_mm=0.5, horizontal_ms=10.0):
     return UltrasoundPanel(
         kind=PanelKind.M_MODE,
-        bounds=bounds,
-        physical_delta_y=vertical_mm_per_pixel if include_vertical else None,
-        physical_units_y=PHYSICAL_UNIT_MM if include_vertical else None,
+        bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=200, height=60),
+        physical_delta_x=0.01,
+        physical_delta_y=0.05,
+        physical_units_x=3,
+        physical_units_y=2,
     )
 
 
 class TestMmodeStateFromPanel:
-    def test_returns_none_for_non_mmode_panel(self) -> None:
-        bounds = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
+    def test_non_mmode_returns_none(self):
+        panel = UltrasoundPanel(
+            kind=PanelKind.B_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=100),
+        )
+        assert mmode_state_from_panel(panel) is None
+
+    def test_doppler_returns_none(self):
         panel = UltrasoundPanel(
             kind=PanelKind.DOPPLER,
-            bounds=bounds,
-            physical_delta_y=1.0,
-            physical_units_y=PHYSICAL_UNIT_MM,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=100),
         )
         assert mmode_state_from_panel(panel) is None
 
-    def test_returns_none_when_no_vertical_mm(self) -> None:
-        panel = _make_mmode_panel(include_vertical=False)
-        assert mmode_state_from_panel(panel) is None
+    def test_valid_m_mode_panel(self):
+        panel = _m_mode_panel()
+        state = mmode_state_from_panel(panel)
+        assert state is not None
+        assert isinstance(state, MmodeCalibrationState)
+        assert state.vertical_mm_per_pixel > 0.0
 
-    def test_returns_none_when_vertical_mm_zero(self) -> None:
-        bounds = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
+    def test_m_mode_no_vertical_calibration(self):
+        """M-mode panel with no physical_delta_y → vertical_mm_per_pixel is None."""
         panel = UltrasoundPanel(
             kind=PanelKind.M_MODE,
-            bounds=bounds,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+        )
+        assert mmode_state_from_panel(panel) is None
+
+    def test_m_mode_zero_vertical(self):
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
             physical_delta_y=0.0,
-            physical_units_y=PHYSICAL_UNIT_MM,
+            physical_units_y=2,
         )
         assert mmode_state_from_panel(panel) is None
 
-    def test_returns_none_when_no_units(self) -> None:
-        bounds = DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50)
-        panel = UltrasoundPanel(
-            kind=PanelKind.M_MODE,
-            bounds=bounds,
-            physical_delta_y=1.0,
-            physical_units_y=None,
-        )
-        assert mmode_state_from_panel(panel) is None
-
-    def test_returns_state_for_valid_mmode_panel(self) -> None:
-        panel = _make_mmode_panel(vertical_mm_per_pixel=0.5)
-        result = mmode_state_from_panel(panel)
-        assert result is not None
-        assert isinstance(result, MmodeCalibrationState)
-        assert result.vertical_mm_per_pixel == 0.5
+    def test_state_roi_matches_panel(self):
+        panel = _m_mode_panel()
+        state = mmode_state_from_panel(panel)
+        assert state.roi == panel.bounds

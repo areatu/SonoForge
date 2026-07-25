@@ -328,6 +328,17 @@ class DicomSession:
             return ([], [])
         return read_annotations_from_dicom(self._metadata)
 
+    @property
+    def waveform(self):
+        """Extract ECG waveform from DICOM WaveformSequence (lazy)."""
+        from echo_personal_tool.infrastructure.dicom_waveform_parser import (
+            parse_waveform_from_dicom,
+        )
+
+        if self._metadata is None:
+            return None
+        return parse_waveform_from_dicom(self._metadata)
+
     def _ensure_pixel_data(self) -> None:
         """Load raw pixel data bytes, avoiding a second pydicom parse when possible."""
         if self._pixel_data_raw is not None:

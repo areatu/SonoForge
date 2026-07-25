@@ -1,74 +1,145 @@
-"""Unit tests for planimeter formatter."""
+"""Tests for planimeter_formatter module."""
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import numpy as np
 import pytest
 
+from echo_personal_tool.domain.calculations.planimeter import (
+    GENERIC_AREA_CHAMBER,
+    GENERIC_VOLUME_CHAMBER,
+)
 from echo_personal_tool.domain.models.contour import Contour
+from echo_personal_tool.domain.models.measurements import PlanimeterResult
 from echo_personal_tool.domain.services.planimeter_formatter import (
     format_planimeter_overlay_line,
     planimeter_results_from_contours,
 )
 
 
-def _rect(chamber: str, w: float = 10.0, h: float = 10.0) -> Contour:
+def _area_contour():
     return Contour(
         phase="ED",
-        chamber=chamber,
-        points=[(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)],
+        chamber=GENERIC_AREA_CHAMBER,
+        points=[(10, 10), (50, 10), (50, 50), (10, 50)],
+        measurement_label="Area1",
+    )
+
+
+def _volume_contour():
+    return Contour(
+        phase="ED",
+        chamber=GENERIC_VOLUME_CHAMBER,
+        points=[(10, 10), (50, 10), (50, 50), (10, 50)],
+        measurement_label="Vol1",
+    )
+
+
+def _lv_contour():
+    return Contour(
+        phase="ED",
+        chamber="LV",
+        points=[(10, 10), (50, 10), (50, 50), (10, 50)],
     )
 
 
 class TestPlanimeterResultsFromContours:
-    def test_empty_contours(self) -> None:
-        assert planimeter_results_from_contours((), (1.0, 1.0), spacing_calibrated=True) == ()
+    def test_no_pixel_spacing(self):
+        result = planimeter_results_from_contours((_area_contour(),), None, spacing_calibrated=True)
+        assert result == ()
 
-    def test_none_spacing(self) -> None:
-        contours = (_rect("AREA"),)
-        assert planimeter_results_from_contours(contours, None, spacing_calibrated=True) == ()
+    def test_area_contour(self):
+        contours = (_area_contour(),)
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_cm2",
+            return_value=12.5,
+        ):
+            result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
+        assert len(result) == 1
+        assert result[0].kind == "area"
+        assert result[0].value == 12.5
+        assert result[0].label == "Area1"
 
-    def test_area_contour(self) -> None:
-        contours = (_rect("AREA", 10.0, 10.0),)
-        results = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
-        assert len(results) == 1
-        assert results[0].kind == "area"
-        assert results[0].unit == "cm²"
+    def test_volume_contour(self):
+        contours = (_volume_contour(),)
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_ml",
+            return_value=80.0,
+        ):
+            result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
+        assert len(result) == 1
+        assert result[0].kind == "volume"
+        assert result[0].value == 80.0
+        assert result[0].unit == "mL"
 
-    def test_volume_contour(self) -> None:
-        contours = (_rect("VOL", 20.0, 20.0),)
-        results = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
-        assert len(results) == 1
-        assert results[0].kind == "volume"
-        assert results[0].unit == "mL"
+    def test_volume_uncalibrated(self):
+        contours = (_volume_contour(),)
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_ml",
+            return_value=80.0,
+        ):
+            result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=False)
+        assert result[0].unit == "px³"
 
-    def test_volume_uncalibrated(self) -> None:
-        contours = (_rect("VOL", 20.0, 20.0),)
-        results = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=False)
-        assert results[0].unit == "px³"
+    def test_lv_contour_ignored(self):
+        result = planimeter_results_from_contours(
+            (_lv_contour(),), (1.0, 1.0), spacing_calibrated=True,
+        )
+        assert result == ()
 
-    def test_lv_chamber_ignored(self) -> None:
-        contours = (_rect("LV"),)
-        assert planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True) == ()
+    def test_multiple_contours(self):
+        contours = (_area_contour(), _volume_contour())
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_cm2",
+            return_value=10.0,
+        ), patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_volume_ml",
+            return_value=50.0,
+        ):
+            result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
+        assert len(result) == 2
 
-    def test_custom_label(self) -> None:
-        c = _rect("AREA")
-        c = Contour(phase="ED", chamber="AREA", points=c.points, measurement_label="My Area")
-        results = planimeter_results_from_contours((c,), (1.0, 1.0), spacing_calibrated=True)
-        assert results[0].label == "My Area"
+    def test_area_none_skipped(self):
+        contours = (_area_contour(),)
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_cm2",
+            return_value=None,
+        ):
+            result = planimeter_results_from_contours(contours, (1.0, 1.0), spacing_calibrated=True)
+        assert result == ()
+
+    def test_fallback_label(self):
+        c = Contour(phase="ED", chamber=GENERIC_AREA_CHAMBER, points=[(0, 0), (10, 0), (10, 10)])
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.closed_polygon_area_cm2",
+            return_value=5.0,
+        ):
+            result = planimeter_results_from_contours((c,), (1.0, 1.0), spacing_calibrated=True)
+        assert result[0].label == GENERIC_AREA_CHAMBER
 
 
 class TestFormatPlanimeterOverlayLine:
-    def test_area(self) -> None:
-        c = _rect("AREA", 10.0, 10.0)
-        result = format_planimeter_overlay_line(c, (1.0, 1.0), spacing_calibrated=True)
-        assert "cm²" in result
+    def test_area_format(self):
+        c = _area_contour()
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.format_area_result",
+            return_value="Area1: 12.34 cm²",
+        ):
+            line = format_planimeter_overlay_line(c, (1.0, 1.0), spacing_calibrated=True)
+        assert "12.34" in line
 
-    def test_volume(self) -> None:
-        c = _rect("VOL", 20.0, 20.0)
-        result = format_planimeter_overlay_line(c, (1.0, 1.0), spacing_calibrated=True)
-        assert "mL" in result
+    def test_volume_format(self):
+        c = _volume_contour()
+        with patch(
+            "echo_personal_tool.domain.services.planimeter_formatter.format_volume_result",
+            return_value="Vol1: 80.0 mL",
+        ):
+            line = format_planimeter_overlay_line(c, (1.0, 1.0), spacing_calibrated=True)
+        assert "80.0" in line
 
-    def test_unknown_chamber(self) -> None:
-        c = _rect("LV")
-        result = format_planimeter_overlay_line(c, (1.0, 1.0), spacing_calibrated=True)
-        assert result == ""
+    def test_unknown_chamber(self):
+        c = _lv_contour()
+        line = format_planimeter_overlay_line(c, (1.0, 1.0), spacing_calibrated=True)
+        assert line == ""

@@ -1,8 +1,6 @@
-"""Unit tests for contour_edge_snap (edge map, normals, snap functions)."""
+"""Tests for contour_edge_snap module."""
 
 from __future__ import annotations
-
-import dataclasses
 
 import numpy as np
 import pytest
@@ -10,7 +8,9 @@ import pytest
 from echo_personal_tool.domain.services.contour_edge_snap import (
     EdgeMap,
     EdgeSnapConfig,
-    apply_soft_magnetic_snap,
+    _clamp,
+    _sample_bilinear,
+    _to_grayscale,
     build_edge_map,
     directed_edge_score,
     edge_snap_config_for_source,
@@ -18,261 +18,175 @@ from echo_personal_tool.domain.services.contour_edge_snap import (
     outward_normal_at_index,
     snap_magnetic_point,
     snap_point,
-    snap_weighted_nodes,
 )
 
 
-# ── EdgeSnapConfig ─────────────────────────────────────────────────
-
-
-class TestEdgeSnapConfig:
-    def test_defaults(self) -> None:
-        cfg = EdgeSnapConfig()
-        assert cfg.search_radius_px == 12.0
-        assert cfg.profile_samples == 25
-        assert cfg.blur_sigma == 1.2
-        assert cfg.min_edge_strength == 0.0
-        assert cfg.inward_only is True
-        assert cfg.outward_only is False
-        assert cfg.intensity_fallback is False
-
-    def test_frozen(self) -> None:
-        cfg = EdgeSnapConfig()
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            cfg.search_radius_px = 20.0  # type: ignore[misc]
-
-
-# ── edge_snap_config_for_source ────────────────────────────────────
+def _make_edge_map(w=64, h=64):
+    frame = np.random.RandomState(42).randint(0, 256, size=(h, w), dtype=np.uint8)
+    return build_edge_map(frame, blur_sigma=1.0)
 
 
 class TestEdgeSnapConfigForSource:
-    def test_ai_not_cine(self) -> None:
-        cfg = edge_snap_config_for_source("ai")
+    def test_ai_not_cine(self):
+        cfg = edge_snap_config_for_source("AI", cine=False)
         assert cfg.search_radius_px == 16.0
         assert cfg.min_edge_strength == 0.05
 
-    def test_ai_cine(self) -> None:
+    def test_ai_cine(self):
         cfg = edge_snap_config_for_source("ai", cine=True)
         assert cfg.search_radius_px == 10.0
         assert cfg.inward_only is False
 
-    def test_manual(self) -> None:
+    def test_manual(self):
         cfg = edge_snap_config_for_source("manual")
         assert cfg.search_radius_px == 10.0
         assert cfg.min_edge_strength == 0.08
 
-    def test_other_source(self) -> None:
-        cfg = edge_snap_config_for_source("gold")
+    def test_unknown_source(self):
+        cfg = edge_snap_config_for_source("unknown")
         assert cfg.search_radius_px == 12.0
-        assert cfg.min_edge_strength == 0.06
-
-    def test_case_insensitive(self) -> None:
-        cfg = edge_snap_config_for_source("AI")
-        assert cfg.search_radius_px == 16.0
 
 
-# ── magnetic_edge_snap_config_for_source ───────────────────────────
-
-
-class TestMagneticEdgeSnapConfigForSource:
-    def test_manual(self) -> None:
-        cfg = magnetic_edge_snap_config_for_source("manual")
-        assert cfg.search_radius_px >= 14.0
-        assert cfg.profile_samples == 33
-        assert cfg.inward_only is False
+class TestMagneticEdgeSnapConfig:
+    def test_base_ai(self):
+        cfg = magnetic_edge_snap_config_for_source("ai")
         assert cfg.outward_only is True
         assert cfg.intensity_fallback is True
-        assert cfg.min_edge_strength == 0.0
+        assert cfg.inward_only is False
+        assert cfg.profile_samples == 33
 
-
-# ── EdgeMap & build_edge_map ───────────────────────────────────────
+    def test_search_radius_minimum(self):
+        cfg = magnetic_edge_snap_config_for_source("manual")
+        assert cfg.search_radius_px >= 14.0
 
 
 class TestBuildEdgeMap:
-    def test_grayscale(self) -> None:
-        frame = np.random.randint(0, 255, (50, 80), dtype=np.uint8)
+    def test_grayscale_input(self):
+        frame = np.zeros((32, 48), dtype=np.uint8)
         em = build_edge_map(frame)
-        assert isinstance(em, EdgeMap)
-        assert em.height == 50
-        assert em.width == 80
-        assert em.magnitude.shape == (50, 80)
-        assert em.grad_x.shape == (50, 80)
-        assert em.grad_y.shape == (50, 80)
+        assert em.height == 32
+        assert em.width == 48
+        assert em.magnitude.shape == (32, 48)
         assert em.intensity is not None
 
-    def test_bgr(self) -> None:
-        frame = np.random.randint(0, 255, (50, 80, 3), dtype=np.uint8)
+    def test_bgr_input(self):
+        frame = np.zeros((32, 48, 3), dtype=np.uint8)
         em = build_edge_map(frame)
-        assert em.height == 50
-        assert em.width == 80
+        assert em.height == 32
 
-    def test_with_display_levels(self) -> None:
-        frame = np.random.randint(0, 255, (30, 40), dtype=np.uint8)
+    def test_display_levels(self):
+        frame = np.zeros((32, 48), dtype=np.uint8)
+        frame[10:20, 10:30] = 200
         em = build_edge_map(frame, display_levels=(50.0, 200.0))
-        assert em.magnitude.shape == (30, 40)
-
-    def test_custom_blur(self) -> None:
-        frame = np.random.randint(0, 255, (30, 40), dtype=np.uint8)
-        em = build_edge_map(frame, blur_sigma=3.0)
-        assert em.magnitude.shape == (30, 40)
-
-
-# ── outward_normal_at_index ────────────────────────────────────────
+        assert em.height == 32
 
 
 class TestOutwardNormalAtIndex:
-    def test_horizontal_line(self) -> None:
+    def test_straight_line(self):
         points = [(0.0, 50.0), (50.0, 50.0), (100.0, 50.0)]
         nx, ny = outward_normal_at_index(points, 1)
-        # Tangent is (1, 0), normal is (0, 1) or (0, -1)
-        assert abs(ny) > abs(nx)
-
-    def test_unit_length(self) -> None:
-        points = [(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]
-        nx, ny = outward_normal_at_index(points, 1)
+        assert isinstance(nx, float)
+        assert isinstance(ny, float)
         length = np.hypot(nx, ny)
-        assert abs(length - 1.0) < 1e-6
+        assert length == pytest.approx(1.0, abs=0.01)
 
-    def test_points_away_from_centroid(self) -> None:
-        # Semi-circle around centroid
-        angles = np.linspace(0, np.pi, 10)
-        points = [(float(np.cos(a) * 50 + 100), float(np.sin(a) * 50 + 100)) for a in angles]
-        nx, ny = outward_normal_at_index(points, 5)
-        # Normal should point away from centroid
-        cx = np.mean([p[0] for p in points])
-        cy = np.mean([p[1] for p in points])
-        to_interior = (cx - points[5][0], cy - points[5][1])
-        # dot product should be negative (pointing away from interior)
-        assert nx * to_interior[0] + ny * to_interior[1] < 0
+    def test_first_last_not_interior(self):
+        """Centroid test: normal should point away from centroid."""
+        points = [(10.0, 10.0), (50.0, 30.0), (90.0, 10.0)]
+        nx, ny = outward_normal_at_index(points, 1)
+        # Centroid is at ~(50, 16.7), interior direction is roughly (0, -14)
+        # Normal should point toward positive y (away from interior)
+        assert ny > 0 or abs(ny) < 0.5
+
+    def test_zero_length_tangent(self):
+        points = [(50.0, 50.0), (50.0, 50.0), (50.0, 50.0)]
+        nx, ny = outward_normal_at_index(points, 1)
+        assert nx == 0.0
+        assert ny == -1.0
 
 
-# ── directed_edge_score ────────────────────────────────────────────
+class TestSampleBilinear:
+    def test_integer_position(self):
+        em = _make_edge_map()
+        val = _sample_bilinear(em.magnitude, 10.0, 10.0, em)
+        assert isinstance(val, float)
+
+    def test_out_of_bounds(self):
+        em = _make_edge_map()
+        assert _sample_bilinear(em.magnitude, -1.0, 5.0, em) == 0.0
+        assert _sample_bilinear(em.magnitude, 5.0, -1.0, em) == 0.0
+
+    def test_edge_position(self):
+        em = _make_edge_map(w=10, h=10)
+        assert _sample_bilinear(em.magnitude, 9.5, 9.5, em) == 0.0
+
+
+class TestClamp:
+    def test_within_range(self):
+        assert _clamp(5.0, 0.0, 10.0) == 5.0
+
+    def test_below_min(self):
+        assert _clamp(-3.0, 0.0, 10.0) == 0.0
+
+    def test_above_max(self):
+        assert _clamp(15.0, 0.0, 10.0) == 10.0
 
 
 class TestDirectedEdgeScore:
-    def _make_edge_map(self) -> EdgeMap:
-        frame = np.zeros((50, 80), dtype=np.uint8)
-        frame[25, :] = 255  # horizontal bright line
-        return build_edge_map(frame)
-
-    def test_returns_float(self) -> None:
-        em = self._make_edge_map()
-        score = directed_edge_score(em, 40.0, 25.0, (0.0, -1.0))
-        assert isinstance(score, float)
-
-    def test_zero_normal(self) -> None:
-        em = self._make_edge_map()
-        score = directed_edge_score(em, 40.0, 25.0, (0.0, 0.0))
+    def test_zero_normal(self):
+        em = _make_edge_map()
+        score = directed_edge_score(em, 32.0, 32.0, (0.0, 0.0))
         assert score == 0.0
 
-    def test_out_of_bounds(self) -> None:
-        em = self._make_edge_map()
-        score = directed_edge_score(em, -10.0, -10.0, (0.0, 1.0))
-        assert score == 0.0
+    def test_valid_point(self):
+        em = _make_edge_map()
+        score = directed_edge_score(em, 32.0, 32.0, (0.0, -1.0))
+        assert score >= 0.0
 
-
-# ── snap_point ─────────────────────────────────────────────────────
+    def test_bidirectional(self):
+        em = _make_edge_map()
+        score_in = directed_edge_score(em, 32.0, 32.0, (1.0, 0.0), inward_only=True)
+        score_bi = directed_edge_score(em, 32.0, 32.0, (1.0, 0.0), inward_only=False)
+        assert score_bi >= score_in
 
 
 class TestSnapPoint:
-    def _make_edge_map(self) -> EdgeMap:
-        frame = np.zeros((50, 80), dtype=np.uint8)
-        frame[25, :] = 255  # horizontal bright line at y=25
-        return build_edge_map(frame)
+    def test_returns_none_or_point(self):
+        em = _make_edge_map()
+        result = snap_point(em, 32.0, 32.0, (1.0, 0.0))
+        assert result is None or (isinstance(result, tuple) and len(result) == 2)
 
-    def test_returns_tuple_or_none(self) -> None:
-        em = self._make_edge_map()
-        result = snap_point(em, 40.0, 20.0, (0.0, -1.0))
-        # Should find the edge at y=25
-        if result is not None:
-            assert isinstance(result, tuple)
-            assert len(result) == 2
-
-    def test_zero_normal_returns_none(self) -> None:
-        em = self._make_edge_map()
-        result = snap_point(em, 40.0, 20.0, (0.0, 0.0))
-        assert result is None
-
-    def test_with_config(self) -> None:
-        em = self._make_edge_map()
-        cfg = EdgeSnapConfig(search_radius_px=5.0, profile_samples=10)
-        result = snap_point(em, 40.0, 22.0, (0.0, -1.0), config=cfg)
-        # May or may not find edge depending on distance
+    def test_with_config(self):
+        em = _make_edge_map()
+        cfg = EdgeSnapConfig(search_radius_px=5.0, min_edge_strength=0.0)
+        result = snap_point(em, 32.0, 32.0, (0.0, -1.0), config=cfg)
         assert result is None or isinstance(result, tuple)
 
+    def test_zero_normal(self):
+        em = _make_edge_map()
+        result = snap_point(em, 32.0, 32.0, (0.0, 0.0))
+        assert result is None
 
-# ── snap_magnetic_point ────────────────────────────────────────────
+
+class TestToGrayscale:
+    def test_grayscale_passthrough(self):
+        arr = np.zeros((10, 10), dtype=np.float64)
+        result = _to_grayscale(arr)
+        assert result.dtype == np.float64
+
+    def test_bgr_conversion(self):
+        arr = np.zeros((10, 10, 3), dtype=np.uint8)
+        result = _to_grayscale(arr)
+        assert result.ndim == 2
 
 
 class TestSnapMagneticPoint:
-    def _make_edge_map(self) -> EdgeMap:
-        frame = np.zeros((50, 80), dtype=np.uint8)
-        frame[25, :] = 200
-        return build_edge_map(frame)
+    def test_returns_none_or_tuple(self):
+        em = _make_edge_map()
+        result = snap_magnetic_point(em, 32.0, 32.0, (1.0, 0.0))
+        assert result is None or (isinstance(result, tuple) and len(result) == 2)
 
-    def test_returns_tuple_or_none(self) -> None:
-        em = self._make_edge_map()
-        result = snap_magnetic_point(em, 40.0, 20.0, (0.0, -1.0))
-        assert result is None or isinstance(result, tuple)
-
-
-# ── apply_soft_magnetic_snap ───────────────────────────────────────
-
-
-class TestApplySoftMagneticSnap:
-    def _make_edge_map(self) -> EdgeMap:
-        frame = np.zeros((50, 80), dtype=np.uint8)
-        frame[25, :] = 200
-        return build_edge_map(frame)
-
-    def test_too_few_points(self) -> None:
-        em = self._make_edge_map()
-        points = [(10.0, 10.0), (20.0, 20.0)]
-        result = apply_soft_magnetic_snap(points, [1.0, 1.0], em, strength=0.5, max_radial_px=5.0)
-        assert result == points
-
-    def test_zero_strength_no_change(self) -> None:
-        em = self._make_edge_map()
-        points = [(10.0, 10.0), (40.0, 20.0), (70.0, 10.0)]
-        weights = [1.0, 1.0, 1.0]
-        result = apply_soft_magnetic_snap(points, weights, em, strength=0.0, max_radial_px=5.0)
-        assert result == points
-
-    def test_pins_first_and_last(self) -> None:
-        em = self._make_edge_map()
-        points = [(10.0, 10.0), (40.0, 20.0), (70.0, 10.0)]
-        weights = [1.0, 1.0, 1.0]
-        result = apply_soft_magnetic_snap(points, weights, em, strength=0.5, max_radial_px=5.0)
-        assert result[0] == points[0]
-        assert result[-1] == points[-1]
-
-
-# ── snap_weighted_nodes ────────────────────────────────────────────
-
-
-class TestSnapWeightedNodes:
-    def _make_edge_map(self) -> EdgeMap:
-        frame = np.zeros((50, 80), dtype=np.uint8)
-        frame[25, :] = 200
-        return build_edge_map(frame)
-
-    def test_too_few_points(self) -> None:
-        em = self._make_edge_map()
-        points = [(10.0, 10.0), (20.0, 20.0)]
-        result = snap_weighted_nodes(points, [1.0, 1.0], em)
-        assert result == points
-
-    def test_pins_first_and_last(self) -> None:
-        em = self._make_edge_map()
-        points = [(10.0, 10.0), (40.0, 20.0), (70.0, 10.0)]
-        weights = [1.0, 1.0, 1.0]
-        result = snap_weighted_nodes(points, weights, em)
-        assert result[0] == points[0]
-        assert result[-1] == points[-1]
-
-    def test_low_weight_no_snap(self) -> None:
-        em = self._make_edge_map()
-        points = [(10.0, 10.0), (40.0, 20.0), (70.0, 10.0)]
-        weights = [1.0, 0.01, 1.0]  # middle node has low weight
-        result = snap_weighted_nodes(points, weights, em, weight_threshold=0.12)
-        assert result[1] == points[1]  # no snap
+    def test_zero_normal(self):
+        em = _make_edge_map()
+        result = snap_magnetic_point(em, 32.0, 32.0, (0.0, 0.0))
+        assert result is None

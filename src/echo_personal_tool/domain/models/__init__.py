@@ -5,6 +5,12 @@ from echo_personal_tool.domain.models.doppler import (
     DopplerPeakMarker,
     DopplerTrace,
 )
+from echo_personal_tool.domain.models.ecg import (
+    EcEDFrameMapping,
+    EcgLead,
+    EcgWaveform,
+    RPeakResult,
+)
 from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
     pixel_to_mm_length,
@@ -51,6 +57,9 @@ __all__ = [
     "DopplerPeakMarker",
     "DopplerResults",
     "DopplerTrace",
+    "EcEDFrameMapping",
+    "EcgLead",
+    "EcgWaveform",
     "IndexedMeasurements",
     "InstanceInfo",
     "InstanceMetadata",
@@ -61,6 +70,7 @@ __all__ = [
     "LvefResult",
     "MeasurementSnapshot",
     "MyocardialZone",
+    "RPeakResult",
     "SeriesInfo",
     "SeriesMetadata",
     "SpeckleConfig",

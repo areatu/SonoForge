@@ -1,67 +1,83 @@
-"""Unit tests for doppler_baseline.detect_baseline_y."""
+"""Tests for doppler_baseline.detect_baseline_y."""
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
 
 
-def _roi(x0: float = 0.0, y0: float = 0.0, w: float = 100.0, h: float = 50.0) -> DopplerSpectrogramRoi:
+def _roi(x0=10, y0=20, w=80, h=40):
     return DopplerSpectrogramRoi(x0=x0, y0=y0, width=w, height=h)
 
 
 class TestDetectBaselineY:
-    def test_3d_image_returns_midpoint(self) -> None:
+    """detect_baseline_y returns plot Y of the quietest horizontal band."""
+
+    def test_returns_float(self):
+        gray = np.zeros((100, 200), dtype=np.uint8)
+        result = detect_baseline_y(gray, _roi())
+        assert isinstance(result, float)
+
+    def test_uniform_image_returns_midpoint(self):
+        gray = np.full((100, 200), 128, dtype=np.uint8)
+        roi = _roi()
+        result = detect_baseline_y(gray, roi)
+        assert isinstance(result, float)
+
+    def test_3d_array_fallback(self):
+        """Non-2D input returns ROI midpoint."""
         rgb = np.zeros((100, 200, 3), dtype=np.uint8)
-        roi = _roi(w=100.0, h=50.0)
+        roi = _roi(y0=10, h=30)
         result = detect_baseline_y(rgb, roi)
-        assert result == roi.y0 + roi.height / 2.0
+        assert result == pytest.approx(roi.y0 + roi.height / 2.0)
 
-    def test_roi_beyond_image_clamped(self) -> None:
-        img = np.zeros((10, 10), dtype=np.uint8)
-        roi = _roi(x0=50.0, y0=50.0, w=10.0, h=10.0)
-        result = detect_baseline_y(img, roi)
-        # Clamped to bottom-right pixel; still returns valid float
-        assert isinstance(result, float)
-        assert 0.0 <= result <= 10.0
+    def test_patch_with_zero_var_row_wins(self):
+        """A row with zero variance should be selected as baseline."""
+        gray = np.random.randint(10, 200, size=(50, 100), dtype=np.uint8)
+        # Inject a zero-variance row at index 15
+        gray[15, :] = 42
+        roi = _roi(x0=0, y0=0, w=100, h=50)
+        result = detect_baseline_y(gray, roi)
+        assert result == pytest.approx(15.0 + 0.5, abs=0.6)
 
-    def test_uniform_image_any_row(self) -> None:
-        img = np.full((50, 100), 128, dtype=np.uint8)
-        roi = _roi(w=100.0, h=50.0)
-        result = detect_baseline_y(img, roi)
-        # All rows have variance 0; argmin picks first (index 0)
-        assert result == 0.5
-
-    def test_baseline_at_low_variance_row(self) -> None:
-        # Create image where row 20 has very low variance (quiet band)
-        img = np.random.randint(0, 255, (50, 100), dtype=np.uint8)
-        img[20, :] = 128  # constant row → zero variance
-        roi = _roi(w=100.0, h=50.0)
-        result = detect_baseline_y(img, roi)
-        # Should detect row 20 → y = 20 + 0.5 = 20.5
-        assert abs(result - 20.5) < 0.01
-
-    def test_roi_clamped_to_image_bounds(self) -> None:
-        img = np.zeros((30, 60), dtype=np.uint8)
-        img[15, :] = 128
-        roi = _roi(x0=10.0, y0=5.0, w=100.0, h=100.0)  # extends beyond image
-        result = detect_baseline_y(img, roi)
-        # ROI gets clamped; row 15 should still be detectable if within clamped range
+    def test_single_row_patch(self):
+        gray = np.array([[10, 20, 30]], dtype=np.uint8)
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=3, height=1)
+        result = detect_baseline_y(gray, roi)
         assert isinstance(result, float)
 
-    def test_result_offset_by_half_pixel(self) -> None:
-        img = np.zeros((20, 40), dtype=np.uint8)
-        img[10, :] = 128
-        roi = _roi(w=40.0, h=20.0)
-        result = detect_baseline_y(img, roi)
-        # Result should be at integer row + 0.5
-        assert result == int(result) + 0.5
+    def test_roi_clamped_to_image_bounds(self):
+        """ROI exceeding image bounds should be clamped without error."""
+        gray = np.zeros((30, 40), dtype=np.uint8)
+        roi = _roi(x0=0, y0=0, w=200, h=200)
+        result = detect_baseline_y(gray, roi)
+        assert isinstance(result, float)
 
-    def test_narrow_roi(self) -> None:
-        img = np.zeros((20, 40), dtype=np.uint8)
-        img[5:15, 10:20] = 255
-        roi = _roi(x0=10.0, y0=5.0, w=10.0, h=10.0)
-        result = detect_baseline_y(img, roi)
-        assert 5.0 <= result <= 15.0
+    def test_roi_negative_coords(self):
+        gray = np.zeros((30, 40), dtype=np.uint8)
+        roi = _roi(x0=-10, y0=-5, w=50, h=50)
+        result = detect_baseline_y(gray, roi)
+        assert isinstance(result, float)
+
+    def test_single_column_patch(self):
+        gray = np.array([[1], [2], [3], [4], [5]], dtype=np.uint8)
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=1, height=5)
+        result = detect_baseline_y(gray, roi)
+        assert isinstance(result, float)
+
+    def test_constant_row_selected_over_varying(self):
+        """A constant row should have lower variance than a varying one."""
+        gray = np.zeros((20, 60), dtype=np.uint8)
+        # Row 5 is constant
+        gray[5, :] = 100
+        # Other rows have random variation
+        rng = np.random.RandomState(42)
+        for r in range(20):
+            if r != 5:
+                gray[r, :] = rng.randint(50, 200, size=60)
+        roi = _roi(x0=0, y0=0, w=60, h=20)
+        result = detect_baseline_y(gray, roi)
+        assert result == pytest.approx(5.5, abs=0.6)

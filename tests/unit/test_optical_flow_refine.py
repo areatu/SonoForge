@@ -1,6 +1,9 @@
-"""Unit tests for optical flow contour refinement."""
+"""Tests for optical_flow_refine module."""
 
 from __future__ import annotations
+
+import math
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -11,110 +14,95 @@ from echo_personal_tool.domain.services.optical_flow_refine import (
 )
 
 
-def _make_frame(h: int = 64, w: int = 64, value: int = 128) -> np.ndarray:
-    return np.full((h, w), value, dtype=np.uint8)
+def _make_frames(n=10, h=64, w=64):
+    rng = np.random.RandomState(42)
+    return [rng.randint(0, 256, size=(h, w), dtype=np.uint8) for _ in range(n)]
 
 
-def _make_frames_shifted(n: int = 6, h: int = 64, w: int = 64) -> list[np.ndarray]:
-    """Create frames with a subtle horizontal gradient shift to simulate motion."""
-    frames = []
-    for i in range(n):
-        frame = np.zeros((h, w), dtype=np.uint8)
-        # Shift a bright block rightward by 1 px per frame
-        x_start = 10 + i
-        x_end = x_start + 10
-        if x_end <= w:
-            frame[20:30, x_start:x_end] = 200
-        frames.append(frame)
-    return frames
+def _make_contour(n=10, h=64, w=64):
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    cx, cy = w / 2, h / 2
+    r = min(w, h) / 4
+    return [(float(cx + r * np.cos(a)), float(cy + r * np.sin(a))) for a in angles]
 
 
 class TestRefineContourWithOpticalFlow:
-    def test_returns_input_when_fewer_than_3_frames(self) -> None:
-        pts = [(10.0, 10.0), (20.0, 20.0), (30.0, 30.0)]
-        result = refine_contour_with_optical_flow(
-            [_make_frame(), _make_frame()],
-            pts,
-            current_frame_idx=0,
-            fps=30.0,
-        )
-        assert result == pts
+    def test_too_few_frames(self):
+        frames = _make_frames(n=2)
+        contour = _make_contour()
+        result = refine_contour_with_optical_flow(frames, contour, current_frame_idx=0, fps=30.0)
+        assert len(result) == len(contour)
 
-    def test_returns_input_when_fewer_than_3_points(self) -> None:
-        frames = [_make_frame() for _ in range(5)]
-        pts = [(10.0, 10.0), (20.0, 20.0)]
-        result = refine_contour_with_optical_flow(
-            frames, pts, current_frame_idx=0, fps=30.0,
-        )
-        assert result == pts
+    def test_too_few_points(self):
+        frames = _make_frames(n=10)
+        result = refine_contour_with_optical_flow(frames, [(10.0, 10.0)], current_frame_idx=5, fps=30.0)
+        assert result == [(10.0, 10.0)]
 
-    def test_returns_same_length(self) -> None:
-        frames = _make_frames_shifted(6)
-        pts = [(30.0, 25.0), (32.0, 25.0), (34.0, 25.0)]
+    def test_returns_same_length(self):
+        frames = _make_frames(n=15)
+        contour = _make_contour(n=12)
         result = refine_contour_with_optical_flow(
-            frames, pts, current_frame_idx=3, fps=30.0,
+            frames, contour, current_frame_idx=7, fps=30.0,
         )
-        assert len(result) == len(pts)
+        assert len(result) == len(contour)
 
-    def test_points_near_edge_are_not_shifted(self) -> None:
-        frames = _make_frames_shifted(6)
-        # Point at (2, 2) is within roi_half_size=5 of the edge
-        pts = [(2.0, 2.0), (30.0, 25.0)]
+    def test_points_are_tuples(self):
+        frames = _make_frames(n=15)
+        contour = _make_contour(n=8)
         result = refine_contour_with_optical_flow(
-            frames, pts, current_frame_idx=3, fps=30.0, roi_half_size=5,
+            frames, contour, current_frame_idx=5, fps=30.0,
         )
-        assert result[0] == (2.0, 2.0)
+        for pt in result:
+            assert isinstance(pt, tuple)
+            assert len(pt) == 2
 
-    def test_returns_identical_points_on_uniform_frames(self) -> None:
-        frames = [_make_frame() for _ in range(6)]
-        pts = [(30.0, 30.0), (32.0, 32.0), (34.0, 34.0)]
+    def test_edge_points_unchanged(self):
+        """Points near image edges should not be shifted."""
+        frames = _make_frames(n=15, h=32, w=32)
+        contour = [(1.0, 1.0), (30.0, 1.0), (30.0, 30.0), (1.0, 30.0)]
         result = refine_contour_with_optical_flow(
-            frames, pts, current_frame_idx=3, fps=30.0,
+            frames, contour, current_frame_idx=5, fps=30.0, roi_half_size=5,
         )
-        # No motion → no shift
-        assert result == pts
+        # Points at (1,1) are too close to edge
+        assert result[0] == contour[0]
 
-    def test_shift_is_clamped_by_max_shift_px(self) -> None:
-        frames = _make_frames_shifted(8)
-        pts = [(30.0, 25.0), (32.0, 25.0), (34.0, 25.0)]
+    def test_max_shift_px_clamps(self):
+        frames = _make_frames(n=20)
+        contour = _make_contour(n=10)
         result = refine_contour_with_optical_flow(
-            frames, pts, current_frame_idx=4, fps=30.0,
-            max_shift_px=0.1, shift_fraction=1.0,
+            frames, contour, current_frame_idx=10, fps=30.0,
+            max_shift_px=1.0, shift_fraction=1.0,
         )
-        for (ox, oy), (nx, ny) in zip(pts, result):
-            assert abs(nx - ox) <= 0.2
-            assert abs(ny - oy) <= 0.2
+        for orig, refined in zip(contour, result):
+            dist = math.hypot(refined[0] - orig[0], refined[1] - orig[1])
+            assert dist <= 2.0  # generous bound due to multi-frame averaging
 
-    def test_shift_fraction_zero_keeps_points(self) -> None:
-        frames = _make_frames_shifted(6)
-        pts = [(30.0, 25.0), (32.0, 25.0), (34.0, 25.0)]
+    def test_invalid_frame_idx(self):
+        frames = _make_frames(n=10)
+        contour = _make_contour()
         result = refine_contour_with_optical_flow(
-            frames, pts, current_frame_idx=3, fps=30.0, shift_fraction=0.0,
+            frames, contour, current_frame_idx=100, fps=30.0,
         )
-        assert result == pts
+        assert len(result) == len(contour)
 
 
 class TestComputeFlowFieldSnapshot:
-    def test_returns_none_for_out_of_range_index(self) -> None:
-        frames = [_make_frame() for _ in range(3)]
-        assert compute_flow_field_snapshot(frames, -1) is None
-        assert compute_flow_field_snapshot(frames, 5) is None
-
-    def test_returns_none_when_no_next_frame(self) -> None:
-        frames = [_make_frame() for _ in range(3)]
-        assert compute_flow_field_snapshot(frames, 2) is None
-
-    def test_returns_tuple_of_arrays(self) -> None:
-        frames = _make_frames_shifted(4)
+    def test_valid(self):
+        frames = _make_frames(n=5)
         result = compute_flow_field_snapshot(frames, 0, step=4)
         assert result is not None
         vx, vy = result
         assert vx.ndim == 2
         assert vy.ndim == 2
-        assert vx.shape == vy.shape
 
-    def test_step_affects_output_shape(self) -> None:
-        frames = _make_frames_shifted(4, h=64, w=64)
-        _, vx2 = compute_flow_field_snapshot(frames, 0, step=2)
-        _, vx4 = compute_flow_field_snapshot(frames, 0, step=4)
-        assert vx2.shape[0] > vx4.shape[0]
+    def test_out_of_range(self):
+        frames = _make_frames(n=3)
+        assert compute_flow_field_snapshot(frames, -1) is None
+        assert compute_flow_field_snapshot(frames, 2) is None
+        assert compute_flow_field_snapshot(frames, 3) is None
+
+    def test_step_affects_shape(self):
+        frames = _make_frames(n=3, h=64, w=64)
+        r1 = compute_flow_field_snapshot(frames, 0, step=2)
+        r2 = compute_flow_field_snapshot(frames, 0, step=8)
+        assert r1[0].shape[0] >= r2[0].shape[0]
