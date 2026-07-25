@@ -81,9 +81,7 @@ class TestLoadFromMp4:
         mock_cv2.COLOR_BGR2GRAY = 6
         mock_cv2.cvtColor.side_effect = lambda img, code: np.mean(img, axis=2).astype(np.uint8)
 
-        worker = HeartRateWorker(
-            source_path=Path("/tmp/src.mp4"), media_format="mp4"
-        )
+        worker = HeartRateWorker(source_path=Path("/tmp/src.mp4"), media_format="mp4")
         result = worker._load_from_mp4()
         assert len(result) == 3
         cap.release.assert_called_once()
@@ -94,9 +92,7 @@ class TestLoadFromMp4:
         cap.isOpened.return_value = False
         mock_cv2.VideoCapture.return_value = cap
 
-        worker = HeartRateWorker(
-            source_path=Path("/tmp/bad.mp4"), media_format="mp4"
-        )
+        worker = HeartRateWorker(source_path=Path("/tmp/bad.mp4"), media_format="mp4")
         result = worker._load_from_mp4()
         assert result == []
 
@@ -112,9 +108,7 @@ class TestLoadFromDicom:
         session.decode_all_frames.return_value = frames
         mock_cv2.COLOR_BGR2GRAY = 6
 
-        worker = HeartRateWorker(
-            source_path=Path("/tmp/src.dcm"), media_format="dicom"
-        )
+        worker = HeartRateWorker(source_path=Path("/tmp/src.dcm"), media_format="dicom")
         with patch(
             "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
             return_value=session,
@@ -130,9 +124,7 @@ class TestLoadFromDicom:
         mock_cv2.COLOR_BGR2GRAY = 6
         mock_cv2.cvtColor.return_value = np.zeros((10, 10), dtype=np.uint8)
 
-        worker = HeartRateWorker(
-            source_path=Path("/tmp/src.dcm"), media_format="dicom"
-        )
+        worker = HeartRateWorker(source_path=Path("/tmp/src.dcm"), media_format="dicom")
         with patch(
             "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
             return_value=session,
@@ -149,18 +141,14 @@ class TestLoadFramesSubsampled:
     @patch.object(HeartRateWorker, "_load_from_mp4")
     def test_fewer_than_max_not_subsampled(self, mock_load):
         mock_load.return_value = [np.zeros((10, 10)) for _ in range(10)]
-        worker = HeartRateWorker(
-            source_path=Path("/tmp/src.mp4"), media_format="mp4"
-        )
+        worker = HeartRateWorker(source_path=Path("/tmp/src.mp4"), media_format="mp4")
         result = worker._load_frames_subsampled()
         assert len(result) == 10
 
     @patch.object(HeartRateWorker, "_load_from_mp4")
     def test_more_than_max_subsampled(self, mock_load):
         mock_load.return_value = [np.zeros((10, 10)) for _ in range(120)]
-        worker = HeartRateWorker(
-            source_path=Path("/tmp/src.mp4"), media_format="mp4"
-        )
+        worker = HeartRateWorker(source_path=Path("/tmp/src.mp4"), media_format="mp4")
         result = worker._load_frames_subsampled()
         assert len(result) == _MAX_FRAMES_FOR_OPTICAL_FLOW
 
@@ -187,9 +175,7 @@ class TestHeartRateWorkerRun:
             contour_areas=[100.0, 200.0, 300.0, 400.0],
         )
         finished = []
-        worker.signals.finished.connect(
-            lambda bpm, conf, method: finished.append((bpm, conf, method))
-        )
+        worker.signals.finished.connect(lambda bpm, conf, method: finished.append((bpm, conf, method)))
         worker.run()
         assert finished == [(72.0, 0.9, "area_time")]
 
@@ -197,13 +183,21 @@ class TestHeartRateWorkerRun:
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time")
     def test_area_time_fails_falls_to_optical_flow(self, mock_area, mock_of):
         mock_area.return_value = HeartRateResult(
-            bpm=0.0, method="area_time", confidence=0.0,
-            es_intervals_ms=[], frame_rate=30.0, num_frames_used=0,
+            bpm=0.0,
+            method="area_time",
+            confidence=0.0,
+            es_intervals_ms=[],
+            frame_rate=30.0,
+            num_frames_used=0,
         )
 
         mock_of.return_value = HeartRateResult(
-            bpm=65.0, method="optical_flow", confidence=0.7,
-            es_intervals_ms=[923.0], frame_rate=30.0, num_frames_used=20,
+            bpm=65.0,
+            method="optical_flow",
+            confidence=0.7,
+            es_intervals_ms=[923.0],
+            frame_rate=30.0,
+            num_frames_used=20,
         )
 
         worker = HeartRateWorker(
@@ -214,21 +208,24 @@ class TestHeartRateWorkerRun:
         )
 
         with patch.object(
-            worker, "_load_frames_subsampled",
+            worker,
+            "_load_frames_subsampled",
             return_value=[np.zeros((10, 10)) for _ in range(10)],
         ):
             finished = []
-            worker.signals.finished.connect(
-                lambda bpm, conf, method: finished.append((bpm, conf, method))
-            )
+            worker.signals.finished.connect(lambda bpm, conf, method: finished.append((bpm, conf, method)))
             worker.run()
             assert finished == [(65.0, 0.7, "optical_flow")]
 
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_optical_flow")
     def test_optical_flow_path(self, mock_of):
         mock_of.return_value = HeartRateResult(
-            bpm=80.0, method="optical_flow", confidence=0.6,
-            es_intervals_ms=[750.0], frame_rate=30.0, num_frames_used=30,
+            bpm=80.0,
+            method="optical_flow",
+            confidence=0.6,
+            es_intervals_ms=[750.0],
+            frame_rate=30.0,
+            num_frames_used=30,
         )
 
         worker = HeartRateWorker(
@@ -237,13 +234,12 @@ class TestHeartRateWorkerRun:
             frame_time_ms=33.3,
         )
         with patch.object(
-            worker, "_load_frames_subsampled",
+            worker,
+            "_load_frames_subsampled",
             return_value=[np.zeros((10, 10)) for _ in range(10)],
         ):
             finished = []
-            worker.signals.finished.connect(
-                lambda bpm, conf, method: finished.append((bpm, conf, method))
-            )
+            worker.signals.finished.connect(lambda bpm, conf, method: finished.append((bpm, conf, method)))
             worker.run()
             assert finished == [(80.0, 0.6, "optical_flow")]
 
@@ -253,9 +249,7 @@ class TestHeartRateWorkerRun:
             media_format="mp4",
             frame_time_ms=33.3,
         )
-        with patch.object(
-            worker, "_load_frames_subsampled", return_value=[]
-        ):
+        with patch.object(worker, "_load_frames_subsampled", return_value=[]):
             failed = []
             worker.signals.failed.connect(lambda msg: failed.append(msg))
             worker.run()
@@ -264,8 +258,12 @@ class TestHeartRateWorkerRun:
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_optical_flow")
     def test_optical_flow_returns_zero_emits_failed(self, mock_of):
         mock_of.return_value = HeartRateResult(
-            bpm=0.0, method="optical_flow", confidence=0.0,
-            es_intervals_ms=[], frame_rate=30.0, num_frames_used=10,
+            bpm=0.0,
+            method="optical_flow",
+            confidence=0.0,
+            es_intervals_ms=[],
+            frame_rate=30.0,
+            num_frames_used=10,
         )
 
         worker = HeartRateWorker(
@@ -274,7 +272,8 @@ class TestHeartRateWorkerRun:
             frame_time_ms=33.3,
         )
         with patch.object(
-            worker, "_load_frames_subsampled",
+            worker,
+            "_load_frames_subsampled",
             return_value=[np.zeros((10, 10)) for _ in range(10)],
         ):
             failed = []
@@ -282,8 +281,7 @@ class TestHeartRateWorkerRun:
             worker.run()
             assert "Could not estimate heart rate" in failed[0]
 
-    @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time",
-           side_effect=RuntimeError("boom"))
+    @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time", side_effect=RuntimeError("boom"))
     def test_exception_emits_failed(self, mock_area):
         worker = HeartRateWorker(
             source_path=Path("/tmp/src.dcm"),
@@ -299,8 +297,12 @@ class TestHeartRateWorkerRun:
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_optical_flow")
     def test_no_frame_time_uses_30fps(self, mock_of):
         mock_of.return_value = HeartRateResult(
-            bpm=70.0, method="optical_flow", confidence=0.5,
-            es_intervals_ms=[], frame_rate=30.0, num_frames_used=10,
+            bpm=70.0,
+            method="optical_flow",
+            confidence=0.5,
+            es_intervals_ms=[],
+            frame_rate=30.0,
+            num_frames_used=10,
         )
         worker = HeartRateWorker(
             source_path=Path("/tmp/src.mp4"),
@@ -308,7 +310,8 @@ class TestHeartRateWorkerRun:
             frame_time_ms=None,
         )
         with patch.object(
-            worker, "_load_frames_subsampled",
+            worker,
+            "_load_frames_subsampled",
             return_value=[np.zeros((10, 10)) for _ in range(10)],
         ):
             worker.run()
@@ -318,8 +321,12 @@ class TestHeartRateWorkerRun:
     @patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_optical_flow")
     def test_short_contour_areas_skips_area_method(self, mock_of):
         mock_of.return_value = HeartRateResult(
-            bpm=75.0, method="optical_flow", confidence=0.6,
-            es_intervals_ms=[800.0], frame_rate=30.0, num_frames_used=10,
+            bpm=75.0,
+            method="optical_flow",
+            confidence=0.6,
+            es_intervals_ms=[800.0],
+            frame_rate=30.0,
+            num_frames_used=10,
         )
         worker = HeartRateWorker(
             source_path=Path("/tmp/src.mp4"),
@@ -328,16 +335,13 @@ class TestHeartRateWorkerRun:
             contour_areas=[100.0, 200.0],  # < 4
         )
         with patch.object(
-            worker, "_load_frames_subsampled",
+            worker,
+            "_load_frames_subsampled",
             return_value=[np.zeros((10, 10)) for _ in range(10)],
         ):
-            with patch(
-                "echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time"
-            ) as mock_area:
+            with patch("echo_personal_tool.domain.services.heart_rate.estimate_hr_area_time") as mock_area:
                 finished = []
-                worker.signals.finished.connect(
-                    lambda bpm, conf, method: finished.append((bpm, conf, method))
-                )
+                worker.signals.finished.connect(lambda bpm, conf, method: finished.append((bpm, conf, method)))
                 worker.run()
                 mock_area.assert_not_called()
                 assert finished == [(75.0, 0.6, "optical_flow")]

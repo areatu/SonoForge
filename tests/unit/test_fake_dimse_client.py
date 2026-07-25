@@ -143,7 +143,9 @@ class TestFakeDimseClientMoveInstances:
         client = FakeDimseClient()
         received: dict[str, bytes] = {}
         result = client.c_move_instances(
-            "1.2.3", "4.5.6", [],
+            "1.2.3",
+            "4.5.6",
+            [],
             move_destination_ae="TEST",
             scp_host="127.0.0.1",
             scp_port=11112,
@@ -173,7 +175,8 @@ class TestFakeDimseClientMoveSeries:
         client = FakeDimseClient()
         received: dict[str, bytes] = {}
         result = client.c_move_series(
-            "1.2.3", "4.5.6",
+            "1.2.3",
+            "4.5.6",
             move_destination_ae="TEST",
             scp_host="127.0.0.1",
             scp_port=11112,

@@ -32,15 +32,22 @@ class TestStudyInfo:
 
     def test_with_series_count(self) -> None:
         info = StudyInfo(
-            study_uid="1", patient_name="X", patient_id="P",
-            study_date="20250101", study_description="d", series_count=5,
+            study_uid="1",
+            patient_name="X",
+            patient_id="P",
+            study_date="20250101",
+            study_description="d",
+            series_count=5,
         )
         assert info.series_count == 5
 
     def test_frozen(self) -> None:
         info = StudyInfo(
-            study_uid="1", patient_name="X", patient_id="P",
-            study_date="20250101", study_description="d",
+            study_uid="1",
+            patient_name="X",
+            patient_id="P",
+            study_date="20250101",
+            study_description="d",
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             info.patient_name = "Y"  # type: ignore[misc]
@@ -49,7 +56,9 @@ class TestStudyInfo:
 class TestSeriesInfo:
     def test_creation(self) -> None:
         info = SeriesInfo(
-            series_uid="s1", study_uid="st1", modality="US",
+            series_uid="s1",
+            study_uid="st1",
+            modality="US",
             description="A4C",
         )
         assert info.series_uid == "s1"
@@ -58,14 +67,20 @@ class TestSeriesInfo:
 
     def test_with_instance_count(self) -> None:
         info = SeriesInfo(
-            series_uid="s1", study_uid="st1", modality="US",
-            description="d", instance_count=30,
+            series_uid="s1",
+            study_uid="st1",
+            modality="US",
+            description="d",
+            instance_count=30,
         )
         assert info.instance_count == 30
 
     def test_frozen(self) -> None:
         info = SeriesInfo(
-            series_uid="s1", study_uid="st1", modality="US", description="d",
+            series_uid="s1",
+            study_uid="st1",
+            modality="US",
+            description="d",
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             info.modality = "CT"  # type: ignore[misc]
@@ -74,7 +89,9 @@ class TestSeriesInfo:
 class TestInstanceInfo:
     def test_creation(self) -> None:
         info = InstanceInfo(
-            sop_instance_uid="1.2.3", series_uid="1.2.4", study_uid="1.2.5",
+            sop_instance_uid="1.2.3",
+            series_uid="1.2.4",
+            study_uid="1.2.5",
         )
         assert info.sop_instance_uid == "1.2.3"
         assert info.series_uid == "1.2.4"

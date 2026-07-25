@@ -30,8 +30,11 @@ class TestEcgLead:
 
     def test_frozen(self) -> None:
         lead = EcgLead(
-            name="II", samples=np.zeros(10),
-            sampling_frequency=500.0, baseline=0, bits_stored=16,
+            name="II",
+            samples=np.zeros(10),
+            sampling_frequency=500.0,
+            baseline=0,
+            bits_stored=16,
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             lead.name = "V1"  # type: ignore[misc]
@@ -54,8 +57,9 @@ class TestEcgWaveform:
         assert wf.primary_lead is None
 
     def test_as_voltage_mv(self) -> None:
-        lead = EcgLead("II", samples=np.array([0, 512, 1024], dtype=np.int16),
-                        sampling_frequency=500.0, baseline=0, bits_stored=16)
+        lead = EcgLead(
+            "II", samples=np.array([0, 512, 1024], dtype=np.int16), sampling_frequency=500.0, baseline=0, bits_stored=16
+        )
         wf = EcgWaveform(leads=[lead], waveform_frequency=500.0, number_of_waveform_channels=1)
         voltage = wf.as_voltage_mv(0)
         assert voltage.shape == (3,)

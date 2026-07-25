@@ -240,9 +240,7 @@ class TestExportFromDicom:
             "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
             return_value=session,
         ):
-            worker = Mp4ExportWorker(
-                Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", frame_time_ms=33.3
-            )
+            worker = Mp4ExportWorker(Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", frame_time_ms=33.3)
             finished_received = []
             worker.signals.finished.connect(lambda p: finished_received.append(p))
 
@@ -272,9 +270,7 @@ class TestExportFromDicom:
             "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
             return_value=session,
         ):
-            worker = Mp4ExportWorker(
-                Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", frame_time_ms=33.3
-            )
+            worker = Mp4ExportWorker(Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", frame_time_ms=33.3)
             finished_received = []
             worker.signals.finished.connect(lambda p: finished_received.append(p))
 
@@ -301,9 +297,7 @@ class TestExportFromDicom:
             "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
             return_value=session,
         ):
-            worker = Mp4ExportWorker(
-                Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", frame_time_ms=None
-            )
+            worker = Mp4ExportWorker(Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", frame_time_ms=None)
             worker.run()
             _, _, fps, _, _ = mock_open_writer.call_args[0]
             assert fps == 30.0

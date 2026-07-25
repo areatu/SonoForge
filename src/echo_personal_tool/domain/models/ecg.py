@@ -48,7 +48,7 @@ class EcgWaveform:
         lead = self.leads[lead_index]
         if lead.bits_stored <= 0:
             return lead.samples.astype(np.float64)
-        scale = 2.5 / (2 ** lead.bits_stored)
+        scale = 2.5 / (2**lead.bits_stored)
         return (lead.samples.astype(np.float64) - lead.baseline) * scale
 
     @property

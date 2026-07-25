@@ -76,7 +76,10 @@ def refine_contour_with_optical_flow(
             # Sparse optical flow at the point (Lucas-Kanade — much faster than dense)
             p0 = np.array([[ix, iy]], dtype=np.float32).reshape(-1, 1, 2)
             p1, status, _ = cv2.calcOpticalFlowPyrLK(
-                gray_curr, gray_next, p0, None,
+                gray_curr,
+                gray_next,
+                p0,
+                None,
                 winSize=(roi_half_size * 2 + 1, roi_half_size * 2 + 1),
                 maxLevel=2,
             )
@@ -129,9 +132,16 @@ def compute_flow_field_snapshot(
     gray0 = frames[frame_idx]
     gray1 = frames[frame_idx + 1]
     flow = cv2.calcOpticalFlowFarneback(
-        gray0, gray1, None,
-        pyr_scale=0.5, levels=3, winsize=15,
-        iterations=3, poly_n=5, poly_sigma=1.2, flags=0,
+        gray0,
+        gray1,
+        None,
+        pyr_scale=0.5,
+        levels=3,
+        winsize=15,
+        iterations=3,
+        poly_n=5,
+        poly_sigma=1.2,
+        flags=0,
     )
     # Subsample for efficiency
     vx = flow[::step, ::step, 0]

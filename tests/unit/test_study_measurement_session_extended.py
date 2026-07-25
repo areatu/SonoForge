@@ -368,21 +368,15 @@ def test_merge_linear_measurements_by_key() -> None:
         LinearMeasurement(label="LVEDD", pixel_length=100, millimeter_length=50, frame_index=0),
         LinearMeasurement(label="LVESD", pixel_length=80, millimeter_length=40, frame_index=0),
     )
-    incoming = (
-        LinearMeasurement(label="LVEDD", pixel_length=110, millimeter_length=55, frame_index=1),
-    )
+    incoming = (LinearMeasurement(label="LVEDD", pixel_length=110, millimeter_length=55, frame_index=1),)
     result = merge_linear_measurements(existing, incoming)
     # LVEDD at frame 0 and frame 1 are different keys, so both kept; LVESD at frame 0 kept
     assert len(result) == 3
 
 
 def test_merge_linear_measurements_none_frame_index() -> None:
-    existing = (
-        LinearMeasurement(label="LVEDD", pixel_length=100, millimeter_length=50, frame_index=None),
-    )
-    incoming = (
-        LinearMeasurement(label="LVEDD", pixel_length=110, millimeter_length=55, frame_index=None),
-    )
+    existing = (LinearMeasurement(label="LVEDD", pixel_length=100, millimeter_length=50, frame_index=None),)
+    incoming = (LinearMeasurement(label="LVEDD", pixel_length=110, millimeter_length=55, frame_index=None),)
     result = merge_linear_measurements(existing, incoming)
     assert len(result) == 1
     assert result[0].pixel_length == 110

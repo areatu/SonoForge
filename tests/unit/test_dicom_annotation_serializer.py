@@ -125,9 +125,7 @@ class TestAnnotateDicomWithCalipers:
     def test_default_rows_columns(self) -> None:
         """If ds has no Rows/Columns, defaults to 512."""
         ds = Dataset()
-        caliper = LinearMeasurement(
-            "test", 100.0, 5.0, start=(256, 256), end=(256, 256)
-        )
+        caliper = LinearMeasurement("test", 100.0, 5.0, start=(256, 256), end=(256, 256))
         result = annotate_dicom_with_calipers(ds, [caliper])
         assert "GraphicAnnotationSequence" in result
 
@@ -194,9 +192,7 @@ class TestAnnotateDicomWithContours:
         existing.add_new(TAG_GRAPHIC_LAYER, "LO", "Existing")
         ds.add_new(TAG_GRAPHIC_ANNOTATION_SEQ, "SQ", [existing])
 
-        contour = Contour(
-            phase="ED", points=[(10, 10), (20, 20), (30, 10)]
-        )
+        contour = Contour(phase="ED", points=[(10, 10), (20, 20), (30, 10)])
         result = annotate_dicom_with_contours(ds, [contour])
         assert len(result.GraphicAnnotationSequence) == 2
 
@@ -216,12 +212,8 @@ class TestAnnotateDicomWithContours:
 class TestAnnotateDicom:
     def test_both_calipers_and_contours(self) -> None:
         ds = _make_ds()
-        caliper = LinearMeasurement(
-            "test", 10.0, 1.0, start=(0, 0), end=(10, 10)
-        )
-        contour = Contour(
-            phase="ED", points=[(10, 10), (20, 20), (30, 10)]
-        )
+        caliper = LinearMeasurement("test", 10.0, 1.0, start=(0, 0), end=(10, 10))
+        contour = Contour(phase="ED", points=[(10, 10), (20, 20), (30, 10)])
         result = annotate_dicom(ds, calipers=[caliper], contours=[contour])
         assert "GraphicAnnotationSequence" in result
 
@@ -232,17 +224,13 @@ class TestAnnotateDicom:
 
     def test_only_calipers(self) -> None:
         ds = _make_ds()
-        caliper = LinearMeasurement(
-            "test", 10.0, 1.0, start=(0, 0), end=(10, 10)
-        )
+        caliper = LinearMeasurement("test", 10.0, 1.0, start=(0, 0), end=(10, 10))
         result = annotate_dicom(ds, calipers=[caliper])
         assert "GraphicAnnotationSequence" in result
 
     def test_only_contours(self) -> None:
         ds = _make_ds()
-        contour = Contour(
-            phase="ED", points=[(10, 10), (20, 20), (30, 10)]
-        )
+        contour = Contour(phase="ED", points=[(10, 10), (20, 20), (30, 10)])
         result = annotate_dicom(ds, contours=[contour])
         assert "GraphicAnnotationSequence" in result
 
@@ -298,9 +286,7 @@ class TestReadAnnotationsFromDicom:
         graphic_obj = Dataset()
         graphic_obj.add_new(TAG_GRAPHIC_TYPE, "CS", "POLYLINE")
         # 3 points → contour
-        graphic_obj.add_new(
-            TAG_GRAPHIC_DATA, "FL", [0.2, 0.2, 0.4, 0.4, 0.6, 0.2]
-        )
+        graphic_obj.add_new(TAG_GRAPHIC_DATA, "FL", [0.2, 0.2, 0.4, 0.4, 0.6, 0.2])
 
         layer = Dataset()
         layer.add_new(TAG_GRAPHIC_LAYER, "LO", "ContourLayer")

@@ -119,7 +119,11 @@ class HeartRateWorker(QRunnable):
         result: list[np.ndarray] = []
         for frame in all_frames:
             if frame.ndim == 3:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.shape[2] == 3 else np.mean(frame, axis=2).astype(np.uint8)
+                gray = (
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    if frame.shape[2] == 3
+                    else np.mean(frame, axis=2).astype(np.uint8)
+                )
             else:
                 gray = frame.astype(np.uint8)
             result.append(gray)

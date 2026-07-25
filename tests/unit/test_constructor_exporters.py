@@ -314,7 +314,9 @@ class TestParameterModel:
         )
 
         param = ParameterModel(
-            id="IVSd", name="IVSd", unit="mm",
+            id="IVSd",
+            name="IVSd",
+            unit="mm",
             norm_male=NormRangeModel(low=6.0, high=11.0),
             pathology_desc="Increased in HCM",
         )
@@ -375,7 +377,8 @@ class TestPathologyModel:
         from echo_personal_tool.constructor.models.reference_model import PathologyModel
 
         patho = PathologyModel(
-            name="HCM", slug="hcm",
+            name="HCM",
+            slug="hcm",
             description="Hypertrophic cardiomyopathy",
             parameters=[],
         )

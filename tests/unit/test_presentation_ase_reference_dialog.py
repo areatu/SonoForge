@@ -82,7 +82,9 @@ class TestShowAseReferenceDialog:
         from echo_personal_tool.presentation.ase_reference_dialog import show_ase_reference_dialog
 
         with (
-            patch("echo_personal_tool.presentation.ase_reference_dialog.AseReferenceDialog", side_effect=Exception("err")),
+            patch(
+                "echo_personal_tool.presentation.ase_reference_dialog.AseReferenceDialog", side_effect=Exception("err")
+            ),
             patch("echo_personal_tool.presentation.ase_reference_dialog.QMessageBox"),
         ):
             show_ase_reference_dialog()

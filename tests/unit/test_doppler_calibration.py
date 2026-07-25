@@ -75,14 +75,18 @@ class TestCalibrationFromRoiAndBaseline:
     def test_tissue_span(self) -> None:
         roi = _make_roi()
         result = calibration_from_roi_and_baseline(
-            roi, 40.0, kind=DopplerKind.TISSUE,
+            roi,
+            40.0,
+            kind=DopplerKind.TISSUE,
         )
         assert result.velocity_span_cm_s == 40.0
 
     def test_custom_velocity_span(self) -> None:
         roi = _make_roi()
         result = calibration_from_roi_and_baseline(
-            roi, 40.0, velocity_span_cm_s=150.0,
+            roi,
+            40.0,
+            velocity_span_cm_s=150.0,
         )
         assert result.velocity_span_cm_s == 150.0
 

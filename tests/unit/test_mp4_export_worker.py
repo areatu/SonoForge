@@ -89,6 +89,7 @@ class TestOpenVideoWriter:
             mock_cv2.COLOR_GRAY2BGR = cv2.COLOR_GRAY2BGR
 
             import pytest
+
             with pytest.raises(OSError, match="cannot open"):
                 _open_video_writer("/tmp/test.mp4", "mp4v", 30.0, 640, 480)
 

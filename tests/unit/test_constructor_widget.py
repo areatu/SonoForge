@@ -224,13 +224,9 @@ class TestSave:
     def test_save_validation_errors(self, widget) -> None:
         from echo_personal_tool.constructor.storage.schema_validator import ValidationError
 
-        widget._validator.validate = MagicMock(
-            return_value=[ValidationError(path="topics", message="err")]
-        )
+        widget._validator.validate = MagicMock(return_value=[ValidationError(path="topics", message="err")])
         widget._mark_dirty()
-        with patch(
-            "echo_personal_tool.constructor.constructor_widget.QMessageBox"
-        ) as mock_msgbox:
+        with patch("echo_personal_tool.constructor.constructor_widget.QMessageBox") as mock_msgbox:
             widget.save()
             mock_msgbox.warning.assert_called_once()
         assert widget._dirty is True
@@ -261,9 +257,7 @@ class TestValidate:
     def test_validate_with_errors(self, mock_msgbox, widget) -> None:
         from echo_personal_tool.constructor.storage.schema_validator import ValidationError
 
-        widget._validator.validate = MagicMock(
-            return_value=[ValidationError(path="t", message="err1")]
-        )
+        widget._validator.validate = MagicMock(return_value=[ValidationError(path="t", message="err1")])
         widget.validate()
         mock_msgbox.warning.assert_called_once()
 

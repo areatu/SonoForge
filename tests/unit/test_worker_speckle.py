@@ -40,8 +40,10 @@ def _make_zone(n_points=16):
     endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
     epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
     return MyocardialZone(
-        endo_points=endo, epi_points=epi,
-        thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+        endo_points=endo,
+        epi_points=epi,
+        thickness_mm=8.0,
+        pixel_spacing=(0.5, 0.5),
     )
 
 
@@ -94,13 +96,17 @@ class TestSpeckleTrackingSignalsExtended:
 class TestSpeckleTrackingWorkerExtended:
     def test_init_with_custom_config(self):
         config = SpeckleConfig(
-            kernel_size=16, search_radius=10, ncc_threshold=0.5,
+            kernel_size=16,
+            search_radius=10,
+            ncc_threshold=0.5,
             tracking_mode="incremental",
         )
         frames = _make_frames()
         zone = _make_zone()
         worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
             config=config,
         )
         assert worker._config.kernel_size == 16
@@ -110,8 +116,11 @@ class TestSpeckleTrackingWorkerExtended:
         frames = _make_frames()
         zone = _make_zone()
         worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
-            manual_ed=0, manual_es=5,
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
+            manual_ed=0,
+            manual_es=5,
         )
         assert worker._manual_ed == 0
         assert worker._manual_es == 5
@@ -120,7 +129,9 @@ class TestSpeckleTrackingWorkerExtended:
         frames = _make_frames()
         zone = _make_zone()
         worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
             config_preset="high_quality",
         )
         assert worker._config_preset == "high_quality"
@@ -137,9 +148,12 @@ class TestSpeckleTrackingWorkerRun:
         frames = _make_frames()
         zone = _make_zone()
         worker = SpeckleTrackingWorker(
-            frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+            frames=frames,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
             frame_time_ms=33.3,
-            manual_ed=0, manual_es=5,
+            manual_ed=0,
+            manual_es=5,
         )
         errors = []
         worker.signals.error.connect(lambda msg: errors.append(msg))
@@ -148,12 +162,8 @@ class TestSpeckleTrackingWorkerRun:
         assert len(errors) == 1
         assert "kernel error" in errors[0]
 
-    @patch(
-        "echo_personal_tool.application.workers.speckle_worker.assign_aha_segments"
-    )
-    @patch(
-        "echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone"
-    )
+    @patch("echo_personal_tool.application.workers.speckle_worker.assign_aha_segments")
+    @patch("echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone")
     def test_run_with_manual_ed_es(self, mock_kernels, mock_assign):
         mock_kernels.return_value = [
             TrackingKernel(center=(10.0, 10.0), radius=4, node_index=0, layer="endo"),
@@ -170,12 +180,8 @@ class TestSpeckleTrackingWorkerRun:
 
         patches = {
             "detect_ed_es_from_frames": MagicMock(return_value=(0, 5)),
-            "track_cine_incremental": MagicMock(
-                return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]
-            ),
-            "preprocess_echo_frame": MagicMock(
-                return_value=np.zeros((32, 32), dtype=np.uint8)
-            ),
+            "track_cine_incremental": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
+            "preprocess_echo_frame": MagicMock(return_value=np.zeros((32, 32), dtype=np.uint8)),
             "build_zone_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "extract_trajectories": MagicMock(
                 return_value=(
@@ -183,85 +189,94 @@ class TestSpeckleTrackingWorkerRun:
                     np.full((6, n_kernels), 0.9),
                 )
             ),
-            "interpolate_invalid_kernels": MagicMock(
-                return_value=np.full((6, n_kernels, 2), 10.0)
-            ),
-            "smooth_trajectories": MagicMock(
-                return_value=np.full((6, n_kernels, 2), 10.0)
-            ),
-            "apply_motion_model": MagicMock(
-                return_value=np.full((6, n_kernels, 2), 10.0)
-            ),
+            "interpolate_invalid_kernels": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "smooth_trajectories": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "apply_motion_model": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
             "compute_weighted_longitudinal_strain_gl": MagicMock(
                 return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])
             ),
-            "compute_weighted_radial_strain_gl": MagicMock(
-                return_value=np.array([0.0, 2.0, 5.0, 2.0, 0.0, 0.0])
-            ),
+            "compute_weighted_radial_strain_gl": MagicMock(return_value=np.array([0.0, 2.0, 5.0, 2.0, 0.0, 0.0])),
             "compute_strain_rate": MagicMock(return_value=np.zeros(10)),
             "estimate_heart_rate_fft": MagicMock(return_value=72.0),
             "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "compute_gls": MagicMock(return_value=-15.0),
-            "apply_drift_compensation": MagicMock(
-                return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])
-            ),
+            "apply_drift_compensation": MagicMock(return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])),
             "compute_aha_segment_strain": MagicMock(return_value=({1: -15.0}, {1: 0.8})),
         }
 
-        with patch(
-            "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
-            patches["detect_ed_es_from_frames"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.track_cine_incremental",
-            patches["track_cine_incremental"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.preprocess_echo_frame",
-            patches["preprocess_echo_frame"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.build_zone_mask",
-            patches["build_zone_mask"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.extract_trajectories",
-            patches["extract_trajectories"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.interpolate_invalid_kernels",
-            patches["interpolate_invalid_kernels"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.smooth_trajectories",
-            patches["smooth_trajectories"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.apply_motion_model",
-            patches["apply_motion_model"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.compute_weighted_longitudinal_strain_gl",
-            patches["compute_weighted_longitudinal_strain_gl"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.compute_weighted_radial_strain_gl",
-            patches["compute_weighted_radial_strain_gl"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.compute_strain_rate",
-            patches["compute_strain_rate"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.estimate_heart_rate_fft",
-            patches["estimate_heart_rate_fft"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.build_myocardial_roi_mask",
-            patches["build_myocardial_roi_mask"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.compute_gls",
-            patches["compute_gls"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.apply_drift_compensation",
-            patches["apply_drift_compensation"],
-        ), patch(
-            "echo_personal_tool.application.workers.speckle_worker.compute_aha_segment_strain",
-            patches["compute_aha_segment_strain"],
+        with (
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
+                patches["detect_ed_es_from_frames"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.track_cine_incremental",
+                patches["track_cine_incremental"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.preprocess_echo_frame",
+                patches["preprocess_echo_frame"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.build_zone_mask",
+                patches["build_zone_mask"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.extract_trajectories",
+                patches["extract_trajectories"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.interpolate_invalid_kernels",
+                patches["interpolate_invalid_kernels"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.smooth_trajectories",
+                patches["smooth_trajectories"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.apply_motion_model",
+                patches["apply_motion_model"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.compute_weighted_longitudinal_strain_gl",
+                patches["compute_weighted_longitudinal_strain_gl"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.compute_weighted_radial_strain_gl",
+                patches["compute_weighted_radial_strain_gl"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.compute_strain_rate",
+                patches["compute_strain_rate"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.estimate_heart_rate_fft",
+                patches["estimate_heart_rate_fft"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.build_myocardial_roi_mask",
+                patches["build_myocardial_roi_mask"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.compute_gls",
+                patches["compute_gls"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.apply_drift_compensation",
+                patches["apply_drift_compensation"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.compute_aha_segment_strain",
+                patches["compute_aha_segment_strain"],
+            ),
         ):
-
             worker = SpeckleTrackingWorker(
-                frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+                frames=frames,
+                zone=zone,
+                pixel_spacing=(0.5, 0.5),
                 frame_time_ms=33.3,
-                manual_ed=0, manual_es=5,
+                manual_ed=0,
+                manual_es=5,
             )
             finished = []
             worker.signals.finished.connect(lambda r: finished.append(r))
@@ -283,7 +298,9 @@ class TestDumpSteDebug:
             frames = _make_frames()
             zone = _make_zone()
             worker = SpeckleTrackingWorker(
-                frames=frames, zone=zone, pixel_spacing=(0.5, 0.5),
+                frames=frames,
+                zone=zone,
+                pixel_spacing=(0.5, 0.5),
             )
 
             n_frames, h, w = frames.shape

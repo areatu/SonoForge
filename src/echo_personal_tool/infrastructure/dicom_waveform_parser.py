@@ -74,8 +74,11 @@ def _parse_waveform_sequence(waveform_seq: Any, dataset: Any) -> EcgWaveform | N
 
             # Extract samples for this channel
             samples = _extract_channel_samples(
-                sample_data, channel_number, n_channels_item,
-                bits_allocated, interpretation,
+                sample_data,
+                channel_number,
+                n_channels_item,
+                bits_allocated,
+                interpretation,
             )
 
             if samples is not None and len(samples) > 0:

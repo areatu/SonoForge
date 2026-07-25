@@ -284,9 +284,7 @@ class TestOpticalFlowRefineWorkerRun:
         worker.run()
         assert finished_received == [[(1.0, 2.0)]]
 
-    @patch(
-        "echo_personal_tool.domain.services.optical_flow_refine.refine_contour_with_optical_flow"
-    )
+    @patch("echo_personal_tool.domain.services.optical_flow_refine.refine_contour_with_optical_flow")
     @patch.object(OpticalFlowRefineWorker, "_load_neighbor_frames")
     def test_successful_refinement(self, mock_load, mock_refine):
         mock_load.return_value = [np.zeros((10, 10)) for _ in range(7)]
@@ -342,9 +340,7 @@ class TestOpticalFlowRefineWorkerRun:
         worker.run()
         assert finished_received == [[(1.0, 2.0)]]
 
-    @patch(
-        "echo_personal_tool.domain.services.optical_flow_refine.refine_contour_with_optical_flow"
-    )
+    @patch("echo_personal_tool.domain.services.optical_flow_refine.refine_contour_with_optical_flow")
     @patch.object(OpticalFlowRefineWorker, "_load_neighbor_frames")
     def test_no_frame_time_uses_30fps(self, mock_load, mock_refine):
         mock_load.return_value = [np.zeros((10, 10)) for _ in range(7)]

@@ -57,7 +57,10 @@ def test_teichholz_mmode_result_creation() -> None:
     from echo_personal_tool.domain.models.mmode import TeichholzMModeResult
 
     result = TeichholzMModeResult(
-        ivsd_mm=10.0, lvidd_mm=45.0, lvpwd_mm=9.0, edv_ml=120.0,
+        ivsd_mm=10.0,
+        lvidd_mm=45.0,
+        lvpwd_mm=9.0,
+        edv_ml=120.0,
     )
     assert result.ivsd_mm == 10.0
     assert result.lvidd_mm == 45.0
@@ -74,8 +77,15 @@ def test_teichholz_mmode_result_populated() -> None:
     from echo_personal_tool.domain.models.mmode import TeichholzMModeResult
 
     result = TeichholzMModeResult(
-        ivsd_mm=11.0, lvidd_mm=48.0, lvpwd_mm=10.0, edv_ml=135.0,
-        esv_ml=50.0, lvef_percent=63.0, rwt=0.42, lvm_g=180.0, lvmi_g_m2=95.0,
+        ivsd_mm=11.0,
+        lvidd_mm=48.0,
+        lvpwd_mm=10.0,
+        edv_ml=135.0,
+        esv_ml=50.0,
+        lvef_percent=63.0,
+        rwt=0.42,
+        lvm_g=180.0,
+        lvmi_g_m2=95.0,
     )
     assert result.esv_ml == 50.0
     assert result.lvef_percent == 63.0

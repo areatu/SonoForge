@@ -170,9 +170,7 @@ class TestQueryInstancesWithRealFixtures:
 
         client = _client_with_transport(handler)
         try:
-            instances = client.query_instances(
-                study_uid="1.2.3", series_uid="1.2.4"
-            )
+            instances = client.query_instances(study_uid="1.2.3", series_uid="1.2.4")
             assert len(instances) == 3
         finally:
             client.close()

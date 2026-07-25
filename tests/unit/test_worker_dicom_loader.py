@@ -53,9 +53,7 @@ class TestDicomLoaderWorkerConstruction:
 
 
 class TestDicomLoaderWorkerRun:
-    @patch(
-        "echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session"
-    )
+    @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_run_single_frame(self, mock_get_session):
         session = MagicMock()
         session.decode_single_frame.return_value = np.zeros((64, 64), dtype=np.uint8)

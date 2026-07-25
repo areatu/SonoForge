@@ -205,13 +205,16 @@ class TestBuildMyocardialRoiMask:
 
 class TestAutoDetectEdEs:
     def test_few_frames(self):
-        results = [TrackingResult(
-            frame_index=i,
-            displacements=np.zeros((3, 2)),
-            ncc_scores=np.ones(3),
-            valid_mask=np.ones(3, dtype=bool),
-            kernel_positions=np.array([[10, 50], [50, 10], [90, 50]], dtype=np.float64),
-        ) for i in range(1)]
+        results = [
+            TrackingResult(
+                frame_index=i,
+                displacements=np.zeros((3, 2)),
+                ncc_scores=np.ones(3),
+                valid_mask=np.ones(3, dtype=bool),
+                kernel_positions=np.array([[10, 50], [50, 10], [90, 50]], dtype=np.float64),
+            )
+            for i in range(1)
+        ]
         kernels = [
             TrackingKernel(center=(10, 50), layer="endo"),
             TrackingKernel(center=(50, 10), layer="endo"),
@@ -227,18 +230,23 @@ class TestAutoDetectEdEs:
         for i in range(n - 1):
             # Vary kernel positions to create different areas
             angle = 2 * np.pi * i / n
-            positions = np.array([
-                [50 + 10 * np.cos(angle), 50 + 10 * np.sin(angle)],
-                [30 + 5 * np.cos(angle), 50],
-                [70 - 5 * np.cos(angle), 50],
-            ], dtype=np.float64)
-            results.append(TrackingResult(
-                frame_index=i,
-                displacements=np.zeros((3, 2)),
-                ncc_scores=np.ones(3),
-                valid_mask=np.ones(3, dtype=bool),
-                kernel_positions=positions,
-            ))
+            positions = np.array(
+                [
+                    [50 + 10 * np.cos(angle), 50 + 10 * np.sin(angle)],
+                    [30 + 5 * np.cos(angle), 50],
+                    [70 - 5 * np.cos(angle), 50],
+                ],
+                dtype=np.float64,
+            )
+            results.append(
+                TrackingResult(
+                    frame_index=i,
+                    displacements=np.zeros((3, 2)),
+                    ncc_scores=np.ones(3),
+                    valid_mask=np.ones(3, dtype=bool),
+                    kernel_positions=positions,
+                )
+            )
         kernels = [
             TrackingKernel(center=(50, 40), layer="endo"),
             TrackingKernel(center=(30, 50), layer="endo"),
@@ -254,7 +262,11 @@ class TestDetectCardiacPhases:
     def test_invalid_hr(self):
         frames = np.zeros((30, 64, 64), dtype=np.uint8)
         phases = detect_cardiac_phases(
-            frames, [], [], heart_rate_bpm=0.0, fps=30.0,
+            frames,
+            [],
+            [],
+            heart_rate_bpm=0.0,
+            fps=30.0,
         )
         assert "ED" in phases
         assert "ES" in phases
@@ -262,13 +274,16 @@ class TestDetectCardiacPhases:
     def test_valid_phases(self):
         n = 60
         frames = np.zeros((n, 100, 100), dtype=np.uint8)
-        results = [TrackingResult(
-            frame_index=i,
-            displacements=np.zeros((3, 2)),
-            ncc_scores=np.ones(3),
-            valid_mask=np.ones(3, dtype=bool),
-            kernel_positions=np.array([[20, 50], [50, 10], [80, 50]], dtype=np.float64),
-        ) for i in range(n - 1)]
+        results = [
+            TrackingResult(
+                frame_index=i,
+                displacements=np.zeros((3, 2)),
+                ncc_scores=np.ones(3),
+                valid_mask=np.ones(3, dtype=bool),
+                kernel_positions=np.array([[20, 50], [50, 10], [80, 50]], dtype=np.float64),
+            )
+            for i in range(n - 1)
+        ]
         kernels = [
             TrackingKernel(center=(20, 50), layer="endo"),
             TrackingKernel(center=(50, 10), layer="endo"),

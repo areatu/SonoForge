@@ -71,26 +71,25 @@ def qapp():
 
 
 def _make_controller(qapp, monkeypatch):
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.DicomDecodeWorker", _FakeWorker)
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.VideoDecodeWorker", _FakeWorker)
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.FrameLoaderWorker", _FakeWorker)
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.ThumbnailLoaderWorker", _FakeWorker)
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.ScanWorker", _FakeWorker)
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.OnnxWorker", _FakeWorker)
     monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.DicomDecodeWorker", _FakeWorker
-    )
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.VideoDecodeWorker", _FakeWorker
-    )
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.FrameLoaderWorker", _FakeWorker
-    )
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.ThumbnailLoaderWorker", _FakeWorker
-    )
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.ScanWorker", _FakeWorker
-    )
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.OnnxWorker", _FakeWorker
-    )
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.VideoReader", type("_VR", (), {"__enter__": lambda s: s, "__exit__": lambda *a: False, "open": lambda s, p: None, "frame_count": 10, "fps": 30})
+        "echo_personal_tool.application.app_controller.VideoReader",
+        type(
+            "_VR",
+            (),
+            {
+                "__enter__": lambda s: s,
+                "__exit__": lambda *a: False,
+                "open": lambda s, p: None,
+                "frame_count": 10,
+                "fps": 30,
+            },
+        ),
     )
     return AppController(thread_pool=_RecordingThreadPool())
 
@@ -150,9 +149,15 @@ def test_toggle_mmode(qapp, monkeypatch):
 def test_step_frame(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     assert ctrl._state_manager.snapshot.current_frame_index == 0
@@ -213,14 +218,25 @@ def test_is_lv_auto_session_active(qapp, monkeypatch):
 def test_accept_ai_contour_review(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=(0.5, 0.5), frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     contour = Contour(
-        phase="ED", view="A4C", chamber="LV", points=[(0, 0)],
-        source="ai", review_pending=True, sop_instance_uid="uid1",
+        phase="ED",
+        view="A4C",
+        chamber="LV",
+        points=[(0, 0)],
+        source="ai",
+        review_pending=True,
+        sop_instance_uid="uid1",
     )
     ctrl._state_manager.set_contours((contour,))
     ctrl._state_manager.set_frame(0)
@@ -229,13 +245,19 @@ def test_accept_ai_contour_review(qapp, monkeypatch):
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
 
@@ -250,9 +272,15 @@ def test_accept_ai_contour_review(qapp, monkeypatch):
 def test_accept_ai_contour_review_not_found(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     assert ctrl.accept_ai_contour_review("A4C", "ED") is False
@@ -264,21 +292,33 @@ def test_accept_ai_contour_review_not_found(qapp, monkeypatch):
 def test_on_contours_changed(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
 
@@ -291,21 +331,33 @@ def test_on_contours_changed_tags_uid(qapp, monkeypatch):
     """Contour with different sop_instance_uid gets tagged with current instance."""
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
 
@@ -332,21 +384,33 @@ def test_on_contours_changed_no_instance(qapp, monkeypatch):
 def test_on_linear_measurements_changed(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=(0.5, 0.5), frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
 
@@ -393,9 +457,15 @@ def test_needs_manual_calibration_no_instance(qapp, monkeypatch):
 def test_needs_manual_calibration_dicom(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     assert ctrl.needs_manual_calibration() is False
@@ -404,22 +474,34 @@ def test_needs_manual_calibration_dicom(qapp, monkeypatch):
 def test_needs_manual_calibration_mp4_no_spacing(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.mp4"), media_format="mp4",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.mp4"),
+        media_format="mp4",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     ctrl._current_instance = inst
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
     assert ctrl.needs_manual_calibration() is True
@@ -446,9 +528,15 @@ def test_clear_manual_calibration_noop_when_empty(qapp, monkeypatch):
 def test_reset_measurements_and_calibration(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=(0.5, 0.5), frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     ctrl.on_manual_calibration((1.0, 1.0))
@@ -490,18 +578,30 @@ def test_resolve_study_uid_with_study(qapp, monkeypatch):
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
     ctrl._current_instance = inst
@@ -518,6 +618,7 @@ def test_load_first_instance_of_series_not_found(qapp, monkeypatch):
     from datetime import datetime
 
     from echo_personal_tool.domain.models import StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
@@ -534,13 +635,19 @@ def test_load_first_instance_of_series_empty_instances(qapp, monkeypatch):
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(),
+            ),
+        ),
     )
     ctrl.load_first_instance_of_series(study, "s1")
     assert "no instances" in failed[0].lower() or "no" in failed[0].lower()
@@ -582,9 +689,15 @@ def test_load_instance_no_path(qapp, monkeypatch):
     failed = []
     ctrl.frame_load_failed.connect(failed.append)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=None, frame_time_ms=33.3,
-        series_description="T", path=None, media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="T",
+        path=None,
+        media_format="dicom",
     )
     ctrl.load_instance(inst)
     assert "no file path" in failed[0].lower()
@@ -602,21 +715,33 @@ def test_on_doppler_markers_changed_type_error(qapp, monkeypatch):
 def test_on_doppler_markers_changed_valid(qapp, monkeypatch):
     ctrl = _make_controller(qapp, monkeypatch)
     inst = InstanceMetadata(
-        sop_instance_uid="uid1", series_uid="s1", modality="US",
-        number_of_frames=10, pixel_spacing=(0.5, 0.5), frame_time_ms=33.3,
-        series_description="T", path=Path("/tmp/x.dcm"), media_format="dicom",
+        sop_instance_uid="uid1",
+        series_uid="s1",
+        modality="US",
+        number_of_frames=10,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="T",
+        path=Path("/tmp/x.dcm"),
+        media_format="dicom",
     )
     ctrl._state_manager.set_instance(inst, total_frames=10, frame_time_ms=33.3)
     from datetime import datetime
 
     from echo_personal_tool.domain.models import SeriesMetadata, StudyMetadata
+
     study = StudyMetadata(
         study_uid="study1",
         study_datetime=datetime(2026, 1, 1, tzinfo=UTC),
-        series=(SeriesMetadata(
-            series_uid="s1", study_uid="study1", modality="US",
-            description="T", instances=(inst,),
-        ),),
+        series=(
+            SeriesMetadata(
+                series_uid="s1",
+                study_uid="study1",
+                modality="US",
+                description="T",
+                instances=(inst,),
+            ),
+        ),
     )
     ctrl._studies = [study]
     dto = DopplerMeasurementDTO(

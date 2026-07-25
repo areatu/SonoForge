@@ -102,6 +102,7 @@ class TestHeartRateWorkerAreaTime:
             qapp.processEvents()
 
             import time
+
             time.sleep(0.3)
             qapp.processEvents()
 
@@ -121,6 +122,7 @@ class TestHeartRateWorkerOpticalFlow:
             qapp.processEvents()
 
             import time
+
             time.sleep(0.3)
             qapp.processEvents()
 
@@ -178,6 +180,9 @@ class TestLoadFromMp4:
         ]
 
         with patch("echo_personal_tool.application.workers.heart_rate_worker.cv2.VideoCapture", return_value=mock_cap):
-            with patch("echo_personal_tool.application.workers.heart_rate_worker.cv2.cvtColor", return_value=np.zeros((64, 64), dtype=np.uint8)):
+            with patch(
+                "echo_personal_tool.application.workers.heart_rate_worker.cv2.cvtColor",
+                return_value=np.zeros((64, 64), dtype=np.uint8),
+            ):
                 result = w._load_from_mp4()
         assert len(result) == 2

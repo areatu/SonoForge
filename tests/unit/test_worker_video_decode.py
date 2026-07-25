@@ -52,9 +52,7 @@ class TestVideoDecodeWorkerConstruction:
         assert worker.autoDelete() is True
 
     def test_first_frame_only(self):
-        worker = VideoDecodeWorker(
-            Path("/tmp/src.mp4"), request_id=2, first_frame_only=True
-        )
+        worker = VideoDecodeWorker(Path("/tmp/src.mp4"), request_id=2, first_frame_only=True)
         assert worker._first_frame_only is True
 
 
@@ -79,12 +77,8 @@ class TestVideoDecodeWorkerRun:
             first_frames = []
             finished_events = []
             progress_events = []
-            worker.signals.first_frame_ready.connect(
-                lambda rid, p, f: first_frames.append((rid, f))
-            )
-            worker.signals.finished.connect(
-                lambda rid, p, f: finished_events.append((rid, f))
-            )
+            worker.signals.first_frame_ready.connect(lambda rid, p, f: first_frames.append((rid, f)))
+            worker.signals.finished.connect(lambda rid, p, f: finished_events.append((rid, f)))
             worker.signals.progress.connect(lambda c, t: progress_events.append((c, t)))
 
             worker.run()
@@ -109,18 +103,12 @@ class TestVideoDecodeWorkerRun:
         mock_to_bgr.return_value = np.ascontiguousarray(frame)
 
         with patch.dict("sys.modules", {"cv2": mock_cv2}):
-            worker = VideoDecodeWorker(
-                Path("/tmp/src.mp4"), request_id=5, first_frame_only=True
-            )
+            worker = VideoDecodeWorker(Path("/tmp/src.mp4"), request_id=5, first_frame_only=True)
             first_frames = []
             finished_events = []
             progress_events = []
-            worker.signals.first_frame_ready.connect(
-                lambda rid, p, f: first_frames.append(f)
-            )
-            worker.signals.finished.connect(
-                lambda rid, p, f: finished_events.append(f)
-            )
+            worker.signals.first_frame_ready.connect(lambda rid, p, f: first_frames.append(f))
+            worker.signals.finished.connect(lambda rid, p, f: finished_events.append(f))
             worker.signals.progress.connect(lambda c, t: progress_events.append((c, t)))
 
             worker.run()
@@ -198,9 +186,7 @@ class TestVideoDecodeWorkerRun:
         with patch.dict("sys.modules", {"cv2": mock_cv2}):
             worker = VideoDecodeWorker(Path("/tmp/partial.mp4"), request_id=1)
             finished_events = []
-            worker.signals.finished.connect(
-                lambda rid, p, f: finished_events.append(f)
-            )
+            worker.signals.finished.connect(lambda rid, p, f: finished_events.append(f))
 
             worker.run()
 

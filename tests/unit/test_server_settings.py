@@ -267,6 +267,7 @@ def test_dict_to_settings_ignores_unknown_keys() -> None:
 def test_save_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     """When keyring import fails, should log warning and not crash."""
     import builtins
+
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
@@ -283,6 +284,7 @@ def test_save_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch) -> No
 def test_load_password_keyring_no_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     """When keyring import fails, should return empty string."""
     import builtins
+
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):

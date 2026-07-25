@@ -44,7 +44,7 @@ def detect_r_peaks(
 
     # Step 2: Derivative + squaring + moving window integration
     diff = np.diff(filtered, prepend=filtered[0])
-    squared = diff ** 2
+    squared = diff**2
     window_size = max(3, int(0.15 * sampling_frequency))  # ~150ms window
     integrated = _moving_average(squared, window_size)
 

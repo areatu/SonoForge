@@ -26,9 +26,7 @@ class TestStowUploadAdapter:
         assert adapter.upload_instance(b"\x00data") is False
 
     def test_upload_failure_with_failed_uids(self) -> None:
-        client = self._make_client(
-            StowResult(success_count=1, failed_uids=["uid1"])
-        )
+        client = self._make_client(StowResult(success_count=1, failed_uids=["uid1"]))
         adapter = StowUploadAdapter(client)
         assert adapter.upload_instance(b"\x00data") is False
 

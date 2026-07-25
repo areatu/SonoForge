@@ -16,21 +16,11 @@ def _patch_pdf_deps(tmp_path: Path, lines: str = "Hello\nWorld", **kwargs):
     """Helper: patch all reportlab deps and return (mock_canvas, output_path)."""
     output = tmp_path / "report.pdf"
     patches = {
-        "canvas": patch(
-            "echo_personal_tool.infrastructure.measurement_report_pdf.canvas"
-        ),
-        "pdfmetrics": patch(
-            "echo_personal_tool.infrastructure.measurement_report_pdf.pdfmetrics"
-        ),
-        "TTFont": patch(
-            "echo_personal_tool.infrastructure.measurement_report_pdf.TTFont"
-        ),
-        "A4": patch(
-            "echo_personal_tool.infrastructure.measurement_report_pdf.A4", _MOCK_A4
-        ),
-        "mm": patch(
-            "echo_personal_tool.infrastructure.measurement_report_pdf.mm", _MOCK_MM
-        ),
+        "canvas": patch("echo_personal_tool.infrastructure.measurement_report_pdf.canvas"),
+        "pdfmetrics": patch("echo_personal_tool.infrastructure.measurement_report_pdf.pdfmetrics"),
+        "TTFont": patch("echo_personal_tool.infrastructure.measurement_report_pdf.TTFont"),
+        "A4": patch("echo_personal_tool.infrastructure.measurement_report_pdf.A4", _MOCK_A4),
+        "mm": patch("echo_personal_tool.infrastructure.measurement_report_pdf.mm", _MOCK_MM),
         "font_path": patch(
             "echo_personal_tool.infrastructure.measurement_report_pdf.report_cyrillic_font_path",
             return_value=Path("/fake/font.ttf"),

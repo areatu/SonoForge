@@ -19,14 +19,13 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
 
 
 def _make_kernels(n: int = 6, layer: str = "endo") -> list[TrackingKernel]:
-    return [
-        TrackingKernel(center=(float(i * 10), 50.0), node_index=i, layer=layer)
-        for i in range(n)
-    ]
+    return [TrackingKernel(center=(float(i * 10), 50.0), node_index=i, layer=layer) for i in range(n)]
 
 
 def _make_positions(
-    n_frames: int = 5, n_kernels: int = 6, noise: float = 0.0,
+    n_frames: int = 5,
+    n_kernels: int = 6,
+    noise: float = 0.0,
 ) -> np.ndarray:
     pos = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
     for i in range(n_kernels):

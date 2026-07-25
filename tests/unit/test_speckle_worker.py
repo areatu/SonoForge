@@ -66,8 +66,10 @@ class TestSpeckleTrackingWorker:
         endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
         epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
         zone = MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
         )
 
         worker = SpeckleTrackingWorker(
@@ -88,8 +90,10 @@ class TestSpeckleTrackingWorker:
         endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
         epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
         zone = MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
         )
 
         lead = EcgLead("II", np.zeros(100), 500.0, 0, 16)
@@ -111,8 +115,10 @@ class TestSpeckleTrackingWorker:
         endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
         epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
         zone = MyocardialZone(
-            endo_points=endo, epi_points=epi,
-            thickness_mm=8.0, pixel_spacing=(0.5, 0.5),
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
         )
 
         worker = SpeckleTrackingWorker(
