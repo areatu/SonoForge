@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-07-26
+
+### Features
+- `feat(test)`: comprehensive verification test suite — 8 new test categories (security, regression, migration, acceptance, system, exploratory, compat, bench) с 520+ тестами
+- `feat(test)`: security fuzzing — DICOM input fuzzing (truncated, corrupt, nested sequences), API response fuzzing (malformed JSON, SQL injection, XSS payloads)
+- `feat(test)`: security verification — credential storage audit, HTTPS enforcement, ONNX model integrity (SHA256), PHI anonymization, network timeouts
+- `feat(test)`: acceptance tests — E2E workflows: open/measure/export, Orthanc, auto-segment, strain, constructor, preferences
+- `feat(test)`: regression baselines — contour, Doppler, M-mode, pixel spacing, report formatting exact-match tests
+- `feat(test)`: data migration tests — gold schema versioning, backward compatibility, repair script, manifest generation, annotation merge
+- `feat(test)`: exploratory testing — hypothesis property-based tests (planimeter, BSA, Simpson), input fuzzing for DICOM UIDs
+- `feat(test)`: OS compatibility tests — Windows paths (Cyrillic, UNC, spaces), display server (offscreen, xcb)
+- `feat(test)`: benchmark expansion — ONNX inference latency, full pipeline, gold store I/O benchmarks
+- `feat(test)`: 7 new pytest markers (acceptance, security, regression, migration, system, compat, bench)
+- `feat(test)`: pytest-timeout 60s per-test timeout to prevent CI hangs
+- `feat(ci)`: restored full GUI test coverage in CI (removed `-m 'not gui'` from coverage workflow)
+
+### Fixes
+- `fix(security)`: DICOM UID validator now rejects pure-dot UIDs (`...`), strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 §6.1
+- `fix(security)`: ONNX `_verify_model_integrity` now raises `ModelIntegrityError` on SHA256 mismatch instead of just logging a warning — corrupted models are no longer loaded
+- `fix(test)`: ConstructorDialog.closeEvent uses `_skip_close_prompt` flag to prevent blocking QMessageBox during programmatic close (pytest-qt teardown)
+- `fix(test)`: restore i18n translations after locale-loading tests to prevent suite-wide pollution (`Unknown language 'ru'` cascade)
+- `fix(ci)`: macOS/Windows CI runs exclude GUI tests (`-m 'not gui'`) — no xvfb, Qt crashes with SIGABRT
+- `fix(test)`: ruff formatting — 75 files auto-formatted, 185 lint errors fixed
+- `fix(test)`: smoke test version mismatch (0.2.1 → 0.2.2), comprehensive import smoke tests for all modules
+
+### Chore
+- `chore`: added dev dependencies: bandit, safety, syrupy, hypothesis, pytest-timeout
+- `chore`: created test directory structure: tests/{acceptance,security,regression,migration,system,exploratory,compat}/
+
+---
+
 ## 2026-07-18
 
 ### Features
