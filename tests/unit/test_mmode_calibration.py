@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 from echo_personal_tool.domain.models.frame_panels import (
     MmodeCalibrationState,

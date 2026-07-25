@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-from pydicom.dataset import Dataset
+from unittest.mock import patch
 
 from echo_personal_tool.infrastructure.dimse_client import (
     DimseAssociationError,

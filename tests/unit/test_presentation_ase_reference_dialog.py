@@ -254,7 +254,6 @@ class TestKeyNavigation:
         d.close()
 
     def test_key_no_active_doc(self):
-        from PySide6.QtCore import Qt
 
         from echo_personal_tool.presentation.ase_reference_dialog import AseReferenceDialog
 

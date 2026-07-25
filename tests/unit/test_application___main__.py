@@ -5,8 +5,7 @@ Verifies freeze_support() is called and main() is invoked.
 
 from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 def test_freeze_support_called_on_module_load() -> None:
@@ -23,8 +22,9 @@ def test_freeze_support_called_on_module_load() -> None:
 
 def test_main_module_has_main_reference() -> None:
     """__main__.py imports main from echo_personal_tool.main."""
-    import echo_personal_tool.__main__ as _mod
     import inspect
+
+    import echo_personal_tool.__main__ as _mod
 
     source = inspect.getsource(_mod)
     assert "from echo_personal_tool.main import main" in source
@@ -32,8 +32,9 @@ def test_main_module_has_main_reference() -> None:
 
 def test_freeze_support_and_main_at_module_level() -> None:
     """Module source contains freeze_support() call and main() call."""
-    import echo_personal_tool.__main__ as _mod
     import inspect
+
+    import echo_personal_tool.__main__ as _mod
 
     source = inspect.getsource(_mod)
     assert "multiprocessing.freeze_support()" in source

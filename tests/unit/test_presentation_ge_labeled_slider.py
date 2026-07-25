@@ -161,8 +161,8 @@ class TestGeLabeledSliderResize:
 
         w = GeLabeledSlider("X")
         # Simulate resize event
-        from PySide6.QtGui import QResizeEvent
         from PySide6.QtCore import QSize
+        from PySide6.QtGui import QResizeEvent
 
         event = QResizeEvent(QSize(300, 40), QSize(200, 28))
         w.resizeEvent(event)

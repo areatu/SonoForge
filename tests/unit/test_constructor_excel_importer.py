@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from echo_personal_tool.constructor.importers.excel_importer import (
     _parse_num,
     import_excel_file,

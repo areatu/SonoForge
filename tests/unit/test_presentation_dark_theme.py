@@ -140,22 +140,22 @@ class TestBuildClinicalStylesheet:
 
 class TestModuleConstants:
     def test_bg_dark_matches_dark_palette(self):
-        from echo_personal_tool.presentation.dark_theme import BG_DARK, _DARK
+        from echo_personal_tool.presentation.dark_theme import _DARK, BG_DARK
 
         assert BG_DARK == _DARK["bg_dark"]
 
     def test_text_matches_dark_palette(self):
-        from echo_personal_tool.presentation.dark_theme import TEXT, _DARK
+        from echo_personal_tool.presentation.dark_theme import _DARK, TEXT
 
         assert TEXT == _DARK["text"]
 
     def test_accent_matches_dark_palette(self):
-        from echo_personal_tool.presentation.dark_theme import ACCENT, _DARK
+        from echo_personal_tool.presentation.dark_theme import _DARK, ACCENT
 
         assert ACCENT == _DARK["accent"]
 
     def test_border_matches_dark_palette(self):
-        from echo_personal_tool.presentation.dark_theme import BORDER, _DARK
+        from echo_personal_tool.presentation.dark_theme import _DARK, BORDER
 
         assert BORDER == _DARK["border"]
 

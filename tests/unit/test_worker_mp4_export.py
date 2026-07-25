@@ -15,10 +15,10 @@ from PySide6.QtWidgets import QApplication
 pytest.importorskip("pytestqt")
 
 from echo_personal_tool.application.workers.mp4_export_worker import (
+    _MP4_FOURCCS,
     Mp4ExportSignals,
     Mp4ExportWorker,
     _open_video_writer,
-    _MP4_FOURCCS,
 )
 
 

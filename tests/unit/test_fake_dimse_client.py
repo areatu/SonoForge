@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pydicom
 
 from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient

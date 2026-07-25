@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import pydicom
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.domain.models.contour import Contour
@@ -191,7 +188,6 @@ class TestAnnotateDicomWithContours:
         from echo_personal_tool.infrastructure.dicom_annotation_serializer import (
             TAG_GRAPHIC_ANNOTATION_SEQ,
             TAG_GRAPHIC_LAYER,
-            TAG_GRAPHIC_LAYER_SEQ,
         )
 
         existing = Dataset()

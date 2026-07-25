@@ -4,15 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import numpy as np
-import pytest
-
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
     GENERIC_VOLUME_CHAMBER,
 )
 from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.measurements import PlanimeterResult
 from echo_personal_tool.domain.services.planimeter_formatter import (
     format_planimeter_overlay_line,
     planimeter_results_from_contours,

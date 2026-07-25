@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import numpy as np
 import pytest
 
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
     DopplerPeakMarker,
-    DopplerTrace,
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 

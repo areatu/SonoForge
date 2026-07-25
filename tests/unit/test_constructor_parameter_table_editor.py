@@ -33,7 +33,7 @@ _THEME = {
 
 
 @pytest.fixture
-def editor(qtbot) -> "ParameterTableEditor":
+def editor(qtbot) -> ParameterTableEditor:
     from echo_personal_tool.constructor.editors.parameter_table_editor import (
         ParameterTableEditor,
     )

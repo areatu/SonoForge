@@ -15,9 +15,9 @@ from PySide6.QtWidgets import QApplication
 pytest.importorskip("pytestqt")
 
 from echo_personal_tool.application.workers.heart_rate_worker import (
+    _MAX_FRAMES_FOR_OPTICAL_FLOW,
     HeartRateSignals,
     HeartRateWorker,
-    _MAX_FRAMES_FOR_OPTICAL_FLOW,
 )
 from echo_personal_tool.domain.services.heart_rate import HeartRateResult
 

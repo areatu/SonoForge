@@ -40,7 +40,7 @@ def storage(images_dir: Path):
 
 
 @pytest.fixture
-def editor(qtbot, storage) -> "ImageEditor":
+def editor(qtbot, storage) -> ImageEditor:
     with patch(
         "echo_personal_tool.constructor.editors.image_editor.get_theme_palette",
         return_value=_THEME,
