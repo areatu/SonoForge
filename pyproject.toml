@@ -33,6 +33,7 @@ dev = [
     "pytest-benchmark>=4.0",
     "pytest-cov>=5.0",
     "pytest-qt>=4.4",
+    "pytest-timeout>=2.0",
     "coveralls>=4.0",
     "ruff>=0.4",
     "bandit>=1.7",
@@ -74,6 +75,8 @@ markers = [
     "bench: performance benchmarks (ECHO_BENCH=1)",
 ]
 addopts = "-q -m 'not interactive'"
+timeout = 60
+timeout_method = "thread"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
