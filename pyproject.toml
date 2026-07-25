@@ -35,6 +35,10 @@ dev = [
     "pytest-qt>=4.4",
     "coveralls>=4.0",
     "ruff>=0.4",
+    "bandit>=1.7",
+    "safety>=3.0",
+    "syrupy>=4.0",
+    "hypothesis>=6.0",
 ]
 
 [project.scripts]
@@ -61,6 +65,13 @@ markers = [
     "integration: tests requiring real DICOM files on disk or live Orthanc (ECHO_ORTHANC=1)",
     "interactive: manual cine segmentation diagnostics (MP4 without DICOM tags)",
     "gui: tests requiring PySide6 QApplication (CI: skip with -m 'not gui')",
+    "acceptance: end-to-end user workflow tests (ECHO_ACCEPTANCE=1)",
+    "security: SAST, DAST, fuzzing, and security unit tests (ECHO_SECURITY=1)",
+    "regression: snapshot and golden-file regression tests",
+    "migration: data migration and schema versioning tests",
+    "system: black-box tests against installed application (ECHO_SYSTEM=1)",
+    "compat: OS and platform compatibility tests (ECHO_COMPAT=1)",
+    "bench: performance benchmarks (ECHO_BENCH=1)",
 ]
 addopts = "-q -m 'not interactive'"
 filterwarnings = [
