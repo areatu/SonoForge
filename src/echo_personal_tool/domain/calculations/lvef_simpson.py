@@ -7,6 +7,7 @@ import math
 
 from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics
 from echo_personal_tool.domain.services.contour_geometry import long_axis_endpoints
+from echo_personal_tool.infrastructure.i18n import tr
 
 _VALID_PHASES = {"ed", "es"}
 _VALID_VIEWS = {"A4C", "A2C"}
@@ -83,9 +84,9 @@ def format_contour_overlay(
     phase = contour.phase.upper()
     chamber = contour.chamber.upper()
     if contour.review_pending:
-        return f"{chamber} {view} {phase}: проверьте контур (ASE) · R — уточнить · Enter — принять"
+        return tr("domain.lvef.check_contour", chamber=chamber, view=view, phase=phase)
     if pixel_spacing is None:
-        return f"{chamber} {view} {phase} · Длина: — · Объём: —"
+        return tr("domain.lvef.status_empty", chamber=chamber, view=view, phase=phase)
     length = _contour_length_mm(contour, pixel_spacing)
     volume = _contour_volume_ml(contour, pixel_spacing)
     if spacing_calibrated:
@@ -94,7 +95,7 @@ def format_contour_overlay(
     else:
         length_text = f"{length:.1f} px" if length is not None else "—"
         volume_text = f"{volume:.1f} px³" if volume is not None else "—"
-    return f"{chamber} {view} {phase} · Длина: {length_text} · Объём: {volume_text}"
+    return tr("domain.lvef.status_partial", chamber=chamber, view=view, phase=phase, length=length_text, volume=volume_text)
 
 
 _MIN_LV_AUTO_ANNULUS_PX = 20.0
@@ -202,16 +203,16 @@ def explain_lv_auto_reject_reason(
     Quality gate v2 adds spacing-aware and geometry checks.
     """
     if contour.mitral_annulus is None or len(contour.points) < 3:
-        return "контур не построен"
+        return tr("domain.lvef.no_contour")
     annulus_px = _contour_annulus_length_px(contour)
     long_axis_px = _contour_long_axis_px(contour)
     arc_span_px = _contour_arc_span_px(contour)
     if arc_span_px < _MIN_LV_AUTO_ARC_SPAN_PX:
-        return "контур маски схлопнулся при построении (маска есть, но граница не извлечена — сообщите разработчику)"
+        return tr("domain.lvef.mask_collapsed")
     if annulus_px < _MIN_LV_AUTO_ANNULUS_PX:
-        return "не найдено митральное кольцо (проверьте вид A4C и кадр ED/ES)"
+        return tr("domain.lvef.no_annulus")
     if long_axis_px < _MIN_LV_AUTO_LONG_AXIS_PX:
-        return "короткая ось ЛЖ слишком мала — выберите другой кадр"
+        return tr("domain.lvef.lv_axis_too_short")
 
     # v2: spacing-aware MA length check
     if pixel_spacing is not None:
@@ -219,18 +220,12 @@ def explain_lv_auto_reject_reason(
         if row_spacing > 0 and col_spacing > 0:
             annulus_mm = annulus_px * ((row_spacing + col_spacing) / 2.0)
             if annulus_mm < _MIN_LV_AUTO_ANNULUS_MM:
-                return (
-                    f"митральное кольцо слишком мало ({annulus_mm:.1f} мм < {_MIN_LV_AUTO_ANNULUS_MM} мм) — "
-                    "проверьте вид A4C и калибровку"
-                )
+                return tr("domain.lvef.annulus_too_small", annulus_mm=f"{annulus_mm:.1f}", min_mm=str(_MIN_LV_AUTO_ANNULUS_MM))
 
     # v2: arc depth ratio check
     arc_depth = _contour_arc_depth_px(contour)
     if annulus_px > 0 and arc_depth / annulus_px < _MIN_ARC_DEPTH_RATIO:
-        return (
-            f"контур слишком плоский (глубина {arc_depth:.0f}px / кольцо {annulus_px:.0f}px "
-            f"< {_MIN_ARC_DEPTH_RATIO:.0%}) — возможно ES или не тот view"
-        )
+        return tr("domain.lvef.contour_too_flat", depth=f"{arc_depth:.0f}", annulus=f"{annulus_px:.0f}", ratio=f"{_MIN_ARC_DEPTH_RATIO:.0%}")
 
     # v2: centroid outside ROI check
     if roi_xyxy is not None:
@@ -238,11 +233,11 @@ def explain_lv_auto_reject_reason(
         if centroid is not None:
             rx0, ry0, rx1, ry1 = roi_xyxy
             if not (rx0 <= centroid[0] <= rx1 and ry0 <= centroid[1] <= ry1):
-                return "центр контура вне ROI — проверьте выделение сектора"
+                return tr("domain.lvef.center_outside_roi")
 
     # v3: self-intersection check
     if _contour_self_intersects(contour.points):
-        return "контур самопересекается — попробуйте другой кадр или перерисуйте"
+        return tr("domain.lvef.self_intersecting")
 
     return None
 

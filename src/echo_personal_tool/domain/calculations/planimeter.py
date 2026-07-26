@@ -7,6 +7,7 @@ from echo_personal_tool.domain.calculations.lvef_simpson import (
 )
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
+from echo_personal_tool.infrastructure.i18n import tr
 
 GENERIC_AREA_CHAMBER = "AREA"
 GENERIC_VOLUME_CHAMBER = "VOL"
@@ -18,12 +19,12 @@ def is_planimeter_polygon(contour: Contour) -> bool:
 
 def next_area_label(contours: tuple[Contour, ...]) -> str:
     count = sum(1 for contour in contours if contour.chamber.upper() == GENERIC_AREA_CHAMBER)
-    return f"Площадь{count + 1}"
+    return tr("domain.planimeter.area_label", count=str(count + 1))
 
 
 def next_volume_label(contours: tuple[Contour, ...]) -> str:
     count = sum(1 for contour in contours if contour.chamber.upper() == GENERIC_VOLUME_CHAMBER)
-    return f"Объем{count + 1}"
+    return tr("domain.planimeter.volume_label", count=str(count + 1))
 
 
 def closed_polygon_area_cm2(
@@ -53,7 +54,7 @@ def format_area_result(
     *,
     spacing_calibrated: bool,
 ) -> str:
-    label = contour.measurement_label or "Площадь"
+    label = contour.measurement_label or tr("domain.planimeter.default_area")
     if pixel_spacing is None:
         return f"{label}: —"
     area_cm2 = closed_polygon_area_cm2(contour, pixel_spacing)
@@ -71,7 +72,7 @@ def format_volume_result(
     *,
     spacing_calibrated: bool,
 ) -> str:
-    label = contour.measurement_label or "Объем"
+    label = contour.measurement_label or tr("domain.planimeter.default_volume")
     if pixel_spacing is None:
         return f"{label}: —"
     volume_ml = closed_polygon_volume_ml(contour, pixel_spacing)

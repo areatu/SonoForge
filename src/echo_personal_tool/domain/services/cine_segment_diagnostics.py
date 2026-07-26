@@ -21,6 +21,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     open_arc_from_cavity_mask,
     papillary_mask_cleanup,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
@@ -97,29 +98,29 @@ def _arc_span_px(points: list[tuple[float, float]]) -> float:
 def _collect_issues(report: CineSegmentDiagnosticReport) -> tuple[str, ...]:
     issues: list[str] = []
     if report.roi_xyxy is None:
-        issues.append("ROI не определён — эвристика панелей не сработала")
+        issues.append(tr("domain.cine_diag.no_roi"))
     if report.mask_pixels < 80:
-        issues.append(f"маска ONNX слишком мала ({report.mask_pixels} px)")
+        issues.append(tr("domain.cine_diag.mask_too_small", pixels=str(report.mask_pixels)))
     if report.mask_centroid_xy is not None and report.roi_xyxy is not None:
         centroid_x, centroid_y = report.mask_centroid_xy
         x0, y0, x1, y1 = report.roi_xyxy
         roi_width = max(1.0, x1 - x0)
         if centroid_x > x0 + 0.82 * roi_width:
-            issues.append("маска смещена в правую UI-полосу — проверьте lateral trim ROI")
+            issues.append(tr("domain.cine_diag.mask_shifted"))
         if not (x0 <= centroid_x <= x1 and y0 <= centroid_y <= y1):
-            issues.append("центроид маски вне B-mode ROI")
+            issues.append(tr("domain.cine_diag.centroid_outside"))
     if report.annulus_mid_y is not None and report.apex_y is not None:
         if report.annulus_mid_y < report.apex_y:
             issues.append(
-                f"инвертирован annulus/apex (annulus_y={report.annulus_mid_y:.0f} < apex_y={report.apex_y:.0f})"
+                tr("domain.cine_diag.annulus_inverted", annulus=f"{report.annulus_mid_y:.0f}", apex=f"{report.apex_y:.0f}")
             )
         if report.arc_depth_px is not None and report.arc_depth_px < 5.0:
-            issues.append(f"контур схлопнут в линию (глубина дуги {report.arc_depth_px:.1f} px)")
+            issues.append(tr("domain.cine_diag.contour_collapsed", depth=f"{report.arc_depth_px:.1f}"))
     if report.roi_xyxy is not None and report.mask_bbox is not None:
         roi_width = max(1.0, report.roi_xyxy[2] - report.roi_xyxy[0])
         mask_width = float(report.mask_bbox[2] - report.mask_bbox[0])
         if mask_width < 0.12 * roi_width:
-            issues.append(f"маска узкая ({mask_width:.0f}px при ROI {roi_width:.0f}px) — проверьте sector trim")
+            issues.append(tr("domain.cine_diag.mask_narrow", width=f"{mask_width:.0f}", roi=f"{roi_width:.0f}"))
     if report.reject_reason:
         issues.append(f"quality gate: {report.reject_reason}")
     return tuple(issues)

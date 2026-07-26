@@ -209,7 +209,9 @@ class OrthancDownloadWorker(QRunnable):
                     with self._lock:
                         done = saved_count + failed_count
                     self.signals.progress.emit(done, total, series_uid)
-                    self.signals.status.emit(f"Загружено {done}/{total}")
+                    from echo_personal_tool.infrastructure.i18n import tr
+
+                    self.signals.status.emit(tr("orthanc.downloaded", done=str(done), total=str(total)))
 
             elapsed_total = time.monotonic() - t_start
             logger.info(
@@ -226,9 +228,9 @@ class OrthancDownloadWorker(QRunnable):
                 self.signals.done.emit(self._session_id, self._study_uid)
             else:
                 detail = "; ".join(errors[:5]) if errors else ""
-                message = f"Загружено {saved_count}/{total}"
+                message = tr("orthanc.downloaded", done=str(saved_count), total=str(total))
                 if detail:
-                    message += f". Ошибки: {detail}"
+                    message = tr("orthanc.downloaded_with_errors", saved=str(saved_count), total=str(total), detail=detail)
                 if saved_count > 0:
                     self.signals.studies_ready.emit(self._build_studies_metadata())
                     self.signals.done.emit(self._session_id, self._study_uid)

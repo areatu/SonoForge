@@ -3078,7 +3078,7 @@ class AppController(QObject):
         try:
             frames = self._frame_cache.require_full_cine()
         except RuntimeError:
-            self.status_message.emit("Speckle tracking: загрузите полную cine-последовательность")
+            self.status_message.emit(tr("app.speckle_reload_cine"))
             return
 
         if contour is None:
