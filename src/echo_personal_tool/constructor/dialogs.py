@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFileDialog, QWidget
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
 def styled_open_file(
     parent: QWidget | None = None,
-    title: str = "Открыть файл",
+    title: str = tr("constructor.dialogs.open_file"),
     directory: str = "",
-    filter: str = "Все файлы (*)",
+    filter: str = tr("constructor.dialogs.all_files"),
 ) -> tuple[str, str]:
     """Open file dialog with dark theme styling."""
     dialog = QFileDialog(parent, title, directory, filter)
@@ -25,9 +26,9 @@ def styled_open_file(
 
 def styled_open_files(
     parent: QWidget | None = None,
-    title: str = "Открыть файлы",
+    title: str = tr("constructor.dialogs.open_files"),
     directory: str = "",
-    filter: str = "Все файлы (*)",
+    filter: str = tr("constructor.dialogs.all_files"),
 ) -> list[str]:
     """Open multiple files dialog with dark theme styling."""
     dialog = QFileDialog(parent, title, directory, filter)
@@ -41,9 +42,9 @@ def styled_open_files(
 
 def styled_save_file(
     parent: QWidget | None = None,
-    title: str = "Сохранить файл",
+    title: str = tr("constructor.dialogs.save_file"),
     directory: str = "",
-    filter: str = "Все файлы (*)",
+    filter: str = tr("constructor.dialogs.all_files"),
 ) -> tuple[str, str]:
     """Save file dialog with dark theme styling."""
     dialog = QFileDialog(parent, title, directory, filter)
@@ -58,7 +59,7 @@ def styled_save_file(
 
 def styled_select_directory(
     parent: QWidget | None = None,
-    title: str = "Выберите папку",
+    title: str = tr("constructor.dialogs.select_folder"),
     directory: str = "",
 ) -> str:
     """Select directory dialog with dark theme styling."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 def export_to_pdf(model: ReferenceModel, path: Path) -> None:
@@ -14,7 +15,7 @@ def export_to_pdf(model: ReferenceModel, path: Path) -> None:
         from PySide6.QtGui import QTextDocument
         from PySide6.QtPrintSupport import QPrinter
     except ImportError:
-        raise ImportError("Требуется PySide6.QtPrintSupport")
+        raise ImportError(tr("constructor.export.pdf_error"))
 
     # Build HTML
     html = _build_html(model)
@@ -62,7 +63,7 @@ def _build_html(model: ReferenceModel) -> str:
             if params:
                 parts.append("<table>")
                 parts.append(
-                    "<tr><th>ID</th><th>Название</th><th>Ед.</th><th>Норм М</th><th>Норм Ж</th><th>Описание</th></tr>"
+                    f"<tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th><th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th><th>{tr('constructor.export.col_desc')}</th></tr>"
                 )
                 for param in params:
                     norm_m = _format_norm(param.norm_male)
@@ -79,7 +80,7 @@ def _build_html(model: ReferenceModel) -> str:
                 for grad in patho.gradations:
                     parts.append(f"<h3>{grad.name}</h3>")
                     parts.append("<table>")
-                    parts.append("<tr><th>ID</th><th>Название</th><th>Ед.</th><th>Норм М</th><th>Норм Ж</th></tr>")
+                    parts.append(f"<tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th><th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th></tr>")
                     for param in grad.parameters:
                         norm_m = _format_norm(param.norm_male)
                         norm_f = _format_norm(param.norm_female)

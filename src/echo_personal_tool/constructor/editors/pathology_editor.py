@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor
 from echo_personal_tool.constructor.models import PathologyModel
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -43,7 +44,7 @@ class PathologyEditor(BaseEditor):
         layout.setSpacing(0)
 
         # Header
-        header = QLabel("Патологии")
+        header = QLabel(tr("constructor.pathology.header"))
         header.setStyleSheet(
             f"color: {p['text']}; font-weight: bold; padding: 8px 12px; "
             f"background: {p['bg_control']}; border-bottom: 1px solid {p['border']};"
@@ -127,9 +128,9 @@ class PathologyEditor(BaseEditor):
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
-        menu.addAction("Добавить патологию", self._add_pathology)
-        menu.addAction("Удалить выбранные", self.delete_selected)
-        menu.addAction("Дублировать", self._duplicate_pathology)
+        menu.addAction(tr("constructor.pathology.add"), self._add_pathology)
+        menu.addAction(tr("constructor.pathology.delete"), self.delete_selected)
+        menu.addAction(tr("constructor.pathology.duplicate"), self._duplicate_pathology)
         menu.exec(self._list.mapToGlobal(pos))
 
     def _add_pathology(self) -> None:
@@ -139,7 +140,7 @@ class PathologyEditor(BaseEditor):
             idx += 1
         slug = f"new_pathology_{idx}"
 
-        new_patho = PathologyModel(name=f"Новая патология {idx}", slug=slug)
+        new_patho = PathologyModel(name=tr("constructor.pathology.new", idx=str(idx)), slug=slug)
         self._pathologies.append(new_patho)
         self._all_items.append((new_patho.name, new_patho.slug))
         self._refresh_list()
@@ -152,8 +153,8 @@ class PathologyEditor(BaseEditor):
         names = [item.text() for item in selected]
         reply = QMessageBox.question(
             self,
-            "Удалить патологии",
-            f"Удалить {len(names)} патологий?\n{', '.join(names[:5])}{'...' if len(names) > 5 else ''}",
+            tr("constructor.pathology.delete_title"),
+            tr("constructor.pathology.delete_confirm", count=str(len(names)), names=', '.join(names[:5]) + ('...' if len(names) > 5 else '')),
         )
         if reply == QMessageBox.StandardButton.Yes:
             slugs_to_delete = {item.data(Qt.ItemDataRole.UserRole) for item in selected}
@@ -177,7 +178,7 @@ class PathologyEditor(BaseEditor):
         while f"{new_patho.slug}_copy_{idx}" in existing:
             idx += 1
         new_patho.slug = f"{new_patho.slug}_copy_{idx}"
-        new_patho.name = f"{new_patho.name} (копия)"
+        new_patho.name = f"{new_patho.name} {tr('constructor.pathology.copy_suffix')}"
 
         self._pathologies.append(new_patho)
         self._all_items.append((new_patho.name, new_patho.slug))

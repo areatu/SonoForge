@@ -7,6 +7,7 @@ from pathlib import Path
 
 from echo_personal_tool.constructor.models import ReferenceModel
 from echo_personal_tool.constructor.storage.image_storage import ImageStorage
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 def export_to_html(
@@ -30,16 +31,16 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
         "<head>",
         "<meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width, initial-scale=1'>",
-        "<title>Справочник эхокардиографии</title>",
+        f"<title>{tr('constructor.export.html_title')}</title>",
         "<style>",
         _CSS,
         "</style>",
         "</head>",
         "<body>",
         "<div class='container'>",
-        "<h1>Справочник эхокардиографии</h1>",
+        f"<h1>{tr('constructor.export.html_title')}</h1>",
         "<div class='search-box'>",
-        "<input type='text' id='search' placeholder='Поиск...' oninput='filterTable()'>",
+        f"<input type='text' id='search' placeholder='{tr('constructor.export.html_search')}' oninput='filterTable()'>",
         "</div>",
     ]
 
@@ -58,8 +59,8 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
             if params:
                 parts.append("<table class='param-table'>")
                 parts.append(
-                    "<thead><tr><th>ID</th><th>Название</th><th>Ед.</th>"
-                    "<th>Норм М</th><th>Норм Ж</th><th>Описание</th></tr></thead>"
+                    f"<thead><tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th>"
+                    f"<th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th><th>{tr('constructor.export.col_desc')}</th></tr></thead>"
                     "<tbody>"
                 )
                 for param in params:
@@ -81,8 +82,8 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
                     parts.append(f"<h4>{grad.name}</h4>")
                     parts.append("<table class='param-table'>")
                     parts.append(
-                        "<thead><tr><th>ID</th><th>Название</th><th>Ед.</th>"
-                        "<th>Норм М</th><th>Норм Ж</th></tr></thead><tbody>"
+                        f"<thead><tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th>"
+                        f"<th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th></tr></thead><tbody>"
                     )
                     for param in grad.parameters:
                         norm_m = _format_norm(param.norm_male)
@@ -112,7 +113,7 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
                         else:
                             parts.append(f"<p class='img-missing'>📷 {img_name}</p>")
                     else:
-                        parts.append(f"<p class='img-missing'>📷 {img_name} (не найден)</p>")
+                        parts.append(f"<p class='img-missing'>📷 {img_name} {tr('constructor.export.html_not_found')}</p>")
                 parts.append("</div>")
 
             parts.append("</div>")  # pathology-card
