@@ -21,6 +21,7 @@
 - `feat(ci)`: restored full GUI test coverage in CI (removed `-m 'not gui'` from coverage workflow)
 
 ### Fixes
+- `fix(ui)`: tab scroll arrows now visible in settings dialog and tool panel — replaced Unicode ◀▶ with ASCII < >, set minimumWidth(28) on QToolButton scroll buttons
 - `fix(security)`: DICOM UID validator now rejects pure-dot UIDs (`...`), strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 §6.1
 - `fix(security)`: ONNX `_verify_model_integrity` now raises `ModelIntegrityError` on SHA256 mismatch instead of just logging a warning — corrupted models are no longer loaded
 - `fix(test)`: ConstructorDialog.closeEvent uses `_skip_close_prompt` flag to prevent blocking QMessageBox during programmatic close (pytest-qt teardown)
