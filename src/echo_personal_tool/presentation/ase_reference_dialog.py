@@ -263,7 +263,7 @@ class AseReferenceDialog(QDialog):
         self._tabs_layout.setSpacing(2)
 
         # Structured reference tab (first, non-closable)
-        self._btn_structured_tab = QPushButton("Справочник")
+        self._btn_structured_tab = QPushButton(tr("ase_ref.structured_tab"))
         self._btn_structured_tab.setCheckable(True)
         self._btn_structured_tab.setChecked(True)
         self._btn_structured_tab.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -545,7 +545,7 @@ class AseReferenceDialog(QDialog):
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
         file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
         file_menu.addSeparator()
-        file_menu.addAction("Конструктор", self._open_constructor)
+        file_menu.addAction(tr("ase_ref.constructor_menu"), self._open_constructor)
         file_menu.addSeparator()
         file_menu.addAction(tr("ase_refs.reload"), self._reload_active_document)
         menu_bar.addMenu(file_menu)

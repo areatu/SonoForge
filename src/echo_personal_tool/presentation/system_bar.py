@@ -132,7 +132,7 @@ class SystemBar(QWidget):
         btn_open.clicked.connect(self.open_folder_requested.emit)
         self._btn_open = btn_open
 
-        btn_load_server = QPushButton("Загрузить с сервера…")
+        btn_load_server = QPushButton(tr("system_bar.load_server"))
         btn_load_server.setIcon(_load_icon("cloud_download"))
         btn_load_server.clicked.connect(self.load_from_server_requested.emit)
         self._btn_load_server = btn_load_server
@@ -144,7 +144,7 @@ class SystemBar(QWidget):
 
         self._btn_settings = QPushButton(tr("system_bar.settings"))
         self._btn_settings.setIcon(_load_icon("settings"))
-        self._btn_settings.setToolTip("Параметры измерений и отображения")
+        self._btn_settings.setToolTip(tr("system_bar.settings_tooltip"))
         self._btn_settings.clicked.connect(self.settings_requested.emit)
 
         btn_caliper = QPushButton("Caliper")
@@ -167,7 +167,7 @@ class SystemBar(QWidget):
 
         self._btn_references = QPushButton(tr("system_bar.references"))
         self._btn_references.setIcon(_load_icon("description"))
-        self._btn_references.setToolTip("Справочник нормативных значений ASE")
+        self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
 
         btn_heart_rate = QPushButton("HR")

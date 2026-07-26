@@ -945,9 +945,9 @@ class MainWindow(QMainWindow):
             weight_kg=weight_kg,
         )
         self._show_status(
-            f"МЖП={ivsd:.1f} КДР={lvidd:.1f} ЗСЛЖ={lvpwd:.1f} "
-            f"КДО={result.edv_ml:.1f} мл  "
-            f"ОТС={result.rwt:.2f}  ММЛЖ={result.lvm_g:.1f} г"
+            f"{tr('mmode.teich_ed_labels.0')}={ivsd:.1f} {tr('mmode.teich_ed_labels.1')}={lvidd:.1f} {tr('mmode.teich_ed_labels.2')}={lvpwd:.1f} "
+            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('strain.unit_ml')}  "
+            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
         )
 
     def _on_teichholz_es_complete(self, measurement) -> None:
@@ -988,13 +988,13 @@ class MainWindow(QMainWindow):
         if study_uid:
             self._controller._measurement_session.merge_linear_measurements(study_uid, linear)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
-        lvmi_str = f"  ИММЛЖ={result.lvmi_g_m2:.1f} г/м²" if result.lvmi_g_m2 else ""
+        lvmi_str = f"  {tr('domain.report.lvmi')}={result.lvmi_g_m2:.1f} g/m²" if result.lvmi_g_m2 else ""
         self._show_status(
-            f"Тейхольц: МЖП={result.ivsd_mm:.1f} ЗСЛЖ={result.lvpwd_mm:.1f} "
-            f"КДР={result.lvidd_mm:.1f} КСР={lvesd:.1f} "
-            f"КДО={result.edv_ml:.1f} КСО={result.esv_ml:.1f} "
-            f"ФВ={result.lvef_percent:.1f}%  "
-            f"ОТС={result.rwt:.2f}  ММЛЖ={result.lvm_g:.1f} г"
+            f"{tr('mmode.teichholz')}: {tr('mmode.teich_ed_labels.0')}={result.ivsd_mm:.1f} {tr('mmode.teich_ed_labels.2')}={result.lvpwd_mm:.1f} "
+            f"{tr('mmode.teich_ed_labels.1')}={result.lvidd_mm:.1f} {tr('mmode.label_es')}={lvesd:.1f} "
+            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('domain.report.kso')}={result.esv_ml:.1f} "
+            f"{tr('domain.report.fv')}={result.lvef_percent:.1f}%  "
+            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
             f"{lvmi_str}"
         )
 
