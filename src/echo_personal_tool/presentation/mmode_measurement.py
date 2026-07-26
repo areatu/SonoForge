@@ -176,7 +176,9 @@ class MModeMeasurementTool(QWidget):
     teichholz_es_highlight = Signal()  # Emitted to show ESV highlight
 
     # Labels for the 3 ED calipers in Teichholz workflow
-    _TEICHHOLZ_ED_LABELS = [tr("mmode.teich_ed_labels.0"), tr("mmode.teich_ed_labels.1"), tr("mmode.teich_ed_labels.2")]
+    @staticmethod
+    def _teichholz_ed_labels() -> list[str]:
+        return [tr("mmode.teich_ed_labels.0"), tr("mmode.teich_ed_labels.1"), tr("mmode.teich_ed_labels.2")]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -256,7 +258,7 @@ class MModeMeasurementTool(QWidget):
         # Determine label
         label = ""
         if self._active_mode == "teichholz_ed":
-            label = self._TEICHHOLZ_ED_LABELS[self._teichholz_ed_index]
+            label = self._teichholz_ed_labels()[self._teichholz_ed_index]
         elif self._active_mode == "teichholz_es":
             label = tr("mmode.label_es")
 

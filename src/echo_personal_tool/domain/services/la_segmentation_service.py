@@ -255,7 +255,7 @@ def explain_la_auto_reject_reason(
         if row_spacing > 0 and col_spacing > 0:
             mv_span_mm = mv_span_px * ((row_spacing + col_spacing) / 2.0)
             if mv_span_mm < _MIN_LA_MV_SPAN_MM:
-                return tr("domain.la_seg.annulus_too_small", mv_span_mm=f"{mv_span_mm:.1f}", min_mm=str(_MIN_LA_MV_SPAN_MM))
+                return tr("domain.la_seg.annulus_too_small", mv_span_mm=mv_span_mm, min_mm=_MIN_LA_MV_SPAN_MM)
 
     # Apex must be above MV chord (image Y: smaller Y = superior)
     ma_mid_y = (septal[1] + lateral[1]) / 2.0
@@ -276,7 +276,7 @@ def explain_la_auto_reject_reason(
     if mask is not None:
         residual = _mask_ellipse_fit_residual(mask, contour)
         if residual > _MAX_LA_ELLIPSE_RESIDUAL:
-            return tr("domain.la_seg.mask_irregular", residual=f"{residual:.2f}", max_residual=str(_MAX_LA_ELLIPSE_RESIDUAL))
+            return tr("domain.la_seg.mask_irregular", residual=residual, max_residual=_MAX_LA_ELLIPSE_RESIDUAL)
 
     # Centroid outside ROI
     if roi_xyxy is not None and len(contour.points) >= 3:

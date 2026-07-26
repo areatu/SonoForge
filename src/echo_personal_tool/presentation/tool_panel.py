@@ -38,17 +38,17 @@ class _PatientMetricsRow(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        height_label = QLabel(tr("tools.height"))
-        height_label.setStyleSheet(self._LABEL_STYLE)
-        layout.addWidget(height_label)
+        self._height_label = QLabel(tr("tools.height"))
+        self._height_label.setStyleSheet(self._LABEL_STYLE)
+        layout.addWidget(self._height_label)
         self._height_spin = QSpinBox()
         self._height_spin.setRange(0, 250)
         self._height_spin.setSpecialValueText("")
         self._height_spin.valueChanged.connect(self._emit_metrics)
         layout.addWidget(self._height_spin)
-        weight_label = QLabel(tr("tools.weight"))
-        weight_label.setStyleSheet(self._LABEL_STYLE)
-        layout.addWidget(weight_label)
+        self._weight_label = QLabel(tr("tools.weight"))
+        self._weight_label.setStyleSheet(self._LABEL_STYLE)
+        layout.addWidget(self._weight_label)
         self._weight_spin = QSpinBox()
         self._weight_spin.setRange(0, 300)
         self._weight_spin.setSpecialValueText("")
@@ -71,6 +71,12 @@ class _PatientMetricsRow(QWidget):
         self._weight_spin.setValue(int(round(weight_kg)) if weight_kg else 0)
         self._height_spin.blockSignals(False)
         self._weight_spin.blockSignals(False)
+
+    def reload_text(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        self._height_label.setText(tr("tools.height"))
+        self._weight_label.setText(tr("tools.weight"))
 
 
 class ControlsTab(QWidget):
@@ -181,6 +187,7 @@ class MeasureTab(QWidget):
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._results_button.setText(tr("tool_panel.measures"))
         self._menu.reload_text()
+        self._patient_metrics.reload_text()
 
     def set_doppler_tool_availability(self, *, time_ok: bool) -> None:
         self._menu.set_doppler_tool_availability(time_ok=time_ok)

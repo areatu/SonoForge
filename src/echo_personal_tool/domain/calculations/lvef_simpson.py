@@ -220,12 +220,12 @@ def explain_lv_auto_reject_reason(
         if row_spacing > 0 and col_spacing > 0:
             annulus_mm = annulus_px * ((row_spacing + col_spacing) / 2.0)
             if annulus_mm < _MIN_LV_AUTO_ANNULUS_MM:
-                return tr("domain.lvef.annulus_too_small", annulus_mm=f"{annulus_mm:.1f}", min_mm=str(_MIN_LV_AUTO_ANNULUS_MM))
+                return tr("domain.lvef.annulus_too_small", annulus_mm=annulus_mm, min_mm=_MIN_LV_AUTO_ANNULUS_MM)
 
     # v2: arc depth ratio check
     arc_depth = _contour_arc_depth_px(contour)
     if annulus_px > 0 and arc_depth / annulus_px < _MIN_ARC_DEPTH_RATIO:
-        return tr("domain.lvef.contour_too_flat", depth=f"{arc_depth:.0f}", annulus=f"{annulus_px:.0f}", ratio=f"{_MIN_ARC_DEPTH_RATIO:.0%}")
+        return tr("domain.lvef.contour_too_flat", depth=arc_depth, annulus=annulus_px, ratio=_MIN_ARC_DEPTH_RATIO)
 
     # v2: centroid outside ROI check
     if roi_xyxy is not None:

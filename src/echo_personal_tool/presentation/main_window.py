@@ -824,6 +824,7 @@ class MainWindow(QMainWindow):
             self._activity_bar.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
@@ -2389,11 +2390,13 @@ class MainWindow(QMainWindow):
             elif phase == "ES":
                 self._rv_fac_awaiting_es = False
                 self._tool_panel.measure.clear_action_highlight()
-                snapshot = self._controller.state_manager.snapshot.measurement_snapshot
-                if snapshot is not None and snapshot.rv_fac_percent is not None:
+                overlay_snap = self._controller.compute_overlay_snapshot(
+                    self._controller.state_manager.snapshot,
+                )
+                if overlay_snap is not None and overlay_snap.rv_fac_percent is not None:
                     extra_lines = (
                         *extra_lines,
-                        f"FAC: {snapshot.rv_fac_percent:.1f} %",
+                        f"FAC: {overlay_snap.rv_fac_percent:.1f} %",
                     )
 
         self._viewer._refresh_frame_overlays(extra_lines=extra_lines)

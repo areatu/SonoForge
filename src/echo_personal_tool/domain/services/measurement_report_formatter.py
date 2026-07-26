@@ -261,7 +261,7 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
     lines = [tr("domain.report.indexed")]
     lines.append(_line("BSA", indexed.bsa_m2, " m²", decimals=2))
     if snapshot.height_cm is not None and snapshot.weight_kg is not None:
-        lines.append(tr("domain.report.height_weight", height=f"{snapshot.height_cm:.0f}", weight=f"{snapshot.weight_kg:.0f}"))
+        lines.append(tr("domain.report.height_weight", height=snapshot.height_cm, weight=snapshot.weight_kg))
 
     volume_fields = (
         ("LVMI", indexed.lvmi_g_m2, " g/m²"),

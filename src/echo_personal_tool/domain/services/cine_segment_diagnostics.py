@@ -112,15 +112,15 @@ def _collect_issues(report: CineSegmentDiagnosticReport) -> tuple[str, ...]:
     if report.annulus_mid_y is not None and report.apex_y is not None:
         if report.annulus_mid_y < report.apex_y:
             issues.append(
-                tr("domain.cine_diag.annulus_inverted", annulus=f"{report.annulus_mid_y:.0f}", apex=f"{report.apex_y:.0f}")
+                tr("domain.cine_diag.annulus_inverted", annulus=report.annulus_mid_y, apex=report.apex_y)
             )
         if report.arc_depth_px is not None and report.arc_depth_px < 5.0:
-            issues.append(tr("domain.cine_diag.contour_collapsed", depth=f"{report.arc_depth_px:.1f}"))
+            issues.append(tr("domain.cine_diag.contour_collapsed", depth=report.arc_depth_px))
     if report.roi_xyxy is not None and report.mask_bbox is not None:
         roi_width = max(1.0, report.roi_xyxy[2] - report.roi_xyxy[0])
         mask_width = float(report.mask_bbox[2] - report.mask_bbox[0])
         if mask_width < 0.12 * roi_width:
-            issues.append(tr("domain.cine_diag.mask_narrow", width=f"{mask_width:.0f}", roi=f"{roi_width:.0f}"))
+            issues.append(tr("domain.cine_diag.mask_narrow", width=mask_width, roi=roi_width))
     if report.reject_reason:
         issues.append(f"quality gate: {report.reject_reason}")
     return tuple(issues)
