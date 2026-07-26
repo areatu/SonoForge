@@ -298,8 +298,9 @@ class ToolPanel(QWidget):
         tab_bar = self._tabs.tabBar()
         for btn in tab_bar.findChildren(QToolButton):
             # Scroll buttons are children of the tab bar with no text
-            if not btn.text() and btn.width() < 60:
+            if not btn.text():
+                btn.setMinimumWidth(28)
                 if btn.x() < tab_bar.width() // 2:
-                    btn.setText("\u25c0")  # ◀
+                    btn.setText("<")
                 else:
-                    btn.setText("\u25b6")  # ▶
+                    btn.setText(">")
