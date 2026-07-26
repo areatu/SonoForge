@@ -61,11 +61,16 @@ jobs:
         run: pytest tests/unit/ -q --tb=line --no-header -m "not gui"
 
       # Linux: upload coverage to Coveralls
+      # GITHUB_TOKEN works on Dependabot PRs where COVERALLS_REPO_TOKEN is unavailable
       - name: Upload coverage to Coveralls
         if: runner.os == 'Linux'
-        env:
-          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-        run: coveralls --service=github
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+          format: cobertura
+          flag-name: unittests
+          parallel: true
 
   build:
     needs: [lint, test]
