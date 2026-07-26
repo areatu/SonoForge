@@ -90,6 +90,7 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 | **RV Function** | FAC (Fractional Area Change), TAPSE, RV S' | Right ventricular assessment |
 | **LV Mass** | LVM, LVMI (indexed to BSA), RWT (Relative Wall Thickness) | Geometric and anatomical LV mass calculations |
 | **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
+| **ECG-Based HR** | Heart rate from ECG waveform | Automatic ED/ES detection from ECG R-peaks |
 
 ### 🤖 AI-Powered Segmentation
 
@@ -97,6 +98,7 @@ SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentati
 
 - **LV Auto Segmentation** — Automatic left ventricle contouring in A4C view using EchoNet-Dynamic deep learning model (press `I`)
 - **LA Segmentation** — Left atrium cavity segmentation in end-systolic frames
+- **LA AI Assist** — AI-assisted LA contour refinement with optical flow boundary detection
 - **Mitral Annulus Detection** — AI-assisted landmark detection for mitral valve annulus
 - **Temporal Fusion** — Multi-frame temporal consistency using N±2 neighbor voting for stable contour propagation
 - **Active Contour Refinement** — Edge-snapping and gradient-based contour refinement (press `R`)
@@ -154,6 +156,7 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 - **Window/Level** — Interactive image contrast/brightness adjustment
 - **Crosshair** — Spatial reference across synchronized views
 - **Keyboard Shortcuts** — Full keyboard navigation for efficient workflow
+- **Internationalization (i18n)** — English and Russian language support with live switching
 
 ---
 
@@ -237,7 +240,8 @@ src/echo_personal_tool/
 ### Security Features
 
 - ✅ **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
-- ✅ **Model Integrity** — SHA256 verification for ONNX AI models at load time
+- ✅ **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 §6.1
+- ✅ **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
 - ✅ **Network Timeouts** — Configurable timeouts for DICOMweb/DIMSE connections
 - ✅ **PHI Sanitization** — Patient identifiers truncated in log files
 - ✅ **In-Memory Processing** — All DICOM data processed in RAM, no temp files
@@ -266,6 +270,8 @@ ruff check src tests
 # Format
 ruff format src tests
 ```
+
+**Test Coverage:** ~77% with 1400+ unit tests across all layers (domain, application, presentation, infrastructure).
 
 ### Areas for Contribution
 

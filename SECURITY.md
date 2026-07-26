@@ -24,6 +24,11 @@ prevents path traversal attacks via crafted UIDs like `../../etc/passwd`.
 - `safe_uid_path_component()` — raises `ValueError` on invalid UIDs
 - All storage operations (Orthanc cache, image storage) use validated UIDs
 
+Additional UID validation rules (per PS3.5 §6.1):
+- Rejects pure-dot UIDs (`...`, `..`, `.`)
+- Rejects UIDs longer than 64 characters
+- Rejects UIDs starting or ending with a dot
+
 Files:
 - `infrastructure/dicom_uid_validator.py` — UID validation
 - `infrastructure/orthanc_cache.py` — uses `safe_uid_path_component()`
@@ -71,7 +76,14 @@ NOT in QSettings or any text file.
 ## Model Integrity
 
 ONNX models are SHA256-verified against `model_manifest.json` at load time.
-A mismatch is logged as a warning but does not block loading (desktop deployment).
+A mismatch raises `ModelIntegrityError` — corrupted or tampered models are NOT loaded.
+
+- `_verify_model_integrity()` compares file SHA256 against manifest
+- Raises `ModelIntegrityError` on mismatch (blocks loading)
+- Manifest is embedded in the application package
+
+Files:
+- `infrastructure/onnx_engine.py` — model verification
 
 ## Network Timeouts
 
