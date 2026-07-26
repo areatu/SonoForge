@@ -103,8 +103,7 @@ def _verify_model_integrity(model_path: Path, expected_sha256: str | None) -> No
     actual = hashlib.sha256(model_path.read_bytes()).hexdigest()
     if actual != expected_sha256:
         raise ModelIntegrityError(
-            f"Model integrity check failed for {model_path.name}: "
-            f"expected {expected_sha256[:16]}…, got {actual[:16]}…"
+            f"Model integrity check failed for {model_path.name}: expected {expected_sha256[:16]}…, got {actual[:16]}…",
         )
 
 

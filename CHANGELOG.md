@@ -6,6 +6,9 @@
 
 ## 2026-07-26
 
+### Releases
+- `chore(release)`: v0.2.3 — CI fixes (Windows unit tests, ruff format), macOS build + source tarball in Release workflow
+
 ### Features
 - `feat(test)`: comprehensive verification test suite — 8 new test categories (security, regression, migration, acceptance, system, exploratory, compat, bench) с 520+ тестами
 - `feat(test)`: security fuzzing — DICOM input fuzzing (truncated, corrupt, nested sequences), API response fuzzing (malformed JSON, SQL injection, XSS payloads)

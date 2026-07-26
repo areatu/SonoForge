@@ -10,11 +10,13 @@ import pytest
 _MOCK_A4 = (595.27, 841.89)
 _MM = 2.8346  # reportlab mm in points
 _MOCK_MM = 2.8346
+_FAKE_FONT = Path("/fake/font.ttf")
 
 
 def _patch_pdf_deps(tmp_path: Path, lines: str = "Hello\nWorld", **kwargs):
     """Helper: patch all reportlab deps and return (mock_canvas, output_path)."""
     output = tmp_path / "report.pdf"
+    fake_font = _FAKE_FONT
     patches = {
         "canvas": patch("echo_personal_tool.infrastructure.measurement_report_pdf.canvas"),
         "pdfmetrics": patch("echo_personal_tool.infrastructure.measurement_report_pdf.pdfmetrics"),
@@ -23,7 +25,7 @@ def _patch_pdf_deps(tmp_path: Path, lines: str = "Hello\nWorld", **kwargs):
         "mm": patch("echo_personal_tool.infrastructure.measurement_report_pdf.mm", _MOCK_MM),
         "font_path": patch(
             "echo_personal_tool.infrastructure.measurement_report_pdf.report_cyrillic_font_path",
-            return_value=Path("/fake/font.ttf"),
+            return_value=fake_font,
         ),
     }
     mocks = {k: p.start() for k, p in patches.items()}
@@ -43,7 +45,7 @@ class TestExportMeasurementReportPdf:
             result = export_measurement_report_pdf("Hello\nWorld", output)
             assert result == output
             mocks["pdfmetrics"].registerFont.assert_called_once()
-            mocks["TTFont"].assert_called_once_with("ReportCyrillic", "/fake/font.ttf")
+            mocks["TTFont"].assert_called_once_with("ReportCyrillic", str(_FAKE_FONT))
             mock_c.setFont.assert_called_with("ReportCyrillic", 10)
             mock_c.save.assert_called_once()
             # drawString was called once per line
@@ -145,14 +147,15 @@ class TestExportMeasurementReportPdf:
 
         mock_pm = MagicMock()
         mock_tf = MagicMock()
+        fake_font = _FAKE_FONT
         with patch(
             "echo_personal_tool.infrastructure.measurement_report_pdf.report_cyrillic_font_path",
-            return_value=Path("/fake/font.ttf"),
+            return_value=fake_font,
         ):
             result = _register_cyrillic_font(mock_pm, mock_tf)
             assert result == "ReportCyrillic"
             mock_pm.registerFont.assert_called_once()
-            mock_tf.assert_called_once_with("ReportCyrillic", "/fake/font.ttf")
+            mock_tf.assert_called_once_with("ReportCyrillic", str(fake_font))
 
     def test_set_title(self, tmp_path: Path) -> None:
         mock_c, mocks, output, patches = _patch_pdf_deps(tmp_path)

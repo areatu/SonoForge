@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.2.1)"
+        description: "Release tag (e.g. v0.2.3)"
         required: false
         type: string
 
@@ -15,6 +15,28 @@ permissions:
   contents: write
 
 jobs:
+  build-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build source distribution
+        run: |
+          python -m pip install --upgrade pip hatch
+          hatch build -t sdist
+          ls -la dist/
+
+      - name: Upload source tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonoforge-sdist
+          path: dist/*.tar.gz
+
   build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -105,8 +127,57 @@ jobs:
           name: sonoforge-windows-exe
           path: dist\SonoForge.exe
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+
+      - name: Run smoke tests
+        run: |
+          python -c "
+          import PySide6, pydicom, numpy, scipy
+          print(f'PySide6: {PySide6.__version__}')
+          print(f'numpy: {numpy.__version__}')
+          print('Dependencies OK')
+          "
+
+      - name: Build standalone macOS app
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+          if [ -d dist/SonoForge.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent dist/SonoForge.app dist/SonoForge-macos.zip
+          elif [ -f dist/SonoForge ]; then
+            cd dist && zip -r SonoForge-macos.zip SonoForge && cd ..
+          else
+            echo "No macOS build output found in dist/"
+            ls -la dist/
+            exit 1
+          fi
+
+      - name: Verify macOS artifact
+        run: |
+          ls -la dist/
+          test -f dist/SonoForge-macos.zip
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonoforge-macos
+          path: dist/SonoForge-macos.zip
+
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-source, build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Determine tag
@@ -121,6 +192,11 @@ jobs:
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Download source tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: sonoforge-sdist
+
       - name: Download Linux artifact
         uses: actions/download-artifact@v8
         with:
@@ -130,6 +206,11 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: sonoforge-windows-exe
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: sonoforge-macos
 
       - name: List downloaded files
         run: ls -la
@@ -142,6 +223,8 @@ jobs:
           files: |
             sonoforge_*.deb
             SonoForge.exe
+            SonoForge-macos.zip
+            sonoforge-*.tar.gz
           generate_release_notes: true
           draft: false
           prerelease: false
