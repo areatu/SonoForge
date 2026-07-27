@@ -85,6 +85,12 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 | Category | Measurements | Description |
 |----------|--------------|-------------|
 | **Linear (M-Mode/B-Mode)** | LVEDD, LVESD, IVSd, IVSs, LVPWd, LVPWs, TAPSE, RVOT, LA diameter | Standard ASE linear measurements with real-time caliper labels |
+| **Volumetric (Simpson Biplane)** | EDV, ESV, LVEF, LAVi, RAVi | Biplane Simpson's method with open-arc mitral annulus tracking |
+| **M-Mode** | Posterior wall thickness, LV dimensions, fractional shortening | Time-depth measurements with scan line overlay |
+| **RV Function** | FAC (Fractional Area Change), TAPSE, RV S' | Right ventricular assessment |
+| **LV Mass** | LVM, LVMI (indexed to BSA), RWT (Relative Wall Thickness) | Geometric and anatomical LV mass calculations |
+| **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
+| **ECG-Based HR** | Heart rate from ECG waveform | Automatic ED/ES detection from ECG R-peaks |
 
 <div align="center">
 
@@ -93,13 +99,6 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 *B-Mode linear measurements with automatic LV mass and LVMI calculation*
 
 </div>
-
-| **Volumetric (Simpson Biplane)** | EDV, ESV, LVEF, LAVi, RAVi | Biplane Simpson's method with open-arc mitral annulus tracking |
-| **M-Mode** | Posterior wall thickness, LV dimensions, fractional shortening | Time-depth measurements with scan line overlay |
-| **RV Function** | FAC (Fractional Area Change), TAPSE, RV S' | Right ventricular assessment |
-| **LV Mass** | LVM, LVMI (indexed to BSA), RWT (Relative Wall Thickness) | Geometric and anatomical LV mass calculations |
-| **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
-| **ECG-Based HR** | Heart rate from ECG waveform | Automatic ED/ES detection from ECG R-peaks |
 
 ### 🤖 AI-Powered Segmentation
 
