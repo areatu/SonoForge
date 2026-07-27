@@ -85,6 +85,15 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 | Category | Measurements | Description |
 |----------|--------------|-------------|
 | **Linear (M-Mode/B-Mode)** | LVEDD, LVESD, IVSd, IVSs, LVPWd, LVPWs, TAPSE, RVOT, LA diameter | Standard ASE linear measurements with real-time caliper labels |
+
+<div align="center">
+
+![Linear Measurements](docs/screenshots/lv-linear-measurements.png)
+
+*B-Mode linear measurements with automatic LV mass and LVMI calculation*
+
+</div>
+
 | **Volumetric (Simpson Biplane)** | EDV, ESV, LVEF, LAVi, RAVi | Biplane Simpson's method with open-arc mitral annulus tracking |
 | **M-Mode** | Posterior wall thickness, LV dimensions, fractional shortening | Time-depth measurements with scan line overlay |
 | **RV Function** | FAC (Fractional Area Change), TAPSE, RV S' | Right ventricular assessment |
@@ -103,6 +112,14 @@ SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentati
 - **Temporal Fusion** — Multi-frame temporal consistency using N±2 neighbor voting for stable contour propagation
 - **Active Contour Refinement** — Edge-snapping and gradient-based contour refinement (press `R`)
 - **Open-Arc Simpson** — Manual contour initialization with mitral annulus points and apex
+
+<div align="center">
+
+![LA Segmentation](docs/screenshots/la-segmentation.png)
+
+*Left atrium segmentation with automatic volume calculation and BSA indexing*
+
+</div>
 
 ### 🏥 DICOM Integration & PACS Connectivity
 
@@ -157,6 +174,20 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 - **Crosshair** — Spatial reference across synchronized views
 - **Keyboard Shortcuts** — Full keyboard navigation for efficient workflow
 - **Internationalization (i18n)** — English and Russian language support with live switching
+
+<div align="center">
+
+![M-Mode Measurements](docs/screenshots/mmode-measurements.png)
+
+*M-Mode with Teichholz calculations: IVSd, LVIDd, LVPWd, LVEF*
+
+</div>
+
+---
+
+## 🎥 Demo
+
+[![SonoForge Demo](https://img.youtube.com/vi/vbcIFMZP-3o/maxresdefault.jpg)](https://youtu.be/vbcIFMZP-3o)
 
 ---
 
