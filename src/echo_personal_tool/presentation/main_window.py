@@ -255,6 +255,13 @@ class MainWindow(QMainWindow):
         status = QStatusBar()
         self.setStatusBar(status)
         self._show_status(tr("status.startup"))
+
+        # Permanent "Research use only" warning in status bar
+        from PySide6.QtWidgets import QLabel
+        self._research_warning = QLabel(tr("layout.research_use_only"))
+        self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
+        status.addPermanentWidget(self._research_warning)
+
         self._install_shortcuts()
         self._rebuild_layout()
 

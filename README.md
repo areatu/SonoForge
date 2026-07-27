@@ -44,15 +44,28 @@ First run will automatically create a virtual environment, install Python depend
 </details>
 
 <details>
-<summary><strong>Windows (.zip)</strong></summary>
+<summary><strong>Windows (.exe)</strong></summary>
 
-1. Download `SonoForge-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Extract to any folder
-3. Run `SonoForge\bin\SonoForge.bat`
+1. Download `SonoForge-Setup-*.exe` from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Run the installer and follow the setup wizard
+3. Launch SonoForge from the Start Menu or desktop shortcut
 
-> **Requires:** Python 3.10+ ([download](https://www.python.org/downloads/), check "Add to PATH" during installation)
+> **Requires:** Windows 10/11 (64-bit)
 
 First run will automatically set up the environment and install all dependencies.
+
+</details>
+
+<details>
+<summary><strong>macOS (.zip)</strong></summary>
+
+1. Download `SonoForge-macOS-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Extract to Applications folder
+3. Run `SonoForge.app`
+
+> **Requires:** macOS 12.0+ (Intel or Apple Silicon)
+
+First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
 
 </details>
 
@@ -333,6 +346,15 @@ If you use SonoForge in your research or clinical practice, please cite:
 ## 📄 License
 
 [GPL-3.0](LICENSE) — Free software, open source. You are free to use, modify, and distribute this software.
+
+---
+
+## ⚠️ Disclaimer
+
+This software is intended for research, education, and informational purposes only.
+It is NOT intended for clinical diagnosis, treatment decisions, or patient care.
+Always consult a qualified healthcare professional for medical decisions.
+This software has not been reviewed or approved by the FDA, CE, or any regulatory body.
 
 ---
 
