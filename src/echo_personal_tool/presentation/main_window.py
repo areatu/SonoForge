@@ -1747,9 +1747,13 @@ class MainWindow(QMainWindow):
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
+            MeasurementAction.AREA_COMPARE: lambda: None,
         }
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
+            return
+        if action == MeasurementAction.DIAMETER_COMPARE:
+            self._on_diameter_compare_requested()
             return
         if action == MeasurementAction.DOPPLER_PEAK:
             self._on_doppler_peak_tool(extra or None)
@@ -1839,6 +1843,15 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.linear_caliper_tool", label=label))
         else:
             self._show_status("Load a frame first")
+
+    def _on_diameter_compare_requested(self) -> None:
+        if self._viewer.start_diameter_compare():
+            self._show_status(tr("viewer.dcmp_click_start"))
+        else:
+            self._show_status("Load a frame first")
+
+    def _on_area_compare_requested(self) -> None:
+        self._viewer.start_area_compare()
 
     @_prof
     def _on_reset_measurements_requested(self) -> None:
