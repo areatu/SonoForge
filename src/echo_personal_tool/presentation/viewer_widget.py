@@ -1799,9 +1799,7 @@ class ViewerWidget(QWidget):
                 ("D1", self._comparison_state.frame_index),
                 ("D2", self._comparison_state.frame_index),
             }
-        preserved = {
-            k: v for k, v in self._stored_linear_measurements.items() if k in comparison_keys
-        }
+        preserved = {k: v for k, v in self._stored_linear_measurements.items() if k in comparison_keys}
         self._stored_linear_measurements = {
             self._linear_measurement_key(measurement): measurement for measurement in viewer_state.linear_measurements
         }

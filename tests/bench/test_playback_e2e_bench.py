@@ -15,7 +15,6 @@ Run:  ECHO_BENCH=1 pytest tests/bench/test_playback_e2e_bench.py -v --benchmark-
 
 from __future__ import annotations
 
-import dataclasses
 import os
 from pathlib import Path
 from typing import NamedTuple

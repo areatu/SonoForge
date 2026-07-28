@@ -154,7 +154,11 @@ class PathologyEditor(BaseEditor):
         reply = QMessageBox.question(
             self,
             tr("constructor.pathology.delete_title"),
-            tr("constructor.pathology.delete_confirm", count=str(len(names)), names=', '.join(names[:5]) + ('...' if len(names) > 5 else '')),
+            tr(
+                "constructor.pathology.delete_confirm",
+                count=str(len(names)),
+                names=", ".join(names[:5]) + ("..." if len(names) > 5 else ""),
+            ),
         )
         if reply == QMessageBox.StandardButton.Yes:
             slugs_to_delete = {item.data(Qt.ItemDataRole.UserRole) for item in selected}

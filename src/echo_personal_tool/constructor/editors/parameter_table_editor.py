@@ -335,7 +335,9 @@ class ParameterTableEditor(BaseEditor):
     def _add_column(self) -> None:
         from PySide6.QtWidgets import QInputDialog
 
-        name, ok = QInputDialog.getText(self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label"))
+        name, ok = QInputDialog.getText(
+            self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
+        )
         if ok and name:
             slug = name.lower().replace(" ", "_")
             self._columns.append((slug, name))
@@ -351,7 +353,11 @@ class ParameterTableEditor(BaseEditor):
         if field in ("id", "name"):
             QMessageBox.warning(self, tr("constructor.param.error"), tr("constructor.param.cannot_delete_required"))
             return
-        reply = QMessageBox.question(self, tr("constructor.param.delete_column_confirm_title"), tr("constructor.param.delete_column_confirm", name=label))
+        reply = QMessageBox.question(
+            self,
+            tr("constructor.param.delete_column_confirm_title"),
+            tr("constructor.param.delete_column_confirm", name=label),
+        )
         if reply == QMessageBox.StandardButton.Yes:
             self._columns.pop(col)
             self._selected_col = -1
@@ -363,7 +369,11 @@ class ParameterTableEditor(BaseEditor):
         rows = sorted(set(idx.row() for idx in self._table.selectedIndexes()), reverse=True)
         if not rows:
             return
-        reply = QMessageBox.question(self, tr("constructor.param.delete_params_title"), tr("constructor.param.delete_params_confirm", count=str(len(rows))))
+        reply = QMessageBox.question(
+            self,
+            tr("constructor.param.delete_params_title"),
+            tr("constructor.param.delete_params_confirm", count=str(len(rows))),
+        )
         if reply == QMessageBox.StandardButton.Yes:
             for row in rows:
                 if row < len(self._parameters):

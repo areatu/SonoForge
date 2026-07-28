@@ -113,7 +113,9 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
                         else:
                             parts.append(f"<p class='img-missing'>📷 {img_name}</p>")
                     else:
-                        parts.append(f"<p class='img-missing'>📷 {img_name} {tr('constructor.export.html_not_found')}</p>")
+                        parts.append(
+                            f"<p class='img-missing'>📷 {img_name} {tr('constructor.export.html_not_found')}</p>"
+                        )
                 parts.append("</div>")
 
             parts.append("</div>")  # pathology-card

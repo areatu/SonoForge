@@ -217,7 +217,11 @@ class ConstructorWidget(QWidget):
         errors = self._validator.validate(self._model.to_dict())
         if errors:
             msg = "\n".join(str(e) for e in errors[:20])
-            QMessageBox.warning(self, tr("constructor.validation_errors"), tr("constructor.validation_error_count", count=str(len(errors)), msg=msg))
+            QMessageBox.warning(
+                self,
+                tr("constructor.validation_errors"),
+                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+            )
             return
         storage = YamlStorage(path)
         storage.save(self._model.to_dict())
@@ -321,6 +325,10 @@ class ConstructorWidget(QWidget):
         errors = self._validator.validate(self._model.to_dict())
         if errors:
             msg = "\n".join(str(e) for e in errors)
-            QMessageBox.warning(self, tr("constructor.validation_errors"), tr("constructor.validation_error_count", count=str(len(errors)), msg=msg))
+            QMessageBox.warning(
+                self,
+                tr("constructor.validation_errors"),
+                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+            )
         else:
             QMessageBox.information(self, tr("constructor.validation_title"), tr("constructor.validation_no_errors"))

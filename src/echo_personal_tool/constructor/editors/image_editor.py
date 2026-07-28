@@ -246,9 +246,7 @@ class ImageEditor(BaseEditor):
     def _add_image(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_open_files
 
-        files = styled_open_files(
-            self, tr("constructor.image.add_images_title"), "", tr("constructor.image.filter")
-        )
+        files = styled_open_files(self, tr("constructor.image.add_images_title"), "", tr("constructor.image.filter"))
         for f in files:
             filename = self._image_storage.copy(Path(f))
             if filename not in self._images:

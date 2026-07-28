@@ -111,9 +111,7 @@ def _collect_issues(report: CineSegmentDiagnosticReport) -> tuple[str, ...]:
             issues.append(tr("domain.cine_diag.centroid_outside"))
     if report.annulus_mid_y is not None and report.apex_y is not None:
         if report.annulus_mid_y < report.apex_y:
-            issues.append(
-                tr("domain.cine_diag.annulus_inverted", annulus=report.annulus_mid_y, apex=report.apex_y)
-            )
+            issues.append(tr("domain.cine_diag.annulus_inverted", annulus=report.annulus_mid_y, apex=report.apex_y))
         if report.arc_depth_px is not None and report.arc_depth_px < 5.0:
             issues.append(tr("domain.cine_diag.contour_collapsed", depth=report.arc_depth_px))
     if report.roi_xyxy is not None and report.mask_bbox is not None:

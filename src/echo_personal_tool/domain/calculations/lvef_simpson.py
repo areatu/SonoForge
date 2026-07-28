@@ -95,7 +95,9 @@ def format_contour_overlay(
     else:
         length_text = f"{length:.1f} px" if length is not None else "—"
         volume_text = f"{volume:.1f} px³" if volume is not None else "—"
-    return tr("domain.lvef.status_partial", chamber=chamber, view=view, phase=phase, length=length_text, volume=volume_text)
+    return tr(
+        "domain.lvef.status_partial", chamber=chamber, view=view, phase=phase, length=length_text, volume=volume_text
+    )
 
 
 _MIN_LV_AUTO_ANNULUS_PX = 20.0

@@ -80,7 +80,9 @@ def _build_html(model: ReferenceModel) -> str:
                 for grad in patho.gradations:
                     parts.append(f"<h3>{grad.name}</h3>")
                     parts.append("<table>")
-                    parts.append(f"<tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th><th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th></tr>")
+                    parts.append(
+                        f"<tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th><th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th></tr>"
+                    )
                     for param in grad.parameters:
                         norm_m = _format_norm(param.norm_male)
                         norm_f = _format_norm(param.norm_female)

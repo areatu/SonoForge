@@ -230,7 +230,9 @@ class OrthancDownloadWorker(QRunnable):
                 detail = "; ".join(errors[:5]) if errors else ""
                 message = tr("orthanc.downloaded", done=str(saved_count), total=str(total))
                 if detail:
-                    message = tr("orthanc.downloaded_with_errors", saved=str(saved_count), total=str(total), detail=detail)
+                    message = tr(
+                        "orthanc.downloaded_with_errors", saved=str(saved_count), total=str(total), detail=detail
+                    )
                 if saved_count > 0:
                     self.signals.studies_ready.emit(self._build_studies_metadata())
                     self.signals.done.emit(self._session_id, self._study_uid)
