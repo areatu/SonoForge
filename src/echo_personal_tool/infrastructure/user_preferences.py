@@ -89,6 +89,7 @@ class UserPreferences:
     calibration_tick_snap_enabled: bool = True
     auto_depth_calibration_enabled: bool = True
     length_display_unit: str = "mm"
+    area_tool_mode: str = "click"
     show_dicom_tag_inspector: bool = False
     interesting_dicom_tags: str = DEFAULT_INTERESTING_DICOM_TAGS
     confirm_reset: bool = True
@@ -305,6 +306,7 @@ def load_user_preferences() -> UserPreferences:
         show_doppler_tk_pv=_read_bool(store.value("show_doppler_tk_pv"), False),
         show_rv_s_prime=_read_bool(store.value("show_rv_s_prime"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
+        area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
     )
 
 
