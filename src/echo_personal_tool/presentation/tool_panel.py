@@ -234,6 +234,9 @@ class ToolPanel(QWidget):
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
         self.measure.action_requested.connect(self.action_requested.emit)
+        self.measure.area_compare_requested.connect(
+            lambda: self.action_requested.emit(MeasurementAction.AREA_COMPARE, "", "", "")
+        )
         self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
         self.measure.auto_play_changed.connect(self.auto_play_changed.emit)
         self.measure.results_requested.connect(self.results_requested.emit)
