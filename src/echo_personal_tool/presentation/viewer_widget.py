@@ -563,6 +563,36 @@ class ResultsOverlayLabel(QLabel):
         event.accept()
 
 
+@dataclass
+class _ComparisonState:
+    kind: str = ""  # "diameter" or ""
+    segment1_start: tuple[float, float] | None = None
+    segment1_end: tuple[float, float] | None = None
+    segment1_mm: float | None = None
+    segment2_start: tuple[float, float] | None = None
+    segment2_end: tuple[float, float] | None = None
+    segment2_mm: float | None = None
+    frame_index: int | None = None
+
+    @property
+    def first_segment_done(self) -> bool:
+        return self.segment1_end is not None and self.segment1_mm is not None
+
+    @property
+    def is_active(self) -> bool:
+        return self.kind != ""
+
+    def reset(self) -> None:
+        self.kind = ""
+        self.segment1_start = None
+        self.segment1_end = None
+        self.segment1_mm = None
+        self.segment2_start = None
+        self.segment2_end = None
+        self.segment2_mm = None
+        self.frame_index = None
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -642,6 +672,7 @@ class ViewerWidget(QWidget):
         self._current_instance_path: Path | None = None
         self._linear_caliper_active = False
         self._linear_caliper_start: tuple[float, float] | None = None
+        self._comparison_state = _ComparisonState()
         self._linear_caliper_line_item: pg.PlotDataItem | None = None
         self._linear_caliper_marker_item: pg.ScatterPlotItem | None = None
         self._calibration_active = False
@@ -1823,6 +1854,24 @@ class ViewerWidget(QWidget):
             return
         self._clear_calibration_caliper()
         self.activate_generic_dist_caliper()
+
+    def start_diameter_compare(self) -> bool:
+        if self._current_frame is None:
+            return False
+        self._clear_calibration_caliper()
+        self._clear_linear_caliper_graphics()
+        self._linear_caliper_active = True
+        self._linear_caliper_start = None
+        self._comparison_state = _ComparisonState(
+            kind="diameter",
+            frame_index=self._contour_frame_index(),
+        )
+        self._measurement_label.setText(tr("viewer.dcmp_click_start"))
+        return True
+
+    def start_area_compare(self) -> bool:
+        self._measurement_label.setText(tr("viewer.acmp_stub"))
+        return True
 
     def activate_generic_dist_caliper(self) -> str | None:
         """Start click-click caliper with the next DistN label; return label or None."""
@@ -3365,6 +3414,8 @@ class ViewerWidget(QWidget):
             self._overlay_label.hide()
 
     def _clear_linear_caliper(self) -> None:
+        if self._comparison_state.kind:
+            self._comparison_state.reset()
         self._linear_caliper_active = False
         self._linear_caliper_start = None
         self._clear_linear_caliper_graphics()
@@ -4430,8 +4481,35 @@ class ViewerWidget(QWidget):
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
                 self.append_frame_overlay(measurement.display_text())
+        if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
+            cmp_line = self._build_comparison_d_overlay()
+            if cmp_line:
+                self.append_frame_overlay(cmp_line)
         for line in extra_lines:
             self.append_frame_overlay(line)
+
+    def _build_comparison_d_overlay(self) -> str:
+        state = self._comparison_state
+        if state.kind != "diameter" or not state.first_segment_done or state.segment2_mm is None:
+            return ""
+        l1 = state.segment1_mm if state.segment1_mm is not None else 0.0
+        l2 = state.segment2_mm if state.segment2_mm is not None else 0.0
+        if l1 == 0 and l2 == 0:
+            return ""
+        bigger = max(l1, l2)
+        smaller = min(l1, l2)
+        pct = (smaller / bigger * 100.0) if bigger > 0 else 0.0
+        unit = self._length_display_unit
+        m1 = LinearMeasurement(label="D1", pixel_length=0, millimeter_length=l1)
+        m2 = LinearMeasurement(label="D2", pixel_length=0, millimeter_length=l2)
+        return tr(
+            "viewer.dcmp_result",
+            label1="D1",
+            length1=inline_caliper_text(m1, length_unit=unit),
+            label2="D2",
+            length2=inline_caliper_text(m2, length_unit=unit),
+            percent_d=f"{pct:.1f}%",
+        )
 
     def _refresh_lv_frame_overlay(self, *, extra_lines: tuple[str, ...] = ()) -> None:
         self._refresh_frame_overlays(extra_lines=extra_lines)
@@ -4806,6 +4884,8 @@ class ViewerWidget(QWidget):
     def _handle_linear_caliper_mouse_press(self, ev) -> bool:
         if not self._linear_caliper_active:
             return False
+        if self._comparison_state.kind == "diameter":
+            return self._handle_diameter_compare_press(ev)
         if ev.button() != Qt.MouseButton.LeftButton:
             return False
         if self._calibration_active:
@@ -4839,6 +4919,90 @@ class ViewerWidget(QWidget):
         end = self._constrain_linear_endpoint(start, click)
         self._commit_linear_measurement_from_endpoints(start, end)
         return True
+
+    def _handle_diameter_compare_press(self, ev) -> bool:
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click: tuple[float, float] | None = None
+        if hasattr(ev, "scenePos"):
+            point = self._view.mapSceneToView(ev.scenePos())
+            if point is not None:
+                click = (float(point.x()), float(point.y()))
+        if click is None:
+            click = self._map_view_event(ev)
+        if click is None:
+            return False
+
+        state = self._comparison_state
+        frame = state.frame_index
+
+        if state.segment1_start is None:
+            state.segment1_start = click
+            self._update_linear_caliper_preview(click, click)
+            self._measurement_label.setText(tr("viewer.dcmp_click_end"))
+            return True
+
+        if state.segment1_end is None:
+            state.segment1_end = click
+            state.segment1_mm = self._compare_mm_length("D1", state.segment1_start, click)
+            key = ("D1", frame if frame is not None else -1)
+            self._stored_linear_measurements[key] = LinearMeasurement(
+                label="D1",
+                pixel_length=math.hypot(click[0] - state.segment1_start[0], click[1] - state.segment1_start[1]),
+                millimeter_length=state.segment1_mm,
+                frame_index=frame,
+                start=state.segment1_start,
+                end=click,
+            )
+            self._render_persistent_linear_calipers()
+            self._refresh_frame_overlays()
+            self._emit_stored_linear_measurements()
+            self._linear_caliper_start = None
+            self._clear_linear_caliper_graphics()
+            self._linear_caliper_active = True
+            self._measurement_label.setText(tr("viewer.dcmp_second_start"))
+            return True
+
+        if state.segment2_start is None:
+            state.segment2_start = click
+            self._linear_caliper_start = click
+            self._update_linear_caliper_preview(click, click)
+            self._measurement_label.setText(tr("viewer.dcmp_second_end"))
+            return True
+
+        state.segment2_end = click
+        state.segment2_mm = self._compare_mm_length("D2", state.segment2_start, click)
+        key = ("D2", frame if frame is not None else -1)
+        self._stored_linear_measurements[key] = LinearMeasurement(
+            label="D2",
+            pixel_length=math.hypot(click[0] - state.segment2_start[0], click[1] - state.segment2_start[1]),
+            millimeter_length=state.segment2_mm,
+            frame_index=frame,
+            start=state.segment2_start,
+            end=click,
+        )
+        self._linear_caliper_start = None
+        self._clear_linear_caliper_graphics()
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
+        self._linear_caliper_active = False
+        self._emit_stored_linear_measurements()
+        return True
+
+    def _compare_mm_length(
+        self,
+        label: str,
+        start: tuple[float, float],
+        end: tuple[float, float],
+    ) -> float:
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        pixel_length = math.hypot(dx, dy)
+        angle_degrees = math.degrees(math.atan2(dy, dx))
+        pixel_spacing = self._pixel_spacing_for_linear_label(label, start, end)
+        if pixel_spacing is not None:
+            return pixel_to_mm_length(pixel_length, angle_degrees, pixel_spacing)
+        return pixel_length
 
     def _constrain_linear_endpoint(
         self,
