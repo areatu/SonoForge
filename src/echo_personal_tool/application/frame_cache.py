@@ -184,47 +184,33 @@ class FrameCache:
         """Count loaded frames strictly after center (no wrap)."""
         if self._total_frames == 0:
             return 0
-        # O(k) scan where k = frames ahead, instead of O(n) full scan
-        count = 0
-        store = self._frame_store
-        for i in range(center + 1, self._total_frames):
-            if i in store:
-                count += 1
-        return count
+        keys = self._sorted_keys
+        idx = bisect.bisect_right(keys, center)
+        return len(keys) - idx
 
     def loaded_before(self, center: int) -> int:
         """Count loaded frames strictly before center (no wrap)."""
         if self._total_frames == 0:
             return 0
-        count = 0
-        store = self._frame_store
-        for i in range(0, center):
-            if i in store:
-                count += 1
-        return count
+        return bisect.bisect_left(self._sorted_keys, center)
 
     def nearest_loaded_before(self, center: int) -> int | None:
         """Return the largest loaded index < center; None if none."""
         if self._total_frames == 0:
             return None
-        store = self._frame_store
-        for idx in range(center - 1, -1, -1):
-            if idx in store:
-                return idx
-        return None
+        keys = self._sorted_keys
+        idx = bisect.bisect_left(keys, center)
+        return keys[idx - 1] if idx > 0 else None
 
     def nearest_loaded_ahead(self, center: int) -> int | None:
         """Return the smallest loaded index > center, wrapping to 0 at end; None if none."""
         if self._total_frames == 0:
             return None
-        store = self._frame_store
-        for idx in range(center + 1, self._total_frames):
-            if idx in store:
-                return idx
-        for idx in range(0, center):
-            if idx in store:
-                return idx
-        return None
+        keys = self._sorted_keys
+        idx = bisect.bisect_right(keys, center)
+        if idx < len(keys):
+            return keys[idx]
+        return keys[0] if keys and keys[0] < center else None
 
     def _evict(self) -> None:
         lo = self._current_index - self._evict_window

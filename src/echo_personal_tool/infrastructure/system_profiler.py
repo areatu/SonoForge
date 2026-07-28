@@ -7,8 +7,8 @@ from dataclasses import dataclass
 
 import psutil
 
-_LOW_END_CORES = 4
-_LOW_END_RAM_GB = 16.0
+_LOW_END_CORES = 2
+_LOW_END_RAM_GB = 8.0
 
 
 @dataclass(frozen=True)
@@ -25,9 +25,9 @@ class PlaybackConfig:
 
 
 _LOW_END = PlaybackConfig(
-    prefetch_radius=3,
-    min_buffer=2,
-    batch_size=3,
+    prefetch_radius=5,
+    min_buffer=3,
+    batch_size=5,
     max_lag_frames=2,
     evict_window=30,
     scroll_debounce_ms=80,
