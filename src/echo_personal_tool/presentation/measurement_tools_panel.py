@@ -40,6 +40,8 @@ class MeasurementToolsPanel(QWidget):
     rv_basal_requested = Signal()
     rv_tapse_requested = Signal()
     rv_s_prime_requested = Signal()
+    diameter_compare_requested = Signal()
+    area_compare_requested = Signal()
 
     _BLINK_STYLE = "background-color: #fff59d; font-weight: bold;"
     _NORMAL_STYLE = ""
@@ -157,6 +159,14 @@ class MeasurementToolsPanel(QWidget):
         btn_reset.setToolTip(tr("tools.reset_tip"))
         btn_reset.clicked.connect(self.reset_measurements_requested.emit)
         row.addWidget(btn_reset)
+        btn_diam_compare = QPushButton(tr("tools.diameter_compare"))
+        btn_diam_compare.setToolTip(tr("tools.diameter_compare_tip"))
+        btn_diam_compare.clicked.connect(self.diameter_compare_requested.emit)
+        row.addWidget(btn_diam_compare)
+        btn_area_compare = QPushButton(tr("tools.area_compare"))
+        btn_area_compare.setToolTip(tr("tools.area_compare_tip"))
+        btn_area_compare.setEnabled(False)
+        row.addWidget(btn_area_compare)
         row.addStretch(1)
         return group
 
