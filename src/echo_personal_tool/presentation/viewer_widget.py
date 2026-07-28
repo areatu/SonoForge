@@ -928,7 +928,10 @@ class ViewerWidget(QWidget):
             if mapped is not None:
                 end = (float(mapped.x()), float(mapped.y()))
                 if self._linear_caliper_start is not None:
-                    end = self._constrain_linear_endpoint(self._linear_caliper_start, end)
+                    if self._comparison_state.kind:
+                        end = self._constrain_linear_endpoint(self._linear_caliper_start, end, label="Dx")
+                    else:
+                        end = self._constrain_linear_endpoint(self._linear_caliper_start, end)
                 self._update_linear_caliper_preview(self._linear_caliper_start, end)
                 self._update_linear_caliper_label_preview(self._linear_caliper_start, end)
             return
@@ -1190,10 +1193,12 @@ class ViewerWidget(QWidget):
             self._linear_caliper_line_item.setPen(self._caliper_pen("#ffb300"))
         if self._linear_caliper_marker_item is not None:
             self._linear_caliper_marker_item.setPen(self._caliper_pen("#ffb300"))
-        for line_item, marker_item in self._persistent_linear_graphics:
+        for item in self._persistent_linear_graphics:
+            line_item, start_node, end_node = item[0], item[1], item[2]
             pen = self._caliper_pen("#29b6f6")
             line_item.setPen(pen)
-            marker_item.setPen(pen)
+            start_node.setPen(pen)
+            end_node.setPen(pen)
         if self._calibration_line_item is not None:
             self._calibration_line_item.setPen(self._caliper_pen("#29b6f6"))
         if self._calibration_marker_item is not None:
@@ -1788,9 +1793,19 @@ class ViewerWidget(QWidget):
             self._doppler.clear_measurements(keep_calibration_graphics=False)
             if not self._syncing_state:
                 self.doppler_frame_changed.emit(viewer_state.current_frame_index)
+        comparison_keys = {("D1", -1), ("D2", -1)}
+        if self._comparison_state.frame_index is not None:
+            comparison_keys = {
+                ("D1", self._comparison_state.frame_index),
+                ("D2", self._comparison_state.frame_index),
+            }
+        preserved = {
+            k: v for k, v in self._stored_linear_measurements.items() if k in comparison_keys
+        }
         self._stored_linear_measurements = {
             self._linear_measurement_key(measurement): measurement for measurement in viewer_state.linear_measurements
         }
+        self._stored_linear_measurements.update(preserved)
         self._current_state = viewer_state
         try:
             maximum = max(0, viewer_state.total_frames - 1)
@@ -4558,6 +4573,7 @@ class ViewerWidget(QWidget):
                     measurement.end,
                     color="#29b6f6",
                     is_preview=False,
+                    label=measurement.label,
                 )
 
     def _create_linear_graphics_items(
@@ -5109,7 +5125,11 @@ class ViewerWidget(QWidget):
             [start[0], end[0]],
             [start[1], end[1]],
         )
-        self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True)
+        if self._comparison_state.kind == "diameter":
+            label = "D2" if self._comparison_state.first_segment_done else "D1"
+        else:
+            label = None
+        self._update_caliper_label_graphics(start, end, color="#ffb300", is_preview=True, label=label)
 
     def _update_caliper_label_graphics(
         self,
@@ -5118,8 +5138,9 @@ class ViewerWidget(QWidget):
         *,
         color: str,
         is_preview: bool,
+        label: str | None = None,
     ) -> None:
-        measurement = self._linear_measurement_from_endpoints(start, end, self._current_caliper_label())
+        measurement = self._linear_measurement_from_endpoints(start, end, label or self._current_caliper_label())
         text = inline_caliper_text(measurement, length_unit=self._length_display_unit)
         layout = compute_caliper_label_layout(
             start,
@@ -5181,11 +5202,11 @@ class ViewerWidget(QWidget):
         start: tuple[float, float],
         end: tuple[float, float],
     ) -> None:
-        measurement = self._linear_measurement_from_endpoints(
-            start,
-            end,
-            self._current_caliper_label(),
-        )
+        if self._comparison_state.kind == "diameter":
+            label = "D2" if self._comparison_state.first_segment_done else "D1"
+        else:
+            label = self._current_caliper_label()
+        measurement = self._linear_measurement_from_endpoints(start, end, label)
         self._measurement_label.setText(measurement.display_text(length_unit=self._length_display_unit))
 
     def _update_linear_caliper_label_preview_from_state(self) -> None:
