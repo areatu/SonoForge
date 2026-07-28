@@ -199,6 +199,56 @@ class TestMouseDrag:
         assert dlg._drag_pos is None
 
 
+class TestAreaToolModeCombo:
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_combo_exists(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert hasattr(dlg, "_area_tool_mode_combo")
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_combo_has_two_items(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._area_tool_mode_combo.count() == 2
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_combo_defaults_to_click(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._area_tool_mode_combo.currentData() == "click"
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_combo_selects_freehand_when_prefs_set(self, mock_load):
+        prefs = _default_prefs()
+        prefs.area_tool_mode = "freehand"
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._area_tool_mode_combo.currentData() == "freehand"
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_on_accept_saves_area_tool_mode(self, mock_load, mock_save_pref, mock_save_srv):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        dlg._area_tool_mode_combo.setCurrentIndex(1)  # freehand
+        with patch.object(dlg, "accept"):
+            dlg._on_accept()
+            saved_prefs = mock_save_pref.call_args[0][0]
+            assert saved_prefs.area_tool_mode == "freehand"
+
+
 class TestShowUserPreferencesDialog:
     @patch("echo_personal_tool.presentation.ui_animations.exec_animated", return_value=0)
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
