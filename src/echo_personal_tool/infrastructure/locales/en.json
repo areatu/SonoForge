@@ -695,6 +695,7 @@
   "unit.percent": "%",
   "unit.px": "px",
   "viewer.area_contour_prompt": "Area: click along contour, double-click to close",
+  "viewer.area_freehand_prompt": "Area (freehand): drag to draw, release or double-click to finish",
   "viewer.calibration.auto_ok": "Auto-calibration OK",
   "viewer.calibration.calibration_prompt": "Perform calibration",
   "viewer.calibration.click_top": "Calibration: 1st click — top mark, 2nd — bottom (Escape — cancel)",

@@ -257,6 +257,16 @@ class ContourViewBox(pg.ViewBox):
         ev.ignore()
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+        if (
+            self._viewer_widget is not None
+            and self._viewer_widget._freehand_recording
+            and self._viewer_widget._contour_mode_active
+            and ev.button() == Qt.MouseButton.LeftButton
+            and len(self._viewer_widget._freehand_points) >= 3
+        ):
+            self._viewer_widget._finish_freehand_contour()
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_caliper_drag_release(ev):
             ev.accept()
             return
@@ -714,6 +724,9 @@ class ViewerWidget(QWidget):
         self._active_mitral_annulus: tuple[tuple[float, float], tuple[float, float]] | None = None
         self._active_apex_landmark: tuple[float, float] | None = None
         self._active_arc_points: list[tuple[float, float]] = []
+        self._freehand_recording = False
+        self._freehand_points: list[tuple[float, float]] = []
+        self._area_tool_mode: str = "click"
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_ma_chord_item: pg.PlotDataItem | None = None
         self._active_contour_phase: str | None = None
@@ -952,6 +965,13 @@ class ViewerWidget(QWidget):
                         float(mapped.y()),
                         grab_index=grab_index,
                     )
+            return
+        if self._freehand_recording and self._contour_mode_active:
+            if mapped is not None:
+                pt = (float(mapped.x()), float(mapped.y()))
+                if not self._freehand_points or self._distance(self._freehand_points[-1], pt) > 2.0:
+                    self._freehand_points.append(pt)
+                    self._update_freehand_preview()
             return
         if mapped is None:
             return
@@ -2703,7 +2723,12 @@ class ViewerWidget(QWidget):
             chamber=GENERIC_AREA_CHAMBER,
         ):
             return False
-        self._measurement_label.setText(tr("viewer.area_contour_prompt"))
+        if self._area_tool_mode == "freehand":
+            self._freehand_recording = True
+            self._freehand_points = []
+            self._measurement_label.setText(tr("viewer.area_freehand_prompt"))
+        else:
+            self._measurement_label.setText(tr("viewer.area_contour_prompt"))
         return True
 
     def start_generic_volume_contour(self) -> bool:
@@ -2796,6 +2821,23 @@ class ViewerWidget(QWidget):
             self._active_arc_points.append(click)
         elif self._contour_stage == "polygon":
             self._active_arc_points.append(click)
+            if self._magnetic_snap_enabled and len(self._active_arc_points) >= 5:
+                edge_map = self._get_edge_map()
+                if edge_map is not None:
+                    from echo_personal_tool.domain.services.contour_edge_snap import (
+                        snap_magnetic_point,
+                        outward_normal_at_index_closed,
+                    )
+                    idx = len(self._active_arc_points) - 1
+                    normal = outward_normal_at_index_closed(self._active_arc_points, idx)
+                    snapped = snap_magnetic_point(
+                        edge_map,
+                        self._active_arc_points[idx][0],
+                        self._active_arc_points[idx][1],
+                        normal,
+                    )
+                    if snapped is not None:
+                        self._active_arc_points[idx] = snapped
         self._update_active_contour_item()
         return True
 
@@ -3049,6 +3091,15 @@ class ViewerWidget(QWidget):
         if len(self._active_arc_points) < 3:
             return False
 
+        from echo_personal_tool.domain.services.contour_edge_snap import snap_closed_polygon
+
+        points = list(self._active_arc_points)
+
+        if self._magnetic_snap_enabled:
+            edge_map = self._get_edge_map()
+            if edge_map is not None:
+                points = snap_closed_polygon(points, edge_map)
+
         chamber = self._active_contour_chamber
         chamber_key = chamber.upper()
         measurement_label = None
@@ -3061,10 +3112,48 @@ class ViewerWidget(QWidget):
             phase=self._active_contour_phase or "GEN",
             view=self._active_contour_view,
             chamber=chamber,
-            points=list(self._active_arc_points),
+            points=points,
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
         )
+        self._clear_active_contour_drawing()
+        self.set_contour_from_domain(contour)
+        self.contour_completed.emit(contour)
+        return True
+
+    def _finish_freehand_contour(self) -> bool:
+        if len(self._freehand_points) < 3:
+            self._clear_active_contour_drawing()
+            return False
+
+        from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
+        from echo_personal_tool.domain.services.contour_edge_snap import (
+            snap_closed_polygon,
+        )
+
+        reduced = reduce_polygon_points(self._freehand_points, epsilon=2.0, closed=False)
+
+        if self._magnetic_snap_enabled:
+            edge_map = self._get_edge_map()
+            if edge_map is not None:
+                reduced = snap_closed_polygon(reduced, edge_map)
+
+        chamber = self._active_contour_chamber
+        chamber_key = chamber.upper()
+        measurement_label = None
+        if chamber_key == GENERIC_AREA_CHAMBER:
+            measurement_label = next_area_label(tuple(self._stored_contours))
+
+        contour = Contour(
+            phase=self._active_contour_phase or "GEN",
+            view=self._active_contour_view,
+            chamber=chamber,
+            points=reduced,
+            frame_index=self._contour_frame_index(),
+            measurement_label=measurement_label,
+        )
+        self._freehand_recording = False
+        self._freehand_points = []
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
@@ -3698,6 +3787,8 @@ class ViewerWidget(QWidget):
         self._active_mitral_annulus = None
         self._active_apex_landmark = None
         self._active_arc_points = []
+        self._freehand_recording = False
+        self._freehand_points = []
         self._active_contour_phase = None
         self._contour_stage = None
         self._contour_mode_kind = None
@@ -4619,6 +4710,12 @@ class ViewerWidget(QWidget):
             return False
 
         ev.accept()
+        if self._area_tool_mode == "freehand" and self._freehand_recording:
+            if ev.double():
+                self._finish_freehand_contour()
+                return True
+            return True  # single clicks ignored in freehand mode
+
         if ev.double():
             self.finish_contour()
             return True
@@ -4626,6 +4723,17 @@ class ViewerWidget(QWidget):
         point = self._view.mapSceneToView(ev.scenePos())
         self.handle_contour_click((float(point.x()), float(point.y())))
         return True
+
+    @staticmethod
+    def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+    def _update_freehand_preview(self) -> None:
+        if self._active_contour_item is None or not self._freehand_points:
+            return
+        xs = [p[0] for p in self._freehand_points]
+        ys = [p[1] for p in self._freehand_points]
+        self._active_contour_item.setData(xs, ys)
 
     def _show_active_ma_chord(self) -> None:
         if self._active_mitral_annulus is None:
@@ -5649,6 +5757,13 @@ class ViewerWidget(QWidget):
 
     def magnetic_snap_enabled(self) -> bool:
         return self._magnetic_snap_enabled
+
+    def set_area_tool_mode(self, mode: str) -> None:
+        if mode in ("click", "freehand"):
+            self._area_tool_mode = mode
+
+    def area_tool_mode(self) -> str:
+        return self._area_tool_mode
 
     def set_despeckle_enabled(self, enabled: bool) -> None:
         self._despeckle_enabled = bool(enabled)

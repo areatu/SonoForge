@@ -695,6 +695,7 @@
   "unit.percent": "%",
   "unit.px": "px",
   "viewer.area_contour_prompt": "Площадь: клики по контуру, двойной щелчок — замкнуть",
+  "viewer.area_freehand_prompt": "Площадь (свободное): ведите мышь, отпустите или двойной щелчок — завершить",
   "viewer.calibration.auto_ok": "Авто-калибровка ОК",
   "viewer.calibration.calibration_prompt": "Проведите калибровку",
   "viewer.calibration.click_top": "Калибровка: 1-й клик — верхняя метка, 2-й — нижняя (Escape — отмена)",
