@@ -483,3 +483,59 @@ class TestPersistWindowLevelPreferences:
         with patch("echo_personal_tool.presentation.main_window.save_user_preferences"):
             main_window._persist_window_level_preferences()
             assert main_window._user_preferences.wl_preset == "last_used"
+
+
+class TestApplyAreaToolMode:
+    def test_applies_freehand_mode(self, main_window):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        prefs = UserPreferences(
+            theme_mode="dark",
+            ui_font_size=13,
+            layout_state_json="",
+            confirm_reset=False,
+            auto_play=False,
+            magnetic_snap_enabled=False,
+            despeckle_enabled=False,
+            length_display_unit="mm",
+            pdf_font_size=11,
+            results_overlay_custom_position=False,
+            language="ru",
+            area_tool_mode="freehand",
+        )
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch.object(main_window._viewer, "set_area_tool_mode") as mock_set,
+        ):
+            main_window._apply_user_preferences(prefs)
+            mock_set.assert_called_with("freehand")
+
+    def test_applies_click_mode(self, main_window):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        prefs = UserPreferences(
+            theme_mode="dark",
+            ui_font_size=13,
+            layout_state_json="",
+            confirm_reset=False,
+            auto_play=False,
+            magnetic_snap_enabled=False,
+            despeckle_enabled=False,
+            length_display_unit="mm",
+            pdf_font_size=11,
+            results_overlay_custom_position=False,
+            language="ru",
+            area_tool_mode="click",
+        )
+        with (
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+            patch("echo_personal_tool.infrastructure.i18n.set_language"),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(main_window._controller, "compute_overlay_snapshot", return_value=None),
+            patch.object(main_window._viewer, "set_area_tool_mode") as mock_set,
+        ):
+            main_window._apply_user_preferences(prefs)
+            mock_set.assert_called_with("click")

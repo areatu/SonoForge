@@ -818,6 +818,7 @@ class MainWindow(QMainWindow):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
         self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
+        self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
