@@ -53,6 +53,7 @@ dependencies = [
 @dataclass(frozen=True)
 class StowResult:
     """Результат STOW-RS или batch C-STORE."""
+
     success_count: int
     failed_uids: list[str]
     error_message: str = ""
@@ -106,9 +107,7 @@ class DicomWebClient(Protocol):
 
     def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]: ...
 
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes: ...
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes: ...
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult:
         """STOW-RS — загрузка одного или нескольких DICOM-объектов."""
@@ -154,18 +153,20 @@ Download **всегда** через `DicomWebClient.download_instance` в v1 (`
 ```python
 # infrastructure/server_settings.py (или server_client_factory.py)
 
+
 def make_dimse_client(settings: ServerSettings) -> DimseClient:
     if settings.use_mock:
         return FakeDimseClient()
     return PynetdimseClient.from_settings(settings)
+
 
 def make_dicom_web_client(settings: ServerSettings) -> DicomWebClient:
     if settings.use_mock:
         return FakeDicomWebClient()
     return OrthancDicomWebClient.from_settings(settings)
 
-def make_dicom_query_service(settings: ServerSettings, source: QuerySource) -> DicomQueryService:
-    ...
+
+def make_dicom_query_service(settings: ServerSettings, source: QuerySource) -> DicomQueryService: ...
 ```
 
 `main_window.py` создаёт сервис, передаёт в `OrthancStudyDialog` — **не** `DicomWebClient | DimseClient` напрямую.
@@ -375,6 +376,7 @@ class FakeDimseClient:
 ```python
 class DicomUploadWorker(QRunnable):
     def __init__(self, files: list[bytes], uploader: DicomUploadClient): ...
+
     # signals: progress(int, int), finished(StowResult), failed(str)
 ```
 

@@ -408,78 +408,84 @@ After `self._syncing_state = False`, add:
 Add before `_drag_contour_point`:
 
 ```python
-    def _sigma_for_contour_drag(self) -> float:
-        x_range, _y_range = self._view.viewRange()
-        return sigma_from_view_range(x_range[1] - x_range[0], self._view.width())
+def _sigma_for_contour_drag(self) -> float:
+    x_range, _y_range = self._view.viewRange()
+    return sigma_from_view_range(x_range[1] - x_range[0], self._view.width())
 
-    def _pinned_indices_for_contour(self, contour: Contour) -> frozenset[int]:
-        if contour.is_open_arc and len(contour.points) >= 2:
-            return frozenset({0, len(contour.points) - 1})
-        return frozenset()
 
-    def _snap_open_arc_endpoints(self, contour: Contour) -> None:
-        if not contour.is_open_arc or contour.mitral_annulus is None:
-            return
-        septal, lateral = contour.mitral_annulus
-        contour.points[0] = septal
-        contour.points[-1] = lateral
+def _pinned_indices_for_contour(self, contour: Contour) -> frozenset[int]:
+    if contour.is_open_arc and len(contour.points) >= 2:
+        return frozenset({0, len(contour.points) - 1})
+    return frozenset()
 
-    def _update_contour_node_highlights(
-        self,
-        contour_index: int,
-        weights: np.ndarray,
-    ) -> None:
-        if contour_index < 0 or contour_index >= len(self._contour_nodes):
-            return
-        for idx, node in enumerate(self._contour_nodes[contour_index]):
-            active = idx < len(weights) and weights[idx] > WEIGHT_ACTIVE_THRESHOLD
-            node.set_rbf_highlight(active=active)
 
-    def _clear_contour_node_highlights(self, contour_index: int) -> None:
-        if contour_index < 0 or contour_index >= len(self._contour_nodes):
-            return
-        for node in self._contour_nodes[contour_index]:
-            node.set_rbf_highlight(active=False)
+def _snap_open_arc_endpoints(self, contour: Contour) -> None:
+    if not contour.is_open_arc or contour.mitral_annulus is None:
+        return
+    septal, lateral = contour.mitral_annulus
+    contour.points[0] = septal
+    contour.points[-1] = lateral
 
-    def _clear_drag_session(self) -> None:
-        self._drag_session = None
 
-    def _apply_rbf_drag_step(
-        self,
-        contour_index: int,
-        x: float,
-        y: float,
-        *,
-        force: bool = False,
-    ) -> bool:
-        """Return True if displacement was applied."""
-        if contour_index < 0 or contour_index >= len(self._contours):
-            return False
-        contour = self._contours[contour_index]
+def _update_contour_node_highlights(
+    self,
+    contour_index: int,
+    weights: np.ndarray,
+) -> None:
+    if contour_index < 0 or contour_index >= len(self._contour_nodes):
+        return
+    for idx, node in enumerate(self._contour_nodes[contour_index]):
+        active = idx < len(weights) and weights[idx] > WEIGHT_ACTIVE_THRESHOLD
+        node.set_rbf_highlight(active=active)
 
-        if self._drag_session is None or self._drag_session[0] != contour_index:
-            self._drag_session = (contour_index, x, y)
-            return False
 
-        last_x, last_y = self._drag_session[1], self._drag_session[2]
-        delta = (x - last_x, y - last_y)
-        if not force and math.hypot(delta[0], delta[1]) < MIN_DELTA_NORM:
-            return False
+def _clear_contour_node_highlights(self, contour_index: int) -> None:
+    if contour_index < 0 or contour_index >= len(self._contour_nodes):
+        return
+    for node in self._contour_nodes[contour_index]:
+        node.set_rbf_highlight(active=False)
 
-        sigma = self._sigma_for_contour_drag()
-        cursor = (x, y)
-        pinned = self._pinned_indices_for_contour(contour)
-        weights = gaussian_weights(contour.points, cursor, sigma, pinned_indices=pinned)
-        updated = apply_gaussian_displacement(contour.points, delta, weights)
-        contour.points[:] = updated
-        self._snap_open_arc_endpoints(contour)
 
-        for idx, point in enumerate(contour.points):
-            self._contour_nodes[contour_index][idx].setData([point[0]], [point[1]])
-        self._update_contour_node_highlights(contour_index, weights)
-        self._refresh_rendered_contour_geometry(contour_index)
+def _clear_drag_session(self) -> None:
+    self._drag_session = None
+
+
+def _apply_rbf_drag_step(
+    self,
+    contour_index: int,
+    x: float,
+    y: float,
+    *,
+    force: bool = False,
+) -> bool:
+    """Return True if displacement was applied."""
+    if contour_index < 0 or contour_index >= len(self._contours):
+        return False
+    contour = self._contours[contour_index]
+
+    if self._drag_session is None or self._drag_session[0] != contour_index:
         self._drag_session = (contour_index, x, y)
-        return True
+        return False
+
+    last_x, last_y = self._drag_session[1], self._drag_session[2]
+    delta = (x - last_x, y - last_y)
+    if not force and math.hypot(delta[0], delta[1]) < MIN_DELTA_NORM:
+        return False
+
+    sigma = self._sigma_for_contour_drag()
+    cursor = (x, y)
+    pinned = self._pinned_indices_for_contour(contour)
+    weights = gaussian_weights(contour.points, cursor, sigma, pinned_indices=pinned)
+    updated = apply_gaussian_displacement(contour.points, delta, weights)
+    contour.points[:] = updated
+    self._snap_open_arc_endpoints(contour)
+
+    for idx, point in enumerate(contour.points):
+        self._contour_nodes[contour_index][idx].setData([point[0]], [point[1]])
+    self._update_contour_node_highlights(contour_index, weights)
+    self._refresh_rendered_contour_geometry(contour_index)
+    self._drag_session = (contour_index, x, y)
+    return True
 ```
 
 Add `import math` at top of `viewer_widget.py` if not already present.
@@ -593,37 +599,34 @@ Expected: PASS after Task 6; if FAIL, complete Task 6 first.
 Replace `_finalize_contour_point_drag` with:
 
 ```python
-    def _finalize_contour_point_drag(
-        self,
-        contour_index: int,
-        point_index: int,
-        x: float,
-        y: float,
-    ) -> None:
-        if contour_index < 0 or contour_index >= len(self._contours):
-            self._clear_drag_session()
-            return
-        self._apply_rbf_drag_step(contour_index, x, y, force=True)
-        contour = self._contours[contour_index]
-        if contour.is_open_arc:
-            num_nodes = contour.num_nodes or DEFAULT_NODE_COUNT
-            resampled = resample_open_arc(contour.points, num_nodes=num_nodes)
-            contour.points[:] = resampled
-            if contour.mitral_annulus is not None:
-                contour.mitral_annulus = (resampled[0], resampled[-1])
-            for idx, point in enumerate(resampled):
-                self._contour_nodes[contour_index][idx].setData([point[0]], [point[1]])
-            self._refresh_rendered_contour_geometry(contour_index)
-        self._clear_contour_node_highlights(contour_index)
+def _finalize_contour_point_drag(
+    self,
+    contour_index: int,
+    point_index: int,
+    x: float,
+    y: float,
+) -> None:
+    if contour_index < 0 or contour_index >= len(self._contours):
         self._clear_drag_session()
-        self._upsert_stored_contour(contour)
-        self.contours_changed.emit(self.contours())
-        current_frame = self._contour_frame_index()
-        if (
-            contour.chamber.upper() == "LV"
-            and contour.frame_index == current_frame
-        ):
-            self._refresh_lv_frame_overlay()
+        return
+    self._apply_rbf_drag_step(contour_index, x, y, force=True)
+    contour = self._contours[contour_index]
+    if contour.is_open_arc:
+        num_nodes = contour.num_nodes or DEFAULT_NODE_COUNT
+        resampled = resample_open_arc(contour.points, num_nodes=num_nodes)
+        contour.points[:] = resampled
+        if contour.mitral_annulus is not None:
+            contour.mitral_annulus = (resampled[0], resampled[-1])
+        for idx, point in enumerate(resampled):
+            self._contour_nodes[contour_index][idx].setData([point[0]], [point[1]])
+        self._refresh_rendered_contour_geometry(contour_index)
+    self._clear_contour_node_highlights(contour_index)
+    self._clear_drag_session()
+    self._upsert_stored_contour(contour)
+    self.contours_changed.emit(self.contours())
+    current_frame = self._contour_frame_index()
+    if contour.chamber.upper() == "LV" and contour.frame_index == current_frame:
+        self._refresh_lv_frame_overlay()
 ```
 
 - [ ] **Step 4: Clear session on contour removal**

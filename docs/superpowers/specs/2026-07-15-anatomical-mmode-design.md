@@ -117,17 +117,17 @@ Frame loaded (scroll/playback)
 
 ```python
 def extract_mmode_column(
-    frame: np.ndarray,          # shape (H, W), uint8 or uint16
-    start: tuple[float, float], # (x1, y1) in pixels
-    end: tuple[float, float],   # (x2, y2) in pixels
-    num_samples: int = 256      # depth resolution
-) -> np.ndarray:                # shape (num_samples,), same dtype as frame
+    frame: np.ndarray,  # shape (H, W), uint8 or uint16
+    start: tuple[float, float],  # (x1, y1) in pixels
+    end: tuple[float, float],  # (x2, y2) in pixels
+    num_samples: int = 256,  # depth resolution
+) -> np.ndarray:  # shape (num_samples,), same dtype as frame
     t = np.linspace(0, 1, num_samples)
     xs = start[0] + t * (end[0] - start[0])
     ys = start[1] + t * (end[1] - start[1])
-    return scipy.ndimage.map_coordinates(
-        frame.astype(np.float64), [ys, xs], order=1, mode='nearest'
-    ).astype(frame.dtype)
+    return scipy.ndimage.map_coordinates(frame.astype(np.float64), [ys, xs], order=1, mode="nearest").astype(
+        frame.dtype
+    )
 ```
 
 **Performance:** < 1ms for 256 samples on a 512x512 frame.

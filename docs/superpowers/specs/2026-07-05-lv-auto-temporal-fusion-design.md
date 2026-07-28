@@ -234,12 +234,12 @@ No keyboard action changes `frame_index` of accepted contour.
 @dataclass
 class TemporalFusionResult:
     anchor_frame_index: int
-    fused_contour: Contour              # frame_index = anchor, review_pending=True
-    center_contour: Contour             # ONNX N only (aligned)
+    fused_contour: Contour  # frame_index = anchor, review_pending=True
+    center_contour: Contour  # ONNX N only (aligned)
     neighbor_contours: dict[int, Contour]  # aligned to N
     frames_used: int
     frames_requested: int
-    config: TemporalFusionConfig        # frozen snapshot for reproducibility
+    config: TemporalFusionConfig  # frozen snapshot for reproducibility
 ```
 
 **File:** `domain/models/temporal_fusion.py` (or fields in existing models module).

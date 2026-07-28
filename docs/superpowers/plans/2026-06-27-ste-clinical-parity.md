@@ -60,10 +60,12 @@
 import numpy as np
 from echo_personal_tool.domain.services.contour_utils import resample_contour
 
+
 def test_resample_contour_fixed_count():
     pts = np.array([[0.0, 0.0], [10.0, 0.0], [10.0, 10.0]], dtype=np.float64)
     out = resample_contour(pts, n_points=128)
     assert out.shape == (128, 2)
+
 
 def test_resample_contour_deterministic():
     pts = np.array([[0.0, 0.0], [5.0, 5.0], [10.0, 0.0]], dtype=np.float64)
@@ -79,6 +81,7 @@ import pytest
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.domain.exceptions import IncompleteCineError
 
+
 def test_require_full_cine_raises_on_partial():
     cache = FrameCache(evict_window=2)
     frames = np.zeros((10, 32, 32), dtype=np.uint8)
@@ -86,6 +89,7 @@ def test_require_full_cine_raises_on_partial():
     cache.set_current(5)  # evicts frames outside window
     with pytest.raises(IncompleteCineError):
         cache.require_full_cine()
+
 
 def test_require_full_cine_returns_stack():
     cache = FrameCache()
@@ -106,6 +110,7 @@ Expected: FAIL — module/function not found
 # src/echo_personal_tool/domain/exceptions.py
 class IncompleteCineError(RuntimeError):
     """Raised when speckle tracking requires full cine but frames were evicted."""
+
 
 class TrackingIncompleteError(RuntimeError):
     """Raised when too few kernels tracked successfully."""
@@ -149,6 +154,7 @@ def resample_contour(points: np.ndarray, n_points: int = 128) -> np.ndarray:
 # Add to frame_cache.py
 from echo_personal_tool.domain.exceptions import IncompleteCineError
 
+
 def require_full_cine(self) -> np.ndarray:
     if not self._frame_store or self._total_frames == 0:
         raise IncompleteCineError("Frame cache is empty")
@@ -165,6 +171,7 @@ def require_full_cine(self) -> np.ndarray:
 In `create_myocardial_zone()`:
 ```python
 from echo_personal_tool.domain.services.contour_utils import resample_contour
+
 endo_points = resample_contour(endo_points, n_points=128)
 ```
 
@@ -221,10 +228,7 @@ def track_frame_from_reference(
     config: SpeckleConfig,
 ) -> TrackingResult:
     """Match kernels from reference frame positions to target frame."""
-    kernels = [
-        TrackingKernel(center=c, node_index=i, layer="endo")
-        for i, c in enumerate(kernel_centers)
-    ]
+    kernels = [TrackingKernel(center=c, node_index=i, layer="endo") for i, c in enumerate(kernel_centers)]
     return track_frame_pair(reference, target, kernels, config)
 
 
@@ -260,8 +264,9 @@ def track_cine_bidirectional(
         if config.bidirectional:
             # Backward: t → ED (template from target at forward position)
             bwd_kernels = [
-                TrackingKernel(center=(float(p_fwd[i, 0]), float(p_fwd[i, 1])),
-                               node_index=i, layer=initial_kernels[i].layer)
+                TrackingKernel(
+                    center=(float(p_fwd[i, 0]), float(p_fwd[i, 1])), node_index=i, layer=initial_kernels[i].layer
+                )
                 for i in range(len(initial_kernels))
             ]
             bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
@@ -297,13 +302,15 @@ def track_cine_bidirectional(
     results: list[TrackingResult] = []
     for t in range(1, n_frames):
         disp = positions[t] - positions[t - 1]
-        results.append(TrackingResult(
-            frame_index=t,
-            displacements=disp,
-            ncc_scores=ncc_all[t],
-            valid_mask=valid_all[t],
-            kernel_positions=positions[t],
-        ))
+        results.append(
+            TrackingResult(
+                frame_index=t,
+                displacements=disp,
+                ncc_scores=ncc_all[t],
+                valid_mask=valid_all[t],
+                kernel_positions=positions[t],
+            )
+        )
     return results
 ```
 
@@ -338,6 +345,7 @@ def test_spatial_smoothing_preserves_valid_kernels():
     config = SpeckleConfig(spatial_smoothing=1.0, temporal_smoothing=0.0)
     out = smooth_trajectories(positions, ncc, kernels, config)
     assert out.shape == positions.shape
+
 
 def test_temporal_smoothing_reduces_jitter():
     t = np.arange(20)
@@ -442,6 +450,7 @@ def test_green_lagrange_zero_at_reference():
     strain = compute_longitudinal_strain_gl(positions, ed_index=0, pixel_spacing=(1.0, 1.0))
     np.testing.assert_allclose(strain[0], 0.0, atol=1e-6)
 
+
 def test_drift_compensation_zeros_endpoints():
     strain = np.array([0.0, -5.0, -10.0, -8.0, -2.0])
     corrected = apply_drift_compensation(strain, ed_index=0, n_frames=5)
@@ -473,13 +482,11 @@ def compute_longitudinal_strain_gl(
     for t in range(n_frames):
         lt = contour_arc_length(positions[t, endo_indices, :], pixel_spacing)
         ratio = lt / l0
-        strain[t] = 0.5 * (ratio ** 2 - 1.0) * 100.0
+        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
     return strain
 
 
-def apply_drift_compensation(
-    strain: np.ndarray, ed_index: int, n_frames: int
-) -> np.ndarray:
+def apply_drift_compensation(strain: np.ndarray, ed_index: int, n_frames: int) -> np.ndarray:
     out = strain.copy()
     if n_frames < 2:
         return out
@@ -519,6 +526,7 @@ def test_assign_aha_segments_apical4ch():
     assigned = assign_aha_segments(kernels, lv_center=center, view="A4C")
     assert all(k.aha_segment > 0 for k in assigned)
 
+
 def test_gls_from_segments_excludes_low_quality():
     segment_strain = {1: -18.0, 2: -20.0, 3: -5.0}
     segment_quality = {1: 0.9, 2: 0.8, 3: 0.2}
@@ -557,6 +565,7 @@ def detect_ed_es_from_frames(
         areas.append(_estimate_lv_area_proxy(frames[t], zone))
     areas = np.array(areas, dtype=np.float64)
     from scipy.interpolate import CubicSpline
+
     cs = CubicSpline(np.arange(len(areas)), areas, bc_type="natural", s=len(areas) * 0.5)
     smooth = cs(np.arange(len(areas)))
     ed = int(np.argmax(smooth))
@@ -626,6 +635,7 @@ Before tracking: show settings dialog. After tracking: populate `SegmentQualityP
 def detect_cycle_boundaries(areas: np.ndarray, min_cycle_frames: int = 15) -> list[tuple[int, int]]:
     """Return list of (start, end) frame indices for each cardiac cycle."""
     ...
+
 
 def average_strain_curves(curves: list[np.ndarray], boundaries: list[tuple[int, int]]) -> np.ndarray:
     """Resample each cycle to normalized phase and average."""

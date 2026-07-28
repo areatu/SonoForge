@@ -161,9 +161,7 @@ Replace `test_calculate_without_ed_es_pair_returns_none` in `test_lvef_simpson.p
 
 ```python
 def test_calculate_single_ed_returns_partial_a4c_metrics() -> None:
-    contours = (
-        open_arc_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),
-    )
+    contours = (open_arc_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),)
     result = calculate(contours, (0.5, 0.5))
 
     assert result is not None
@@ -452,8 +450,14 @@ def test_measurement_tools_panel_has_manual_and_mbs_buttons(qtbot) -> None:
     qtbot.addWidget(panel)
     labels = {button.text() for button in panel.findChildren(QPushButton)}
     assert labels >= {
-        "Diastole", "Systole", "EDV Auto", "ESV Auto",
-        "All Diastole", "ESD Systole", "LA AP", "LAV",
+        "Diastole",
+        "Systole",
+        "EDV Auto",
+        "ESV Auto",
+        "All Diastole",
+        "ESD Systole",
+        "LA AP",
+        "LAV",
     }
 ```
 
@@ -521,6 +525,7 @@ Key changes to `measurement_tools_panel.py`:
 from typing import Literal
 from PySide6.QtCore import QTimer, Signal
 
+
 class MeasurementToolsPanel(QWidget):
     manual_simpson_requested = Signal(str, str)  # view, phase
     mbs_simpson_requested = Signal(str, str)
@@ -567,31 +572,47 @@ class MeasurementToolsPanel(QWidget):
     def _build_manual_group(self) -> QGroupBox:
         group = QGroupBox("Manual")
         row = QHBoxLayout(group)
-        row.addLayout(self._build_view_column(
-            "4C", "Diastole", "Systole",
-            registry=self._manual_buttons,
-            signal=self.manual_simpson_requested,
-        ))
-        row.addLayout(self._build_view_column(
-            "2C", "Diastole", "Systole",
-            registry=self._manual_buttons,
-            signal=self.manual_simpson_requested,
-        ))
+        row.addLayout(
+            self._build_view_column(
+                "4C",
+                "Diastole",
+                "Systole",
+                registry=self._manual_buttons,
+                signal=self.manual_simpson_requested,
+            )
+        )
+        row.addLayout(
+            self._build_view_column(
+                "2C",
+                "Diastole",
+                "Systole",
+                registry=self._manual_buttons,
+                signal=self.manual_simpson_requested,
+            )
+        )
         return group
 
     def _build_mbs_group(self) -> QGroupBox:
         group = QGroupBox("MBS")
         row = QHBoxLayout(group)
-        row.addLayout(self._build_view_column(
-            "4C", "EDV Auto", "ESV Auto",
-            registry=self._mbs_buttons,
-            signal=self.mbs_simpson_requested,
-        ))
-        row.addLayout(self._build_view_column(
-            "2C", "EDV Auto", "ESV Auto",
-            registry=self._mbs_buttons,
-            signal=self.mbs_simpson_requested,
-        ))
+        row.addLayout(
+            self._build_view_column(
+                "4C",
+                "EDV Auto",
+                "ESV Auto",
+                registry=self._mbs_buttons,
+                signal=self.mbs_simpson_requested,
+            )
+        )
+        row.addLayout(
+            self._build_view_column(
+                "2C",
+                "EDV Auto",
+                "ESV Auto",
+                registry=self._mbs_buttons,
+                signal=self.mbs_simpson_requested,
+            )
+        )
         return group
 
     def start_es_prompt(self, mode: Literal["manual", "mbs"], view: str) -> None:
@@ -617,9 +638,7 @@ class MeasurementToolsPanel(QWidget):
         if self._blink_target is None:
             return
         self._blink_on = not self._blink_on
-        self._blink_target.setStyleSheet(
-            self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE
-        )
+        self._blink_target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
 ```
 
 **Note:** Use consistent registry keys — recommend `("4C", "ED")` / `("2C", "ES")` in panel; emit `"A4C"`/`"A2C"` in signals via mapping in click lambdas:
@@ -692,8 +711,8 @@ Expected: FAIL — `_on_manual_simpson_requested` not found
 
 Remove from `_install_shortcuts` and `_handle_key_press`:
 ```python
-("D", self._controller.mark_ed),
-("S", self._controller.mark_es),
+(("D", self._controller.mark_ed),)
+(("S", self._controller.mark_es),)
 ```
 
 Replace `_wire_measurement_tools`:
@@ -719,14 +738,11 @@ def _on_manual_simpson_requested(self, view: str, phase: str) -> None:
         self._measurement_panel.tools.stop_es_prompt()
     if self._viewer.start_contour(phase=phase, view=view):
         self._viewer.clear_frame_overlay()
-        self._viewer.append_frame_overlay(
-            f"Manual {view} {phase}: MA septal → lateral → apex"
-        )
-        self._show_status(
-            f"Manual Simpson {view} {phase}: click MA septal, lateral, apex"
-        )
+        self._viewer.append_frame_overlay(f"Manual {view} {phase}: MA septal → lateral → apex")
+        self._show_status(f"Manual Simpson {view} {phase}: click MA septal, lateral, apex")
     else:
         self._show_status("Load a frame first or cancel the active tool (Esc)")
+
 
 def _on_mbs_simpson_requested(self, view: str, phase: str) -> None:
     if self._view_mode != "2d":
@@ -736,14 +752,11 @@ def _on_mbs_simpson_requested(self, view: str, phase: str) -> None:
         self._measurement_panel.tools.stop_es_prompt()
     if self._viewer.start_model_contour(phase=phase, view=view):
         self._viewer.clear_frame_overlay()
-        self._viewer.append_frame_overlay(
-            f"MBS-lite {view} {phase}: MA septal → lateral → apex"
-        )
-        self._show_status(
-            f"MBS-lite {view} {phase}: click MA septal, lateral, apex"
-        )
+        self._viewer.append_frame_overlay(f"MBS-lite {view} {phase}: MA septal → lateral → apex")
+        self._show_status(f"MBS-lite {view} {phase}: click MA septal, lateral, apex")
     else:
         self._show_status("Load a frame first or cancel the active tool (Esc)")
+
 
 def _on_es_button_pressed(self, view: str, phase: str) -> None:
     if phase == "ES":
@@ -766,6 +779,7 @@ def _on_contour_completed(self, contour: object) -> None:
         else None
     )
     from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
+
     self._viewer.clear_frame_overlay()
     self._viewer.append_frame_overlay(format_contour_overlay(contour, pixel_spacing))
 
@@ -773,13 +787,9 @@ def _on_contour_completed(self, contour: object) -> None:
         mode = "mbs" if contour.source == "model" else "manual"
         view_label = "4C" if contour.view.upper() == "A4C" else "2C"
         es_name = "ESV Auto" if mode == "mbs" else "Systole"
-        self._viewer.append_frame_overlay(
-            f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})"
-        )
+        self._viewer.append_frame_overlay(f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})")
         self._measurement_panel.tools.start_es_prompt(mode, view_label)
-        self._show_status(
-            f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})"
-        )
+        self._show_status(f"Перейдите на кадр систолы и нажмите {es_name} ({view_label})")
     elif contour.phase.upper() == "ES":
         self._measurement_panel.tools.stop_es_prompt()
 ```
@@ -823,10 +833,15 @@ Add to `tests/unit/test_contour.py` or `test_measurement_tools_panel.py`:
 def test_resolve_contour_phase_defaults_to_ed_without_markers(qtbot) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
-    viewer.set_state(ViewerState(
-        instance=None, current_frame_index=3, total_frames=10,
-        frame_time_ms=33.3, is_playing=False,
-    ))
+    viewer.set_state(
+        ViewerState(
+            instance=None,
+            current_frame_index=3,
+            total_frames=10,
+            frame_time_ms=33.3,
+            is_playing=False,
+        )
+    )
     assert viewer._resolve_contour_phase() == "ED"
 ```
 
@@ -860,7 +875,9 @@ In `_finalize_contour_point_drag`, after `contours_changed.emit`, update overlay
 ```python
 if contour.chamber.upper() == "LV" and contour.frame_index == self._contour_frame_index():
     self.clear_frame_overlay()
-    spacing = self._current_state.instance.pixel_spacing if self._current_state and self._current_state.instance else None
+    spacing = (
+        self._current_state.instance.pixel_spacing if self._current_state and self._current_state.instance else None
+    )
     self.append_frame_overlay(format_contour_overlay(contour, spacing))
 ```
 
@@ -891,11 +908,13 @@ git commit -m "refactor: remove ED/ES viewer markers and add numeric contour ove
 def test_measurement_panel_shows_russian_lv_metrics_partial_ed(qtbot) -> None:
     panel = MeasurementPanel()
     qtbot.addWidget(panel)
-    panel.set_measurement_snapshot(MeasurementSnapshot(
-        lvef=LvefResult(
-            a4c=LvViewMetrics(length_ed_mm=82.3, edv_ml=124.5),
-        ),
-    ))
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(length_ed_mm=82.3, edv_ml=124.5),
+            ),
+        )
+    )
     text = panel._summary_label.text()
     assert "Объёмы ЛЖ (Симпсон)" in text
     assert "Длина ЛЖ 4C" in text
@@ -907,16 +926,20 @@ def test_measurement_panel_shows_russian_lv_metrics_partial_ed(qtbot) -> None:
 def test_measurement_panel_shows_lvef_when_ed_es_pair_complete(qtbot) -> None:
     panel = MeasurementPanel()
     qtbot.addWidget(panel)
-    panel.set_measurement_snapshot(MeasurementSnapshot(
-        lvef=LvefResult(
-            a4c=LvViewMetrics(
-                length_ed_mm=82.0, length_es_mm=78.0,
-                edv_ml=120.0, esv_ml=45.0,
+    panel.set_measurement_snapshot(
+        MeasurementSnapshot(
+            lvef=LvefResult(
+                a4c=LvViewMetrics(
+                    length_ed_mm=82.0,
+                    length_es_mm=78.0,
+                    edv_ml=120.0,
+                    esv_ml=45.0,
+                ),
+                lvef_percent=62.5,
+                method="simpson_monoplan",
             ),
-            lvef_percent=62.5,
-            method="simpson_monoplan",
-        ),
-    ))
+        )
+    )
     text = panel._summary_label.text()
     assert "КСО ЛЖ 4C" in text
     assert "ФВ ЛЖ" in text

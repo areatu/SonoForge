@@ -57,16 +57,19 @@ from dataclasses import dataclass
 from enum import IntEnum
 import heapq
 
+
 class ThumbnailPriority(IntEnum):
     P0_VISIBLE_SELECTED = 0
     P1_NEAR_VISIBLE = 1
     P2_BACKGROUND = 2
+
 
 @dataclass(frozen=True)
 class ThumbnailTask:
     sop_instance_uid: str
     priority: ThumbnailPriority
     generation: int
+
 
 class ThumbnailScheduler:
     def enqueue(self, uid: str, priority: ThumbnailPriority) -> bool: ...

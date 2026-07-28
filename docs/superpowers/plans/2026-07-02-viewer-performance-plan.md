@@ -62,6 +62,7 @@
 import numpy as np
 from echo_personal_tool.infrastructure.pixel_utils import apply_wl_lut
 
+
 def test_apply_wl_lut_grayscale():
     frame = np.random.randint(0, 65535, (512, 512), dtype=np.uint16)
     result = apply_wl_lut(frame, window=200.0, level=100.0, dr_pct=50.0)
@@ -70,12 +71,14 @@ def test_apply_wl_lut_grayscale():
     assert result.min() >= 0
     assert result.max() <= 255
 
+
 def test_apply_wl_lut_preserves_dark():
     """Чёрный пиксель (0) должен остаться чёрным при любом W/L."""
     frame = np.zeros((100, 100), dtype=np.uint16)
     result = apply_wl_lut(frame, window=100.0, level=50.0, dr_pct=50.0)
     assert result.min() == 0
     assert result.max() == 0
+
 
 def test_apply_wl_lut_bright():
     """Яркий пиксель (65535) — клиппинг в 255."""
@@ -135,7 +138,8 @@ def apply_wl_lut(
     high_display = c + w * 0.5
     lut = np.clip(
         (np.arange(65536, dtype=np.float64) - low_display) / max(high_display - low_display, 1.0) * 255.0,
-        0.0, 255.0,
+        0.0,
+        255.0,
     ).astype(np.uint8)
     if arr.ndim == 2 or (arr.ndim == 3 and arr.shape[2] == 1):
         return cv2.LUT(arr.astype(np.uint16), lut)
@@ -177,6 +181,7 @@ import numpy as np
 from pathlib import Path
 from echo_personal_tool.application.frame_cache import FrameCacheV2
 
+
 def test_cache_get_set():
     cache = FrameCacheV2(total_frames=10, frame_shape=(64, 64))
     frame = np.zeros((64, 64), dtype=np.uint8)
@@ -185,6 +190,7 @@ def test_cache_get_set():
     result = cache[0]
     assert result.shape == (64, 64)
 
+
 def test_cache_keyerror():
     cache = FrameCacheV2(total_frames=10, frame_shape=(64, 64))
     try:
@@ -192,6 +198,7 @@ def test_cache_keyerror():
         assert False, "Expected KeyError"
     except KeyError:
         pass
+
 
 def test_cache_eviction():
     cache = FrameCacheV2(total_frames=10, frame_shape=(64, 64), evict_window=2)
@@ -204,6 +211,7 @@ def test_cache_eviction():
     assert 4 in cache
     assert 5 in cache
     assert 6 in cache
+
 
 def test_cache_pin():
     cache = FrameCacheV2(total_frames=10, frame_shape=(64, 64), evict_window=1)
@@ -380,6 +388,7 @@ def _detect_gpu() -> tuple[bool, int]:
     try:
         from PySide6.QtGui import QOffscreenSurface, QOpenGLContext, QOpenGLVersionProfile
         from PySide6.QtCore import QSurfaceFormat
+
         surface = QOffscreenSurface()
         surface.create()
         ctx = QOpenGLContext()
@@ -448,6 +457,7 @@ git commit -m "feat(profiler): GPU detection in PlaybackConfig"
 # tests/unit/test_adaptive_prefetch.py
 from echo_personal_tool.application.adaptive_prefetch import AdaptivePrefetch
 
+
 def test_schedule_wrap_around_small():
     """Для цикла <= 60 кадров prefetch весь цикл."""
     prefetch = AdaptivePrefetch(total_frames=45)
@@ -456,15 +466,17 @@ def test_schedule_wrap_around_small():
     assert len(result) == 45
     assert sorted(result) == list(range(45))
 
+
 def test_schedule_directional():
     """Для большого цикла prefetch 30 вперёд + 15 назад."""
     prefetch = AdaptivePrefetch(total_frames=200)
     state = _make_state(current=50, total=200, playing=False)
     result = prefetch.schedule(state)
     assert 50 not in result  # текущий не в prefetch
-    assert 51 in result     # следующий
-    assert 49 in result     # предыдущий
+    assert 51 in result  # следующий
+    assert 49 in result  # предыдущий
     assert len(result) <= 45
+
 
 def test_schedule_playing_full():
     """При воспроизведении prefetch весь цикл полностью."""
@@ -477,6 +489,7 @@ def test_schedule_playing_full():
 def _make_state(current=0, total=60, playing=False):
     from echo_personal_tool.domain.models.viewer_state import ViewerState
     from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
     return ViewerState(
         instance=None,
         current_frame_index=current,
@@ -566,6 +579,7 @@ from echo_personal_tool.application.adaptive_prefetch import AdaptivePrefetch
 
 # В __init__ добавить:
 self._adaptive_prefetch: AdaptivePrefetch | None = None
+
 
 # В _prefetch_playback_buffer заменить логику на:
 def _prefetch_playback_buffer(self, center: int) -> None:
@@ -679,13 +693,9 @@ class GLWLShader:
         }
         """
         fs_code = _SHADER_PATH.read_text()
-        if not self._program.addShaderFromSourceCode(
-            QOpenGLShader.Vertex, vs_code
-        ):
+        if not self._program.addShaderFromSourceCode(QOpenGLShader.Vertex, vs_code):
             raise RuntimeError("Vertex shader compile failed")
-        if not self._program.addShaderFromSourceCode(
-            QOpenGLShader.Fragment, fs_code
-        ):
+        if not self._program.addShaderFromSourceCode(QOpenGLShader.Fragment, fs_code):
             raise RuntimeError("Fragment shader compile failed")
         if not self._program.link():
             raise RuntimeError("Shader program link failed")
@@ -737,6 +747,7 @@ git commit -m "feat(shader): GLSL W/L fragment shader + loader"
 import numpy as np
 from echo_personal_tool.application.texture_cache import TextureCache
 
+
 def test_texture_cache_get_or_upload():
     cache = TextureCache()
     pixels = np.zeros((64, 64, 3), dtype=np.uint8)
@@ -745,6 +756,7 @@ def test_texture_cache_get_or_upload():
     # Second call должен вернуть кэшированное
     tex2 = cache.get_or_upload(0, pixels)
     assert tex2 is tex
+
 
 def test_texture_cache_lru_eviction():
     cache = TextureCache(max_textures=3)
@@ -756,6 +768,7 @@ def test_texture_cache_lru_eviction():
     assert 0 not in cache
     assert 1 in cache
     assert 3 in cache
+
 
 def test_texture_cache_clear():
     cache = TextureCache()
@@ -809,11 +822,7 @@ class TextureCache:
             return self._textures[index]
         if len(self._textures) >= self._max:
             self._textures.popitem(last=False)
-        fmt = (
-            QOpenGLTexture.Red
-            if pixels.ndim == 2 or pixels.shape[2] == 1
-            else QOpenGLTexture.RGB
-        )
+        fmt = QOpenGLTexture.Red if pixels.ndim == 2 or pixels.shape[2] == 1 else QOpenGLTexture.RGB
         tex = QOpenGLTexture(QOpenGLTexture.Target2D)
         tex.setFormat(fmt)
         tex.setMinificationFilter(QOpenGLTexture.Linear)
@@ -915,6 +924,7 @@ if self._use_gpu and self._current_state is not None:
 def _try_enable_gpu(self) -> bool:
     try:
         from PySide6.QtOpenGLWidgets import QOpenGLWidget
+
         self._graphics.setViewport(QOpenGLWidget())
         self._gl_shader = GLWLShader()
         self._use_gpu = True

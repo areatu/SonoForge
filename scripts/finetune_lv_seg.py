@@ -81,12 +81,14 @@ def load_lv_samples(manifest_path: Path) -> list[dict]:
             if len(points) < 3:
                 continue
 
-            samples.append({
-                "instance_path": instance_path,
-                "frame_index": frame_index,
-                "phase": phase_key,
-                "points": points,
-            })
+            samples.append(
+                {
+                    "instance_path": instance_path,
+                    "frame_index": frame_index,
+                    "phase": phase_key,
+                    "points": points,
+                }
+            )
 
     return samples
 
@@ -94,6 +96,7 @@ def load_lv_samples(manifest_path: Path) -> list[dict]:
 def _resolve_frame(instance_path: str, frame_index: int) -> np.ndarray | None:
     try:
         from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+
         reader = DicomReaderImpl()
         frame = reader.read_pixels(Path(instance_path), frame_index)
         if frame.ndim == 3 and frame.shape[2] == 3:
@@ -125,10 +128,14 @@ class LVGoldDataset(torch.utils.data.Dataset):
             h, w = frame.shape[:2]
             mask = rasterize_polygon(s["points"], (h, w))
             roi_xyxy = resolve_segment_roi_xyxy(
-                frame, media_format="dicom", instance_path=Path(s["instance_path"]),
+                frame,
+                media_format="dicom",
+                instance_path=Path(s["instance_path"]),
             )
             cropped_frame, transform = crop_frame_for_echonet(
-                frame, roi_xyxy=roi_xyxy, crop_mode="center_square",
+                frame,
+                roi_xyxy=roi_xyxy,
+                crop_mode="center_square",
             )
             cropped_mask = mask[
                 transform.crop_y0 : transform.crop_y0 + transform.crop_height,
@@ -150,7 +157,8 @@ class LVGoldDataset(torch.utils.data.Dataset):
 
 
 def augment_pair(
-    frame: torch.Tensor, mask: torch.Tensor,
+    frame: torch.Tensor,
+    mask: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if random.random() > 0.5:
         frame = torch.flip(frame, dims=[2])
@@ -186,7 +194,9 @@ def build_model() -> nn.Module:
     # Replace classifier: 21-class → 1-class with positive bias (encourage foreground)
     classifier = model.classifier[-1]
     new_conv = nn.Conv2d(
-        classifier.in_channels, 1, kernel_size=classifier.kernel_size,
+        classifier.in_channels,
+        1,
+        kernel_size=classifier.kernel_size,
     )
     nn.init.zeros_(new_conv.bias)
     nn.init.constant_(new_conv.bias, 1.0)  # positive bias → sigmoid(1)≈0.73 initially
@@ -218,11 +228,14 @@ def train_model(
         sys.exit(1)
 
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=True,
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
         drop_last=len(dataset) >= batch_size,
     )
     optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=lr,
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr,
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
@@ -267,10 +280,14 @@ def export_onnx(model: nn.Module, output_path: Path, input_size: int = INPUT_SIZ
     dummy = torch.randn(1, 3, input_size, input_size)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
-        wrapper, dummy, str(output_path),
-        export_params=True, opset_version=17,
+        wrapper,
+        dummy,
+        str(output_path),
+        export_params=True,
+        opset_version=17,
         do_constant_folding=True,
-        input_names=["input"], output_names=["logits"],
+        input_names=["input"],
+        output_names=["logits"],
         dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
     )
     print(f"ONNX exported: {output_path} ({output_path.stat().st_size:,} bytes)")

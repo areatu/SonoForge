@@ -63,7 +63,9 @@ def _run_la_auto_segment(
 
     media_format = "dicom" if instance_path is not None else "mp4"
     roi_xyxy = resolve_segment_roi_xyxy(
-        gray, media_format=media_format, instance_path=instance_path,
+        gray,
+        media_format=media_format,
+        instance_path=instance_path,
     )
     crop_mode = echonet_crop_mode_for_media(media_format)
     mask = engine.segment(gray, roi_xyxy=roi_xyxy, crop_mode=crop_mode)
@@ -96,6 +98,7 @@ def _contour_to_mask(contour: Contour, shape: tuple[int, int]) -> np.ndarray:
     pts = np.array(contour.closed_polygon_points(), dtype=np.int32)
     if len(pts) >= 3:
         import cv2
+
         cv2.fillPoly(mask, [pts], 1)
     return mask
 
@@ -130,7 +133,9 @@ def _lav_delta_metrics(
     if not gold_pts or not gold_ma or auto_vol is None:
         return None, None
     gold_contour = Contour(
-        phase="ES", view="A4C", chamber="LA",
+        phase="ES",
+        view="A4C",
+        chamber="LA",
         mitral_annulus=(
             (float(gold_ma[0][0]), float(gold_ma[0][1])),
             (float(gold_ma[1][0]), float(gold_ma[1][1])),
@@ -163,7 +168,8 @@ def run_bench(
         return {}
 
     engine = OnnxInferenceEngine(
-        models_dir=models_dir, manifest_section="la_inference",
+        models_dir=models_dir,
+        manifest_section="la_inference",
     )
     if not engine.is_available():
         print("LA ONNX model not available. Run finetune_la_seg.py first.")
@@ -184,7 +190,8 @@ def run_bench(
         ps = (float(pixel_spacing[0]), float(pixel_spacing[1])) if len(pixel_spacing) >= 2 else None
 
         es_frames = [
-            frame for frame in gold.get("frames", [])
+            frame
+            for frame in gold.get("frames", [])
             if frame.get("phase") == "ES"
             and (frame.get("view") in (None, "A4C"))
             and frame.get("chamber", "LA").upper() == "LA"
@@ -207,7 +214,9 @@ def run_bench(
                 continue
 
             contour, mask_pixels, seg_mask = _run_la_auto_segment(
-                frame, instance_path=instance_path, engine=engine,
+                frame,
+                instance_path=instance_path,
+                engine=engine,
             )
 
             row: dict = {
@@ -239,7 +248,11 @@ def run_bench(
             )
 
             reject_reason = explain_la_auto_reject_reason(
-                contour, ps, mask_pixels=mask_pixels, mask=seg_mask, roi_xyxy=roi_xyxy,
+                contour,
+                ps,
+                mask_pixels=mask_pixels,
+                mask=seg_mask,
+                roi_xyxy=roi_xyxy,
             )
             if reject_reason is not None:
                 row["reject"] = True
@@ -262,6 +275,7 @@ def run_bench(
             gold_pts = np.array(es_frame.get("points", []), dtype=np.int32)
             if len(gold_pts) >= 3:
                 import cv2
+
                 cv2.fillPoly(gold_mask, [gold_pts], 1)
             pred_mask = _contour_to_mask(contour, frame.shape[:2])
             iou = mask_iou(pred_mask, gold_mask)
@@ -293,9 +307,8 @@ def run_bench(
             if lav_pct is not None:
                 row["lav_delta_pct"] = round(lav_pct, 4)
             if lav_delta is not None or lav_pct is not None:
-                row["lav_gate_pass"] = (
-                    (lav_delta is not None and lav_delta < 5.0)
-                    or (lav_pct is not None and lav_pct < 0.08)
+                row["lav_gate_pass"] = (lav_delta is not None and lav_delta < 5.0) or (
+                    lav_pct is not None and lav_pct < 0.08
                 )
 
             row["zero_edit"] = False
@@ -352,15 +365,9 @@ def run_bench(
         passed = abs_pass or rel_pass
         ml_txt = f"{median_lav:.2f} ml" if median_lav is not None else "n/a"
         pct_txt = f"{median_lav_pct:.1%}" if median_lav_pct is not None else "n/a"
-        print(
-            f"  |ΔLAV| gate:    {ml_txt} / {pct_txt}  "
-            f"{'PASS' if passed else 'FAIL'} (<5 ml or <8%)"
-        )
+        print(f"  |ΔLAV| gate:    {ml_txt} / {pct_txt}  {'PASS' if passed else 'FAIL'} (<5 ml or <8%)")
     if lav_gate_pass_rate is not None:
-        print(
-            f"  LAV per-study:  {lav_gate_pass_rate:.1%} "
-            f"(each study <5 ml or <8%)"
-        )
+        print(f"  LAV per-study:  {lav_gate_pass_rate:.1%} (each study <5 ml or <8%)")
     if reject_rate is not None:
         passed = reject_rate < 0.20
         print(f"  Reject < 20%:   {reject_rate:.1%}  {'PASS' if passed else 'FAIL'}")
@@ -383,15 +390,21 @@ def main() -> int:
         description="LA auto-segmentation bench vs gold (A4C ES only)",
     )
     parser.add_argument(
-        "--gold-root", type=Path, required=True,
+        "--gold-root",
+        type=Path,
+        required=True,
         help="Gold dataset root (contains gold/la_*.json)",
     )
     parser.add_argument(
-        "--report", type=Path, default=None,
+        "--report",
+        type=Path,
+        default=None,
         help="Output CSV path (default: bench/la/reports/<timestamp>.csv)",
     )
     parser.add_argument(
-        "--models-dir", type=Path, default=None,
+        "--models-dir",
+        type=Path,
+        default=None,
         help="Override models directory",
     )
     args = parser.parse_args()

@@ -66,8 +66,8 @@ Find `@dataclass` class `SpeckleConfig` and add after `subpixel: bool = True`:
 
 ```python
 # Topological Data Analysis (TDA) flags
-tda_quality_filter: bool = False        # adaptive kernel placement via PH
-tda_outlier_rejection: bool = False     # PH-based decorrelation detector
+tda_quality_filter: bool = False  # adaptive kernel placement via PH
+tda_outlier_rejection: bool = False  # PH-based decorrelation detector
 tda_decorrelation_threshold: float = 0.3  # max bottleneck distance for valid track
 ```
 
@@ -411,8 +411,12 @@ def sample_kernels_in_zone(
     # If TDA filter is active, generate 3× candidates and score them
     if tda_quality_filter and frames is not None and _HAS_TDA:
         return _sample_kernels_with_tda(
-            zone, n_endo, n_epi, n_pts,
-            num_kernels_per_ring, num_rings,
+            zone,
+            n_endo,
+            n_epi,
+            n_pts,
+            num_kernels_per_ring,
+            num_rings,
             frames[0],  # first frame (ED)
         )
 
@@ -443,6 +447,7 @@ def sample_kernels_in_zone(
 
 try:
     from echo_personal_tool.domain.services.topological_analysis import persistence_score as _tda_score
+
     _HAS_TDA = True
 except ImportError:
     _HAS_TDA = False
@@ -545,7 +550,9 @@ def test_track_frame_pair_tda_outlier_rejection():
         TrackingKernel(center=(50.0, 50.0), radius=10, node_index=0, layer="mid"),
     ]
     config = SpeckleConfig(
-        kernel_size=12, search_radius=15, pyramid_levels=1,
+        kernel_size=12,
+        search_radius=15,
+        pyramid_levels=1,
         ncc_threshold=0.0,  # accept any NCC
         outlier_sigma=0.0,  # disable MAD filter
         tda_outlier_rejection=True,
@@ -572,6 +579,7 @@ try:
     from echo_personal_tool.domain.services.topological_analysis import (
         topological_similarity as _tda_similarity,
     )
+
     _HAS_TDA = True
 except ImportError:
     _HAS_TDA = False

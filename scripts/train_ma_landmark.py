@@ -37,7 +37,7 @@ def _make_heatmap(
     """Generate a single Gaussian heatmap centered at (cx, cy)."""
     cx, cy = center
     yy, xx = np.mgrid[:size, :size].astype(np.float32)
-    heatmap = np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma ** 2))
+    heatmap = np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2))
     return heatmap
 
 
@@ -92,13 +92,15 @@ def _extract_training_samples(
             septal = (float(ma[0][0]), float(ma[0][1]))
             lateral = (float(ma[1][0]), float(ma[1][1]))
 
-            samples.append({
-                "frame": gray,
-                "septal": septal,
-                "lateral": lateral,
-                "study_id": study_id,
-                "phase": phase_key,
-            })
+            samples.append(
+                {
+                    "frame": gray,
+                    "septal": septal,
+                    "lateral": lateral,
+                    "study_id": study_id,
+                    "phase": phase_key,
+                }
+            )
 
     return samples
 
@@ -162,19 +164,31 @@ class MALandmarkNet(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+            nn.Conv2d(1, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
             nn.MaxPool2d(2),
-            nn.Conv2d(128, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
         )
         self.decoder = nn.Sequential(
             nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-            nn.Conv2d(128, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(inplace=True),
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
             nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-            nn.Conv2d(64, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(inplace=True),
+            nn.Conv2d(64, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
             nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
             nn.Conv2d(32, _NUM_KEYPOINTS, 1),
         )

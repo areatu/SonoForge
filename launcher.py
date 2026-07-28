@@ -53,12 +53,32 @@ def install_deps():
     pip = VENV_DIR / "Scripts" / "pip.exe"
     print(f"[{APP_NAME}] Installing dependencies (this may take a few minutes)...")
     subprocess.check_call([str(pip), "install", "--quiet", "--upgrade", "pip"])
-    subprocess.check_call([
-        str(pip), "install", "--quiet",
-        "PySide6", "pyqtgraph", "pydicom", "pylibjpeg", "pylibjpeg-openjpeg", "pylibjpeg-libjpeg",
-        "numpy<2", "scipy", "opencv-python-headless", "httpx", "psutil", "pymupdf",
-        "pynetdicom", "pyyaml", "jsonschema", "onnxruntime", "reportlab", "openpyxl", "keyring",
-    ])
+    subprocess.check_call(
+        [
+            str(pip),
+            "install",
+            "--quiet",
+            "PySide6",
+            "pyqtgraph",
+            "pydicom",
+            "pylibjpeg",
+            "pylibjpeg-openjpeg",
+            "pylibjpeg-libjpeg",
+            "numpy<2",
+            "scipy",
+            "opencv-python-headless",
+            "httpx",
+            "psutil",
+            "pymupdf",
+            "pynetdicom",
+            "pyyaml",
+            "jsonschema",
+            "onnxruntime",
+            "reportlab",
+            "openpyxl",
+            "keyring",
+        ]
+    )
     marker.write_text("installed")
     print(f"[{APP_NAME}] Dependencies installed.")
     return True
@@ -82,11 +102,24 @@ def download_models():
     try:
         curl = shutil.which("curl")
         if curl:
-            subprocess.check_call([curl, "-fSL", "--connect-timeout", "30", "--retry", "2",
-                                   "--progress-bar", "-o", str(archive), MODELS_URL])
+            subprocess.check_call(
+                [
+                    curl,
+                    "-fSL",
+                    "--connect-timeout",
+                    "30",
+                    "--retry",
+                    "2",
+                    "--progress-bar",
+                    "-o",
+                    str(archive),
+                    MODELS_URL,
+                ]
+            )
         else:
-            subprocess.check_call(["powershell", "-Command",
-                                   f"Invoke-WebRequest -Uri '{MODELS_URL}' -OutFile '{archive}'"])
+            subprocess.check_call(
+                ["powershell", "-Command", f"Invoke-WebRequest -Uri '{MODELS_URL}' -OutFile '{archive}'"]
+            )
     except Exception as e:
         print(f"[{APP_NAME}] Model download failed: {e}")
         return False
