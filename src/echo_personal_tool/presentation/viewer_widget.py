@@ -2825,8 +2825,8 @@ class ViewerWidget(QWidget):
                 edge_map = self._get_edge_map()
                 if edge_map is not None:
                     from echo_personal_tool.domain.services.contour_edge_snap import (
-                        snap_magnetic_point,
                         outward_normal_at_index_closed,
+                        snap_magnetic_point,
                     )
                     idx = len(self._active_arc_points) - 1
                     normal = outward_normal_at_index_closed(self._active_arc_points, idx)
@@ -3126,10 +3126,10 @@ class ViewerWidget(QWidget):
             self._clear_active_contour_drawing()
             return False
 
-        from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
         from echo_personal_tool.domain.services.contour_edge_snap import (
             snap_closed_polygon,
         )
+        from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
         reduced = reduce_polygon_points(self._freehand_points, epsilon=2.0, closed=False)
 
@@ -5829,29 +5829,31 @@ class ViewerWidget(QWidget):
         if contour_index < 0 or contour_index >= len(self._contours):
             return
         contour = self._contours[contour_index]
-        if not contour.is_open_arc:
-            return
-        snap_cfg = magnetic_edge_snap_config_for_source(contour.source)
-        pinned = self._pinned_indices_for_contour(contour)
-        snapped = apply_soft_magnetic_snap(
-            list(contour.points),
-            weights,
-            edge_map,
-            strength=self._magnetic_snap_release_strength,
-            max_radial_px=self._magnetic_snap_release_max_radial_px,
-            weight_threshold=self._magnetic_snap_weight_threshold,
-            config=snap_cfg,
-            pinned_indices=pinned,
-            grab_index=grab_index,
-        )
-        contour.points[:] = snapped
-        self._snap_open_arc_endpoints(contour)
+        if contour.is_open_arc:
+            snap_cfg = magnetic_edge_snap_config_for_source(contour.source)
+            pinned = self._pinned_indices_for_contour(contour)
+            snapped = apply_soft_magnetic_snap(
+                list(contour.points),
+                weights,
+                edge_map,
+                strength=self._magnetic_snap_release_strength,
+                max_radial_px=self._magnetic_snap_release_max_radial_px,
+                weight_threshold=self._magnetic_snap_weight_threshold,
+                config=snap_cfg,
+                pinned_indices=pinned,
+                grab_index=grab_index,
+            )
+            contour.points[:] = snapped
+            self._snap_open_arc_endpoints(contour)
+        else:
+            from echo_personal_tool.domain.services.contour_edge_snap import snap_closed_polygon
+
+            snapped = snap_closed_polygon(list(contour.points), edge_map)
+            contour.points[:] = snapped
 
     def _auto_snap_new_contour(self, contour: Contour) -> None:
-        """Apply magnetic edge snap to a freshly placed contour (after 3-point placement)."""
+        """Apply magnetic edge snap to a freshly placed contour."""
         if not self._magnetic_snap_enabled:
-            return
-        if not contour.is_open_arc:
             return
         frame_index = self._contour_frame_index()
         instance_uid = self._current_instance_uid()
