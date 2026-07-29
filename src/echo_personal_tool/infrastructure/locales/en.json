@@ -446,6 +446,7 @@
   "result.pgmean": "PG mean",
   "result.pgpeak": "PG peak",
   "result.percent_d": "%D",
+  "result.percent_s": "%S",
   "result.pv_vmax": "PV Vmax",
   "result.rav": "RA Vol",
   "result.rav_4c": "RAV 4C",

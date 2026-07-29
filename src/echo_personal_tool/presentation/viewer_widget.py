@@ -964,6 +964,13 @@ class ViewerWidget(QWidget):
             if mapped is not None:
                 self._apply_caliper_node_drag(float(mapped.x()), float(mapped.y()))
             return
+        if self._freehand_recording and self._contour_mode_active:
+            if mapped is not None:
+                pt = (float(mapped.x()), float(mapped.y()))
+                if not self._freehand_points or self._distance(self._freehand_points[-1], pt) > 2.0:
+                    self._freehand_points.append(pt)
+                    self._update_freehand_preview()
+            return
         if self._contour_editing_blocked():
             self._clear_contour_hover()
             return
@@ -977,13 +984,6 @@ class ViewerWidget(QWidget):
                         float(mapped.y()),
                         grab_index=grab_index,
                     )
-            return
-        if self._freehand_recording and self._contour_mode_active:
-            if mapped is not None:
-                pt = (float(mapped.x()), float(mapped.y()))
-                if not self._freehand_points or self._distance(self._freehand_points[-1], pt) > 2.0:
-                    self._freehand_points.append(pt)
-                    self._update_freehand_preview()
             return
         if mapped is None:
             return
@@ -1918,12 +1918,14 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return False
         self.cancel_active_tool()
+        if not self.start_generic_area_contour():
+            return False
         self._comparison_state = _ComparisonState(
             kind="area",
             frame_index=self._contour_frame_index(),
         )
         self._measurement_label.setText(tr("viewer.acmp_click_start"))
-        return self.start_generic_area_contour()
+        return True
 
     def _handle_area_compare_contour(self, contour: Contour) -> None:
         state = self._comparison_state
@@ -1945,11 +1947,33 @@ class ViewerWidget(QWidget):
             state.contour1_area_cm2 = area_cm2
             self._measurement_label.setText(tr("viewer.acmp_second_start"))
             self._refresh_frame_overlays()
+            saved = _ComparisonState(
+                kind=state.kind,
+                frame_index=state.frame_index,
+                contour1_points=state.contour1_points,
+                contour1_area_cm2=state.contour1_area_cm2,
+            )
             self.start_generic_area_contour()
+            self._comparison_state = saved
             return
         state.contour2_points = points
         state.contour2_area_cm2 = area_cm2
         pct_s = self._compute_percent_s()
+        frame = state.frame_index
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
+        if pct_s is not None:
+            pct_key = ("%S", frame if frame is not None else -1)
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%S",
+                pixel_length=0.0,
+                millimeter_length=pct_s,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
         self._comparison_state = _ComparisonState(
             kind="area",
             frame_index=state.frame_index,
@@ -1958,7 +1982,9 @@ class ViewerWidget(QWidget):
             contour2_points=state.contour2_points,
             contour2_area_cm2=state.contour2_area_cm2,
         )
+        self._render_persistent_linear_calipers()
         self._refresh_frame_overlays()
+        self._emit_stored_linear_measurements()
         self._measurement_label.setText(
             tr(
                 "viewer.acmp_result",
@@ -4678,7 +4704,7 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
-                if measurement.label == "%D":
+                if measurement.label in ("%D", "%S"):
                     continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
@@ -4893,11 +4919,7 @@ class ViewerWidget(QWidget):
                 spline_points = sample_spline(markers, num_samples=64) if len(markers) >= 3 else markers
         elif self._contour_stage == "polygon" and self._active_arc_points:
             markers = list(self._active_arc_points)
-            if len(markers) >= 2:
-                closed = [*markers, markers[0]]
-                spline_points = closed
-            else:
-                spline_points = markers
+            spline_points = markers
         if spline_points:
             x_values = [point[0] for point in spline_points]
             y_values = [point[1] for point in spline_points]

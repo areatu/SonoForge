@@ -284,9 +284,9 @@ def test_area_compare_button_emits_signal(qtbot) -> None:
     panel.area_compare_requested.connect(lambda: received.append(True))
     
     # Find and click the area compare button
-    # Note: "КСР" is the translation for tools.area_compare
+    # Note: "Сравнение площадей" is the translation for tools.area_compare
     for button in panel.findChildren(QPushButton):
-        if button.text() == "КСР":
+        if button.text() == "Сравнение площадей":
             button.click()
             break
     else:

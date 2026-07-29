@@ -521,6 +521,18 @@ def format_results_overlay_html(
                     sex_male=sex_male,
                 )
             continue
+        if measurement.label == "%S":
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get("%S", "result.percent_s"))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "%",
+                    decimals=1,
+                    sex_male=sex_male,
+                )
+            continue
         if measurement.millimeter_length is not None:
             param_id = _CALIPER_PARAM_ID_MAP.get(measurement.label.casefold())
             display_label = measurement.label
