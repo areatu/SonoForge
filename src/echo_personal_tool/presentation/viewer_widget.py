@@ -2648,6 +2648,8 @@ class ViewerWidget(QWidget):
         return self._begin_linear_caliper(labels[0])
 
     def _begin_linear_caliper(self, label: str) -> bool:
+        if self._comparison_state.kind:
+            self._comparison_state.reset()
         self._clear_linear_caliper_graphics()
         self._clear_calibration_caliper()
         if self._current_frame is None:
@@ -3089,6 +3091,7 @@ class ViewerWidget(QWidget):
 
     def _finish_closed_contour(self) -> bool:
         if len(self._active_arc_points) < 3:
+            self._clear_active_contour_drawing()
             return False
 
         from echo_personal_tool.domain.services.contour_edge_snap import snap_closed_polygon
@@ -3143,6 +3146,8 @@ class ViewerWidget(QWidget):
         measurement_label = None
         if chamber_key == GENERIC_AREA_CHAMBER:
             measurement_label = next_area_label(tuple(self._stored_contours))
+        elif chamber_key == GENERIC_VOLUME_CHAMBER:
+            measurement_label = next_volume_label(tuple(self._stored_contours))
 
         contour = Contour(
             phase=self._active_contour_phase or "GEN",
@@ -3749,6 +3754,7 @@ class ViewerWidget(QWidget):
 
     def _find_stored_contour_index(self, contour: Contour) -> int | None:
         instance_uid = contour.sop_instance_uid
+        is_planimeter = contour.chamber.upper() in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}
         for index, existing in enumerate(self._stored_contours):
             if (
                 existing.phase.casefold() == contour.phase.casefold()
@@ -3757,6 +3763,8 @@ class ViewerWidget(QWidget):
                 and existing.frame_index == contour.frame_index
                 and existing.sop_instance_uid == instance_uid
             ):
+                if is_planimeter and existing.measurement_label != contour.measurement_label:
+                    continue
                 return index
         return None
 
@@ -4584,6 +4592,8 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
+                if measurement.label == "%D":
+                    continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
             cmp_line = self._build_comparison_d_overlay()
@@ -5068,6 +5078,11 @@ class ViewerWidget(QWidget):
             state.segment1_end = click
             state.segment1_mm = self._compare_mm_length("D1", state.segment1_start, click)
             key = ("D1", frame if frame is not None else -1)
+            instance_uid = (
+                self._current_state.instance.sop_instance_uid
+                if self._current_state and self._current_state.instance
+                else ""
+            )
             self._stored_linear_measurements[key] = LinearMeasurement(
                 label="D1",
                 pixel_length=math.hypot(click[0] - state.segment1_start[0], click[1] - state.segment1_start[1]),
@@ -5075,6 +5090,7 @@ class ViewerWidget(QWidget):
                 frame_index=frame,
                 start=state.segment1_start,
                 end=click,
+                sop_instance_uid=instance_uid,
             )
             self._render_persistent_linear_calipers()
             self._refresh_frame_overlays()
@@ -5095,6 +5111,11 @@ class ViewerWidget(QWidget):
         state.segment2_end = click
         state.segment2_mm = self._compare_mm_length("D2", state.segment2_start, click)
         key = ("D2", frame if frame is not None else -1)
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
         self._stored_linear_measurements[key] = LinearMeasurement(
             label="D2",
             pixel_length=math.hypot(click[0] - state.segment2_start[0], click[1] - state.segment2_start[1]),
@@ -5102,13 +5123,27 @@ class ViewerWidget(QWidget):
             frame_index=frame,
             start=state.segment2_start,
             end=click,
+            sop_instance_uid=instance_uid,
         )
+        pct_d = self._compute_percent_d(state.segment1_mm, state.segment2_mm)
+        if pct_d is not None:
+            pct_key = ("%D", frame if frame is not None else -1)
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%D",
+                pixel_length=0.0,
+                millimeter_length=pct_d,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
         self._linear_caliper_start = None
         self._clear_linear_caliper_graphics()
         self._render_persistent_linear_calipers()
         self._refresh_frame_overlays()
         self._linear_caliper_active = False
         self._emit_stored_linear_measurements()
+        result_text = self._build_comparison_d_overlay()
+        if result_text:
+            self._measurement_label.setText(result_text)
         return True
 
     def _compare_mm_length(
@@ -5125,6 +5160,15 @@ class ViewerWidget(QWidget):
         if pixel_spacing is not None:
             return pixel_to_mm_length(pixel_length, angle_degrees, pixel_spacing)
         return pixel_length
+
+    @staticmethod
+    def _compute_percent_d(l1: float | None, l2: float | None) -> float | None:
+        if l1 is None or l2 is None:
+            return None
+        bigger = max(l1, l2)
+        if bigger == 0:
+            return None
+        return min(l1, l2) / bigger * 100.0
 
     def _constrain_linear_endpoint(
         self,

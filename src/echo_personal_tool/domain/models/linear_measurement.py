@@ -15,6 +15,7 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "LVPWD": "result.lvpwd",
     "LVESD": "result.lvesd",
     "LA": "menu.la_lavir",
+    "%D": "result.percent_d",
 }
 
 
@@ -35,6 +36,8 @@ class LinearMeasurement:
         display_label = tr(i18n_key) if i18n_key else self.label
         if self.millimeter_length is None:
             return f"{display_label}: {self.pixel_length:.1f} px"
+        if self.label == "%D":
+            return f"{display_label}: {self.millimeter_length:.1f}%"
         return f"{display_label}: {format_length_mm(self.millimeter_length, length_unit)}"
 
 
