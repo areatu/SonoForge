@@ -2299,6 +2299,10 @@ class MainWindow(QMainWindow):
             return
         extra_lines: tuple[str, ...] = ()
         if chamber in {"AREA", "VOL"}:
+            if self._viewer._comparison_state.kind == "area":
+                self._viewer._handle_area_compare_contour(contour)
+                self._sync_results_overlay(self._controller.state_manager.snapshot)
+                return
             spacing = self._controller.state_manager.snapshot.effective_pixel_spacing
             calibrated = spacing is not None
             from echo_personal_tool.domain.services.planimeter_formatter import (

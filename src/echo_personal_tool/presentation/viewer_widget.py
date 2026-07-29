@@ -575,18 +575,26 @@ class ResultsOverlayLabel(QLabel):
 
 @dataclass
 class _ComparisonState:
-    kind: str = ""  # "diameter" or ""
+    kind: str = ""  # "diameter", "area", or ""
     segment1_start: tuple[float, float] | None = None
     segment1_end: tuple[float, float] | None = None
     segment1_mm: float | None = None
     segment2_start: tuple[float, float] | None = None
     segment2_end: tuple[float, float] | None = None
     segment2_mm: float | None = None
+    contour1_points: list[tuple[float, float]] | None = None
+    contour1_area_cm2: float | None = None
+    contour2_points: list[tuple[float, float]] | None = None
+    contour2_area_cm2: float | None = None
     frame_index: int | None = None
 
     @property
     def first_segment_done(self) -> bool:
         return self.segment1_end is not None and self.segment1_mm is not None
+
+    @property
+    def first_contour_done(self) -> bool:
+        return self.contour1_points is not None and self.contour1_area_cm2 is not None
 
     @property
     def is_active(self) -> bool:
@@ -600,6 +608,10 @@ class _ComparisonState:
         self.segment2_start = None
         self.segment2_end = None
         self.segment2_mm = None
+        self.contour1_points = None
+        self.contour1_area_cm2 = None
+        self.contour2_points = None
+        self.contour2_area_cm2 = None
         self.frame_index = None
 
 
@@ -1903,8 +1915,82 @@ class ViewerWidget(QWidget):
         return True
 
     def start_area_compare(self) -> bool:
-        self._measurement_label.setText(tr("viewer.acmp_stub"))
-        return True
+        if self._current_frame is None:
+            return False
+        self.cancel_active_tool()
+        self._comparison_state = _ComparisonState(
+            kind="area",
+            frame_index=self._contour_frame_index(),
+        )
+        self._measurement_label.setText(tr("viewer.acmp_click_start"))
+        return self.start_generic_area_contour()
+
+    def _handle_area_compare_contour(self, contour: Contour) -> None:
+        state = self._comparison_state
+        if state.kind != "area":
+            return
+        spacing, _ = self._effective_pixel_spacing()
+        if spacing is None or len(contour.points) < 3:
+            self._measurement_label.setText(tr("viewer.acmp_need_calibration"))
+            return
+        from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
+
+        area_cm2 = closed_polygon_area_cm2(contour, spacing)
+        if area_cm2 is None or area_cm2 <= 0:
+            self._measurement_label.setText(tr("viewer.acmp_invalid_contour"))
+            return
+        points = list(contour.points)
+        if not state.first_contour_done:
+            state.contour1_points = points
+            state.contour1_area_cm2 = area_cm2
+            self._measurement_label.setText(tr("viewer.acmp_second_start"))
+            self._refresh_frame_overlays()
+            self.start_generic_area_contour()
+            return
+        state.contour2_points = points
+        state.contour2_area_cm2 = area_cm2
+        pct_s = self._compute_percent_s()
+        self._comparison_state = _ComparisonState(
+            kind="area",
+            frame_index=state.frame_index,
+            contour1_points=state.contour1_points,
+            contour1_area_cm2=state.contour1_area_cm2,
+            contour2_points=state.contour2_points,
+            contour2_area_cm2=state.contour2_area_cm2,
+        )
+        self._refresh_frame_overlays()
+        self._measurement_label.setText(
+            tr(
+                "viewer.acmp_result",
+                area1=f"{state.contour1_area_cm2:.2f}",
+                area2=f"{area_cm2:.2f}",
+                percent_s=f"{pct_s:.1f}",
+            )
+        )
+
+    def _compute_percent_s(self) -> float:
+        state = self._comparison_state
+        if state.contour1_area_cm2 is None or state.contour2_area_cm2 is None:
+            return 0.0
+        bigger = max(state.contour1_area_cm2, state.contour2_area_cm2)
+        smaller = min(state.contour1_area_cm2, state.contour2_area_cm2)
+        return (smaller / bigger * 100.0) if bigger > 0 else 0.0
+
+    def _build_comparison_s_overlay(self) -> str:
+        state = self._comparison_state
+        if state.kind != "area" or not state.first_contour_done or state.contour2_area_cm2 is None:
+            return ""
+        a1 = state.contour1_area_cm2 if state.contour1_area_cm2 is not None else 0.0
+        a2 = state.contour2_area_cm2 if state.contour2_area_cm2 is not None else 0.0
+        if a1 == 0 and a2 == 0:
+            return ""
+        pct_s = self._compute_percent_s()
+        return tr(
+            "viewer.acmp_result",
+            area1=f"{a1:.2f}",
+            area2=f"{a2:.2f}",
+            percent_s=f"{pct_s:.1f}",
+        )
 
     def activate_generic_dist_caliper(self) -> str | None:
         """Start click-click caliper with the next DistN label; return label or None."""
@@ -4597,6 +4683,10 @@ class ViewerWidget(QWidget):
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
             cmp_line = self._build_comparison_d_overlay()
+            if cmp_line:
+                self.append_frame_overlay(cmp_line)
+        if self._comparison_state.kind == "area" and self._comparison_state.first_contour_done:
+            cmp_line = self._build_comparison_s_overlay()
             if cmp_line:
                 self.append_frame_overlay(cmp_line)
         for line in extra_lines:
