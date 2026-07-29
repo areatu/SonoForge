@@ -533,6 +533,18 @@ def format_results_overlay_html(
                     sex_male=sex_male,
                 )
             continue
+        if measurement.label in ("S1", "S2"):
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get(measurement.label, f"result.{measurement.label.lower()}"))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "cm²",
+                    decimals=2,
+                    sex_male=sex_male,
+                )
+            continue
         if measurement.millimeter_length is not None:
             param_id = _CALIPER_PARAM_ID_MAP.get(measurement.label.casefold())
             display_label = measurement.label

@@ -17,6 +17,8 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "LA": "menu.la_lavir",
     "%D": "result.percent_d",
     "%S": "result.percent_s",
+    "S1": "result.s1",
+    "S2": "result.s2",
 }
 
 
@@ -39,6 +41,8 @@ class LinearMeasurement:
             return f"{display_label}: {self.pixel_length:.1f} px"
         if self.label in ("%D", "%S"):
             return f"{display_label}: {self.millimeter_length:.1f}%"
+        if self.label in ("S1", "S2"):
+            return f"{display_label}: {self.millimeter_length:.2f} cm²"
         return f"{display_label}: {format_length_mm(self.millimeter_length, length_unit)}"
 
 

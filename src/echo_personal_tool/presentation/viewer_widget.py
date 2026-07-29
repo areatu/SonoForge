@@ -265,7 +265,7 @@ class ContourViewBox(pg.ViewBox):
             and len(self._viewer_widget._freehand_points) >= 3
         ):
             self._viewer_widget._finish_freehand_contour()
-            ev.accept()
+            super().mouseReleaseEvent(ev)
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_caliper_drag_release(ev):
             ev.accept()
@@ -964,11 +964,17 @@ class ViewerWidget(QWidget):
             if mapped is not None:
                 self._apply_caliper_node_drag(float(mapped.x()), float(mapped.y()))
             return
-        if self._freehand_recording and self._contour_mode_active:
+        if (
+            self._freehand_recording
+            and self._contour_mode_active
+            and QApplication.mouseButtons() & Qt.MouseButton.LeftButton
+        ):
             if mapped is not None:
                 pt = (float(mapped.x()), float(mapped.y()))
-                if not self._freehand_points or self._distance(self._freehand_points[-1], pt) > 2.0:
+                if not self._freehand_points or self._distance(self._freehand_points[-1], pt) > 8.0:
                     self._freehand_points.append(pt)
+                    if len(self._freehand_points) > 200:
+                        self._freehand_points = self._freehand_points[::2]
                     self._update_freehand_preview()
             return
         if self._contour_editing_blocked():
@@ -1010,7 +1016,7 @@ class ViewerWidget(QWidget):
             # ViewerWidget.keyPressEvent — pyqtgraph.GraphicsView eats them
             # by sending them to the scene, which ignores unhandled ones.
             if event.type() == QEvent.Type.KeyPress:
-                self.keyPressEvent(event)
+                self._viewer_widget.keyPressEvent(event)
                 return event.isAccepted()
         return super().eventFilter(watched, event)
 
@@ -1941,11 +1947,27 @@ class ViewerWidget(QWidget):
         if area_cm2 is None or area_cm2 <= 0:
             self._measurement_label.setText(tr("viewer.acmp_invalid_contour"))
             return
+        frame = state.frame_index
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
         points = list(contour.points)
         if not state.first_contour_done:
             state.contour1_points = points
             state.contour1_area_cm2 = area_cm2
+            s_key = ("S1", frame if (frame := state.frame_index) is not None else -1)
+            self._stored_linear_measurements[s_key] = LinearMeasurement(
+                label="S1",
+                pixel_length=0.0,
+                millimeter_length=area_cm2,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
             self._measurement_label.setText(tr("viewer.acmp_second_start"))
+            self._render_persistent_linear_calipers()
+            self._emit_stored_linear_measurements()
             self._refresh_frame_overlays()
             saved = _ComparisonState(
                 kind=state.kind,
@@ -1959,11 +1981,13 @@ class ViewerWidget(QWidget):
         state.contour2_points = points
         state.contour2_area_cm2 = area_cm2
         pct_s = self._compute_percent_s()
-        frame = state.frame_index
-        instance_uid = (
-            self._current_state.instance.sop_instance_uid
-            if self._current_state and self._current_state.instance
-            else ""
+        s2_key = ("S2", frame if frame is not None else -1)
+        self._stored_linear_measurements[s2_key] = LinearMeasurement(
+            label="S2",
+            pixel_length=0.0,
+            millimeter_length=area_cm2,
+            frame_index=frame,
+            sop_instance_uid=instance_uid,
         )
         if pct_s is not None:
             pct_key = ("%S", frame if frame is not None else -1)
@@ -3053,7 +3077,8 @@ class ViewerWidget(QWidget):
                 frame_index=self._contour_frame_index(),
             )
         self._clear_active_contour_drawing()
-        self.set_contour_from_domain(contour)
+        if self._comparison_state.kind != "area":
+            self.set_contour_from_domain(contour)
         if contour.is_open_arc:
             self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
@@ -3197,7 +3222,8 @@ class ViewerWidget(QWidget):
             frame_index=self._contour_frame_index(),
         )
         self._clear_active_contour_drawing()
-        self.set_contour_from_domain(contour)
+        if self._comparison_state.kind != "area":
+            self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -3232,7 +3258,8 @@ class ViewerWidget(QWidget):
             measurement_label=measurement_label,
         )
         self._clear_active_contour_drawing()
-        self.set_contour_from_domain(contour)
+        if self._comparison_state.kind != "area":
+            self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -3246,7 +3273,16 @@ class ViewerWidget(QWidget):
         )
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
-        reduced = reduce_polygon_points(self._freehand_points, epsilon=2.0, closed=False)
+        reduced = reduce_polygon_points(self._freehand_points, epsilon=3.0, closed=False)
+        if len(reduced) > 30:
+            reduced = reduce_polygon_points(reduced, epsilon=5.0, closed=False)
+        if len(reduced) > 30:
+            reduced = reduce_polygon_points(reduced, epsilon=8.0, closed=False)
+        if len(reduced) > 30:
+            step = max(1, -(-len(reduced) // 30))
+            reduced = reduced[::step]
+        if reduced[0] != reduced[-1]:
+            reduced.append(reduced[0])
 
         if self._magnetic_snap_enabled:
             edge_map = self._get_edge_map()
@@ -3272,7 +3308,8 @@ class ViewerWidget(QWidget):
         self._freehand_recording = False
         self._freehand_points = []
         self._clear_active_contour_drawing()
-        self.set_contour_from_domain(contour)
+        if self._comparison_state.kind != "area":
+            self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -3303,6 +3340,7 @@ class ViewerWidget(QWidget):
             return
         self._clear_linear_caliper()
         self._clear_crosshair()
+        self._comparison_state = _ComparisonState()
 
     def contours(self) -> list[Contour]:
         return list(self._stored_contours)
@@ -4603,6 +4641,8 @@ class ViewerWidget(QWidget):
         if contour.is_open_arc and contour.frame_index == current_frame:
             self._refresh_frame_overlays()
         elif is_planimeter_polygon(contour) and contour.frame_index == current_frame:
+            self._recalculate_percent_s()
+            self._emit_stored_linear_measurements()
             self._refresh_frame_overlays()
 
     def _refresh_rendered_contour_geometry(
@@ -4704,7 +4744,7 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
-                if measurement.label in ("%D", "%S"):
+                if measurement.label in ("%D", "%S", "S1", "S2"):
                     continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
@@ -5282,6 +5322,75 @@ class ViewerWidget(QWidget):
             return None
         return min(l1, l2) / bigger * 100.0
 
+    def _recalculate_percent_d(self) -> None:
+        d1_mm: float | None = None
+        d2_mm: float | None = None
+        frame: int | None = None
+        instance_uid = ""
+        for key, m in self._stored_linear_measurements.items():
+            if isinstance(key, tuple) and key[0] in ("D1", "D2"):
+                if m.label == "D1":
+                    d1_mm = m.millimeter_length
+                    frame = m.frame_index
+                    instance_uid = m.sop_instance_uid
+                elif m.label == "D2":
+                    d2_mm = m.millimeter_length
+                    frame = m.frame_index
+                    instance_uid = m.sop_instance_uid
+        pct_d = self._compute_percent_d(d1_mm, d2_mm)
+        pct_key = ("%D", frame if frame is not None else -1)
+        if pct_d is not None:
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%D",
+                pixel_length=0.0,
+                millimeter_length=pct_d,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+        elif pct_key in self._stored_linear_measurements:
+            del self._stored_linear_measurements[pct_key]
+
+    def _recalculate_percent_s(self) -> None:
+        state = self._comparison_state
+        if state.kind != "area":
+            return
+        frame = state.frame_index
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
+        if state.contour1_area_cm2 is not None:
+            s1_key = ("S1", frame if frame is not None else -1)
+            self._stored_linear_measurements[s1_key] = LinearMeasurement(
+                label="S1",
+                pixel_length=0.0,
+                millimeter_length=state.contour1_area_cm2,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+        if state.contour2_area_cm2 is not None:
+            s2_key = ("S2", frame if frame is not None else -1)
+            self._stored_linear_measurements[s2_key] = LinearMeasurement(
+                label="S2",
+                pixel_length=0.0,
+                millimeter_length=state.contour2_area_cm2,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+        pct_s = self._compute_percent_s()
+        pct_key = ("%S", frame if frame is not None else -1)
+        if pct_s is not None:
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%S",
+                pixel_length=0.0,
+                millimeter_length=pct_s,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+        elif pct_key in self._stored_linear_measurements:
+            del self._stored_linear_measurements[pct_key]
+
     def _constrain_linear_endpoint(
         self,
         start: tuple[float, float],
@@ -5588,6 +5697,7 @@ class ViewerWidget(QWidget):
             is_preview=True,
         )
         self._measurement_label.setText(updated.display_text(length_unit=self._length_display_unit))
+        self._recalculate_percent_d()
         self._update_results_overlay_for_caliper_drag(updated)
 
     def _finish_caliper_node_drag(self, *, cancel: bool = False) -> None:
@@ -5616,8 +5726,8 @@ class ViewerWidget(QWidget):
         lines: list[str] = []
         for m in self._stored_linear_measurements.values():
             lines.append(m.display_text(length_unit=self._length_display_unit))
-        text = "\n".join(lines)
-        self._results_overlay_label.setText(text)
+        html = "<br>".join(lines)
+        self._results_overlay_label.setText(html)
         self._results_overlay_label.adjustSize()
         self._results_overlay_label.show()
         self._results_overlay_label.raise_()
@@ -5661,6 +5771,11 @@ class ViewerWidget(QWidget):
                 self._finish_caliper_node_drag(cancel=True)
                 event.accept()
                 return
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._freehand_recording and self._contour_mode_active:
+                if self._finish_freehand_contour():
+                    event.accept()
+                    return
         if event.key() == Qt.Key.Key_Delete:
             if self._delete_selected_caliper():
                 event.accept()
