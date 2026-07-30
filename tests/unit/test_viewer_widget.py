@@ -2456,7 +2456,7 @@ class TestMagneticSnap:
 
     def test_apply_magnetic_snap_to_contour_closed_polygon(self, qtbot) -> None:
         """Test that closed polygons also get magnetic snap."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour

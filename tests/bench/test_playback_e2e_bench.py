@@ -210,7 +210,7 @@ def test_bench_e2e_lag_skip_sim(benchmark) -> None:
     frames = _make_frames(n, _SIZES["512x512"])
     cache = FrameCache(evict_window=n + 10)
     # Only load even frames (skip odd = simulating decode lag)
-    cache.load(Path("/dev/null/cine.dcm"), frames[::2] * 1)  # noqa: avoid copy warning
+    cache.load(Path("/dev/null/cine.dcm"), frames[::2] * 1)  # noqa: B015
     cache.clear()
     cache.set_total_frames(Path("/dev/null/cine.dcm"), total=n)
     for i in range(0, n, 2):

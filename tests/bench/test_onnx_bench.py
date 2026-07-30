@@ -8,7 +8,6 @@ Run:  ECHO_BENCH=1 pytest tests/bench/test_onnx_bench.py -v --benchmark-only
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import numpy as np
 import pytest

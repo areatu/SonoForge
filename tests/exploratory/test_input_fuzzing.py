@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import math
 
-import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from echo_personal_tool.domain.calculations.body_surface import bsa_du_bois_m2
-from echo_personal_tool.domain.calculations.lvef_simpson import calculate
 from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.linear_measurement import (

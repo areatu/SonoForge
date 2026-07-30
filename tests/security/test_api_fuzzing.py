@@ -13,15 +13,15 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from echo_personal_tool.infrastructure.orthanc_client import (
+    OrthancDicomWebClient,
+    _parse_stow_response,
+)
 from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
     parse_series,
     parse_studies,
     tag_value,
-)
-from echo_personal_tool.infrastructure.orthanc_client import (
-    OrthancDicomWebClient,
-    _parse_stow_response,
 )
 
 pytestmark = pytest.mark.security

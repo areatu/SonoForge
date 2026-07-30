@@ -13,17 +13,16 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from tests.fixtures.generate_synthetic_dicom import (
+    write_synthetic_jpeg_multiframe_dicom,
+    write_synthetic_multiframe_dicom,
+)
 
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.infrastructure.dicom_session import DicomSession
 from echo_personal_tool.infrastructure.pixel_utils import (
     apply_wl_lut,
     to_grayscale_uint8,
-)
-
-from tests.fixtures.generate_synthetic_dicom import (
-    write_synthetic_jpeg_multiframe_dicom,
-    write_synthetic_multiframe_dicom,
 )
 
 _bench = pytest.mark.bench

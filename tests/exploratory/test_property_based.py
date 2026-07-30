@@ -16,7 +16,6 @@ from echo_personal_tool.domain.calculations.lvef_simpson import (
 from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
 from echo_personal_tool.domain.models.contour import Contour
 
-
 # ── Planimeter area ────────────────────────────────────────────────
 
 

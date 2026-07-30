@@ -6,8 +6,6 @@ import json
 import shutil
 from pathlib import Path
 
-import pytest
-
 from echo_personal_tool.domain.services.gold_store import (
     load_gold,
     repair_gold_from_backup,

@@ -24,8 +24,8 @@ def test_qt_offscreen_platform_import() -> None:
     """QT_QPA_PLATFORM=offscreen allows Qt import without display."""
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     try:
-        from PySide6.QtCore import QRect, QSize
-        from PySide6.QtGui import QImage, QPainter
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QImage
 
         assert QRect is not None
         assert QImage is not None
@@ -38,7 +38,7 @@ def test_qt_offscreen_image_creation() -> None:
     """Create QImage in offscreen mode without crash."""
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     try:
-        from PySide6.QtGui import QImage, QColor
+        from PySide6.QtGui import QColor, QImage
 
         img = QImage(256, 256, QImage.Format.Format_Grayscale8)
         assert img.width() == 256
@@ -54,7 +54,7 @@ def test_qt_offscreen_painter_render() -> None:
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     try:
         from PySide6.QtCore import QRect
-        from PySide6.QtGui import QImage, QPainter, QPen, QColor
+        from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
         img = QImage(512, 512, QImage.Format.Format_ARGB32)
         img.fill(QColor(0, 0, 0))
@@ -151,7 +151,7 @@ def test_qt_offscreen_rgba_rendering() -> None:
     """Offscreen mode handles RGBA format correctly."""
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     try:
-        from PySide6.QtGui import QImage, QColor
+        from PySide6.QtGui import QColor, QImage
 
         img = QImage(64, 64, QImage.Format.Format_RGBA8888)
         img.fill(QColor(0, 128, 255, 200))
@@ -170,7 +170,7 @@ def test_qt_offscreen_text_rendering() -> None:
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     try:
         from PySide6.QtCore import QRect
-        from PySide6.QtGui import QImage, QPainter, QColor, QFont
+        from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
         img = QImage(256, 64, QImage.Format.Format_ARGB32)
         img.fill(QColor(255, 255, 255))

@@ -8,7 +8,6 @@ Run:  ECHO_BENCH=1 pytest tests/bench/test_gold_store_bench.py -v --benchmark-on
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 

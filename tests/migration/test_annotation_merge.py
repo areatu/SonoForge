@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.domain.services.gold_store import (
     audit_gold_instance_completeness,
-    dedupe_gold_frames,
     frame_merge_key,
     make_gold_frame,
     make_gold_study,

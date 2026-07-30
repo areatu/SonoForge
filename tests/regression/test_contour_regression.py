@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 
 import pytest
 
 from echo_personal_tool.domain.services.contour_geometry import (
-    DEFAULT_NODE_COUNT,
+    _resample_polyline,
     apex_point,
     long_axis_endpoints,
     move_node_and_resample,
     open_arc_polyline_length,
-    polygon_area_mm2,
     point_line_distance,
+    polygon_area_mm2,
     resample_open_arc,
     sample_spline,
-    _resample_polyline,
 )
 
 

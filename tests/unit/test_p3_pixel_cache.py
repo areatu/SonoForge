@@ -81,10 +81,11 @@ def test_pixel_cache_different_paths_are_distinct(tmp_path: Path) -> None:
 
 
 def test_pixel_cache_evicts_oldest(tmp_path: Path) -> None:
-    """Cache evicts oldest entry when max_entries is reached."""
+    """Cache evicts oldest entry when max_bytes is reached."""
     from echo_personal_tool.infrastructure.dicom_reader import _DecodedPixelCache
 
-    cache = _DecodedPixelCache(max_entries=2)
+    # Each arr = 4 × uint16 = 8 bytes; max_bytes=20 holds two, evicts on third
+    cache = _DecodedPixelCache(max_bytes=20)
     p1 = tmp_path / "1.dcm"
     p2 = tmp_path / "2.dcm"
     p3 = tmp_path / "3.dcm"

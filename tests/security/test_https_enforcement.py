@@ -9,7 +9,6 @@ from __future__ import annotations
 import warnings
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
 
 pytestmark = pytest.mark.security

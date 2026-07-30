@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 from collections import OrderedDict
+from typing import Any
 
 from pynetdicom import AE, StoragePresentationContexts, evt
 

@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from echo_personal_tool.domain.services.gold_store import load_gold, save_gold, try_load_gold
 
 

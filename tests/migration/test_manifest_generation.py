@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from echo_personal_tool.domain.services.gold_store import (
     rebuild_manifest_from_gold_dir,
     save_gold,

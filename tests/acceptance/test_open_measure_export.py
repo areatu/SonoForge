@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from echo_personal_tool.application.app_controller import AppController
@@ -71,7 +69,6 @@ class TestOpenMeasureExport:
 
     def test_pdf_export_mock_writes_file(self, tmp_path: Path) -> None:
         """Mock PDF export creates the output file."""
-        from echo_personal_tool.infrastructure.measurement_report_pdf import PdfExportError
 
         output = tmp_path / "report.pdf"
         output.write_bytes(b"%PDF-1.4 fake")
@@ -83,7 +80,7 @@ class TestOpenMeasureExport:
         from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 
         snapshot = MeasurementSnapshot()
-        report_text = f"LVEF: 55%\nLVEDD: 48.0 mm\nLVESD: 32.0 mm"
+        report_text = "LVEF: 55%\nLVEDD: 48.0 mm\nLVESD: 32.0 mm"
         assert "LVEF" in report_text
         assert "48.0" in report_text
 

@@ -8,7 +8,6 @@ Run:  ECHO_COMPAT=1 pytest tests/compat/test_windows_paths.py -v
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -229,8 +228,8 @@ def test_gold_store_backslash_instance_path(tmp_path: Path) -> None:
     """Gold frame with Windows-style instance_path."""
     from echo_personal_tool.domain.services.gold_store import (
         make_gold_frame,
-        merge_frame_into_gold,
         make_gold_study,
+        merge_frame_into_gold,
     )
 
     study = make_gold_study(

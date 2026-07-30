@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 
@@ -11,7 +10,6 @@ from echo_personal_tool.infrastructure.user_preferences import (
     DEFAULT_UI_FONT_SIZE,
     MAX_UI_FONT_SIZE,
     MIN_UI_FONT_SIZE,
-    UserPreferences,
     default_user_preferences,
     resolve_wl_values,
 )
