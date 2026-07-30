@@ -18,6 +18,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# macOS icon (generated in CI)
+*.icns
+
 # Virtual environments
 .venv/
 .venv-build/
