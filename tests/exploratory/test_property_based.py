@@ -28,8 +28,7 @@ class TestPlanimeterProperties:
     def test_closed_polygon_area_positive(self, radius: float, n_sides: int) -> None:
         """Area of a regular closed polygon is always positive."""
         points = [
-            (200 + radius * math.cos(2 * math.pi * i / n_sides),
-             200 + radius * math.sin(2 * math.pi * i / n_sides))
+            (200 + radius * math.cos(2 * math.pi * i / n_sides), 200 + radius * math.sin(2 * math.pi * i / n_sides))
             for i in range(n_sides)
         ]
         contour = Contour(phase="ed", view="A4C", chamber="LV", points=points)
@@ -45,8 +44,7 @@ class TestPlanimeterProperties:
         """High-vertex regular polygon area approximates pi*r^2 in mm units."""
         n_sides = 64
         points = [
-            (200 + radius * math.cos(2 * math.pi * i / n_sides),
-             200 + radius * math.sin(2 * math.pi * i / n_sides))
+            (200 + radius * math.cos(2 * math.pi * i / n_sides), 200 + radius * math.sin(2 * math.pi * i / n_sides))
             for i in range(n_sides)
         ]
         contour = Contour(phase="ed", view="A4C", chamber="LV", points=points)
@@ -67,9 +65,9 @@ class TestPlanimeterProperties:
     @settings(max_examples=100)
     def test_area_scales_quadratically(self, scale: float) -> None:
         """Scaling polygon points by a factor scales area by scale^2."""
-        base_points = [(100 + 30 * math.cos(2 * math.pi * i / 8),
-                        100 + 30 * math.sin(2 * math.pi * i / 8))
-                       for i in range(8)]
+        base_points = [
+            (100 + 30 * math.cos(2 * math.pi * i / 8), 100 + 30 * math.sin(2 * math.pi * i / 8)) for i in range(8)
+        ]
         scaled_points = [(x * scale, y * scale) for x, y in base_points]
 
         contour_base = Contour(phase="ed", view="A4C", chamber="LV", points=base_points)
@@ -86,8 +84,7 @@ class TestPlanimeterProperties:
 
     def test_triangle_has_positive_area(self) -> None:
         """Minimum valid polygon (triangle) still has positive area."""
-        contour = Contour(phase="ed", view="A4C", chamber="LV",
-                          points=[(0, 0), (100, 0), (50, 100)])
+        contour = Contour(phase="ed", view="A4C", chamber="LV", points=[(0, 0), (100, 0), (50, 100)])
         area = closed_polygon_area_cm2(contour, pixel_spacing=(0.3, 0.3))
         assert area is not None
         assert area > 0.0
@@ -105,8 +102,7 @@ class TestSimpsonVolumeProperties:
     def test_simpson_volume_positive(self, radius: float, n_sides: int) -> None:
         """Simpson disk volume from a closed polygon is always positive."""
         points = [
-            (100 + radius * math.cos(2 * math.pi * i / n_sides),
-             100 + radius * math.sin(2 * math.pi * i / n_sides))
+            (100 + radius * math.cos(2 * math.pi * i / n_sides), 100 + radius * math.sin(2 * math.pi * i / n_sides))
             for i in range(n_sides)
         ]
         contour = Contour(phase="ed", view="A4C", chamber="LV", points=points)
@@ -119,22 +115,18 @@ class TestSimpsonVolumeProperties:
         radius_b=st.floats(min_value=5.0, max_value=80.0),
     )
     @settings(max_examples=200)
-    def test_simpson_volume_monotonic_with_size(
-        self, radius_a: float, radius_b: float
-    ) -> None:
+    def test_simpson_volume_monotonic_with_size(self, radius_a: float, radius_b: float) -> None:
         """Larger polygon produces larger Simpson volume."""
         if radius_a >= radius_b:
             pytest.skip("Need radius_a < radius_b")
 
         n_sides = 32
         points_a = [
-            (100 + radius_a * math.cos(2 * math.pi * i / n_sides),
-             100 + radius_a * math.sin(2 * math.pi * i / n_sides))
+            (100 + radius_a * math.cos(2 * math.pi * i / n_sides), 100 + radius_a * math.sin(2 * math.pi * i / n_sides))
             for i in range(n_sides)
         ]
         points_b = [
-            (100 + radius_b * math.cos(2 * math.pi * i / n_sides),
-             100 + radius_b * math.sin(2 * math.pi * i / n_sides))
+            (100 + radius_b * math.cos(2 * math.pi * i / n_sides), 100 + radius_b * math.sin(2 * math.pi * i / n_sides))
             for i in range(n_sides)
         ]
 
@@ -153,8 +145,7 @@ class TestSimpsonVolumeProperties:
 
     def test_small_polygon_volume_positive(self) -> None:
         """Even a small triangle has a positive Simpson volume."""
-        contour = Contour(phase="ed", view="A4C", chamber="LV",
-                          points=[(95, 95), (105, 95), (100, 105)])
+        contour = Contour(phase="ed", view="A4C", chamber="LV", points=[(95, 95), (105, 95), (100, 105)])
         volume = simpson_volume_ml_from_closed_polygon(contour, pixel_spacing=(0.3, 0.3))
         assert volume is not None
         assert volume > 0.0

@@ -39,9 +39,7 @@ class TestBackupCreation:
         gold_path = tmp_path / "lv_1.2.3.json"
         data = {
             "study_id": "1.2.3",
-            "frames": [
-                {"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}
-            ],
+            "frames": [{"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}],
         }
         save_gold(gold_path, data)
 
@@ -72,9 +70,7 @@ class TestBackupCreation:
         gold_path = tmp_path / "lv_1.2.3.json"
         data = {
             "study_id": "1.2.3",
-            "frames": [
-                {"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}
-            ],
+            "frames": [{"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}],
         }
         save_gold(gold_path, data)
 

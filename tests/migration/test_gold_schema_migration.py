@@ -105,9 +105,7 @@ class TestGoldSchemaVersioning:
     def test_try_load_old_format(self, tmp_path: Path) -> None:
         old_data = {
             "study_id": "1.2.840.try_old",
-            "frames": [
-                {"frame_index": 0, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]}
-            ],
+            "frames": [{"frame_index": 0, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]}],
         }
         path = tmp_path / "lv_try_old.json"
         path.write_text(json.dumps(old_data), encoding="utf-8")
@@ -134,9 +132,7 @@ class TestSchemaMigrationEdgeCases:
         data = {
             "study_id": "test",
             "schema_version": "3.1",
-            "frames": [
-                {"frame_index": 0, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]}
-            ],
+            "frames": [{"frame_index": 0, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]}],
         }
         path = tmp_path / "version_roundtrip.json"
         save_gold(path, data)

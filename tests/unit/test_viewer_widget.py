@@ -2457,19 +2457,21 @@ class TestMagneticSnap:
     def test_apply_magnetic_snap_to_contour_closed_polygon(self, qtbot) -> None:
         """Test that closed polygons also get magnetic snap."""
         from unittest.mock import MagicMock, patch
+
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         from echo_personal_tool.domain.models import Contour
 
         # Create a closed polygon contour (mitral_annulus=None)
-        contour = Contour(phase="GEN", view="A4C", chamber="AREA",
- points=[(10, 10), (30, 10), (30, 30), (10, 30)])
+        contour = Contour(phase="GEN", view="A4C", chamber="AREA", points=[(10, 10), (30, 10), (30, 30), (10, 30)])
         w.set_contour_from_domain(contour)
         weights = np.ones(len(contour.points))
-        
+
         # Mock dependencies
-        with patch.object(w, '_get_edge_map', return_value=MagicMock()), \
-             patch('echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon') as mock_snap:
+        with (
+            patch.object(w, "_get_edge_map", return_value=MagicMock()),
+            patch("echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon") as mock_snap,
+        ):
             w._apply_magnetic_snap_to_contour(0, weights, grab_index=None)
             # snap_closed_polygon should be called for closed polygons
             mock_snap.assert_called_once()

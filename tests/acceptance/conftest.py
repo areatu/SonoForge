@@ -131,10 +131,12 @@ def mock_speckle_worker():
     displacements = np.random.randn(n_frames, n_kernels, 2).astype(np.float32) * 0.5
     ncc_scores = np.ones((n_frames, n_kernels), dtype=np.float32) * 0.85
     valid_mask = np.ones((n_frames, n_kernels), dtype=bool)
-    kernel_positions = np.column_stack([
-        np.linspace(20, 60, n_kernels),
-        np.full(n_kernels, 32.0),
-    ]).astype(np.float32)
+    kernel_positions = np.column_stack(
+        [
+            np.linspace(20, 60, n_kernels),
+            np.full(n_kernels, 32.0),
+        ]
+    ).astype(np.float32)
 
     tracking = TrackingResult(
         frame_index=0,

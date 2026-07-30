@@ -62,9 +62,7 @@ class TestCollisionDetection:
         for (frame_index, phase), frames in buckets.items():
             identities = {frame_instance_key(f, study=gold) for f in frames}
             if len(identities) > 1:
-                collisions.append(
-                    {"frame_index": frame_index, "phase": phase, "instances": sorted(identities)}
-                )
+                collisions.append({"frame_index": frame_index, "phase": phase, "instances": sorted(identities)})
 
         assert len(collisions) == 1
         assert collisions[0]["frame_index"] == 10
@@ -256,14 +254,13 @@ class TestBackupCreation:
         backup_path = tmp_path / "lv_1.2.3.json.bak"
         data = {
             "study_id": "1.2.3",
-            "frames": [
-                {"frame_index": 10, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]}
-            ],
+            "frames": [{"frame_index": 10, "phase": "ED", "points": [[0, 0], [1, 0], [0, 1]]}],
         }
         save_gold(gold_path, data)
 
         # Simulate backup creation
         import shutil
+
         shutil.copy2(gold_path, backup_path)
         assert backup_path.exists()
 

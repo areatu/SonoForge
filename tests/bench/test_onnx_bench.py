@@ -79,10 +79,7 @@ def test_bench_onnx_single_frame_512(benchmark) -> None:
 def test_bench_onnx_batch_10_frames(benchmark) -> None:
     """Batch of 10 frames — measures sustained throughput."""
     engine = OnnxInferenceEngine()
-    frames = [
-        np.random.default_rng(i).integers(0, 255, (256, 256), dtype=np.uint8)
-        for i in range(10)
-    ]
+    frames = [np.random.default_rng(i).integers(0, 255, (256, 256), dtype=np.uint8) for i in range(10)]
 
     def _batch() -> None:
         for frame in frames:

@@ -192,23 +192,17 @@ class TestCalibrationFromRoiRegression:
 
     def test_tissue_default_span(self) -> None:
         roi = _make_roi()
-        state = calibration_from_roi_and_baseline(
-            roi, baseline_y_px=100.0, kind=DopplerKind.TISSUE
-        )
+        state = calibration_from_roi_and_baseline(roi, baseline_y_px=100.0, kind=DopplerKind.TISSUE)
         assert state.velocity_span_cm_s == pytest.approx(40.0)
 
     def test_custom_velocity_span(self) -> None:
         roi = _make_roi()
-        state = calibration_from_roi_and_baseline(
-            roi, baseline_y_px=100.0, velocity_span_cm_s=300.0
-        )
+        state = calibration_from_roi_and_baseline(roi, baseline_y_px=100.0, velocity_span_cm_s=300.0)
         assert state.velocity_span_cm_s == pytest.approx(300.0)
 
     def test_custom_time_span(self) -> None:
         roi = _make_roi()
-        state = calibration_from_roi_and_baseline(
-            roi, baseline_y_px=100.0, time_span_ms=800.0
-        )
+        state = calibration_from_roi_and_baseline(roi, baseline_y_px=100.0, time_span_ms=800.0)
         assert state.time_span_ms == pytest.approx(800.0)
 
 

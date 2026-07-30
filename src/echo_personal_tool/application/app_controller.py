@@ -239,8 +239,10 @@ class AppController(QObject):
     def _deferred_gc_collect(self) -> None:
         import gc
         import threading
+
         def _bg_collect():
             gc.collect(generation=0)
+
         threading.Thread(target=_bg_collect, daemon=True).start()
 
     @property

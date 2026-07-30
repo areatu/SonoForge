@@ -74,9 +74,7 @@ class TestPasswordNeverInQSettings:
         store = QSettings("sonoforge-test-security", "server-test-security")
         assert store.value("password", None) is None
 
-    def test_password_stored_in_keyring(
-        self, isolated_settings: None, mock_keyring: dict[str, str]
-    ) -> None:
+    def test_password_stored_in_keyring(self, isolated_settings: None, mock_keyring: dict[str, str]) -> None:
         settings = ServerSettings(
             username="testuser",
             password="supersecret123",
@@ -86,16 +84,12 @@ class TestPasswordNeverInQSettings:
         assert "sonoforge:testuser" in mock_keyring
         assert mock_keyring["sonoforge:testuser"] == "supersecret123"
 
-    def test_empty_password_deletes_from_keyring(
-        self, isolated_settings: None, mock_keyring: dict[str, str]
-    ) -> None:
+    def test_empty_password_deletes_from_keyring(self, isolated_settings: None, mock_keyring: dict[str, str]) -> None:
         _save_password_keyring("user1", "secret")
         _save_password_keyring("user1", "")
         assert "sonoforge:user1" not in mock_keyring
 
-    def test_purge_removes_stale_password(
-        self, isolated_settings: None, mock_keyring: dict[str, str]
-    ) -> None:
+    def test_purge_removes_stale_password(self, isolated_settings: None, mock_keyring: dict[str, str]) -> None:
         from PySide6.QtCore import QSettings
 
         store = QSettings("sonoforge-test-security", "server-test-security")
@@ -104,9 +98,7 @@ class TestPasswordNeverInQSettings:
         _purge_password_from_qsettings()
         assert store.value("password", None) is None
 
-    def test_reset_clears_keyring_password(
-        self, isolated_settings: None, mock_keyring: dict[str, str]
-    ) -> None:
+    def test_reset_clears_keyring_password(self, isolated_settings: None, mock_keyring: dict[str, str]) -> None:
         settings = ServerSettings(username="resetuser", password="oldpass")
         save_server_settings(settings)
         reset_server_settings()

@@ -148,14 +148,25 @@ class TestGenerateManifestScript:
             "pixel_spacing_mm": [0.2, 0.2],
             "chamber": "LV",
             "frames": [
-                {"frame_index": 10, "phase": "ED", "instance_path": "/dicom/lv.dcm", "points": [[0, 0], [1, 0], [0, 1]]},
-                {"frame_index": 20, "phase": "ES", "instance_path": "/dicom/lv.dcm", "points": [[0, 0], [1, 0], [0, 1]]},
+                {
+                    "frame_index": 10,
+                    "phase": "ED",
+                    "instance_path": "/dicom/lv.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
+                {
+                    "frame_index": 20,
+                    "phase": "ES",
+                    "instance_path": "/dicom/lv.dcm",
+                    "points": [[0, 0], [1, 0], [0, 1]],
+                },
             ],
         }
         save_gold(gold_dir / "lv_1.2.3.json", lv)
 
         output = tmp_path / "manifest.json"
         from scripts.generate_manifest_from_gold import generate_manifest
+
         manifest = generate_manifest(gold_dir, output)
 
         assert len(manifest["studies"]) == 1
@@ -176,6 +187,7 @@ class TestGenerateManifestScript:
 
         output = tmp_path / "manifest.json"
         from scripts.generate_manifest_from_gold import generate_manifest
+
         manifest = generate_manifest(gold_dir, output, exclude_instances={"lv.dcm"})
 
         assert len(manifest["studies"]) == 0
@@ -196,6 +208,7 @@ class TestGenerateManifestScript:
 
         output = tmp_path / "manifest.json"
         from scripts.generate_manifest_from_gold import generate_manifest
+
         manifest = generate_manifest(gold_dir, output)
 
         # Only lv_*.json files are processed

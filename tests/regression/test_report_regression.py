@@ -122,17 +122,13 @@ class TestFormatMeasurementReportRegression:
         assert "48.0 mm" in result
 
     def test_linear_section_no_mm(self) -> None:
-        measurements = (
-            LinearMeasurement(label="IVSd", pixel_length=10.0, millimeter_length=None),
-        )
+        measurements = (LinearMeasurement(label="IVSd", pixel_length=10.0, millimeter_length=None),)
         snap = _snapshot(linear_measurements=measurements)
         result = format_measurement_report(snap)
         assert "10.0 px" in result
 
     def test_linear_section_cm_unit(self) -> None:
-        measurements = (
-            LinearMeasurement(label="LVEDD", pixel_length=20.0, millimeter_length=48.0),
-        )
+        measurements = (LinearMeasurement(label="LVEDD", pixel_length=20.0, millimeter_length=48.0),)
         snap = _snapshot(linear_measurements=measurements)
         result = format_measurement_report(snap, length_display_unit="cm")
         assert "4.80 cm" in result
@@ -166,9 +162,7 @@ class TestFormatMeasurementReportRegression:
             doppler=DopplerResults(e_cm_s=80.0),
             lvef=LvefResult(lvef_percent=55.0),
             lvm_g=160.0,
-            linear_measurements=(
-                LinearMeasurement(label="IVSd", pixel_length=10.0, millimeter_length=9.0),
-            ),
+            linear_measurements=(LinearMeasurement(label="IVSd", pixel_length=10.0, millimeter_length=9.0),),
         )
         result = format_measurement_report(snap)
         lines = result.split("\n")

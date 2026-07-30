@@ -62,9 +62,7 @@ class TestOldFormatLoading:
     def test_old_format_no_instance_path(self, tmp_path: Path) -> None:
         old = {
             "study_id": "1.2.3",
-            "frames": [
-                {"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}
-            ],
+            "frames": [{"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}],
         }
         path = self._write_old_gold(tmp_path, old)
         loaded = load_gold(path)
@@ -73,9 +71,7 @@ class TestOldFormatLoading:
     def test_try_load_old_format(self, tmp_path: Path) -> None:
         old = {
             "study_id": "1.2.3",
-            "frames": [
-                {"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}
-            ],
+            "frames": [{"frame_index": 10, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}],
         }
         path = self._write_old_gold(tmp_path, old)
         result = try_load_gold(path)
@@ -85,9 +81,7 @@ class TestOldFormatLoading:
     def test_old_format_with_frame_index_zero(self, tmp_path: Path) -> None:
         old = {
             "study_id": "1.2.3",
-            "frames": [
-                {"frame_index": 0, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}
-            ],
+            "frames": [{"frame_index": 0, "phase": "ED", "points": [[0, 0], [5, 0], [5, 5]]}],
         }
         path = self._write_old_gold(tmp_path, old)
         loaded = load_gold(path)

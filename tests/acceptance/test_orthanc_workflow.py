@@ -43,9 +43,7 @@ class TestOrthancWorkflow:
         if studies:
             series_list = fake_orthanc_client.query_series(studies[0].study_uid)
             if series_list:
-                instances = fake_orthanc_client.query_instances(
-                    studies[0].study_uid, series_list[0].series_uid
-                )
+                instances = fake_orthanc_client.query_instances(studies[0].study_uid, series_list[0].series_uid)
                 assert isinstance(instances, list)
                 assert all(isinstance(i, InstanceInfo) for i in instances)
 
@@ -55,9 +53,7 @@ class TestOrthancWorkflow:
         if studies:
             series_list = fake_orthanc_client.query_series(studies[0].study_uid)
             if series_list:
-                instances = fake_orthanc_client.query_instances(
-                    studies[0].study_uid, series_list[0].series_uid
-                )
+                instances = fake_orthanc_client.query_instances(studies[0].study_uid, series_list[0].series_uid)
                 if instances:
                     data = fake_orthanc_client.download_instance(
                         studies[0].study_uid,

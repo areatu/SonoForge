@@ -214,9 +214,7 @@ class TestFinishClosedContourSnap:
             (10.0, 50.0),
         ]
 
-        with patch(
-            "echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon"
-        ) as mock_snap:
+        with patch("echo_personal_tool.domain.services.contour_edge_snap.snap_closed_polygon") as mock_snap:
             result = w._finish_closed_contour()
             assert result is True
             mock_snap.assert_not_called()
@@ -257,9 +255,7 @@ class TestPerClickSnapPolygon:
         w._magnetic_snap_enabled = True
         w.start_generic_area_contour()
 
-        with patch(
-            "echo_personal_tool.domain.services.contour_edge_snap.snap_magnetic_point"
-        ) as mock_snap:
+        with patch("echo_personal_tool.domain.services.contour_edge_snap.snap_magnetic_point") as mock_snap:
             w.handle_contour_click((10.0, 10.0))
             mock_snap.assert_not_called()
 

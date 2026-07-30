@@ -2994,6 +2994,7 @@ class ViewerWidget(QWidget):
                         outward_normal_at_index_closed,
                         snap_magnetic_point,
                     )
+
                     idx = len(self._active_arc_points) - 1
                     normal = outward_normal_at_index_closed(self._active_arc_points, idx)
                     snapped = snap_magnetic_point(

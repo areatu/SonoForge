@@ -105,13 +105,16 @@ class TestResolvePixelSpacingRegression:
 
     def _make_dataset(self, **attrs) -> dict:
         """Create a dict-like object that mimics pydicom Dataset for testing."""
+
         class MockDataset(dict):
             def get(self, key, default=None):
                 return super().get(key, default)
+
         return MockDataset(attrs)
 
     def test_pixel_spacing_tag(self) -> None:
         from unittest.mock import MagicMock
+
         ds = MagicMock()
         ds.get.return_value = [0.15, 0.15]
         result = resolve_pixel_spacing(ds)
@@ -121,6 +124,7 @@ class TestResolvePixelSpacingRegression:
 
     def test_imager_pixel_spacing(self) -> None:
         from unittest.mock import MagicMock
+
         ds = MagicMock()
         ds.get.side_effect = lambda key, *a: [0.2, 0.2] if key == "ImagerPixelSpacing" else None
         result = resolve_pixel_spacing(ds)
@@ -130,6 +134,7 @@ class TestResolvePixelSpacingRegression:
 
     def test_no_spacing_returns_none(self) -> None:
         from unittest.mock import MagicMock
+
         ds = MagicMock()
         ds.get.return_value = None
         result = resolve_pixel_spacing(ds)
@@ -137,6 +142,7 @@ class TestResolvePixelSpacingRegression:
 
     def test_invalid_spacing_values(self) -> None:
         from unittest.mock import MagicMock
+
         ds = MagicMock()
         ds.get.side_effect = lambda key, *a: [-1.0, 0.1] if key == "PixelSpacing" else None
         result = resolve_pixel_spacing(ds)

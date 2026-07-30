@@ -282,7 +282,7 @@ def test_area_compare_button_emits_signal(qtbot) -> None:
     qtbot.addWidget(panel)
     received: list[bool] = []
     panel.area_compare_requested.connect(lambda: received.append(True))
-    
+
     # Find and click the area compare button
     # Note: "Сравнение площадей" is the translation for tools.area_compare
     for button in panel.findChildren(QPushButton):

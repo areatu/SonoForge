@@ -81,14 +81,13 @@ def test_uid_with_spaces_rejected() -> None:
 
 # ── Pixel spacing fuzzing ──────────────────────────────────────────
 
+
 @given(
     row_spacing=st.floats(min_value=0.01, max_value=5.0),
     col_spacing=st.floats(min_value=0.01, max_value=5.0),
 )
 @settings(max_examples=200)
-def test_pixel_to_mm_length_never_negative(
-    row_spacing: float, col_spacing: float
-) -> None:
+def test_pixel_to_mm_length_never_negative(row_spacing: float, col_spacing: float) -> None:
     """pixel_to_mm_length always returns a non-negative value for valid inputs."""
     length = pixel_to_mm_length(
         pixel_length=100.0,
@@ -118,6 +117,7 @@ def test_pixel_to_mm_length_monotonic_with_pixel_length(
 
 # ── Measurement value fuzzing ──────────────────────────────────────
 
+
 @given(
     mm_value=st.floats(min_value=0.1, max_value=500.0),
     unit=st.sampled_from(["mm", "cm"]),
@@ -140,9 +140,7 @@ def test_format_length_mm_always_returns_string(mm_value: float, unit: str) -> N
     ),
 )
 @settings(max_examples=100)
-def test_linear_measurement_display_text_never_raises(
-    label: str, pixel_length: float, mm_length: float | None
-) -> None:
+def test_linear_measurement_display_text_never_raises(label: str, pixel_length: float, mm_length: float | None) -> None:
     """LinearMeasurement.display_text never raises for valid inputs."""
     m = LinearMeasurement(
         label=label,
@@ -156,15 +154,14 @@ def test_linear_measurement_display_text_never_raises(
 
 # ── Contour coordinate fuzzing ─────────────────────────────────────
 
+
 @given(
     n_points=st.integers(min_value=3, max_value=50),
     x_range=st.floats(min_value=0.0, max_value=500.0),
     y_range=st.floats(min_value=0.0, max_value=500.0),
 )
 @settings(max_examples=100)
-def test_contour_area_always_positive_for_closed_polygon(
-    n_points: int, x_range: float, y_range: float
-) -> None:
+def test_contour_area_always_positive_for_closed_polygon(n_points: int, x_range: float, y_range: float) -> None:
     """Planimeter area is always positive for a valid closed contour with >= 3 points."""
     points = []
     for i in range(n_points):

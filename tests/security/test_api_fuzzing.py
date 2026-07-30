@@ -262,7 +262,7 @@ class TestXssInApiResponses:
         "xss_payload",
         [
             '<script>alert("xss")</script>',
-            '<img src=x onerror=alert(1)>',
+            "<img src=x onerror=alert(1)>",
             "javascript:alert(1)",
             '<svg onload=alert("xss")>',
             "{{7*7}}",
@@ -284,7 +284,7 @@ class TestXssInApiResponses:
         assert isinstance(result[0].patient_name, str)
 
     def test_xss_in_study_description(self) -> None:
-        xss = '<script>document.cookie</script>'
+        xss = "<script>document.cookie</script>"
         payload = [
             {
                 "0020000D": {"vr": "UI", "Value": ["1.2.3"]},
