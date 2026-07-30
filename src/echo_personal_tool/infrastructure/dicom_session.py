@@ -346,6 +346,7 @@ class DicomSession:
             return
         if self._raw_bytes is None:
             return
+
         extracted = _extract_pixel_data_from_bytes(self._raw_bytes)
         if extracted is not None:
             self._pixel_data_raw = extracted
@@ -360,7 +361,19 @@ class DicomSession:
                 from pydicom.uid import ImplicitVRLittleEndian
 
                 full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
-            self._pixel_data_raw = bytes(full_ds.PixelData)
+
+            # SAFE EXTRACTION: Check for any type of PixelData
+            if hasattr(full_ds, "PixelData"):
+                self._pixel_data_raw = bytes(full_ds.PixelData)
+            elif hasattr(full_ds, "FloatPixelData"):
+                self._pixel_data_raw = bytes(full_ds.FloatPixelData)
+            elif hasattr(full_ds, "DoubleFloatPixelData"):
+                self._pixel_data_raw = bytes(full_ds.DoubleFloatPixelData)
+            else:
+                # File has no pixels (e.g., SR or PR). Mark as empty bytes
+                # to avoid repeated parsing.
+                self._pixel_data_raw = b""
+
         # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
         self._raw_bytes = None
         if not self._is_uncompressed:
@@ -462,6 +475,13 @@ class DicomSession:
 
     def _decode_pydicom_fallback(self, index: int) -> np.ndarray:
         """Fallback: full pydicom decode, extract frame index."""
+        # PROTECTION 1: If raw_bytes are freed, we cannot do fallback
+        if self._raw_bytes is None:
+            raise ValueError(
+                "Cannot decode fallback: raw bytes are not available. "
+                "The file may have no pixel data or heavy buffers were released."
+            )
+
         full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
         # Ensure file_meta exists with Transfer Syntax UID
         if not hasattr(full_ds, "file_meta") or full_ds.file_meta is None:
@@ -472,6 +492,19 @@ class DicomSession:
             from pydicom.uid import ImplicitVRLittleEndian
 
             full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+
+        # PROTECTION 2: Explicit check for pixel data
+        has_pixel_data = (
+            hasattr(full_ds, "PixelData")
+            or hasattr(full_ds, "FloatPixelData")
+            or hasattr(full_ds, "DoubleFloatPixelData")
+        )
+        if not has_pixel_data:
+            raise ValueError(
+                "DICOM file has no pixel data to decode. "
+                "It may be a non-image DICOM (e.g., Structured Report, Presentation State)."
+            )
+
         pixel_array = full_ds.pixel_array
         frames = stack_pixel_array(pixel_array)
         return np.ascontiguousarray(frames[index])

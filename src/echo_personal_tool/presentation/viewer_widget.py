@@ -1025,7 +1025,7 @@ class ViewerWidget(QWidget):
             # ViewerWidget.keyPressEvent — pyqtgraph.GraphicsView eats them
             # by sending them to the scene, which ignores unhandled ones.
             if event.type() == QEvent.Type.KeyPress:
-                self._viewer_widget.keyPressEvent(event)
+                self.keyPressEvent(event)
                 return event.isAccepted()
         return super().eventFilter(watched, event)
 
