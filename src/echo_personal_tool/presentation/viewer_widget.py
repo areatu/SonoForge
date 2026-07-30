@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -178,6 +179,7 @@ _DEFAULT_OVERLAY_STYLE = (
 _MAGNETIC_SNAP_WEIGHT_THRESHOLD = 0.15
 _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
+_WL_DR_CACHE_MAX = 200
 
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
@@ -788,6 +790,10 @@ class ViewerWidget(QWidget):
         self._cached_levels_key: tuple[int, int, int] | None = None
         self._cached_display_low: float | None = None
         self._cached_display_high: float | None = None
+        self._cached_lut: np.ndarray | None = None
+        self._cached_lut_key: tuple[float, float, str] | None = None
+        self._last_gray_frame_ptr: int | None = None
+        self._cached_grayscale_frame: np.ndarray | None = None
         self._last_color_frame_ptr: int | None = None
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
@@ -880,7 +886,7 @@ class ViewerWidget(QWidget):
         self._window_slider.setValue(100)
         self._window_slider.valueChanged.connect(self._update_levels)
         # Per-instance WL/DR cache to preserve settings across playback
-        self._instance_wl_dr_cache: dict[str, tuple[int, int, int]] = {}
+        self._instance_wl_dr_cache: OrderedDict[str, tuple[int, int, int]] = OrderedDict()
 
         self._level_slider = QSlider(Qt.Orientation.Horizontal)
         self._level_slider.setRange(0, 100)
@@ -1544,6 +1550,8 @@ class ViewerWidget(QWidget):
             self._cached_display_low = None
             self._cached_display_high = None
             self._cached_levels_key = None
+            self._cached_lut = None
+            self._cached_lut_key = None
             self._display_mode_cache_key = instance_key
         channel_order = "rgb" if media_format == "dicom" else "bgr"
         self._current_frame = to_grayscale_array(frame)
@@ -1685,6 +1693,8 @@ class ViewerWidget(QWidget):
             self._cached_display_low = None
             self._cached_display_high = None
             self._cached_levels_key = None
+            self._cached_lut = None
+            self._cached_lut_key = None
         channel_order = "rgb" if media_format == "dicom" else "bgr"
 
         levels_key = (
@@ -1716,11 +1726,13 @@ class ViewerWidget(QWidget):
             if frame.ndim == 2:
                 self._current_frame = frame
             elif frame.ndim == 3 and frame.shape[2] >= 3:
-                self._current_frame = (
-                    np.mean(frame[..., :3], axis=2).astype(np.uint8)
-                    if not levels_changed
-                    else to_grayscale_array(frame)
-                )
+                frame_data_ptr = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
+                if frame_data_ptr == self._last_gray_frame_ptr and self._cached_grayscale_frame is not None:
+                    self._current_frame = self._cached_grayscale_frame
+                else:
+                    self._current_frame = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+                    self._last_gray_frame_ptr = frame_data_ptr
+                    self._cached_grayscale_frame = self._current_frame
             else:
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             if self._despeckle_enabled:
@@ -1788,6 +1800,11 @@ class ViewerWidget(QWidget):
             # Save WL/DR for the old instance
             if previous_instance is not None:
                 old_uid = previous_instance.sop_instance_uid
+                if old_uid in self._instance_wl_dr_cache:
+                    self._instance_wl_dr_cache.move_to_end(old_uid)
+                else:
+                    if len(self._instance_wl_dr_cache) >= _WL_DR_CACHE_MAX:
+                        self._instance_wl_dr_cache.popitem(last=False)
                 self._instance_wl_dr_cache[old_uid] = (
                     self._dr_slider.value(),
                     self._window_slider.value(),
@@ -1808,6 +1825,7 @@ class ViewerWidget(QWidget):
             # Restore WL/DR for the new instance if cached
             new_uid = viewer_state.instance.sop_instance_uid if viewer_state.instance else None
             if new_uid and new_uid in self._instance_wl_dr_cache:
+                self._instance_wl_dr_cache.move_to_end(new_uid)
                 dr, window, level = self._instance_wl_dr_cache[new_uid]
                 self._dr_slider.blockSignals(True)
                 self._dr_slider.setValue(dr)
@@ -1881,6 +1899,7 @@ class ViewerWidget(QWidget):
                 self._refresh_frame_overlays()
             self._refresh_speckle_overlay_for_current_frame()
             self._set_image_smooth(not viewer_state.is_playing)
+            self._set_viewport_update_for_playback(viewer_state.is_playing)
             if not viewer_state.is_playing:
                 self._refresh_frame_panel_layout()
                 self._refresh_panel_frame_graphics()
@@ -1897,6 +1916,15 @@ class ViewerWidget(QWidget):
             return
         self._image_smooth = enabled
         self._image_item.setOpts(smooth=enabled)
+
+    def _set_viewport_update_for_playback(self, is_playing: bool) -> None:
+        mode = (
+            QGraphicsView.ViewportUpdateMode.FullViewportUpdate
+            if is_playing
+            else QGraphicsView.ViewportUpdateMode.SmartViewportUpdate
+        )
+        if self._graphics.viewportUpdateMode() != mode:
+            self._graphics.setViewportUpdateMode(mode)
 
     @_prof
     def toggle_linear_caliper(self) -> None:
@@ -5988,20 +6016,29 @@ class ViewerWidget(QWidget):
 
             src = _grayscale_source_array(frame)
             span = max(high - low, 1.0)
-            if src.dtype == np.uint16:
+            lut_key = (low, span, str(src.dtype))
+            if self._cached_lut_key == lut_key and self._cached_lut is not None:
+                lut = self._cached_lut
+            elif src.dtype == np.uint16:
                 lut = np.clip(
                     (np.arange(65536, dtype=np.float64) - low) / span * 255.0,
                     0.0,
                     255.0,
                 ).astype(np.uint8)
-                display = lut[src]
+                self._cached_lut = lut
+                self._cached_lut_key = lut_key
             else:
-                src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
                 lut = np.clip(
                     (np.arange(256, dtype=np.float64) - low) / span * 255.0,
                     0.0,
                     255.0,
                 ).astype(np.uint8)
+                self._cached_lut = lut
+                self._cached_lut_key = lut_key
+            if src.dtype == np.uint16:
+                display = lut[src]
+            else:
+                src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
                 display = cv2.LUT(src_u8, lut)
             self._image_item.setImage(display, autoLevels=False)
         self._invalidate_edge_map_cache()

@@ -1597,9 +1597,6 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _sync_results_overlay(self, state: ViewerState) -> None:
-        import logging
-
-        _dbg = logging.getLogger(__name__)
         time_calibrated = self._viewer.is_doppler_time_calibrated()
         instance = state.instance
         instance_uid = instance.sop_instance_uid if instance is not None else None
@@ -1610,7 +1607,7 @@ class MainWindow(QMainWindow):
             time_calibrated=time_calibrated,
             length_display_unit=self._user_preferences.length_display_unit,
         )
-        _dbg.debug(
+        logger.debug(
             "_sync_overlay: uid=%s html_len=%d linear=%d",
             instance_uid,
             len(fresh_html),

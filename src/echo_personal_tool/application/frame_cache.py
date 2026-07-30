@@ -36,11 +36,10 @@ class FrameCache:
         if not self._frame_store:
             return None
         if len(self._frame_store) == self._total_frames:
-            result = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
         else:
-            result = np.stack([self._frame_store[i] for i in self._sorted_keys])
-        self._cached_frames = result
-        return result
+            self._cached_frames = np.stack([self._frame_store[i] for i in self._sorted_keys])
+        return self._cached_frames
 
     def is_ready(self, path: Path) -> bool:
         return (
@@ -122,6 +121,8 @@ class FrameCache:
         self._evict()
 
     def require_full_cine(self) -> np.ndarray:
+        if self._cached_frames is not None:
+            return self._cached_frames
         if not self._frame_store or self._total_frames == 0:
             raise IncompleteCineError("Frame cache is empty")
         if len(self._frame_store) != self._total_frames:
@@ -129,7 +130,8 @@ class FrameCache:
                 f"Only {len(self._frame_store)}/{self._total_frames} frames loaded. "
                 "Reload full cine before speckle tracking."
             )
-        return np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        return self._cached_frames
 
     def load_all_frames(self) -> np.ndarray:
         """Load all frames from source if not already cached.
@@ -141,8 +143,11 @@ class FrameCache:
             raise IncompleteCineError("No frames available")
 
         # Already fully loaded
+        if self._cached_frames is not None and len(self._frame_store) == self._total_frames:
+            return self._cached_frames
         if len(self._frame_store) == self._total_frames:
-            return np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            return self._cached_frames
 
         # Need to load missing frames from source
         if self.source_path is None:
@@ -172,11 +177,10 @@ class FrameCache:
                 frames.append(session.decode_single_frame(i))
             result = np.stack(frames)
 
-        # Cache all frames
-        for i in range(result.shape[0]):
-            self._frame_store[i] = result[i]
-        self._sorted_keys = sorted(self._frame_store.keys())
+        # Cache all frames — store only in _cached_frames to avoid duplication
         self._cached_frames = result
+        self._frame_store = {i: result[i] for i in range(result.shape[0])}
+        self._sorted_keys = sorted(self._frame_store.keys())
 
         return result
 

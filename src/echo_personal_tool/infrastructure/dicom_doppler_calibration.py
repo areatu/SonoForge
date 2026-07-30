@@ -121,7 +121,7 @@ def try_parse_from_path(
 ) -> DopplerCalibrationState | None:
     """Load DICOM and attempt spectrogram region calibration from tags only."""
     try:
-        dataset = pydicom.dcmread(path, force=True)
+        dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
     except Exception:
         return None
 

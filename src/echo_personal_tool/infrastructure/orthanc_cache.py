@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 
 from echo_personal_tool.infrastructure.dicom_uid_validator import safe_uid_path_component
+
+_DEFAULT_MAX_AGE_DAYS = 7
 
 
 class OrthancSessionCache:
@@ -55,3 +58,24 @@ class OrthancSessionCache:
         for entry in self._root.iterdir():
             if entry.is_dir() and entry.name.startswith("session-"):
                 shutil.rmtree(entry, ignore_errors=True)
+
+    def clear_stale(self, max_age_days: int = _DEFAULT_MAX_AGE_DAYS) -> int:
+        """Remove session directories older than max_age_days.
+
+        Returns the number of sessions removed.
+        """
+        if not self._root.exists():
+            return 0
+        cutoff = time.time() - (max_age_days * 86400)
+        removed = 0
+        for entry in self._root.iterdir():
+            if not entry.is_dir() or not entry.name.startswith("session-"):
+                continue
+            try:
+                mtime = entry.stat().st_mtime
+            except OSError:
+                continue
+            if mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+                removed += 1
+        return removed

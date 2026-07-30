@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from collections import OrderedDict
 from collections.abc import Callable
 
 from PySide6.QtCore import QSize, QTimer, Signal
@@ -20,6 +21,7 @@ from echo_personal_tool.presentation.browser_item_delegate import (
 _ITEM_DATA_ROLE = 256
 _VISIBLE_WINDOW_PADDING = 6
 _SCROLL_REQUEST_DEBOUNCE_MS = 25
+_THUMBNAIL_PIXMAP_MAX = 200
 
 ThumbnailLoader = Callable[[InstanceMetadata], None] | Callable[[InstanceMetadata, ThumbnailPriority], None]
 
@@ -51,7 +53,7 @@ class LocalBrowserWidget(QTreeWidget):
         self.itemClicked.connect(self._on_item_clicked)
         self.itemExpanded.connect(self._on_item_expanded)
         self._thumbnail_cache: dict[str, QIcon] = {}
-        self._thumbnail_pixmaps: dict[str, QPixmap] = {}
+        self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._items_by_uid: dict[str, QTreeWidgetItem] = {}
         self._thumbnail_loader: ThumbnailLoader | None = None
         self._thumbnail_loader_accepts_priority = False
@@ -70,6 +72,8 @@ class LocalBrowserWidget(QTreeWidget):
         self._building_tree = True
         self.clear()
         self._items_by_uid.clear()
+        self._thumbnail_pixmaps.clear()
+        self._thumbnail_cache.clear()
         for study in studies:
             label = study.study_datetime.strftime("%Y-%m-%d %H:%M:%S")
             study_item = QTreeWidgetItem([label])
@@ -129,7 +133,13 @@ class LocalBrowserWidget(QTreeWidget):
         pixmap = QPixmap.fromImage(image)
         if pixmap.isNull():
             return
-        self._thumbnail_pixmaps[sop_instance_uid] = pixmap
+        if sop_instance_uid in self._thumbnail_pixmaps:
+            self._thumbnail_pixmaps.move_to_end(sop_instance_uid)
+        else:
+            if len(self._thumbnail_pixmaps) >= _THUMBNAIL_PIXMAP_MAX:
+                evicted_uid, _ = self._thumbnail_pixmaps.popitem(last=False)
+                self._thumbnail_cache.pop(evicted_uid, None)
+            self._thumbnail_pixmaps[sop_instance_uid] = pixmap
         icon = QIcon(pixmap)
         self._thumbnail_cache[sop_instance_uid] = icon
         item = self._items_by_uid.get(sop_instance_uid)
@@ -154,7 +164,7 @@ class LocalBrowserWidget(QTreeWidget):
         instance: InstanceMetadata,
         priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
     ) -> None:
-        if instance.sop_instance_uid in self._thumbnail_cache:
+        if instance.sop_instance_uid in self._thumbnail_pixmaps:
             return
         if self._thumbnail_loader is None:
             return

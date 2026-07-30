@@ -149,7 +149,7 @@ class AppController(QObject):
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._last_frame_shown_at: float = 0.0
         self._playback_warmup_pending = False
-        self._playback_poll_interval_ms = 33
+        self._playback_poll_interval_ms = 5
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
         self._loaded_source_path: Path | None = None
@@ -234,9 +234,14 @@ class AppController(QObject):
         """Release a retained worker after its signals have been processed."""
         self._live_workers.discard(worker)
         if len(self._live_workers) == 0:
-            import gc
+            QTimer.singleShot(0, self._deferred_gc_collect)
 
-            gc.collect()
+    def _deferred_gc_collect(self) -> None:
+        import gc
+        import threading
+        def _bg_collect():
+            gc.collect(generation=0)
+        threading.Thread(target=_bg_collect, daemon=True).start()
 
     @property
     def studies(self) -> list[StudyMetadata]:
@@ -3054,6 +3059,11 @@ class AppController(QObject):
                 requested=result.frames_requested,
             )
         )
+
+        # Release fusion intermediate data to free memory
+        self._fusion_masks.clear()
+        self._fusion_contours.clear()
+        self._fusion_processed.clear()
 
     # ── Speckle Tracking ──────────────────────────────────────────────────
 

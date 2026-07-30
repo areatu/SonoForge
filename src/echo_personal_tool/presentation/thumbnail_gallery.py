@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import shutil
+from collections import OrderedDict
 from collections.abc import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, Signal
@@ -26,6 +27,7 @@ from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, T
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
 _VISIBLE_PADDING = 8
 _SCROLL_DEBOUNCE_MS = 25
+_THUMBNAIL_PIXMAP_MAX = 200
 
 _THUMBNAIL_SCALES: dict[str, dict[str, tuple[int, int]]] = {
     "small": {"thumb": (72, 54), "cell": (84, 66)},
@@ -173,7 +175,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self.customContextMenuRequested.connect(self._on_context_menu)
 
         self._thumbnail_cache: dict[str, QIcon] = {}
-        self._thumbnail_pixmaps: dict[str, QPixmap] = {}
+        self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._items_by_uid: dict[str, QListWidgetItem] = {}
         self._instances: list[InstanceMetadata] = []
         self._thumbnail_loader: ThumbnailLoader | None = None
@@ -245,6 +247,8 @@ class ThumbnailGalleryWidget(QListWidget):
         self.clear()
         self._items_by_uid.clear()
         self._instances.clear()
+        self._thumbnail_pixmaps.clear()
+        self._thumbnail_cache.clear()
         index = 1
         for study in studies:
             for series in study.series:
@@ -316,8 +320,14 @@ class ThumbnailGalleryWidget(QListWidget):
             return
         pixmap = QPixmap.fromImage(image)
         icon = QIcon(pixmap)
+        if instance_uid in self._thumbnail_pixmaps:
+            self._thumbnail_pixmaps.move_to_end(instance_uid)
+        else:
+            if len(self._thumbnail_pixmaps) >= _THUMBNAIL_PIXMAP_MAX:
+                evicted_uid, _ = self._thumbnail_pixmaps.popitem(last=False)
+                self._thumbnail_cache.pop(evicted_uid, None)
+            self._thumbnail_pixmaps[instance_uid] = pixmap
         self._thumbnail_cache[instance_uid] = icon
-        self._thumbnail_pixmaps[instance_uid] = pixmap
         item = self._items_by_uid.get(instance_uid)
         if item is not None:
             item.setIcon(icon)
