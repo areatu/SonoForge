@@ -9,6 +9,8 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
 
+from echo_personal_tool.infrastructure.i18n import tr
+
 
 @dataclass
 class MModeMeasurement:
@@ -140,7 +142,7 @@ class MModeMeasurementItem:
             parts.append(f"{m.value_ms:.1f} ms")
             if m.value_ms > 0:
                 hr = 60000.0 / m.value_ms
-                parts.append(f"ЧСС {hr:.0f}")
+                parts.append(f"{tr('mmode.label_hr')} {hr:.0f}")
         text = "  ".join(parts)
         mid_x = (sx + ex) / 2
         mid_y = (sy + ey) / 2
@@ -174,7 +176,9 @@ class MModeMeasurementTool(QWidget):
     teichholz_es_highlight = Signal()  # Emitted to show ESV highlight
 
     # Labels for the 3 ED calipers in Teichholz workflow
-    _TEICHHOLZ_ED_LABELS = ["МЖП", "КДР", "ЗСЛЖ"]
+    @staticmethod
+    def _teichholz_ed_labels() -> list[str]:
+        return [tr("mmode.teich_ed_labels.0"), tr("mmode.teich_ed_labels.1"), tr("mmode.teich_ed_labels.2")]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -254,9 +258,9 @@ class MModeMeasurementTool(QWidget):
         # Determine label
         label = ""
         if self._active_mode == "teichholz_ed":
-            label = self._TEICHHOLZ_ED_LABELS[self._teichholz_ed_index]
+            label = self._teichholz_ed_labels()[self._teichholz_ed_index]
         elif self._active_mode == "teichholz_es":
-            label = "КСР"
+            label = tr("mmode.label_es")
 
         m = MModeMeasurement(kind=self._active_mode, start=start, end=end, label=label)
 

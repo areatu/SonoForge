@@ -27,6 +27,7 @@ from echo_personal_tool.constructor.storage import (
     SchemaValidator,
     YamlStorage,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ class ConstructorWidget(QWidget):
 
         # Search bar
         self._search_bar = QLineEdit()
-        self._search_bar.setPlaceholderText("Поиск параметра, патологии, темы...")
+        self._search_bar.setPlaceholderText(tr("constructor.search_placeholder"))
         self._search_bar.setStyleSheet(
             f"QLineEdit {{ border: 1px solid {p['border']}; border-radius: 4px; "
             f"padding: 6px 10px; color: {p['text']}; background: {p['bg_control']}; font-size: 13px; }}"
@@ -203,8 +204,8 @@ class ConstructorWidget(QWidget):
             msg = "\n".join(str(e) for e in errors[:20])
             QMessageBox.warning(
                 self,
-                "Ошибки валидации",
-                f"Найдено {len(errors)} ошибок:\n\n{msg}",
+                tr("constructor.validation_errors"),
+                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
             )
             return
         self._yaml_storage.save(data)
@@ -216,7 +217,11 @@ class ConstructorWidget(QWidget):
         errors = self._validator.validate(self._model.to_dict())
         if errors:
             msg = "\n".join(str(e) for e in errors[:20])
-            QMessageBox.warning(self, "Ошибки валидации", f"{len(errors)} ошибок:\n{msg}")
+            QMessageBox.warning(
+                self,
+                tr("constructor.validation_errors"),
+                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+            )
             return
         storage = YamlStorage(path)
         storage.save(self._model.to_dict())
@@ -229,8 +234,8 @@ class ConstructorWidget(QWidget):
             return
         reply = QMessageBox.question(
             self,
-            "Отмена",
-            "Отменить все изменения с момента последнего сохранения?",
+            tr("constructor.cancel_title"),
+            tr("constructor.cancel_body"),
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._model = self._saved_state.deep_copy()
@@ -256,7 +261,7 @@ class ConstructorWidget(QWidget):
     def import_excel(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_open_file
 
-        path, _ = styled_open_file(self, "Импорт Excel", "", "Excel (*.xlsx *.xls)")
+        path, _ = styled_open_file(self, tr("constructor.import_excel"), "", "Excel (*.xlsx *.xls)")
         if path:
             try:
                 from echo_personal_tool.constructor.importers.excel_importer import (
@@ -273,12 +278,12 @@ class ConstructorWidget(QWidget):
                             pass  # TODO: implement merge logic
                 self._mark_dirty()
             except Exception as exc:
-                QMessageBox.critical(self, "Ошибка импорта", str(exc))
+                QMessageBox.critical(self, tr("constructor.import_error"), str(exc))
 
     def export_pdf(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_save_file
 
-        path, _ = styled_save_file(self, "Экспорт PDF", "", "PDF (*.pdf)")
+        path, _ = styled_save_file(self, tr("constructor.export_pdf"), "", "PDF (*.pdf)")
         if path:
             try:
                 from echo_personal_tool.constructor.exporters.pdf_exporter import (
@@ -287,12 +292,12 @@ class ConstructorWidget(QWidget):
 
                 export_to_pdf(self._model, Path(path))
             except Exception as exc:
-                QMessageBox.critical(self, "Ошибка экспорта", str(exc))
+                QMessageBox.critical(self, tr("constructor.export_error"), str(exc))
 
     def export_html(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_save_file
 
-        path, _ = styled_save_file(self, "Экспорт HTML", "", "HTML (*.html)")
+        path, _ = styled_save_file(self, tr("constructor.export_html"), "", "HTML (*.html)")
         if path:
             try:
                 from echo_personal_tool.constructor.exporters.html_exporter import (
@@ -301,7 +306,7 @@ class ConstructorWidget(QWidget):
 
                 export_to_html(self._model, Path(path))
             except Exception as exc:
-                QMessageBox.critical(self, "Ошибка экспорта", str(exc))
+                QMessageBox.critical(self, tr("constructor.export_error"), str(exc))
 
     # ── Preview ──
 
@@ -320,6 +325,10 @@ class ConstructorWidget(QWidget):
         errors = self._validator.validate(self._model.to_dict())
         if errors:
             msg = "\n".join(str(e) for e in errors)
-            QMessageBox.warning(self, "Ошибки валидации", f"{len(errors)} ошибок:\n\n{msg}")
+            QMessageBox.warning(
+                self,
+                tr("constructor.validation_errors"),
+                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+            )
         else:
-            QMessageBox.information(self, "Валидация", "Ошибок не найдено ✓")
+            QMessageBox.information(self, tr("constructor.validation_title"), tr("constructor.validation_no_errors"))

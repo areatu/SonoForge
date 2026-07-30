@@ -53,31 +53,31 @@ _TOPIC_ICONS: dict[str, str] = {
 }
 
 _TOPIC_LABELS: dict[str, str] = {
-    "left_ventricle": "ЛЖ",
-    "left_atrium": "ЛП",
-    "right_ventricle": "ПЖ",
-    "right_atrium": "ПП",
-    "mitral_valve": "МК",
-    "aortic_valve": "АК",
-    "tricuspid_valve": "ТК",
-    "pulmonary_valve": "ЛК",
-    "aorta": "Аорта",
-    "prosthetic_valves": "Протезы",
-    "other": "Прочее",
+    "left_ventricle": tr("ref_topic.left_ventricle"),
+    "left_atrium": tr("ref_topic.left_atrium"),
+    "right_ventricle": tr("ref_topic.right_ventricle"),
+    "right_atrium": tr("ref_topic.right_atrium"),
+    "mitral_valve": tr("ref_topic.mitral_valve"),
+    "aortic_valve": tr("ref_topic.aortic_valve"),
+    "tricuspid_valve": tr("ref_topic.tricuspid_valve"),
+    "pulmonary_valve": tr("ref_topic.pulmonary_valve"),
+    "aorta": tr("ref_topic.aorta"),
+    "prosthetic_valves": tr("ref_topic.prosthetic_valves"),
+    "other": tr("ref_topic.other"),
 }
 
 _TOPIC_FULL_NAMES: dict[str, str] = {
-    "left_ventricle": "Левый\nжелудочек",
-    "left_atrium": "Левое\nпредсердие",
-    "right_ventricle": "Правый\nжелудочек",
-    "right_atrium": "Правое\nпредсердие",
-    "mitral_valve": "Митральный\nклапан",
-    "aortic_valve": "Аортальный\nклапан",
-    "tricuspid_valve": "Трикуспидальный\nклапан",
-    "pulmonary_valve": "Лёгочный\nклапан",
-    "aorta": "Аорта",
-    "prosthetic_valves": "Протезы\nклапанов",
-    "other": "Прочее",
+    "left_ventricle": tr("ref_topic.left_ventricle_full"),
+    "left_atrium": tr("ref_topic.left_atrium_full"),
+    "right_ventricle": tr("ref_topic.right_ventricle_full"),
+    "right_atrium": tr("ref_topic.right_atrium_full"),
+    "mitral_valve": tr("ref_topic.mitral_valve_full"),
+    "aortic_valve": tr("ref_topic.aortic_valve_full"),
+    "tricuspid_valve": tr("ref_topic.tricuspid_valve_full"),
+    "pulmonary_valve": tr("ref_topic.pulmonary_valve_full"),
+    "aorta": tr("ref_topic.aorta_full"),
+    "prosthetic_valves": tr("ref_topic.prosthetic_valves_full"),
+    "other": tr("ref_topic.other_full"),
 }
 
 
@@ -121,7 +121,7 @@ class _ParameterCard(QWidget):
         if norm_text:
             norm_value = f"{norm_text} {unit}".strip() if unit else norm_text
             norm_table = self._make_table(
-                headers=["Показатель", "Значение"],
+                headers=[tr("ref_table.header_param"), tr("ref_table.header_value")],
                 rows=[[param.name, norm_value]],
                 header_bg=p["bg_control"],
                 value_color=p["accent_tab"],
@@ -179,7 +179,7 @@ class _ParameterCard(QWidget):
         vbox.setSpacing(0)
 
         # Merged header label
-        header = QLabel("  Патология")
+        header = QLabel("  " + tr("ref_table.pathology_header"))
         header.setStyleSheet(
             f"font-size: 12px; font-weight: bold; color: {p['text']}; "
             f"background: {p['bg_control']}; padding: 3px 6px; border: 1px solid {p['border']};"
@@ -360,7 +360,7 @@ class StructuredReferenceWidget(QWidget):
         top_layout.setContentsMargins(8, 4, 8, 4)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Поиск параметра...")
+        self._search_input.setPlaceholderText(tr("ref_table.search_placeholder"))
         self._search_input.textChanged.connect(self._on_search_changed)
         self._search_input.returnPressed.connect(self._on_search_enter)
         self._search_input.installEventFilter(self)
@@ -423,14 +423,14 @@ class StructuredReferenceWidget(QWidget):
         sex_layout.setSpacing(4)
 
         sex_group = QButtonGroup(self)
-        self._male_radio = QRadioButton("Муж")
-        self._female_radio = QRadioButton("Жен")
+        self._male_radio = QRadioButton(tr("ref_table.sex_male"))
+        self._female_radio = QRadioButton(tr("ref_table.sex_female"))
         self._male_radio.setChecked(True)
         sex_group.addButton(self._male_radio, 0)
         sex_group.addButton(self._female_radio, 1)
         sex_group.idClicked.connect(self._on_sex_changed)
 
-        sex_label = QLabel("Пол:")
+        sex_label = QLabel(tr("ref_table.sex_label"))
         sex_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
         sex_layout.addWidget(sex_label)
         sex_layout.addWidget(self._male_radio)
@@ -443,10 +443,10 @@ class StructuredReferenceWidget(QWidget):
         age_layout.setContentsMargins(4, 2, 4, 4)
         age_layout.setSpacing(4)
 
-        age_label = QLabel("Возраст:")
+        age_label = QLabel(tr("ref_table.age_label"))
         age_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
         self._age_input = QLineEdit()
-        self._age_input.setPlaceholderText("л")
+        self._age_input.setPlaceholderText(tr("ref_table.age_placeholder"))
         self._age_input.setMaximumWidth(50)
         self._age_input.setStyleSheet("font-size: 12px; padding: 2px;")
         self._age_input.textChanged.connect(self._on_age_changed)
@@ -807,9 +807,9 @@ class StructuredReferenceWidget(QWidget):
 
         p = get_theme_palette()
         columns = [
-            ("name", "Показатель"),
-            ("norm_male", "Норм М"),
-            ("norm_female", "Норм Ж"),
+            ("name", tr("ref_table.col_param")),
+            ("norm_male", tr("ref_table.col_norm_male")),
+            ("norm_female", tr("ref_table.col_norm_female")),
         ]
 
         table = QTableWidget(len(params), len(columns))
@@ -882,7 +882,7 @@ class StructuredReferenceWidget(QWidget):
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         # Headers
-        headers = ["Параметр"] + grad_names
+        headers = [tr("ref_table.col_param")] + grad_names
         table.setHorizontalHeaderLabels(headers)
         header_style = (
             f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
@@ -982,7 +982,7 @@ class StructuredReferenceWidget(QWidget):
         img_path = _IMAGES_DIR / path_str
         if not img_path.is_file():
             self._image_label.clear()
-            self._image_label.setText(f"Изображение: {path_str}")
+            self._image_label.setText(tr("ref_table.image_label", path=path_str))
             return
 
         if img_path.suffix.lower() == ".svg":

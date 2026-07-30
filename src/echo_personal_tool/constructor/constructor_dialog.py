@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.constructor_widget import ConstructorWidget
 from echo_personal_tool.constructor.storage import SchemaValidator, YamlStorage
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 _YAML_PATH = (
@@ -62,8 +63,8 @@ def show_constructor_dialog(parent: QWidget | None = None) -> None:
     except Exception as exc:
         QMessageBox.critical(
             parent,
-            "Ошибка загрузки",
-            f"Не удалось открыть конструктор:\n{exc}",
+            tr("constructor.load_error"),
+            tr("constructor.load_error_body", exc=str(exc)),
         )
         return
     dialog.exec()
@@ -74,7 +75,7 @@ class ConstructorDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Конструктор справочника")
+        self.setWindowTitle(tr("constructor.window_title"))
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -124,15 +125,15 @@ class ConstructorDialog(QDialog):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(12, 0, 4, 0)
 
-        title = QLabel("Конструктор справочника")
+        title = QLabel(tr("constructor.window_title"))
         title.setStyleSheet(f"color: {p['text']}; font-weight: bold; font-size: 13px;")
         layout.addWidget(title)
         layout.addStretch(1)
 
         for text, slot, tip in [
-            ("—", self._minimize, "Свернуть"),
-            ("□", self._toggle_maximize, "Развернуть"),
-            ("×", self._close, "Закрыть"),
+            ("—", self._minimize, tr("constructor.minimize")),
+            ("□", self._toggle_maximize, tr("constructor.maximize")),
+            ("×", self._close, tr("constructor.close")),
         ]:
             btn = QPushButton(text)
             btn.setFixedSize(32, 28)
@@ -174,28 +175,28 @@ class ConstructorDialog(QDialog):
             f"QMenuBar::item:selected {{ background: {p['bg_button_hover']}; }}"
         )
 
-        file_menu = menu_bar.addMenu("Файл")
-        file_menu.addAction("Сохранить", self._constructor_widget.save, "Ctrl+S")
-        file_menu.addAction("Сохранить как...", self._save_as)
+        file_menu = menu_bar.addMenu(tr("constructor.file_menu"))
+        file_menu.addAction(tr("constructor.file_menu.save"), self._constructor_widget.save, "Ctrl+S")
+        file_menu.addAction(tr("constructor.file_menu.save_as"), self._save_as)
         file_menu.addSeparator()
-        file_menu.addAction("Импорт Excel...", self._constructor_widget.import_excel)
+        file_menu.addAction(tr("constructor.file_menu.import_excel"), self._constructor_widget.import_excel)
         file_menu.addSeparator()
-        file_menu.addAction("Экспорт PDF...", self._constructor_widget.export_pdf)
-        file_menu.addAction("Экспорт HTML...", self._constructor_widget.export_html)
+        file_menu.addAction(tr("constructor.file_menu.export_pdf"), self._constructor_widget.export_pdf)
+        file_menu.addAction(tr("constructor.file_menu.export_html"), self._constructor_widget.export_html)
         file_menu.addSeparator()
-        file_menu.addAction("Закрыть", self._close, "Ctrl+Q")
+        file_menu.addAction(tr("constructor.file_menu.close"), self._close, "Ctrl+Q")
 
-        edit_menu = menu_bar.addMenu("Правка")
-        edit_menu.addAction("Отменить (к сохранению)", self._constructor_widget.undo, "Ctrl+Z")
+        edit_menu = menu_bar.addMenu(tr("constructor.edit_menu"))
+        edit_menu.addAction(tr("constructor.edit_menu.undo"), self._constructor_widget.undo, "Ctrl+Z")
         edit_menu.addSeparator()
-        edit_menu.addAction("Найти...", self._constructor_widget.focus_search, "Ctrl+F")
+        edit_menu.addAction(tr("constructor.edit_menu.find"), self._constructor_widget.focus_search, "Ctrl+F")
         edit_menu.addSeparator()
-        edit_menu.addAction("Удалить выбранные", self._constructor_widget.delete_selected, "Delete")
+        edit_menu.addAction(tr("constructor.edit_menu.delete"), self._constructor_widget.delete_selected, "Delete")
 
-        view_menu = menu_bar.addMenu("Вид")
+        view_menu = menu_bar.addMenu(tr("constructor.view_menu"))
         view_menu.addAction("Preview", self._constructor_widget.show_preview, "Ctrl+P")
         view_menu.addSeparator()
-        view_menu.addAction("Проверка целостности", self._constructor_widget.validate)
+        view_menu.addAction(tr("constructor.view_menu.validate"), self._constructor_widget.validate)
 
         return menu_bar
 
@@ -211,7 +212,7 @@ class ConstructorDialog(QDialog):
         layout.setSpacing(4)
 
         for text, slot, tip in [
-            ("💾 Сохранить", self._constructor_widget.save, "Ctrl+S"),
+            (tr("constructor.save_button"), self._constructor_widget.save, "Ctrl+S"),
             ("👁 Preview", self._constructor_widget.show_preview, "Ctrl+P"),
             ("↩ Undo", self._constructor_widget.undo, "Ctrl+Z"),
             ("📥 Excel", self._constructor_widget.import_excel, ""),
@@ -249,7 +250,7 @@ class ConstructorDialog(QDialog):
     def _save_as(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_save_file
 
-        path, _ = styled_save_file(self, "Сохранить как", str(self._yaml_path), "YAML (*.yaml *.yml)")
+        path, _ = styled_save_file(self, tr("constructor.save_as_title"), str(self._yaml_path), "YAML (*.yaml *.yml)")
         if path:
             self._constructor_widget.save_as(Path(path))
 
@@ -301,8 +302,8 @@ class ConstructorDialog(QDialog):
         if self._constructor_widget._dirty:
             reply = QMessageBox.question(
                 self,
-                "Несохранённые изменения",
-                "Есть несохранённые изменения. Сохранить перед закрытием?",
+                tr("constructor.unsaved_title"),
+                tr("constructor.unsaved_body"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )

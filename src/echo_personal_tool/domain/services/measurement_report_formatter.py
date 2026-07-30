@@ -12,6 +12,7 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 def dedupe_linear_measurements_latest(
@@ -31,7 +32,7 @@ def format_measurement_report(
 ) -> str:
     """Return multi-section study report; duplicate labels show latest only."""
     if snapshot is None:
-        return "Нет измерений."
+        return tr("domain.report.no_measurements")
 
     report_snapshot = snapshot
     if snapshot.linear_measurements:
@@ -58,9 +59,9 @@ def format_measurement_report(
             sections.append(section)
 
     if not sections:
-        return "Нет измерений."
+        return tr("domain.report.no_measurements")
 
-    lines: list[str] = ["Результаты измерений", ""]
+    lines: list[str] = [tr("domain.report.title"), ""]
     for index, section in enumerate(sections):
         if index > 0:
             lines.append("")
@@ -97,7 +98,7 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
     lines = [line for line in field_lines if line is not None]
     if not lines:
         return []
-    return ["Допплер", *lines]
+    return [tr("domain.report.doppler"), *lines]
 
 
 def _format_lvef_section(
@@ -116,9 +117,9 @@ def _format_lvef_section(
     else:
         length_suffix = " px"
         length_scale = 1.0
-    lines = ["Объёмы ЛЖ (Симпсон)"]
+    lines = [tr("domain.report.lv_simpson")]
     if not snapshot.spacing_calibrated:
-        lines.append("  (нет PixelSpacing — длина в px, объём в px³)")
+        lines.append(tr("domain.report.no_pixel_spacing"))
 
     for view_label, metrics in (("4C", lvef.a4c), ("2C", lvef.a2c)):
         if metrics is None:
@@ -126,21 +127,21 @@ def _format_lvef_section(
         length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
         if length is not None:
             length = length * length_scale
-        length_line = _optional_line(f"Длина ЛЖ {view_label}", length, length_suffix)
+        length_line = _optional_line(tr("domain.report.lv_length", view=view_label), length, length_suffix)
         if length_line:
             lines.append(length_line)
-        kdo = _optional_line(f"КДО ЛЖ {view_label}", metrics.edv_ml, volume_suffix)
+        kdo = _optional_line(tr("domain.report.kdo_lv", view=view_label), metrics.edv_ml, volume_suffix)
         if kdo:
             lines.append(kdo)
-        kso = _optional_line(f"КСО ЛЖ {view_label}", metrics.esv_ml, volume_suffix)
+        kso = _optional_line(tr("domain.report.kso_lv", view=view_label), metrics.esv_ml, volume_suffix)
         if kso:
             lines.append(kso)
 
-    lvef_line = _optional_line("ФВ ЛЖ", lvef.lvef_percent, " %")
+    lvef_line = _optional_line(tr("domain.report.lvef"), lvef.lvef_percent, " %")
     if lvef_line:
         lines.append(lvef_line)
     if lvef.method is not None:
-        lines.append(f"  Метод: {lvef.method}")
+        lines.append(tr("domain.report.method", method=lvef.method))
     return lines if len(lines) > 1 else []
 
 
@@ -149,10 +150,10 @@ def _format_teichholz_section(snapshot: MeasurementSnapshot) -> list[str]:
     if teichholz is None:
         return []
     return [
-        "Объёмы ЛЖ (Teichholz)",
-        _line("КДО", teichholz.edv_ml, " mL"),
-        _line("КСО", teichholz.esv_ml, " mL"),
-        _line("ФВ", teichholz.lvef_percent, " %"),
+        tr("domain.report.lv_teichholz"),
+        _line(tr("domain.report.kdo"), teichholz.edv_ml, " mL"),
+        _line(tr("domain.report.kso"), teichholz.esv_ml, " mL"),
+        _line(tr("domain.report.fv"), teichholz.lvef_percent, " %"),
     ]
 
 
@@ -163,7 +164,7 @@ def _format_la_section(snapshot: MeasurementSnapshot) -> list[str]:
 
     volume_suffix = " mL" if snapshot.spacing_calibrated else " px³"
     area_suffix = " cm²" if snapshot.spacing_calibrated else " px²"
-    lines = ["Левое предсердие"]
+    lines = [tr("domain.report.la")]
     if la is not None:
         lav_4c = es_volume_from_view(la.a4c)
         lav_4c_line = _optional_line("LAV 4C", lav_4c, volume_suffix)
@@ -173,7 +174,7 @@ def _format_la_section(snapshot: MeasurementSnapshot) -> list[str]:
         lav_bi_line = _optional_line("LAV Bi", lav_bi, volume_suffix)
         if lav_bi_line:
             lines.append(lav_bi_line)
-        area_line = _optional_line("S ЛП", la.area_cm2, area_suffix, decimals=2)
+        area_line = _optional_line(tr("domain.report.s_la"), la.area_cm2, area_suffix, decimals=2)
         if area_line:
             lines.append(area_line)
     elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
@@ -188,8 +189,8 @@ def _format_ra_section(snapshot: MeasurementSnapshot) -> list[str]:
 
     volume_suffix = " mL" if snapshot.spacing_calibrated else " px³"
     area_suffix = " cm²" if snapshot.spacing_calibrated else " px²"
-    lines = ["Правое предсердие"]
-    area_line = _optional_line("S ПП", ra.area_cm2, area_suffix, decimals=2)
+    lines = [tr("domain.report.ra")]
+    area_line = _optional_line(tr("domain.report.s_ra"), ra.area_cm2, area_suffix, decimals=2)
     if area_line:
         lines.append(area_line)
     rav = es_volume_from_view(ra.a4c) or ra.max_volume_ml
@@ -200,34 +201,34 @@ def _format_ra_section(snapshot: MeasurementSnapshot) -> list[str]:
 
 
 def _format_rv_section(snapshot: MeasurementSnapshot) -> list[str]:
-    lines = ["Правый желудочек"]
+    lines = [tr("domain.report.rv")]
     if snapshot.rv_fac_percent is not None:
         lines.append(_line("FAC", snapshot.rv_fac_percent, " %"))
     rv = snapshot.rv_simpson
     if rv and rv.max_volume_ml is not None:
-        lines.append(_line("Объём ПЖ", rv.max_volume_ml, " mL"))
+        lines.append(_line(tr("domain.report.rv_volume"), rv.max_volume_ml, " mL"))
     return lines if len(lines) > 1 else []
 
 
 def _format_lvm_section(snapshot: MeasurementSnapshot) -> list[str]:
     if snapshot.lvm_g is None:
         return []
-    lines = ["Масса ЛЖ", _line("LVM", snapshot.lvm_g, " g")]
+    lines = [tr("domain.report.lvm"), _line("LVM", snapshot.lvm_g, " g")]
     if snapshot.rwt is not None:
-        lines.append(_line("ОТС", snapshot.rwt, "", decimals=2))
+        lines.append(_line(tr("domain.report.rwt"), snapshot.rwt, "", decimals=2))
     return lines
 
 
 def _format_diastology_section(snapshot: MeasurementSnapshot) -> list[str]:
     if not snapshot.diastology_grade:
         return []
-    return ["Диастолическая функция", f"  {snapshot.diastology_grade}"]
+    return [tr("domain.report.diastolic"), f"  {snapshot.diastology_grade}"]
 
 
 def _format_planimeter_section(snapshot: MeasurementSnapshot) -> list[str]:
     if not snapshot.planimeter:
         return []
-    lines = ["Планиметрия"]
+    lines = [tr("domain.report.planimetry")]
     for item in snapshot.planimeter:
         decimals = 2 if item.kind == "area" else 1
         value_line = _optional_line(item.label, item.value, f" {item.unit}", decimals=decimals)
@@ -244,7 +245,7 @@ def _format_linear_section(
     if not snapshot.linear_measurements:
         return []
     return [
-        "Линейные измерения",
+        tr("domain.report.linear"),
         *(
             f"  {measurement.display_text(length_unit=length_display_unit)}"
             for measurement in snapshot.linear_measurements
@@ -257,15 +258,15 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
     if indexed is None:
         return []
 
-    lines = ["Индексированные (BSA)"]
+    lines = [tr("domain.report.indexed")]
     lines.append(_line("BSA", indexed.bsa_m2, " m²", decimals=2))
     if snapshot.height_cm is not None and snapshot.weight_kg is not None:
-        lines.append(f"  Рост: {snapshot.height_cm:.0f} cm, Вес: {snapshot.weight_kg:.0f} kg")
+        lines.append(tr("domain.report.height_weight", height=snapshot.height_cm, weight=snapshot.weight_kg))
 
     volume_fields = (
         ("LVMI", indexed.lvmi_g_m2, " g/m²"),
-        ("КДО idx (Simpson)", indexed.simpson_edvi_ml_m2, " mL/m²"),
-        ("КСО idx (Simpson)", indexed.simpson_esvi_ml_m2, " mL/m²"),
+        (tr("domain.report.kdo_idx"), indexed.simpson_edvi_ml_m2, " mL/m²"),
+        (tr("domain.report.kso_idx"), indexed.simpson_esvi_ml_m2, " mL/m²"),
         ("EDVi 4C", indexed.simpson_a4c_edvi_ml_m2, " mL/m²"),
         ("ESVi 4C", indexed.simpson_a4c_esvi_ml_m2, " mL/m²"),
         ("EDVi 2C", indexed.simpson_a2c_edvi_ml_m2, " mL/m²"),

@@ -71,6 +71,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.caliper", MeasurementAction.CALIPER),
             _btn("menu.spline_area", MeasurementAction.SPLINE_AREA),
             _btn("menu.spline_volume", MeasurementAction.SPLINE_VOLUME),
+            _btn("menu.diameter_compare", MeasurementAction.DIAMETER_COMPARE),
+            _btn("menu.area_compare", MeasurementAction.AREA_COMPARE),
         ),
     ),
     (

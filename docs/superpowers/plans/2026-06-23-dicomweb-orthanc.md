@@ -59,9 +59,11 @@ from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     tag_value,
 )
 
+
 def test_tag_value_reads_pn_and_uid():
     item = {"00100010": {"vr": "PN", "Value": ["IVANOV^IVAN"]}}
     assert tag_value(item, "00100010") == "IVANOV^IVAN"
+
 
 def test_parse_studies_from_fixture():
     raw = Path("tests/fixtures/orthanc/studies.json").read_text()
@@ -82,6 +84,7 @@ def tag_value(item: dict, tag: str, default: str = "") -> str:
     if isinstance(first, dict):
         return str(first.get("Alphabetic", default))
     return str(first)
+
 
 def parse_studies(payload: list[dict]) -> list[StudyInfo]: ...
 def parse_series(payload: list[dict]) -> list[SeriesInfo]: ...
@@ -114,6 +117,7 @@ class StudyInfo:
     study_description: str
     series_count: int | None = None
 
+
 @dataclass(frozen=True)
 class SeriesInfo:
     series_uid: str
@@ -121,6 +125,7 @@ class SeriesInfo:
     modality: str
     description: str
     instance_count: int | None = None
+
 
 @dataclass(frozen=True)
 class InstanceInfo:
@@ -224,6 +229,7 @@ class OrthancDicomWebClient:
         )
         r.raise_for_status()
         return parse_studies(r.json())
+
     # ... series, instances, download_instance similarly
 ```
 
@@ -272,6 +278,7 @@ class ServerSettings:
     password: str
     use_mock: bool
 
+
 def load_server_settings() -> ServerSettings: ...
 def save_server_settings(settings: ServerSettings) -> None: ...
 ```
@@ -301,9 +308,16 @@ class OrthancDownloadSignals(QObject):
     done = Signal(str, str)  # session_id, study_uid
     failed = Signal(str, str)
 
+
 class OrthancDownloadWorker(QRunnable):
-    def __init__(self, client: DicomWebClient, cache: OrthancSessionCache,
-                 session_id: str, study_uid: str, series_uids: list[str]): ...
+    def __init__(
+        self,
+        client: DicomWebClient,
+        cache: OrthancSessionCache,
+        session_id: str,
+        study_uid: str,
+        series_uids: list[str],
+    ): ...
 ```
 
 - [ ] **Step 2: Test with FakeClient + tmp cache**
@@ -348,6 +362,7 @@ def _open_orthanc_dialog(self):
         session_id, study_uid = dialog.result()
         path = self._orthanc_cache.study_path(session_id, study_uid)
         self._controller.open_folder(path)
+
 
 def closeEvent(self, event):
     self._orthanc_cache.clear_all()

@@ -105,6 +105,7 @@ def _contour_to_mask(contour: Contour, shape: tuple[int, int]) -> np.ndarray:
     pts = np.array(contour.closed_polygon_points(), dtype=np.int32)
     if len(pts) >= 3:
         import cv2
+
         cv2.fillPoly(mask, [pts], 1)
     return mask
 
@@ -193,7 +194,10 @@ def run_bench(
                 continue
 
             contour = _run_auto_segment(
-                frame, instance_path=instance_path, phase=phase_key, engine=engine,
+                frame,
+                instance_path=instance_path,
+                phase=phase_key,
+                engine=engine,
             )
 
             row: dict = {
@@ -249,6 +253,7 @@ def run_bench(
             gold_pts = np.array(gold_frame["points"], dtype=np.int32)
             if len(gold_pts) >= 3:
                 import cv2
+
                 cv2.fillPoly(gold_mask, [gold_pts], 1)
             pred_mask = _contour_to_mask(contour, frame.shape[:2])
             iou = mask_iou(pred_mask, gold_mask)
@@ -282,12 +287,15 @@ def run_bench(
             row["pair_complete"] = False
 
             # Store contour + gold for pair pass
-            pd = pair_data.setdefault(instance_key, {
-                "spacing": spacing,
-                "auto": {},
-                "gold": {},
-                "rows": {},
-            })
+            pd = pair_data.setdefault(
+                instance_key,
+                {
+                    "spacing": spacing,
+                    "auto": {},
+                    "gold": {},
+                    "rows": {},
+                },
+            )
             pd["auto"][phase_key.lower()] = contour
             pd["gold"][phase_key.lower()] = gold_frame
             pd["rows"][phase_key.lower()] = row
@@ -333,10 +341,7 @@ def run_bench(
             row["lvef_gold"] = pair_result["lvef_gold"]
             row["lvef_delta"] = pair_result["lvef_delta"]
             row["lvef_skip_reason"] = pair_result["lvef_skip_reason"]
-            row["pair_complete"] = (
-                pair_result["lvef_skip_reason"] is None
-                and pair_result["lvef_delta"] is not None
-            )
+            row["pair_complete"] = pair_result["lvef_skip_reason"] is None and pair_result["lvef_delta"] is not None
 
     # --- Zero-edit + LVEF reject pass ---
     for row in rows:
@@ -356,9 +361,7 @@ def run_bench(
     deduped_deltas = [
         r["lvef_delta"]
         for r in rows
-        if r.get("lvef_delta") is not None
-        and r.get("pair_complete")
-        and r.get("phase") == "ED"
+        if r.get("lvef_delta") is not None and r.get("pair_complete") and r.get("phase") == "ED"
     ]
     if deduped_deltas:
         s = sorted(deduped_deltas)
@@ -438,6 +441,7 @@ def main() -> int:
     output = args.report
     if output is None:
         from datetime import datetime
+
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output = args.manifest.parent / "reports" / f"bench_{ts}.csv"
 

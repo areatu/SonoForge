@@ -9,6 +9,8 @@ from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
 
+_MAX_VIDEO_MEMORY_BYTES = 1_500_000_000  # 1.5 GB
+
 
 class VideoDecodeSignals(QObject):
     first_frame_ready = Signal(int, object, object)  # request_id, path, first_frame
@@ -64,25 +66,43 @@ class VideoDecodeWorker(QRunnable):
                 return
 
             h, w = first_frame.shape[:2]
-            result = np.empty((total, h, w, first_frame.shape[2]), dtype=np.uint8)
-            result[0] = first_frame
-            count = 1
+            channels = first_frame.shape[2]
+            estimated_bytes = total * h * w * channels
+            use_list_fallback = estimated_bytes > _MAX_VIDEO_MEMORY_BYTES
+
+            if use_list_fallback:
+                frames: list[np.ndarray] = [first_frame]
+            else:
+                result = np.empty((total, h, w, channels), dtype=np.uint8)
+                result[0] = first_frame
+                count = 1
+
             for i in range(1, total):
                 ok, bgr = cap.read()
                 if not ok or bgr is None:
                     break
-                result[count] = to_bgr_uint8(bgr)
-                count += 1
+                frame = to_bgr_uint8(bgr)
+                if use_list_fallback:
+                    frames.append(frame)
+                else:
+                    result[count] = frame
+                    count += 1
                 if i % 10 == 0 or i == total - 1:
                     self.signals.progress.emit(i + 1, total)
 
-            if count == 0:
-                raise OSError(f"No frames decoded from: {self._path}")
+            if use_list_fallback:
+                if not frames:
+                    raise OSError(f"No frames decoded from: {self._path}")
+                final = np.stack(frames)
+            else:
+                if count == 0:
+                    raise OSError(f"No frames decoded from: {self._path}")
+                final = result[:count]
 
             self.signals.finished.emit(
                 self._request_id,
                 self._path,
-                np.ascontiguousarray(result[:count]),
+                np.ascontiguousarray(final),
             )
         except Exception as exc:  # noqa: BLE001
             self.signals.failed.emit(self._request_id, str(exc))

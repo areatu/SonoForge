@@ -58,23 +58,15 @@ def generate_manifest(
             elif phase == "ES" and chamber == "LV":
                 entry["es_frame"] = frame_index
 
-    manifest = {
-        "studies": sorted(
-            by_instance.values(), key=lambda s: s.get("instance_path", "")
-        )
-    }
+    manifest = {"studies": sorted(by_instance.values(), key=lambda s: s.get("instance_path", ""))}
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    output.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return manifest
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate manifest.json from consolidated gold JSON"
-    )
+    parser = argparse.ArgumentParser(description="Generate manifest.json from consolidated gold JSON")
     parser.add_argument(
         "--gold-dir",
         type=Path,
@@ -106,9 +98,7 @@ def main():
     manifest = generate_manifest(args.gold_dir, args.output, exclude_instances=exclude)
 
     studies = manifest["studies"]
-    complete = sum(
-        1 for s in studies if "ed_frame" in s and "es_frame" in s
-    )
+    complete = sum(1 for s in studies if "ed_frame" in s and "es_frame" in s)
     incomplete = len(studies) - complete
 
     print(f"Manifest written: {args.output}")

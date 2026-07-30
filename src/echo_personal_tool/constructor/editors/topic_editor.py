@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor
 from echo_personal_tool.constructor.models import TopicModel
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -41,7 +42,7 @@ class TopicEditor(BaseEditor):
         layout.setSpacing(0)
 
         # Header
-        header = QLabel("Анатомия")
+        header = QLabel(tr("constructor.topic.header"))
         header.setStyleSheet(
             f"color: {p['text']}; font-weight: bold; padding: 8px 12px; "
             f"background: {p['bg_control']}; border-bottom: 1px solid {p['border']};"
@@ -109,9 +110,9 @@ class TopicEditor(BaseEditor):
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
-        menu.addAction("Добавить тему", self._add_topic)
-        menu.addAction("Удалить тему", self._delete_selected)
-        menu.addAction("Дублировать", self._duplicate_topic)
+        menu.addAction(tr("constructor.topic.add"), self._add_topic)
+        menu.addAction(tr("constructor.topic.delete"), self._delete_selected)
+        menu.addAction(tr("constructor.topic.duplicate"), self._duplicate_topic)
         menu.exec(self._list.mapToGlobal(pos))
 
     def _add_topic(self) -> None:
@@ -122,7 +123,7 @@ class TopicEditor(BaseEditor):
             idx += 1
         slug = f"new_topic_{idx}"
 
-        new_topic = TopicModel(name=f"Новая тема {idx}", slug=slug)
+        new_topic = TopicModel(name=tr("constructor.topic.new", idx=str(idx)), slug=slug)
         self._topics.append(new_topic)
         self._all_items.append((new_topic.name, new_topic.slug))
         self._refresh_list()
@@ -135,8 +136,8 @@ class TopicEditor(BaseEditor):
         slug = item.data(Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
             self,
-            "Удалить тему",
-            f"Удалить тему «{item.text()}»?",
+            tr("constructor.topic.delete"),
+            tr("constructor.topic.delete_confirm", name=item.text()),
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._topics[:] = [t for t in self._topics if t.slug != slug]
@@ -161,7 +162,7 @@ class TopicEditor(BaseEditor):
         while f"{new_topic.slug}_copy_{idx}" in existing:
             idx += 1
         new_topic.slug = f"{new_topic.slug}_copy_{idx}"
-        new_topic.name = f"{new_topic.name} (копия)"
+        new_topic.name = f"{new_topic.name} {tr('constructor.topic.copy_suffix')}"
 
         self._topics.append(new_topic)
         self._all_items.append((new_topic.name, new_topic.slug))

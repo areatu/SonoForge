@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 def rv_area_mm2(
@@ -27,10 +28,10 @@ def format_rv_area_overlay_line(
     """Frame overlay for RV FAC contour: phase and area only."""
     phase = contour.phase.upper()
     if pixel_spacing is None:
-        return f"RV FAC {phase}: площадь —"
+        return tr("domain.rv_fac.no_area", phase=phase)
     area = rv_area_mm2(contour, pixel_spacing)
     if area is None:
-        return f"RV FAC {phase}: площадь —"
+        return tr("domain.rv_fac.no_area", phase=phase)
     unit = "mm²" if spacing_calibrated else "px²"
     return f"RV FAC {phase}: {area:.1f} {unit}"
 

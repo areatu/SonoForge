@@ -144,10 +144,10 @@ AppController.load_instance()
 @dataclass
 class FrameCache:
     source_path: Path
-    frames: np.ndarray          # shape (N, H, W) или (N, H, W, C)
+    frames: np.ndarray  # shape (N, H, W) или (N, H, W, C)
 
     def get(self, index: int) -> np.ndarray:
-        return self.frames[index].copy()   # Копия! Дополнительный аллок
+        return self.frames[index].copy()  # Копия! Дополнительный аллок
 ```
 
 **Проблемы:**

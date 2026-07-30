@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor
 from echo_personal_tool.constructor.storage.image_storage import ImageStorage
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -50,7 +51,7 @@ class ImageEditor(BaseEditor):
         layout.setSpacing(0)
 
         # Header
-        header = QLabel("Изображения")
+        header = QLabel(tr("constructor.image.header"))
         header.setStyleSheet(
             f"color: {p['text']}; font-weight: bold; padding: 8px 12px; "
             f"background: {p['bg_control']}; border-bottom: 1px solid {p['border']};"
@@ -58,7 +59,7 @@ class ImageEditor(BaseEditor):
         layout.addWidget(header)
 
         # Drop zone hint
-        self._drop_hint = QLabel("Перетащите изображения сюда")
+        self._drop_hint = QLabel(tr("constructor.image.drop_hint"))
         self._drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._drop_hint.setFixedHeight(40)
         self._drop_hint.setStyleSheet(
@@ -145,7 +146,7 @@ class ImageEditor(BaseEditor):
     def _show_preview(self, filename: str) -> None:
         path = self._image_storage.resolve(filename)
         if path is None:
-            self._preview_label.setText(f"Файл не найден: {filename}")
+            self._preview_label.setText(tr("constructor.image.file_not_found", name=filename))
             return
 
         if path.suffix.lower() == ".svg":
@@ -161,7 +162,7 @@ class ImageEditor(BaseEditor):
                 )
                 self._preview_label.setPixmap(scaled)
             else:
-                self._preview_label.setText(f"Не удалось загрузить: {filename}")
+                self._preview_label.setText(tr("constructor.image.load_failed", name=filename))
 
     def _render_svg(self, path: Path) -> None:
         try:
@@ -183,9 +184,9 @@ class ImageEditor(BaseEditor):
                 painter.end()
                 self._preview_label.setPixmap(QPixmap.fromImage(image))
             else:
-                self._preview_label.setText(f"Невалидный SVG: {path.name}")
+                self._preview_label.setText(tr("constructor.image.invalid_svg", name=path.name))
         except Exception:
-            self._preview_label.setText(f"Ошибка SVG: {path.name}")
+            self._preview_label.setText(tr("constructor.image.svg_error", name=path.name))
 
     def _on_zoom_changed(self, text: str) -> None:
         zoom_map = {"Fit": 0.5, "50%": 0.5, "100%": 1.0, "200%": 2.0, "400%": 4.0}
@@ -237,17 +238,15 @@ class ImageEditor(BaseEditor):
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
-        menu.addAction("Добавить изображение...", self._add_image)
-        menu.addAction("Удалить выбранное", self._delete_image)
-        menu.addAction("Открыть во внешнем просмотрщике", self._open_external)
+        menu.addAction(tr("constructor.image.add"), self._add_image)
+        menu.addAction(tr("constructor.image.delete"), self._delete_image)
+        menu.addAction(tr("constructor.image.open_external"), self._open_external)
         menu.exec(self._list.mapToGlobal(pos))
 
     def _add_image(self) -> None:
         from echo_personal_tool.constructor.dialogs import styled_open_files
 
-        files = styled_open_files(
-            self, "Добавить изображения", "", "Изображения (*.png *.jpg *.jpeg *.gif *.bmp *.svg)"
-        )
+        files = styled_open_files(self, tr("constructor.image.add_images_title"), "", tr("constructor.image.filter"))
         for f in files:
             filename = self._image_storage.copy(Path(f))
             if filename not in self._images:
@@ -262,8 +261,8 @@ class ImageEditor(BaseEditor):
         filename = item.data(Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
             self,
-            "Удалить изображение",
-            f"Удалить «{filename}» из справочника?",
+            tr("constructor.image.delete_title"),
+            tr("constructor.image.delete_confirm", name=filename),
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._images.remove(filename)

@@ -232,3 +232,17 @@ class TestUserPreferencesDataclass:
         assert prefs.startup_mode == "empty"
         assert prefs.reduce_motion is False
         assert prefs.gold_annotation_enabled is False
+
+
+class TestAreaToolMode:
+    def test_default_is_click(self) -> None:
+        prefs = default_user_preferences()
+        assert prefs.area_tool_mode == "click"
+
+    def test_click_valid(self) -> None:
+        prefs = UserPreferences(area_tool_mode="click")
+        assert prefs.area_tool_mode == "click"
+
+    def test_freehand_valid(self) -> None:
+        prefs = UserPreferences(area_tool_mode="freehand")
+        assert prefs.area_tool_mode == "freehand"

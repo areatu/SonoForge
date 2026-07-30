@@ -166,9 +166,9 @@ def test_collect_annotations_empty_for_instance(tmp_path: Path) -> None:
     assert len(result) == 1
 
 
-def test_collect_no_annotations_passes_none() -> None:
+def test_collect_no_annotations_passes_none(tmp_path: Path) -> None:
     """When annotations=None, annotate_dicom is never called."""
-    dcm = Path("/tmp/test.dcm")
+    dcm = tmp_path / "test.dcm"
     dcm.write_bytes(b"DICM")
     study = _make_study(dcm)
 

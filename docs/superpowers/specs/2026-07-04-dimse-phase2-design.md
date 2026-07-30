@@ -54,6 +54,7 @@ EmbeddedStorageSCP (context manager)
 ```python
 class DimseClient(Protocol):
     ...
+
     def c_get_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes: ...
 
     def c_move_instances(
@@ -84,16 +85,16 @@ class CMoveResult:
 ## ServerSettings (новые поля)
 
 ```python
-retrieval_source: str = "auto"       # wado | dimse | cmove | auto
-dimse_retrieval_mode: str = "cget"     # cget | cmove — когда retrieval_source=dimse
+retrieval_source: str = "auto"  # wado | dimse | cmove | auto
+dimse_retrieval_mode: str = "cget"  # cget | cmove — когда retrieval_source=dimse
 dimse_use_tls: bool = False
 dimse_tls_verify: bool = True
 dimse_tls_ca_path: str = ""
-dimse_tls_cert_path: str = ""          # optional client cert
+dimse_tls_cert_path: str = ""  # optional client cert
 dimse_tls_key_path: str = ""
 dimse_scp_port: int = 11112
-dimse_scp_host: str = "127.0.0.1"      # bind address; PACS must reach this IP
-dimse_scp_ae_title: str = ""           # default: dimse_ae_title
+dimse_scp_host: str = "127.0.0.1"  # bind address; PACS must reach this IP
+dimse_scp_ae_title: str = ""  # default: dimse_ae_title
 ```
 
 **`retrieval_source` semantics:**

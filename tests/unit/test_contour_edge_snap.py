@@ -15,6 +15,8 @@ from echo_personal_tool.domain.services.contour_edge_snap import (
     edge_snap_config_for_source,
     magnetic_edge_snap_config_for_source,
     outward_normal_at_index,
+    outward_normal_at_index_closed,
+    snap_closed_polygon,
     snap_magnetic_point,
     snap_point,
 )
@@ -189,3 +191,49 @@ class TestSnapMagneticPoint:
         em = _make_edge_map()
         result = snap_magnetic_point(em, 32.0, 32.0, (0.0, 0.0))
         assert result is None
+
+
+class TestOutwardNormalAtIndexClosed:
+    def test_wraps_at_end(self) -> None:
+        points = [(0.0, 0.0), (50.0, 0.0), (50.0, 50.0), (0.0, 50.0)]
+        nx, ny = outward_normal_at_index_closed(points, 3)
+        length = np.hypot(nx, ny)
+        assert length == pytest.approx(1.0, abs=0.01)
+
+    def test_wraps_at_start(self) -> None:
+        points = [(0.0, 0.0), (50.0, 0.0), (50.0, 50.0), (0.0, 50.0)]
+        nx, ny = outward_normal_at_index_closed(points, 0)
+        length = np.hypot(nx, ny)
+        assert length == pytest.approx(1.0, abs=0.01)
+
+
+class TestSnapClosedPolygon:
+    def test_returns_same_length(self) -> None:
+        em = _make_edge_map()
+        points = [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)]
+        result = snap_closed_polygon(points, em)
+        assert len(result) == len(points)
+
+    def test_returns_tuples(self) -> None:
+        em = _make_edge_map()
+        points = [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0)]
+        result = snap_closed_polygon(points, em)
+        for pt in result:
+            assert isinstance(pt, tuple)
+            assert len(pt) == 2
+
+    def test_empty_points(self) -> None:
+        em = _make_edge_map()
+        assert snap_closed_polygon([], em) == []
+
+    def test_too_few_points(self) -> None:
+        em = _make_edge_map()
+        points = [(10.0, 10.0), (20.0, 20.0)]
+        assert snap_closed_polygon(points, em) == points
+
+    def test_with_config(self) -> None:
+        em = _make_edge_map()
+        cfg = EdgeSnapConfig(search_radius_px=5.0, min_edge_strength=0.0)
+        points = [(10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0)]
+        result = snap_closed_polygon(points, em, config=cfg)
+        assert len(result) == len(points)

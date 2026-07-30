@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 )
 from scipy.interpolate import CubicSpline
 
+from echo_personal_tool.infrastructure.i18n import tr
+
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
@@ -36,12 +38,12 @@ logger = logging.getLogger(__name__)
 
 # Russian AHA segment names (Clinical style)
 AHA_SEGMENT_NAMES_RU: dict[int, str] = {
-    1: "БазПерг",  # Basal septal
-    2: "Базбок",  # Basal lateral
-    3: "СрПерг",  # Mid septal
-    4: "Србок",  # Mid lateral
-    5: "АпПер",  # Apical septal
-    6: "АпЛат",  # Apical lateral
+    1: tr("strain.seg_basal_septal"),
+    2: tr("strain.seg_basal_lateral"),
+    3: tr("strain.seg_mid_septal"),
+    4: tr("strain.seg_mid_lateral"),
+    5: tr("strain.seg_apical_septal"),
+    6: tr("strain.seg_apical_lateral"),
 }
 
 
@@ -458,22 +460,22 @@ class BullseyeWidget(QWidget):
 
     # Russian labels for outer perimeter
     SEGMENT_LABELS_RU: dict[int, str] = {
-        1: "Пер",
-        2: "Лат",
-        6: "Лат",
-        5: "Нижн",
-        4: "Задн",
-        15: "Пер",
-        7: "Пер",
-        8: "Лат",
-        11: "Лат",
-        10: "Нижн",
-        9: "Задн",
-        3: "Пер",
-        13: "АпПер",
-        16: "АпЛат",
-        14: "АпНижн",
-        12: "АпПер",
+        1: tr("strain.lbl_anterior"),
+        2: tr("strain.lbl_lateral"),
+        6: tr("strain.lbl_lateral"),
+        5: tr("strain.lbl_inferior"),
+        4: tr("strain.lbl_posterior"),
+        15: tr("strain.lbl_anterior"),
+        7: tr("strain.lbl_anterior"),
+        8: tr("strain.lbl_lateral"),
+        11: tr("strain.lbl_lateral"),
+        10: tr("strain.lbl_inferior"),
+        9: tr("strain.lbl_posterior"),
+        3: tr("strain.lbl_anterior"),
+        13: tr("strain.seg_apical_septal"),
+        16: tr("strain.seg_apical_lateral"),
+        14: tr("strain.seg_apical_inferior"),
+        12: tr("strain.seg_apical_septal"),
     }
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -594,12 +596,12 @@ class BullseyeWidget(QWidget):
         painter.setPen(QPen(QColor(180, 180, 180), 1))
 
         outer_labels = {
-            0: "Пер",
-            1: "Лат",
-            2: "Лат",
-            3: "Нижн",
-            4: "Задн",
-            5: "Пер",
+            0: tr("strain.lbl_anterior"),
+            1: tr("strain.lbl_lateral"),
+            2: tr("strain.lbl_lateral"),
+            3: tr("strain.lbl_inferior"),
+            4: tr("strain.lbl_posterior"),
+            5: tr("strain.lbl_anterior"),
         }
         for i, label in outer_labels.items():
             angle = np.radians(-90 + i * 60 + 30)
@@ -687,21 +689,21 @@ class SummaryTable(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        title = QLabel("Сводная таблица")
+        title = QLabel(tr("strain.summary_table"))
         title.setStyleSheet("font-weight: bold; color: #e0e0e0; font-size: 12px;")
         layout.addWidget(title)
 
         self._rows: dict[str, tuple[QLabel, QLabel, str]] = {}
         row_defs = [
-            ("gls", "Сред.ГлобПродДеф", "%"),
-            ("gls_a4c", "A4C ГлобПродДеф", "%"),
-            ("gls_a2c", "A2C ГлобПродДеф", "%"),
-            ("gls_dao", "ДАО ГлобПродДеф", "%"),
-            ("ef", "ФВ [дв-плоск]", "%"),
-            ("edv", "КДО [дв-плоск]", "мл"),
-            ("esv", "КСО [дв-плоск]", "мл"),
-            ("autozak", "АвтоЗАК", "мс"),
-            ("hr", "ЧСС", "bpm"),
+            ("gls", tr("strain.gls_global"), "%"),
+            ("gls_a4c", tr("strain.gls_a4c"), "%"),
+            ("gls_a2c", tr("strain.gls_a2c"), "%"),
+            ("gls_dao", tr("strain.gls_dao"), "%"),
+            ("ef", tr("strain.ef"), "%"),
+            ("edv", tr("strain.edv"), tr("strain.unit_ml")),
+            ("esv", tr("strain.esv"), tr("strain.unit_ml")),
+            ("autozak", tr("strain.autozak"), tr("strain.unit_ms")),
+            ("hr", tr("strain.hr"), "bpm"),
         ]
         for key, label_text, unit in row_defs:
             row = QHBoxLayout()
@@ -730,10 +732,10 @@ class SummaryTable(QWidget):
                     val_label.setText(val)
                 elif unit == "%":
                     val_label.setText(f"{val:.1f}%")
-                elif unit == "мл":
-                    val_label.setText(f"{val:.1f} мл")
-                elif unit == "мс":
-                    val_label.setText(f"{val:.0f} мс")
+                elif unit == tr("strain.unit_ml"):
+                    val_label.setText(f"{val:.1f} {tr('strain.unit_ml')}")
+                elif unit == tr("strain.unit_ms"):
+                    val_label.setText(f"{val:.0f} {tr('strain.unit_ms')}")
                 elif unit == "bpm":
                     val_label.setText(f"{val:.0f} bpm")
                 else:
@@ -757,17 +759,17 @@ class ControlPanel(QWidget):
         layout.setSpacing(6)
 
         # View mode (contour vs curves)
-        group_view_mode = QGroupBox("Вид")
+        group_view_mode = QGroupBox(tr("strain.view_mode"))
         group_view_mode.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         view_mode_layout = QVBoxLayout()
 
-        self._mode_contour = QRadioButton("Cine + контур")
+        self._mode_contour = QRadioButton(tr("strain.mode_cine_contour"))
         self._mode_contour.setChecked(True)
         self._mode_contour.setStyleSheet("color: #e0e0e0;")
         self._mode_contour.toggled.connect(lambda c: self.display_mode_changed.emit("contour") if c else None)
         view_mode_layout.addWidget(self._mode_contour)
 
-        self._mode_curves = QRadioButton("Кривые деформации")
+        self._mode_curves = QRadioButton(tr("strain.mode_curves"))
         self._mode_curves.setStyleSheet("color: #e0e0e0;")
         self._mode_curves.toggled.connect(lambda c: self.display_mode_changed.emit("curves") if c else None)
         view_mode_layout.addWidget(self._mode_curves)
@@ -776,11 +778,11 @@ class ControlPanel(QWidget):
         layout.addWidget(group_view_mode)
 
         # Strain metric (Clinical-style: Deformation / SR / Peak)
-        group_metric = QGroupBox("Параметр")
+        group_metric = QGroupBox(tr("strain.metric"))
         group_metric.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         metric_layout = QVBoxLayout()
 
-        self._metric_deformation = QRadioButton("Деформация")
+        self._metric_deformation = QRadioButton(tr("strain.metric_deformation"))
         self._metric_deformation.setChecked(True)
         self._metric_deformation.setStyleSheet("color: #e0e0e0;")
         self._metric_deformation.toggled.connect(
@@ -788,12 +790,12 @@ class ControlPanel(QWidget):
         )
         metric_layout.addWidget(self._metric_deformation)
 
-        self._metric_sr = QRadioButton("Скорость деформ.")
+        self._metric_sr = QRadioButton(tr("strain.metric_sr"))
         self._metric_sr.setStyleSheet("color: #e0e0e0;")
         self._metric_sr.toggled.connect(lambda c: self.strain_metric_changed.emit("strain_rate") if c else None)
         metric_layout.addWidget(self._metric_sr)
 
-        self._metric_peak = QRadioButton("Пик.изм.деформации")
+        self._metric_peak = QRadioButton(tr("strain.metric_peak"))
         self._metric_peak.setStyleSheet("color: #e0e0e0;")
         self._metric_peak.toggled.connect(lambda c: self.strain_metric_changed.emit("peak") if c else None)
         metric_layout.addWidget(self._metric_peak)
@@ -852,7 +854,7 @@ class ControlPanel(QWidget):
 
         self._qc_checkboxes: dict[int, QCheckBox] = {}
         # Will be populated when results arrive
-        self._qc_placeholder = QLabel("Загрузите результаты")
+        self._qc_placeholder = QLabel(tr("strain.load_results"))
         self._qc_placeholder.setStyleSheet("color: #9e9e9e; font-size: 10px;")
         self._qc_layout.addWidget(self._qc_placeholder)
 
@@ -867,33 +869,33 @@ class ControlPanel(QWidget):
         layout.addWidget(qc_scroll)
 
         # Actions
-        group_actions = QGroupBox("Действия")
+        group_actions = QGroupBox(tr("strain.actions"))
         group_actions.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
         actions_layout = QVBoxLayout()
 
-        self._btn_edit_mode = QPushButton("Режим редактирования")
+        self._btn_edit_mode = QPushButton(tr("strain.btn_edit_mode"))
         self._btn_edit_mode.setCheckable(True)
         self._btn_edit_mode.toggled.connect(lambda c: self.display_mode_changed.emit("edit_mode" if c else "contour"))
         actions_layout.addWidget(self._btn_edit_mode)
 
-        self._btn_undo = QPushButton("Отменить (Ctrl+Z)")
+        self._btn_undo = QPushButton(tr("strain.btn_undo"))
         self._btn_undo.setEnabled(False)
         actions_layout.addWidget(self._btn_undo)
 
-        self._btn_redo = QPushButton("Повторить (Ctrl+Y)")
+        self._btn_redo = QPushButton(tr("strain.btn_redo"))
         self._btn_redo.setEnabled(False)
         actions_layout.addWidget(self._btn_redo)
 
-        self._btn_save = QPushButton("Сохранить JSON")
+        self._btn_save = QPushButton(tr("strain.btn_save_json"))
         actions_layout.addWidget(self._btn_save)
 
-        self._btn_export_png = QPushButton("Экспорт PNG")
+        self._btn_export_png = QPushButton(tr("strain.btn_export_png"))
         actions_layout.addWidget(self._btn_export_png)
 
-        self._btn_export_csv = QPushButton("Экспорт CSV")
+        self._btn_export_csv = QPushButton(tr("strain.btn_export_csv"))
         actions_layout.addWidget(self._btn_export_csv)
 
-        self._btn_close = QPushButton("Закрыть")
+        self._btn_close = QPushButton(tr("strain.btn_close"))
         actions_layout.addWidget(self._btn_close)
 
         group_actions.setLayout(actions_layout)
@@ -1169,17 +1171,17 @@ class StrainWindow(QMainWindow):
 
         # AHA segment names
         segment_names = {
-            1: "БазПерг",
-            2: "Базбок",
-            3: "СрПерг",
-            4: "Србок",
-            5: "АпПер",
-            6: "АпЛат",
+            1: tr("strain.seg_basal_septal"),
+            2: tr("strain.seg_basal_lateral"),
+            3: tr("strain.seg_mid_septal"),
+            4: tr("strain.seg_mid_lateral"),
+            5: tr("strain.seg_apical_septal"),
+            6: tr("strain.seg_apical_lateral"),
         }
 
         # Create checkboxes for segments with data
         for seg_id in sorted(segment_strain.keys()):
-            seg_name = segment_names.get(seg_id, f"Сегмент {seg_id}")
+            seg_name = segment_names.get(seg_id, tr("strain.segment_fallback", id=str(seg_id)))
             cb = QCheckBox(seg_name)
             cb.setChecked(True)
             cb.setStyleSheet("color: #e0e0e0; font-size: 10px;")
@@ -1350,7 +1352,7 @@ class StrainWindow(QMainWindow):
 
         from PySide6.QtWidgets import QFileDialog
 
-        path, _ = QFileDialog.getSaveFileName(self, "Сохранить данные деформации", "", "JSON files (*.json)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("strain.save_dialog_title"), "", "JSON files (*.json)")
         if not path:
             return
 
@@ -1384,7 +1386,7 @@ class StrainWindow(QMainWindow):
         """Export current view as PNG screenshot."""
         from PySide6.QtWidgets import QFileDialog
 
-        path, _ = QFileDialog.getSaveFileName(self, "Экспорт PNG", "", "PNG files (*.png)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("strain.export_png_title"), "", "PNG files (*.png)")
         if not path:
             return
 
@@ -1406,7 +1408,7 @@ class StrainWindow(QMainWindow):
 
         from PySide6.QtWidgets import QFileDialog
 
-        path, _ = QFileDialog.getSaveFileName(self, "Экспорт CSV", "", "CSV files (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(self, tr("strain.export_csv_title"), "", "CSV files (*.csv)")
         if not path:
             return
 

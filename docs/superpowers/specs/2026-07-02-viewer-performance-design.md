@@ -120,8 +120,7 @@ def _apply_wl_lut(frame: np.ndarray, w: float, l: float) -> np.ndarray:
     low = l - w * 0.5
     high = l + w * 0.5
     # Предрасчёт LUT для 16-bit → 8-bit
-    lut = np.clip((np.arange(65536, dtype=np.float64) - low)
-                  / max(high - low, 1.0) * 255.0, 0, 255).astype(np.uint8)
+    lut = np.clip((np.arange(65536, dtype=np.float64) - low) / max(high - low, 1.0) * 255.0, 0, 255).astype(np.uint8)
     return cv2.LUT(frame, lut)  # OpenCV vectorized
 ```
 
@@ -313,11 +312,13 @@ def test_wl_lut(benchmark):
     benchmark(apply_wl_lut, frame, 200, 100)
     # Target: <3ms
 
+
 def test_frame_cache_v2_access(benchmark):
     cache = FrameCacheV2(total=60, shape=(512, 512))
     cache[0] = np.zeros((512, 512), dtype=np.uint8)
     benchmark(lambda: cache[0])
     # Target: <1µs
+
 
 def test_gl_wl_shader(benchmark):
     # Требует QGuiApplication, опционально

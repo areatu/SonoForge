@@ -37,3 +37,5 @@ class MeasurementAction(StrEnum):
     LAV_4C_AI_PLUS = "lav_4c_ai_plus"
     SPECKLE_TRACKING = "speckle_tracking"
     MMODE = "mmode"
+    DIAMETER_COMPARE = "diameter_compare"
+    AREA_COMPARE = "area_compare"

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.constructor.models import ReferenceModel
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 class ReferencePreviewWindow(QDialog):
@@ -17,7 +18,7 @@ class ReferencePreviewWindow(QDialog):
 
     def __init__(self, model: ReferenceModel, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Preview — Справочник")
+        self.setWindowTitle(tr("constructor.preview.title"))
         self.setWindowFlags(Qt.WindowType.Window)
         self._model = model
         self._build_ui()
@@ -66,8 +67,8 @@ class ReferencePreviewWindow(QDialog):
             )
         return (
             '<table class="data"><thead><tr>'
-            "<th>ID</th><th>Название</th><th>Ед.</th>"
-            "<th>Норм М</th><th>Норм Ж</th><th>Описание</th><th>Источник</th>"
+            f"<th>ID</th><th>{tr('constructor.preview.col_name')}</th><th>{tr('constructor.preview.col_unit')}</th>"
+            f"<th>{tr('constructor.preview.col_norm_male')}</th><th>{tr('constructor.preview.col_norm_female')}</th><th>{tr('constructor.preview.col_desc')}</th><th>{tr('constructor.preview.col_source')}</th>"
             f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
         )
 
@@ -81,7 +82,7 @@ class ReferencePreviewWindow(QDialog):
                     seen[param.id] = param
         params = list(seen.values())
 
-        headers = ["Параметр"] + grad_names
+        headers = [tr("constructor.preview.col_parameter")] + grad_names
         header_row = "".join(f"<th>{h}</th>" for h in headers)
         rows = []
         for p in params:

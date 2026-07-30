@@ -274,6 +274,26 @@ def test_frame_overlay_clears_on_frame_change(qtbot) -> None:
     assert not viewer._overlay_label.isVisible()
 
 
+def test_area_compare_button_emits_signal(qtbot) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    panel = MeasurementToolsPanel()
+    qtbot.addWidget(panel)
+    received: list[bool] = []
+    panel.area_compare_requested.connect(lambda: received.append(True))
+    
+    # Find and click the area compare button
+    # Note: "Сравнение площадей" is the translation for tools.area_compare
+    for button in panel.findChildren(QPushButton):
+        if button.text() == "Сравнение площадей":
+            button.click()
+            break
+    else:
+        raise AssertionError("Area Compare button not found")
+    assert received == [True]
+
+
 def test_tool_panel_has_results_button_under_patient_metrics(qtbot) -> None:
     from echo_personal_tool.infrastructure.i18n import set_language
 

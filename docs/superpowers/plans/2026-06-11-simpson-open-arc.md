@@ -74,8 +74,7 @@ def test_resample_open_arc_equal_spacing() -> None:
     arc = _semicircle_arc(4)
     result = resample_open_arc(arc, num_nodes=9)
     seg_lens = [
-        math.hypot(result[i + 1][0] - result[i][0], result[i + 1][1] - result[i][1])
-        for i in range(len(result) - 1)
+        math.hypot(result[i + 1][0] - result[i][0], result[i + 1][1] - result[i][1]) for i in range(len(result) - 1)
     ]
     assert max(seg_lens) - min(seg_lens) == pytest.approx(0.0, abs=0.5)
 
@@ -304,6 +303,7 @@ def test_contour_open_arc_helpers() -> None:
     assert closed[-1] == (10.0, 0.0)
     assert len(closed) >= 3
 
+
 def test_contour_legacy_closed_polygon() -> None:
     contour = Contour(phase="ED", points=[(0, 0), (1, 0), (1, 1)])
     assert contour.is_open_arc is False
@@ -365,13 +365,11 @@ def open_arc_contour(
 ) -> Contour:
     """Semicircle-like open arc on mitral line y=0."""
     import math
+
     n = 9
     annulus = ((0.0, 0.0), (width_px, 0.0))
     angles = [math.pi - i * math.pi / (n - 1) for i in range(n)]
-    points = [
-        (width_px / 2 + (width_px / 2) * math.cos(a), height_px * math.sin(a))
-        for a in angles
-    ]
+    points = [(width_px / 2 + (width_px / 2) * math.cos(a), height_px * math.sin(a)) for a in angles]
     return Contour(phase=phase, view=view, mitral_annulus=annulus, points=points)
 
 
@@ -477,9 +475,11 @@ git commit -m "feat: staged open-arc contour drawing in viewer"
 ```python
 def test_update_contour_point_resamples_open_arc(qtbot) -> None:
     from echo_personal_tool.domain.services.contour_geometry import DEFAULT_NODE_COUNT
+
     annulus = ((10.0, 40.0), (50.0, 40.0))
     arc = [(10.0, 40.0), (30.0, 10.0), (50.0, 40.0)]
     from echo_personal_tool.domain.services.contour_geometry import resample_open_arc
+
     contour = Contour(
         phase="ED",
         mitral_annulus=annulus,

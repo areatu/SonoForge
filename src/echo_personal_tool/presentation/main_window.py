@@ -255,6 +255,14 @@ class MainWindow(QMainWindow):
         status = QStatusBar()
         self.setStatusBar(status)
         self._show_status(tr("status.startup"))
+
+        # Permanent "Research use only" warning in status bar
+        from PySide6.QtWidgets import QLabel
+
+        self._research_warning = QLabel(tr("layout.research_use_only"))
+        self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
+        status.addPermanentWidget(self._research_warning)
+
         self._install_shortcuts()
         self._rebuild_layout()
 
@@ -810,6 +818,7 @@ class MainWindow(QMainWindow):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
         self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
+        self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
@@ -824,6 +833,7 @@ class MainWindow(QMainWindow):
             self._activity_bar.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
@@ -945,9 +955,9 @@ class MainWindow(QMainWindow):
             weight_kg=weight_kg,
         )
         self._show_status(
-            f"МЖП={ivsd:.1f} КДР={lvidd:.1f} ЗСЛЖ={lvpwd:.1f} "
-            f"КДО={result.edv_ml:.1f} мл  "
-            f"ОТС={result.rwt:.2f}  ММЛЖ={result.lvm_g:.1f} г"
+            f"{tr('mmode.teich_ed_labels.0')}={ivsd:.1f} {tr('mmode.teich_ed_labels.1')}={lvidd:.1f} {tr('mmode.teich_ed_labels.2')}={lvpwd:.1f} "
+            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('strain.unit_ml')}  "
+            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
         )
 
     def _on_teichholz_es_complete(self, measurement) -> None:
@@ -988,13 +998,13 @@ class MainWindow(QMainWindow):
         if study_uid:
             self._controller._measurement_session.merge_linear_measurements(study_uid, linear)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
-        lvmi_str = f"  ИММЛЖ={result.lvmi_g_m2:.1f} г/м²" if result.lvmi_g_m2 else ""
+        lvmi_str = f"  {tr('domain.report.lvmi')}={result.lvmi_g_m2:.1f} g/m²" if result.lvmi_g_m2 else ""
         self._show_status(
-            f"Тейхольц: МЖП={result.ivsd_mm:.1f} ЗСЛЖ={result.lvpwd_mm:.1f} "
-            f"КДР={result.lvidd_mm:.1f} КСР={lvesd:.1f} "
-            f"КДО={result.edv_ml:.1f} КСО={result.esv_ml:.1f} "
-            f"ФВ={result.lvef_percent:.1f}%  "
-            f"ОТС={result.rwt:.2f}  ММЛЖ={result.lvm_g:.1f} г"
+            f"{tr('mmode.teichholz')}: {tr('mmode.teich_ed_labels.0')}={result.ivsd_mm:.1f} {tr('mmode.teich_ed_labels.2')}={result.lvpwd_mm:.1f} "
+            f"{tr('mmode.teich_ed_labels.1')}={result.lvidd_mm:.1f} {tr('mmode.label_es')}={lvesd:.1f} "
+            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('domain.report.kso')}={result.esv_ml:.1f} "
+            f"{tr('domain.report.fv')}={result.lvef_percent:.1f}%  "
+            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
             f"{lvmi_str}"
         )
 
@@ -1587,9 +1597,6 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _sync_results_overlay(self, state: ViewerState) -> None:
-        import logging
-
-        _dbg = logging.getLogger(__name__)
         time_calibrated = self._viewer.is_doppler_time_calibrated()
         instance = state.instance
         instance_uid = instance.sop_instance_uid if instance is not None else None
@@ -1600,7 +1607,7 @@ class MainWindow(QMainWindow):
             time_calibrated=time_calibrated,
             length_display_unit=self._user_preferences.length_display_unit,
         )
-        _dbg.debug(
+        logger.debug(
             "_sync_overlay: uid=%s html_len=%d linear=%d",
             instance_uid,
             len(fresh_html),
@@ -1739,9 +1746,13 @@ class MainWindow(QMainWindow):
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
+            MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
         }
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
+            return
+        if action == MeasurementAction.DIAMETER_COMPARE:
+            self._on_diameter_compare_requested()
             return
         if action == MeasurementAction.DOPPLER_PEAK:
             self._on_doppler_peak_tool(extra or None)
@@ -1831,6 +1842,15 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.linear_caliper_tool", label=label))
         else:
             self._show_status("Load a frame first")
+
+    def _on_diameter_compare_requested(self) -> None:
+        if self._viewer.start_diameter_compare():
+            self._show_status(tr("viewer.dcmp_click_start"))
+        else:
+            self._show_status("Load a frame first")
+
+    def _on_area_compare_requested(self) -> None:
+        self._viewer.start_area_compare()
 
     @_prof
     def _on_reset_measurements_requested(self) -> None:
@@ -2276,6 +2296,10 @@ class MainWindow(QMainWindow):
             return
         extra_lines: tuple[str, ...] = ()
         if chamber in {"AREA", "VOL"}:
+            if self._viewer._comparison_state.kind == "area":
+                self._viewer._handle_area_compare_contour(contour)
+                self._sync_results_overlay(self._controller.state_manager.snapshot)
+                return
             spacing = self._controller.state_manager.snapshot.effective_pixel_spacing
             calibrated = spacing is not None
             from echo_personal_tool.domain.services.planimeter_formatter import (
@@ -2389,11 +2413,13 @@ class MainWindow(QMainWindow):
             elif phase == "ES":
                 self._rv_fac_awaiting_es = False
                 self._tool_panel.measure.clear_action_highlight()
-                snapshot = self._controller.state_manager.snapshot.measurement_snapshot
-                if snapshot is not None and snapshot.rv_fac_percent is not None:
+                overlay_snap = self._controller.compute_overlay_snapshot(
+                    self._controller.state_manager.snapshot,
+                )
+                if overlay_snap is not None and overlay_snap.rv_fac_percent is not None:
                     extra_lines = (
                         *extra_lines,
-                        f"FAC: {snapshot.rv_fac_percent:.1f} %",
+                        f"FAC: {overlay_snap.rv_fac_percent:.1f} %",
                     )
 
         self._viewer._refresh_frame_overlays(extra_lines=extra_lines)

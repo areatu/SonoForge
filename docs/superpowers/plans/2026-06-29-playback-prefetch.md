@@ -175,6 +175,7 @@ git commit -m "feat: add PlaybackConfig for adaptive cine prefetch"
 ```python
 # Append to tests/unit/test_frame_cache.py
 
+
 def test_loaded_ahead_counts_forward_frames():
     cache = FrameCache(evict_window=100)
     cache.set_total_frames(Path("cine.mp4"), total=10)
@@ -205,6 +206,7 @@ Expected: FAIL — `AttributeError: loaded_ahead`
 ```python
 # Add to FrameCache in frame_cache.py
 
+
 def loaded_ahead(self, center: int) -> int:
     """Count consecutive loaded frames after center (wrapping at end)."""
     if self._total_frames == 0:
@@ -218,6 +220,7 @@ def loaded_ahead(self, center: int) -> int:
         else:
             break
     return count
+
 
 def nearest_loaded_ahead(self, center: int) -> int | None:
     """Return the smallest loaded index > center, wrapping; None if none."""
@@ -307,16 +310,18 @@ git commit -m "feat: wire PlaybackConfig into AppController"
 ```python
 # Append to tests/unit/test_app_controller_dicom_cache.py
 
+
 def test_scroll_batch_sets_target_frame(
-    qapp, monkeypatch, tmp_path,
+    qapp,
+    monkeypatch,
+    tmp_path,
 ) -> None:
     captured: list[int] = []
 
     class _SpyLoader:
         instances: list[_SpyLoader] = []
 
-        def __init__(self, path, frame_index=0, media_format="dicom", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="dicom", parent=None, total_frames=0, batch_size=0):
             self._frame_index = frame_index
             _SpyLoader.instances.append(self)
 
@@ -419,8 +424,7 @@ def test_prefetch_starts_batch_worker(qapp, monkeypatch, tmp_path) -> None:
             started.append(worker)
 
     class _SpyLoader:
-        def __init__(self, path, frame_index=0, media_format="mp4", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
             self._batch_size = batch_size
             self._frame_index = frame_index
             self.signals = MagicMock()
@@ -490,6 +494,7 @@ def _invalidate_prefetch(self) -> None:
     self._prefetch_request_id += 1
     self._prefetch_load_id = 0
 
+
 def _prefetch_playback_buffer(self, center: int) -> None:
     if self._current_instance is None or self._current_instance.path is None:
         return
@@ -530,9 +535,8 @@ def _prefetch_playback_buffer(self, center: int) -> None:
     worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id))
     self._thread_pool.start(worker)
 
-def _on_prefetch_batch_loaded(
-    self, request_id: int, path: Path, frames: list
-) -> None:
+
+def _on_prefetch_batch_loaded(self, request_id: int, path: Path, frames: list) -> None:
     if request_id != self._prefetch_load_id:
         return
     self._prefetch_load_id = 0
@@ -542,6 +546,7 @@ def _on_prefetch_batch_loaded(
         self._frame_cache.put(idx, pixels)
     if self._state_manager.snapshot.is_playing:
         QTimer.singleShot(0, self._advance_playback)
+
 
 def _on_prefetch_failed(self, request_id: int, message: str) -> None:
     if request_id != self._prefetch_load_id:
@@ -749,6 +754,7 @@ def _detect_leading_static_from_cache(self, path: Path, total: int) -> int:
         leading = idx
     return leading
 
+
 def _ensure_leading_static_scanned(self) -> None:
     if self._current_instance is None or self._current_instance.path is None:
         return
@@ -774,9 +780,7 @@ def set_playing(self, is_playing: bool) -> None:
             self._ensure_leading_static_scanned()
             state = self._state_manager.snapshot
             if state.current_frame_index == 0:
-                leading = self._leading_static_frames.get(
-                    self._current_instance.path.resolve(), 0
-                )
+                leading = self._leading_static_frames.get(self._current_instance.path.resolve(), 0)
                 if leading > 0:
                     target = min(leading + 1, max(0, state.total_frames - 1))
                     if target > 0:

@@ -73,8 +73,7 @@ On grayscale `show_frame`:
 Percentile function in `pixel_utils.py`:
 
 ```python
-def percentile_range(frame: np.ndarray, low_pct: float, high_pct: float) -> tuple[float, float]:
-    ...
+def percentile_range(frame: np.ndarray, low_pct: float, high_pct: float) -> tuple[float, float]: ...
 ```
 
 ## Testing

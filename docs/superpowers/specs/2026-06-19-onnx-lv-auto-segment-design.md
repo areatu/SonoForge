@@ -95,6 +95,7 @@ def papillary_mask_cleanup(
     long_axis_hint: tuple[tuple[float, float], tuple[float, float]] | None = None,
 ) -> np.ndarray: ...
 
+
 def exclude_papillary_concavities(
     open_points: list[tuple[float, float]],
     annulus: tuple[tuple[float, float], tuple[float, float]],

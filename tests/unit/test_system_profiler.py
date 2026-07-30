@@ -25,19 +25,19 @@ def test_playback_config_is_frozen():
 def test_detect_playback_config_low_end(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         "echo_personal_tool.infrastructure.system_profiler.os.cpu_count",
-        lambda: 4,
+        lambda: 2,
     )
 
     class _Mem:
-        total = int(12e9)
+        total = int(4e9)
 
     monkeypatch.setattr(
         "echo_personal_tool.infrastructure.system_profiler.psutil.virtual_memory",
         lambda: _Mem(),
     )
     cfg = detect_playback_config()
-    assert cfg.prefetch_radius == 3
-    assert cfg.batch_size == 3
+    assert cfg.prefetch_radius == 5
+    assert cfg.batch_size == 5
     assert cfg.evict_window == 30
     assert cfg.scroll_debounce_ms == 80
     assert cfg.scroll_batch_size == 3

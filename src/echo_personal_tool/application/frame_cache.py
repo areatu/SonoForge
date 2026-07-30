@@ -36,11 +36,10 @@ class FrameCache:
         if not self._frame_store:
             return None
         if len(self._frame_store) == self._total_frames:
-            result = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
         else:
-            result = np.stack([self._frame_store[i] for i in self._sorted_keys])
-        self._cached_frames = result
-        return result
+            self._cached_frames = np.stack([self._frame_store[i] for i in self._sorted_keys])
+        return self._cached_frames
 
     def is_ready(self, path: Path) -> bool:
         return (
@@ -122,6 +121,8 @@ class FrameCache:
         self._evict()
 
     def require_full_cine(self) -> np.ndarray:
+        if self._cached_frames is not None:
+            return self._cached_frames
         if not self._frame_store or self._total_frames == 0:
             raise IncompleteCineError("Frame cache is empty")
         if len(self._frame_store) != self._total_frames:
@@ -129,7 +130,8 @@ class FrameCache:
                 f"Only {len(self._frame_store)}/{self._total_frames} frames loaded. "
                 "Reload full cine before speckle tracking."
             )
-        return np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        return self._cached_frames
 
     def load_all_frames(self) -> np.ndarray:
         """Load all frames from source if not already cached.
@@ -141,8 +143,11 @@ class FrameCache:
             raise IncompleteCineError("No frames available")
 
         # Already fully loaded
+        if self._cached_frames is not None and len(self._frame_store) == self._total_frames:
+            return self._cached_frames
         if len(self._frame_store) == self._total_frames:
-            return np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            return self._cached_frames
 
         # Need to load missing frames from source
         if self.source_path is None:
@@ -172,11 +177,10 @@ class FrameCache:
                 frames.append(session.decode_single_frame(i))
             result = np.stack(frames)
 
-        # Cache all frames
-        for i in range(result.shape[0]):
-            self._frame_store[i] = result[i]
-        self._sorted_keys = sorted(self._frame_store.keys())
+        # Cache all frames — store only in _cached_frames to avoid duplication
         self._cached_frames = result
+        self._frame_store = {i: result[i] for i in range(result.shape[0])}
+        self._sorted_keys = sorted(self._frame_store.keys())
 
         return result
 
@@ -184,47 +188,33 @@ class FrameCache:
         """Count loaded frames strictly after center (no wrap)."""
         if self._total_frames == 0:
             return 0
-        # O(k) scan where k = frames ahead, instead of O(n) full scan
-        count = 0
-        store = self._frame_store
-        for i in range(center + 1, self._total_frames):
-            if i in store:
-                count += 1
-        return count
+        keys = self._sorted_keys
+        idx = bisect.bisect_right(keys, center)
+        return len(keys) - idx
 
     def loaded_before(self, center: int) -> int:
         """Count loaded frames strictly before center (no wrap)."""
         if self._total_frames == 0:
             return 0
-        count = 0
-        store = self._frame_store
-        for i in range(0, center):
-            if i in store:
-                count += 1
-        return count
+        return bisect.bisect_left(self._sorted_keys, center)
 
     def nearest_loaded_before(self, center: int) -> int | None:
         """Return the largest loaded index < center; None if none."""
         if self._total_frames == 0:
             return None
-        store = self._frame_store
-        for idx in range(center - 1, -1, -1):
-            if idx in store:
-                return idx
-        return None
+        keys = self._sorted_keys
+        idx = bisect.bisect_left(keys, center)
+        return keys[idx - 1] if idx > 0 else None
 
     def nearest_loaded_ahead(self, center: int) -> int | None:
         """Return the smallest loaded index > center, wrapping to 0 at end; None if none."""
         if self._total_frames == 0:
             return None
-        store = self._frame_store
-        for idx in range(center + 1, self._total_frames):
-            if idx in store:
-                return idx
-        for idx in range(0, center):
-            if idx in store:
-                return idx
-        return None
+        keys = self._sorted_keys
+        idx = bisect.bisect_right(keys, center)
+        if idx < len(keys):
+            return keys[idx]
+        return keys[0] if keys and keys[0] < center else None
 
     def _evict(self) -> None:
         lo = self._current_index - self._evict_window

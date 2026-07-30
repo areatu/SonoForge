@@ -246,14 +246,12 @@ def _on_la_assist_finished(
 
     try:
         # Blend AI landmarks with user landmarks
-        blended_septal, blended_lateral, blended_apex = (
-            la_landmarks_from_mask_or_user(
-                mask,
-                user_septal=user_septal,
-                user_lateral=user_lateral,
-                user_apex=user_apex,
-                blend_factor=0.7,
-            )
+        blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
+            mask,
+            user_septal=user_septal,
+            user_lateral=user_lateral,
+            user_apex=user_apex,
+            blend_factor=0.7,
         )
 
         # Build contour from blended landmarks
@@ -317,16 +315,21 @@ def _finish_manual_contour(self, *, apex: tuple[float, float]) -> bool:
     if chamber in {"LV", "LA", "RA", "RV"}:
         try:
             contour = fit_contour_from_landmarks(
-                septal=septal, lateral=lateral, apex=apex,
+                septal=septal,
+                lateral=lateral,
+                apex=apex,
                 phase=self._active_contour_phase or "ED",
-                view=self._active_contour_view, chamber=chamber,
+                view=self._active_contour_view,
+                chamber=chamber,
             )
         except ValueError as exc:
             self.contour_landmark_rejected.emit(str(exc))
             return False
         contour = replace(
-            contour, source="manual",
-            frame_index=self._contour_frame_index(), apex_landmark=apex,
+            contour,
+            source="manual",
+            frame_index=self._contour_frame_index(),
+            apex_landmark=apex,
         )
 
         # --- NEW: Trigger LA assist for A4C ES ---
@@ -352,7 +355,8 @@ def _finish_manual_contour(self, *, apex: tuple[float, float]) -> bool:
             view=self._active_contour_view,
             chamber=self._active_contour_chamber,
             mitral_annulus=self._active_mitral_annulus,
-            points=resampled, num_nodes=DEFAULT_NODE_COUNT,
+            points=resampled,
+            num_nodes=DEFAULT_NODE_COUNT,
             frame_index=self._contour_frame_index(),
         )
     self._clear_active_contour_drawing()
@@ -376,10 +380,8 @@ def _request_la_assist_for_manual(
     if self._app_controller is None:
         return
     # Connect signal (once)
-    if not hasattr(self, '_la_assist_connected'):
-        self._app_controller.la_assist_contour_ready.connect(
-            self._on_la_assist_contour_ready
-        )
+    if not hasattr(self, "_la_assist_connected"):
+        self._app_controller.la_assist_contour_ready.connect(self._on_la_assist_contour_ready)
         self._la_assist_connected = True
 
     self._app_controller.request_la_assist_for_manual(
@@ -445,6 +447,7 @@ def _on_la_assist_contour_ready(self, contour) -> None:
                     apply_soft_magnetic_snap,
                     magnetic_edge_snap_config_for_source,
                 )
+
                 weights = np.ones(len(contour.points))
                 pinned = self._pinned_indices_for_contour(contour)
                 config = magnetic_edge_snap_config_for_source(contour.source)
@@ -489,12 +492,8 @@ In the measurement tools panel, add a new button next to existing "LAV 4C" and "
 ```python
 # In the LA measurement section
 self._btn_lav4c_ai_plus = QPushButton("LAV 4C AI+")
-self._btn_lav4c_ai_plus.setToolTip(
-    "AI-assisted LA contour: click 3 landmarks, AI refines shape"
-)
-self._btn_lav4c_ai_plus.clicked.connect(
-    lambda: self.tool_selected.emit("lav4c_ai_plus")
-)
+self._btn_lav4c_ai_plus.setToolTip("AI-assisted LA contour: click 3 landmarks, AI refines shape")
+self._btn_lav4c_ai_plus.clicked.connect(lambda: self.tool_selected.emit("lav4c_ai_plus"))
 ```
 
 - [x] **Step 2: Handle in main_window.py**
@@ -529,6 +528,7 @@ git commit -m "feat(ui): add LAV 4C AI+ button for AI-assisted manual contour"
 
 ```python
 """Tests for AI-assisted manual LA contour integration."""
+
 import numpy as np
 import pytest
 from dataclasses import replace
@@ -575,9 +575,7 @@ def test_manual_contour_starts_as_ellipse():
 
 def test_ai_landmarks_differ_from_geometric(synthetic_la_mask):
     """AI-derived landmarks should differ from pure geometric ellipse."""
-    ai_septal, ai_lateral, ai_apex = la_landmarks_from_mask_or_user(
-        synthetic_la_mask
-    )
+    ai_septal, ai_lateral, ai_apex = la_landmarks_from_mask_or_user(synthetic_la_mask)
     # AI landmarks come from mask, not from user clicks
     assert ai_septal is not None
     assert ai_lateral is not None

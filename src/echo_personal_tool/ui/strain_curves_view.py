@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.infrastructure.i18n import tr
+
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
@@ -31,12 +33,12 @@ SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
 }
 
 SEGMENT_NAMES_RU: dict[int, str] = {
-    1: "БазПерг",
-    2: "Базбок",
-    3: "СрПерг",
-    4: "Србок",
-    5: "АпПер",
-    6: "АпЛат",
+    1: tr("strain.seg_basal_septal"),
+    2: tr("strain.seg_basal_lateral"),
+    3: tr("strain.seg_mid_septal"),
+    4: tr("strain.seg_mid_lateral"),
+    5: tr("strain.seg_apical_septal"),
+    6: tr("strain.seg_apical_lateral"),
 }
 
 # View segment ranges
@@ -78,7 +80,7 @@ class SegmentCurvePanel(QWidget):
         self._plot = pg.PlotWidget()
         self._plot.setBackground("black")
         self._plot.setLabel("left", "%")
-        self._plot.setLabel("bottom", "Время(ms)")
+        self._plot.setLabel("bottom", tr("strain.time_axis"))
         self._plot.showGrid(x=True, y=True, alpha=0.2)
         self._plot.setMinimumHeight(120)
         self._plot.setMaximumHeight(200)

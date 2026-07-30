@@ -120,6 +120,7 @@ git commit -m "feat: preserve RGB color in DicomSession and FrameCache"
 
 ```python
 from PySide6.QtCore import QSize
+
 self.setIconSize(QSize(128, 128))
 ```
 

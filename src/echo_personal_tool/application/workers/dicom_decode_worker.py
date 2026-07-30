@@ -63,6 +63,7 @@ class DicomDecodeWorker(QRunnable):
                 return
 
             frames = session.decode_all_frames()
+            session.release_heavy()
             t_all = time.perf_counter()
             logger.debug(
                 "All %d frames decoded in %.1f ms",

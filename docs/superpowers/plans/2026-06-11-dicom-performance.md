@@ -229,9 +229,7 @@ class DicomSession:
         if self._frames is None:
             raise RuntimeError("Frames not decoded; call decode_all_frames() first")
         if frame_index < 0 or frame_index >= self._frames.shape[0]:
-            raise IndexError(
-                f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})"
-            )
+            raise IndexError(f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})")
         return np.ascontiguousarray(self._frames[frame_index]).copy()
 
     def release(self) -> None:
@@ -267,6 +265,7 @@ Replace body of `read_pixels` in `dicom_reader.py`:
 
 ```python
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+
 
 def read_pixels(self, path: Path, frame_index: int = 0) -> np.ndarray:
     session = get_thread_dicom_session()
@@ -403,9 +402,7 @@ class FrameCache:
         if self.frames is None:
             raise RuntimeError("Frame cache is empty")
         if index < 0 or index >= self.frames.shape[0]:
-            raise IndexError(
-                f"Frame index {index} out of range [0, {self.frames.shape[0]})"
-            )
+            raise IndexError(f"Frame index {index} out of range [0, {self.frames.shape[0]})")
         return np.ascontiguousarray(self.frames[index]).copy()
 
     def clear(self) -> None:
@@ -477,9 +474,7 @@ def qapp() -> QApplication:
     return app
 
 
-def test_dicom_decode_worker_emits_all_frames(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_dicom_decode_worker_emits_all_frames(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=4, rows=16, cols=16)
@@ -487,9 +482,7 @@ def test_dicom_decode_worker_emits_all_frames(
     finished: list[tuple[int, Path, np.ndarray]] = []
     worker = DicomDecodeWorker(path, request_id=7, parent=parent)
     worker.signals.finished.connect(
-        lambda request_id, decoded_path, frames: finished.append(
-            (request_id, decoded_path, frames)
-        )
+        lambda request_id, decoded_path, frames: finished.append((request_id, decoded_path, frames))
     )
     QThreadPool.globalInstance().start(worker)
     qtbot.waitUntil(lambda: len(finished) == 1, timeout=10000)
@@ -501,16 +494,12 @@ def test_dicom_decode_worker_emits_all_frames(
     assert frames[2, 0, 0] == 2
 
 
-def test_dicom_decode_worker_emits_failed_for_missing_file(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_dicom_decode_worker_emits_failed_for_missing_file(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
     path = tmp_path / "missing.dcm"
     errors: list[tuple[int, str]] = []
     worker = DicomDecodeWorker(path, request_id=1, parent=parent)
-    worker.signals.failed.connect(
-        lambda request_id, message: errors.append((request_id, message))
-    )
+    worker.signals.failed.connect(lambda request_id, message: errors.append((request_id, message)))
     QThreadPool.globalInstance().start(worker)
     qtbot.waitUntil(lambda: len(errors) == 1, timeout=5000)
     assert errors[0][0] == 1
@@ -658,13 +647,9 @@ def set_decode_in_progress(self, in_progress: bool) -> None:
 In `viewer_widget.set_state`, after setting timeline range:
 
 ```python
-controls_enabled = (
-    viewer_state.total_frames > 1 and not viewer_state.decode_in_progress
-)
+controls_enabled = viewer_state.total_frames > 1 and not viewer_state.decode_in_progress
 self._timeline_slider.setEnabled(controls_enabled)
-self._play_button.setEnabled(
-    viewer_state.total_frames > 1 and not viewer_state.decode_in_progress
-)
+self._play_button.setEnabled(viewer_state.total_frames > 1 and not viewer_state.decode_in_progress)
 ```
 
 Remove the old line that only checked `viewer_state.total_frames > 1` for slider.
@@ -887,9 +872,7 @@ if instance.media_format == "dicom":
     self._decode_request_id += 1
     request_id = self._decode_request_id
     self._pending_decode_id = request_id
-    self.status_message.emit(
-        f"Decoding {instance.path.name}… ({total_frames} frames)"
-    )
+    self.status_message.emit(f"Decoding {instance.path.name}… ({total_frames} frames)")
     worker = DicomDecodeWorker(instance.path, request_id=request_id, parent=self)
     worker.signals.finished.connect(self._on_dicom_decoded)
     worker.signals.failed.connect(self._on_dicom_decode_failed)
@@ -914,9 +897,7 @@ def _on_dicom_decoded(self, request_id: int, path: object, frames: object) -> No
     self._pending_decode_id = 0
     self._frame_cache.load(Path(path), frames)
     if self._frame_cache.memory_bytes() > _FRAME_CACHE_WARN_BYTES:
-        self.status_message.emit(
-            f"Large DICOM cache: {self._frame_cache.memory_bytes() // (1024 * 1024)} MB"
-        )
+        self.status_message.emit(f"Large DICOM cache: {self._frame_cache.memory_bytes() // (1024 * 1024)} MB")
 
     decoded_count = self._frame_cache.frame_count()
     if decoded_count != self._state_manager.snapshot.total_frames:
@@ -931,6 +912,7 @@ def _on_dicom_decoded(self, request_id: int, path: object, frames: object) -> No
     self._emit_cached_frame(self._state_manager.snapshot.current_frame_index)
     self.status_message.emit("Ready")
 
+
 def _on_dicom_decode_failed(self, request_id: int, message: str) -> None:
     if request_id != self._pending_decode_id:
         return
@@ -940,6 +922,7 @@ def _on_dicom_decode_failed(self, request_id: int, message: str) -> None:
     self._current_frame_pixels = None
     self.status_message.emit(f"Load failed: {message}")
     self.frame_load_failed.emit(message)
+
 
 def _emit_cached_frame(self, frame_index: int) -> None:
     if self._current_instance is None or self._current_instance.path is None:
@@ -960,16 +943,10 @@ def _request_frame_if_needed(self, state: ViewerState) -> None:
     if self._current_instance is None or self._current_instance.path is None:
         return
 
-    if (
-        self._current_instance.media_format == "dicom"
-        and state.decode_in_progress
-    ):
+    if self._current_instance.media_format == "dicom" and state.decode_in_progress:
         return
 
-    if (
-        self._current_instance.media_format == "dicom"
-        and self._frame_cache.is_ready(self._current_instance.path)
-    ):
+    if self._current_instance.media_format == "dicom" and self._frame_cache.is_ready(self._current_instance.path):
         if (
             self._loaded_source_path == self._current_instance.path
             and self._loaded_frame_index == state.current_frame_index

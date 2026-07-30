@@ -244,6 +244,11 @@ class UserPreferencesDialog(QDialog):
         self._length_unit.addItem(tr("preferences.unit_cm"), "cm")
         unit_index = self._length_unit.findData(current.length_display_unit)
         self._length_unit.setCurrentIndex(max(unit_index, 0))
+        self._area_tool_mode_combo = QComboBox()
+        self._area_tool_mode_combo.addItem(tr("preferences.area_mode_click"), "click")
+        self._area_tool_mode_combo.addItem(tr("preferences.area_mode_freehand"), "freehand")
+        area_mode_index = self._area_tool_mode_combo.findData(current.area_tool_mode)
+        self._area_tool_mode_combo.setCurrentIndex(max(area_mode_index, 0))
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -255,6 +260,7 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(self._calibration_tick_snap)
         measure_form.addRow(self._auto_depth_cal)
         measure_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
+        measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
         dicom_form = QFormLayout()
@@ -321,12 +327,12 @@ class UserPreferencesDialog(QDialog):
         self._show_doppler_tk_pv.setChecked(current.show_doppler_tk_pv)
         self._show_rv_s_prime = QCheckBox()
         self._show_rv_s_prime.setChecked(current.show_rv_s_prime)
-        exp_form.addRow("Показать Стрейн", self._show_strain)
-        exp_form.addRow("Показать Диастолическую функцию", self._show_diastolic)
-        exp_form.addRow("Показать Doppler МК/АК", self._show_doppler_mk_av)
-        exp_form.addRow("Показать Doppler ТК/ЛК", self._show_doppler_tk_pv)
-        exp_form.addRow("Показать s' ПЖ", self._show_rv_s_prime)
-        tabs.addTab(_scrollable_tab(exp_form), "Экспериментальные")
+        exp_form.addRow(tr("prefs.show_strain"), self._show_strain)
+        exp_form.addRow(tr("prefs.show_diastolic"), self._show_diastolic)
+        exp_form.addRow(tr("prefs.show_doppler_mk_av"), self._show_doppler_mk_av)
+        exp_form.addRow(tr("prefs.show_doppler_tk_lk"), self._show_doppler_tk_pv)
+        exp_form.addRow(tr("prefs.show_rv_s_prime"), self._show_rv_s_prime)
+        tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()
         tabs.addTab(self._server_form, tr("preferences.tab_server"))
@@ -421,6 +427,7 @@ class UserPreferencesDialog(QDialog):
             calibration_tick_snap_enabled=self._calibration_tick_snap.isChecked(),
             auto_depth_calibration_enabled=self._auto_depth_cal.isChecked(),
             length_display_unit=str(self._length_unit.currentData()),
+            area_tool_mode=str(self._area_tool_mode_combo.currentData()),
             show_dicom_tag_inspector=self._show_dicom_inspector.isChecked(),
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),

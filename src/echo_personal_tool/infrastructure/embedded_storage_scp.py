@@ -5,9 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from collections import OrderedDict
+
 from pynetdicom import AE, StoragePresentationContexts, evt
 
 logger = logging.getLogger(__name__)
+
+_INSTANCES_MAX = 500
 
 
 class EmbeddedStorageSCP:
@@ -28,7 +32,7 @@ class EmbeddedStorageSCP:
         self._ae_title = ae_title
         self._ae: AE | None = None
         self._server: Any = None
-        self.instances: dict[str, bytes] = {}
+        self.instances: OrderedDict[str, bytes] = OrderedDict()
         self._requested_port = port
 
     @property
@@ -97,6 +101,13 @@ class EmbeddedStorageSCP:
 
         buf = BytesIO()
         ds.save_as(buf, enforce_file_format=True)
+        if len(self.instances) >= _INSTANCES_MAX:
+            evicted_uid, _ = self.instances.popitem(last=False)
+            logger.warning(
+                "EmbeddedStorageSCP: evicting oldest instance %s (limit %d)",
+                sanitize_uid(evicted_uid),
+                _INSTANCES_MAX,
+            )
         self.instances[sop_uid] = buf.getvalue()
 
         from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid

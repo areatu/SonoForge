@@ -46,9 +46,11 @@
 import pytest
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 
+
 def test_vertical_lock_default_false():
     item = MModeScanLineItem(viewer_widget=None)
     assert item.vertical_lock is False
+
 
 def test_vertical_lock_can_set():
     item = MModeScanLineItem(viewer_widget=None)
@@ -92,38 +94,40 @@ Expected: PASS
 Add methods to `MModeScanLineItem`:
 
 ```python
-    def _create_guide_graphics(self) -> None:
-        """Create perpendicular guide lines for vertical lock mode."""
-        pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
-        self._guide_h = pg.PlotDataItem(pen=pen, antialias=True)
-        self._guide_h.setZValue(23)
-        self._guide_v = pg.PlotDataItem(pen=pen, antialias=True)
-        self._guide_v.setZValue(23)
+def _create_guide_graphics(self) -> None:
+    """Create perpendicular guide lines for vertical lock mode."""
+    pen = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
+    self._guide_h = pg.PlotDataItem(pen=pen, antialias=True)
+    self._guide_h.setZValue(23)
+    self._guide_v = pg.PlotDataItem(pen=pen, antialias=True)
+    self._guide_v.setZValue(23)
 
-    def _remove_guide_graphics(self) -> None:
-        """Remove guide lines."""
-        v = self._view
-        for item in (self._guide_h, self._guide_v):
-            if item is not None and v is not None:
-                v.removeItem(item)
-        self._guide_h = None
-        self._guide_v = None
 
-    def _update_guides(self, pos: tuple[float, float], frame_height: float) -> None:
-        """Update perpendicular guides at given position (image coords)."""
-        if self._guide_h is None or self._guide_v is None or self._view is None:
-            return
-        # Convert to view coords (invertY)
-        view_y = frame_height - pos[1]
-        # Horizontal guide: full width at this Y
-        self._guide_h.setData([0, self._view.width()], [view_y, view_y])
-        # Vertical guide: full height at this X
-        self._guide_v.setData([pos[0], pos[0]], [0, frame_height])
-        # Add to view if not already added
-        if self._guide_h not in self._view.addedItems:
-            self._view.addItem(self._guide_h)
-        if self._guide_v not in self._view.addedItems:
-            self._view.addItem(self._guide_v)
+def _remove_guide_graphics(self) -> None:
+    """Remove guide lines."""
+    v = self._view
+    for item in (self._guide_h, self._guide_v):
+        if item is not None and v is not None:
+            v.removeItem(item)
+    self._guide_h = None
+    self._guide_v = None
+
+
+def _update_guides(self, pos: tuple[float, float], frame_height: float) -> None:
+    """Update perpendicular guides at given position (image coords)."""
+    if self._guide_h is None or self._guide_v is None or self._view is None:
+        return
+    # Convert to view coords (invertY)
+    view_y = frame_height - pos[1]
+    # Horizontal guide: full width at this Y
+    self._guide_h.setData([0, self._view.width()], [view_y, view_y])
+    # Vertical guide: full height at this X
+    self._guide_v.setData([pos[0], pos[0]], [0, frame_height])
+    # Add to view if not already added
+    if self._guide_h not in self._view.addedItems:
+        self._view.addItem(self._guide_h)
+    if self._guide_v not in self._view.addedItems:
+        self._view.addItem(self._guide_v)
 ```
 
 - [ ] **Step 6: Modify node dragging to respect vertical_lock**
@@ -131,26 +135,25 @@ Add methods to `MModeScanLineItem`:
 Modify `_MModeNodeItem.mouseDragEvent`:
 
 ```python
-    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
-        if ev.button() != Qt.MouseButton.LeftButton:
-            return
-        ev.accept()
-        if self._viewer_widget is not None and hasattr(ev, "scenePos"):
-            view_box = self.getViewBox()
-            if view_box is not None:
-                pos = view_box.mapSceneToView(ev.scenePos())
-                new_pos = (float(pos.x()), float(pos.y()))
-                # Apply vertical lock: keep original X, only update Y
-                if self._viewer_widget._mmode_line_item is not None and \
-                   self._viewer_widget._mmode_line_item.vertical_lock:
-                    original = self._viewer_widget._mmode_line_item.line_start \
-                        if self._endpoint_index == 0 \
-                        else self._viewer_widget._mmode_line_item.line_end
-                    if original is not None:
-                        new_pos = (original[0], new_pos[1])
-                self._viewer_widget._mmode_node_dragging(
-                    self._endpoint_index, new_pos
+def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+    if ev.button() != Qt.MouseButton.LeftButton:
+        return
+    ev.accept()
+    if self._viewer_widget is not None and hasattr(ev, "scenePos"):
+        view_box = self.getViewBox()
+        if view_box is not None:
+            pos = view_box.mapSceneToView(ev.scenePos())
+            new_pos = (float(pos.x()), float(pos.y()))
+            # Apply vertical lock: keep original X, only update Y
+            if self._viewer_widget._mmode_line_item is not None and self._viewer_widget._mmode_line_item.vertical_lock:
+                original = (
+                    self._viewer_widget._mmode_line_item.line_start
+                    if self._endpoint_index == 0
+                    else self._viewer_widget._mmode_line_item.line_end
                 )
+                if original is not None:
+                    new_pos = (original[0], new_pos[1])
+            self._viewer_widget._mmode_node_dragging(self._endpoint_index, new_pos)
 ```
 
 - [ ] **Step 7: Update _update_graphics to show guides when vertical_lock**
@@ -158,20 +161,22 @@ Modify `_MModeNodeItem.mouseDragEvent`:
 Modify `MModeScanLineItem._update_graphics`:
 
 ```python
-    def _update_graphics(self) -> None:
-        if self._line_item is not None and self.line_start is not None and self.line_end is not None:
-            self._sync_line_data()
-        if self._start_node is not None and self.line_start is not None:
-            self._start_node.setData([self.line_start[0]], [self.line_start[1]])
-        if self._end_node is not None and self.line_end is not None:
-            self._end_node.setData([self.end_node[0]], [self.end_node[1]])
-        # Update guides in vertical lock mode
-        if self.vertical_lock and self._view is not None:
-            h = self._viewer_widget._current_frame.shape[0] \
-                if self._viewer_widget is not None \
-                and self._viewer_widget._current_frame is not None else 1.0
-            if self.line_end is not None:
-                self._update_guides(self.line_end, h)
+def _update_graphics(self) -> None:
+    if self._line_item is not None and self.line_start is not None and self.line_end is not None:
+        self._sync_line_data()
+    if self._start_node is not None and self.line_start is not None:
+        self._start_node.setData([self.line_start[0]], [self.line_start[1]])
+    if self._end_node is not None and self.line_end is not None:
+        self._end_node.setData([self.end_node[0]], [self.end_node[1]])
+    # Update guides in vertical lock mode
+    if self.vertical_lock and self._view is not None:
+        h = (
+            self._viewer_widget._current_frame.shape[0]
+            if self._viewer_widget is not None and self._viewer_widget._current_frame is not None
+            else 1.0
+        )
+        if self.line_end is not None:
+            self._update_guides(self.line_end, h)
 ```
 
 - [ ] **Step 8: Clean up guides on clear**
@@ -227,9 +232,10 @@ git commit -m "feat(mmode): add vertical_lock flag and guide graphics to MModeSc
 # tests/unit/test_mmode_vertical_lock.py (add)
 def test_vertical_lock_button_exists(qtbot):
     from echo_personal_tool.presentation.mmode_widget import MModeWidget
+
     widget = MModeWidget()
     qtbot.addWidget(widget)
-    assert hasattr(widget, '_vertical_lock_btn')
+    assert hasattr(widget, "_vertical_lock_btn")
     assert widget._vertical_lock_btn.isCheckable()
 ```
 
@@ -299,6 +305,7 @@ git commit -m "feat(mmode): add vertical lock toggle button to MModeWidget"
 def test_viewer_widget_vertical_lock_flag():
     from unittest.mock import MagicMock
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
     viewer = ViewerWidget.__new__(ViewerWidget)
     viewer._mmode_vertical_lock = False
     assert viewer._mmode_vertical_lock is False
@@ -367,13 +374,11 @@ In `viewer_widget.py`, modify `_mmode_node_dragging`:
 In `main_window.py`, find `_activate_mmode` and add connection:
 
 ```python
-    def _activate_mmode(self) -> None:
-        if self._mmode_widget is None:
-            self._mmode_widget = MModeWidget()
-            self._mmode_widget.deactivate_requested.connect(self._toggle_mmode)
-            self._mmode_widget.vertical_lock_toggled.connect(
-                self._viewer.set_mmode_vertical_lock
-            )
+def _activate_mmode(self) -> None:
+    if self._mmode_widget is None:
+        self._mmode_widget = MModeWidget()
+        self._mmode_widget.deactivate_requested.connect(self._toggle_mmode)
+        self._mmode_widget.vertical_lock_toggled.connect(self._viewer.set_mmode_vertical_lock)
 ```
 
 - [ ] **Step 8: Commit**
@@ -403,6 +408,7 @@ git commit -m "feat(mmode): connect vertical lock toggle to ViewerWidget scan li
 # tests/unit/test_mmode_vertical_lock.py (add)
 def test_guides_visible_during_drag():
     from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
     item = MModeScanLineItem(viewer_widget=None)
     item.vertical_lock = True
     # Mock view

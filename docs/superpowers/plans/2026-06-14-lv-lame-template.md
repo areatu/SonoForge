@@ -80,14 +80,8 @@ def test_lame_lift_height_monotonic_each_side() -> None:
     profile = LAME_A4C_ED
     u_apex = 0.5
     ma_length = 100.0
-    septal_side = [
-        lame_lift_height(u, u_apex, ma_length, profile)
-        for u in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
-    ]
-    lateral_side = [
-        lame_lift_height(u, u_apex, ma_length, profile)
-        for u in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    ]
+    septal_side = [lame_lift_height(u, u_apex, ma_length, profile) for u in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]]
+    lateral_side = [lame_lift_height(u, u_apex, ma_length, profile) for u in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]]
     assert all(septal_side[i] <= septal_side[i + 1] for i in range(len(septal_side) - 1))
     assert all(lateral_side[i] >= lateral_side[i + 1] for i in range(len(lateral_side) - 1))
 
@@ -573,9 +567,7 @@ def test_finish_manual_lv_uses_lame_warp_not_triangle(qtbot) -> None:
 
     inferred = infer_apex_from_open_arc(contour.points, septal, lateral)
     apex_height = point_line_distance(apex, septal, lateral)
-    assert point_line_distance(inferred, septal, lateral) == pytest.approx(
-        apex_height, rel=0.1, abs=5.0
-    )
+    assert point_line_distance(inferred, septal, lateral) == pytest.approx(apex_height, rel=0.1, abs=5.0)
 ```
 
 - [x] **Step 2: Run test — expect fail (triangle geometry)**

@@ -10,6 +10,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.resources.bundled_fonts import report_cyrillic_font_path
 
 
@@ -34,7 +35,7 @@ def export_measurement_report_pdf(
     font_size = max(8, min(16, int(font_size)))
 
     pdf = canvas.Canvas(str(output_path), pagesize=A4)
-    pdf.setTitle("Результаты измерений")
+    pdf.setTitle(tr("pdf.report_title"))
     pdf.setFont(font_name, font_size)
 
     y = page_height - margin_y

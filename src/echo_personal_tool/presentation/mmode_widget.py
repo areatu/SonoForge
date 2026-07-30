@@ -90,9 +90,9 @@ class MModeWidget(QWidget):
         # Measurement buttons
         self._measure_btns: dict[str, QPushButton] = {}
         for label, slot in [
-            ("▼ Вертикаль", self._start_vertical_measurement),
-            ("◄ Горизонталь", self._start_horizontal_measurement),
-            ("↗ Произвольное", self._start_arbitrary_measurement),
+            (tr("mmode.vertical"), self._start_vertical_measurement),
+            (tr("mmode.horizontal"), self._start_horizontal_measurement),
+            (tr("mmode.arbitrary"), self._start_arbitrary_measurement),
         ]:
             btn = QPushButton(label)
             btn.setFixedHeight(22)
@@ -102,13 +102,13 @@ class MModeWidget(QWidget):
             toolbar.addWidget(btn)
 
         # Teichholz buttons
-        self._teichholz_ed_btn = QPushButton("📐 Тейхольц ED")
+        self._teichholz_ed_btn = QPushButton(tr("mmode.teichholz_ed"))
         self._teichholz_ed_btn.setFixedHeight(22)
         self._teichholz_ed_btn.setCheckable(True)
         self._teichholz_ed_btn.clicked.connect(self._start_teichholz_ed)
         toolbar.addWidget(self._teichholz_ed_btn)
 
-        self._teichholz_es_btn = QPushButton("📐 Тейхольц ESV")
+        self._teichholz_es_btn = QPushButton(tr("mmode.teichholz_es"))
         self._teichholz_es_btn.setFixedHeight(22)
         self._teichholz_es_btn.setCheckable(True)
         self._teichholz_es_btn.setEnabled(False)
@@ -120,7 +120,7 @@ class MModeWidget(QWidget):
         self._teichholz_status.setStyleSheet("color: #ffb300; font-weight: bold;")
         toolbar.addWidget(self._teichholz_status)
 
-        self._clear_meas_btn = QPushButton("Очистить")
+        self._clear_meas_btn = QPushButton(tr("mmode.clear"))
         self._clear_meas_btn.setFixedHeight(22)
         self._clear_meas_btn.clicked.connect(self._clear_measurements)
         toolbar.addWidget(self._clear_meas_btn)
@@ -181,14 +181,14 @@ class MModeWidget(QWidget):
         self._measurement_tool.cancel()
         for btn in self._measure_btns.values():
             btn.setChecked(False)
-        self._measure_btns["▼ Вертикаль"].setChecked(True)
+        self._measure_btns[tr("mmode.vertical")].setChecked(True)
         self._measurement_tool.start_vertical()
 
     def _start_horizontal_measurement(self) -> None:
         self._measurement_tool.cancel()
         for btn in self._measure_btns.values():
             btn.setChecked(False)
-        self._measure_btns["◄ Горизонталь"].setChecked(True)
+        self._measure_btns[tr("mmode.horizontal")].setChecked(True)
         self._measurement_tool.start_horizontal()
 
     def _start_arbitrary_measurement(self) -> None:
@@ -197,7 +197,7 @@ class MModeWidget(QWidget):
             btn.setChecked(False)
         self._teichholz_ed_btn.setChecked(False)
         self._teichholz_es_btn.setChecked(False)
-        self._measure_btns["↗ Произвольное"].setChecked(True)
+        self._measure_btns[tr("mmode.arbitrary")].setChecked(True)
         self._measurement_tool.start_arbitrary()
 
     def _start_teichholz_ed(self) -> None:

@@ -17,6 +17,7 @@ from echo_personal_tool.domain.services.mbs_lite_service import (
     _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
     _warp_superellipse_open_arc,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 
 # ---------------------------------------------------------------------------
 # Quality-gate thresholds
@@ -238,7 +239,7 @@ def explain_la_auto_reject_reason(
 ) -> str | None:
     """Return a short Russian reason when LA auto contour should not enter review."""
     if contour.mitral_annulus is None or len(contour.points) < 3:
-        return "контур ЛА не построен"
+        return tr("domain.la_seg.no_contour")
 
     septal, lateral = contour.mitral_annulus
     apex = contour.apex_landmark
@@ -246,7 +247,7 @@ def explain_la_auto_reject_reason(
     # MV span (pixel distance)
     mv_span_px = math.hypot(lateral[0] - septal[0], lateral[1] - septal[1])
     if mv_span_px < 5.0:
-        return "митральное кольцо не найдено (проверьте вид A4C ES)"
+        return tr("domain.la_seg.no_annulus")
 
     # Spacing-aware MV span check
     if pixel_spacing is not None:
@@ -254,35 +255,28 @@ def explain_la_auto_reject_reason(
         if row_spacing > 0 and col_spacing > 0:
             mv_span_mm = mv_span_px * ((row_spacing + col_spacing) / 2.0)
             if mv_span_mm < _MIN_LA_MV_SPAN_MM:
-                return (
-                    f"митральное кольцо слишком мало "
-                    f"({mv_span_mm:.1f} мм < {_MIN_LA_MV_SPAN_MM} мм) — "
-                    "проверьте вид A4C и калибровку"
-                )
+                return tr("domain.la_seg.annulus_too_small", mv_span_mm=mv_span_mm, min_mm=_MIN_LA_MV_SPAN_MM)
 
     # Apex must be above MV chord (image Y: smaller Y = superior)
     ma_mid_y = (septal[1] + lateral[1]) / 2.0
     if apex is not None and apex[1] >= ma_mid_y + 10.0:
-        return "геометрия ЛА инвертирована (крышка ниже митрального кольца)"
+        return tr("domain.la_seg.inverted")
 
     # Long axis: MA midpoint → apex
     if apex is not None:
         ma_mid_x = (septal[0] + lateral[0]) / 2.0
         long_axis_px = math.hypot(apex[0] - ma_mid_x, apex[1] - ma_mid_y)
         if long_axis_px < _MIN_LA_LONG_AXIS_PX:
-            return "ось ЛА слишком короткая — выберите другой кадр"
+            return tr("domain.la_seg.axis_too_short")
 
     # Mask area gate
     if mask_pixels is not None and mask_pixels < _MIN_LA_MASK_AREA_PX:
-        return f"полость ЛА слишком мала ({mask_pixels} px < {_MIN_LA_MASK_AREA_PX} px) — выберите другой кадр"
+        return tr("domain.la_seg.cavity_too_small", pixels=str(mask_pixels), min_px=str(_MIN_LA_MASK_AREA_PX))
 
     if mask is not None:
         residual = _mask_ellipse_fit_residual(mask, contour)
         if residual > _MAX_LA_ELLIPSE_RESIDUAL:
-            return (
-                f"маска ЛА слишком нерегулярна для эллиптического контура "
-                f"(остаток {residual:.2f} > {_MAX_LA_ELLIPSE_RESIDUAL})"
-            )
+            return tr("domain.la_seg.mask_irregular", residual=residual, max_residual=_MAX_LA_ELLIPSE_RESIDUAL)
 
     # Centroid outside ROI
     if roi_xyxy is not None and len(contour.points) >= 3:
@@ -292,6 +286,6 @@ def explain_la_auto_reject_reason(
         cy = sum(ys) / len(ys)
         rx0, ry0, rx1, ry1 = roi_xyxy
         if not (rx0 <= cx <= rx1 and ry0 <= cy <= ry1):
-            return "центр контура ЛА вне ROI — проверьте выделение сектора"
+            return tr("domain.la_seg.center_outside_roi")
 
     return None
