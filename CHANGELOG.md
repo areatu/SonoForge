@@ -4,10 +4,85 @@
 
 ---
 
+## 2026-07-30
+
+### Fixes
+- `fix(macos)`: split Intel/Apple Silicon builds + DMG instead of zip — separate CI jobs for `macos-13` (Intel) and `macos-latest` (ARM64), `.app` bundle via BUNDLE, DMG via `hdiutil`
+- `fix(ci)`: resolve CI failures — ruff F401, pixel cache test, release-drafter permissions
+- `fix(i18n)`: remove dead `layout.swap` key and duplicate `research_use_only` from `en.json`
+
+### Performance
+- `perf`: memory optimization + video FPS improvements
+- `perf(playback)`: fix LOW_END misclassification + optimize frame cache with bisect
+
+---
+
+## 2026-07-29
+
+### Features
+- `feat(measure)`: implement Area Compare tool — `%S` contour comparison с click/freehand modes
+
+### Fixes
+- `fix(measure)`: area compare — store `%S` in linear measurements, freehand/click-mode visualization fixes
+- `fix(measure)`: diameter compare bugs — `%D` in overlays, `display_text`, cancel safety
+- `fix(measure)`: freehand point filtering, area-compare S1/S2 vs Площадь dedup, overlay fixes
+
+---
+
+## 2026-07-28
+
+### Features
+- `feat(measure)`: diameter/area compare — `DIAMETER_COMPARE` и `AREA_COMPARE` в `MeasurementAction`, buttons в `MeasurementToolsPanel`, menu entries в `MeasuresMenu`
+- `feat(measure)`: diameter comparison logic в `ViewerWidget` + unit tests
+- `feat(measure)`: Area Compare tool — `%S` contour comparison, wire actions в `MainWindow`
+- `feat(measure)`: area tool mode — `click`/`freehand` selector в preferences dialog, `area_tool_mode` preference field
+- `feat(measure)`: magnetic snap для closed polygon contours (AREA/VOL) — `snap_closed_polygon` utility, Douglas-Peucker point reduction
+
+### Fixes
+- `fix(measure)`: comparison label, measurement preservation, constraint bypass
+- `fix(measure)`: connect `area_compare_requested` signal к action dispatch chain
+- `fix(measure)`: enable Area Compare в MeasuresMenu и revert broken signal bridge
+
+### CI/CD
+- `ci`: bump `actions/dependency-review-action` 4 → 5
+- `ci`: bump `actions/upload-artifact` 4 → 7
+- `ci`: bump `github/codeql-action` 3 → 4
+- `ci`: bump `release-drafter/release-drafter` 6 → 7
+- `ci`: bump `actions/setup-python` 5 → 7
+
+### Style
+- `style`: fix ruff formatting в 12 files
+
+### Tests
+- `test`: unit tests для diameter comparison logic
+
+---
+
+## 2026-07-27
+
+### Docs
+- `docs`: add demo videos и updated screenshots
+- `docs`: add Disclaimer, update Installation, add status bar warning
+- `docs`: fix screenshot placement в Cardiac Measurements table
+- `docs`: remove screenshots из README_RU.md
+
+---
+
 ## 2026-07-26
 
 ### Releases
 - `chore(release)`: v0.2.3 — CI fixes (Windows unit tests, ruff format), macOS build + source tarball in Release workflow
+
+### i18n
+- `i18n`: translate domain layer and infrastructure to English
+- `i18n`: translate presentation layer to English
+- `i18n`: translate constructor module to English
+- `i18n`: translate strain window and curves to English
+- `i18n`: add all missing locale keys для full English translation
+
+### Docs
+- `docs`: add CODE_OF_CONDUCT.md и issue template config
+- `docs`: update README и SECURITY с new features
 
 ### Features
 - `feat(test)`: comprehensive verification test suite — 8 new test categories (security, regression, migration, acceptance, system, exploratory, compat, bench) с 520+ тестами
