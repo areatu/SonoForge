@@ -102,7 +102,7 @@ class VideoDecodeWorker(QRunnable):
             self.signals.finished.emit(
                 self._request_id,
                 self._path,
-                np.ascontiguousarray(final),
+                final,
             )
         except Exception as exc:  # noqa: BLE001
             self.signals.failed.emit(self._request_id, str(exc))

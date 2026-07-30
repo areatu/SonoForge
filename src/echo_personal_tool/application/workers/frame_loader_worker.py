@@ -91,7 +91,7 @@ class FrameLoaderWorker(QRunnable):
             pixels = session.decode_single_frame(self._frame_index)
             session.release_heavy()
         try:
-            self.signals.finished.emit(np.ascontiguousarray(pixels))
+            self.signals.finished.emit(pixels)
         except RuntimeError:
             pass
 
@@ -104,7 +104,7 @@ class FrameLoaderWorker(QRunnable):
             reader.open(self._path)
             for i in range(self._frame_index, end):
                 pixels = reader.read_frame(i)
-                results.append((i, np.ascontiguousarray(pixels)))
+                results.append((i, pixels))
         elif self._media_format == "dicom":
             # Sequential decode on a single session.
             session = get_thread_dicom_session()
@@ -113,7 +113,7 @@ class FrameLoaderWorker(QRunnable):
             end = min(end, actual_count)
             for i in range(self._frame_index, end):
                 pixels = session.decode_single_frame(i)
-                results.append((i, np.ascontiguousarray(pixels)))
+                results.append((i, pixels))
             session.release_heavy()
 
         try:

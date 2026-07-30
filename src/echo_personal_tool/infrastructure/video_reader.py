@@ -186,7 +186,9 @@ class VideoReader:
         ok, bgr = self._capture.read()
         if not ok or bgr is None:
             raise OSError(f"Failed to read frame {index}")
-        frame = to_bgr_uint8(bgr)
+
+        # FAST-PATH: OpenCV sequential read always returns ideal BGR uint8.
+        frame = bgr
         self._store_in_buffer(index, frame)
         self._last_read_index = index
         return frame
@@ -198,7 +200,14 @@ class VideoReader:
         ok, bgr = self._capture.read()
         if not ok or bgr is None:
             return False
-        frame = to_bgr_uint8(bgr)
+
+        # DEFENSIVE PATH: After seek, backend may return non-contiguous or BGRA.
+        if bgr.ndim == 3 and bgr.shape[2] == 3 and bgr.dtype == np.uint8 and bgr.flags['C_CONTIGUOUS']:
+            frame = bgr
+        else:
+            from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
+            frame = to_bgr_uint8(bgr)  # Safety fallback
+
         self._store_in_buffer(index, frame)
         self._last_read_index = index
         return True

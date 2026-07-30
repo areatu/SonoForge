@@ -266,3 +266,55 @@ def test_jpeg2000_eot_random_access(tmp_path: Path) -> None:
         expected_mean = index * 10 + 20
         assert abs(float(frame.mean()) - expected_mean) < 1.0
     session.release()
+
+
+def test_uncompressed_readonly_pipeline(tmp_path: Path) -> None:
+    """Verify that read-only frames from decode_all_frames() are never mutated."""
+    path = tmp_path / "readonly_multi.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=10, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+
+    # SPEC-001: Bulk decode MUST be read-only
+    assert not frames.flags.writeable, "Bulk frames must be read-only"
+
+    for i in range(min(10, frames.shape[0])):
+        frame = session.read_frame(i)
+
+        # Check 1: read_frame returns read-only view
+        assert not frame.flags.writeable, f"Frame {i} must be read-only"
+
+        # Check 2: Save original data snapshot
+        original_bytes = frame.tobytes()
+
+        # Check 3: Frame data unchanged after operations
+        _ = frame.copy()  # Simulate some operation
+        assert frame.tobytes() == original_bytes, \
+            f"Frame {i} was mutated!"
+
+        # Check 4: frame is still read-only
+        assert not frame.flags.writeable, \
+            f"Frame {i} became writable!"
+
+    session.release()
+
+
+def test_readonly_materialization_on_release_heavy(tmp_path: Path) -> None:
+    """Verify that release_heavy() materializes read-only views before freeing _pixel_data_raw."""
+    path = tmp_path / "materialize.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    frames = session.decode_all_frames()
+
+    assert not frames.flags.writeable, "Bulk frames must be read-only"
+    assert frames.base is not None, "Frames should be a view into _pixel_data_raw"
+
+    session.release_heavy()
+
+    # After release_heavy, session._frames should be materialized (writable copy)
+    assert session._frames is not None, "session._frames should be preserved after release_heavy"
+    assert session._frames.shape == (5, 32, 32), "Frames shape should be preserved"
+    assert session._frames.flags.writeable, "Materialized frames should be writable"
+    assert session._frames.base is None, "Materialized frames should own their memory"

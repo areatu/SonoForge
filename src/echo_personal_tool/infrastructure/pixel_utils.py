@@ -53,8 +53,8 @@ def to_display_rgb(frame: np.ndarray, *, channel_order: ChannelOrder = "bgr") ->
 
 
 def apply_window_level_rgb(rgb: np.ndarray, low: float, high: float) -> np.ndarray:
-    """Apply window/level via luminance scaling while preserving chroma ratios."""
-    source = np.asarray(rgb, dtype=np.float64)
+    """Apply window/level via luminance scaling. Uses float32 to halve memory."""
+    source = np.asarray(rgb, dtype=np.float32)
     if source.ndim != 3 or source.shape[2] < 3:
         raise ValueError(f"Expected RGB frame, got shape {source.shape}")
     luminance = np.mean(source[..., :3], axis=2)
@@ -66,7 +66,10 @@ def apply_window_level_rgb(rgb: np.ndarray, low: float, high: float) -> np.ndarr
         out=np.ones_like(luminance),
         where=luminance > 1.0,
     )
-    return np.clip(source * gain[..., np.newaxis], 0.0, 255.0).astype(np.uint8)
+    result = source.copy()  # Allocation 1: float32 owned copy
+    result[..., :3] *= gain[..., np.newaxis]  # In-place multiply (0 allocations)
+    np.clip(result, 0.0, 255.0, out=result)  # In-place clip (0 allocations)
+    return result.astype(np.uint8)  # Allocation 2: uint8 output
 
 
 def is_effective_grayscale(frame: np.ndarray, *, tolerance: int = 12) -> bool:
@@ -87,14 +90,20 @@ def is_effective_grayscale(frame: np.ndarray, *, tolerance: int = 12) -> bool:
 
 
 def to_grayscale_array(frame: np.ndarray) -> np.ndarray:
-    """Luminance as float64 for window/level (preserves uint16 dynamic range)."""
-    array = np.asarray(frame, dtype=np.float64)
-    if array.ndim == 2:
-        return array
-    if array.ndim == 3 and array.shape[2] >= 3:
-        return np.mean(array[..., :3], axis=2)
-    if array.ndim == 3:
-        return array[..., 0]
+    """Luminance as float32 for WL/edge computation. Returns WRITABLE array."""
+    arr = np.asarray(frame)
+    if arr.ndim == 2:
+        if arr.dtype == np.float32:
+            return arr.copy() if not arr.flags.writeable else arr
+        return arr.astype(np.float32)
+
+    if arr.ndim == 3 and arr.shape[2] >= 3:
+        arr = np.ascontiguousarray(arr)  # Safety for cv2
+        gray_u8 = cv2.cvtColor(arr[..., :3], cv2.COLOR_RGB2GRAY)
+        return gray_u8.astype(np.float32)
+
+    if arr.ndim == 3:
+        return arr[..., 0].astype(np.float32)
     raise ValueError(f"Unsupported frame shape: {frame.shape}")
 
 
@@ -147,7 +156,8 @@ def compute_display_levels(
 
 
 def _grayscale_source_array(frame: np.ndarray) -> np.ndarray:
-    """Return 2-D source values for LUT window/level (preserves dtype)."""
+    """Return 2-D source values for LUT window/level (preserves dtype).
+    MAY BE READ-ONLY — caller must not mutate."""
     source = np.asarray(frame)
     if source.ndim == 3:
         if source.shape[2] >= 3:

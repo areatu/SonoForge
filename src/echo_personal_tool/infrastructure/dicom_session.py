@@ -250,7 +250,8 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
 def _decode_uncompressed_frame(
     pixel_data: bytes, offset: int, size: int, rows: int, cols: int, bytes_per_pixel: int
 ) -> np.ndarray:
-    """Decode a single uncompressed frame — owned copy to avoid use-after-free."""
+    """Decode single uncompressed frame. Returns OWNED WRITABLE array.
+    This is the ONLY copy for single-frame path."""
     raw = pixel_data[offset : offset + size]
     if bytes_per_pixel == 1:
         return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
@@ -394,6 +395,27 @@ class DicomSession:
 
         self._ensure_pixel_data()
 
+        # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy)
+        if self._is_uncompressed and self._pixel_data_raw is not None and self._frame_slices:
+            ds = self._metadata
+            rows, cols = int(ds.Rows), int(ds.Columns)
+            samples = int(getattr(ds, "SamplesPerPixel", 1))
+            bpp = (int(ds.BitsAllocated) // 8) * samples
+            expected = self._frame_count * rows * cols * bpp
+            if len(self._pixel_data_raw) >= expected:
+                dtype = np.uint16 if bpp == 2 else np.uint8
+                buf = np.frombuffer(self._pixel_data_raw, dtype=dtype, count=expected)
+                if samples == 1:
+                    self._frames = buf.reshape((self._frame_count, rows, cols))
+                else:
+                    self._frames = buf.reshape((self._frame_count, rows, cols, samples))
+
+                # SPEC-001 ENFORCEMENT: Mark as read-only to prevent downstream mutations
+                self._frames.flags.writeable = False
+                self._first_frame = self._frames[0]
+                return self._frames
+
+        # SLOW PATH: compressed (JPEG-2000) — parallel decode
         first_frame = getattr(self, "_first_frame", None)
         if first_frame is None:
             first_frame = self._decode_single_frame(0)
@@ -462,13 +484,18 @@ class DicomSession:
         return self._decode_single_frame(index)
 
     def read_frame(self, frame_index: int) -> np.ndarray:
+        """Return frame array. MAY BE READ-ONLY. Caller MUST NOT modify in-place.
+        Decoder already guarantees owned contiguous memory for single frames,
+        or read-only view for bulk decode_all_frames()."""
         if self._frames is not None:
             if frame_index < 0 or frame_index >= self._frames.shape[0]:
                 raise IndexError(f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})")
-            return np.ascontiguousarray(self._frames[frame_index]).copy()
+            return self._frames[frame_index]  # Zero-copy view (read-only if bulk)
+
         if frame_index < 0 or frame_index >= self._frame_count:
             raise IndexError(f"Frame index {frame_index} out of range [0, {self._frame_count})")
-        return np.ascontiguousarray(self.decode_single_frame(frame_index)).copy()
+        self._ensure_pixel_data()
+        return self._decode_single_frame(frame_index)  # Writable owned copy
 
     def release(self) -> None:
         self._open_path = None
@@ -486,12 +513,16 @@ class DicomSession:
 
     def release_heavy(self) -> None:
         """Free large buffers while keeping metadata for future re-open."""
+        # MATERIALIZE VIEWS: If _frames is a read-only view into _pixel_data_raw,
+        # copy it to detach from _pixel_data_raw before clearing.
+        if self._frames is not None and self._frames.base is not None:
+            self._frames = self._frames.copy()  # Now it's a writable owned array
+            self._first_frame = self._frames[0]
+
         self._raw_bytes = None
         self._pixel_data_raw = None
         self._encapsulated_frames = None
         self._bot_offsets = None
-        self._frames = None
-        self._first_frame = None
 
 
 def stack_pixel_array(pixel_array: np.ndarray) -> np.ndarray:

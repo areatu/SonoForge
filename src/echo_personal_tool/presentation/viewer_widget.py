@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
+import cv2
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
@@ -795,6 +796,8 @@ class ViewerWidget(QWidget):
         self._last_gray_frame_ptr: int | None = None
         self._cached_grayscale_frame: np.ndarray | None = None
         self._last_color_frame_ptr: int | None = None
+        self._display_buffers: list[np.ndarray] = []
+        self._display_buf_idx: int = 0
         self._drag_session: tuple[int, float, float, int, int] | None = None
         self._hover_contour_index: int | None = None
         self._hover_tier: int | None = None
@@ -1730,7 +1733,12 @@ class ViewerWidget(QWidget):
                 if frame_data_ptr == self._last_gray_frame_ptr and self._cached_grayscale_frame is not None:
                     self._current_frame = self._cached_grayscale_frame
                 else:
-                    self._current_frame = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+                    # SIMD: cv2.cvtColor returns WRITABLE contiguous uint8
+                    frame_c = np.ascontiguousarray(frame)  # Safety for cv2
+                    if channel_order == "bgr":
+                        self._current_frame = cv2.cvtColor(frame_c[..., :3], cv2.COLOR_BGR2GRAY)
+                    else:
+                        self._current_frame = cv2.cvtColor(frame_c[..., :3], cv2.COLOR_RGB2GRAY)
                     self._last_gray_frame_ptr = frame_data_ptr
                     self._cached_grayscale_frame = self._current_frame
             else:
@@ -6011,18 +6019,16 @@ class ViewerWidget(QWidget):
             display = apply_window_level_rgb(self._color_source_rgb, low, high)
             self._image_item.setImage(display, autoLevels=False)
         else:
-            import cv2
-
             from echo_personal_tool.infrastructure.pixel_utils import _grayscale_source_array
 
-            src = _grayscale_source_array(frame)
+            src = _grayscale_source_array(frame)  # MAY BE READ-ONLY (SPEC-001)
             span = max(high - low, 1.0)
             lut_key = (low, span, str(src.dtype))
             if self._cached_lut_key == lut_key and self._cached_lut is not None:
                 lut = self._cached_lut
             elif src.dtype == np.uint16:
                 lut = np.clip(
-                    (np.arange(65536, dtype=np.float64) - low) / span * 255.0,
+                    (np.arange(65536, dtype=np.float32) - low) / span * 255.0,
                     0.0,
                     255.0,
                 ).astype(np.uint8)
@@ -6030,19 +6036,37 @@ class ViewerWidget(QWidget):
                 self._cached_lut_key = lut_key
             else:
                 lut = np.clip(
-                    (np.arange(256, dtype=np.float64) - low) / span * 255.0,
+                    (np.arange(256, dtype=np.float32) - low) / span * 255.0,
                     0.0,
                     255.0,
                 ).astype(np.uint8)
                 self._cached_lut = lut
                 self._cached_lut_key = lut_key
+
+            # ZERO-COPY RENDER: write into reusable double buffer
+            dst = self._ensure_display_buffer(src.shape)  # WRITABLE
             if src.dtype == np.uint16:
-                display = lut[src]
+                np.take(lut, src, out=dst)  # src can be read-only
             else:
                 src_u8 = src if src.dtype == np.uint8 else np.clip(src, 0, 255).astype(np.uint8)
-                display = cv2.LUT(src_u8, lut)
-            self._image_item.setImage(display, autoLevels=False)
+                cv2.LUT(src_u8, lut, dst=dst)  # dst is writable
+
+            self._image_item.setImage(dst, autoLevels=False)
+            # Switch buffer
+            self._display_buf_idx = (self._display_buf_idx + 1) % len(self._display_buffers)
         self._invalidate_edge_map_cache()
+
+    def _ensure_display_buffer(self, shape: tuple[int, ...]) -> np.ndarray:
+        """Return pre-allocated WRITABLE uint8 buffer from double buffer pool."""
+        for buf in self._display_buffers:
+            if buf.shape == shape:
+                return buf
+        self._display_buffers = [
+            np.empty(shape, dtype=np.uint8),
+            np.empty(shape, dtype=np.uint8),
+        ]
+        self._display_buf_idx = 0
+        return self._display_buffers[0]
 
     def _is_levels_outlier(self, low: float, high: float, frame: np.ndarray) -> bool:
         """Check if computed levels indicate an outlier frame (too dark/bright/flat)."""
