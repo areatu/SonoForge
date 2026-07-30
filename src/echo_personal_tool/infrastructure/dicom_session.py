@@ -413,11 +413,15 @@ class DicomSession:
             ds = self._metadata
             rows, cols = int(ds.Rows), int(ds.Columns)
             samples = int(getattr(ds, "SamplesPerPixel", 1))
-            bpp = (int(ds.BitsAllocated) // 8) * samples
+            bits_allocated = int(ds.BitsAllocated)
+            bpp = (bits_allocated // 8) * samples
             expected = self._frame_count * rows * cols * bpp
             if len(self._pixel_data_raw) >= expected:
-                dtype = np.uint16 if bpp == 2 else np.uint8
-                buf = np.frombuffer(self._pixel_data_raw, dtype=dtype, count=expected)
+                # dtype based on BitsAllocated, not bpp
+                dtype = np.dtype(f"uint{bits_allocated}")
+                element_size = np.dtype(dtype).itemsize
+                count_elements = expected // element_size
+                buf = np.frombuffer(self._pixel_data_raw, dtype=dtype, count=count_elements)
                 if samples == 1:
                     self._frames = buf.reshape((self._frame_count, rows, cols))
                 else:

@@ -39,12 +39,14 @@ def calibration_from_roi_and_baseline(
     *,
     velocity_span_cm_s: float | None = None,
     time_span_ms: float = 1000.0,
+    time_origin_ms: float = 0.0,
     kind: DopplerKind = DopplerKind.SPECTRAL,
 ) -> DopplerCalibrationState:
     span = velocity_span_cm_s if velocity_span_cm_s is not None else kind.default_velocity_span_cm_s
     return DopplerCalibrationState(
         roi=roi,
         baseline_y_px=baseline_y_px,
+        time_origin_ms=time_origin_ms,
         time_span_ms=time_span_ms,
         velocity_span_cm_s=span,
         kind=kind,

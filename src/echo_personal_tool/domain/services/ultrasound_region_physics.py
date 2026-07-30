@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from pydicom.dataset import Dataset
+
+logger = logging.getLogger(__name__)
 
 # DICOM PS3.3 C.8.5.5 Physical Units
 PHYSICAL_UNIT_CM = 1
@@ -71,7 +75,10 @@ def vertical_mm_per_pixel(delta_y: float, units_y: int) -> float | None:
 def time_span_ms_from_region(width_px: float, delta_x: float, units_x: int) -> float | None:
     """Full horizontal span of a spectrogram/M-mode strip in milliseconds."""
     ms_per_px = horizontal_ms_per_pixel(delta_x, units_x)
-    if ms_per_px is None or width_px <= 0.0:
+    if ms_per_px is None:
+        logger.debug("Cannot compute time span: delta_x=%s, units_x=%s", delta_x, units_x)
+        return None
+    if width_px <= 0.0:
         return None
     return width_px * ms_per_px
 
@@ -79,7 +86,10 @@ def time_span_ms_from_region(width_px: float, delta_x: float, units_x: int) -> f
 def velocity_span_cm_s_from_region(height_px: float, delta_y: float, units_y: int) -> float | None:
     """Full vertical velocity span (cm/s) for spectral Doppler."""
     # units_y=6 is standard cm/s; units_y=7 is a known vendor mis-tag (also cm/s)
-    if units_y not in (PHYSICAL_UNIT_CM_PER_SEC, 7) or delta_y <= 0.0 or height_px <= 0.0:
+    if units_y not in (PHYSICAL_UNIT_CM_PER_SEC, 7):
+        logger.debug("Unsupported velocity units: %s", units_y)
+        return None
+    if delta_y <= 0.0 or height_px <= 0.0:
         return None
     return height_px * delta_y
 
@@ -93,9 +103,11 @@ def is_spatial_calibration_region(region: Dataset) -> bool:
     if spatial == SPATIAL_2D and data_type == 1:
         return True
     _, _, units_x, units_y = region_physical_deltas(region)
-    if units_x is not None and units_x not in _SPATIAL_UNIT_CODES:
+    if units_x is None or units_y is None:
         return False
-    if units_y is not None and units_y not in _SPATIAL_UNIT_CODES:
+    if units_x not in _SPATIAL_UNIT_CODES:
+        return False
+    if units_y not in _SPATIAL_UNIT_CODES:
         return False
     return True
 

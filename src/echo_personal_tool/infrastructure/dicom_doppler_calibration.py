@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
+import numpy as np
 import pydicom
 from pydicom.dataset import Dataset
 
@@ -23,6 +25,8 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
 )
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 
+logger = logging.getLogger(__name__)
+
 
 def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
     min_x = region.get("RegionLocationMinX0")
@@ -37,6 +41,39 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
 def _sorted_doppler_regions(regions: object) -> list[Dataset]:
     items = [region for region in regions if is_spectral_doppler_region(region)]
     return sorted(items, key=spectral_doppler_region_priority, reverse=True)
+
+
+def _detect_baseline_fallback(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> float:
+    """Estimate baseline from pixel intensities when detect_baseline_y fails."""
+    y0 = max(0, int(roi.y0))
+    y1 = min(frame.shape[0], int(roi.y0 + roi.height))
+    x0 = max(0, int(roi.x0))
+    x1 = min(frame.shape[1], int(roi.x0 + roi.width))
+
+    if y1 <= y0 or x1 <= x0:
+        return roi.y0 + roi.height / 2.0
+
+    roi_gray = frame[y0:y1, x0:x1]
+    if roi_gray.ndim == 3:
+        roi_gray = np.mean(roi_gray[..., :3], axis=2)
+
+    # Sum horizontally — baseline is bright horizontal line
+    profile = np.mean(roi_gray, axis=1)
+    kernel = np.ones(5) / 5
+    smoothed = np.convolve(profile, kernel, mode='same')
+    baseline_rel = float(np.argmax(smoothed))
+    return y0 + baseline_rel
+
+
+def _extract_samsung_baseline(region: Dataset) -> float | None:
+    """Extract baseline from Samsung-specific ReferencePixelY0 tag."""
+    ref_y = region.get("ReferencePixelY0")
+    if ref_y is not None:
+        try:
+            return float(ref_y)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def try_parse_from_dataset(
@@ -66,28 +103,44 @@ def try_parse_from_dataset(
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
         if None in (delta_x, units_x):
+            logger.debug("Region missing delta_x or units_x, skipping")
             continue
 
         time_span_ms = time_span_ms_from_region(roi.width, delta_x, units_x)
+        if time_span_ms is None:
+            logger.debug("Cannot compute time span: delta_x=%s, units_x=%s", delta_x, units_x)
 
         velocity_span = None
         if delta_y is not None and units_y is not None:
             velocity_span = velocity_span_cm_s_from_region(roi.height, delta_y, units_y)
+            if velocity_span is None:
+                logger.debug("Cannot compute velocity span: delta_y=%s, units_y=%s", delta_y, units_y)
 
         # Skip if neither time nor velocity could be computed
         if time_span_ms is None and velocity_span is None:
             continue
 
+        # Baseline detection priority:
+        # 1. ReferencePixelY0 (Samsung vendor-specific)
+        # 2. Auto-detect by intensity (detect_baseline_y)
+        # 3. Intensity fallback (_detect_baseline_fallback)
+        # 4. Center of ROI (last resort)
         baseline_y = roi.y0 + roi.height / 2.0
-        if frame is not None:
-            import numpy as np
-
+        samsung_baseline = _extract_samsung_baseline(region)
+        if samsung_baseline is not None:
+            baseline_y = samsung_baseline
+            logger.debug("Using Samsung ReferencePixelY0 baseline: %s", baseline_y)
+        elif frame is not None:
             arr = np.asarray(frame)
             if arr.ndim >= 2:
-                baseline_y = detect_baseline_y(arr, roi)
+                try:
+                    baseline_y = detect_baseline_y(arr, roi)
+                except Exception:
+                    logger.debug("detect_baseline_y failed, using intensity fallback")
+                    baseline_y = _detect_baseline_fallback(arr, roi)
 
         data_type = int(region.get("RegionDataType", 0) or 0)
-        region_kind = DopplerKind.TISSUE if data_type in (0x11, 17) else kind
+        region_kind = DopplerKind.TISSUE if data_type in (0x10, 0x11) else kind
         candidate = calibration_from_roi_and_baseline(
             roi,
             baseline_y,

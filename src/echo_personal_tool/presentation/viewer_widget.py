@@ -686,6 +686,7 @@ class ViewerWidget(QWidget):
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
         self._doppler_pending_baseline_y: float | None = None
+        self._doppler_pending_velocity_span: float | None = None
         self._mmode_time_start_x: float | None = None
         self._mmode_line_active = False
         self._mmode_line_item: MModeScanLineItem | None = None
@@ -1829,6 +1830,7 @@ class ViewerWidget(QWidget):
                 self._doppler_roi_corner1 = None
                 self._doppler_pending_roi = None
                 self._doppler_pending_baseline_y = None
+                self._doppler_pending_velocity_span = None
             self.clear_doppler_calibration_display()
             # Restore WL/DR for the new instance if cached
             new_uid = viewer_state.instance.sop_instance_uid if viewer_state.instance else None
@@ -2142,6 +2144,7 @@ class ViewerWidget(QWidget):
         self._doppler_roi_corner1 = None
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
+        self._doppler_pending_velocity_span = None
         self._measurement_label.setText(tr(_DOPPLER_CAL_ROI_STEP1_KEY))
         self._measurement_label.show()
         return True
@@ -2242,6 +2245,7 @@ class ViewerWidget(QWidget):
                 velocity_span_cm_s=state.velocity_span_cm_s,
                 kind=state.kind,
                 from_dicom_tags=state.from_dicom_tags,
+                velocity_from_dicom_tags=getattr(state, 'velocity_from_dicom_tags', False),
             )
         self._doppler_calibration_state = state
         self._doppler_calibration_instance_uid = self._current_instance_uid()
@@ -2621,9 +2625,17 @@ class ViewerWidget(QWidget):
                 kind=DopplerKind.SPECTRAL,
                 frame=self._current_frame,
             )
-            if parsed is not None and (parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom()):
-                self.apply_doppler_calibration_state(parsed, persist=True)
-                return True
+            if parsed is not None:
+                if parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom():
+                    # Full auto-calibration: both scales from DICOM
+                    self.apply_doppler_calibration_state(parsed, persist=True)
+                    return True
+                elif parsed.has_velocity_scale() or parsed.roi.width > 0:
+                    # Partial: ROI+baseline from DICOM, scales need manual input
+                    self.apply_doppler_calibration_state(parsed, persist=True)
+                    self._measurement_label.setText(tr("viewer.doppler_partial_calibration"))
+                    self._measurement_label.show()
+                    return True
         return False
 
     def _configure_doppler_axis_for_frame(self) -> None:
@@ -3365,6 +3377,7 @@ class ViewerWidget(QWidget):
             self._doppler_roi_corner1 = None
             self._doppler_pending_roi = None
             self._doppler_pending_baseline_y = None
+            self._doppler_pending_velocity_span = None
             return
         if self._doppler.cancel_active_tool():
             return
@@ -5082,17 +5095,9 @@ class ViewerWidget(QWidget):
                 velocity_span = span_cm_s * (roi.height / length_px)
             else:
                 velocity_span = span_cm_s
-            state = calibration_from_roi_and_baseline(
-                roi,
-                self._doppler_pending_baseline_y,
-                velocity_span_cm_s=velocity_span,
-                kind=self._doppler_cal_kind,
-            )
-            self.apply_doppler_calibration_state(state)
-            self._doppler_pending_roi = None
-            self._doppler_pending_baseline_y = None
-            self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
-            self.spectral_calibration_completed.emit(velocity_span)
+            self._doppler_pending_velocity_span = velocity_span
+            # Proceed to time span prompt (4th step)
+            self._prompt_spectral_time_span()
             return
 
         height, width = self._current_frame.shape[:2]
@@ -5105,6 +5110,41 @@ class ViewerWidget(QWidget):
         self._doppler_axis_calibrated = False
         if not self._syncing_state:
             self.spectral_calibration_completed.emit(span_cm_s)
+
+    def _prompt_spectral_time_span(self) -> None:
+        """4th step of calibration wizard: ask for time span (ms)."""
+        span_ms, accepted = QInputDialog.getDouble(
+            self,
+            tr("viewer.calibration_spectral_time_title"),
+            tr("viewer.calibration_spectral_time_prompt"),
+            2000.0,  # default 2 seconds
+            100.0,
+            10000.0,
+            0,
+        )
+        if not accepted or self._current_frame is None:
+            self._doppler_pending_roi = None
+            self._doppler_pending_baseline_y = None
+            self._doppler_pending_velocity_span = None
+            return
+
+        if (self._doppler_pending_roi is not None
+                and self._doppler_pending_baseline_y is not None
+                and self._doppler_pending_velocity_span is not None):
+            velocity_span = self._doppler_pending_velocity_span
+            state = calibration_from_roi_and_baseline(
+                self._doppler_pending_roi,
+                self._doppler_pending_baseline_y,
+                velocity_span_cm_s=velocity_span,
+                time_span_ms=span_ms,
+                kind=self._doppler_cal_kind,
+            )
+            self.apply_doppler_calibration_state(state)
+            self._doppler_pending_roi = None
+            self._doppler_pending_baseline_y = None
+            self._doppler_pending_velocity_span = None
+            self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
+            self.spectral_calibration_completed.emit(velocity_span)
 
     def _ensure_calibration_graphics(self) -> None:
         if self._calibration_line_item is None:
@@ -6060,7 +6100,7 @@ class ViewerWidget(QWidget):
         """Return pre-allocated WRITABLE uint8 buffer from double buffer pool."""
         for buf in self._display_buffers:
             if buf.shape == shape:
-                return buf
+                return self._display_buffers[self._display_buf_idx]
         self._display_buffers = [
             np.empty(shape, dtype=np.uint8),
             np.empty(shape, dtype=np.uint8),
