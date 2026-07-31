@@ -89,7 +89,10 @@ from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
     refine_open_arc_contour,
 )
-from echo_personal_tool.domain.services.mmode_calibration import mmode_state_from_panel
+from echo_personal_tool.domain.services.mmode_calibration import (
+    horizontal_ms_from_frame_time,
+    mmode_state_from_panel,
+)
 from echo_personal_tool.domain.services.mmode_extractor import extract_mmode_column
 from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     spacing_from_known_distance,
@@ -2367,9 +2370,32 @@ class ViewerWidget(QWidget):
         state = mmode_state_from_panel(m_panel)
         if state is None:
             return False
+
+        # --- M4: B-mode depth fallback ---
+        vertical_mm = state.vertical_mm_per_pixel
+        if vertical_mm is None and panels.b_mode is not None:
+            b_depth = panels.b_mode.vertical_mm_per_pixel
+            if b_depth is not None and b_depth > 0.0:
+                vertical_mm = b_depth
+
+        # --- M3: FrameTime fallback ---
+        horizontal_ms = state.horizontal_ms_per_pixel
+        if horizontal_ms is None and self._current_state is not None:
+            horizontal_ms = horizontal_ms_from_frame_time(
+                self._current_state.frame_time_ms, state.roi.width
+            )
+
+        # Rebuild state with fallbacks if values changed
+        if vertical_mm != state.vertical_mm_per_pixel or horizontal_ms != state.horizontal_ms_per_pixel:
+            state = MmodeCalibrationState(
+                roi=state.roi,
+                vertical_mm_per_pixel=vertical_mm,
+                horizontal_ms_per_pixel=horizontal_ms,
+                from_dicom_tags=state.from_dicom_tags,
+            )
+
         self.apply_mmode_calibration_state(state)
         if not state.is_complete():
-            # ROI applied; depth/time missing → suggest manual input
             if state.vertical_mm_per_pixel is None:
                 self._start_mmode_depth_only()
             elif state.horizontal_ms_per_pixel is None:
