@@ -679,9 +679,10 @@ class ViewerWidget(QWidget):
         self._mmode_cal_step: Literal["roi"] | None = None
         self._mmode_roi_corner1: tuple[float, float] | None = None
         self._mmode_pending_roi: DopplerSpectrogramRoi | None = None
+        self._mmode_pending_depth_mm_per_pixel: float | None = None
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
-        self._doppler_cal_step: Literal["roi", "baseline", "velocity", "time"] | None = None
+        self._doppler_cal_step: Literal["roi", "baseline", "velocity"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
@@ -2634,9 +2635,8 @@ class ViewerWidget(QWidget):
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
                     # Partial: ROI+baseline from DICOM, scales need manual input
                     self.apply_doppler_calibration_state(parsed, persist=True)
-                    self._doppler_pending_roi = parsed.roi
-                    self._doppler_pending_baseline_y = parsed.baseline_y_px
-                    self._begin_doppler_velocity_calibration()
+                    self._measurement_label.setText(tr("viewer.doppler_partial_calibration"))
+                    self._measurement_label.show()
                     return True
         return False
 
@@ -5196,6 +5196,9 @@ class ViewerWidget(QWidget):
             10000.0,
             0,
         )
+        # Save pending values BEFORE _clear_calibration_caliper resets them
+        pending_roi = self._mmode_pending_roi
+        pending_depth = self._mmode_pending_depth_mm_per_pixel
         self._clear_calibration_caliper()
         if not accepted or length_px <= 0.0:
             self._mmode_pending_roi = None
@@ -5203,10 +5206,10 @@ class ViewerWidget(QWidget):
             return
         time_per_pixel_ms = span_ms / length_px
         # Build full calibration state if we have pending ROI + depth
-        if self._mmode_pending_roi is not None and self._mmode_pending_depth_mm_per_pixel is not None:
+        if pending_roi is not None and pending_depth is not None:
             state = MmodeCalibrationState(
-                roi=self._mmode_pending_roi,
-                vertical_mm_per_pixel=self._mmode_pending_depth_mm_per_pixel,
+                roi=pending_roi,
+                vertical_mm_per_pixel=pending_depth,
                 horizontal_ms_per_pixel=time_per_pixel_ms,
             )
             self._mmode_pending_roi = None
