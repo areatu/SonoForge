@@ -1494,22 +1494,29 @@ class MainWindow(QMainWindow):
     def _update_properties_panel(self, state: ViewerState) -> None:
         """Update the properties panel with current instance info."""
         panel = self._tool_panel.properties_panel
-        if state.instance is None:
+        if state.instance is None or state.instance.path is None:
             panel.clear_all()
             return
-        inst = state.instance
-        # Instance info
-        panel.update_instance_info(
-            modality=inst.modality or "",
-            series_desc=inst.series_description or "",
-            frame_rate=1000.0 / inst.frame_time_ms if inst.frame_time_ms else None,
-            pixel_spacing=f"{inst.pixel_spacing[0]:.2f}×{inst.pixel_spacing[1]:.2f} mm" if inst.pixel_spacing else "",
-            number_of_frames=inst.number_of_frames,
-            patient_height_m=inst.patient_height_m,
-            patient_weight_kg=inst.patient_weight_kg,
-            media_format=inst.media_format or "",
-            frame_time_ms=inst.frame_time_ms,
+
+        from echo_personal_tool.infrastructure.properties_extractor import (
+            extract_properties_snapshot,
         )
+
+        mmode = self._viewer.get_mmode_calibration_state()
+        doppler = self._viewer.get_doppler_calibration_state()
+
+        snap = extract_properties_snapshot(
+            state.instance.path,
+            depth_ok=state.effective_pixel_spacing is not None,
+            mmode_calibrated=mmode.is_complete() if mmode else False,
+            mmode_has_time_scale=mmode.has_time_from_dicom() if mmode else False,
+            doppler_calibrated=doppler.is_complete() if doppler else False,
+            doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+            doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+            doppler_partial=doppler is not None and not doppler.is_complete(),
+        )
+        panel.update_from_snapshot(snap)
+
         # Latest measurement
         if state.linear_measurements:
             m = state.linear_measurements[-1]
