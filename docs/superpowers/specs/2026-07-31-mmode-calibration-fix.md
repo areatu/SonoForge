@@ -242,11 +242,12 @@ viewer.mmode_partial_calibration: "M-mode: ROI из DICOM. Задайте depth/
 
 ## 7. Критерии готовности (Definition of Done)
 
-- [ ] **M1** применён: `MmodeCalibrationState` с `vertical_mm_per_pixel: float | None`
-- [ ] **M2** применён: `mmode_state_from_panel` возвращает partial state без depth
-- [ ] **M5** применён: ручной визард 3 шага (ROI → depth → time)
+- [x] **M1** применён: `MmodeCalibrationState` с `vertical_mm_per_pixel: float | None`
+- [x] **M2** применён: `mmode_state_from_panel` возвращает partial state без depth
+- [x] **M5** применён: ручной визард 3 шага (ROI → depth → time)
 - [x] **M3** применён: `FrameTime`/`CineRate` fallback для time
-- [ ] **M6** применён: partial auto UI prompt
+- [x] **M4** применён: B-mode `vertical_mm_per_pixel` как proxy для depth
+- [x] **M6** применён: partial auto UI prompt
 - [ ] i18n keys для всех промптов
 - [ ] Unit-тесты: `test_mmode_calibration.py` — coverage ≥ 80%
 - [ ] Integration-тест: Teichholz chain рассчитывается корректно
