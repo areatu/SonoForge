@@ -158,3 +158,26 @@ class TestMmodeStateFromPanelPartial:
         assert state is not None
         assert state.vertical_mm_per_pixel is None
         assert state.is_complete() is False
+
+
+class TestHorizontalMsFromFrameTime:
+    def test_from_frame_time_ms(self):
+        """FrameTime in ms → ms per pixel for single-frame M-mode strip."""
+        from echo_personal_tool.domain.services.mmode_calibration import horizontal_ms_from_frame_time
+        result = horizontal_ms_from_frame_time(500.0, 200.0)
+        assert result == 500.0  # ms/px for single-frame strip
+
+    def test_none_frame_time(self):
+        """None frame_time → None."""
+        from echo_personal_tool.domain.services.mmode_calibration import horizontal_ms_from_frame_time
+        assert horizontal_ms_from_frame_time(None, 200.0) is None
+
+    def test_zero_frame_time(self):
+        """Zero frame_time → None."""
+        from echo_personal_tool.domain.services.mmode_calibration import horizontal_ms_from_frame_time
+        assert horizontal_ms_from_frame_time(0.0, 200.0) is None
+
+    def test_zero_roi_width(self):
+        """Zero roi_width → None."""
+        from echo_personal_tool.domain.services.mmode_calibration import horizontal_ms_from_frame_time
+        assert horizontal_ms_from_frame_time(500.0, 0.0) is None
