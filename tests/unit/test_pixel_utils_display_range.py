@@ -69,7 +69,7 @@ def test_to_grayscale_array_preserves_uint16_range() -> None:
     frame = np.array([[0, 4095]], dtype=np.uint16)
     gray = to_grayscale_array(frame)
 
-    assert gray.dtype == np.float64
+    assert gray.dtype == np.float32
     assert gray.max() == pytest.approx(4095.0)
 
 

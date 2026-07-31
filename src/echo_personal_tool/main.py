@@ -7,6 +7,15 @@ import os
 import sys
 from pathlib import Path
 
+# ── Windows timer resolution: request 1ms granularity for PreciseTimer ──
+if sys.platform == "win32":
+    try:
+        import ctypes
+
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except Exception:
+        pass
+
 # Memory diagnostics: log top allocations every 10s when ECHO_FREEZE_DIAG=1
 if os.environ.get("ECHO_FREEZE_DIAG") == "1":
     import tracemalloc
@@ -96,6 +105,15 @@ def main() -> int:
     patch_pyqtgraph_export_dialog()
     app = QApplication(sys.argv)
     app.setApplicationName("SonoForge")
+
+    # Enable OpenGL hardware acceleration for pyqtgraph texture uploads.
+    # On Windows with ANGLE this ensures GPU texture upload instead of software rendering.
+    try:
+        import pyqtgraph as pg
+
+        pg.setConfigOptions(useOpenGL=True)
+    except Exception:
+        pass
 
     # Set application icon (window icon + taskbar)
     from PySide6.QtGui import QIcon

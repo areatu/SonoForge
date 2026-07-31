@@ -1752,10 +1752,12 @@ class ViewerWidget(QWidget):
                 from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
 
                 self._current_frame = despeckle_frame(self._current_frame)
-            self._image_item.setImage(self._current_frame, autoLevels=False)
             if self._window_level_enabled:
+                # W/L path: _update_levels() will call setImage with LUT result.
+                # Skip redundant 1st setImage to avoid double GPU texture upload.
                 self._update_levels()
-            elif not self._window_level_enabled:
+            else:
+                self._image_item.setImage(self._current_frame, autoLevels=False)
                 vmin = float(self._current_frame.min()) if self._current_frame.size else 0.0
                 vmax = float(self._current_frame.max()) if self._current_frame.size else 255.0
                 if vmin == vmax:
