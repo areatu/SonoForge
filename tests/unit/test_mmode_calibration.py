@@ -45,21 +45,28 @@ class TestMmodeStateFromPanel:
         assert state.vertical_mm_per_pixel > 0.0
 
     def test_m_mode_no_vertical_calibration(self):
-        """M-mode panel with no physical_delta_y → vertical_mm_per_pixel is None."""
+        """M-mode panel with no physical_delta_y → partial state (not None)."""
         panel = UltrasoundPanel(
             kind=PanelKind.M_MODE,
             bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
         )
-        assert mmode_state_from_panel(panel) is None
+        state = mmode_state_from_panel(panel)
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.is_complete() is False
 
     def test_m_mode_zero_vertical(self):
+        """M-mode panel with PhysicalDeltaY=0 → partial state."""
         panel = UltrasoundPanel(
             kind=PanelKind.M_MODE,
             bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
             physical_delta_y=0.0,
             physical_units_y=2,
         )
-        assert mmode_state_from_panel(panel) is None
+        state = mmode_state_from_panel(panel)
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.is_complete() is False
 
     def test_state_roi_matches_panel(self):
         panel = _m_mode_panel()
@@ -109,3 +116,45 @@ class TestMmodeCalibrationStatePartial:
         )
         assert state.has_depth_from_dicom() is True
         assert state.has_time_from_dicom() is True
+
+
+class TestMmodeStateFromPanelPartial:
+    def test_m_mode_no_vertical_returns_partial(self):
+        """M-mode panel without PhysicalDeltaY → partial state with ROI only."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+        )
+        state = mmode_state_from_panel(panel)
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.horizontal_ms_per_pixel is None
+        assert state.is_complete() is False
+        assert state.roi.width == 100
+
+    def test_m_mode_with_time_only(self):
+        """M-mode panel with PhysicalDeltaX but no PhysicalDeltaY → partial state with time."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+            physical_delta_x=0.01,
+            physical_units_x=3,
+        )
+        state = mmode_state_from_panel(panel)
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.horizontal_ms_per_pixel is not None
+        assert state.is_complete() is False
+
+    def test_m_mode_zero_vertical_still_returns_partial(self):
+        """M-mode panel with PhysicalDeltaY=0 → partial state (not rejected)."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+            physical_delta_y=0.0,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel)
+        assert state is not None
+        assert state.vertical_mm_per_pixel is None
+        assert state.is_complete() is False
