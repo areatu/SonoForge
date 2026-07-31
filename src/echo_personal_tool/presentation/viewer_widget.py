@@ -681,7 +681,7 @@ class ViewerWidget(QWidget):
         self._mmode_pending_roi: DopplerSpectrogramRoi | None = None
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
-        self._doppler_cal_step: Literal["roi", "baseline", "velocity"] | None = None
+        self._doppler_cal_step: Literal["roi", "baseline", "velocity", "time"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
@@ -2376,6 +2376,7 @@ class ViewerWidget(QWidget):
         self._mmode_cal_step = "roi"
         self._mmode_roi_corner1 = None
         self._mmode_pending_roi = None
+        self._mmode_pending_depth_mm_per_pixel = None
         self._measurement_label.setText(tr("viewer.mmode_cal1"))
         return True
 
@@ -2633,8 +2634,9 @@ class ViewerWidget(QWidget):
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
                     # Partial: ROI+baseline from DICOM, scales need manual input
                     self.apply_doppler_calibration_state(parsed, persist=True)
-                    self._measurement_label.setText(tr("viewer.doppler_partial_calibration"))
-                    self._measurement_label.show()
+                    self._doppler_pending_roi = parsed.roi
+                    self._doppler_pending_baseline_y = parsed.baseline_y_px
+                    self._begin_doppler_velocity_calibration()
                     return True
         return False
 
@@ -3370,6 +3372,7 @@ class ViewerWidget(QWidget):
             self._mmode_cal_step = None
             self._mmode_roi_corner1 = None
             self._mmode_pending_roi = None
+            self._mmode_pending_depth_mm_per_pixel = None
             self._clear_crosshair()
             return
         if self._doppler_cal_step is not None:
@@ -3749,6 +3752,7 @@ class ViewerWidget(QWidget):
         self._mmode_time_start_x = None
         self._calibration_kind = None
         self._doppler_grid_line_positions = []
+        self._mmode_pending_depth_mm_per_pixel = None
         self._clear_calibration_graphics()
         if not self._linear_caliper_active:
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
@@ -5186,7 +5190,7 @@ class ViewerWidget(QWidget):
         span_ms, accepted = QInputDialog.getDouble(
             self,
             "M-mode time scale",
-            tr("viewer.mmode_time_prompt"),
+            tr("viewer.mmode_cal_time_prompt"),
             1000.0,
             1.0,
             10000.0,
@@ -5194,9 +5198,22 @@ class ViewerWidget(QWidget):
         )
         self._clear_calibration_caliper()
         if not accepted or length_px <= 0.0:
+            self._mmode_pending_roi = None
+            self._mmode_pending_depth_mm_per_pixel = None
             return
         time_per_pixel_ms = span_ms / length_px
-        if not self._syncing_state:
+        # Build full calibration state if we have pending ROI + depth
+        if self._mmode_pending_roi is not None and self._mmode_pending_depth_mm_per_pixel is not None:
+            state = MmodeCalibrationState(
+                roi=self._mmode_pending_roi,
+                vertical_mm_per_pixel=self._mmode_pending_depth_mm_per_pixel,
+                horizontal_ms_per_pixel=time_per_pixel_ms,
+            )
+            self._mmode_pending_roi = None
+            self._mmode_pending_depth_mm_per_pixel = None
+            self.apply_mmode_calibration_state(state)
+        elif not self._syncing_state:
+            # Standalone time calibration (no pending ROI)
             self.mmode_time_calibration_completed.emit(float(time_per_pixel_ms))
 
     def _prompt_mmode_depth_calibration(self, length_px: float) -> None:
@@ -5214,12 +5231,11 @@ class ViewerWidget(QWidget):
             self._mmode_pending_roi = None
             return
         known_mm = known_cm * 10.0
-        state = MmodeCalibrationState(
-            roi=self._mmode_pending_roi,
-            vertical_mm_per_pixel=known_mm / length_px,
-        )
-        self._mmode_pending_roi = None
-        self.apply_mmode_calibration_state(state)
+        self._mmode_pending_depth_mm_per_pixel = known_mm / length_px
+        # Chain to time step instead of applying immediately
+        self._calibration_kind = "mmode_time"
+        self._mmode_time_start_x = None
+        self._measurement_label.setText(tr("viewer.mmode_cal_time"))
 
     def _prompt_calibration_distance(self, length_px: float) -> None:
         known_cm, accepted = QInputDialog.getDouble(
