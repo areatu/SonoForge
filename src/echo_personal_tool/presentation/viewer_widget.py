@@ -5261,12 +5261,15 @@ class ViewerWidget(QWidget):
             100.0,
             2,
         )
+        # Save pending ROI BEFORE _clear_calibration_caliper resets it
+        pending_roi = self._mmode_pending_roi
         self._clear_calibration_caliper()
-        if not accepted or self._mmode_pending_roi is None or length_px <= 0.0:
+        if not accepted or pending_roi is None or length_px <= 0.0:
             self._mmode_pending_roi = None
             return
         known_mm = known_cm * 10.0
         self._mmode_pending_depth_mm_per_pixel = known_mm / length_px
+        self._mmode_pending_roi = pending_roi
         # Chain to time step instead of applying immediately
         self._calibration_kind = "mmode_time"
         self._mmode_time_start_x = None
@@ -5674,7 +5677,11 @@ class ViewerWidget(QWidget):
         dy = end[1] - start[1]
         pixel_length = math.hypot(dx, dy)
         angle_degrees = math.degrees(math.atan2(dy, dx))
-        if label in self._vertical_caliper_labels and self._mmode_calibration_state is not None:
+        if (
+            label in self._vertical_caliper_labels
+            and self._mmode_calibration_state is not None
+            and self._mmode_calibration_state.vertical_mm_per_pixel is not None
+        ):
             millimeter_length = abs(dy) * self._mmode_calibration_state.vertical_mm_per_pixel
         else:
             pixel_spacing = self._pixel_spacing_for_linear_label(label, start, end)
