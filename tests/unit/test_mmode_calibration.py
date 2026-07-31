@@ -65,3 +65,47 @@ class TestMmodeStateFromPanel:
         panel = _m_mode_panel()
         state = mmode_state_from_panel(panel)
         assert state.roi == panel.bounds
+
+
+class TestMmodeCalibrationStatePartial:
+    def test_partial_state_no_depth(self):
+        """State with ROI but no depth should exist but not be complete."""
+        state = MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+            vertical_mm_per_pixel=None,
+            horizontal_ms_per_pixel=10.0,
+        )
+        assert state.is_complete() is False
+        assert state.vertical_mm_per_pixel is None
+        assert state.horizontal_ms_per_pixel == 10.0
+
+    def test_partial_state_no_time(self):
+        """State with ROI + depth but no time should be complete (time is optional)."""
+        state = MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+            vertical_mm_per_pixel=0.5,
+            horizontal_ms_per_pixel=None,
+        )
+        assert state.is_complete() is True
+
+    def test_complete_state(self):
+        """State with all fields should be complete."""
+        state = MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+            vertical_mm_per_pixel=0.5,
+            horizontal_ms_per_pixel=10.0,
+        )
+        assert state.is_complete() is True
+        assert state.has_depth_from_dicom() is False
+        assert state.has_time_from_dicom() is False
+
+    def test_from_dicom_flags(self):
+        """from_dicom_tags flag propagates to helper methods."""
+        state = MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=0, y0=0, width=100, height=50),
+            vertical_mm_per_pixel=0.5,
+            horizontal_ms_per_pixel=10.0,
+            from_dicom_tags=True,
+        )
+        assert state.has_depth_from_dicom() is True
+        assert state.has_time_from_dicom() is True

@@ -90,8 +90,20 @@ class MmodeCalibrationState:
     """Per-instance M-mode strip calibration (vertical depth scale)."""
 
     roi: DopplerSpectrogramRoi
-    vertical_mm_per_pixel: float
+    vertical_mm_per_pixel: float | None = None
     horizontal_ms_per_pixel: float | None = None
+    from_dicom_tags: bool = False
 
     def is_complete(self) -> bool:
-        return self.roi.width > 0 and self.roi.height > 0 and self.vertical_mm_per_pixel > 0.0
+        return (
+            self.roi.width > 0
+            and self.roi.height > 0
+            and self.vertical_mm_per_pixel is not None
+            and self.vertical_mm_per_pixel > 0.0
+        )
+
+    def has_depth_from_dicom(self) -> bool:
+        return self.from_dicom_tags and self.vertical_mm_per_pixel is not None
+
+    def has_time_from_dicom(self) -> bool:
+        return self.from_dicom_tags and self.horizontal_ms_per_pixel is not None
