@@ -2367,7 +2367,39 @@ class ViewerWidget(QWidget):
         if state is None:
             return False
         self.apply_mmode_calibration_state(state)
+        if not state.is_complete():
+            # ROI applied; depth/time missing → suggest manual input
+            if state.vertical_mm_per_pixel is None:
+                self._start_mmode_depth_only()
+            elif state.horizontal_ms_per_pixel is None:
+                self._start_mmode_time_only()
         return True
+
+    def _start_mmode_depth_only(self) -> None:
+        """Start depth calibration without re-defining ROI (uses existing ROI from DICOM)."""
+        if self._mmode_calibration_state is None:
+            return
+        self.cancel_active_tool()
+        self._clear_calibration_caliper()
+        self._mmode_pending_roi = self._mmode_calibration_state.roi
+        self._mmode_pending_depth_mm_per_pixel = None
+        self._calibration_kind = "mmode_depth"
+        self._calibration_active = True
+        self._calibration_x = self._mmode_calibration_state.roi.x0 + self._mmode_calibration_state.roi.width / 2.0
+        self._calibration_start_y = None
+        self._measurement_label.setText(tr("viewer.mmode_cal_depth"))
+
+    def _start_mmode_time_only(self) -> None:
+        """Start time calibration without re-defining ROI (uses existing ROI from DICOM)."""
+        if self._mmode_calibration_state is None:
+            return
+        self.cancel_active_tool()
+        self._clear_calibration_caliper()
+        self._calibration_kind = "mmode_time"
+        self._calibration_active = True
+        self._mmode_time_start_x = None
+        self._calibration_start_y = None
+        self._measurement_label.setText(tr("viewer.mmode_cal_time"))
 
     def start_mmode_panel_calibration(self) -> bool:
         if self._current_frame is None:
