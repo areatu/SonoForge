@@ -682,7 +682,7 @@ class ViewerWidget(QWidget):
         self._mmode_pending_depth_mm_per_pixel: float | None = None
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
-        self._doppler_cal_step: Literal["roi", "baseline", "velocity"] | None = None
+        self._doppler_cal_step: Literal["roi", "baseline", "velocity", "time"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
@@ -2246,6 +2246,7 @@ class ViewerWidget(QWidget):
                 velocity_span_cm_s=state.velocity_span_cm_s,
                 kind=state.kind,
                 from_dicom_tags=state.from_dicom_tags,
+                time_from_dicom_tags=getattr(state, 'time_from_dicom_tags', False),
                 velocity_from_dicom_tags=getattr(state, 'velocity_from_dicom_tags', False),
             )
         self._doppler_calibration_state = state
@@ -2667,8 +2668,9 @@ class ViewerWidget(QWidget):
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
                     # Partial: ROI+baseline from DICOM, scales need manual input
                     self.apply_doppler_calibration_state(parsed, persist=True)
-                    self._measurement_label.setText(tr("viewer.doppler_partial_calibration"))
-                    self._measurement_label.show()
+                    self._doppler_pending_roi = parsed.roi
+                    self._doppler_pending_baseline_y = parsed.baseline_y_px
+                    self._begin_doppler_velocity_calibration()
                     return True
         return False
 

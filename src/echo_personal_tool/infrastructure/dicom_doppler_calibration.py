@@ -102,23 +102,18 @@ def try_parse_from_dataset(
         )
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
-        if None in (delta_x, units_x):
-            logger.debug("Region missing delta_x or units_x, skipping")
-            continue
 
-        time_span_ms = time_span_ms_from_region(roi.width, delta_x, units_x)
-        if time_span_ms is None:
-            logger.debug("Cannot compute time span: delta_x=%s, units_x=%s", delta_x, units_x)
+        time_span_ms = None
+        if delta_x is not None and units_x is not None:
+            time_span_ms = time_span_ms_from_region(roi.width, delta_x, units_x)
+            if time_span_ms is None:
+                logger.debug("Cannot compute time span: delta_x=%s, units_x=%s", delta_x, units_x)
 
         velocity_span = None
         if delta_y is not None and units_y is not None:
             velocity_span = velocity_span_cm_s_from_region(roi.height, delta_y, units_y)
             if velocity_span is None:
                 logger.debug("Cannot compute velocity span: delta_y=%s, units_y=%s", delta_y, units_y)
-
-        # Skip if neither time nor velocity could be computed
-        if time_span_ms is None and velocity_span is None:
-            continue
 
         # Baseline detection priority:
         # 1. ReferencePixelY0 (Samsung vendor-specific)
@@ -156,6 +151,7 @@ def try_parse_from_dataset(
             velocity_span_cm_s=candidate.velocity_span_cm_s,
             kind=candidate.kind,
             from_dicom_tags=True,
+            time_from_dicom_tags=time_span_ms is not None,
             velocity_from_dicom_tags=velocity_span is not None,
         )
         if candidate.has_time_scale_from_dicom() or candidate.has_velocity_scale_from_dicom():

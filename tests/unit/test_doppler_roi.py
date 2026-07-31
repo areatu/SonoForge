@@ -141,6 +141,7 @@ class TestDopplerCalibrationState:
             roi=roi,
             baseline_y_px=50.0,
             from_dicom_tags=True,
+            time_from_dicom_tags=True,
         )
         assert state.has_time_scale_from_dicom() is True
 
@@ -150,6 +151,17 @@ class TestDopplerCalibrationState:
             roi=roi,
             baseline_y_px=50.0,
             from_dicom_tags=False,
+        )
+        assert state.has_time_scale_from_dicom() is False
+
+    def test_no_time_scale_from_dicom_when_time_not_from_dicom(self) -> None:
+        """from_dicom_tags=True but time_from_dicom_tags=False → has_time_scale_from_dicom=False."""
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            from_dicom_tags=True,
+            time_from_dicom_tags=False,
         )
         assert state.has_time_scale_from_dicom() is False
 
