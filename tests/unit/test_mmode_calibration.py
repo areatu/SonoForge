@@ -165,7 +165,7 @@ class TestHorizontalMsFromFrameTime:
         """FrameTime in ms → ms per pixel for single-frame M-mode strip."""
         from echo_personal_tool.domain.services.mmode_calibration import horizontal_ms_from_frame_time
         result = horizontal_ms_from_frame_time(500.0, 200.0)
-        assert result == 500.0  # ms/px for single-frame strip
+        assert result == 2.5  # 500ms / 200px = 2.5 ms/px
 
     def test_none_frame_time(self):
         """None frame_time → None."""

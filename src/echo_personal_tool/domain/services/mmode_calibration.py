@@ -31,4 +31,4 @@ def horizontal_ms_from_frame_time(
         return None
     if roi_width_px <= 0.0:
         return None
-    return float(frame_time_ms)
+    return float(frame_time_ms) / roi_width_px
