@@ -283,3 +283,83 @@ class TestHorizontalMsFromFrameTime:
         """Zero roi_width → None."""
         from echo_personal_tool.domain.services.mmode_calibration import horizontal_ms_from_frame_time
         assert horizontal_ms_from_frame_time(500.0, 0.0) is None
+
+
+class TestMmodeStateFromPanelFrameTime:
+    def test_frame_time_fallback_when_no_dicom_time(self):
+        """Panel without PhysicalDeltaX + FrameTime → time from FrameTime."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=200, height=60),
+            physical_delta_y=0.05,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel, frame_time_ms=500.0)
+        assert state is not None
+        assert state.horizontal_ms_per_pixel == 2.5  # 500ms / 200px
+        assert state.time_from_dicom_tags is False
+        assert state.depth_from_dicom_tags is True
+
+    def test_dicom_time_takes_priority_over_frame_time(self):
+        """Panel with PhysicalDeltaX + FrameTime → time from DICOM (not FrameTime)."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=200, height=60),
+            physical_delta_x=0.01,
+            physical_delta_y=0.05,
+            physical_units_x=3,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel, frame_time_ms=500.0)
+        assert state is not None
+        assert state.horizontal_ms_per_pixel is not None
+        assert state.time_from_dicom_tags is True
+
+    def test_no_frame_time_no_dicom_time(self):
+        """Panel without PhysicalDeltaX and no FrameTime → no time."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=200, height=60),
+            physical_delta_y=0.05,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel, frame_time_ms=None)
+        assert state is not None
+        assert state.horizontal_ms_per_pixel is None
+        assert state.time_from_dicom_tags is False
+
+    def test_frame_time_zero_ignored(self):
+        """FrameTime=0 → ignored, no time."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=200, height=60),
+            physical_delta_y=0.05,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel, frame_time_ms=0.0)
+        assert state is not None
+        assert state.horizontal_ms_per_pixel is None
+
+    def test_frame_time_negative_ignored(self):
+        """FrameTime<0 → ignored, no time."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=200, height=60),
+            physical_delta_y=0.05,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel, frame_time_ms=-100.0)
+        assert state is not None
+        assert state.horizontal_ms_per_pixel is None
+
+    def test_frame_time_zero_width_ignored(self):
+        """FrameTime with width=0 → ignored, no time."""
+        panel = UltrasoundPanel(
+            kind=PanelKind.M_MODE,
+            bounds=DopplerSpectrogramRoi(x0=0, y0=0, width=0, height=60),
+            physical_delta_y=0.05,
+            physical_units_y=2,
+        )
+        state = mmode_state_from_panel(panel, frame_time_ms=500.0)
+        assert state is not None
+        assert state.horizontal_ms_per_pixel is None
