@@ -1,24 +1,37 @@
-# Task 3 Report: Douglas-Peucker Point Reduction Utility
+# Task 3 Report: FrameTime Fallback for M-mode Time Axis
 
-## What was implemented
-- `src/echo_personal_tool/domain/services/polygon_reduce.py` — standalone utility with `reduce_polygon_points()` public function and private `_douglas_peucker()` / `_perpendicular_distance()` helpers.
-
-## TDD Evidence
-- **RED:** `ModuleNotFoundError: No module named 'echo_personal_tool.domain.services.polygon_reduce'`
-- **GREEN:** 8/8 tests passed (`8 passed in 0.39s`)
-
-## Test results (GREEN)
-```
-tests/unit/test_polygon_reduce.py ........ [100%]
-```
-Tests cover: empty list, single point, two points, collinear reduction, corner preservation, closed polygon closure, epsilon=0 (no reduction), large epsilon (minimal points).
-
-## Files created/changed
-- `src/echo_personal_tool/domain/services/polygon_reduce.py` (new, 67 lines)
-- `tests/unit/test_polygon_reduce.py` (new, 40 lines)
+## Status: DONE
 
 ## Commits
-- `bb3c9da` feat: add Douglas-Peucker polygon point reduction utility
+- `0b2c91f` — feat(mmode): add FrameTime fallback for M-mode time axis
 
-## Self-review
-No concerns. Pure function, no side effects, no numpy dependency (only stdlib math via `** 0.5`), no thread-safety issues. Interface matches plan spec exactly.
+## What was implemented
+- `mmode_state_from_panel` now accepts an optional `frame_time_ms: float | None` parameter
+- When DICOM time (`PhysicalDeltaX`) is absent and `frame_time_ms > 0` with `width > 0`, time is derived from FrameTime
+- DICOM time always takes priority over FrameTime
+- `time_from_dicom_tags` flag correctly reflects the source of the time scale
+
+## TDD Evidence
+
+### RED
+```
+pytest tests/unit/test_mmode_calibration.py::TestMmodeStateFromPanelFrameTime -v
+FAILED: TypeError: mmode_state_from_panel() got an unexpected keyword argument 'frame_time_ms'
+(6/6 failed)
+```
+
+### GREEN
+```
+pytest tests/unit/test_mmode_calibration.py -v
+33/33 passed
+```
+
+## Files changed
+- `src/echo_personal_tool/domain/services/mmode_calibration.py` — added `frame_time_ms` parameter and fallback logic
+- `tests/unit/test_mmode_calibration.py` — added `TestMmodeStateFromPanelFrameTime` class (6 tests)
+
+## Test results
+- 59/59 unit tests passing (mmode + doppler + physics), output pristine
+
+## Self-review findings
+- No concerns. Implementation is minimal, follows existing patterns, all edge cases (zero, negative, zero width) handled correctly.
