@@ -2385,6 +2385,15 @@ class ViewerWidget(QWidget):
                 self._current_state.frame_time_ms, state.roi.width
             )
 
+        # --- M7: Tick detection fallback ---
+        if vertical_mm is None and self._current_frame is not None:
+            from echo_personal_tool.domain.services.auto_depth_calibration import (
+                try_auto_depth_calibration_in_roi,
+            )
+            tick_result = try_auto_depth_calibration_in_roi(self._current_frame, state.roi)
+            if tick_result is not None and tick_result.spacing[0] > 0.0:
+                vertical_mm = tick_result.spacing[0]
+
         # Rebuild state with fallbacks if values changed
         if vertical_mm != state.vertical_mm_per_pixel or horizontal_ms != state.horizontal_ms_per_pixel:
             state = MmodeCalibrationState(
