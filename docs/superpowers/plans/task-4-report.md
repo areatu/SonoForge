@@ -1,32 +1,74 @@
-# Task 4 Report: Enable edge snap for closed polygons
+# Task 4 Report: Banner Format with Actual Values
 
 **Status:** DONE
 
-## What I implemented
+## What was implemented
 
-1. **`outward_normal_at_index_closed()`** — A variant of `outward_normal_at_index` that uses modular indexing (`% n`) for neighbors. This avoids the `IndexError` that occurs when calling `outward_normal_at_index` on the last point of a closed polygon (the original function accesses `points[index + 1]` without bounds checking).
+Updated the M-mode calibration banner in `PropertiesPanel` to show actual calibration values with source indicator instead of just "Complete/Partial/Missing".
 
-2. **`snap_closed_polygon()`** — Iterates over all vertices of a closed polygon, computing outward normals via `outward_normal_at_index_closed`, then snaps each point to the nearest edge using `snap_magnetic_point`. Returns a new list of snapped coordinates.
+### Changes
 
-## Test results
+1. **`src/echo_personal_tool/domain/models/properties_snapshot.py`**
+   - Added 4 new fields with defaults (placed at end to avoid dataclass ordering issues):
+     - `mmode_vertical_mm_per_pixel: float | None = None`
+     - `mmode_horizontal_ms_per_pixel: float | None = None`
+     - `mmode_has_depth_from_dicom: bool = False`
+     - `mmode_has_time_from_dicom: bool = False`
 
-**TDD RED:** Tests failed with `ImportError: cannot import name 'outward_normal_at_index_closed'` — correct.
+2. **`src/echo_personal_tool/infrastructure/properties_extractor.py`**
+   - Added 4 new keyword parameters to `extract_properties_snapshot()`
+   - Passes them through to `PropertiesSnapshot`
 
-**TDD GREEN:** All 35 tests pass (28 existing + 7 new).
+3. **`src/echo_personal_tool/presentation/main_window.py`**
+   - Updated call site to pass M-mode calibration values from `mmode` state object
+   - Fixed `mmode_has_time_scale` to use `has_time_scale()` instead of `has_time_from_dicom()`
 
-New test classes:
-- `TestOutwardNormalAtIndexClosed` — 2 tests (wraps at end, wraps at start)
-- `TestSnapClosedPolygon` — 5 tests (same length, returns tuples, empty points, too few points, with config)
+4. **`src/echo_personal_tool/presentation/properties_panel.py`**
+   - Updated `_add_mmode_calibration_row()` to:
+     - Show actual values: `"0.15 mm/px, 2.50 ms/px"`
+     - Show source indicator: `(DICOM)` when both depth and time from DICOM
+     - Fallback to `"Complete"` text if no values available despite calibrated flag
+   - Added `setObjectName("mmode_calibration")` to M-mode QLabel for testability
+
+5. **`tests/unit/test_properties_extractor.py`**
+   - Added `test_extract_mmode_calibration_values`: verifies new fields are passed through
+   - Added `test_extract_mmode_calibration_defaults`: verifies defaults are `None`/`False`
+
+6. **`tests/unit/test_presentation_extended.py`**
+   - Added `test_mmode_banner_with_values_and_dicom_source`: full DICOM calibration shows values + "(DICOM)"
+   - Added `test_mmode_banner_partial_no_depth`: partial calibration shows "Partial"
+   - Added `test_mmode_banner_values_only_no_source`: values without DICOM source show no source tag
+
+## TDD Evidence
+
+### RED
+```bash
+$ python -m pytest tests/unit/test_presentation_extended.py::TestPropertiesPanel::test_mmode_banner_with_values_and_dicom_source -v
+# Initially failed: TypeError: non-default argument 'doppler_calibrated' follows default argument
+# (Fields with defaults placed before fields without defaults in frozen dataclass)
+```
+
+After fixing field ordering:
+```bash
+# Failed with: NameError: name 'QLabel' is not defined (test import issue)
+# After fixing imports: assert '2.5 ms/px' in '0.15 mm/px, 2.50 ms/px (DICOM)'
+# (Expected format didn't match actual format with 2 decimal places)
+```
+
+### GREEN
+```bash
+$ python -m pytest tests/unit/test_properties_extractor.py tests/unit/test_presentation_extended.py::TestPropertiesPanel -v
+# 32 passed, 2 pre-existing failures (unrelated)
+```
+
+## Pre-existing test failures (unrelated to this task)
+- `test_bmi_calculation`: expects `>= 8` rows but gets 7 (legacy API count mismatch)
+- `test_update_instance_all_fields`: same root cause
 
 ## Files changed
-
-- `src/echo_personal_tool/domain/services/contour_edge_snap.py` — Added `outward_normal_at_index_closed` and `snap_closed_polygon` functions
-- `tests/unit/test_contour_edge_snap.py` — Added imports and 7 new tests across 2 new test classes
-
-## Self-review
-
-No concerns. The implementation exactly matches the plan spec:
-- Modular indexing `% n` prevents IndexError on first/last points
-- Centroid-based outward direction logic is identical to the original function
-- `snap_closed_polygon` uses `snap_magnetic_point` with the config from the plan
-- Edge case handling (empty list, < 3 points) returns original points
+- `src/echo_personal_tool/domain/models/properties_snapshot.py`
+- `src/echo_personal_tool/infrastructure/properties_extractor.py`
+- `src/echo_personal_tool/presentation/main_window.py`
+- `src/echo_personal_tool/presentation/properties_panel.py`
+- `tests/unit/test_properties_extractor.py`
+- `tests/unit/test_presentation_extended.py`

@@ -241,14 +241,26 @@ class PropertiesPanel(QWidget):
     def _add_mmode_calibration_row(self, snapshot: PropertiesSnapshot) -> None:
         """Add M-mode calibration status row."""
         if snapshot.mmode_calibrated:
-            status = tr("properties.calibration.mmode_complete")
-            if snapshot.mmode_has_time_scale:
-                status += " (DICOM)"
+            parts = []
+            if snapshot.mmode_vertical_mm_per_pixel is not None:
+                parts.append(f"{snapshot.mmode_vertical_mm_per_pixel:.2f} mm/px")
+            if snapshot.mmode_horizontal_ms_per_pixel is not None:
+                parts.append(f"{snapshot.mmode_horizontal_ms_per_pixel:.2f} ms/px")
+
+            source = ""
+            if snapshot.mmode_has_depth_from_dicom and snapshot.mmode_has_time_from_dicom:
+                source = " (DICOM)"
+            elif snapshot.mmode_has_time_from_dicom:
+                source = " (FrameTime)" if not snapshot.mmode_has_depth_from_dicom else ""
+
+            status = ", ".join(parts) + source if parts else tr("properties.calibration.mmode_complete")
         elif snapshot.mmode_has_time_scale:
             status = tr("properties.calibration.mmode_partial")
         else:
             status = tr("properties.calibration.missing")
-        self._calibration_form.addRow(tr("properties.calibration.mmode"), QLabel(status))
+        label = QLabel(status)
+        label.setObjectName("mmode_calibration")
+        self._calibration_form.addRow(tr("properties.calibration.mmode"), label)
 
     def _add_doppler_calibration_row(self, snapshot: PropertiesSnapshot) -> None:
         """Add Doppler calibration status row."""

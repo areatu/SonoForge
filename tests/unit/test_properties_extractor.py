@@ -115,7 +115,36 @@ def test_extract_calibration_flags(tmp_path: Path) -> None:
     assert snap.doppler_partial is True
 
 
-def test_extract_regions(tmp_path: Path) -> None:
+def test_extract_mmode_calibration_values(tmp_path: Path) -> None:
+    """Test M-mode calibration value extraction."""
+    path = _write_dicom(_minimal_dataset(), tmp_path / "test.dcm")
+    snap = extract_properties_snapshot(
+        path,
+        mmode_calibrated=True,
+        mmode_has_time_scale=True,
+        mmode_vertical_mm_per_pixel=0.15,
+        mmode_horizontal_ms_per_pixel=2.5,
+        mmode_has_depth_from_dicom=True,
+        mmode_has_time_from_dicom=True,
+    )
+
+    assert snap.mmode_calibrated is True
+    assert snap.mmode_has_time_scale is True
+    assert snap.mmode_vertical_mm_per_pixel == 0.15
+    assert snap.mmode_horizontal_ms_per_pixel == 2.5
+    assert snap.mmode_has_depth_from_dicom is True
+    assert snap.mmode_has_time_from_dicom is True
+
+
+def test_extract_mmode_calibration_defaults(tmp_path: Path) -> None:
+    """Test M-mode calibration fields default to None/False."""
+    path = _write_dicom(_minimal_dataset(), tmp_path / "test.dcm")
+    snap = extract_properties_snapshot(path)
+
+    assert snap.mmode_vertical_mm_per_pixel is None
+    assert snap.mmode_horizontal_ms_per_pixel is None
+    assert snap.mmode_has_depth_from_dicom is False
+    assert snap.mmode_has_time_from_dicom is False
     """Test ultrasound region extraction."""
     ds = _minimal_dataset()
     del ds.PixelSpacing

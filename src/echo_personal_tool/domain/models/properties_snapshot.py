@@ -61,3 +61,9 @@ class PropertiesSnapshot:
     patient_height_m: float | None
     patient_weight_kg: float | None
     bsa_m2: float | None
+
+    # M-mode calibration values (with defaults for backward compat)
+    mmode_vertical_mm_per_pixel: float | None = None
+    mmode_horizontal_ms_per_pixel: float | None = None
+    mmode_has_depth_from_dicom: bool = False
+    mmode_has_time_from_dicom: bool = False
