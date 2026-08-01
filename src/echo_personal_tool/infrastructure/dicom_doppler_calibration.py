@@ -17,6 +17,7 @@ from echo_personal_tool.domain.models.doppler_roi import (
 from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
+    is_maybe_doppler_from_units,
     is_spectral_doppler_region,
     region_physical_deltas,
     spectral_doppler_region_priority,
@@ -39,8 +40,18 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
 
 
 def _sorted_doppler_regions(regions: object) -> list[Dataset]:
-    items = [region for region in regions if is_spectral_doppler_region(region)]
-    return sorted(items, key=spectral_doppler_region_priority, reverse=True)
+    strict = [region for region in regions if is_spectral_doppler_region(region)]
+    if strict:
+        return sorted(strict, key=spectral_doppler_region_priority, reverse=True)
+    # Samsung mis-tags tissue/spectral Doppler as SF=1. Fallback: trust units.
+    # But skip SF=1 if there's an SF=2 (M-mode) region — that's B-mode strip.
+    has_mmode = any(
+        int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions
+    )
+    if has_mmode:
+        return []
+    fallback = [region for region in regions if is_maybe_doppler_from_units(region)]
+    return sorted(fallback, key=spectral_doppler_region_priority, reverse=True)
 
 
 def _detect_baseline_fallback(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> float:

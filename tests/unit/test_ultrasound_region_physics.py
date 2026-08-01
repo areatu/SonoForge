@@ -9,6 +9,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     PHYSICAL_UNIT_CM_PER_SEC,
     PHYSICAL_UNIT_SEC,
     horizontal_ms_per_pixel,
+    is_maybe_doppler_from_units,
     is_spectral_doppler_region,
     time_span_ms_from_region,
     velocity_span_cm_s_from_region,
@@ -66,9 +67,14 @@ def test_mmode_vendor_sec_tag_reads_as_depth_mm() -> None:
     assert vertical_mm_per_pixel(0.035, PHYSICAL_UNIT_SEC) == approx(0.35)
 
 
-def test_horizontal_ms_per_pixel_rejects_bmode_sf1() -> None:
-    """B-mode region (SF=1) with SEC units → None (guard)."""
-    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=1) is None
+def test_horizontal_ms_per_pixel_accepts_bmode_sf1_with_sec_units() -> None:
+    """Samsung tissue Doppler: SF=1 mis-tagged, but SEC units trusted when delta < 1."""
+    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=1) == 24.0
+
+
+def test_horizontal_ms_per_pixel_rejects_bmode_sf1_with_cm_units() -> None:
+    """B-mode region (SF=1) with CM units → None (spatial, not temporal)."""
+    assert horizontal_ms_per_pixel(0.0375, 1, spatial_format=1) is None
 
 
 def test_horizontal_ms_per_pixel_accepts_mmode_sf2() -> None:
@@ -84,3 +90,40 @@ def test_horizontal_ms_per_pixel_accepts_spectral_sf3() -> None:
 def test_horizontal_ms_per_pixel_no_spatial_format() -> None:
     """No spatial_format provided → no guard, returns value."""
     assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC) == 24.0
+
+
+def test_samsung_tissue_doppler_sf1_with_sec_units_is_maybe_doppler() -> None:
+    """Samsung mis-tags tissue Doppler as SF=1; trust SEC units on X axis."""
+    region = _region(
+        RegionSpatialFormat=1,
+        RegionDataType=1,
+        PhysicalUnitsXDirection=PHYSICAL_UNIT_SEC,
+        PhysicalDeltaX=0.0375,
+        PhysicalUnitsYDirection=3,
+        PhysicalDeltaY=0.0375,
+    )
+    assert is_maybe_doppler_from_units(region) is True
+
+
+def test_samsung_tissue_doppler_sf1_with_hz_units_is_maybe_doppler() -> None:
+    """Samsung mis-tags spectral Doppler as SF=1; trust Hz units on X axis."""
+    region = _region(
+        RegionSpatialFormat=1,
+        RegionDataType=1,
+        PhysicalUnitsXDirection=4,  # Hz
+        PhysicalDeltaX=0.5,
+    )
+    assert is_maybe_doppler_from_units(region) is True
+
+
+def test_bmode_sf1_with_cm_units_is_not_maybe_doppler() -> None:
+    """Genuine B-mode region (SF=1, CM units) should not be detected as Doppler."""
+    region = _region(
+        RegionSpatialFormat=1,
+        RegionDataType=1,
+        PhysicalUnitsXDirection=1,  # cm
+        PhysicalUnitsYDirection=1,  # cm
+        PhysicalDeltaX=0.0375,
+        PhysicalDeltaY=0.0375,
+    )
+    assert is_maybe_doppler_from_units(region) is False

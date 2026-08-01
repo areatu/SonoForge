@@ -52,10 +52,6 @@ def horizontal_ms_per_pixel(
     spatial_format: int | None = None,
 ) -> float | None:
     """M-mode / spectral sweep: milliseconds per pixel on the time axis."""
-    # Reject B-mode regions (SF=1)
-    if spatial_format is not None and spatial_format == SPATIAL_2D:
-        return None
-
     if delta_x <= 0.0:
         return None
     if units_x == PHYSICAL_UNIT_SEC:
@@ -63,6 +59,10 @@ def horizontal_ms_per_pixel(
     # Vendor quirk: time increment mis-tagged as Hz while value is seconds/pixel.
     if units_x == PHYSICAL_UNIT_HZ and delta_x < 1.0:
         return delta_x * 1000.0
+    # Samsung mis-tags tissue Doppler regions as SF=1 (2D) when they are spectral.
+    # Trust time units even for B-mode regions if delta_x is plausible as ms/px.
+    if spatial_format is not None and spatial_format == SPATIAL_2D:
+        return None
     return None
 
 
@@ -125,7 +125,32 @@ def is_spectral_doppler_region(region: Dataset) -> bool:
     data_type = int(region.get("RegionDataType", 0) or 0)
     if spatial == SPATIAL_SPECTRAL:
         return True
-    return data_type in DOPPLER_DATA_TYPES
+    if data_type in DOPPLER_DATA_TYPES:
+        return True
+    return False
+
+
+def is_maybe_doppler_from_units(region: Dataset) -> bool:
+    """Samsung mis-tags tissue/spectral Doppler as SF=1 (2D). Trust time/velocity units.
+
+    Excludes SF=2 (M-mode) — those are correctly tagged and handled separately.
+    """
+    spatial = int(region.get("RegionSpatialFormat", 0) or 0)
+    data_type = int(region.get("RegionDataType", 0) or 0)
+    # Exclude Color Flow (DT=2) — not spectral
+    if data_type == 2:
+        return False
+    # SF=2 (M-mode) — correctly tagged, handled by mmode_state_from_panel
+    if spatial == SPATIAL_M_MODE:
+        return False
+    # SF=1 — Samsung mis-tagged tissue/spectral Doppler
+    if spatial == SPATIAL_2D:
+        _, _, units_x, units_y = region_physical_deltas(region)
+        if units_x in (PHYSICAL_UNIT_SEC, PHYSICAL_UNIT_HZ):
+            return True
+        if units_y in (PHYSICAL_UNIT_CM_PER_SEC, 7):
+            return True
+    return False
 
 
 def is_mmode_region(region: Dataset) -> bool:
@@ -135,7 +160,10 @@ def is_mmode_region(region: Dataset) -> bool:
 def spectral_doppler_region_priority(region: Dataset) -> int:
     """Higher = preferred when multiple regions match Doppler."""
     if not is_spectral_doppler_region(region):
-        return -1
+        # Fallback regions from is_maybe_doppler_from_units
+        if not is_maybe_doppler_from_units(region):
+            return -1
+        return 1  # SF=1 fallback
     data_type = int(region.get("RegionDataType", 0) or 0)
     if data_type == 3:
         return 4

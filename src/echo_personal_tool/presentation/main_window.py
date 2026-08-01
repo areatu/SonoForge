@@ -1757,6 +1757,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
+            MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
             MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
         }
         if action == MeasurementAction.CALIPER:
@@ -1853,6 +1854,12 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.linear_caliper_tool", label=label))
         else:
             self._show_status("Load a frame first")
+
+    def _on_mmode_caliper_requested(self) -> None:
+        if self._viewer.start_mmode_vertical_caliper():
+            self._show_status(tr("status.mmode_caliper_tool"))
+        else:
+            self._show_status("M-mode calibration required")
 
     def _on_diameter_compare_requested(self) -> None:
         if self._viewer.start_diameter_compare():

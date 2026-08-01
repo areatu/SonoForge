@@ -696,7 +696,7 @@ class ViewerWidget(QWidget):
         self._mmode_line_item: MModeScanLineItem | None = None
         self._mmode_line_click_step: Literal["start", "end"] | None = None
         self._mmode_vertical_lock: bool = False
-        self._vertical_caliper_labels = frozenset({"TAPSE"})
+        self._vertical_caliper_labels = frozenset({"TAPSE", "M-mode"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
         self._current_instance_path: Path | None = None
@@ -2091,6 +2091,12 @@ class ViewerWidget(QWidget):
             self._dist_serial += 1
             return label
         return None
+
+    def start_mmode_vertical_caliper(self) -> bool:
+        """Start vertical caliper for M-mode strip (uses M-mode calibration)."""
+        if not self.is_mmode_calibrated():
+            return False
+        return self.start_linear_caliper_for("M-mode")
 
     def reset_dist_caliper_serial(self) -> None:
         self._dist_serial = 1
