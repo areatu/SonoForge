@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
 
 def detect_depth_scale_ticks(
     frame: np.ndarray,
@@ -83,3 +85,47 @@ def find_scale_ticks(frame: np.ndarray) -> list[float]:
     if best_x == 0:
         return []
     return detect_depth_scale_ticks(frame, x_center=best_x)
+
+
+def find_scale_ticks_in_roi(
+    frame: np.ndarray, roi: DopplerSpectrogramRoi
+) -> list[float]:
+    """Detect depth ticks within a specific ROI (e.g., M-mode strip)."""
+    if roi.width <= 0:
+        return []
+
+    # Extract ROI sub-frame
+    h, w = frame.shape[:2]
+    x0 = max(0, int(roi.x0))
+    x1 = min(w, int(roi.x0 + roi.width))
+    y0 = max(0, int(roi.y0))
+    y1 = min(h, int(roi.y0 + roi.height))
+
+    if x1 <= x0 or y1 <= y0:
+        return []
+
+    sub_frame = frame[y0:y1, x0:x1]
+
+    # Search for the best column within the ROI
+    best_x_local = 0
+    best_count = 0
+    # Search middle 60% of ROI width (skip edges)
+    search_start = int(roi.width * 0.2)
+    search_end = int(roi.width * 0.8)
+    for x_center in range(search_start, search_end, 3):
+        ticks = detect_depth_scale_ticks(
+            sub_frame, x_center=x_center, search_half_width_px=10
+        )
+        if len(ticks) > best_count:
+            best_count = len(ticks)
+            best_x_local = x_center
+
+    if best_count == 0:
+        return []
+
+    ticks_local = detect_depth_scale_ticks(
+        sub_frame, x_center=best_x_local, search_half_width_px=10
+    )
+
+    # Convert back to frame coordinates
+    return sorted(t + y0 for t in ticks_local)
