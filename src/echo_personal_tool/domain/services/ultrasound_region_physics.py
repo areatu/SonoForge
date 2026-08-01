@@ -134,6 +134,7 @@ def is_maybe_doppler_from_units(region: Dataset) -> bool:
     """Samsung mis-tags tissue/spectral Doppler as SF=1 (2D). Trust time/velocity units.
 
     Excludes SF=2 (M-mode) — those are correctly tagged and handled separately.
+    Rejects SF=1 regions where DeltaX ≈ DeltaY (spatial B-mode resolution mis-tagged as SEC).
     """
     spatial = int(region.get("RegionSpatialFormat", 0) or 0)
     data_type = int(region.get("RegionDataType", 0) or 0)
@@ -143,13 +144,17 @@ def is_maybe_doppler_from_units(region: Dataset) -> bool:
     # SF=2 (M-mode) — correctly tagged, handled by mmode_state_from_panel
     if spatial == SPATIAL_M_MODE:
         return False
-    # SF=1 — Samsung mis-tagged tissue/spectral Doppler
+    # SF=1 — potential Samsung mis-tagged tissue/spectral Doppler
     if spatial == SPATIAL_2D:
-        _, _, units_x, units_y = region_physical_deltas(region)
-        if units_x in (PHYSICAL_UNIT_SEC, PHYSICAL_UNIT_HZ):
-            return True
+        delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
+        # Velocity units on Y axis → genuine tissue/spectral Doppler
         if units_y in (PHYSICAL_UNIT_CM_PER_SEC, 7):
             return True
+        # SEC/Hz on X axis: only if DeltaX != DeltaY (not spatial B-mode resolution).
+        # Samsung B-mode: DeltaX == DeltaY with UnitsX=UnitsY=3 (cm mis-tagged as SEC).
+        if units_x in (PHYSICAL_UNIT_SEC, PHYSICAL_UNIT_HZ) and delta_x is not None and delta_y is not None:
+            if abs(delta_x - delta_y) > 1e-6:
+                return True
     return False
 
 

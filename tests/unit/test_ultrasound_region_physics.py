@@ -92,8 +92,8 @@ def test_horizontal_ms_per_pixel_no_spatial_format() -> None:
     assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC) == 24.0
 
 
-def test_samsung_tissue_doppler_sf1_with_sec_units_is_maybe_doppler() -> None:
-    """Samsung mis-tags tissue Doppler as SF=1; trust SEC units on X axis."""
+def test_samsung_bmode_sf1_with_sec_units_is_not_maybe_doppler() -> None:
+    """Samsung B-mode: SF=1, SEC units, DeltaX==DeltaY → spatial resolution, NOT Doppler."""
     region = _region(
         RegionSpatialFormat=1,
         RegionDataType=1,
@@ -102,16 +102,42 @@ def test_samsung_tissue_doppler_sf1_with_sec_units_is_maybe_doppler() -> None:
         PhysicalUnitsYDirection=3,
         PhysicalDeltaY=0.0375,
     )
-    assert is_maybe_doppler_from_units(region) is True
+    assert is_maybe_doppler_from_units(region) is False
 
 
-def test_samsung_tissue_doppler_sf1_with_hz_units_is_maybe_doppler() -> None:
-    """Samsung mis-tags spectral Doppler as SF=1; trust Hz units on X axis."""
+def test_samsung_sf1_with_hz_no_delta_y_is_not_maybe_doppler() -> None:
+    """SF=1, Hz units, no DeltaY → cannot determine, reject."""
     region = _region(
         RegionSpatialFormat=1,
         RegionDataType=1,
         PhysicalUnitsXDirection=4,  # Hz
         PhysicalDeltaX=0.5,
+    )
+    assert is_maybe_doppler_from_units(region) is False
+
+
+def test_sf1_with_sec_and_different_deltas_is_maybe_doppler() -> None:
+    """SF=1, SEC units, DeltaX != DeltaY → genuine temporal Doppler."""
+    region = _region(
+        RegionSpatialFormat=1,
+        RegionDataType=1,
+        PhysicalUnitsXDirection=PHYSICAL_UNIT_SEC,
+        PhysicalDeltaX=0.0375,
+        PhysicalUnitsYDirection=3,
+        PhysicalDeltaY=0.01,
+    )
+    assert is_maybe_doppler_from_units(region) is True
+
+
+def test_sf1_with_velocity_units_is_maybe_doppler() -> None:
+    """SF=1 with velocity units on Y → genuine tissue/spectral Doppler."""
+    region = _region(
+        RegionSpatialFormat=1,
+        RegionDataType=1,
+        PhysicalUnitsXDirection=1,  # cm
+        PhysicalUnitsYDirection=6,  # cm/s
+        PhysicalDeltaX=0.0375,
+        PhysicalDeltaY=0.5,
     )
     assert is_maybe_doppler_from_units(region) is True
 

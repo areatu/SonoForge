@@ -39,6 +39,28 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
     return float(min_x), float(min_y), float(max_x), float(max_y)
 
 
+def _force_roi_to_bottom_half(
+    roi: DopplerSpectrogramRoi,
+    frame_height: float,
+) -> DopplerSpectrogramRoi:
+    """Force ROI to bottom half of image for Doppler regions.
+
+    Samsung RS85 mis-tags Doppler as SF=1 with B-mode region bounds.
+    When the ROI y0 is in the top half (< 50% of frame height),
+    relocate it to the bottom half where the Doppler spectrum actually is.
+    """
+    if roi.y0 >= frame_height * 0.5:
+        return roi
+    # Keep same width and height, move to bottom half
+    new_y0 = frame_height * 0.5
+    return DopplerSpectrogramRoi(
+        x0=roi.x0,
+        y0=new_y0,
+        width=roi.width,
+        height=min(roi.height, frame_height - new_y0),
+    )
+
+
 def _sorted_doppler_regions(regions: object) -> list[Dataset]:
     strict = [region for region in regions if is_spectral_doppler_region(region)]
     if strict:
@@ -98,6 +120,9 @@ def try_parse_from_dataset(
     if not regions:
         return None
 
+    # Get frame height for ROI relocation
+    frame_height = float(dataset.get("Rows", 0) or 0)
+
     best: DopplerCalibrationState | None = None
     for region in _sorted_doppler_regions(regions):
         bounds = _region_bounds(region)
@@ -111,6 +136,11 @@ def try_parse_from_dataset(
             width=max(1.0, x1 - x0),
             height=max(1.0, y1 - y0),
         )
+
+        # Samsung RS85 mis-tags Doppler as SF=1 with B-mode region bounds.
+        # Force ROI to bottom half for fallback (SF=1) regions.
+        if not is_spectral_doppler_region(region) and frame_height > 0:
+            roi = _force_roi_to_bottom_half(roi, frame_height)
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
 
