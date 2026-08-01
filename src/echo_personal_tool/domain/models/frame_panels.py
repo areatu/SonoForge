@@ -93,17 +93,26 @@ class MmodeCalibrationState:
     vertical_mm_per_pixel: float | None = None
     horizontal_ms_per_pixel: float | None = None
     from_dicom_tags: bool = False
+    depth_from_dicom_tags: bool = False
+    time_from_dicom_tags: bool = False
 
     def is_complete(self) -> bool:
-        return (
-            self.roi.width > 0
-            and self.roi.height > 0
-            and self.vertical_mm_per_pixel is not None
-            and self.vertical_mm_per_pixel > 0.0
-        )
+        return self.has_depth_scale() and self.has_time_scale()
+
+    def is_partial(self) -> bool:
+        return self.has_depth_scale() != self.has_time_scale()
+
+    def has_depth_scale(self) -> bool:
+        return self.vertical_mm_per_pixel is not None and self.vertical_mm_per_pixel > 0.0
+
+    def has_time_scale(self) -> bool:
+        return self.horizontal_ms_per_pixel is not None and self.horizontal_ms_per_pixel > 0.0
 
     def has_depth_from_dicom(self) -> bool:
-        return self.from_dicom_tags and self.vertical_mm_per_pixel is not None
+        return self.depth_from_dicom_tags and self.has_depth_scale()
 
     def has_time_from_dicom(self) -> bool:
-        return self.from_dicom_tags and self.horizontal_ms_per_pixel is not None
+        return self.time_from_dicom_tags and self.has_time_scale()
+
+    def is_dicom_trusted(self) -> bool:
+        return self.from_dicom_tags and self.is_complete()
