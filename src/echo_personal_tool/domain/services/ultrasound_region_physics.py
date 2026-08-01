@@ -46,8 +46,16 @@ def region_physical_deltas(region: Dataset) -> tuple[float | None, float | None,
     return delta_x, delta_y, units_x, units_y
 
 
-def horizontal_ms_per_pixel(delta_x: float, units_x: int) -> float | None:
+def horizontal_ms_per_pixel(
+    delta_x: float,
+    units_x: int,
+    spatial_format: int | None = None,
+) -> float | None:
     """M-mode / spectral sweep: milliseconds per pixel on the time axis."""
+    # Reject B-mode regions (SF=1)
+    if spatial_format is not None and spatial_format == 1:  # SPATIAL_2D
+        return None
+
     if delta_x <= 0.0:
         return None
     if units_x == PHYSICAL_UNIT_SEC:

@@ -64,3 +64,23 @@ def test_mmode_vendor_sec_tag_reads_as_depth_mm() -> None:
     from pytest import approx
 
     assert vertical_mm_per_pixel(0.035, PHYSICAL_UNIT_SEC) == approx(0.35)
+
+
+def test_horizontal_ms_per_pixel_rejects_bmode_sf1() -> None:
+    """B-mode region (SF=1) with SEC units → None (guard)."""
+    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=1) is None
+
+
+def test_horizontal_ms_per_pixel_accepts_mmode_sf2() -> None:
+    """M-mode region (SF=2) with SEC units → valid value."""
+    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=2) == 24.0
+
+
+def test_horizontal_ms_per_pixel_accepts_spectral_sf3() -> None:
+    """Spectral region (SF=3) with SEC units → valid value."""
+    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=3) == 24.0
+
+
+def test_horizontal_ms_per_pixel_no_spatial_format() -> None:
+    """No spatial_format provided → no guard, returns value."""
+    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC) == 24.0
