@@ -38,5 +38,8 @@ class MeasurementAction(StrEnum):
     SPECKLE_TRACKING = "speckle_tracking"
     MMODE = "mmode"
     MMODE_CALIPER = "mmode_caliper"
+    MMODE_TIME_HR = "mmode_time_hr"
+    TEICHHOLZ_ED = "teichholz_ed"
+    TEICHHOLZ_ES = "teichholz_es"
     DIAMETER_COMPARE = "diameter_compare"
     AREA_COMPARE = "area_compare"

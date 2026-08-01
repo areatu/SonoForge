@@ -172,6 +172,9 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.mmode_anatomic", MeasurementAction.MMODE),
             _btn("menu.mmode_caliper", MeasurementAction.MMODE_CALIPER),
+            _btn("menu.mmode_time_hr", MeasurementAction.MMODE_TIME_HR),
+            _btn("menu.teichholz_ed", MeasurementAction.TEICHHOLZ_ED),
+            _btn("menu.teichholz_es", MeasurementAction.TEICHHOLZ_ES),
         ),
     ),
 )

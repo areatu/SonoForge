@@ -1758,6 +1758,9 @@ class MainWindow(QMainWindow):
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
             MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
+            MeasurementAction.MMODE_TIME_HR: self._on_mmode_time_hr_from_menu,
+            MeasurementAction.TEICHHOLZ_ED: self._on_teichholz_ed_from_menu,
+            MeasurementAction.TEICHHOLZ_ES: self._on_teichholz_es_from_menu,
             MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
         }
         if action == MeasurementAction.CALIPER:
@@ -1860,6 +1863,29 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.mmode_caliper_tool"))
         else:
             self._show_status("M-mode calibration required")
+
+    def _on_mmode_time_hr_from_menu(self) -> None:
+        """Start horizontal time/HR measurement from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_horizontal_measurement()
+
+    def _ensure_mmode_active(self) -> None:
+        """Activate M-mode if not already active."""
+        if not self._mmode_active:
+            self._toggle_mmode()
+
+    def _on_teichholz_ed_from_menu(self) -> None:
+        """Start Teichholz ED workflow from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_teichholz_ed()
+
+    def _on_teichholz_es_from_menu(self) -> None:
+        """Start Teichholz ES workflow from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_teichholz_es()
 
     def _on_diameter_compare_requested(self) -> None:
         if self._viewer.start_diameter_compare():
