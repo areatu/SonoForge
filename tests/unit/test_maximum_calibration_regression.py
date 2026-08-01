@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-from pydicom.dataset import Dataset
-
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerCalibrationState,
-    DopplerKind,
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.models.frame_panels import (
     MmodeCalibrationState,
     PanelKind,
     UltrasoundPanel,
-)
-from echo_personal_tool.domain.services.doppler_calibration import (
-    calibration_from_roi_and_baseline,
 )
 from echo_personal_tool.domain.services.mmode_calibration import mmode_state_from_panel
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
@@ -40,19 +33,6 @@ class TestDopplerRegression:
         assert state.has_time_scale() is False
         assert state.is_partial() is True
         assert state.is_complete() is False
-
-    def test_samsung_baseline_from_reference_pixel(self):
-        """Samsung with ReferencePixelY0 → baseline_y_px from tag."""
-        region = Dataset()
-        region.RegionLocationMinX0 = 10
-        region.RegionLocationMinY0 = 20
-        region.RegionLocationMaxX1 = 210
-        region.RegionLocationMaxY1 = 120
-        region.ReferencePixelY0 = -30
-        
-        # baseline_y = RegionLocationMinY0 + abs(ReferencePixelY0) = 20 + 30 = 50
-        # But actual implementation may vary - this tests the concept
-        assert region.ReferencePixelY0 == -30
 
     def test_doppler_full_dicom(self):
         """Both axes from tags → is_complete=True, is_dicom_trusted=True."""
