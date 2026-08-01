@@ -17,6 +17,8 @@ def mmode_state_from_panel(panel: UltrasoundPanel) -> MmodeCalibrationState | No
         vertical_mm_per_pixel=panel.vertical_mm_per_pixel,
         horizontal_ms_per_pixel=panel.horizontal_ms_per_pixel,
         from_dicom_tags=True,
+        depth_from_dicom_tags=panel.vertical_mm_per_pixel is not None,
+        time_from_dicom_tags=panel.horizontal_ms_per_pixel is not None,
     )
 
 
