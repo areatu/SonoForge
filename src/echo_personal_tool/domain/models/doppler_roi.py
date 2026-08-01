@@ -53,7 +53,7 @@ class DopplerCalibrationState:
     roi: DopplerSpectrogramRoi
     baseline_y_px: float
     time_origin_ms: float = 0.0
-    time_span_ms: float = 1000.0
+    time_span_ms: float = 0.0
     velocity_span_cm_s: float = 200.0
     kind: DopplerKind = DopplerKind.SPECTRAL
     from_dicom_tags: bool = False
@@ -61,13 +61,19 @@ class DopplerCalibrationState:
     velocity_from_dicom_tags: bool = False
 
     def is_complete(self) -> bool:
-        return self.has_velocity_scale() and self.time_span_ms > 0.0
+        return self.has_velocity_scale() and self.has_time_scale()
+
+    def is_partial(self) -> bool:
+        return self.has_velocity_scale() != self.has_time_scale()
+
+    def has_time_scale(self) -> bool:
+        return self.time_span_ms > 0.0
 
     def has_velocity_scale(self) -> bool:
         return self.roi.width > 0.0 and self.roi.height > 0.0 and self.velocity_span_cm_s > 0.0
 
     def has_time_scale_from_dicom(self) -> bool:
-        return self.time_from_dicom_tags and self.roi.width > 0.0 and self.time_span_ms > 0.0
+        return self.time_from_dicom_tags and self.roi.width > 0.0 and self.has_time_scale()
 
     def has_velocity_scale_from_dicom(self) -> bool:
         return self.velocity_from_dicom_tags and self.roi.height > 0.0 and self.velocity_span_cm_s > 0.0

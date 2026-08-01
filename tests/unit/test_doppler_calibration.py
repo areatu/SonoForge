@@ -72,6 +72,11 @@ class TestCalibrationFromRoiAndBaseline:
         assert result.velocity_span_cm_s == 200.0
         assert result.kind == DopplerKind.SPECTRAL
 
+    def test_default_time_span_is_zero(self) -> None:
+        roi = _make_roi()
+        result = calibration_from_roi_and_baseline(roi, 40.0)
+        assert result.time_span_ms == 0.0
+
     def test_tissue_span(self) -> None:
         roi = _make_roi()
         result = calibration_from_roi_and_baseline(
@@ -103,3 +108,15 @@ class TestRoiFromCorners:
         roi = roi_from_corners((10.0, 10.0), (10.0, 10.0))
         assert roi.width == 1.0
         assert roi.height == 1.0
+
+
+class TestDopplerAxisMapping:
+    def test_time_ms_from_x_guard_zero_time(self) -> None:
+        """time_ms_from_x must not return garbage when time_span_ms=0."""
+        mapping = DopplerAxisMapping(time_span_ms=0.0, plot_width=100.0, plot_origin_x=0.0)
+        result = mapping.time_ms_from_x(50.0)
+        assert result == 0.0
+
+    def test_from_frame_size_default_zero_time(self) -> None:
+        mapping = DopplerAxisMapping.from_frame_size(800.0, 600.0)
+        assert mapping.time_span_ms == 0.0

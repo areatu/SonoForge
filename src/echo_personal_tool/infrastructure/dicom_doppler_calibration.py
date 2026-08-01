@@ -140,7 +140,7 @@ def try_parse_from_dataset(
             roi,
             baseline_y,
             velocity_span_cm_s=velocity_span,
-            time_span_ms=time_span_ms if time_span_ms is not None else 1000.0,
+            time_span_ms=time_span_ms if time_span_ms is not None else 0.0,
             kind=region_kind,
         )
         candidate = DopplerCalibrationState(

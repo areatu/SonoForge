@@ -2187,7 +2187,7 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return
         height, width = self._current_frame.shape[:2]
-        self._doppler.set_axis_mapping(DopplerAxisMapping.from_frame_size(width, height))
+        self._doppler.set_axis_mapping(DopplerAxisMapping.from_frame_size(width, height, time_span_ms=0.0))
 
     def is_doppler_axis_calibrated(self) -> bool:
         return self.is_doppler_velocity_calibrated() and self.is_doppler_time_calibrated()
@@ -2740,6 +2740,7 @@ class ViewerWidget(QWidget):
                 roi,
                 baseline_y,
                 velocity_span_cm_s=200.0,
+                time_span_ms=0.0,
                 kind=DopplerKind.SPECTRAL,
             )
             self.apply_doppler_calibration_state(state, persist=False)
@@ -2778,6 +2779,7 @@ class ViewerWidget(QWidget):
             partial = calibration_from_roi_and_baseline(
                 roi,
                 baseline_y,
+                time_span_ms=0.0,
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
@@ -2790,6 +2792,7 @@ class ViewerWidget(QWidget):
                 partial = calibration_from_roi_and_baseline(
                     self._doppler_pending_roi,
                     y,
+                    time_span_ms=0.0,
                     kind=self._doppler_cal_kind,
                 )
                 self._doppler.set_axis_mapping(build_axis_mapping(partial))

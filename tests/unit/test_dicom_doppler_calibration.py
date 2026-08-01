@@ -163,7 +163,7 @@ def test_samsung_baseline_from_reference_pixel_y0() -> None:
 
 
 def test_samsung_partial_with_units_but_no_deltas_no_time_velocity() -> None:
-    """No deltas → time_span_ms uses default, velocity uses default."""
+    """No deltas → time_span_ms=0 (not 1000), velocity uses default."""
     ds = Dataset()
     ds.SequenceOfUltrasoundRegions = [
         _samsung_like_region(dtype=3, units_x=3, units_y=6),
@@ -172,6 +172,7 @@ def test_samsung_partial_with_units_but_no_deltas_no_time_velocity() -> None:
     assert state is not None
     assert state.from_dicom_tags is True
     assert state.time_from_dicom_tags is False
+    assert state.time_span_ms == 0.0
     assert state.has_time_scale_from_dicom() is False
     assert state.roi.width > 0
     assert state.roi.height > 0
