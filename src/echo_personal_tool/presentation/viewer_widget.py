@@ -2349,6 +2349,9 @@ class ViewerWidget(QWidget):
                 roi=roi,
                 vertical_mm_per_pixel=state.vertical_mm_per_pixel,
                 horizontal_ms_per_pixel=state.horizontal_ms_per_pixel,
+                from_dicom_tags=state.from_dicom_tags,
+                depth_from_dicom_tags=state.depth_from_dicom_tags,
+                time_from_dicom_tags=state.time_from_dicom_tags,
             )
         self._mmode_calibration_state = state
         if not self._syncing_state:
@@ -2401,6 +2404,8 @@ class ViewerWidget(QWidget):
                 vertical_mm_per_pixel=vertical_mm,
                 horizontal_ms_per_pixel=horizontal_ms,
                 from_dicom_tags=state.from_dicom_tags,
+                depth_from_dicom_tags=state.depth_from_dicom_tags,
+                time_from_dicom_tags=state.time_from_dicom_tags,
             )
 
         self.apply_mmode_calibration_state(state)
@@ -5283,6 +5288,9 @@ class ViewerWidget(QWidget):
                 roi=pending_roi,
                 vertical_mm_per_pixel=pending_depth,
                 horizontal_ms_per_pixel=time_per_pixel_ms,
+                from_dicom_tags=self._mmode_calibration_state.from_dicom_tags if self._mmode_calibration_state is not None else False,
+                depth_from_dicom_tags=self._mmode_calibration_state.depth_from_dicom_tags if self._mmode_calibration_state is not None else False,
+                time_from_dicom_tags=self._mmode_calibration_state.time_from_dicom_tags if self._mmode_calibration_state is not None else False,
             )
             self._mmode_pending_roi = None
             self._mmode_pending_depth_mm_per_pixel = None
