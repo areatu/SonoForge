@@ -248,6 +248,7 @@ viewer.mmode_partial_calibration: "M-mode: ROI из DICOM. Задайте depth/
 - [x] **M3** применён: `FrameTime`/`CineRate` fallback для time
 - [x] **M4** применён: B-mode `vertical_mm_per_pixel` как proxy для depth
 - [x] **M6** применён: partial auto UI prompt
+- [x] **M7** применён: heuristic tick detection for depth
 - [ ] i18n keys для всех промптов
 - [ ] Unit-тесты: `test_mmode_calibration.py` — coverage ≥ 80%
 - [ ] Integration-тест: Teichholz chain рассчитывается корректно
