@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
 
 @dataclass(frozen=True)
@@ -128,3 +129,4 @@ class MeasurementSnapshot:
     weight_kg: float | None = None
     indexed: IndexedMeasurements | None = None
     planimeter: tuple[PlanimeterResult, ...] = ()
+    vessel_measurements: tuple[VesselMeasurement, ...] = ()
