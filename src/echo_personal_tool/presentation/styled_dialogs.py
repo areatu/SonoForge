@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from PySide6.QtWidgets import QFileDialog, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
@@ -46,15 +49,44 @@ def styled_save_file(
     directory: str = "",
     filter: str = tr("styled_dialogs.all_files"),
 ) -> tuple[str, str]:
-    """Save file dialog with dark theme styling."""
+    """Save file dialog with dark theme styling.
+
+    Uses a non-native QFileDialog so the theme applies.  Native dialogs
+    auto-append the selected filter's extension; this custom dialog does not,
+    so we replicate that behaviour to avoid saving files without a usable
+    extension (which breaks e.g. QPixmap.save() and cv2.VideoWriter()).
+    """
     dialog = QFileDialog(parent, title, directory, filter)
     dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
     dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
     _style_dialog(dialog)
-    if dialog.exec() == QFileDialog.DialogCode.Accepted:
-        files = dialog.selectedFiles()
-        return (files[0], dialog.selectedNameFilter()) if files else ("", "")
-    return ("", "")
+    if dialog.exec() != QFileDialog.DialogCode.Accepted:
+        return ("", "")
+    files = dialog.selectedFiles()
+    if not files:
+        return ("", "")
+    path = files[0]
+    name_filter = dialog.selectedNameFilter()
+    return (_append_extension(path, name_filter), name_filter)
+
+
+def _append_extension(path: str, name_filter: str) -> str:
+    """Append an extension from *name_filter* if *path* lacks a matching one."""
+    path_obj = Path(path)
+    match = re.search(r"\(([^()]+)\)", name_filter)
+    filter_exts: list[str] = []
+    if match:
+        filter_exts = [p[1:] for p in match.group(1).split() if p.startswith("*")]
+    if not filter_exts:
+        return path
+    suffix = path_obj.suffix.lower()
+    if suffix:
+        if suffix in filter_exts:
+            return path
+        # Filename has a suffix that is not part of the filter (e.g. a dot in
+        # the middle of the name) — append the filter's first extension.
+        return f"{path}{filter_exts[0]}"
+    return f"{path}{filter_exts[0]}"
 
 
 def styled_select_directory(
