@@ -27,6 +27,8 @@ VESSEL_ENVELOPE_PRESETS: dict[str, EnvelopePreset] = {
     "high": EnvelopePreset(k=5.5, median_window=7, savgol_window=7, savgol_polyorder=2),
 }
 
+_MIN_SIGNAL_FRACTION = 0.12
+
 
 def _envelope_row_in_column(
     column: np.ndarray,
@@ -193,16 +195,40 @@ def extract_doppler_envelope(
     pos = patch[: baseline_row + 1, :]
     noise_rows = max(1, int(pos.shape[0] * cfg.noise_frac))
     noise = pos[:noise_rows, :]
-    threshold = float(noise.mean()) + cfg.k * float(noise.std())
+    # Median/MAD keeps the threshold robust to bright on-screen text glyphs
+    # (probe type, frequency, mode) that often sit in the top strip of the ROI.
+    noise_median = float(np.median(noise))
+    noise_mad = float(np.median(np.abs(noise - noise_median)))
+    threshold = noise_median + cfg.k * noise_mad
     peak = float(pos.max())
     if peak <= threshold:
         return ()
+    # Floor so a clean (all-black) top strip does not collapse the threshold
+    # to zero and let faint speckle into the trace mask.
+    threshold = max(threshold, peak * _MIN_SIGNAL_FRACTION)
     threshold = min(threshold, peak * 0.9)
 
     above = pos > threshold
+    from scipy.ndimage import label
+
+    labels, num_labels = label(above, structure=np.ones((3, 3), dtype=int))
+    if num_labels == 0:
+        return ()
+    # Keep only the structures anchored at the baseline: the spectral flow.
+    # Disconnected artifacts (text, annotations) are discarded.
+    baseline_labels = {int(lb) for lb in np.unique(labels[-1, :]) if lb != 0}
+    if baseline_labels:
+        keep = np.isin(labels, tuple(baseline_labels))
+    else:
+        # Nothing reaches the baseline: fall back to the largest component so a
+        # thin envelope curve with a dark interior is still traced.
+        counts = np.bincount(labels.ravel())
+        counts[0] = 0
+        keep = labels == int(np.argmax(counts))
+
     rows = np.full(pos.shape[1], -1.0, dtype=np.float64)
     for c in range(pos.shape[1]):
-        col_mask = above[:, c]
+        col_mask = keep[:, c]
         if np.any(col_mask):
             rows[c] = int(np.argmax(col_mask))
 

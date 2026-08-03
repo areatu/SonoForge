@@ -197,3 +197,30 @@ class TestExtractDopplerEnvelope:
         gray = np.clip(gray.astype(int) + noise, 0, 255).astype(np.uint8)
         result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0, preset="high")
         assert len(result) >= 2
+
+    def _frame_with_text_and_spectrum(self):
+        """Doppler frame with a pulsing flow plus a technical-text line at the top."""
+        h, w = 120, 160
+        gray = np.zeros((h, w), dtype=np.uint8)
+        rng = np.random.default_rng(7)
+        gray[20:100, :] = rng.integers(0, 25, size=(80, w), dtype=np.uint8)
+        for c in range(15, 145):
+            top = int(50 + 30 * abs(c - 80) / 65)
+            gray[top:95, c] = 200
+        for col, cw in ((2, 8), (6, 8), (10, 8), (14, 4), (18, 4), (22, 4), (26, 4), (30, 8), (34, 8), (38, 8), (42, 4)):
+            gray[10:13, col : col + cw] = 230
+        return gray
+
+    def test_text_above_spectrum_is_not_traced(self):
+        gray = self._frame_with_text_and_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=160, h=120), baseline_y_px=95.0, preset="normal")
+        assert len(result) >= 2
+        assert all(pt[1] > 15.0 for pt in result), "trace must not follow the text glyphs"
+
+    def test_spectrum_is_traced_when_text_sits_in_noise_region(self):
+        gray = self._frame_with_text_and_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=160, h=120), baseline_y_px=95.0, preset="normal")
+        ys = [pt[1] for pt in result]
+        assert min(ys) >= 30.0, "text must not suppress or hijack the spectrum"
+        assert max(ys) < 95.0
+        assert (max(ys) - min(ys)) > 8.0, "envelope must follow a real flow profile, not a flat text band"
