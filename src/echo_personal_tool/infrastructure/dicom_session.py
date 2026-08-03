@@ -286,15 +286,30 @@ class DicomSession:
     def is_decoded(self) -> bool:
         return self._frames is not None and self._frames.shape[0] == self._frame_count
 
+    def _has_loadable_pixels(self) -> bool:
+        """Return True if heavy pixel bytes are still held for the open file."""
+        if self._raw_bytes is not None or self._pixel_data_raw is not None:
+            return True
+        if self._encapsulated_frames is not None:
+            return True
+        return False
+
     def open(self, path: Path | str) -> None:
         resolved = Path(path).resolve()
         if self._open_path == resolved and self._metadata is not None:
-            return
-        # When switching to a different file, release heavy buffers in ALL
-        # other thread-local sessions.  This is now safe because
-        # release_stale_sessions() no longer checks _raw_bytes — it frees
-        # _pixel_data_raw and _encapsulated_frames too.
-        release_stale_sessions(exclude=self)
+            # Reopening the SAME file. If a previous release_heavy() freed the
+            # heavy pixel buffers on this thread-local session, we MUST reload
+            # raw bytes, otherwise _decode_single_frame() would later hit
+            # _pixel_data_raw=None → TypeError.  Only early-return when the
+            # decode buffers are still alive.
+            if self._has_loadable_pixels():
+                return
+        else:
+            # When switching to a different file, release heavy buffers in ALL
+            # other thread-local sessions.  This is now safe because
+            # release_stale_sessions() no longer checks _raw_bytes — it frees
+            # _pixel_data_raw and _encapsulated_frames too.
+            release_stale_sessions(exclude=self)
         self.release()
         if not resolved.is_file():
             raise FileNotFoundError(f"DICOM file not found: {resolved}")
@@ -458,7 +473,7 @@ class DicomSession:
             raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
         rows, cols = int(ds.Rows), int(ds.Columns)
 
-        if self._is_uncompressed and self._frame_slices is not None:
+        if self._is_uncompressed and self._frame_slices is not None and self._pixel_data_raw is not None:
             samples = int(getattr(ds, "SamplesPerPixel", 1))
             bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples
             offset, size = self._frame_slices[index]
