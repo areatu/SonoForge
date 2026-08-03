@@ -296,3 +296,71 @@ class TestHandleClickInTraceMode:
         overlay.set_tool_mode("trace")
         result = overlay.handle_click(100.0, 10.0, double=True)
         assert result is False
+
+
+class TestVesselMode:
+    def test_set_vessel_mode_and_status(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        assert overlay.vessel_status() == "psv"
+        overlay.handle_vessel_click(200.0, 100.0)
+        assert overlay.vessel_status() == "edv"
+        overlay.handle_vessel_click(300.0, 50.0)
+        assert overlay.vessel_status() == "done"
+        assert overlay.get_vessel_values() is not None
+
+    def test_vessel_metrics_emitted(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        received = []
+        overlay.vessel_changed.connect(received.append)
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 100.0)
+        overlay.handle_vessel_click(300.0, 50.0)
+        assert received and received[-1] is not None
+
+    def test_clear_vessel(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 100.0)
+        overlay.handle_vessel_click(300.0, 50.0)
+        overlay.clear_vessel()
+        assert overlay.vessel_status() == "none"
+        assert overlay.get_vessel_values() is None
+
+    def test_vessel_values_map_velocity(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        # baseline at y=100, span 200 => pixels_per_cm_s = 200/200 = 1
+        overlay.handle_vessel_click(200.0, 50.0)   # PSV -> 50 cm/s
+        overlay.handle_vessel_click(300.0, 100.0)  # EDV -> 0 cm/s
+        psv, edv = overlay.get_vessel_values()
+        assert psv == pytest.approx(50.0)
+        assert edv == pytest.approx(0.0)
+
+    def test_move_vessel_caliper_drag(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)
+        overlay.handle_vessel_click(300.0, 100.0)
+        assert overlay.begin_vessel_drag(201.0, 50.0) is True
+        overlay.move_vessel_caliper(200.0, 60.0)
+        psv, _ = overlay.get_vessel_values()
+        assert psv == pytest.approx(40.0)
+        overlay.finish_vessel_drag()
+        assert overlay.vessel_status() == "done"
+
+
+def _vessel_mapping():
+    from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+    from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+    roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0)
+    return DopplerAxisMapping(
+        roi=roi,
+        baseline_y_px=100.0,
+        velocity_span_cm_s=200.0,
+        velocity_min_cm_s=-100.0,
+        velocity_max_cm_s=100.0,
+        plot_width=1000.0,
+        plot_height=200.0,
+    )
