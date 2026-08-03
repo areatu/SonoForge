@@ -231,6 +231,9 @@ class ContourViewBox(pg.ViewBox):
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_trace_press(ev):
             ev.accept()
             return
+        if self._viewer_widget is not None and self._viewer_widget._handle_doppler_vessel_press(ev):
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_zone_press(ev):
             ev.accept()
             return
@@ -257,6 +260,9 @@ class ContourViewBox(pg.ViewBox):
         if viewer is not None and viewer._handle_doppler_trace_drag(ev):
             ev.accept()
             return
+        if viewer is not None and viewer._handle_doppler_vessel_drag(ev):
+            ev.accept()
+            return
         if viewer is not None and viewer._drag_session is not None:
             ev.accept()
             return
@@ -277,6 +283,9 @@ class ContourViewBox(pg.ViewBox):
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_trace_release(ev):
+            ev.accept()
+            return
+        if self._viewer_widget is not None and self._viewer_widget._handle_doppler_vessel_release(ev):
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_drag_release(ev):
@@ -638,6 +647,7 @@ class ViewerWidget(QWidget):
     doppler_calibration_changed = Signal(object)
     doppler_frame_changing = Signal(int, object)
     doppler_frame_changed = Signal(int)
+    vessel_accept_requested = Signal(object)
     mmode_calibration_changed = Signal(object)
     mmode_time_calibration_completed = Signal(object)
     results_overlay_position_changed = Signal(float, float)
@@ -2239,6 +2249,70 @@ class ViewerWidget(QWidget):
     def get_doppler_calibration_state(self) -> DopplerCalibrationState | None:
         return self._doppler_calibration_state
 
+    def is_vessel_available(self) -> bool:
+        if self._current_frame is None:
+            return False
+        if not self.is_doppler_velocity_calibrated():
+            return False
+        state = self.get_doppler_calibration_state()
+        if state is None or state.baseline_y_px is None:
+            return False
+        return True
+
+    def start_vessel_psv(self) -> bool:
+        if not self.is_vessel_available():
+            return False
+        self.cancel_active_tool()
+        self._doppler.set_vessel_mode()
+        self._measurement_label.setText(tr("viewer.vessel_psv_prompt"))
+        self._measurement_label.show()
+        return True
+
+    def start_vessel_edv(self) -> bool:
+        if not self.is_vessel_available():
+            return False
+        self.cancel_active_tool()
+        self._doppler.set_vessel_mode()
+        self._doppler.handle_vessel_edv_start()
+        self._measurement_label.setText(tr("viewer.vessel_edv_prompt"))
+        self._measurement_label.show()
+        return True
+
+    def accept_vessel_measurement(self) -> bool:
+        if not self.is_vessel_available():
+            return False
+        metrics = self._doppler.get_vessel_metrics()
+        if metrics is None:
+            return False
+        values = self._doppler.get_vessel_values()
+        if values is None:
+            return False
+        psv, edv = values
+        instance_uid = self._current_instance_uid()
+        if instance_uid is None:
+            return False
+        from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+
+        measurement = VesselMeasurement(
+            psv_cm_s=psv,
+            edv_cm_s=edv,
+            ri=metrics.ri,
+            sd=metrics.sd,
+            mv_approx=metrics.mv_approx or 0.0,
+            sop_instance_uid=instance_uid,
+            frame_index=self._current_frame_index() or 0,
+        )
+        self.vessel_accept_requested.emit(measurement)
+        self._doppler.clear_vessel()
+        self._measurement_label.hide()
+        return True
+
+    def clear_vessel_measurement(self) -> bool:
+        had = self._doppler.vessel_status() != "none"
+        self._doppler.clear_vessel()
+        self._measurement_label.hide()
+        return had
+
     def apply_doppler_calibration_state(
         self,
         state: DopplerCalibrationState,
@@ -2841,17 +2915,19 @@ class ViewerWidget(QWidget):
     def _handle_doppler_mouse_click(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:
             return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click = self._map_view_event(ev)
+        if click is None:
+            return False
+        if self._doppler.get_tool_mode() == "none" and self._doppler.vessel_status() != "none":
+            return self._doppler.handle_vessel_click(click[0], click[1])
         if self._doppler.get_tool_mode() == "none":
             return False
         if self._doppler.get_tool_mode() == "trace":
             if self._doppler.consume_trace_click_suppression():
                 return True
             # Trace onset/close and optional click points use click, not press-drag.
-        if ev.button() != Qt.MouseButton.LeftButton:
-            return False
-        click = self._map_view_event(ev)
-        if click is None:
-            return False
         double = hasattr(ev, "double") and ev.double()
         return self._doppler.handle_click(click[0], click[1], double=double)
 
@@ -2892,6 +2968,41 @@ class ViewerWidget(QWidget):
         if click is None:
             return False
         return self._doppler.end_trace_stroke(click[0], click[1])
+
+    def _handle_doppler_vessel_press(self, ev) -> bool:
+        if self._doppler_cal_step is not None or self._calibration_active:
+            return False
+        if self._doppler.get_tool_mode() != "none" or self._doppler.vessel_status() != "done":
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click = self._map_view_event(ev)
+        if click is None:
+            return False
+        return self._doppler.begin_vessel_drag(click[0], click[1])
+
+    def _handle_doppler_vessel_drag(self, ev) -> bool:
+        if self._doppler_cal_step is not None or self._calibration_active:
+            return False
+        if self._doppler.get_tool_mode() != "none" or self._doppler.vessel_status() != "done":
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click = self._map_view_event(ev)
+        if click is None:
+            return False
+        self._doppler.move_vessel_caliper(click[0], click[1])
+        return True
+
+    def _handle_doppler_vessel_release(self, ev) -> bool:
+        if self._doppler_cal_step is not None or self._calibration_active:
+            return False
+        if self._doppler.get_tool_mode() != "none" or self._doppler.vessel_status() != "done":
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        self._doppler.finish_vessel_drag()
+        return True
 
     def finish_calibration(self) -> bool:
         return False
@@ -5962,11 +6073,29 @@ class ViewerWidget(QWidget):
                 self._finish_caliper_node_drag(cancel=True)
                 event.accept()
                 return
+        if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_P and self.is_vessel_available():
+                self.start_vessel_psv()
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_E and self.is_vessel_available():
+                self.start_vessel_edv()
+                event.accept()
+                return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._doppler.vessel_status() == "done" and self.is_vessel_available():
+                self.accept_vessel_measurement()
+                event.accept()
+                return
             if self._freehand_recording and self._contour_mode_active:
                 if self._finish_freehand_contour():
                     event.accept()
                     return
+        if event.key() == Qt.Key.Key_Escape:
+            if self._doppler.vessel_status() != "none":
+                self.clear_vessel_measurement()
+                event.accept()
+                return
         if event.key() == Qt.Key.Key_Delete:
             if self._delete_selected_caliper():
                 event.accept()
