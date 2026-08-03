@@ -1818,6 +1818,11 @@ class MainWindow(QMainWindow):
             if self._viewer.start_vessel_psv():
                 self._show_status(tr("status.vessel_psv"))
             return
+        if action == MeasurementAction.VESSEL_AUTO_TRACE:
+            preset = self._tool_panel.measure._menu.vessel_preset()
+            if self._viewer.start_vessel_auto_trace(preset):
+                self._show_status(tr("status.vessel_auto_trace"))
+            return
         if action == MeasurementAction.VESSEL_CLEAR:
             self._viewer.clear_vessel_measurement()
             return

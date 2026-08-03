@@ -44,5 +44,6 @@ class MeasurementAction(StrEnum):
     DIAMETER_COMPARE = "diameter_compare"
     AREA_COMPARE = "area_compare"
     VESSEL_PSV_EDV = "vessel_psv_edv"
+    VESSEL_AUTO_TRACE = "vessel_auto_trace"
     VESSEL_CLEAR = "vessel_clear"
     VESSEL_ACCEPT = "vessel_accept"

@@ -2276,6 +2276,40 @@ class ViewerWidget(QWidget):
         self._measurement_label.show()
         return True
 
+    def start_vessel_auto_trace(self, preset: str = "normal") -> bool:
+        """Run the auto-trace envelope over the current Doppler frame."""
+        if not self.is_vessel_available():
+            return False
+        if self._current_frame is None:
+            return False
+        state = self.get_doppler_calibration_state()
+        if state is None or state.roi is None or state.baseline_y_px is None:
+            return False
+        self.cancel_active_tool()
+        from echo_personal_tool.domain.services.doppler_envelope import (
+            extract_doppler_envelope,
+        )
+
+        envelope = extract_doppler_envelope(
+            self._current_frame,
+            state.roi,
+            state.baseline_y_px,
+            preset=preset,
+        )
+        if not envelope:
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        result = self._doppler.apply_auto_trace(envelope)
+        if result is None:
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        psv, edv = result
+        self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
+        self._measurement_label.show()
+        return True
+
     def accept_vessel_measurement(self) -> bool:
         if not self.is_vessel_available():
             return False

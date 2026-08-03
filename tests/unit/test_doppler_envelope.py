@@ -7,6 +7,8 @@ import pytest
 
 from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 from echo_personal_tool.domain.services.doppler_envelope import (
+    VESSEL_ENVELOPE_PRESETS,
+    extract_doppler_envelope,
     trace_envelope,
     trace_envelope_above_baseline,
 )
@@ -122,3 +124,76 @@ class TestTraceEnvelope:
         roi = _roi(x0=0, y0=0, w=200, h=200)
         result = trace_envelope(gray, roi, baseline_y_px=10.0, num_samples=16)
         assert isinstance(result, tuple)
+
+
+def _vessel_spectrum(height=80, width=120, baseline=50, edge_row=20):
+    """Bright spectral flow whose top edge sits at *edge_row* (above baseline)."""
+    gray = np.zeros((height, width), dtype=np.uint8)
+    for col in range(10, width - 10):
+        gray[edge_row:baseline, col] = 180
+    return gray
+
+
+class TestExtractDopplerEnvelope:
+    def test_empty_for_3d_input(self):
+        rgb = np.random.randint(0, 50, size=(60, 120, 3), dtype=np.uint8)
+        assert extract_doppler_envelope(rgb, _roi(), baseline_y_px=30.0) == ()
+
+    def test_empty_for_no_signal(self):
+        gray = np.zeros((60, 120), dtype=np.uint8)
+        assert extract_doppler_envelope(gray, _roi(), baseline_y_px=30.0) == ()
+
+    def test_empty_for_uniform_bright(self):
+        gray = np.full((60, 120), 200, dtype=np.uint8)
+        assert extract_doppler_envelope(gray, _roi(), baseline_y_px=30.0) == ()
+
+    def test_returns_plot_points_for_strong_signal(self):
+        gray = _vessel_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0)
+        assert len(result) >= 2
+        for pt in result:
+            assert isinstance(pt, tuple) and len(pt) == 2
+            assert isinstance(pt[0], float) and isinstance(pt[1], float)
+
+    def test_points_above_baseline(self):
+        gray = _vessel_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0)
+        for pt in result:
+            assert pt[1] < 50.0
+
+    def test_x_is_monotonic(self):
+        gray = _vessel_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0)
+        xs = [pt[0] for pt in result]
+        assert xs == sorted(xs)
+
+    def test_envelope_follows_top_edge(self):
+        gray = _vessel_spectrum(edge_row=20)
+        result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0)
+        ys = [pt[1] for pt in result]
+        assert abs(float(np.median(ys)) - 20.5) < 3.0
+
+    def test_interpolates_gap_in_signal(self):
+        gray = _vessel_spectrum()
+        # wipe a vertical band in the middle of the flow
+        gray[10:50, 55:70] = 0
+        result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0)
+        assert len(result) >= 2
+
+    def test_preset_parametrization(self):
+        assert VESSEL_ENVELOPE_PRESETS["low"].k < VESSEL_ENVELOPE_PRESETS["normal"].k
+        assert VESSEL_ENVELOPE_PRESETS["normal"].k < VESSEL_ENVELOPE_PRESETS["high"].k
+
+    def test_unknown_preset_falls_back_to_normal(self):
+        gray = _vessel_spectrum()
+        a = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0, preset="normal")
+        b = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0, preset="nonsense")
+        assert a == b
+
+    def test_noisy_background_still_traces_with_high_preset(self):
+        rng = np.random.default_rng(42)
+        gray = _vessel_spectrum()
+        noise = rng.integers(0, 40, size=gray.shape, dtype=np.uint8)
+        gray = np.clip(gray.astype(int) + noise, 0, 255).astype(np.uint8)
+        result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0, preset="high")
+        assert len(result) >= 2

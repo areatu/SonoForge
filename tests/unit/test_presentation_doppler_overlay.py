@@ -350,6 +350,39 @@ class TestVesselMode:
         assert overlay.vessel_status() == "done"
 
 
+class TestAutoTrace:
+    def test_apply_auto_trace_sets_vessel_done(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        result = overlay.apply_auto_trace(envelope)
+        assert result is not None
+        psv, edv = result
+        assert psv == pytest.approx(60.0)
+        assert edv == pytest.approx(30.0)
+        assert overlay.vessel_status() == "done"
+        psv_v, edv_v = overlay.get_vessel_values()
+        assert psv_v == pytest.approx(60.0)
+        assert edv_v == pytest.approx(30.0)
+        assert overlay._auto_envelope_item is not None
+        assert overlay._auto_envelope_item in mock_plot.items
+
+    def test_apply_auto_trace_short_envelope_returns_none(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_auto_trace(((100.0, 50.0),)) is None
+        assert overlay._auto_envelope_item is None
+
+    def test_apply_auto_trace_empty_returns_none(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_auto_trace(()) is None
+
+    def test_clear_vessel_removes_envelope(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.apply_auto_trace(((100.0, 50.0), (200.0, 60.0)))
+        assert overlay._auto_envelope_item is not None
+        overlay.clear_vessel()
+        assert overlay._auto_envelope_item is None
+
+
 def _vessel_mapping():
     from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
     from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi

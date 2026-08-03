@@ -107,6 +107,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_items: list[pg.PlotDataItem] = []
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
+        self._auto_envelope_item: pg.PlotDataItem | None = None
 
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
@@ -405,7 +406,44 @@ class DopplerOverlayTools(QWidget):
         self._vessel_psv_px = None
         self._vessel_edv_px = None
         self._vessel_drag_target = None
+        self._clear_auto_envelope()
         self._redraw_vessel_graphics()
+
+    def _clear_auto_envelope(self) -> None:
+        if self._auto_envelope_item is not None:
+            try:
+                self._plot.removeItem(self._auto_envelope_item)
+            except Exception:  # noqa: BLE001
+                pass
+            self._auto_envelope_item = None
+
+    def apply_auto_trace(self, envelope: tuple[tuple[float, float], ...]) -> tuple[float, float] | None:
+        """Render an auto-traced envelope and derive PSV/EDV markers.
+
+        PSV is taken at the highest-velocity envelope point (minimum plot y),
+        EDV at the end of the envelope. Returns (psv, edv) in cm/s or None.
+        """
+        self._clear_auto_envelope()
+        if not envelope or len(envelope) < 2:
+            return None
+        xs = [p[0] for p in envelope]
+        ys = [p[1] for p in envelope]
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item.setZValue(24)
+        self._plot.addItem(item)
+        self._auto_envelope_item = item
+
+        psv_idx = min(range(len(ys)), key=ys.__getitem__)
+        psv_x, psv_y = envelope[psv_idx]
+        edv_x, edv_y = envelope[-1]
+        psv = self._axis_mapping.velocity_cm_s_from_y(psv_y)
+        edv = self._axis_mapping.velocity_cm_s_from_y(edv_y)
+
+        self._vessel_mode = "done"
+        self._vessel_psv_px = (psv_x, psv_y)
+        self._vessel_edv_px = (edv_x, edv_y)
+        self._redraw_vessel_graphics()
+        return psv, edv
 
     def show_vessel_measurement(self, measurement: VesselMeasurement) -> None:
         self._vessel_mode = "done"

@@ -29,6 +29,27 @@ def viewer():
     w.close()
 
 
+def _calibrated_vessel_viewer(viewer, *, height=80, width=120, baseline=50, edge_row=20):
+    from echo_personal_tool.domain.models.doppler_roi import (
+        DopplerCalibrationState,
+        DopplerSpectrogramRoi,
+    )
+    from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
+
+    gray = np.zeros((height, width), dtype=np.uint8)
+    for col in range(10, width - 10):
+        gray[edge_row:baseline, col] = 180
+    viewer._current_frame = gray
+    state = DopplerCalibrationState(
+        roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=float(height)),
+        baseline_y_px=float(baseline),
+        velocity_span_cm_s=200.0,
+    )
+    viewer._doppler_calibration_state = state
+    viewer._doppler.set_axis_mapping(build_axis_mapping(state))
+    return state
+
+
 class TestResultsOverlayStyle:
     def test_returns_string(self):
         from echo_personal_tool.presentation.viewer_widget import _results_overlay_style
@@ -531,3 +552,30 @@ class TestSaveViewerImage:
         assert not out.exists()
         assert len(warnings) == 1
         assert str(out) in warnings[0][2]
+
+
+class TestVesselAutoTrace:
+    def test_success_sets_vessel_done(self, viewer):
+        _calibrated_vessel_viewer(viewer)
+        assert viewer.start_vessel_auto_trace("normal") is True
+        assert viewer._doppler.vessel_status() == "done"
+        assert viewer._doppler.get_vessel_values() is not None
+        assert viewer._doppler._auto_envelope_item is not None
+
+    def test_preset_propagated(self, viewer):
+        _calibrated_vessel_viewer(viewer)
+        assert viewer.start_vessel_auto_trace("high") is True
+        assert viewer._doppler.vessel_status() == "done"
+
+    def test_not_calibrated_returns_false(self, viewer):
+        viewer._current_frame = np.zeros((80, 120), dtype=np.uint8)
+        assert viewer.start_vessel_auto_trace() is False
+
+    def test_no_signal_returns_false(self, viewer):
+        _calibrated_vessel_viewer(viewer)
+        viewer._current_frame = np.zeros((80, 120), dtype=np.uint8)
+        assert viewer.start_vessel_auto_trace() is False
+        assert viewer._doppler.vessel_status() == "none"
+
+    def test_no_frame_returns_false(self, viewer):
+        assert viewer.start_vessel_auto_trace() is False

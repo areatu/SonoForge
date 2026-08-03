@@ -7,7 +7,9 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -175,6 +177,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         "menu.vessels_group",
         (
             _btn("menu.vessel_psv_edv", MeasurementAction.VESSEL_PSV_EDV, vessel=True),
+            _btn("menu.vessel_auto_trace", MeasurementAction.VESSEL_AUTO_TRACE, vessel=True),
             _btn("menu.vessel_clear", MeasurementAction.VESSEL_CLEAR, vessel=True),
             _btn("menu.vessel_accept", MeasurementAction.VESSEL_ACCEPT, vessel=True),
         ),
@@ -385,6 +388,22 @@ class MeasuresMenuWidget(QWidget):
         self._vessel_status_label.setWordWrap(True)
         self._vessel_status_label.setStyleSheet("color: #90caf9; font-size: 12px;")
         layout.addWidget(self._vessel_status_label)
+
+        preset_row = QWidget()
+        preset_layout = QHBoxLayout(preset_row)
+        preset_layout.setContentsMargins(8, 0, 8, 0)
+        preset_layout.setSpacing(6)
+        preset_label = QLabel(tr("menu.vessel_preset"))
+        preset_label.setStyleSheet("color: #90caf9; font-size: 11px;")
+        self._vessel_preset_combo = QComboBox()
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_low"), "low")
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_normal"), "normal")
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_high"), "high")
+        self._vessel_preset_combo.setCurrentIndex(1)
+        self._vessel_preset_combo.setToolTip(tr("menu.vessel_preset_tip"))
+        preset_layout.addWidget(preset_label)
+        preset_layout.addWidget(self._vessel_preset_combo, stretch=1)
+        layout.addWidget(preset_row)
         scroll.setWidget(inner)
 
         # Clear old layout content if exists, otherwise create new layout
@@ -426,6 +445,9 @@ class MeasuresMenuWidget(QWidget):
 
     def set_vessel_status(self, text: str) -> None:
         self._vessel_status_label.setText(text)
+
+    def vessel_preset(self) -> str:
+        return str(self._vessel_preset_combo.currentData() or "normal")
 
     def reload_text(self) -> None:
         for section in self._sections:
