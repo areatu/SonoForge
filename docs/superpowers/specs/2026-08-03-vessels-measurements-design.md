@@ -9,7 +9,7 @@
 **В области:**
 - PSV/EDV calipers на спектре (клик + перетаскивание).
 - Оверлей результатов поверх спектра, обновление в реальном времени.
-- Секция «Сосуды» в MeasurementToolsPanel.
+- Секция «Сосуды» в MeasuresMenuWidget (measures_menu.py).
 - Сохранение нескольких измерений per-instance в StudyMeasurementData → MeasurementSnapshot.
 - Горячие клавиши P / E / Enter / Esc.
 - Кнопки disabled без velocity-калибровки и baseline.
@@ -22,10 +22,10 @@
 
 ## 3. Архитектура
 
-Следуем Подходу A: новая ветка внутри существующего `DopplerOverlayTools` + новая QGroupBox в `MeasurementToolsPanel` + чистые domain-функции.
+Следуем Подходу A: новая ветка внутри существующего `DopplerOverlayTools` + новая секция «Сосуды» в `MeasuresMenuWidget` (measures_menu.py) + чистые domain-функции. Примечание: изначально дизайн предполагал `MeasurementToolsPanel`, но эта панель не подключена в UI — активной является `MeasuresMenuWidget`; решение пользователя от 2026-08-03: добавлять секцию туда.
 
 ```
-[MeasurementToolsPanel]                 "Сосуды": PSV / EDV / Clear / Accept + статус
+[MeasuresMenuWidget]                    "Сосуды": PSV / EDV / Clear / Accept + статус
         │  сигналы
         ▼
 [ViewerWidget]  routing кликов, hotkeys, активация кнопок
@@ -87,11 +87,11 @@
 - `clear_vessel()` — убирает маркеры и оверлей (без сигнала, как `clear_measurements`).
 - `load_vessel_from_measurement(m)` / `set_axis_mapping` — восстановление calipers при редактировании.
 
-**`presentation/measurement_tools_panel.py`:**
-- Новая группа «Сосуды» (`_build_vessel_group`): кнопки PSV, EDV, Clear, Accept + статус-QLabel.
-- Сигналы: `vessel_psv_requested`, `vessel_edv_requested`, `vessel_clear_requested`, `vessel_accept_requested`.
-- `set_vessel_enabled(bool)` — общий флаг доступности (velocity-калибровка + baseline + один кадр).
-- Статус: «Ожидание PSV / Ожидание EDV / Готово».
+**`presentation/measures_menu.py` (MeasuresMenuWidget):**
+- Новая секция-аккордеон «Сосуды» (`menu.vessels_group`) в `_MENU`.
+- Кнопки: PSV → `MeasurementAction.VESSEL_PSV`, EDV → `MeasurementAction.VESSEL_EDV`, Clear → `MeasurementAction.VESSEL_CLEAR`, Accept → `MeasurementAction.VESSEL_ACCEPT`.
+- `_MenuButton` расширяется флагом `vessel: bool`; `set_doppler_tool_availability` дополняется параметром `vessel_ok` (velocity-калибровка + baseline) — enabled только для vessel-кнопок.
+- Статус-лейбл «Ожидание PSV / Ожидание EDV / Готово» — QLabel, обновляемый через новый метод `set_vessel_status(str)`.
 
 **`presentation/viewer_widget.py`:**
 - Маршрутизация vessel-режима в `DopplerOverlayTools` (клики уже через `_handle_doppler_calibration_click`-подобный хук; добавить `_handle_vessel_click`).
