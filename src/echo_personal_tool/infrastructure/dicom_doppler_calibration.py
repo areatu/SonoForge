@@ -14,7 +14,10 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerKind,
     DopplerSpectrogramRoi,
 )
-from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
+from echo_personal_tool.domain.services.doppler_baseline import (
+    detect_baseline_line_y,
+    detect_baseline_y,
+)
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_maybe_doppler_from_units,
@@ -98,11 +101,17 @@ def _detect_baseline_fallback(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> 
     return y0 + baseline_rel
 
 
-def _extract_samsung_baseline(region: Dataset) -> float | None:
-    """Extract baseline (absolute Y) from Samsung ReferencePixelY0 tag.
+def _extract_tag_baseline(region: Dataset) -> float | None:
+    """Extract baseline (absolute Y) from ReferencePixelY0 tag, if plausible.
 
     ReferencePixelY0 is relative to the region origin:
-    baseline_y = RegionLocationMinY0 + ReferencePixelY0
+    baseline_y = RegionLocationMinY0 + ReferencePixelY0.
+
+    Vendors (Samsung, Philips) use this tag inconsistently:
+    - Some write 0 when the baseline is at the region top edge (unreliable).
+    - Valid baselines always sit strictly inside the region so signal can
+      appear on at least one side of the zero-velocity line.
+    Reject values that land at the region edges (<=5% or >=95% of height).
     """
     ref_y = region.get("ReferencePixelY0")
     if ref_y is None:
@@ -112,9 +121,17 @@ def _extract_samsung_baseline(region: Dataset) -> float | None:
     except (TypeError, ValueError):
         return None
     min_y = region.get("RegionLocationMinY0")
-    if min_y is None:
+    max_y = region.get("RegionLocationMaxY1")
+    if min_y is None or max_y is None:
         return None
-    return float(min_y) + ref_y_f
+    height = float(max_y) - float(min_y)
+    if height <= 0:
+        return None
+    baseline = float(min_y) + ref_y_f
+    margin = 0.05 * height
+    if not (float(min_y) + margin <= baseline <= float(max_y) - margin):
+        return None
+    return baseline
 
 
 def try_parse_from_dataset(
@@ -165,23 +182,42 @@ def try_parse_from_dataset(
                 logger.debug("Cannot compute velocity span: delta_y=%s, units_y=%s", delta_y, units_y)
 
         # Baseline detection priority:
-        # 1. ReferencePixelY0 (Samsung vendor-specific)
-        # 2. Auto-detect by intensity (detect_baseline_y)
-        # 3. Intensity fallback (_detect_baseline_fallback)
-        # 4. Center of ROI (last resort)
+        # 1. Visual line detection (detect_baseline_line_y) — a thin band of
+        #    one uniform color stretching across the width, wherever it sits
+        #    (even at the ROI edge). This is the operator's primary cue and
+        #    is vendor-independent (no fixed color is assumed).
+        # 2. ReferencePixelY0 tag — only if it lands strictly inside the ROI
+        #    (vendors write 0 for "baseline at region top", which is only
+        #    trustworthy when a visible line confirms it; line detection in
+        #    step 1 already covers that case)
+        # 3. Intensity auto-detect (detect_baseline_y)
+        # 4. Intensity fallback (_detect_baseline_fallback)
+        # 5. Center of ROI (last resort)
         baseline_y = roi.y0 + roi.height / 2.0
-        samsung_baseline = _extract_samsung_baseline(region)
-        if samsung_baseline is not None:
-            baseline_y = samsung_baseline
-            logger.debug("Using Samsung ReferencePixelY0 baseline: %s", baseline_y)
-        elif frame is not None:
+        line_baseline = None
+        if frame is not None:
             arr = np.asarray(frame)
             if arr.ndim >= 2:
                 try:
-                    baseline_y = detect_baseline_y(arr, roi)
+                    line_baseline = detect_baseline_line_y(arr, roi)
                 except Exception:
-                    logger.debug("detect_baseline_y failed, using intensity fallback")
-                    baseline_y = _detect_baseline_fallback(arr, roi)
+                    logger.debug("detect_baseline_line_y failed, skipping")
+        if line_baseline is not None:
+            baseline_y = line_baseline
+            logger.debug("Using baseline line from pixels: %s", baseline_y)
+        else:
+            tag_baseline = _extract_tag_baseline(region)
+            if tag_baseline is not None:
+                baseline_y = tag_baseline
+                logger.debug("Using tag baseline from ReferencePixelY0: %s", baseline_y)
+            elif frame is not None:
+                arr = np.asarray(frame)
+                if arr.ndim >= 2:
+                    try:
+                        baseline_y = detect_baseline_y(arr, roi)
+                    except Exception:
+                        logger.debug("detect_baseline_y failed, using intensity fallback")
+                        baseline_y = _detect_baseline_fallback(arr, roi)
 
         data_type = int(region.get("RegionDataType", 0) or 0)
         region_kind = DopplerKind.TISSUE if data_type in (0x10, 0x11) else kind

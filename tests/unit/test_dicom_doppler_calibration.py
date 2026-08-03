@@ -152,14 +152,37 @@ def test_samsung_partial_region_returns_candidate() -> None:
 
 
 def test_samsung_baseline_from_reference_pixel_y0() -> None:
-    """Samsung ReferencePixelY0 should be used as baseline."""
+    """Samsung ReferencePixelY0 is region-relative → baseline = MinY0 + RefY0."""
     ds = Dataset()
     ds.SequenceOfUltrasoundRegions = [
         _samsung_like_region(dtype=3, ref_pixel_y0=180.0),
     ]
     state = try_parse_from_dataset(ds)
     assert state is not None
-    assert state.baseline_y_px == 180.0
+    assert state.baseline_y_px == 50.0 + 180.0
+
+
+def test_tag_baseline_at_roi_top_edge_is_rejected() -> None:
+    """ReferencePixelY0=0 puts baseline at ROI top edge → unreliable, ignored."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=0.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    # Without a frame, fallback is ROI center (50 + 400/2).
+    assert state.baseline_y_px == 50.0 + 200.0
+
+
+def test_tag_baseline_at_roi_bottom_edge_is_rejected() -> None:
+    """ReferencePixelY0 landing at ROI bottom edge → unreliable, ignored."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=400.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.baseline_y_px == 50.0 + 200.0
 
 
 def test_samsung_partial_with_units_but_no_deltas_no_time_velocity() -> None:
