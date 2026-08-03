@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSlider,
     QVBoxLayout,
@@ -1523,9 +1524,16 @@ class ViewerWidget(QWidget):
         if not path:
             return
         full = self.grab()
+        if full.isNull():
+            QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.grab"))
+            return
         geo = self._graphics.geometry()
         cropped = full.copy(geo.x(), geo.y(), geo.width(), geo.height())
-        cropped.save(path)
+        if cropped.isNull():
+            QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path))
+            return
+        if not cropped.save(path):
+            QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path))
 
     def _resolve_display_mode(
         self,

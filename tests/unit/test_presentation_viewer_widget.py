@@ -476,3 +476,58 @@ class TestContourViewBoxMouseEvents:
         # ContourViewBox.leavesEvent will check _viewer_widget is None and skip cleanup
         assert vb._viewer_widget is None
         vb.close()
+
+
+class TestSaveViewerImage:
+    def test_creates_file_from_grab(self, viewer, tmp_path):
+        from unittest.mock import patch
+
+        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        out = tmp_path / "frame.png"
+        with patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+            return_value=(str(out), "PNG (*.png)"),
+        ):
+            viewer._save_viewer_image()
+        assert out.exists()
+
+    def test_returns_early_when_no_frame(self, viewer):
+        from unittest.mock import patch
+
+        viewer._current_frame = None
+        with patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+        ) as mock_save:
+            viewer._save_viewer_image()
+        mock_save.assert_not_called()
+
+    def test_shows_error_when_pixmap_save_fails(self, viewer, tmp_path):
+        from unittest.mock import patch
+
+        from echo_personal_tool.presentation.viewer_widget import QMessageBox
+
+        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        out = tmp_path / "frame.png"
+        warnings = []
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(out), "PNG (*.png)"),
+            ),
+            patch.object(
+                viewer,
+                "grab",
+                return_value=MagicMock(
+                    isNull=lambda: False,
+                    copy=lambda *a, **k: MagicMock(
+                        isNull=lambda: False,
+                        save=lambda *a, **k: False,
+                    ),
+                ),
+            ),
+            patch.object(QMessageBox, "warning", side_effect=lambda *a, **k: warnings.append(a)),
+        ):
+            viewer._save_viewer_image()
+        assert not out.exists()
+        assert len(warnings) == 1
+        assert str(out) in warnings[0][2]
