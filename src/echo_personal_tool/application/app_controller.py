@@ -60,6 +60,7 @@ from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
@@ -1139,6 +1140,14 @@ class AppController(QObject):
         self._measurement_session.merge_linear_measurements(study_uid, measurement_tuple)
         self._recompute_measurements()
 
+    def accept_vessel_measurement(self, measurement: object) -> bool:
+        if not isinstance(measurement, VesselMeasurement):
+            raise TypeError("Expected a VesselMeasurement")
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_vessel_measurements(study_uid, (measurement,))
+        self._recompute_measurements()
+        return True
+
     def on_manual_calibration(self, spacing: object) -> None:
         if not isinstance(spacing, tuple) or len(spacing) != 2:
             raise TypeError("Expected manual calibration spacing as (row, column) tuple")
@@ -1311,10 +1320,15 @@ class AppController(QObject):
         contours = instance_contours
         from echo_personal_tool.application.study_measurement_session import (
             linear_measurements_for_instance,
+            vessel_measurements_for_instance,
         )
 
         instance_linear = linear_measurements_for_instance(
             session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
             instance_uid,
         )
         logger.debug(
@@ -1327,6 +1341,7 @@ class AppController(QObject):
             doppler_dto=doppler_dto,
             state=state,
             session=session,
+            vessel_measurements=instance_vessel,
         )
 
     def _recompute_measurements(self) -> None:
@@ -1338,10 +1353,15 @@ class AppController(QObject):
         instance_uid = state.instance.sop_instance_uid if state.instance else ""
         from echo_personal_tool.application.study_measurement_session import (
             linear_measurements_for_instance,
+            vessel_measurements_for_instance,
         )
 
         instance_linear = linear_measurements_for_instance(
             session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
             instance_uid,
         )
         logger.debug(
@@ -1356,6 +1376,7 @@ class AppController(QObject):
             doppler_dto=doppler_dto,
             state=state,
             session=session,
+            vessel_measurements=instance_vessel,
         )
         self._state_manager.set_measurement_snapshot(snapshot, emit=False)
         self._state_manager.set_linear_measurements(instance_linear, emit=False)
@@ -1369,6 +1390,7 @@ class AppController(QObject):
         doppler_dto: DopplerMeasurementDTO | None,
         state: ViewerState,
         session: StudyMeasurementData,
+        vessel_measurements: tuple[VesselMeasurement, ...] = (),
     ) -> MeasurementSnapshot:
         doppler = compute(doppler_dto) if doppler_dto is not None else None
         pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(
@@ -1409,6 +1431,7 @@ class AppController(QObject):
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
             planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
         )
         indexed = compute_indexed_measurements(
             base_snapshot,
@@ -1441,6 +1464,7 @@ class AppController(QObject):
             weight_kg=session.weight_kg,
             indexed=indexed,
             planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
         )
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
