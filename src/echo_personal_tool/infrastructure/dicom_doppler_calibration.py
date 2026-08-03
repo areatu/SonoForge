@@ -99,14 +99,22 @@ def _detect_baseline_fallback(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> 
 
 
 def _extract_samsung_baseline(region: Dataset) -> float | None:
-    """Extract baseline from Samsung-specific ReferencePixelY0 tag."""
+    """Extract baseline (absolute Y) from Samsung ReferencePixelY0 tag.
+
+    ReferencePixelY0 is relative to the region origin:
+    baseline_y = RegionLocationMinY0 + ReferencePixelY0
+    """
     ref_y = region.get("ReferencePixelY0")
-    if ref_y is not None:
-        try:
-            return float(ref_y)
-        except (TypeError, ValueError):
-            return None
-    return None
+    if ref_y is None:
+        return None
+    try:
+        ref_y_f = float(ref_y)
+    except (TypeError, ValueError):
+        return None
+    min_y = region.get("RegionLocationMinY0")
+    if min_y is None:
+        return None
+    return float(min_y) + ref_y_f
 
 
 def try_parse_from_dataset(

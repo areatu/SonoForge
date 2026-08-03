@@ -153,3 +153,18 @@ def test_bmode_sf1_with_cm_units_is_not_maybe_doppler() -> None:
         PhysicalDeltaY=0.0375,
     )
     assert is_maybe_doppler_from_units(region) is False
+
+
+def test_velocity_span_with_negative_delta_y() -> None:
+    """Negative delta_y (inverted spectrum) → abs() full scale."""
+    assert velocity_span_cm_s_from_region(319.0, -0.5069, 7) == 319.0 * 0.5069
+
+
+def test_velocity_span_rejects_zero_delta_y() -> None:
+    """Zero delta_y → None (no scale)."""
+    assert velocity_span_cm_s_from_region(319.0, 0.0, 7) is None
+
+
+def test_velocity_span_accepts_vendor_unit_7() -> None:
+    """Unit code 7 is a vendor mis-tag for cm/s — accept."""
+    assert velocity_span_cm_s_from_region(100.0, 0.5, 7) == 50.0

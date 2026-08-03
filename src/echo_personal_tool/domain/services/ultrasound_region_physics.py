@@ -92,14 +92,18 @@ def time_span_ms_from_region(width_px: float, delta_x: float, units_x: int) -> f
 
 
 def velocity_span_cm_s_from_region(height_px: float, delta_y: float, units_y: int) -> float | None:
-    """Full vertical velocity span (cm/s) for spectral Doppler."""
+    """Full vertical velocity span (cm/s) for spectral Doppler.
+
+    Negative delta_y is valid — it means the spectrum is inverted
+    (positive velocity points up). Use abs() for the full scale.
+    """
     # units_y=6 is standard cm/s; units_y=7 is a known vendor mis-tag (also cm/s)
     if units_y not in (PHYSICAL_UNIT_CM_PER_SEC, 7):
         logger.debug("Unsupported velocity units: %s", units_y)
         return None
-    if delta_y <= 0.0 or height_px <= 0.0:
+    if delta_y == 0.0 or height_px <= 0.0:
         return None
-    return height_px * delta_y
+    return height_px * abs(delta_y)
 
 
 def is_spatial_calibration_region(region: Dataset) -> bool:

@@ -262,3 +262,34 @@ class TestDopplerCalibrationState:
         state = DopplerCalibrationState(roi=roi, baseline_y_px=50.0)
         with pytest.raises(dataclasses.FrozenInstanceError):
             state.baseline_y_px = 100.0  # type: ignore[misc]
+
+    def test_has_velocity_scale_with_per_pixel(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
+            velocity_per_pixel_cm_s=-0.5,
+        )
+        assert state.has_velocity_scale() is True
+
+    def test_no_velocity_scale_without_per_pixel(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
+            velocity_per_pixel_cm_s=None,
+        )
+        assert state.has_velocity_scale() is False
+
+    def test_has_velocity_scale_from_dicom_with_per_pixel(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_from_dicom_tags=True,
+            velocity_span_cm_s=0.0,
+            velocity_per_pixel_cm_s=0.36,
+        )
+        assert state.has_velocity_scale_from_dicom() is True
