@@ -376,10 +376,6 @@ class DopplerOverlayTools(QWidget):
         self._emit_vessel_changed()
         return True
 
-    def handle_vessel_edv_start(self) -> None:
-        if self._vessel_psv_px is None:
-            self._vessel_mode = "edv"
-
     def move_vessel_caliper(self, x_px: float, y_px: float) -> None:
         if self._vessel_drag_target is None:
             return

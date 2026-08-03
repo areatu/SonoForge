@@ -189,8 +189,8 @@ class MeasureTab(QWidget):
         self._menu.reload_text()
         self._patient_metrics.reload_text()
 
-    def set_doppler_tool_availability(self, *, time_ok: bool) -> None:
-        self._menu.set_doppler_tool_availability(time_ok=time_ok)
+    def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
+        self._menu.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
 
     def highlight_action(
         self,
@@ -280,8 +280,8 @@ class ToolPanel(QWidget):
         """Access the properties panel to update it."""
         return self._properties_panel
 
-    def set_doppler_tool_availability(self, *, time_ok: bool) -> None:
-        self.measure.set_doppler_tool_availability(time_ok=time_ok)
+    def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
+        self.measure.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
 
     def toggle_collapse(self) -> None:
         if self._collapsed:

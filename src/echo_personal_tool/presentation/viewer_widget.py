@@ -2268,16 +2268,6 @@ class ViewerWidget(QWidget):
         self._measurement_label.show()
         return True
 
-    def start_vessel_edv(self) -> bool:
-        if not self.is_vessel_available():
-            return False
-        self.cancel_active_tool()
-        self._doppler.set_vessel_mode()
-        self._doppler.handle_vessel_edv_start()
-        self._measurement_label.setText(tr("viewer.vessel_edv_prompt"))
-        self._measurement_label.show()
-        return True
-
     def accept_vessel_measurement(self) -> bool:
         if not self.is_vessel_available():
             return False
@@ -6076,10 +6066,6 @@ class ViewerWidget(QWidget):
         if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if event.key() == Qt.Key.Key_P and self.is_vessel_available():
                 self.start_vessel_psv()
-                event.accept()
-                return
-            if event.key() == Qt.Key.Key_E and self.is_vessel_available():
-                self.start_vessel_edv()
                 event.accept()
                 return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):

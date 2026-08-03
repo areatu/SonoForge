@@ -26,18 +26,17 @@ def menu():
 
 def test_vessel_section_has_buttons(menu):
     actions = {spec.action for _, spec in menu._tool_buttons}
-    assert MeasurementAction.VESSEL_PSV in actions
-    assert MeasurementAction.VESSEL_EDV in actions
+    assert MeasurementAction.VESSEL_PSV_EDV in actions
     assert MeasurementAction.VESSEL_ACCEPT in actions
     assert MeasurementAction.VESSEL_CLEAR in actions
+    assert "vessel_edv" not in {str(a) for a in actions}
 
 
 def test_vessel_buttons_disabled_without_calibration(menu):
     menu.set_doppler_tool_availability(time_ok=False, vessel_ok=False)
     for button, spec in menu._tool_buttons:
         if spec.action in {
-            MeasurementAction.VESSEL_PSV,
-            MeasurementAction.VESSEL_EDV,
+            MeasurementAction.VESSEL_PSV_EDV,
             MeasurementAction.VESSEL_ACCEPT,
             MeasurementAction.VESSEL_CLEAR,
         }:
@@ -47,7 +46,7 @@ def test_vessel_buttons_disabled_without_calibration(menu):
 def test_vessel_buttons_enabled_with_calibration(menu):
     menu.set_doppler_tool_availability(time_ok=False, vessel_ok=True)
     for button, spec in menu._tool_buttons:
-        if spec.action == MeasurementAction.VESSEL_PSV:
+        if spec.action == MeasurementAction.VESSEL_PSV_EDV:
             assert button.isEnabled() is True
 
 

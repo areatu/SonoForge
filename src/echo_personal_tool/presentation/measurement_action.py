@@ -43,7 +43,6 @@ class MeasurementAction(StrEnum):
     TEICHHOLZ_ES = "teichholz_es"
     DIAMETER_COMPARE = "diameter_compare"
     AREA_COMPARE = "area_compare"
-    VESSEL_PSV = "vessel_psv"
-    VESSEL_EDV = "vessel_edv"
+    VESSEL_PSV_EDV = "vessel_psv_edv"
     VESSEL_CLEAR = "vessel_clear"
     VESSEL_ACCEPT = "vessel_accept"

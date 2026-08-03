@@ -24,4 +24,4 @@ def test_is_vessel_available_without_calibration():
 def test_vessel_mode_requires_frame():
     viewer = _viewer()
     assert viewer.start_vessel_psv() is False
-    assert viewer.start_vessel_edv() is False
+    assert not hasattr(viewer, "start_vessel_edv")

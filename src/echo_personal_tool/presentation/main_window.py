@@ -228,6 +228,7 @@ class MainWindow(QMainWindow):
         self._viewer.gold_export_requested.connect(self._on_gold_export_requested)
         self._viewer.mmode_column_ready.connect(self._on_mmode_column_ready)
         self._viewer.mmode_line_completed.connect(self._on_mmode_line_completed)
+        self._viewer.vessel_accept_requested.connect(self._on_vessel_accept_requested)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -1552,6 +1553,7 @@ class MainWindow(QMainWindow):
         )
         self._viewer.restore_doppler_state(calibration, dto)
         self._doppler_frame_context = (instance.sop_instance_uid, frame_index)
+        self._restore_vessel_for_current_frame()
 
     def _restore_doppler_for_current_instance(self) -> None:
         self._restore_doppler_for_current_frame()
@@ -1578,6 +1580,36 @@ class MainWindow(QMainWindow):
 
     def _on_doppler_frame_changed(self, frame_index: int) -> None:
         self._restore_doppler_for_current_frame()
+
+    def _on_vessel_accept_requested(self, measurement: object) -> None:
+        from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+
+        if not isinstance(measurement, VesselMeasurement):
+            return
+        if self._controller.accept_vessel_measurement(measurement):
+            self._show_status(tr("status.vessel_accepted"))
+
+    def _restore_vessel_for_current_frame(self) -> None:
+        from echo_personal_tool.application.study_measurement_session import (
+            vessel_measurements_for_instance,
+        )
+
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is None:
+            return
+        frame = self._controller.state_manager.snapshot.current_frame_index
+        study_uid = self._controller._current_study_uid
+        session = self._controller._measurement_session.get(study_uid) if study_uid else None
+        if session is None:
+            return
+        measurements = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance.sop_instance_uid,
+        )
+        for m in measurements:
+            if m.frame_index == frame:
+                self._viewer._doppler.show_vessel_measurement(m)
+                break
 
     def _restore_mmode_for_current_instance(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -1664,6 +1696,7 @@ class MainWindow(QMainWindow):
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
             time_ok=self._viewer.is_doppler_time_calibrated(),
+            vessel_ok=self._viewer.is_vessel_available(),
         )
 
     def _ensure_doppler_ready(self, *, require_time: bool = False) -> bool:
@@ -1780,6 +1813,16 @@ class MainWindow(QMainWindow):
             return
         if action == MeasurementAction.DOPPLER_TRACE:
             self._on_doppler_trace_tool(extra or "VTI")
+            return
+        if action == MeasurementAction.VESSEL_PSV_EDV:
+            if self._viewer.start_vessel_psv():
+                self._show_status(tr("status.vessel_psv"))
+            return
+        if action == MeasurementAction.VESSEL_CLEAR:
+            self._viewer.clear_vessel_measurement()
+            return
+        if action == MeasurementAction.VESSEL_ACCEPT:
+            self._viewer.accept_vessel_measurement()
             return
         handler = handlers.get(action)
         if handler is not None:

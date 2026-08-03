@@ -1,5 +1,10 @@
 # Changelog — Текущая сессия
 
+## [2026-08-03] Сосуды: измерения PSV/EDV в панели Measurements
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/calculations/vessel_metrics.py`, `src/echo_personal_tool/domain/models/vessel_measurement.py`, `src/echo_personal_tool/domain/models/measurements.py`, `src/echo_personal_tool/application/study_measurement_session.py`, `src/echo_personal_tool/application/app_controller.py`, `src/echo_personal_tool/presentation/doppler_overlay.py`, `src/echo_personal_tool/presentation/measures_menu.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/presentation/measurement_action.py`, `src/echo_personal_tool/presentation/main_window.py`, `src/echo_personal_tool/presentation/tool_panel.py`, `src/echo_personal_tool/domain/services/measurement_report_formatter.py`, `src/echo_personal_tool/domain/services/measurement_results_formatter.py`, `src/echo_personal_tool/presentation/measurement_panel.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`
+- **Суть:** Добавлены ручные измерения сосудов на кадре спектрального допплера: клик на пике (PSV) и второй клик (EDV) → RI, S/D, MV≈ (суррогаты). Кнопка «PSV/EDV» запускает единый последовательный поток (кнопка EDV и хоткей E удалены как дубликат). Измерения сохраняются per (instance, frame), отображаются в overlay, отчёте (PDF) и правой панели.
+
 ## [2026-07-30] macOS: Intel support + DMG вместо zip
 - **Тип:** fix
 - **Файлы:** `.github/workflows/release.yml`, `sonoforge-standalone.spec`

@@ -563,6 +563,13 @@ def format_results_overlay_html(
             text = measurement.display_text(length_unit=length_display_unit)
             parts.append(f'<span style="color:{_COLOR_NORMAL};">{text}</span>')
 
+    for vessel in snapshot.vessel_measurements:
+        _html_append(parts, "PSV", vessel.psv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "EDV", vessel.edv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "RI", vessel.ri, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "S/D", vessel.sd, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "MV≈", vessel.mv_approx, "cm/s", sex_male=sex_male)
+
     return "<br>".join(parts)
 
 
