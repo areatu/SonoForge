@@ -151,6 +151,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.mv_group",
         (
+            _btn("menu.trace_auto", MeasurementAction.DOPPLER_TRACE_AUTO),
             _btn("menu.trace_mv", doppler_trace="VTI MV"),
             _btn("menu.trace_mr", doppler_trace="VTI MR"),
             _btn("menu.vpeak_mv", doppler_peak="Vmax"),
@@ -178,6 +179,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.vessel_psv_edv", MeasurementAction.VESSEL_PSV_EDV, vessel=True),
             _btn("menu.vessel_auto_trace", MeasurementAction.VESSEL_AUTO_TRACE, vessel=True),
+            _btn("menu.vessel_average", MeasurementAction.VESSEL_AVERAGE, vessel=True),
             _btn("menu.vessel_clear", MeasurementAction.VESSEL_CLEAR, vessel=True),
             _btn("menu.vessel_accept", MeasurementAction.VESSEL_ACCEPT, vessel=True),
         ),

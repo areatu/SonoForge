@@ -127,6 +127,35 @@ def align_spectrogram_to_ecg(
     return CycleAlignment(offset_ms=best_offset, confidence=confidence, source="ecg")
 
 
+def _snap_in_cycle(
+    times: np.ndarray,
+    ys: np.ndarray,
+    cycle: CardiacCycle,
+) -> tuple[int, int] | None:
+    """Return ``(psv_idx, edv_idx)`` envelope indices snapped inside a cycle."""
+    t_lo, t_hi = float(np.min(times)), float(np.max(times))
+    eff_start = max(float(cycle.start_ms), t_lo)
+    eff_end = min(float(cycle.end_ms), t_hi)
+    if eff_end - eff_start < 1.0:
+        return None
+
+    in_cycle = (times >= eff_start) & (times <= eff_end)
+    if int(in_cycle.sum()) < _MIN_CYCLE_POINTS:
+        return None
+
+    indices = np.nonzero(in_cycle)[0]
+    psv_idx = int(indices[int(np.argmin(ys[indices]))])
+
+    span = eff_end - eff_start
+    edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
+    in_diastole = in_cycle & (times >= edv_search_start)
+    if int(in_diastole.sum()) == 0:
+        in_diastole = in_cycle
+    diastole_indices = np.nonzero(in_diastole)[0]
+    edv_idx = int(diastole_indices[int(np.argmax(ys[diastole_indices]))])
+    return psv_idx, edv_idx
+
+
 def derive_psv_edv_indices_with_cycles(
     envelope: tuple[tuple[float, float], ...],
     cycles: Sequence[CardiacCycle],
@@ -152,25 +181,34 @@ def derive_psv_edv_indices_with_cycles(
     cycle = next((c for c in cycles if c.start_ms <= psv_t <= c.end_ms), None)
     if cycle is None:
         return None
+    return _snap_in_cycle(times, ys, cycle)
 
-    t_lo, t_hi = float(np.min(times)), float(np.max(times))
-    eff_start = max(float(cycle.start_ms), t_lo)
-    eff_end = min(float(cycle.end_ms), t_hi)
-    if eff_end - eff_start < 1.0:
-        return None
 
-    in_cycle = (times >= eff_start) & (times <= eff_end)
-    if int(in_cycle.sum()) < _MIN_CYCLE_POINTS:
-        return None
+def derive_psv_edv_indices_per_cycle(
+    envelope: tuple[tuple[float, float], ...],
+    cycles: Sequence[CardiacCycle],
+    axis_mapping: DopplerAxisMapping,
+    *,
+    max_cycles: int = 3,
+) -> list[tuple[int, int]]:
+    """Return per-cycle ``(psv_idx, edv_idx)`` indices for up to *max_cycles*.
 
-    span = eff_end - eff_start
-    edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
-    in_diastole = in_cycle & (times >= edv_search_start)
-    if int(in_diastole.sum()) == 0:
-        in_diastole = in_cycle
-    diastole_indices = np.nonzero(in_diastole)[0]
-    edv_idx = int(diastole_indices[int(np.argmax(ys[diastole_indices]))])
-    return psv_idx, edv_idx
+    Cycles too sparse or falling outside the envelope time range are skipped.
+    Used for multi-beat PSV/EDV averaging.
+    """
+    if not envelope or not cycles:
+        return []
+    times = np.asarray([axis_mapping.time_ms_from_x(p[0]) for p in envelope], dtype=np.float64)
+    ys = np.asarray([p[1] for p in envelope], dtype=np.float64)
+    if ys.size < _MIN_CYCLE_POINTS:
+        return []
+
+    results: list[tuple[int, int]] = []
+    for cycle in cycles[:max_cycles]:
+        snapped = _snap_in_cycle(times, ys, cycle)
+        if snapped is not None:
+            results.append(snapped)
+    return results
 
 
 class CardiacCycleService:

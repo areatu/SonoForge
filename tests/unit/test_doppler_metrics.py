@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
 from echo_personal_tool.domain.models.doppler import (
@@ -60,7 +61,7 @@ def test_compute_cw_scenario() -> None:
 
     result = compute(dto)
 
-    expected_vti = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0]))
+    expected_vti = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
 
     assert result.vpeak_cm_s == 300.0
     assert result.vti_cm == expected_vti
@@ -68,6 +69,79 @@ def test_compute_cw_scenario() -> None:
     assert result.at_ms == 300.0
     assert result.vmean_cm_s == expected_vti / 0.3
     assert result.pgmean_mmhg == 4.0 * (result.vmean_cm_s / 100.0) ** 2
+
+
+def test_compute_vti_averaged_across_multiple_traces() -> None:
+    dto = DopplerMeasurementDTO(
+        peaks=(),
+        intervals=(),
+        traces=(
+            DopplerTrace(label="vti", points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0))),
+            DopplerTrace(label="vti", points=((300.0, 0.0), (400.0, 100.0), (500.0, 0.0))),
+        ),
+    )
+
+    result = compute(dto)
+
+    vti1 = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    vti2 = float(np.trapz([0.0, 100.0, 0.0], [300.0, 400.0, 500.0])) / 1000.0
+    assert result.vti_cm == pytest.approx((vti1 + vti2) / 2.0)
+
+
+@pytest.mark.parametrize(
+    ("trace_label",),
+    [
+        ("VTI MV",),
+        ("VTI MR",),
+        ("VTI AV",),
+        ("VTI AR",),
+        ("VTI TR",),
+        ("VTI PR",),
+    ],
+)
+def test_compute_vti_recognizes_valve_specific_labels(trace_label: str) -> None:
+    """VTI must be computed for the valve-specific trace labels used by the UI."""
+    dto = DopplerMeasurementDTO(
+        peaks=(),
+        intervals=(),
+        traces=(DopplerTrace(label=trace_label, points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0))),),
+    )
+
+    result = compute(dto)
+
+    expected_vti = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    assert result.vti_cm == pytest.approx(expected_vti)
+
+
+def test_compute_vti_units_are_cm_for_ms_times() -> None:
+    """VTI must be in cm even though trace timestamps are in ms.
+
+    A triangular envelope with base 200 ms and peak 200 cm/s has a true
+    VTI of 0.5 * 0.2 s * 200 cm/s = 20 cm. The raw trapezoidal integral
+    over ms timestamps is 1000x larger, so the implementation must divide
+    by 1000.
+    """
+    dto = DopplerMeasurementDTO(
+        peaks=(),
+        intervals=(),
+        traces=(DopplerTrace(label="vti", points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0))),),
+    )
+
+    result = compute(dto)
+
+    assert result.vti_cm == pytest.approx(20.0)
+
+
+def test_compute_vti_ignores_non_vti_trace_labels() -> None:
+    dto = DopplerMeasurementDTO(
+        peaks=(),
+        intervals=(),
+        traces=(DopplerTrace(label="PeakEnvelope", points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0))),),
+    )
+
+    result = compute(dto)
+
+    assert result.vti_cm is None
 
 
 def test_compute_empty_dto_returns_all_none() -> None:

@@ -129,6 +129,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
 )
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
+from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
@@ -935,6 +936,12 @@ class ViewerWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._graphics)
+
+        # ECG strip (shown when Doppler is active)
+        self._ecg_strip = EcgStripWidget()
+        self._ecg_strip.hide()
+        layout.addWidget(self._ecg_strip)
+
         layout.addLayout(controls)
         self._graphics.setMouseTracking(True)
         self._graphics.setViewportUpdateMode(
@@ -2345,6 +2352,67 @@ class ViewerWidget(QWidget):
             )
         )
 
+    def _extract_doppler_envelope(self, preset: str = "normal") -> tuple[tuple[float, float], ...]:
+        """Extract the spectral envelope from the current Doppler frame."""
+        if self._current_frame is None:
+            return ()
+        state = self.get_doppler_calibration_state()
+        if state is None or state.roi is None or state.baseline_y_px is None:
+            return ()
+        from echo_personal_tool.domain.services.doppler_envelope import (
+            extract_doppler_envelope,
+        )
+
+        return extract_doppler_envelope(
+            self._current_frame,
+            state.roi,
+            state.baseline_y_px,
+            preset=preset,
+        )
+
+    def start_vti_auto_trace(self, trace_label: str = "VTI") -> bool:
+        """Commit a cycle-clipped auto-envelope as an editable VTI trace."""
+        if self._current_frame is None:
+            return False
+        envelope = self._extract_doppler_envelope()
+        if not envelope or len(envelope) < 2:
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        cycles = self._doppler_cardiac_cycles(envelope)
+        if not self._doppler.apply_auto_vti_trace(envelope, cycles=cycles, trace_label=trace_label):
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        self._measurement_label.setText(tr("viewer.vti_auto_trace_done"))
+        self._measurement_label.show()
+        return True
+
+    def average_vessel_cycles(self) -> bool:
+        """Average PSV/EDV over up to 3 ECG cycles."""
+        if not self.is_vessel_available():
+            return False
+        if self._current_frame is None:
+            return False
+        envelope = self._extract_doppler_envelope()
+        if not envelope or len(envelope) < 2:
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        cycles = self._doppler_cardiac_cycles(envelope)
+        result = self._doppler.apply_averaged_vessel(envelope, cycles=cycles)
+        if result is None:
+            self._measurement_label.setText(tr("viewer.vessel_average_failed"))
+            self._measurement_label.show()
+            return False
+        psv, edv = result
+        count = self._doppler.vessel_averaged_cycles()
+        self._measurement_label.setText(
+            tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count)
+        )
+        self._measurement_label.show()
+        return True
+
     def accept_vessel_measurement(self) -> bool:
         if not self.is_vessel_available():
             return False
@@ -2369,6 +2437,7 @@ class ViewerWidget(QWidget):
             sop_instance_uid=instance_uid,
             frame_index=self._current_frame_index() or 0,
             cycle_source=self._doppler.vessel_cycle_source() or "manual",
+            averaged_cycles=self._doppler.vessel_averaged_cycles(),
         )
         self.vessel_accept_requested.emit(measurement)
         self._doppler.clear_vessel()
@@ -2407,8 +2476,61 @@ class ViewerWidget(QWidget):
         self._doppler_calibration_frame_index = self._current_frame_index()
         self._doppler.set_axis_mapping(build_axis_mapping(state))
         self._doppler_axis_calibrated = state.has_velocity_scale()
+        
+        # Show ECG strip and load ECG data when Doppler is active
+        if state is not None:
+            self.show_ecg_strip()
+            self._load_ecg_for_strip()
+        else:
+            self.hide_ecg_strip()
+        
         if persist and not self._syncing_state and self._doppler_calibration_matches_instance():
             self.doppler_calibration_changed.emit(state)
+
+    def show_ecg_strip(self) -> None:
+        """Show the ECG strip under the spectrogram."""
+        self._ecg_strip.show()
+
+    def hide_ecg_strip(self) -> None:
+        """Hide the ECG strip."""
+        self._ecg_strip.hide()
+
+    def set_ecg_waveform_for_strip(self, ecg: object | None) -> None:
+        """Set ECG waveform on the strip for display."""
+        from echo_personal_tool.domain.models.ecg import EcgWaveform
+
+        if ecg is not None and not isinstance(ecg, EcgWaveform):
+            return
+        self._ecg_strip.set_ecg(ecg)
+
+    def set_cardiac_cycles_for_strip(self, cycles: object) -> None:
+        """Set cardiac cycles on the strip for cycle highlighting."""
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        if not isinstance(cycles, (list, tuple)):
+            return
+        # Filter to only CardiacCycle instances
+        valid_cycles = [c for c in cycles if isinstance(c, CardiacCycle)]
+        self._ecg_strip.set_cardiac_cycles(valid_cycles)
+
+    def highlight_ecg_cycle_for_strip(self, cycle_index: int | None) -> None:
+        """Highlight a specific ECG cycle by index, or clear if None."""
+        self._ecg_strip.highlight_cycle(cycle_index)
+
+    def _load_ecg_for_strip(self) -> None:
+        """Load ECG waveform and cardiac cycles for the ECG strip."""
+        instance = self._current_instance_metadata()
+        if instance is None or instance.path is None:
+            return
+        from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform
+
+        try:
+            ecg = read_ecg_waveform(instance.path)
+        except Exception:  # noqa: BLE001
+            ecg = None
+        if ecg is None:
+            return
+        self.set_ecg_waveform_for_strip(ecg)
 
     def restore_doppler_state(
         self,
@@ -2830,10 +2952,20 @@ class ViewerWidget(QWidget):
     def finish_doppler_trace(self) -> bool:
         finished = self._doppler.finish_trace()
         if finished:
-            self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+            label = self._doppler.last_committed_trace_label()
+            vti_cm = self._last_committed_vti_cm()
+            if vti_cm is not None:
+                self._measurement_label.setText(f"{label}: {vti_cm:.1f} cm")
+            else:
+                self._measurement_label.setText(f"{label}: —")
         else:
             self._measurement_label.setText(tr("viewer.doppler_trace_finish"))
         return finished
+
+    def _last_committed_vti_cm(self) -> float | None:
+        from echo_personal_tool.domain.calculations.doppler_metrics import compute
+
+        return compute(self._doppler.get_measurement_dto()).vti_cm
 
     def get_doppler_dto(self):
         return self._doppler.get_measurement_dto()

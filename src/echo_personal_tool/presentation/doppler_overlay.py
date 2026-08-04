@@ -21,6 +21,7 @@ from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.cardiac_cycle_service import (
     CardiacCycle,
+    derive_psv_edv_indices_per_cycle,
     derive_psv_edv_indices_with_cycles,
 )
 from echo_personal_tool.domain.services.doppler_trace_points import finalize_vti_trace_points
@@ -110,6 +111,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_edv_px: tuple[float, float] | None = None
         self._vessel_drag_target: str | None = None
         self._vessel_cycle_source: str | None = None
+        self._vessel_averaged_cycles: int = 1
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
         self._auto_envelope_item: pg.PlotDataItem | None = None
@@ -196,6 +198,11 @@ class DopplerOverlayTools(QWidget):
             return
         self._trace_label = normalized
 
+    def last_committed_trace_label(self) -> str:
+        if not self._traces:
+            return self._trace_label
+        return self._traces[-1].label
+
     def cancel_active_tool(self) -> bool:
         had_active_state = (
             self._tool_mode != "none" or bool(self._active_partial_points) or self._active_interval_start is not None
@@ -249,7 +256,14 @@ class DopplerOverlayTools(QWidget):
         if len(finalized) < 3:
             return False
 
-        trace = DopplerTrace(label=self._trace_label, points=finalized)
+        self._append_trace(DopplerTrace(label=self._trace_label, points=finalized))
+        self._clear_partial_state()
+        self._tool_mode = "none"
+        self.markers_changed.emit(self._build_measurement_dto())
+        return True
+
+    def _append_trace(self, trace: DopplerTrace) -> None:
+        """Append a committed trace and draw its filled envelope."""
         self._traces.append(trace)
 
         completed_item = pg.PlotDataItem(
@@ -257,17 +271,12 @@ class DopplerOverlayTools(QWidget):
             brush=pg.mkBrush(21, 101, 192, 70),
         )
         completed_item.setZValue(15)
-        xs = [self._axis_mapping.x_from_time_ms(point[0]) for point in finalized]
-        ys = [self._axis_mapping.y_from_velocity_cm_s(point[1]) for point in finalized]
+        xs = [self._axis_mapping.x_from_time_ms(point[0]) for point in trace.points]
+        ys = [self._axis_mapping.y_from_velocity_cm_s(point[1]) for point in trace.points]
         completed_item.setFillLevel(self._baseline_plot_y_px())
         completed_item.setData(xs, ys)
         self._plot.addItem(completed_item)
         self._trace_items.append(completed_item)
-
-        self._clear_partial_state()
-        self._tool_mode = "none"
-        self.markers_changed.emit(self._build_measurement_dto())
-        return True
 
     def start_trace_from_plot_points(
         self,
@@ -412,6 +421,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_edv_px = None
         self._vessel_drag_target = None
         self._vessel_cycle_source = None
+        self._vessel_averaged_cycles = 1
         self._clear_auto_envelope()
         self._redraw_vessel_graphics()
 
@@ -471,12 +481,119 @@ class DopplerOverlayTools(QWidget):
         self._redraw_vessel_graphics()
         return psv, edv
 
+    def apply_auto_vti_trace(
+        self,
+        envelope: tuple[tuple[float, float], ...],
+        *,
+        cycles: tuple[CardiacCycle, ...] = (),
+        trace_label: str = "VTI",
+    ) -> bool:
+        """Commit a cycle-clipped auto-envelope as an editable VTI trace.
+
+        When ECG *cycles* are provided, the envelope is clipped to the cycle
+        containing the highest-velocity sample so the committed ``DopplerTrace``
+        measures VTI within one reproducible cardiac cycle; otherwise the whole
+        envelope is used. Returns ``True`` when a trace was committed.
+        """
+        self._clear_auto_envelope()
+        if not envelope or len(envelope) < 2:
+            return False
+        xs = [p[0] for p in envelope]
+        ys = [p[1] for p in envelope]
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item.setZValue(24)
+        self._plot.addItem(item)
+        self._auto_envelope_item = item
+
+        clipped = envelope
+        if cycles:
+            peak_time = self._axis_mapping.time_ms_from_x(envelope[int(np.argmin(ys))][0])
+            cycle = next((c for c in cycles if c.start_ms <= peak_time <= c.end_ms), None)
+            if cycle is not None:
+                clipped = tuple(
+                    p
+                    for p in envelope
+                    if cycle.start_ms <= self._axis_mapping.time_ms_from_x(p[0]) <= cycle.end_ms
+                )
+                if len(clipped) < 3:
+                    return False
+
+        mapped = [
+            (
+                self._axis_mapping.time_ms_from_x(point[0]),
+                self._axis_mapping.velocity_cm_s_from_y(point[1]),
+            )
+            for point in clipped
+        ]
+        finalized = finalize_vti_trace_points(mapped)
+        if len(finalized) < 3:
+            return False
+        self._append_trace(DopplerTrace(label=trace_label, points=finalized))
+        self._tool_mode = "none"
+        self.markers_changed.emit(self._build_measurement_dto())
+        return True
+
+    def apply_averaged_vessel(
+        self,
+        envelope: tuple[tuple[float, float], ...],
+        *,
+        cycles: tuple[CardiacCycle, ...] = (),
+        max_beats: int = 3,
+    ) -> tuple[float, float] | None:
+        """Average PSV/EDV across up to *max_beats* ECG cycles.
+
+        Per-cycle PSV/EDV are derived inside each cycle's own diastolic window
+        and averaged; the markers are placed at the averaged velocities on the
+        first beat's times. Returns ``(psv, edv)`` in cm/s or ``None`` when no
+        ECG cycle yields a valid snapshot.
+        """
+        self._clear_auto_envelope()
+        if not envelope or len(envelope) < 2 or not cycles:
+            return None
+        xs = [p[0] for p in envelope]
+        ys = [p[1] for p in envelope]
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item.setZValue(24)
+        self._plot.addItem(item)
+        self._auto_envelope_item = item
+
+        per_cycle = derive_psv_edv_indices_per_cycle(
+            envelope,
+            cycles,
+            self._axis_mapping,
+            max_cycles=max_beats,
+        )
+        if not per_cycle:
+            return None
+        psv_values = [
+            self._axis_mapping.velocity_cm_s_from_y(envelope[psv_idx][1]) for psv_idx, _ in per_cycle
+        ]
+        edv_values = [
+            self._axis_mapping.velocity_cm_s_from_y(envelope[edv_idx][1]) for _, edv_idx in per_cycle
+        ]
+        psv_mean = sum(psv_values) / len(psv_values)
+        edv_mean = sum(edv_values) / len(edv_values)
+        psv_time = envelope[per_cycle[0][0]][0]
+        edv_time = envelope[per_cycle[0][1]][0]
+
+        self._vessel_mode = "done"
+        self._vessel_psv_px = (psv_time, self._axis_mapping.y_from_velocity_cm_s(psv_mean))
+        self._vessel_edv_px = (edv_time, self._axis_mapping.y_from_velocity_cm_s(edv_mean))
+        self._vessel_cycle_source = "ecg"
+        self._vessel_averaged_cycles = len(per_cycle)
+        self._redraw_vessel_graphics()
+        return psv_mean, edv_mean
+
     def vessel_cycle_source(self) -> str | None:
         return self._vessel_cycle_source
+
+    def vessel_averaged_cycles(self) -> int:
+        return self._vessel_averaged_cycles
 
     def show_vessel_measurement(self, measurement: VesselMeasurement) -> None:
         self._vessel_mode = "done"
         self._vessel_cycle_source = getattr(measurement, "cycle_source", "manual")
+        self._vessel_averaged_cycles = getattr(measurement, "averaged_cycles", 1)
         psv_y = self._axis_mapping.y_from_velocity_cm_s(measurement.psv_cm_s)
         edv_y = self._axis_mapping.y_from_velocity_cm_s(measurement.edv_cm_s)
         self._vessel_psv_px = (0.0, psv_y)

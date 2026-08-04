@@ -881,6 +881,34 @@ class TestDopplerOperations:
         result = w.finish_doppler_trace()
         assert isinstance(result, bool)
 
+    def test_finish_doppler_trace_shows_vti_value(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+        roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0)
+        mapping = DopplerAxisMapping(
+            roi=roi,
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
+            velocity_min_cm_s=-100.0,
+            velocity_max_cm_s=100.0,
+            plot_width=1000.0,
+            plot_height=200.0,
+            time_span_ms=2000.0,
+        )
+        w._doppler.set_axis_mapping(mapping)
+
+        w.start_doppler_envelope_trace(
+            ((0.0, 100.0), (100.0, 50.0), (200.0, 100.0)),
+            trace_label="VTI MV",
+        )
+        assert w.finish_doppler_trace() is True
+        assert "VTI MV" in w._measurement_label.text()
+        assert "10.0 cm" in w._measurement_label.text()
+        assert "—" not in w._measurement_label.text()
+
     def test_start_doppler_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))

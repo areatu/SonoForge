@@ -30,15 +30,30 @@ def _find_interval_duration_ms(dto: DopplerMeasurementDTO, label: str) -> float 
 
 
 def _find_vti_cm(dto: DopplerMeasurementDTO) -> float | None:
+    """Average the trapezoidal VTI over all VTI traces.
+
+    Matches any trace whose normalized label starts with the ``vti`` prefix
+    (``VTI``, ``VTI MV``, ``VTI MR``, ``VTI AR``, ``VTI TR``, ``VTI PR``, …),
+    so valve-specific traces committed by the UI are measured too.     Multi-beat
+    traces produced by the auto-trace flow each cover one cardiac cycle;
+    averaging them yields the beat-averaged VTI. A single manual trace (the
+    common case) averages to itself.
+
+    Trace timestamps are milliseconds, so the raw trapezoidal integral of
+    (cm/s) over (ms) is 1000x too large; dividing by 1000 yields cm.
+    """
+    values: list[float] = []
     for trace in dto.traces:
-        if _normalize_label(trace.label) != "vti":
+        if not _normalize_label(trace.label).startswith("vti"):
             continue
         if len(trace.points) < 2:
-            return None
+            continue
         times = [point[0] for point in trace.points]
         velocities = [point[1] for point in trace.points]
-        return float(np.trapz(velocities, times))
-    return None
+        values.append(float(np.trapz(velocities, times)) / 1000.0)
+    if not values:
+        return None
+    return sum(values) / len(values)
 
 
 def _ratio(numerator: float | None, denominator: float | None) -> float | None:

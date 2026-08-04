@@ -16,3 +16,4 @@ class VesselMeasurement:
     frame_index: int
     calibration_id: str | None = None
     cycle_source: str = "manual"
+    averaged_cycles: int = 1

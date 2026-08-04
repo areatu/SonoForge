@@ -1814,6 +1814,9 @@ class MainWindow(QMainWindow):
         if action == MeasurementAction.DOPPLER_TRACE:
             self._on_doppler_trace_tool(extra or "VTI")
             return
+        if action == MeasurementAction.DOPPLER_TRACE_AUTO:
+            self._on_doppler_trace_auto()
+            return
         if action == MeasurementAction.VESSEL_PSV_EDV:
             if self._viewer.start_vessel_psv():
                 self._show_status(tr("status.vessel_psv"))
@@ -1822,6 +1825,10 @@ class MainWindow(QMainWindow):
             preset = self._tool_panel.measure._menu.vessel_preset()
             if self._viewer.start_vessel_auto_trace(preset):
                 self._show_status(tr("status.vessel_auto_trace"))
+            return
+        if action == MeasurementAction.VESSEL_AVERAGE:
+            if self._viewer.average_vessel_cycles():
+                self._show_status(tr("status.vessel_average"))
             return
         if action == MeasurementAction.VESSEL_CLEAR:
             self._viewer.clear_vessel_measurement()
@@ -1874,6 +1881,14 @@ class MainWindow(QMainWindow):
             return
         self._viewer.set_doppler_tool_mode("trace", trace_label=trace_label)
         self._show_status(tr("status.doppler_trace_tool", trace_label=trace_label))
+
+    def _on_doppler_trace_auto(self) -> None:
+        if not self._ensure_doppler_ready(require_time=True):
+            return
+        if self._viewer.start_vti_auto_trace():
+            self._show_status(tr("status.vti_auto_trace"))
+        else:
+            self._show_status(tr("status.load_first_frame_doppler"))
 
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():

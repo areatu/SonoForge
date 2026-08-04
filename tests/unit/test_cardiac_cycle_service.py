@@ -11,6 +11,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_service import (
     CardiacCycle,
     CardiacCycleService,
     align_spectrogram_to_ecg,
+    derive_psv_edv_indices_per_cycle,
     derive_psv_edv_indices_with_cycles,
 )
 
@@ -207,3 +208,44 @@ class TestDerivePsvEdvIndicesWithCycles:
         envelope = tuple((i * 100.0, float(i)) for i in range(10))
         cycles = (_cycle(1500.0, 1700.0),)
         assert derive_psv_edv_indices_with_cycles(envelope, cycles, mapping) is None
+
+
+class TestDerivePsvEdvIndicesPerCycle:
+    def test_returns_snapped_indices_per_cycle(self) -> None:
+        mapping = _time_mapping(4000.0)
+        times = [
+            0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0, 1800.0,
+            2000.0, 2200.0, 2400.0, 2600.0, 2800.0, 3000.0, 3200.0, 3400.0, 3600.0, 3800.0,
+        ]
+        ys = [
+            70.0, 60.0, 45.0, 30.0, 18.0, 8.0, 30.0, 55.0, 68.0, 62.0,
+            50.0, 40.0, 55.0, 70.0, 80.0, 85.0, 90.0, 92.0, 95.0, 88.0,
+        ]
+        envelope = tuple((t / 4.0, y) for t, y in zip(times, ys))
+        cycles = (_cycle(200.0, 1800.0), _cycle(2000.0, 3800.0))
+        per_cycle = derive_psv_edv_indices_per_cycle(envelope, cycles, mapping)
+        assert len(per_cycle) == 2
+        # cycle 0: PSV at t=1000 (idx 5), EDV at t=1600 (idx 8)
+        assert per_cycle[0] == (5, 8)
+        # cycle 1: PSV at t=2200 (idx 11), EDV at t=3600 (idx 18)
+        assert per_cycle[1] == (11, 18)
+
+    def test_max_cycles_limit(self) -> None:
+        mapping = _time_mapping(4000.0)
+        envelope = tuple((i * 100.0, float(i)) for i in range(10))
+        cycles = (_cycle(0.0, 1000.0), _cycle(1000.0, 2000.0), _cycle(2000.0, 3000.0))
+        per_cycle = derive_psv_edv_indices_per_cycle(envelope, cycles, mapping, max_cycles=2)
+        assert len(per_cycle) == 2
+
+    def test_skips_sparse_cycles(self) -> None:
+        mapping = _time_mapping(4000.0)
+        envelope = tuple((i * 100.0, float(i)) for i in range(10))
+        cycles = (_cycle(1500.0, 1700.0), _cycle(0.0, 5000.0))
+        per_cycle = derive_psv_edv_indices_per_cycle(envelope, cycles, mapping)
+        assert len(per_cycle) == 1
+        assert per_cycle[0] == (0, 9)
+
+    def test_empty_without_cycles(self) -> None:
+        mapping = _time_mapping(4000.0)
+        envelope = tuple((i * 100.0, float(i)) for i in range(10))
+        assert derive_psv_edv_indices_per_cycle(envelope, (), mapping) == []
