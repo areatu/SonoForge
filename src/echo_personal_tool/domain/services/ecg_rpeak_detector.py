@@ -7,9 +7,40 @@ import logging
 import numpy as np
 from scipy.signal import butter, filtfilt
 
-from echo_personal_tool.domain.models.ecg import RPeakResult
+from echo_personal_tool.domain.models.ecg import EcgWaveform, RPeakResult
 
 logger = logging.getLogger(__name__)
+
+
+def primary_ecg_signal(ecg: EcgWaveform) -> tuple[np.ndarray, float] | None:
+    """Return (voltage_mv, sampling_frequency) of the primary ECG lead.
+
+    Prefers Lead II (standard for R-peak detection); falls back to the first
+    lead. Returns None when no usable lead exists.
+    """
+    lead = ecg.primary_lead
+    if lead is None or lead.sampling_frequency <= 0:
+        return None
+    try:
+        lead_index = ecg.leads.index(lead)
+    except ValueError:
+        lead_index = 0
+    voltage = ecg.as_voltage_mv(lead_index)
+    if voltage.ndim != 1 or voltage.size < 10:
+        return None
+    return voltage, float(lead.sampling_frequency)
+
+
+def detect_r_peaks_from_waveform(ecg: EcgWaveform) -> RPeakResult | None:
+    """Detect R-peaks from the primary lead of an ECG waveform.
+
+    Returns None when the waveform has no usable primary lead.
+    """
+    signal = primary_ecg_signal(ecg)
+    if signal is None:
+        return None
+    voltage, fs = signal
+    return detect_r_peaks(voltage, fs)
 
 
 def detect_r_peaks(

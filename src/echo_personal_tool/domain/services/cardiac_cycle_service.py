@@ -16,7 +16,10 @@ import numpy as np
 
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.ecg import EcgWaveform, RPeakResult
-from echo_personal_tool.domain.services.ecg_rpeak_detector import detect_r_peaks
+from echo_personal_tool.domain.services.ecg_rpeak_detector import (
+    detect_r_peaks,
+    primary_ecg_signal,
+)
 
 _ALIGN_CONFIDENCE_THRESHOLD = 0.3
 _CYCLE_CONFIDENCE_THRESHOLD = 0.4
@@ -49,21 +52,6 @@ class CardiacCycle:
     rr_ms: float | None = None
 
 
-def _primary_voltage(ecg: EcgWaveform) -> tuple[np.ndarray, float] | None:
-    """Return (voltage_mv, sampling_frequency) of the primary ECG lead."""
-    lead = ecg.primary_lead
-    if lead is None or lead.sampling_frequency <= 0:
-        return None
-    try:
-        lead_index = ecg.leads.index(lead)
-    except ValueError:
-        lead_index = 0
-    voltage = ecg.as_voltage_mv(lead_index)
-    if voltage.ndim != 1 or voltage.size < 10:
-        return None
-    return voltage, float(lead.sampling_frequency)
-
-
 def align_spectrogram_to_ecg(
     ecg: EcgWaveform,
     profile_times_ms: np.ndarray,
@@ -93,7 +81,7 @@ def align_spectrogram_to_ecg(
     if np.nanstd(signal) <= 1e-9:
         return None
 
-    lead_data = _primary_voltage(ecg)
+    lead_data = primary_ecg_signal(ecg)
     if lead_data is None:
         return None
     voltage, fs = lead_data
@@ -212,7 +200,7 @@ class CardiacCycleService:
         if times.size < _MIN_PROFILE_SAMPLES:
             return []
 
-        lead_data = _primary_voltage(ecg)
+        lead_data = primary_ecg_signal(ecg)
         if lead_data is None:
             return []
         voltage, fs = lead_data

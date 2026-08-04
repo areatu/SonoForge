@@ -2,10 +2,30 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import numpy as np
 
-from echo_personal_tool.domain.models.ecg import RPeakResult
-from echo_personal_tool.domain.services.ecg_ed_es_mapper import map_rpeaks_to_frames
+from echo_personal_tool.domain.models.ecg import EcgLead, EcgWaveform, RPeakResult
+from echo_personal_tool.domain.services.ecg_ed_es_mapper import (
+    detect_ed_es_for_cine,
+    map_rpeaks_to_frames,
+)
+
+
+def _impulse_ecg(
+    r_peak_times_ms: tuple[float, ...] = (500.0, 1500.0, 2500.0),
+    fs: float = 250.0,
+    duration_ms: float = 4000.0,
+) -> EcgWaveform:
+    n = int(duration_ms * fs / 1000.0)
+    signal = np.zeros(n)
+    for t in r_peak_times_ms:
+        idx = int(t * fs / 1000.0)
+        if idx < n:
+            signal[idx] = 10.0
+    lead = EcgLead(name="II", samples=signal, sampling_frequency=fs, baseline=0, bits_stored=0)
+    return EcgWaveform(leads=[lead], waveform_frequency=fs, number_of_waveform_channels=1)
 
 
 class TestMapRpeaksToFrames:
@@ -92,3 +112,72 @@ class TestMapRpeaksToFrames:
         result = map_rpeaks_to_frames(rpeaks, 33.3, 60)
         assert result.cycle_start_frame == result.ed_frame_index
         assert result.cycle_end_frame > result.cycle_start_frame
+
+
+class TestDetectEdEsForCine:
+    def test_no_ecg_uses_default(self) -> None:
+        result = detect_ed_es_for_cine(None, 33.3, 30)
+        assert result.source == "image"
+        assert result.ed_frame_index == 0
+        assert result.es_frame_index == 10
+
+    def test_no_ecg_uses_image_fallback(self) -> None:
+        result = detect_ed_es_for_cine(None, 33.3, 30, image_fallback=lambda: (5, 20))
+        assert result.source == "image"
+        assert result.ed_frame_index == 5
+        assert result.es_frame_index == 20
+
+    def test_ecg_high_confidence_used(self) -> None:
+        ecg = _impulse_ecg()
+        result = detect_ed_es_for_cine(ecg, 33.3, 60)
+        assert result.source == "ecg"
+        assert result.ed_frame_index == round(500.0 / 33.3)  # 15
+        assert result.es_frame_index > result.ed_frame_index
+
+    def test_ecg_low_confidence_falls_back_to_image(self) -> None:
+        fake = RPeakResult(
+            r_peak_indices=np.array([0, 500]),
+            r_peak_times_ms=np.array([0.0, 1000.0]),
+            heart_rate_bpm=60.0,
+            rr_intervals_ms=np.array([1000.0]),
+            confidence=0.1,
+        )
+        with patch(
+            "echo_personal_tool.domain.services.ecg_ed_es_mapper.detect_r_peaks_from_waveform",
+            return_value=fake,
+        ):
+            result = detect_ed_es_for_cine(
+                _impulse_ecg(),
+                33.3,
+                30,
+                image_fallback=lambda: (4, 18),
+            )
+        assert result.source == "image"
+        assert result.ed_frame_index == 4
+        assert result.es_frame_index == 18
+
+    def test_ecg_unusable_falls_back_to_default(self) -> None:
+        with patch(
+            "echo_personal_tool.domain.services.ecg_ed_es_mapper.detect_r_peaks_from_waveform",
+            return_value=None,
+        ):
+            result = detect_ed_es_for_cine(_impulse_ecg(), 33.3, 30)
+        assert result.source == "image"
+        assert result.ed_frame_index == 0
+        assert result.es_frame_index == 10
+
+    def test_precomputed_r_peak_result_used(self) -> None:
+        rpeaks = RPeakResult(
+            r_peak_indices=np.array([0, 500]),
+            r_peak_times_ms=np.array([0.0, 1000.0]),
+            heart_rate_bpm=60.0,
+            rr_intervals_ms=np.array([1000.0]),
+            confidence=0.9,
+        )
+        result = detect_ed_es_for_cine(None, 33.3, 30, r_peak_result=rpeaks)
+        assert result.source == "ecg"
+
+    def test_image_fallback_clipped(self) -> None:
+        result = detect_ed_es_for_cine(None, 33.3, 30, image_fallback=lambda: (100, -5))
+        assert result.ed_frame_index == 29
+        assert result.es_frame_index == 0

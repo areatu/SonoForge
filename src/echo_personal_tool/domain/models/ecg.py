@@ -83,3 +83,4 @@ class EcEDFrameMapping:
     cycle_start_frame: int
     cycle_end_frame: int
     source: str = "ecg"
+    r_peak_result: RPeakResult | None = None

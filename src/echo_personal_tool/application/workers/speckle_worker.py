@@ -126,27 +126,23 @@ class SpeckleTrackingWorker(QRunnable):
             if manual_phases:
                 global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
                 global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
-            elif self._ecg_waveform is not None:
-                # ECG-based ED/ES detection
-                from echo_personal_tool.domain.services.ecg_ed_es_mapper import map_rpeaks_to_frames
-                from echo_personal_tool.domain.services.ecg_rpeak_detector import detect_r_peaks
-
-                ecg_signal = self._ecg_waveform.as_voltage_mv()
-                if len(ecg_signal) > 0:
-                    r_peak_result = detect_r_peaks(
-                        ecg_signal,
-                        self._ecg_waveform.waveform_frequency,
-                    )
-                    mapping = map_rpeaks_to_frames(r_peak_result, frame_time_ms, n_frames)
-                    global_ed = mapping.ed_frame_index
-                    global_es = mapping.es_frame_index
-                    ed_es_source = mapping.source
-                else:
-                    global_ed, global_es = detect_ed_es_from_frames(self._frames, self._zone, config)
             else:
-                global_ed, global_es = detect_ed_es_from_frames(self._frames, self._zone, config)
-                global_ed = int(np.clip(global_ed, 0, n_frames - 1))
-                global_es = int(np.clip(global_es, 0, n_frames - 1))
+                # ECG-first policy: use R-peaks when reliable, else image fallback.
+                from echo_personal_tool.domain.services.ecg_ed_es_mapper import detect_ed_es_for_cine
+
+                def image_fallback() -> tuple[int, int]:
+                    return detect_ed_es_from_frames(self._frames, self._zone, config)
+
+                mapping = detect_ed_es_for_cine(
+                    self._ecg_waveform,
+                    self._frame_time_ms,
+                    n_frames,
+                    image_fallback=image_fallback,
+                )
+                global_ed = mapping.ed_frame_index
+                global_es = mapping.es_frame_index
+                ed_es_source = mapping.source
+                r_peak_result = mapping.r_peak_result
 
             phase_start = min(global_ed, global_es)
             phase_end = max(global_ed, global_es)
