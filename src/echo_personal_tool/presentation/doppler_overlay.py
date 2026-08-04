@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
@@ -104,7 +105,6 @@ class DopplerOverlayTools(QWidget):
         self._vessel_psv_px: tuple[float, float] | None = None
         self._vessel_edv_px: tuple[float, float] | None = None
         self._vessel_drag_target: str | None = None
-        self._vessel_items: list[pg.PlotDataItem] = []
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
         self._auto_envelope_item: pg.PlotDataItem | None = None
@@ -421,7 +421,8 @@ class DopplerOverlayTools(QWidget):
         """Render an auto-traced envelope and derive PSV/EDV markers.
 
         PSV is taken at the highest-velocity envelope point (minimum plot y),
-        EDV at the end of the envelope. Returns (psv, edv) in cm/s or None.
+        EDV at the diastolic minimum after the peak (falls back to the last
+        point when unreliable). Returns (psv, edv) in cm/s or None.
         """
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2:
@@ -433,9 +434,9 @@ class DopplerOverlayTools(QWidget):
         self._plot.addItem(item)
         self._auto_envelope_item = item
 
-        psv_idx = min(range(len(ys)), key=ys.__getitem__)
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
         psv_x, psv_y = envelope[psv_idx]
-        edv_x, edv_y = envelope[-1]
+        edv_x, edv_y = envelope[edv_idx]
         psv = self._axis_mapping.velocity_cm_s_from_y(psv_y)
         edv = self._axis_mapping.velocity_cm_s_from_y(edv_y)
 
@@ -454,20 +455,12 @@ class DopplerOverlayTools(QWidget):
         self._redraw_vessel_graphics()
 
     def _redraw_vessel_graphics(self) -> None:
-        for item in self._vessel_items:
-            self._plot.removeItem(item)
-        self._vessel_items.clear()
         if self._vessel_points is not None:
             self._plot.removeItem(self._vessel_points)
             self._vessel_points = None
         if self._vessel_text_item is not None:
             self._plot.removeItem(self._vessel_text_item)
             self._vessel_text_item = None
-
-        if self._vessel_psv_px is not None:
-            self._vessel_items.append(_vertical_line(self._plot, self._vessel_psv_px[0], "#e53935", self._vessel_items))
-        if self._vessel_edv_px is not None:
-            self._vessel_items.append(_vertical_line(self._plot, self._vessel_edv_px[0], "#43a047", self._vessel_items))
 
         spots = []
         if self._vessel_psv_px is not None:
@@ -843,31 +836,49 @@ def _near_point(px: float, py: float, target: tuple[float, float], tol: float = 
     return abs(px - target[0]) <= tol and abs(py - target[1]) <= tol
 
 
-def _vertical_line(plot, x: float, color: str, registry: list) -> pg.PlotDataItem:
-    y_lo, y_hi = 0.0, 200.0
-    try:
-        view = plot.getViewBox().viewRange()
-        y_lo, y_hi = float(view[1][0]), float(view[1][1])
-    except (AttributeError, TypeError, ValueError):
-        y_lo, y_hi = 0.0, 200.0
-    item = pg.PlotDataItem([x, x], [y_lo, y_hi], pen=pg.mkPen(color, width=2))
-    item.setZValue(22)
-    plot.addItem(item)
-    registry.append(item)
-    return item
+def derive_psv_edv_indices(envelope: tuple[tuple[float, float], ...]) -> tuple[int, int]:
+    """Return indices of the PSV and EDV points of an auto-traced envelope.
+
+    Envelope points are plot coordinates ``(x_px, y_px)`` with velocity
+    increasing upward, so PSV (max velocity) is the minimum y and EDV
+    (diastolic minimum velocity) is the maximum y inside the search window.
+    EDV falls back to the last envelope point when the post-PSV segment is
+    too short or the found minimum is too close to the cycle end (unreliable).
+    """
+    ys = np.asarray([point[1] for point in envelope])
+    if len(ys) < 5:
+        return int(np.argmin(ys)), len(ys) - 1
+
+    psv_idx = int(np.argmin(ys))
+    diastolic = ys[psv_idx:]
+    if len(diastolic) < 3:
+        return psv_idx, len(ys) - 1
+
+    search_start = int(len(diastolic) * 0.6)
+    local_idx = int(np.argmax(diastolic[search_start:])) + search_start
+    edv_idx = psv_idx + local_idx
+
+    psv_y = float(ys[psv_idx])
+    last_y = float(ys[-1])
+    edv_y = float(ys[edv_idx])
+    fall_px = last_y - psv_y
+    if fall_px > 0 and (edv_y - last_y) < 0.05 * fall_px:
+        edv_idx = len(ys) - 1
+
+    return psv_idx, edv_idx
 
 
 def _build_vessel_text(psv_cm_s: float, edv_cm_s: float, metrics: VesselMetrics) -> pg.TextItem:
     lines = [
-        f"PSV: {psv_cm_s:.1f}",
-        f"EDV: {edv_cm_s:.1f}",
+        f"PSV: {psv_cm_s:.1f} cm/s",
+        f"EDV: {edv_cm_s:.1f} cm/s",
         f"RI: {metrics.ri:.2f}" if metrics.ri is not None else "RI: —",
         f"S/D: {metrics.sd:.2f}" if metrics.sd is not None else "S/D: —",
-        f"MV≈: {metrics.mv_approx:.1f}" if metrics.mv_approx is not None else "MV≈: —",
+        f"MV≈: {metrics.mv_approx:.1f} cm/s" if metrics.mv_approx is not None else "MV≈: —",
     ]
     if not metrics.valid:
         lines.append("Проверьте точки")
     text = "\n".join(lines)
-    item = pg.TextItem(text, anchor=(1.0, 0.0))
+    item = pg.TextItem(text, anchor=(1.0, 0.0), fill=(0, 0, 0, 200))
     item.setZValue(30)
     return item

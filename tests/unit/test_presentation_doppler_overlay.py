@@ -349,6 +349,85 @@ class TestVesselMode:
         overlay.finish_vessel_drag()
         assert overlay.vessel_status() == "done"
 
+    def test_vessel_text_includes_units(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)  # PSV -> 50 cm/s
+        overlay.handle_vessel_click(300.0, 90.0)  # EDV -> 10 cm/s
+        assert overlay._vessel_text_item is not None
+        text = overlay._vessel_text_item.toPlainText()
+        assert "PSV: 50.0 cm/s" in text
+        assert "EDV: 10.0 cm/s" in text
+        assert "MV≈: 23.3 cm/s" in text
+
+    def test_vessel_text_has_opaque_background(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)
+        overlay.handle_vessel_click(300.0, 100.0)
+        fill = overlay._vessel_text_item.fill
+        assert fill is not None
+        color = fill.color()
+        assert color.alpha() > 150
+
+    def test_vessel_no_vertical_lines(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)
+        overlay.handle_vessel_click(300.0, 100.0)
+        from pyqtgraph import PlotDataItem
+
+        for item in mock_plot.items:
+            if not isinstance(item, PlotDataItem):
+                continue
+            pen = item.opts.get("pen")
+            if pen is None:
+                continue
+            assert pen.color().name() not in ("#e53935", "#43a047")
+
+
+class TestDerivePsvEdvIndices:
+    def test_finds_interior_edv_min(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        # velocities cm/s: [10, 30, 60, 80, 90, 75, 50, 35, 22, 40] -> y = 100 - v
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 4
+        assert edv_idx == 8
+
+    def test_flat_end_falls_back_to_last_point(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        # minimum in the window is only ~1 cm/s below the end -> unreliable
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 30, 45, 58, 70, 69])
+        )
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 4
+        assert edv_idx == 9
+
+    def test_short_envelope_uses_last_point(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 2
+        assert edv_idx == 3
+
+    def test_psv_near_end_short_diastolic_fallback(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        # velocities cm/s: [20, 40, 60, 80, 70, 50, 30, 20, 15, 90] -> PSV at the last point
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([80, 60, 40, 20, 30, 50, 70, 80, 85, 10])
+        )
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 9
+        assert edv_idx == 9
+
 
 class TestAutoTrace:
     def test_apply_auto_trace_sets_vessel_done(self, overlay, mock_plot):
@@ -365,6 +444,16 @@ class TestAutoTrace:
         assert edv_v == pytest.approx(30.0)
         assert overlay._auto_envelope_item is not None
         assert overlay._auto_envelope_item in mock_plot.items
+
+    def test_apply_auto_trace_places_edv_at_diastolic_min(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        result = overlay.apply_auto_trace(envelope)
+        assert result == pytest.approx((90.0, 22.0))
+        assert overlay._vessel_psv_px == envelope[4]
+        assert overlay._vessel_edv_px == envelope[8]
 
     def test_apply_auto_trace_short_envelope_returns_none(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping())
