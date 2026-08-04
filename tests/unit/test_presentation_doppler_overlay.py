@@ -472,6 +472,92 @@ class TestAutoTrace:
         assert overlay._auto_envelope_item is None
 
 
+class TestAutoTraceWithCycles:
+    def test_apply_auto_trace_uses_ecg_cycle(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=0.0,
+            end_ms=2500.0,
+            r_peak_ms=0.0,
+            ed_ms=0.0,
+            es_ms=2500.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        result = overlay.apply_auto_trace(envelope, cycles=(cycle,))
+        assert result == pytest.approx((90.0, 22.0))
+        assert overlay.vessel_cycle_source() == "ecg"
+
+    def test_apply_auto_trace_falls_back_when_cycle_absent(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=2500.0,
+            end_ms=4000.0,
+            r_peak_ms=2500.0,
+            ed_ms=2500.0,
+            es_ms=4000.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        result = overlay.apply_auto_trace(envelope, cycles=(cycle,))
+        assert result == pytest.approx((90.0, 22.0))
+        assert overlay.vessel_cycle_source() == "image"
+
+    def test_apply_auto_trace_no_cycles_source_image(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        overlay.apply_auto_trace(envelope)
+        assert overlay.vessel_cycle_source() == "image"
+
+    def test_clear_vessel_resets_cycle_source(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=0.0,
+            end_ms=2500.0,
+            r_peak_ms=0.0,
+            ed_ms=0.0,
+            es_ms=2500.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        overlay.apply_auto_trace(envelope, cycles=(cycle,))
+        assert overlay.vessel_cycle_source() == "ecg"
+        overlay.clear_vessel()
+        assert overlay.vessel_cycle_source() is None
+
+
+def _vessel_mapping_with_time():
+    from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+    from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+    roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0)
+    return DopplerAxisMapping(
+        roi=roi,
+        baseline_y_px=100.0,
+        velocity_span_cm_s=200.0,
+        velocity_min_cm_s=-100.0,
+        velocity_max_cm_s=100.0,
+        plot_width=1000.0,
+        plot_height=200.0,
+        time_span_ms=2000.0,
+    )
+
+
 def _vessel_mapping():
     from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
     from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi

@@ -65,6 +65,13 @@ def get_thread_dicom_session() -> DicomSession:
     return session
 
 
+def read_ecg_waveform(path: Path | str):
+    """Return the ECG waveform stored in a DICOM file (None when absent)."""
+    session = get_thread_dicom_session()
+    session.open(path)
+    return session.waveform
+
+
 def release_stale_sessions(exclude: DicomSession | None = None) -> None:
     """Free heavy buffers from ALL thread-local sessions except *exclude*.
 

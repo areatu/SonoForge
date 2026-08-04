@@ -15,3 +15,4 @@ class VesselMeasurement:
     sop_instance_uid: str
     frame_index: int
     calibration_id: str | None = None
+    cycle_source: str = "manual"

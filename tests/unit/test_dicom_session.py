@@ -21,6 +21,14 @@ from tests.fixtures.generate_synthetic_dicom import (
 )
 
 
+def test_read_ecg_waveform_missing_returns_none(tmp_path: Path) -> None:
+    from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform
+
+    path = tmp_path / "no_ecg.dcm"
+    write_synthetic_dicom(path)
+    assert read_ecg_waveform(path) is None
+
+
 def test_decode_single_frame_dicom(tmp_path: Path) -> None:
     path = tmp_path / "single.dcm"
     write_synthetic_dicom(path)

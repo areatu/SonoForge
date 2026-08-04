@@ -2300,7 +2300,8 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
-        result = self._doppler.apply_auto_trace(envelope)
+        cycles = self._doppler_cardiac_cycles(envelope)
+        result = self._doppler.apply_auto_trace(envelope, cycles=cycles)
         if result is None:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
@@ -2309,6 +2310,40 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
         self._measurement_label.show()
         return True
+
+    def _doppler_cardiac_cycles(
+        self,
+        envelope: tuple[tuple[float, float], ...],
+    ) -> tuple[object, ...]:
+        """Build ECG cardiac cycles aligned to the envelope's local time axis."""
+        instance = self._current_instance_metadata()
+        if instance is None or instance.path is None:
+            return ()
+        from echo_personal_tool.infrastructure.dicom_session import read_ecg_waveform
+
+        try:
+            ecg = read_ecg_waveform(instance.path)
+        except Exception:  # noqa: BLE001
+            ecg = None
+        if ecg is None:
+            return ()
+        from echo_personal_tool.domain.services.cardiac_cycle_service import (
+            CardiacCycleService,
+        )
+
+        mapping = self._doppler.axis_mapping()
+        times_ms = np.array([mapping.time_ms_from_x(p[0]) for p in envelope], dtype=np.float64)
+        velocities = np.array(
+            [mapping.velocity_cm_s_from_y(p[1]) for p in envelope],
+            dtype=np.float64,
+        )
+        return tuple(
+            CardiacCycleService().get_cycles(
+                ecg=ecg,
+                spectrogram_time_axis_ms=times_ms,
+                fallback_signal=velocities,
+            )
+        )
 
     def accept_vessel_measurement(self) -> bool:
         if not self.is_vessel_available():
@@ -2333,6 +2368,7 @@ class ViewerWidget(QWidget):
             mv_approx=metrics.mv_approx or 0.0,
             sop_instance_uid=instance_uid,
             frame_index=self._current_frame_index() or 0,
+            cycle_source=self._doppler.vessel_cycle_source() or "manual",
         )
         self.vessel_accept_requested.emit(measurement)
         self._doppler.clear_vessel()

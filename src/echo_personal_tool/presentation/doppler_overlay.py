@@ -19,6 +19,10 @@ from echo_personal_tool.domain.models import (
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+from echo_personal_tool.domain.services.cardiac_cycle_service import (
+    CardiacCycle,
+    derive_psv_edv_indices_with_cycles,
+)
 from echo_personal_tool.domain.services.doppler_trace_points import finalize_vti_trace_points
 
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
@@ -105,6 +109,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_psv_px: tuple[float, float] | None = None
         self._vessel_edv_px: tuple[float, float] | None = None
         self._vessel_drag_target: str | None = None
+        self._vessel_cycle_source: str | None = None
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
         self._auto_envelope_item: pg.PlotDataItem | None = None
@@ -406,6 +411,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_psv_px = None
         self._vessel_edv_px = None
         self._vessel_drag_target = None
+        self._vessel_cycle_source = None
         self._clear_auto_envelope()
         self._redraw_vessel_graphics()
 
@@ -417,12 +423,19 @@ class DopplerOverlayTools(QWidget):
                 pass
             self._auto_envelope_item = None
 
-    def apply_auto_trace(self, envelope: tuple[tuple[float, float], ...]) -> tuple[float, float] | None:
+    def apply_auto_trace(
+        self,
+        envelope: tuple[tuple[float, float], ...],
+        *,
+        cycles: tuple[CardiacCycle, ...] = (),
+    ) -> tuple[float, float] | None:
         """Render an auto-traced envelope and derive PSV/EDV markers.
 
         PSV is taken at the highest-velocity envelope point (minimum plot y),
-        EDV at the diastolic minimum after the peak (falls back to the last
-        point when unreliable). Returns (psv, edv) in cm/s or None.
+        EDV at the diastolic minimum after the peak. When *cycles* (from the
+        ECG cardiac-cycle service) are given, PSV/EDV are snapped inside the
+        ECG cycle containing the systolic peak; otherwise the whole-envelope
+        heuristic is used. Returns (psv, edv) in cm/s or None.
         """
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2:
@@ -434,7 +447,19 @@ class DopplerOverlayTools(QWidget):
         self._plot.addItem(item)
         self._auto_envelope_item = item
 
-        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        cycle_snapped = None
+        if cycles:
+            cycle_snapped = derive_psv_edv_indices_with_cycles(
+                envelope,
+                cycles,
+                self._axis_mapping,
+            )
+        if cycle_snapped is not None:
+            psv_idx, edv_idx = cycle_snapped
+            self._vessel_cycle_source = "ecg"
+        else:
+            psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+            self._vessel_cycle_source = "image"
         psv_x, psv_y = envelope[psv_idx]
         edv_x, edv_y = envelope[edv_idx]
         psv = self._axis_mapping.velocity_cm_s_from_y(psv_y)
@@ -446,8 +471,12 @@ class DopplerOverlayTools(QWidget):
         self._redraw_vessel_graphics()
         return psv, edv
 
+    def vessel_cycle_source(self) -> str | None:
+        return self._vessel_cycle_source
+
     def show_vessel_measurement(self, measurement: VesselMeasurement) -> None:
         self._vessel_mode = "done"
+        self._vessel_cycle_source = getattr(measurement, "cycle_source", "manual")
         psv_y = self._axis_mapping.y_from_velocity_cm_s(measurement.psv_cm_s)
         edv_y = self._axis_mapping.y_from_velocity_cm_s(measurement.edv_cm_s)
         self._vessel_psv_px = (0.0, psv_y)
