@@ -214,13 +214,21 @@ def _extract_side(
     # Keep only the structures anchored at the baseline: the spectral flow.
     # Disconnected artifacts (text, annotations) are discarded.
     baseline_labels = {int(lb) for lb in np.unique(labels[anchor_row, :]) if lb != 0}
+    counts = np.bincount(labels.ravel())
+    counts[0] = 0
     if baseline_labels:
-        keep = np.isin(labels, tuple(baseline_labels))
+        baseline_area = float(sum(counts[int(lb)] for lb in baseline_labels))
+        largest_area = float(counts.max())
+        if baseline_area >= _MIN_SIGNAL_FRACTION * largest_area:
+            keep = np.isin(labels, tuple(baseline_labels))
+        else:
+            # A dark zero-velocity window can separate the real flow from the
+            # baseline, leaving only a thin speckle line anchored there. Trace
+            # the largest component (the actual flow) in that case.
+            keep = labels == int(np.argmax(counts))
     else:
         # Nothing reaches the baseline: fall back to the largest component so a
         # thin envelope curve with a dark interior is still traced.
-        counts = np.bincount(labels.ravel())
-        counts[0] = 0
         keep = labels == int(np.argmax(counts))
 
     rows = np.full(pos.shape[1], -1.0, dtype=np.float64)

@@ -471,6 +471,21 @@ class TestAutoTrace:
         overlay.clear_vessel()
         assert overlay._auto_envelope_item is None
 
+    def test_clear_measurements_clears_vessel_state(self, overlay, mock_plot):
+        """Vessel PSV/EDV markers, auto-trace line, and text must be cleared by
+        clear_measurements() (used on file switch) so stale measurements do not
+        linger over a newly loaded study."""
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.apply_auto_trace(((100.0, 50.0), (200.0, 60.0)))
+        assert overlay._vessel_psv_px is not None
+        assert overlay._vessel_edv_px is not None
+        assert overlay._auto_envelope_item is not None
+        overlay.clear_measurements(keep_calibration_graphics=False)
+        assert overlay._vessel_psv_px is None
+        assert overlay._vessel_edv_px is None
+        assert overlay._auto_envelope_item is None
+        assert overlay.vessel_status() == "none"
+
 
 class TestAutoTraceWithCycles:
     def test_apply_auto_trace_uses_ecg_cycle(self, overlay, mock_plot):

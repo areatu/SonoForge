@@ -334,6 +334,7 @@ class DopplerOverlayTools(QWidget):
         self._tool_mode = "none"
         self._workflow = None
         self._workflow_index = 0
+        self.clear_vessel()
         if not keep_calibration_graphics:
             self._roi_item.setData([], [])
             self._baseline_item.setData([], [])

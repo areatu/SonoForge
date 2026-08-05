@@ -225,6 +225,21 @@ class TestExtractDopplerEnvelope:
         assert max(ys) < 95.0
         assert (max(ys) - min(ys)) > 8.0, "envelope must follow a real flow profile, not a flat text band"
 
+    def test_flow_separated_from_baseline_by_dark_gap_is_traced(self):
+        """A dark zero-velocity window can separate the real flow from the
+        baseline. If only a thin speckle line touches the baseline while the
+        actual flow is a large disconnected blob, the flow must be traced
+        (real DICOMs show this, e.g. auto-gain darkness below the flow)."""
+        h, w = 100, 120
+        gray = np.zeros((h, w), dtype=np.uint8)
+        baseline = 80
+        gray[20:60, 10:110] = 200   # real flow, top edge at row 20
+        gray[79, 10:110] = 200      # speckle line exactly on the baseline row
+        result = extract_doppler_envelope(gray, _roi(w=w, h=h), baseline_y_px=float(baseline))
+        assert len(result) >= 2
+        ys = [pt[1] for pt in result]
+        assert abs(float(np.median(ys)) - 20.5) < 3.0, "must trace the flow, not the baseline speckle"
+
 
 def _below_baseline_spectrum(height=100, width=160, baseline=40):
     """Bright spectral flow whose bottom edge sits at *edge_row* (below baseline)."""
