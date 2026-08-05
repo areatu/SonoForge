@@ -1,5 +1,11 @@
 # Changelog — Текущая сессия
 
+## [2026-08-06] Сосуды: усреднение PSV/EDV без ЭКГ + ручная коррекция PSV
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/services/cardiac_cycle_service.py`, `src/echo_personal_tool/presentation/doppler_overlay.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_cardiac_cycle_service.py`, `tests/unit/test_presentation_doppler_overlay.py`, `tests/unit/test_presentation_viewer_widget.py`, `tests/unit/test_i18n.py`
+- **Суть:** Усреднение PSV/EDV теперь работает без ЭКГ: циклы детектируются из спектрального envelope (`detect_cycles_from_envelope`, fallback во всех ветках `get_cycles`). EDV — адаптивное окно (≤30 мс/10 точек) перед systolic upstroke с fallback на минимум; PSV/EDV усредняются медианой (не средним). Добавлен ручной режим коррекции PSV: полоса-подсветка текущего цикла-кандидата, ←/→ перебор циклов, Enter — принять PSV кандидата, Esc — отмена; i18n-ключи очищены от упоминаний ЭКГ, добавлен `viewer.vessel_cycle_candidate`. Реализовано через subagent-driven development (6 задач + финальное ревью, 9 коммитов на ветке `optimize/memory`, `d6c074b..d7467cf`).
+- **Тип-заметка:** в рабочем дереве остаются чужие незакоммиченные in-flight правки `doppler_metrics.py`/`measurements.py` (не наши, не трогать).
+
 ## [2026-08-03] Сосуды: измерения PSV/EDV в панели Measurements
 - **Тип:** feature
 - **Файлы:** `src/echo_personal_tool/domain/calculations/vessel_metrics.py`, `src/echo_personal_tool/domain/models/vessel_measurement.py`, `src/echo_personal_tool/domain/models/measurements.py`, `src/echo_personal_tool/application/study_measurement_session.py`, `src/echo_personal_tool/application/app_controller.py`, `src/echo_personal_tool/presentation/doppler_overlay.py`, `src/echo_personal_tool/presentation/measures_menu.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/presentation/measurement_action.py`, `src/echo_personal_tool/presentation/main_window.py`, `src/echo_personal_tool/presentation/tool_panel.py`, `src/echo_personal_tool/domain/services/measurement_report_formatter.py`, `src/echo_personal_tool/domain/services/measurement_results_formatter.py`, `src/echo_personal_tool/presentation/measurement_panel.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`
