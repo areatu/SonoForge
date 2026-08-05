@@ -38,6 +38,10 @@ class EcgStripWidget(QWidget):
         self._r_peak_times: np.ndarray | None = None
         self._ecg_duration_ms: float = 0.0
 
+        # Cap the strip's own height so the parent layout does not stretch it
+        # (the inner plot's sizeHint is ~480px even with a max height set).
+        self.setMaximumHeight(60)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
