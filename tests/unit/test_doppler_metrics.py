@@ -50,7 +50,10 @@ def test_compute_full_diastolic_scenario() -> None:
 def test_compute_cw_scenario() -> None:
     dto = DopplerMeasurementDTO(
         peaks=(DopplerPeakMarker(label="vmax", time_ms=0.0, velocity_cm_s=300.0),),
-        intervals=(DopplerIntervalMarker(label="AT", start_time_ms=200.0, end_time_ms=500.0),),
+        intervals=(
+            DopplerIntervalMarker(label="AT", start_time_ms=200.0, end_time_ms=500.0),
+            DopplerIntervalMarker(label="ET", start_time_ms=200.0, end_time_ms=500.0),
+        ),
         traces=(
             DopplerTrace(
                 label="vti",
@@ -61,12 +64,13 @@ def test_compute_cw_scenario() -> None:
 
     result = compute(dto)
 
-    expected_vti = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
 
     assert result.vpeak_cm_s == 300.0
     assert result.vti_cm == expected_vti
     assert result.pgpeak_mmhg == 36.0
     assert result.at_ms == 300.0
+    assert result.et_ms == 300.0
     assert result.vmean_cm_s == expected_vti / 0.3
     assert result.pgmean_mmhg == 4.0 * (result.vmean_cm_s / 100.0) ** 2
 
@@ -83,8 +87,8 @@ def test_compute_vti_averaged_across_multiple_traces() -> None:
 
     result = compute(dto)
 
-    vti1 = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
-    vti2 = float(np.trapz([0.0, 100.0, 0.0], [300.0, 400.0, 500.0])) / 1000.0
+    vti1 = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    vti2 = float(np.trapezoid([0.0, 100.0, 0.0], [300.0, 400.0, 500.0])) / 1000.0
     assert result.vti_cm == pytest.approx((vti1 + vti2) / 2.0)
 
 
@@ -109,7 +113,7 @@ def test_compute_vti_recognizes_valve_specific_labels(trace_label: str) -> None:
 
     result = compute(dto)
 
-    expected_vti = float(np.trapz([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
     assert result.vti_cm == pytest.approx(expected_vti)
 
 
@@ -162,3 +166,122 @@ def test_compute_empty_dto_returns_all_none() -> None:
     assert result.vmean_cm_s is None
     assert result.pgpeak_mmhg is None
     assert result.pgmean_mmhg is None
+
+
+def test_compute_vpeak_from_trace_when_no_marker() -> None:
+    """Vpeak falls back to max(|v|) across VTI traces when no Vmax marker is placed."""
+    trace = DopplerTrace(
+        label="VTI AV",
+        points=((0.0, 50.0), (100.0, 120.0), (200.0, 80.0), (300.0, 30.0)),
+    )
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vpeak_cm_s == 120.0
+    assert result.pgpeak_mmhg == pytest.approx(4.0 * (120.0 / 100.0) ** 2)
+
+
+def test_compute_vpeak_uses_marker_over_trace() -> None:
+    """Explicit Vmax marker takes priority over trace-derived Vpeak."""
+    trace = DopplerTrace(
+        label="VTI AV",
+        points=((0.0, 50.0), (100.0, 120.0), (200.0, 80.0), (300.0, 30.0)),
+    )
+    peak = DopplerPeakMarker(label="Vmax", time_ms=100.0, velocity_cm_s=150.0)
+    dto = DopplerMeasurementDTO(peaks=(peak,), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vpeak_cm_s == 150.0
+    assert result.pgpeak_mmhg == pytest.approx(4.0 * (150.0 / 100.0) ** 2)
+
+
+def test_compute_vpeak_from_trace_negative_velocities() -> None:
+    """For regurgitation traces Vpeak uses max(|v|) so negative flow is reported correctly."""
+    trace = DopplerTrace(
+        label="VTI AR",
+        points=((0.0, -30.0), (100.0, -150.0), (200.0, -40.0)),
+    )
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vpeak_cm_s == 150.0
+
+
+def test_compute_vmean_from_trace_duration_when_no_et() -> None:
+    """Vmean falls back to VTI / trace duration when no ET interval marker is present."""
+    trace = DopplerTrace(
+        label="vti",
+        points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0)),
+    )
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vmean = expected_vti / 0.2
+    assert result.vmean_cm_s == pytest.approx(expected_vmean)
+    assert result.pgmean_mmhg == pytest.approx(4.0 * (expected_vmean / 100.0) ** 2)
+
+
+def test_compute_vmean_uses_et_over_trace_duration() -> None:
+    """ET interval takes priority over trace duration for Vmean."""
+    trace = DopplerTrace(
+        label="vti",
+        points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0)),
+    )
+    et = DopplerIntervalMarker(label="ET", start_time_ms=0.0, end_time_ms=300.0)
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(et,), traces=(trace,))
+    result = compute(dto)
+
+    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vmean = expected_vti / 0.3
+    assert result.vmean_cm_s == pytest.approx(expected_vmean)
+
+
+def test_compute_vmean_none_when_trace_has_insufficient_points() -> None:
+    """Vmean from trace requires at least 2 points to compute duration."""
+    trace = DopplerTrace(label="vti", points=((0.0, 100.0),))
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vmean_cm_s is None
+    assert result.pgmean_mmhg is None
+
+
+def test_compute_vpeak_none_when_traces_are_empty() -> None:
+    """Vpeak is None when there are no traces and no markers."""
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=())
+    result = compute(dto)
+
+    assert result.vpeak_cm_s is None
+    assert result.pgpeak_mmhg is None
+
+
+def test_compute_vmean_none_when_vti_is_zero() -> None:
+    """Vmean is None when VTI is zero or negative."""
+    trace = DopplerTrace(label="vti", points=((0.0, 0.0), (200.0, 0.0)))
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vmean_cm_s is None
+    assert result.pgmean_mmhg is None
+
+
+def test_compute_trace_label_case_insensitive_for_vpeak() -> None:
+    """Vpeak from trace matches labels case-insensitively."""
+    trace = DopplerTrace(label="vti mv", points=((0.0, 0.0), (100.0, 140.0), (200.0, 0.0)))
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vpeak_cm_s == 140.0
+
+
+def test_compute_trace_label_valve_prefix_ignored_for_vpeak() -> None:
+    """Vpeak from trace works with valve-specific VTI labels."""
+    for label in ("VTI MV", "VTI MR", "VTI AV", "VTI AR", "VTI TR", "VTI PR"):
+        trace = DopplerTrace(
+            label=label,
+            points=((0.0, 0.0), (100.0, 160.0), (200.0, 0.0)),
+        )
+        dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+        result = compute(dto)
+        assert result.vpeak_cm_s == 160.0, f"Failed for {label}"

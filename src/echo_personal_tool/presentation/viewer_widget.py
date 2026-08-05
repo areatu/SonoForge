@@ -2386,7 +2386,17 @@ class ViewerWidget(QWidget):
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
-        self._measurement_label.setText(tr("viewer.vti_auto_trace_done"))
+        metrics = self._last_committed_doppler_metrics()
+        parts = [f"{trace_label}: {metrics.vti_cm:.1f} cm"]
+        if metrics.vpeak_cm_s is not None:
+            parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
+        if metrics.vmean_cm_s is not None:
+            parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
+        if metrics.pgpeak_mmhg is not None:
+            parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
+        if metrics.pgmean_mmhg is not None:
+            parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
+        self._measurement_label.setText(" | ".join(parts))
         self._measurement_label.show()
         return True
 
@@ -2980,19 +2990,25 @@ class ViewerWidget(QWidget):
         finished = self._doppler.finish_trace()
         if finished:
             label = self._doppler.last_committed_trace_label()
-            vti_cm = self._last_committed_vti_cm()
-            if vti_cm is not None:
-                self._measurement_label.setText(f"{label}: {vti_cm:.1f} cm")
-            else:
-                self._measurement_label.setText(f"{label}: —")
+            metrics = self._last_committed_doppler_metrics()
+            parts = [f"{label}: {metrics.vti_cm:.1f} cm"]
+            if metrics.vpeak_cm_s is not None:
+                parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
+            if metrics.vmean_cm_s is not None:
+                parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
+            if metrics.pgpeak_mmhg is not None:
+                parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
+            if metrics.pgmean_mmhg is not None:
+                parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
+            self._measurement_label.setText(" | ".join(parts))
         else:
             self._measurement_label.setText(tr("viewer.doppler_trace_finish"))
         return finished
 
-    def _last_committed_vti_cm(self) -> float | None:
+    def _last_committed_doppler_metrics(self):
         from echo_personal_tool.domain.calculations.doppler_metrics import compute
 
-        return compute(self._doppler.get_measurement_dto()).vti_cm
+        return compute(self._doppler.get_measurement_dto())
 
     def get_doppler_dto(self):
         return self._doppler.get_measurement_dto()

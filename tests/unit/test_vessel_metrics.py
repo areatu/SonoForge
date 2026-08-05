@@ -22,12 +22,14 @@ def test_psv_leq_edv_marks_invalid() -> None:
     assert m.valid is False
     assert m.ri is None
     assert m.sd is None
+    assert m.mv_approx is None
 
 
-def test_edv_zero_omits_ratios() -> None:
+def test_edv_zero_returns_ri_one() -> None:
     m = compute_vessel_metrics(120.0, 0.0)
     assert m.sd is None
-    assert m.ri is None
+    assert m.ri == pytest.approx(1.0)
+    assert m.valid is True
     assert m.mv_approx == pytest.approx(40.0)
 
 

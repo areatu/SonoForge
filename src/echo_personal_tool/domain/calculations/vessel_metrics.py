@@ -14,11 +14,8 @@ class VesselMetrics:
 
 
 def compute_vessel_metrics(psv_cm_s: float, edv_cm_s: float) -> VesselMetrics:
-    valid = psv_cm_s > edv_cm_s
-    ri = (psv_cm_s - edv_cm_s) / psv_cm_s if psv_cm_s > 0 and edv_cm_s > 0 else None
-    sd = psv_cm_s / edv_cm_s if edv_cm_s > 0 else None
-    if not valid:
-        ri = None
-        sd = None
-    mv_approx = (psv_cm_s + 2 * edv_cm_s) / 3.0
+    valid = psv_cm_s > 0 and edv_cm_s <= psv_cm_s
+    ri = (psv_cm_s - edv_cm_s) / psv_cm_s if valid else None
+    sd = psv_cm_s / edv_cm_s if valid and edv_cm_s > 0 else None
+    mv_approx = (psv_cm_s + 2 * edv_cm_s) / 3.0 if valid else None
     return VesselMetrics(ri=ri, sd=sd, mv_approx=mv_approx, valid=valid)

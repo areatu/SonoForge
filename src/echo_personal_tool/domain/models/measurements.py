@@ -18,6 +18,7 @@ class DopplerResults:
     dt_ms: float | None = None
     ivrt_ms: float | None = None
     at_ms: float | None = None
+    et_ms: float | None = None
     e_prime_sept_cm_s: float | None = None
     e_prime_lat_cm_s: float | None = None
     e_prime_avg_cm_s: float | None = None

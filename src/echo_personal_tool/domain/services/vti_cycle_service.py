@@ -43,7 +43,7 @@ def vti_from_points(points: Sequence[tuple[float, float]]) -> float:
     """
     times = np.asarray([p[0] for p in points], dtype=np.float64)
     velocities = np.asarray([p[1] for p in points], dtype=np.float64)
-    return float(np.trapz(velocities, times)) / 1000.0
+    return float(np.trapezoid(velocities, times)) / 1000.0
 
 
 def vti_in_cycle(

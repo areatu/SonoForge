@@ -54,13 +54,13 @@ from echo_personal_tool.domain.models import (
     StudyMetadata,
     TemporalFusionConfig,
     TemporalFusionResult,
+    VesselMeasurement,
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
 from echo_personal_tool.domain.models.viewer_state import ViewerState
-from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
@@ -1445,6 +1445,8 @@ class AppController(QObject):
                 e_over_e_prime=doppler.e_over_e_prime,
                 lav_index_ml_m2=lav_i,
                 tr_vmax_cm_s=doppler.tr_vmax_cm_s,
+                e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
+                e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
             )
         return MeasurementSnapshot(
             doppler=doppler,
