@@ -500,6 +500,10 @@ class DopplerOverlayTools(QWidget):
         self._vessel_edv_px = (edv_x, edv_value)
         self._redraw_vessel_graphics()
         self._clear_vessel_cycle_graphics()
+        self._vessel_cycle_selection = False
+        self._vessel_cycles = ()
+        self._vessel_cycle_psv_candidates = ()
+        self._vessel_cycle_index = 0
         return psv, edv
 
     def apply_auto_vti_trace(
@@ -626,7 +630,7 @@ class DopplerOverlayTools(QWidget):
         return self._vessel_averaged_cycles
 
     def vessel_cycle_selection_active(self) -> bool:
-        return self._vessel_cycle_selection
+        return self._vessel_cycle_selection and bool(self._vessel_cycle_psv_candidates)
 
     def vessel_cycle_count(self) -> int:
         return len(self._vessel_cycles)

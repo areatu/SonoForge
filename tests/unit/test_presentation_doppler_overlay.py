@@ -806,6 +806,23 @@ class TestVesselCycleCorrection:
         overlay.set_axis_mapping(_vessel_mapping())
         assert overlay.vessel_cycle_candidate() is None
 
+    def test_selection_active_requires_candidates(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay._vessel_cycle_selection = True
+        assert overlay.vessel_cycle_selection_active() is False
+
+    def test_auto_trace_clears_selection_state(self, overlay, mock_plot):
+        envelope = self._averaged(overlay, mock_plot)
+        assert overlay.vessel_cycle_selection_active() is True
+        assert overlay._vessel_cycle_band is not None
+        overlay.apply_auto_trace(envelope)
+        assert overlay.vessel_cycle_selection_active() is False
+        assert overlay._vessel_cycles == ()
+        assert overlay._vessel_cycle_psv_candidates == ()
+        assert overlay._vessel_cycle_band is None
+        overlay._redraw_vessel_graphics()
+        assert overlay._vessel_cycle_band is None
+
     def test_clear_vessel_resets_selection(self, overlay, mock_plot):
         self._averaged(overlay, mock_plot)
         overlay.clear_vessel()
