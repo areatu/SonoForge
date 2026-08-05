@@ -121,6 +121,8 @@ class DopplerOverlayTools(QWidget):
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
         self._auto_envelope_item: pg.PlotDataItem | None = None
+        self._vessel_cycle_band: pg.PlotDataItem | None = None
+        self._vessel_cycle_text: pg.TextItem | None = None
 
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
@@ -423,6 +425,7 @@ class DopplerOverlayTools(QWidget):
         return False
 
     def clear_vessel(self) -> None:
+        self._clear_vessel_cycle_graphics()
         self._vessel_mode = "none"
         self._vessel_psv_px = None
         self._vessel_edv_px = None
@@ -496,6 +499,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_psv_px = (psv_x, psv_y)
         self._vessel_edv_px = (edv_x, edv_value)
         self._redraw_vessel_graphics()
+        self._clear_vessel_cycle_graphics()
         return psv, edv
 
     def apply_auto_vti_trace(
@@ -570,6 +574,7 @@ class DopplerOverlayTools(QWidget):
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2 or not cycles:
             return None
+        self._clear_vessel_cycle_graphics()
         xs = [p[0] for p in envelope]
         ys = [p[1] for p in envelope]
         item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
@@ -611,6 +616,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_cycle_index = 0
         self._vessel_cycle_selection = True
         self._redraw_vessel_graphics()
+        self._redraw_vessel_cycle_graphics()
         return psv_median, edv_median
 
     def vessel_cycle_source(self) -> str | None:
@@ -618,6 +624,95 @@ class DopplerOverlayTools(QWidget):
 
     def vessel_averaged_cycles(self) -> int:
         return self._vessel_averaged_cycles
+
+    def vessel_cycle_selection_active(self) -> bool:
+        return self._vessel_cycle_selection
+
+    def vessel_cycle_count(self) -> int:
+        return len(self._vessel_cycles)
+
+    def vessel_cycle_index(self) -> int:
+        return self._vessel_cycle_index
+
+    def vessel_cycle_candidate(self) -> float | None:
+        if not self._vessel_cycle_psv_candidates:
+            return None
+        if self._vessel_cycle_index < 0 or self._vessel_cycle_index >= len(self._vessel_cycle_psv_candidates):
+            return None
+        return self._vessel_cycle_psv_candidates[self._vessel_cycle_index][1]
+
+    def move_vessel_cycle(self, delta: int) -> bool:
+        if not self._vessel_cycle_selection or not self._vessel_cycles:
+            return False
+        count = len(self._vessel_cycles)
+        self._vessel_cycle_index = (self._vessel_cycle_index + delta) % count
+        self._redraw_vessel_cycle_graphics()
+        self._emit_vessel_changed()
+        return True
+
+    def assign_vessel_cycle_psv(self) -> bool:
+        if not self._vessel_cycle_selection or not self._vessel_cycle_psv_candidates:
+            return False
+        if self._vessel_cycle_index < 0 or self._vessel_cycle_index >= len(self._vessel_cycle_psv_candidates):
+            return False
+        time_ms, velocity_cm_s = self._vessel_cycle_psv_candidates[self._vessel_cycle_index]
+        self._vessel_psv_px = (
+            self._axis_mapping.x_from_time_ms(time_ms),
+            self._axis_mapping.y_from_velocity_cm_s(velocity_cm_s),
+        )
+        self._vessel_cycle_selection = False
+        self._redraw_vessel_graphics()
+        self._emit_vessel_changed()
+        return True
+
+    def cancel_vessel_cycle_selection(self) -> bool:
+        if not self._vessel_cycle_selection:
+            return False
+        self._vessel_cycle_selection = False
+        self._redraw_vessel_graphics()
+        return True
+
+    def _clear_vessel_cycle_graphics(self) -> None:
+        if self._vessel_cycle_band is not None:
+            try:
+                self._plot.removeItem(self._vessel_cycle_band)
+            except Exception:  # noqa: BLE001
+                pass
+            self._vessel_cycle_band = None
+        if self._vessel_cycle_text is not None:
+            try:
+                self._plot.removeItem(self._vessel_cycle_text)
+            except Exception:  # noqa: BLE001
+                pass
+            self._vessel_cycle_text = None
+
+    def _redraw_vessel_cycle_graphics(self) -> None:
+        self._clear_vessel_cycle_graphics()
+        if not self._vessel_cycle_selection or not self._vessel_cycles:
+            return
+        index = min(max(self._vessel_cycle_index, 0), len(self._vessel_cycles) - 1)
+        cycle = self._vessel_cycles[index]
+        x_start = self._axis_mapping.x_from_time_ms(cycle.start_ms)
+        x_end = self._axis_mapping.x_from_time_ms(cycle.end_ms)
+        top = -1.0
+        bottom = self._axis_mapping.plot_height + 1.0
+        band = pg.PlotDataItem(
+            [x_start, x_end],
+            [top, top],
+            pen=pg.mkPen(255, 235, 59, 40),
+            brush=pg.mkBrush(255, 235, 59, 40),
+        )
+        band.setZValue(23)
+        band.setFillLevel(bottom)
+        self._plot.addItem(band)
+        self._vessel_cycle_band = band
+        candidate = self.vessel_cycle_candidate()
+        if candidate is not None:
+            label = pg.TextItem(f"PSV кандидат: {candidate:.1f} cm/s", anchor=(0.0, 0.0), fill=(0, 0, 0, 200))
+            label.setZValue(30)
+            label.setPos(x_start, top + 2)
+            self._plot.addItem(label)
+            self._vessel_cycle_text = label
 
     def show_vessel_measurement(self, measurement: VesselMeasurement) -> None:
         self._vessel_mode = "done"
@@ -659,6 +754,8 @@ class DopplerOverlayTools(QWidget):
             else:
                 self._vessel_text_item.setPos(self._axis_mapping.plot_width, 0.0)
             self._plot.addItem(self._vessel_text_item)
+
+        self._redraw_vessel_cycle_graphics()
 
     def _emit_vessel_changed(self) -> None:
         self.vessel_changed.emit(self.get_vessel_metrics())

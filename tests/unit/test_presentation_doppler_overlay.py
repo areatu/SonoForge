@@ -748,3 +748,67 @@ def _vessel_mapping():
         plot_width=1000.0,
         plot_height=200.0,
     )
+
+
+class TestVesselCycleCorrection:
+    def _averaged(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
+                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
+                    (900.0, 60.0), (1000.0, 70.0))
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        cycles = (
+            CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "envelope", 1.0),
+            CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "envelope", 1.0),
+        )
+        overlay.apply_averaged_vessel(envelope, cycles=cycles)
+        return envelope
+
+    def test_draws_band_on_selected_cycle(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        assert overlay._vessel_cycle_band is not None
+        assert overlay._vessel_cycle_band in mock_plot.items
+        assert overlay._vessel_cycle_text is not None
+
+    def test_arrow_moves_index_and_redraws(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        assert overlay.vessel_cycle_index() == 0
+        assert overlay.move_vessel_cycle(1) is True
+        assert overlay.vessel_cycle_index() == 1
+        assert overlay.vessel_cycle_candidate() == pytest.approx(75.0)
+
+    def test_arrow_wraps_around(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        overlay.move_vessel_cycle(-1)
+        assert overlay.vessel_cycle_index() == 1
+
+    def test_assign_applies_candidate_and_exits(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        overlay.move_vessel_cycle(1)
+        assert overlay.assign_vessel_cycle_psv() is True
+        assert overlay.vessel_cycle_selection_active() is False
+        psv, edv = overlay.get_vessel_values()
+        assert psv == pytest.approx(75.0)
+        assert edv == pytest.approx(32.5)
+        assert overlay.vessel_status() == "done"
+
+    def test_cancel_keeps_median_psv(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        median_psv, _ = overlay.get_vessel_values()
+        overlay.move_vessel_cycle(1)
+        assert overlay.cancel_vessel_cycle_selection() is True
+        psv, _ = overlay.get_vessel_values()
+        assert psv == pytest.approx(median_psv)
+        assert overlay._vessel_cycle_band is None
+
+    def test_candidate_none_when_inactive(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.vessel_cycle_candidate() is None
+
+    def test_clear_vessel_resets_selection(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        overlay.clear_vessel()
+        assert overlay.vessel_cycle_selection_active() is False
+        assert overlay.vessel_cycle_count() == 0
+        assert overlay._vessel_cycle_band is None
