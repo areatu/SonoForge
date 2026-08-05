@@ -425,17 +425,13 @@ class DopplerOverlayTools(QWidget):
         return False
 
     def clear_vessel(self) -> None:
-        self._clear_vessel_cycle_graphics()
+        self._reset_vessel_cycle_selection()
         self._vessel_mode = "none"
         self._vessel_psv_px = None
         self._vessel_edv_px = None
         self._vessel_drag_target = None
         self._vessel_cycle_source = None
         self._vessel_averaged_cycles = 1
-        self._vessel_cycles = ()
-        self._vessel_cycle_psv_candidates = ()
-        self._vessel_cycle_index = 0
-        self._vessel_cycle_selection = False
         self._clear_auto_envelope()
         self._redraw_vessel_graphics()
 
@@ -461,6 +457,7 @@ class DopplerOverlayTools(QWidget):
         ECG cycle containing the systolic peak; otherwise the whole-envelope
         heuristic is used. Returns (psv, edv) in cm/s or None.
         """
+        self._reset_vessel_cycle_selection()
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2:
             return None
@@ -499,11 +496,6 @@ class DopplerOverlayTools(QWidget):
         self._vessel_psv_px = (psv_x, psv_y)
         self._vessel_edv_px = (edv_x, edv_value)
         self._redraw_vessel_graphics()
-        self._clear_vessel_cycle_graphics()
-        self._vessel_cycle_selection = False
-        self._vessel_cycles = ()
-        self._vessel_cycle_psv_candidates = ()
-        self._vessel_cycle_index = 0
         return psv, edv
 
     def apply_auto_vti_trace(
@@ -575,10 +567,10 @@ class DopplerOverlayTools(QWidget):
         manual cycle-selection correction mode. Returns ``(psv, edv)`` in cm/s
         or ``None`` when no cycle yields a valid snapshot.
         """
+        self._reset_vessel_cycle_selection()
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2 or not cycles:
             return None
-        self._clear_vessel_cycle_graphics()
         xs = [p[0] for p in envelope]
         ys = [p[1] for p in envelope]
         item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
@@ -689,6 +681,13 @@ class DopplerOverlayTools(QWidget):
             except Exception:  # noqa: BLE001
                 pass
             self._vessel_cycle_text = None
+
+    def _reset_vessel_cycle_selection(self) -> None:
+        self._clear_vessel_cycle_graphics()
+        self._vessel_cycle_selection = False
+        self._vessel_cycles = ()
+        self._vessel_cycle_psv_candidates = ()
+        self._vessel_cycle_index = 0
 
     def _redraw_vessel_cycle_graphics(self) -> None:
         self._clear_vessel_cycle_graphics()
