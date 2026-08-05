@@ -1,10 +1,10 @@
 """Cardiac cycle detection with ECG-to-spectrogram time alignment.
 
-A single service that turns an ECG waveform (and, optionally, a spectral
-fallback signal) into a list of :class:`CardiacCycle` boundaries expressed in
-the spectrogram's local millisecond domain. Used by the vessel Doppler
-auto-trace to snap PSV/EDV to real cardiac cycles instead of relying on the
-raw ROI edges.
+A single service that turns an ECG waveform or, when the ECG is absent or
+unusable, the spectral envelope itself into a list of
+:class:`CardiacCycle` boundaries expressed in the spectrogram's local
+millisecond domain. Used by the vessel Doppler auto-trace to snap PSV/EDV to
+real cardiac cycles instead of relying on the raw ROI edges.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ _MIN_PROFILE_SAMPLES = 5
 _MARKER_SIGMA_MS = 60.0
 _CYCLE_EDV_FRACTION = 0.25
 _MIN_CYCLE_POINTS = 3
+_MIN_PEAK_DISTANCE_MS = 300.0
 
 
 @dataclass(frozen=True)
@@ -160,6 +161,72 @@ def _snap_in_cycle(
     return psv_idx, edv_idx
 
 
+def detect_cycles_from_envelope(
+    times_ms: np.ndarray,
+    velocities: np.ndarray,
+    *,
+    max_cycles: int = 5,
+    min_peak_prominence: float = 0.15,
+) -> list[CardiacCycle]:
+    """Detect cardiac cycles from the spectral envelope velocity profile.
+
+    Each heartbeat produces a clear systolic peak, so cycles can be derived
+    without any ECG. Peaks are found with :func:`scipy.signal.find_peaks`
+    using a prominence floor of ``min_peak_prominence`` of the velocity range
+    and a minimum peak distance of 300 ms. A cycle spans two consecutive
+    peaks (mirroring the ECG-derived cycles). Flat/weak/malformed profiles
+    yield ``[]``.
+    """
+    from scipy.signal import find_peaks
+
+    times = np.asarray(times_ms, dtype=np.float64)
+    velocities = np.asarray(velocities, dtype=np.float64)
+    if times.ndim != 1 or velocities.ndim != 1 or times.size != velocities.size:
+        return []
+    if times.size < _MIN_PROFILE_SAMPLES:
+        return []
+    if np.isnan(velocities).any():
+        return []
+
+    order = np.argsort(times, kind="stable")
+    times = times[order]
+    velocities = velocities[order]
+
+    if np.nanstd(velocities) <= 1e-9:
+        return []
+    span = float(np.max(velocities)) - float(np.min(velocities))
+    if span <= 1e-9:
+        return []
+
+    dts = np.diff(times)
+    sample_ms = float(np.median(dts)) if dts.size else 0.0
+    min_distance = max(1, int(round(_MIN_PEAK_DISTANCE_MS / sample_ms))) if sample_ms > 0 else 1
+    peaks, _ = find_peaks(velocities, prominence=min_peak_prominence * span, distance=min_distance)
+    if peaks.size < 2:
+        return []
+
+    cycles: list[CardiacCycle] = []
+    for i in range(peaks.size - 1):
+        start = float(times[peaks[i]])
+        end = float(times[peaks[i + 1]])
+        rr = end - start
+        cycles.append(
+            CardiacCycle(
+                start_ms=start,
+                end_ms=end,
+                r_peak_ms=start,
+                ed_ms=end,
+                es_ms=start + 0.35 * rr,
+                source="envelope",
+                confidence=1.0,
+                rr_ms=rr,
+            )
+        )
+        if len(cycles) >= max_cycles:
+            break
+    return cycles
+
+
 def derive_psv_edv_indices_with_cycles(
     envelope: tuple[tuple[float, float], ...],
     cycles: Sequence[CardiacCycle],
@@ -231,13 +298,15 @@ class CardiacCycleService:
         fallback_signal: np.ndarray | None = None,
         max_shift_ms: float = 1500.0,
     ) -> list[CardiacCycle]:
-        """Return ECG cycles in the spectrogram's local ms domain.
+        """Return cardiac cycles in the spectrogram's local ms domain.
 
-        Returns an empty list when no ECG is available, the ECG is unusable,
-        or the correlation between the fallback signal and the ECG R-peaks is
-        too weak — the caller should fall back to image/manual cycles.
+        Cycles come from the ECG R-peak train when a usable ECG is present
+        and aligns to the fallback signal; otherwise they are derived from the
+        envelope velocity profile itself (``source="envelope"``) so averaging
+        works without ECG. Returns an empty list only when no signal is
+        available or it carries no detectable peaks.
         """
-        if ecg is None or spectrogram_time_axis_ms is None or fallback_signal is None:
+        if spectrogram_time_axis_ms is None or fallback_signal is None:
             return []
 
         times = np.asarray(spectrogram_time_axis_ms, dtype=np.float64)
@@ -247,16 +316,19 @@ class CardiacCycleService:
         if times.size < _MIN_PROFILE_SAMPLES:
             return []
 
+        if ecg is None:
+            return detect_cycles_from_envelope(times, signal)
+
         lead_data = primary_ecg_signal(ecg)
         if lead_data is None:
-            return []
+            return detect_cycles_from_envelope(times, signal)
         voltage, fs = lead_data
 
         r_peak_result = detect_r_peaks(voltage, fs)
         if len(r_peak_result.r_peak_indices) < 2:
-            return []
+            return detect_cycles_from_envelope(times, signal)
         if r_peak_result.confidence < _CYCLE_CONFIDENCE_THRESHOLD:
-            return []
+            return detect_cycles_from_envelope(times, signal)
 
         alignment = align_spectrogram_to_ecg(
             ecg,
@@ -266,7 +338,7 @@ class CardiacCycleService:
             r_peak_result=r_peak_result,
         )
         if alignment is None:
-            return []
+            return detect_cycles_from_envelope(times, signal)
 
         t0, t1 = float(np.min(times)), float(np.max(times))
         local_peaks = r_peak_result.r_peak_times_ms - alignment.offset_ms

@@ -2322,7 +2322,11 @@ class ViewerWidget(QWidget):
         self,
         envelope: tuple[tuple[float, float], ...],
     ) -> tuple[object, ...]:
-        """Build ECG cardiac cycles aligned to the envelope's local time axis."""
+        """Build cardiac cycles aligned to the envelope's local time axis.
+
+        Uses the ECG R-peak train when available; otherwise falls back to
+        cycles detected from the envelope velocity profile itself.
+        """
         instance = self._current_instance_metadata()
         if instance is None or instance.path is None:
             return ()
@@ -2332,8 +2336,6 @@ class ViewerWidget(QWidget):
             ecg = read_ecg_waveform(instance.path)
         except Exception:  # noqa: BLE001
             ecg = None
-        if ecg is None:
-            return ()
         from echo_personal_tool.domain.services.cardiac_cycle_service import (
             CardiacCycleService,
         )

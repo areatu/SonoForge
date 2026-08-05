@@ -13,6 +13,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_service import (
     align_spectrogram_to_ecg,
     derive_psv_edv_indices_per_cycle,
     derive_psv_edv_indices_with_cycles,
+    detect_cycles_from_envelope,
 )
 
 
@@ -41,6 +42,57 @@ def _synthetic_profile(
     for center in local_ms:
         profile += np.exp(-0.5 * ((t - center) / 60.0) ** 2)
     return t, profile
+
+
+def _pulsatile_profile(
+    peaks_ms: tuple[float, ...] = (500.0, 1500.0),
+    span_ms: float = 2000.0,
+    n: int = 400,
+    sigma: float = 60.0,
+    noise_peaks_ms: tuple[float, ...] = (),
+) -> tuple[np.ndarray, np.ndarray]:
+    t = np.linspace(0.0, span_ms, n)
+    vel = np.zeros(n)
+    for center in peaks_ms:
+        vel += np.exp(-0.5 * ((t - center) / sigma) ** 2)
+    for center in noise_peaks_ms:
+        vel += 0.05 * np.exp(-0.5 * ((t - center) / sigma) ** 2)
+    return t, vel
+
+
+class TestDetectCyclesFromEnvelope:
+    def test_detects_cycles_from_pulsatile_profile(self) -> None:
+        t, vel = _pulsatile_profile()
+        cycles = detect_cycles_from_envelope(t, vel)
+        assert len(cycles) == 1
+        cycle = cycles[0]
+        assert cycle.source == "envelope"
+        assert cycle.start_ms == pytest.approx(500.0, abs=20.0)
+        assert cycle.end_ms == pytest.approx(1500.0, abs=20.0)
+        assert cycle.rr_ms == pytest.approx(1000.0, abs=40.0)
+        assert cycle.confidence == 1.0
+
+    def test_flat_profile_returns_empty(self) -> None:
+        t = np.linspace(0.0, 2000.0, 400)
+        assert detect_cycles_from_envelope(t, np.full(400, 0.5)) == []
+
+    def test_filters_close_peaks_by_min_distance(self) -> None:
+        t, vel = _pulsatile_profile(peaks_ms=(500.0, 600.0, 1500.0))
+        cycles = detect_cycles_from_envelope(t, vel)
+        assert len(cycles) == 1
+        assert cycles[0].end_ms == pytest.approx(1500.0, abs=20.0)
+
+    def test_filters_small_prominence_noise(self) -> None:
+        t, vel = _pulsatile_profile(peaks_ms=(500.0, 1500.0), noise_peaks_ms=(1000.0,))
+        assert len(detect_cycles_from_envelope(t, vel)) == 1
+
+    def test_respects_max_cycles(self) -> None:
+        t, vel = _pulsatile_profile(peaks_ms=(400.0, 900.0, 1400.0, 1900.0), span_ms=2400.0)
+        assert len(detect_cycles_from_envelope(t, vel, max_cycles=2)) == 2
+
+    def test_mismatched_sizes_returns_empty(self) -> None:
+        t = np.linspace(0.0, 2000.0, 400)
+        assert detect_cycles_from_envelope(t, np.ones(200)) == []
 
 
 class TestAlignSpectrogramToEcg:
@@ -116,16 +168,15 @@ class TestGetCycles:
             assert cycle.start_ms >= 0.0
             assert cycle.end_ms <= 1000.0
 
-    def test_returns_empty_without_ecg(self) -> None:
+    def test_falls_back_to_envelope_without_ecg(self) -> None:
         t, profile = _synthetic_profile()
-        assert (
-            CardiacCycleService().get_cycles(
-                ecg=None,
-                spectrogram_time_axis_ms=t,
-                fallback_signal=profile,
-            )
-            == []
+        cycles = CardiacCycleService().get_cycles(
+            ecg=None,
+            spectrogram_time_axis_ms=t,
+            fallback_signal=profile,
         )
+        assert len(cycles) >= 1
+        assert all(c.source == "envelope" for c in cycles)
 
     def test_returns_empty_without_signal(self) -> None:
         ecg = _synthetic_ecg()
