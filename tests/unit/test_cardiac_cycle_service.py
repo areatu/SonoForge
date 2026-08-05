@@ -322,22 +322,33 @@ class TestEdvWindow:
         ys[1000:1100] = 10.0
         ys[1100:2000] = 90.0
         cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
-        idx = _edv_idx_before_upstroke(times, ys, cycle, 1000)
-        # diastolic min at t=1500; 10-point window midpoint lands before it
+        idx, _ = _edv_idx_before_upstroke(times, ys, cycle, 1000)
+        # diastole = t>=1500 where ys=90; 10-point window t=1491..1500,
+        # midpoint t=1495.5 -> nearest sample t=1495, not the raw min t=1500
         assert times[idx] != 1500.0
-        assert 1470.0 <= times[idx] <= 1500.0
+        assert abs(times[idx] - 1495.0) <= 1.0
 
     def test_edv_before_upstroke_sparse_falls_back_to_minimum(self) -> None:
         times = np.arange(0.0, 2000.0, 200.0)
         ys = np.array([70.0, 60, 45, 30, 18, 8, 30, 55, 68, 62])
         cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
-        assert _edv_idx_before_upstroke(times, ys, cycle, 5) == 8
+        idx, value = _edv_idx_before_upstroke(times, ys, cycle, 5)
+        assert idx == 8
+        assert value == pytest.approx(68.0)
 
     def test_snap_in_cycle_returns_edv_value(self) -> None:
         times = np.arange(0.0, 2000.0, 200.0)
         ys = np.array([70.0, 60, 45, 30, 18, 8, 30, 55, 68, 62])
         cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
         assert _snap_in_cycle(times, ys, cycle) == (5, 8, 68.0)
+
+    def test_snap_in_cycle_below_baseline_reflects(self) -> None:
+        times = np.arange(0.0, 2000.0, 200.0)
+        ys = np.array([60.0, 70, 80, 82, 85, 90, 84, 80, 75, 70])
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
+        # work = -ys: PSV at max ys (idx 5, t=1000); diastole min at idx 9
+        # (t=1800, y=70); single-point window fallback -> value 70.0
+        assert _snap_in_cycle(times, ys, cycle, below_baseline=True) == (5, 9, 70.0)
 
     def test_derived_edv_is_window_midpoint_and_mean(self) -> None:
         mapping = _time_mapping(2000.0)

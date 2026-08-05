@@ -164,33 +164,41 @@ def _edv_idx_before_upstroke(
     ys: np.ndarray,
     cycle: CardiacCycle,
     psv_idx: int,
-) -> int:
-    """Index of the EDV marker just before the next systolic upstroke.
+    *,
+    below_baseline: bool = False,
+) -> tuple[int, float]:
+    """Return ``(edv_idx, edv_value)`` just before the next systolic upstroke.
 
     Locates the diastolic minimum (maximum plot-y in the last quarter of the
-    cycle) and returns the midpoint index of the adaptive averaging window
-    ending there (backward, ≤ 30 ms / 10 points, truncated to the cycle start
-    and to the PSV). Falls back to the minimum index when the window holds
-    fewer than two points.
+    cycle, reflected when *below_baseline*) and returns the midpoint index of
+    the adaptive averaging window ending there (backward, <= 30 ms / 10 points,
+    truncated to the cycle start and to the PSV) plus the window mean in the
+    same units as ``ys``. Falls back to the single minimum point when the
+    window holds fewer than two points.
     """
+    work = -ys if below_baseline else ys
     t_lo, t_hi = float(np.min(times)), float(np.max(times))
     eff_start = max(float(cycle.start_ms), t_lo)
     eff_end = min(float(cycle.end_ms), t_hi)
     if eff_end - eff_start < 1.0:
-        return int(np.argmax(ys))
+        idx = int(np.argmax(work))
+        return idx, float(ys[idx])
     span = eff_end - eff_start
-    edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
     in_cycle = (times >= eff_start) & (times <= eff_end)
+    if int(in_cycle.sum()) < _MIN_CYCLE_POINTS:
+        idx = int(np.argmax(work))
+        return idx, float(ys[idx])
+    edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
     in_diastole = in_cycle & (times >= edv_search_start)
     if int(in_diastole.sum()) == 0:
         in_diastole = in_cycle
     diastole_indices = np.nonzero(in_diastole)[0]
-    edv_min_idx = int(diastole_indices[int(np.argmax(ys[diastole_indices]))])
+    edv_min_idx = int(diastole_indices[int(np.argmax(work[diastole_indices]))])
     min_time = max(eff_start, float(times[psv_idx]))
     window, midpoint_idx = _edv_window_indices(times, edv_min_idx, min_time=min_time)
     if len(window) < 2:
-        return edv_min_idx
-    return midpoint_idx
+        return edv_min_idx, float(ys[edv_min_idx])
+    return midpoint_idx, float(np.mean(ys[list(window)]))
 
 
 def _snap_in_cycle(
@@ -220,21 +228,10 @@ def _snap_in_cycle(
 
     indices = np.nonzero(in_cycle)[0]
     psv_idx = int(indices[int(np.argmin(work[indices]))])
-
-    span = eff_end - eff_start
-    edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
-    in_diastole = in_cycle & (times >= edv_search_start)
-    if int(in_diastole.sum()) == 0:
-        in_diastole = in_cycle
-    diastole_indices = np.nonzero(in_diastole)[0]
-    edv_min_idx = int(diastole_indices[int(np.argmax(work[diastole_indices]))])
-
-    min_time = max(eff_start, float(times[psv_idx]))
-    window, midpoint_idx = _edv_window_indices(times, edv_min_idx, min_time=min_time)
-    if len(window) < 2:
-        return psv_idx, edv_min_idx, float(ys[edv_min_idx])
-    edv_value = float(np.mean(ys[list(window)]))
-    return psv_idx, midpoint_idx, edv_value
+    edv_idx, edv_value = _edv_idx_before_upstroke(
+        times, ys, cycle, psv_idx, below_baseline=below_baseline
+    )
+    return psv_idx, edv_idx, edv_value
 
 
 def detect_cycles_from_envelope(
