@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import statistics
+
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
@@ -112,6 +114,10 @@ class DopplerOverlayTools(QWidget):
         self._vessel_drag_target: str | None = None
         self._vessel_cycle_source: str | None = None
         self._vessel_averaged_cycles: int = 1
+        self._vessel_cycles: tuple[CardiacCycle, ...] = ()
+        self._vessel_cycle_psv_candidates: tuple[tuple[float, float], ...] = ()
+        self._vessel_cycle_index: int = 0
+        self._vessel_cycle_selection: bool = False
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
         self._auto_envelope_item: pg.PlotDataItem | None = None
@@ -423,6 +429,10 @@ class DopplerOverlayTools(QWidget):
         self._vessel_drag_target = None
         self._vessel_cycle_source = None
         self._vessel_averaged_cycles = 1
+        self._vessel_cycles = ()
+        self._vessel_cycle_psv_candidates = ()
+        self._vessel_cycle_index = 0
+        self._vessel_cycle_selection = False
         self._clear_auto_envelope()
         self._redraw_vessel_graphics()
 
@@ -469,7 +479,7 @@ class DopplerOverlayTools(QWidget):
             )
         if cycle_snapped is not None:
             psv_idx, edv_idx, edv_value = cycle_snapped
-            self._vessel_cycle_source = "ecg"
+            self._vessel_cycle_source = cycles[0].source
         else:
             psv_idx, edv_idx = derive_psv_edv_indices(
                 envelope,
@@ -547,12 +557,15 @@ class DopplerOverlayTools(QWidget):
         cycles: tuple[CardiacCycle, ...] = (),
         max_beats: int = 3,
     ) -> tuple[float, float] | None:
-        """Average PSV/EDV across up to *max_beats* ECG cycles.
+        """Average PSV/EDV across up to *max_beats* cardiac cycles.
 
-        Per-cycle PSV/EDV are derived inside each cycle's own diastolic window
-        and averaged; the markers are placed at the averaged velocities on the
-        first beat's times. Returns ``(psv, edv)`` in cm/s or ``None`` when no
-        ECG cycle yields a valid snapshot.
+        Per-cycle PSV/EDV are derived inside each cycle's own diastolic window;
+        the PSV and EDV are the MEDIANS across the contributing cycles, which
+        makes the result robust to one corrupted (artifact) beat. Markers are
+        placed at the median velocities on the first beat's times. Stores the
+        contributing cycles and per-cycle PSV candidates and activates the
+        manual cycle-selection correction mode. Returns ``(psv, edv)`` in cm/s
+        or ``None`` when no cycle yields a valid snapshot.
         """
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2 or not cycles:
@@ -573,24 +586,32 @@ class DopplerOverlayTools(QWidget):
         )
         if not per_cycle:
             return None
-        psv_values = [
-            self._axis_mapping.velocity_cm_s_from_y(envelope[psv_idx][1]) for psv_idx, _, _, _ in per_cycle
+        psv_entries = [
+            (
+                self._axis_mapping.time_ms_from_x(envelope[psv_idx][0]),
+                self._axis_mapping.velocity_cm_s_from_y(envelope[psv_idx][1]),
+            )
+            for psv_idx, _, _, _ in per_cycle
         ]
         edv_values = [
             self._axis_mapping.velocity_cm_s_from_y(edv_value) for _, _, edv_value, _ in per_cycle
         ]
-        psv_mean = sum(psv_values) / len(psv_values)
-        edv_mean = sum(edv_values) / len(edv_values)
+        psv_median = statistics.median(entry[1] for entry in psv_entries)
+        edv_median = statistics.median(edv_values)
         psv_time = envelope[per_cycle[0][0]][0]
         edv_time = envelope[per_cycle[0][1]][0]
 
         self._vessel_mode = "done"
-        self._vessel_psv_px = (psv_time, self._axis_mapping.y_from_velocity_cm_s(psv_mean))
-        self._vessel_edv_px = (edv_time, self._axis_mapping.y_from_velocity_cm_s(edv_mean))
-        self._vessel_cycle_source = "ecg"
+        self._vessel_psv_px = (psv_time, self._axis_mapping.y_from_velocity_cm_s(psv_median))
+        self._vessel_edv_px = (edv_time, self._axis_mapping.y_from_velocity_cm_s(edv_median))
+        self._vessel_cycle_source = cycles[0].source
         self._vessel_averaged_cycles = len(per_cycle)
+        self._vessel_cycles = tuple(cycles[idx] for _, _, _, idx in per_cycle)
+        self._vessel_cycle_psv_candidates = tuple(psv_entries)
+        self._vessel_cycle_index = 0
+        self._vessel_cycle_selection = True
         self._redraw_vessel_graphics()
-        return psv_mean, edv_mean
+        return psv_median, edv_median
 
     def vessel_cycle_source(self) -> str | None:
         return self._vessel_cycle_source

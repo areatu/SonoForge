@@ -645,6 +645,8 @@ class TestAveragedVessel:
         assert overlay.vessel_cycle_source() == "ecg"
         assert overlay.vessel_averaged_cycles() == 2
         assert overlay.vessel_status() == "done"
+        assert overlay._vessel_cycle_selection is True
+        assert len(overlay._vessel_cycles) == 2
 
     def test_requires_cycles(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping())
@@ -665,6 +667,54 @@ class TestAveragedVessel:
         assert overlay.vessel_averaged_cycles() == 1
         overlay.clear_vessel()
         assert overlay.vessel_averaged_cycles() == 1
+
+
+class TestAveragedVesselMedian:
+    def _artifact_envelope(self):
+        # velocities = 100 - y; cycle2 PSV is an artifact spike (y=0 -> 100 cm/s)
+        return (
+            (100.0, 50.0), (200.0, 50.0), (300.0, 10.0), (400.0, 50.0), (500.0, 90.0),
+            (600.0, 50.0), (700.0, 50.0), (800.0, 0.0), (900.0, 50.0), (1000.0, 90.0),
+            (1100.0, 50.0), (1200.0, 50.0), (1300.0, 10.0), (1400.0, 50.0), (1500.0, 90.0),
+        )
+
+    def _three_cycles(self):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        return (
+            CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "ecg", 0.9),
+            CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "ecg", 0.9),
+            CardiacCycle(2000.0, 3000.0, 2000.0, 2000.0, 3000.0, "ecg", 0.9),
+        )
+
+    def test_median_ignores_artifact_cycle(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        result = overlay.apply_averaged_vessel(self._artifact_envelope(), cycles=self._three_cycles())
+        assert result is not None
+        psv, edv = result
+        # mean would be (90 + 100 + 90)/3 = 93.3; median stays 90
+        assert psv == pytest.approx(90.0)
+        assert edv == pytest.approx(10.0)
+
+    def test_stores_cycles_and_candidates(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.apply_averaged_vessel(self._artifact_envelope(), cycles=self._three_cycles())
+        assert len(overlay._vessel_cycles) == 3
+        assert overlay._vessel_cycle_index == 0
+        assert overlay._vessel_cycle_selection is True
+        # cycle 1 artifact candidate at t=1600, 100 cm/s
+        assert overlay._vessel_cycle_psv_candidates[1] == (1600.0, 100.0)
+
+    def test_envelope_cycles_set_envelope_source(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
+                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
+                    (900.0, 60.0), (1000.0, 70.0))
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "envelope", 1.0)
+        overlay.apply_averaged_vessel(envelope, cycles=(cycle,))
+        assert overlay.vessel_cycle_source() == "envelope"
 
 
 def _vessel_mapping_with_time():
