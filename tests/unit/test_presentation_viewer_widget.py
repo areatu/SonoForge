@@ -623,7 +623,13 @@ class TestVesselCycleCorrection:
         self._averaged(viewer)
         assert viewer._doppler.vessel_cycle_selection_active() is True
         assert viewer._doppler.vessel_cycle_count() == 2
-        assert "PSV" in viewer._measurement_label.text()
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        candidate = viewer._doppler.vessel_cycle_candidate()
+        index = viewer._doppler.vessel_cycle_index()
+        count = viewer._doppler.vessel_cycle_count()
+        expected = tr("viewer.vessel_cycle_candidate", value=candidate, index=index + 1, count=count)
+        assert viewer._measurement_label.text() == expected
 
     def test_left_right_moves_selection(self, viewer):
         from PySide6.QtCore import Qt
