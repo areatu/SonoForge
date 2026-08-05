@@ -131,8 +131,12 @@ def _snap_in_cycle(
     times: np.ndarray,
     ys: np.ndarray,
     cycle: CardiacCycle,
+    *,
+    below_baseline: bool = False,
 ) -> tuple[int, int] | None:
     """Return ``(psv_idx, edv_idx)`` envelope indices snapped inside a cycle."""
+    if below_baseline:
+        ys = -ys
     t_lo, t_hi = float(np.min(times)), float(np.max(times))
     eff_start = max(float(cycle.start_ms), t_lo)
     eff_end = min(float(cycle.end_ms), t_hi)
@@ -160,6 +164,8 @@ def derive_psv_edv_indices_with_cycles(
     envelope: tuple[tuple[float, float], ...],
     cycles: Sequence[CardiacCycle],
     axis_mapping: DopplerAxisMapping,
+    *,
+    below_baseline: bool = False,
 ) -> tuple[int, int] | None:
     """Snap PSV/EDV to the ECG cycle that contains the systolic peak.
 
@@ -176,12 +182,13 @@ def derive_psv_edv_indices_with_cycles(
     if ys.size < _MIN_CYCLE_POINTS:
         return None
 
-    psv_idx = int(np.argmin(ys))
+    ys_eff = -ys if below_baseline else ys
+    psv_idx = int(np.argmin(ys_eff))
     psv_t = float(times[psv_idx])
     cycle = next((c for c in cycles if c.start_ms <= psv_t <= c.end_ms), None)
     if cycle is None:
         return None
-    return _snap_in_cycle(times, ys, cycle)
+    return _snap_in_cycle(times, ys_eff, cycle)
 
 
 def derive_psv_edv_indices_per_cycle(
@@ -189,6 +196,7 @@ def derive_psv_edv_indices_per_cycle(
     cycles: Sequence[CardiacCycle],
     axis_mapping: DopplerAxisMapping,
     *,
+    below_baseline: bool = False,
     max_cycles: int = 3,
 ) -> list[tuple[int, int]]:
     """Return per-cycle ``(psv_idx, edv_idx)`` indices for up to *max_cycles*.
@@ -203,9 +211,10 @@ def derive_psv_edv_indices_per_cycle(
     if ys.size < _MIN_CYCLE_POINTS:
         return []
 
+    ys_eff = -ys if below_baseline else ys
     results: list[tuple[int, int]] = []
     for cycle in cycles[:max_cycles]:
-        snapped = _snap_in_cycle(times, ys, cycle)
+        snapped = _snap_in_cycle(times, ys_eff, cycle)
         if snapped is not None:
             results.append(snapped)
     return results

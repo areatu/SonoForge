@@ -224,3 +224,43 @@ class TestExtractDopplerEnvelope:
         assert min(ys) >= 30.0, "text must not suppress or hijack the spectrum"
         assert max(ys) < 95.0
         assert (max(ys) - min(ys)) > 8.0, "envelope must follow a real flow profile, not a flat text band"
+
+
+def _below_baseline_spectrum(height=100, width=160, baseline=40):
+    """Bright spectral flow whose bottom edge sits at *edge_row* (below baseline)."""
+    gray = np.zeros((height, width), dtype=np.uint8)
+    for col in range(15, width - 15):
+        bottom = int(60 + 30 * abs(col - width // 2) / (width // 2))
+        gray[baseline:bottom, col] = 200
+    return gray
+
+
+class TestExtractDopplerEnvelopeBelowBaseline:
+    """extract_doppler_envelope must auto-detect and trace below-baseline flow."""
+
+    def test_traces_below_baseline(self):
+        gray = _below_baseline_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=160, h=100), baseline_y_px=40.0)
+        assert len(result) >= 2
+        assert all(pt[1] > 40.0 for pt in result), "envelope must sit below the baseline"
+
+    def test_envelope_follows_bottom_edge(self):
+        gray = _below_baseline_spectrum()
+        result = extract_doppler_envelope(gray, _roi(w=160, h=100), baseline_y_px=40.0)
+        ys = [pt[1] for pt in result]
+        assert abs(float(np.median(ys)) - 71.0) < 4.0
+
+    def test_empty_side_is_not_traced(self):
+        gray = np.zeros((100, 160), dtype=np.uint8)
+        assert extract_doppler_envelope(gray, _roi(w=160, h=100), baseline_y_px=40.0) == ()
+
+    def test_prefers_stronger_side(self):
+        """When flow is below baseline, the below envelope wins even if the
+        above half has faint speckle."""
+        h, w = 100, 160
+        gray = _below_baseline_spectrum(height=h, width=w, baseline=40)
+        rng = np.random.default_rng(3)
+        gray[:40, :] = rng.integers(0, 20, size=(40, w), dtype=np.uint8)
+        result = extract_doppler_envelope(gray, _roi(w=w, h=h), baseline_y_px=40.0)
+        assert len(result) >= 2
+        assert all(pt[1] > 40.0 for pt in result), "below flow must win over faint speckle above"

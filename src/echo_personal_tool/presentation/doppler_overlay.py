@@ -458,17 +458,22 @@ class DopplerOverlayTools(QWidget):
         self._auto_envelope_item = item
 
         cycle_snapped = None
+        below_baseline = self._envelope_below_baseline(envelope)
         if cycles:
             cycle_snapped = derive_psv_edv_indices_with_cycles(
                 envelope,
                 cycles,
                 self._axis_mapping,
+                below_baseline=below_baseline,
             )
         if cycle_snapped is not None:
             psv_idx, edv_idx = cycle_snapped
             self._vessel_cycle_source = "ecg"
         else:
-            psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+            psv_idx, edv_idx = derive_psv_edv_indices(
+                envelope,
+                below_baseline=below_baseline,
+            )
             self._vessel_cycle_source = "image"
         psv_x, psv_y = envelope[psv_idx]
         edv_x, edv_y = envelope[edv_idx]
@@ -561,6 +566,7 @@ class DopplerOverlayTools(QWidget):
             envelope,
             cycles,
             self._axis_mapping,
+            below_baseline=self._envelope_below_baseline(envelope),
             max_cycles=max_beats,
         )
         if not per_cycle:
@@ -924,6 +930,13 @@ class DopplerOverlayTools(QWidget):
             return float(baseline)
         return self._axis_mapping.plot_height * 0.5
 
+    def _envelope_below_baseline(self, envelope: tuple[tuple[float, float], ...]) -> bool:
+        """True when the auto-traced envelope sits below the baseline."""
+        if not envelope:
+            return False
+        median_y = float(np.median([point[1] for point in envelope]))
+        return median_y > self._baseline_plot_y_px()
+
     def _baseline_velocity_cm_s(self) -> float:
         return self._axis_mapping.velocity_cm_s_from_y(self._baseline_plot_y_px())
 
@@ -982,7 +995,11 @@ def _near_point(px: float, py: float, target: tuple[float, float], tol: float = 
     return abs(px - target[0]) <= tol and abs(py - target[1]) <= tol
 
 
-def derive_psv_edv_indices(envelope: tuple[tuple[float, float], ...]) -> tuple[int, int]:
+def derive_psv_edv_indices(
+    envelope: tuple[tuple[float, float], ...],
+    *,
+    below_baseline: bool = False,
+) -> tuple[int, int]:
     """Return indices of the PSV and EDV points of an auto-traced envelope.
 
     Envelope points are plot coordinates ``(x_px, y_px)`` with velocity
@@ -990,8 +1007,12 @@ def derive_psv_edv_indices(envelope: tuple[tuple[float, float], ...]) -> tuple[i
     (diastolic minimum velocity) is the maximum y inside the search window.
     EDV falls back to the last envelope point when the post-PSV segment is
     too short or the found minimum is too close to the cycle end (unreliable).
+    When *below_baseline* is set the y axis is reflected first so a negative
+    (below-baseline) envelope is handled symmetrically.
     """
     ys = np.asarray([point[1] for point in envelope])
+    if below_baseline:
+        ys = -ys
     if len(ys) < 5:
         return int(np.argmin(ys)), len(ys) - 1
 
