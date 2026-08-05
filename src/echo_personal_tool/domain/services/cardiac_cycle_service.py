@@ -28,6 +28,8 @@ _MARKER_SIGMA_MS = 60.0
 _CYCLE_EDV_FRACTION = 0.25
 _MIN_CYCLE_POINTS = 3
 _MIN_PEAK_DISTANCE_MS = 300.0
+_EDV_WINDOW_MS = 30.0
+_EDV_WINDOW_MAX_POINTS = 10
 
 
 @dataclass(frozen=True)
@@ -128,16 +130,84 @@ def align_spectrogram_to_ecg(
     return CycleAlignment(offset_ms=best_offset, confidence=confidence, source="ecg")
 
 
+def _edv_window_indices(
+    times: np.ndarray,
+    min_idx: int,
+    *,
+    min_time: float,
+    window_ms: float = _EDV_WINDOW_MS,
+    max_window_points: int = _EDV_WINDOW_MAX_POINTS,
+) -> tuple[tuple[int, ...], int]:
+    """Return ``(window_indices, midpoint_idx)`` for the EDV averaging window.
+
+    The window ends at *min_idx* (the diastolic minimum) and walks backward in
+    time, collecting at most ``window_ms`` ms or ``max_window_points`` points
+    and never before *min_time*. *midpoint_idx* is the envelope index nearest
+    the window's midpoint in time.
+    """
+    window = [int(min_idx)]
+    t_min = float(times[min_idx])
+    for i in range(min_idx - 1, -1, -1):
+        if float(times[i]) < min_time:
+            break
+        if t_min - float(times[i]) > window_ms or len(window) >= max_window_points:
+            break
+        window.append(i)
+    window.sort()
+    mid_t = (float(times[window[0]]) + float(times[window[-1]])) * 0.5
+    midpoint_idx = int(np.argmin(np.abs(times - mid_t)))
+    return tuple(window), midpoint_idx
+
+
+def _edv_idx_before_upstroke(
+    times: np.ndarray,
+    ys: np.ndarray,
+    cycle: CardiacCycle,
+    psv_idx: int,
+) -> int:
+    """Index of the EDV marker just before the next systolic upstroke.
+
+    Locates the diastolic minimum (maximum plot-y in the last quarter of the
+    cycle) and returns the midpoint index of the adaptive averaging window
+    ending there (backward, ≤ 30 ms / 10 points, truncated to the cycle start
+    and to the PSV). Falls back to the minimum index when the window holds
+    fewer than two points.
+    """
+    t_lo, t_hi = float(np.min(times)), float(np.max(times))
+    eff_start = max(float(cycle.start_ms), t_lo)
+    eff_end = min(float(cycle.end_ms), t_hi)
+    if eff_end - eff_start < 1.0:
+        return int(np.argmax(ys))
+    span = eff_end - eff_start
+    edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
+    in_cycle = (times >= eff_start) & (times <= eff_end)
+    in_diastole = in_cycle & (times >= edv_search_start)
+    if int(in_diastole.sum()) == 0:
+        in_diastole = in_cycle
+    diastole_indices = np.nonzero(in_diastole)[0]
+    edv_min_idx = int(diastole_indices[int(np.argmax(ys[diastole_indices]))])
+    min_time = max(eff_start, float(times[psv_idx]))
+    window, midpoint_idx = _edv_window_indices(times, edv_min_idx, min_time=min_time)
+    if len(window) < 2:
+        return edv_min_idx
+    return midpoint_idx
+
+
 def _snap_in_cycle(
     times: np.ndarray,
     ys: np.ndarray,
     cycle: CardiacCycle,
     *,
     below_baseline: bool = False,
-) -> tuple[int, int] | None:
-    """Return ``(psv_idx, edv_idx)`` envelope indices snapped inside a cycle."""
-    if below_baseline:
-        ys = -ys
+) -> tuple[int, int, float] | None:
+    """Return ``(psv_idx, edv_idx, edv_value)`` snapped inside a cycle.
+
+    PSV is the minimum envelope point (after optional baseline reflection);
+    EDV is the mean of the adaptive window before the diastolic minimum, with
+    the marker index at the window's midpoint. *edv_value* is in the same
+    units as ``ys``; the caller converts to cm/s.
+    """
+    work = -ys if below_baseline else ys
     t_lo, t_hi = float(np.min(times)), float(np.max(times))
     eff_start = max(float(cycle.start_ms), t_lo)
     eff_end = min(float(cycle.end_ms), t_hi)
@@ -149,7 +219,7 @@ def _snap_in_cycle(
         return None
 
     indices = np.nonzero(in_cycle)[0]
-    psv_idx = int(indices[int(np.argmin(ys[indices]))])
+    psv_idx = int(indices[int(np.argmin(work[indices]))])
 
     span = eff_end - eff_start
     edv_search_start = eff_start + (1.0 - _CYCLE_EDV_FRACTION) * span
@@ -157,8 +227,14 @@ def _snap_in_cycle(
     if int(in_diastole.sum()) == 0:
         in_diastole = in_cycle
     diastole_indices = np.nonzero(in_diastole)[0]
-    edv_idx = int(diastole_indices[int(np.argmax(ys[diastole_indices]))])
-    return psv_idx, edv_idx
+    edv_min_idx = int(diastole_indices[int(np.argmax(work[diastole_indices]))])
+
+    min_time = max(eff_start, float(times[psv_idx]))
+    window, midpoint_idx = _edv_window_indices(times, edv_min_idx, min_time=min_time)
+    if len(window) < 2:
+        return psv_idx, edv_min_idx, float(ys[edv_min_idx])
+    edv_value = float(np.mean(ys[list(window)]))
+    return psv_idx, midpoint_idx, edv_value
 
 
 def detect_cycles_from_envelope(
@@ -233,14 +309,15 @@ def derive_psv_edv_indices_with_cycles(
     axis_mapping: DopplerAxisMapping,
     *,
     below_baseline: bool = False,
-) -> tuple[int, int] | None:
+) -> tuple[int, int, float] | None:
     """Snap PSV/EDV to the ECG cycle that contains the systolic peak.
 
     Envelope points are plot coordinates ``(x_px, y_px)`` with velocity
     increasing upward. Times are derived through the axis mapping. PSV is the
-    highest-velocity point (minimum y); EDV is the lowest-velocity point
-    (maximum y) inside the last quarter of the selected cycle. Returns ``None``
-    when no cycle contains the systolic peak or the cycle is too sparse.
+    highest-velocity point (minimum y); EDV is the adaptive window mean before
+    the diastolic minimum of the last quarter of the selected cycle. Returns
+    ``(psv_idx, edv_idx, edv_value)`` or ``None`` when no cycle contains the
+    systolic peak or the cycle is too sparse.
     """
     if not envelope or not cycles:
         return None
@@ -255,7 +332,7 @@ def derive_psv_edv_indices_with_cycles(
     cycle = next((c for c in cycles if c.start_ms <= psv_t <= c.end_ms), None)
     if cycle is None:
         return None
-    return _snap_in_cycle(times, ys_eff, cycle)
+    return _snap_in_cycle(times, ys, cycle, below_baseline=below_baseline)
 
 
 def derive_psv_edv_indices_per_cycle(
@@ -265,11 +342,12 @@ def derive_psv_edv_indices_per_cycle(
     *,
     below_baseline: bool = False,
     max_cycles: int = 3,
-) -> list[tuple[int, int]]:
-    """Return per-cycle ``(psv_idx, edv_idx)`` indices for up to *max_cycles*.
+) -> list[tuple[int, int, float, int]]:
+    """Return per-cycle ``(psv_idx, edv_idx, edv_value, cycle_index)`` tuples.
 
-    Cycles too sparse or falling outside the envelope time range are skipped.
-    Used for multi-beat PSV/EDV averaging.
+    Up to *max_cycles* cycles are considered; cycles too sparse or falling
+    outside the envelope time range are skipped. Used for multi-beat PSV/EDV
+    averaging and the manual cycle-selection correction mode.
     """
     if not envelope or not cycles:
         return []
@@ -278,12 +356,12 @@ def derive_psv_edv_indices_per_cycle(
     if ys.size < _MIN_CYCLE_POINTS:
         return []
 
-    ys_eff = -ys if below_baseline else ys
-    results: list[tuple[int, int]] = []
-    for cycle in cycles[:max_cycles]:
-        snapped = _snap_in_cycle(times, ys_eff, cycle)
+    results: list[tuple[int, int, float, int]] = []
+    for i, cycle in enumerate(cycles[:max_cycles]):
+        snapped = _snap_in_cycle(times, ys, cycle, below_baseline=below_baseline)
         if snapped is not None:
-            results.append(snapped)
+            psv_idx, edv_idx, edv_value = snapped
+            results.append((psv_idx, edv_idx, edv_value, i))
     return results
 
 

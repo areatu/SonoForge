@@ -468,7 +468,7 @@ class DopplerOverlayTools(QWidget):
                 below_baseline=below_baseline,
             )
         if cycle_snapped is not None:
-            psv_idx, edv_idx = cycle_snapped
+            psv_idx, edv_idx, edv_value = cycle_snapped
             self._vessel_cycle_source = "ecg"
         else:
             psv_idx, edv_idx = derive_psv_edv_indices(
@@ -476,14 +476,15 @@ class DopplerOverlayTools(QWidget):
                 below_baseline=below_baseline,
             )
             self._vessel_cycle_source = "image"
+            edv_value = envelope[edv_idx][1]
         psv_x, psv_y = envelope[psv_idx]
-        edv_x, edv_y = envelope[edv_idx]
+        edv_x = envelope[edv_idx][0]
         psv = self._axis_mapping.velocity_cm_s_from_y(psv_y)
-        edv = self._axis_mapping.velocity_cm_s_from_y(edv_y)
+        edv = self._axis_mapping.velocity_cm_s_from_y(edv_value)
 
         self._vessel_mode = "done"
         self._vessel_psv_px = (psv_x, psv_y)
-        self._vessel_edv_px = (edv_x, edv_y)
+        self._vessel_edv_px = (edv_x, edv_value)
         self._redraw_vessel_graphics()
         return psv, edv
 
@@ -573,10 +574,10 @@ class DopplerOverlayTools(QWidget):
         if not per_cycle:
             return None
         psv_values = [
-            self._axis_mapping.velocity_cm_s_from_y(envelope[psv_idx][1]) for psv_idx, _ in per_cycle
+            self._axis_mapping.velocity_cm_s_from_y(envelope[psv_idx][1]) for psv_idx, _, _, _ in per_cycle
         ]
         edv_values = [
-            self._axis_mapping.velocity_cm_s_from_y(envelope[edv_idx][1]) for _, edv_idx in per_cycle
+            self._axis_mapping.velocity_cm_s_from_y(edv_value) for _, _, edv_value, _ in per_cycle
         ]
         psv_mean = sum(psv_values) / len(psv_values)
         edv_mean = sum(edv_values) / len(edv_values)

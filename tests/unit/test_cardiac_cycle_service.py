@@ -10,6 +10,9 @@ from echo_personal_tool.domain.models.ecg import EcgLead, EcgWaveform
 from echo_personal_tool.domain.services.cardiac_cycle_service import (
     CardiacCycle,
     CardiacCycleService,
+    _edv_idx_before_upstroke,
+    _edv_window_indices,
+    _snap_in_cycle,
     align_spectrogram_to_ecg,
     derive_psv_edv_indices_per_cycle,
     derive_psv_edv_indices_with_cycles,
@@ -232,11 +235,12 @@ class TestDerivePsvEdvIndicesWithCycles:
         ]
         envelope = tuple((t / 4.0, y) for t, y in zip(times, ys))
         cycles = (_cycle(200.0, 1800.0), _cycle(2000.0, 3800.0))
-        psv_idx, edv_idx = derive_psv_edv_indices_with_cycles(envelope, cycles, mapping)
+        psv_idx, edv_idx, edv_value = derive_psv_edv_indices_with_cycles(envelope, cycles, mapping)
         # PSV at time 1000 (y=8); EDV in last 25% of the SAME cycle (y=68 at t=1600),
         # not the global end-of-envelope minimum velocity (y=95 at t=3600).
         assert psv_idx == 5
         assert edv_idx == 8
+        assert edv_value == pytest.approx(68.0)
 
     def test_returns_none_without_cycles(self) -> None:
         mapping = _time_mapping(4000.0)
@@ -276,10 +280,10 @@ class TestDerivePsvEdvIndicesPerCycle:
         cycles = (_cycle(200.0, 1800.0), _cycle(2000.0, 3800.0))
         per_cycle = derive_psv_edv_indices_per_cycle(envelope, cycles, mapping)
         assert len(per_cycle) == 2
-        # cycle 0: PSV at t=1000 (idx 5), EDV at t=1600 (idx 8)
-        assert per_cycle[0] == (5, 8)
-        # cycle 1: PSV at t=2200 (idx 11), EDV at t=3600 (idx 18)
-        assert per_cycle[1] == (11, 18)
+        # cycle 0: PSV at t=1000 (idx 5), EDV at t=1600 (idx 8), value 68
+        assert per_cycle[0] == (5, 8, 68.0, 0)
+        # cycle 1: PSV at t=2200 (idx 11), EDV at t=3600 (idx 18), value 95
+        assert per_cycle[1] == (11, 18, 95.0, 1)
 
     def test_max_cycles_limit(self) -> None:
         mapping = _time_mapping(4000.0)
@@ -294,9 +298,60 @@ class TestDerivePsvEdvIndicesPerCycle:
         cycles = (_cycle(1500.0, 1700.0), _cycle(0.0, 5000.0))
         per_cycle = derive_psv_edv_indices_per_cycle(envelope, cycles, mapping)
         assert len(per_cycle) == 1
-        assert per_cycle[0] == (0, 9)
+        assert per_cycle[0] == (0, 9, 9.0, 1)
 
     def test_empty_without_cycles(self) -> None:
         mapping = _time_mapping(4000.0)
         envelope = tuple((i * 100.0, float(i)) for i in range(10))
         assert derive_psv_edv_indices_per_cycle(envelope, (), mapping) == []
+
+
+class TestEdvWindow:
+    def test_window_indices_truncated_at_min_time(self) -> None:
+        times = np.arange(0.0, 2000.0)
+        window, midpoint_idx = _edv_window_indices(
+            times, 1200, min_time=1180.0, window_ms=100.0, max_window_points=100
+        )
+        assert window[0] == 1180
+        assert window[-1] == 1200
+        assert midpoint_idx == 1190
+
+    def test_edv_before_upstroke_plateau_uses_midpoint(self) -> None:
+        times = np.arange(0.0, 2000.0, 1.0)
+        ys = np.full(2000, 50.0)
+        ys[1000:1100] = 10.0
+        ys[1100:2000] = 90.0
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
+        idx = _edv_idx_before_upstroke(times, ys, cycle, 1000)
+        # diastolic min at t=1500; 10-point window midpoint lands before it
+        assert times[idx] != 1500.0
+        assert 1470.0 <= times[idx] <= 1500.0
+
+    def test_edv_before_upstroke_sparse_falls_back_to_minimum(self) -> None:
+        times = np.arange(0.0, 2000.0, 200.0)
+        ys = np.array([70.0, 60, 45, 30, 18, 8, 30, 55, 68, 62])
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
+        assert _edv_idx_before_upstroke(times, ys, cycle, 5) == 8
+
+    def test_snap_in_cycle_returns_edv_value(self) -> None:
+        times = np.arange(0.0, 2000.0, 200.0)
+        ys = np.array([70.0, 60, 45, 30, 18, 8, 30, 55, 68, 62])
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
+        assert _snap_in_cycle(times, ys, cycle) == (5, 8, 68.0)
+
+    def test_derived_edv_is_window_midpoint_and_mean(self) -> None:
+        mapping = _time_mapping(2000.0)
+        times = np.arange(0.0, 2000.0, 10.0)
+        ys = np.full(200, 50.0)
+        ys[50:100] = 10.0
+        ys[125:] = 70.0
+        envelope = tuple((t * 0.5, y) for t, y in zip(times, ys))
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
+        psv_idx, edv_idx, edv_value = derive_psv_edv_indices_with_cycles(
+            envelope, (cycle,), mapping
+        )
+        assert psv_idx == 50
+        assert edv_idx != 150  # not the raw minimum (t=1500)
+        assert edv_value == pytest.approx(70.0)
+        # window spans t=1470..1500, midpoint t=1485, nearest sample is 1480/1490
+        assert 1470.0 <= times[edv_idx] <= 1500.0
