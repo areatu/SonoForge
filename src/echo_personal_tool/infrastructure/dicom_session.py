@@ -501,12 +501,17 @@ class DicomSession:
 
     def _decode_pydicom_fallback(self, index: int) -> np.ndarray:
         """Fallback: full pydicom decode, extract frame index."""
-        # PROTECTION 1: If raw_bytes are freed, we cannot do fallback
+        # _ensure_pixel_data() frees _raw_bytes after extracting pixel bytes.
+        # If a compressed frame cannot be fast-decoded we still need the full
+        # file here, so reload it from disk (cached until release_heavy()).
         if self._raw_bytes is None:
-            raise ValueError(
-                "Cannot decode fallback: raw bytes are not available. "
-                "The file may have no pixel data or heavy buffers were released."
-            )
+            if self._open_path is not None and Path(self._open_path).is_file():
+                self._raw_bytes = Path(self._open_path).read_bytes()
+            else:
+                raise ValueError(
+                    "Cannot decode fallback: raw bytes are not available. "
+                    "The file may have no pixel data or heavy buffers were released."
+                )
 
         full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
         # Ensure file_meta exists with Transfer Syntax UID
