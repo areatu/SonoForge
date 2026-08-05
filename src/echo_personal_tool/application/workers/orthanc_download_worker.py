@@ -268,7 +268,34 @@ class OrthancDownloadWorker(QRunnable):
         series_uid: str,
         instance_uid: str,
     ) -> bytes | None:
-        """Download single instance. Returns bytes or None on failure."""
+        """Download single instance with retries. Returns bytes or None on failure."""
+        if self._cancelled.is_set():
+            return None
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            if self._cancelled.is_set():
+                return None
+            data = self._attempt_download(study_uid, series_uid, instance_uid)
+            if data is not None:
+                return data
+            if attempt < max_attempts:
+                logger.warning(
+                    "[DIAG] download retry %d/3 instance=%s",
+                    attempt,
+                    instance_uid[:16],
+                )
+                time.sleep(1.0)
+
+        return None
+
+    def _attempt_download(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+    ) -> bytes | None:
+        """Download single instance once. Returns bytes or None on failure."""
         if self._cancelled.is_set():
             return None
 
