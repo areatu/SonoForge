@@ -579,3 +579,85 @@ class TestVesselAutoTrace:
 
     def test_no_frame_returns_false(self, viewer):
         assert viewer.start_vessel_auto_trace() is False
+
+
+class TestVesselCycleCorrection:
+    def _cycles(self):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        return (
+            CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "envelope", 1.0),
+            CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "envelope", 1.0),
+        )
+
+    def _averaged(self, viewer):
+        from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+        from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
+
+        viewer._current_frame = np.zeros((200, 1000), dtype=np.uint8)
+        state = DopplerCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0),
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
+            time_span_ms=2000.0,
+        )
+        viewer._doppler_calibration_state = state
+        viewer._doppler.set_axis_mapping(build_axis_mapping(state))
+        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
+                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
+                    (900.0, 60.0), (1000.0, 70.0))
+        from unittest.mock import patch
+
+        with patch.object(viewer, "_extract_doppler_envelope", return_value=envelope), patch.object(
+            viewer, "_doppler_cardiac_cycles", return_value=self._cycles()
+        ):
+            assert viewer.average_vessel_cycles() is True
+
+    def _key(self, key):
+        from PySide6.QtCore import QEvent, Qt
+        from PySide6.QtGui import QKeyEvent
+
+        return QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier)
+
+    def test_average_activates_selection(self, viewer):
+        self._averaged(viewer)
+        assert viewer._doppler.vessel_cycle_selection_active() is True
+        assert viewer._doppler.vessel_cycle_count() == 2
+        assert "PSV" in viewer._measurement_label.text()
+
+    def test_left_right_moves_selection(self, viewer):
+        from PySide6.QtCore import Qt
+
+        self._averaged(viewer)
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
+        assert viewer._doppler.vessel_cycle_index() == 1
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Left))
+        assert viewer._doppler.vessel_cycle_index() == 0
+
+    def test_enter_assigns_candidate_and_accepts(self, viewer):
+        from PySide6.QtCore import Qt
+
+        self._averaged(viewer)
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
+        candidate = viewer._doppler.vessel_cycle_candidate()
+        accepted = []
+        viewer.vessel_accept_requested.connect(accepted.append)
+        from unittest.mock import patch
+
+        with patch.object(viewer, "_current_instance_uid", return_value="uid"):
+            viewer.keyPressEvent(self._key(Qt.Key.Key_Return))
+        assert len(accepted) == 1
+        assert accepted[0].psv_cm_s == pytest.approx(candidate)
+        assert viewer._doppler.vessel_status() == "none"
+
+    def test_escape_cancels_keeps_median(self, viewer):
+        from PySide6.QtCore import Qt
+
+        self._averaged(viewer)
+        median_psv, _ = viewer._doppler.get_vessel_values()
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Escape))
+        assert viewer._doppler.vessel_cycle_selection_active() is False
+        psv, _ = viewer._doppler.get_vessel_values()
+        assert psv == pytest.approx(median_psv)
+        assert viewer._doppler.vessel_status() == "done"

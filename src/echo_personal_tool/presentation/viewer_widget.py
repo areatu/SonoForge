@@ -2413,7 +2413,32 @@ class ViewerWidget(QWidget):
             tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count)
         )
         self._measurement_label.show()
+        if self._doppler.vessel_cycle_selection_active():
+            self._update_vessel_cycle_selection_label()
         return True
+
+    def _update_vessel_cycle_selection_label(self) -> None:
+        candidate = self._doppler.vessel_cycle_candidate()
+        index = self._doppler.vessel_cycle_index()
+        count = self._doppler.vessel_cycle_count()
+        if candidate is None:
+            return
+        self._measurement_label.setText(
+            tr("viewer.vessel_cycle_candidate", value=candidate, index=index + 1, count=count)
+        )
+        self._measurement_label.show()
+
+    def _restore_vessel_average_label(self) -> None:
+        values = self._doppler.get_vessel_values()
+        if values is None:
+            self._measurement_label.hide()
+            return
+        psv, edv = values
+        count = self._doppler.vessel_averaged_cycles()
+        self._measurement_label.setText(
+            tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count)
+        )
+        self._measurement_label.show()
 
     def accept_vessel_measurement(self) -> bool:
         if not self.is_vessel_available():
@@ -6281,6 +6306,10 @@ class ViewerWidget(QWidget):
                 event.accept()
                 return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._doppler.vessel_cycle_selection_active() and self._doppler.assign_vessel_cycle_psv():
+                self.accept_vessel_measurement()
+                event.accept()
+                return
             if self._doppler.vessel_status() == "done" and self.is_vessel_available():
                 self.accept_vessel_measurement()
                 event.accept()
@@ -6290,6 +6319,11 @@ class ViewerWidget(QWidget):
                     event.accept()
                     return
         if event.key() == Qt.Key.Key_Escape:
+            if self._doppler.vessel_cycle_selection_active():
+                self._doppler.cancel_vessel_cycle_selection()
+                self._restore_vessel_average_label()
+                event.accept()
+                return
             if self._doppler.vessel_status() != "none":
                 self.clear_vessel_measurement()
                 event.accept()
@@ -6329,6 +6363,17 @@ class ViewerWidget(QWidget):
                 self._apply_zoom_mode()
                 event.accept()
                 return
+        if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_Left and self._doppler.vessel_cycle_selection_active():
+                if self._doppler.move_vessel_cycle(-1):
+                    self._update_vessel_cycle_selection_label()
+                    event.accept()
+                    return
+            if event.key() == Qt.Key.Key_Right and self._doppler.vessel_cycle_selection_active():
+                if self._doppler.move_vessel_cycle(1):
+                    self._update_vessel_cycle_selection_label()
+                    event.accept()
+                    return
         super().keyPressEvent(event)
 
     def _set_caliper_label(self, label: str) -> None:
