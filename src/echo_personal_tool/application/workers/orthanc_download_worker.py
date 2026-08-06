@@ -129,6 +129,15 @@ class OrthancDownloadWorker(QRunnable):
                 for inst in instances:
                     all_instances.append((series_uid, inst.sop_instance_uid))
 
+            # Deduplicate by SOP instance UID — server may return duplicates.
+            seen: set[str] = set()
+            unique_instances: list[tuple[str, str]] = []
+            for series_uid, inst_uid in all_instances:
+                if inst_uid not in seen:
+                    seen.add(inst_uid)
+                    unique_instances.append((series_uid, inst_uid))
+            all_instances = unique_instances
+
             total = len(all_instances)
             if total == 0:
                 self.signals.studies_ready.emit([])

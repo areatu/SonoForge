@@ -600,7 +600,6 @@ class DicomSession:
         self._bot_offsets = None
         self._frames = None
         self._first_frame = None
-        self._metadata = None
 
 
 def stack_pixel_array(pixel_array: np.ndarray) -> np.ndarray:
