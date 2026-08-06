@@ -55,3 +55,8 @@
 - **Тип:** fix
 - **Файлы:** `src/echo_personal_tool/presentation/user_preferences_dialog.py`
 - **Суть:** `display_form` использовался в `_scrollable_grouped()` до определения — перенесено определение и все `addRow` вызовы перед `tabs.addTab()`.
+
+## [2026-08-06 23:59] Исправления чекбоксов и кликов в диалоге сервера
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/presentation/dark_theme.py`
+- **Суть:** 1) Чекбоксы теперь всегда имеют тонкую синюю окантовку (accent_tab) — видно место клика даже в темной теме. 2) При выделении исследования появляется сплошной кружок (●) в text_dim цвете. 3) Добавлен обработчик одиночного клика (itemClicked) — исследования раскрываются по одиночному клику, не требуя двойного.

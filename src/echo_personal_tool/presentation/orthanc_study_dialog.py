@@ -117,9 +117,9 @@ class OrthancStudyDialog(QDialog):
         # Date filter
         self._date_filter_combo = QComboBox()
         self._date_filter_combo.addItem(tr("orthanc.date_filter_all"), 0)
-        self._date_filter_combo.addItem(tr("orthanc.date_filter_7d"), 7)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_1d"), 1)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_3d"), 3)
         self._date_filter_combo.addItem(tr("orthanc.date_filter_30d"), 30)
-        self._date_filter_combo.addItem(tr("orthanc.date_filter_90d"), 90)
         self._date_filter_combo.currentIndexChanged.connect(self._on_date_filter_changed)
 
         search_row = QHBoxLayout()
