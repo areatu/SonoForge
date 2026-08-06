@@ -35,3 +35,13 @@
 - **Тип:** feature + fix
 - **Файлы:** `src/echo_personal_tool/presentation/styled_dialogs.py`, `src/echo_personal_tool/resources/icons/ok.svg`, `src/echo_personal_tool/presentation/user_preferences_dialog.py`, `src/echo_personal_tool/presentation/ase_reference_dialog.py`, `src/echo_personal_tool/presentation/speckle_settings_dialog.py`, `src/echo_personal_tool/presentation/server_settings_dialog.py`, `src/echo_personal_tool/presentation/dicom_upload_dialog.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `tests/unit/test_viewer_widget.py`, `src/echo_personal_tool/domain/services/vti_cycle_service.py`, `src/echo_personal_tool/domain/calculations/doppler_metrics.py`
 - **Суть:** 1) `theme_button_box_shortcuts` → `theme_button_box_icons`: добавлены SVG-иконки ✓ (ok.svg) для OK и ✗ (close.svg) для Cancel/Close на кнопках QDialogButtonBox, окрашенные в `text_dim` (светло-синий для тёмной темы, тёмно-синий для светлой). Применено ко всем 5 диалогам. 2) Ручная Doppler калибровка: убран ROI-этап, поток теперь baseline → диалог скорости → применение без диалога времени. Авто-калибровка не изменена.
+
+## [2026-08-06 23:30] Улучшения диалога "Загрузить с сервера" + финальная проверка
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Добавлен фильтр по дате (QComboBox: Все/7 дней/30 дней/90 дней) с сортировкой по дате исследования. 2) Формат даты изменён с `20260806` на `06.08.2026` (DD.MM.YYYY). 3) Чекбоксы заменены на кастомные маркеры: сплошной кружок ● (checked) и крестик ✗ (unchecked), окрашенные в `text_dim` для контрасти с темой.
+
+## [2026-08-06 23:45] Реструктуризация диалога Настройки
+- **Тип:** refactor
+- **Файлы:** `src/echo_personal_tool/presentation/user_preferences_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Настройки "Отображение" перенесены в закладку "Интерфейс" в отдельный блок (QGroupBox с тонкой синей границей accent_tab). 2) "Разметка Gold", "DICOM" и "References" перенесены из отдельных закладок в закладку "Прочее", каждая в отдельном блоке. 3) Добавлены helper-функции `_group_box()` и `_scrollable_grouped()` для создания сгруппированных блоков с заголовками.

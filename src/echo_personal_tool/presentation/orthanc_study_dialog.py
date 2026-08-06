@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
-from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -50,55 +49,14 @@ _CANCEL_FORCE_CLOSE_MS = 30_000
 log = logging.getLogger(__name__)
 
 
-class _ThemedIndicatorDelegate(QStyledItemDelegate):
-    """Paint check-state indicators as a solid dot (●) or cross (✗)
-    with a theme-contrast color (*text_dim*) instead of the default
-    checkbox glyph."""
+class _StudyItem(QTreeWidgetItem):
+    """Sort by the raw date/string stored in _SORT_ROLE, not display text."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        from echo_personal_tool.presentation.dark_theme import get_theme_palette
-
-        p = get_theme_palette()
-        self._color = QColor(p["text_dim"])
-
-    def paint(self, painter, option, index):
-        from PySide6.QtCore import QPoint, QRect
-        from PySide6.QtGui import QPainter
-        from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
-
-        check_state = index.data(Qt.ItemDataRole.CheckStateRole)
-        if check_state is None:
-            super().paint(painter, option, index)
-            return
-
-        # Paint text without the default checkbox, then draw our own indicator.
-        text_option = QStyleOptionViewItem()
-        text_option.__dict__.update(option.__dict__)
-        text_option.state = option.state & ~QStyle.State_On & ~QStyle.State_Off & ~QStyle.State_Enabled
-        super().paint(painter, text_option, index)
-
-        indicator_size = 18
-        x = option.rect.left() + 2
-        y = option.rect.center().y() - indicator_size // 2
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(self._color, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
-
-        if check_state == Qt.CheckState.Checked:
-            painter.setPen(pen)
-            painter.setBrush(self._color)
-            r = indicator_size // 2 - 1
-            painter.drawEllipse(QPoint(x + indicator_size // 2, y + r + 1), r, r)
-        else:
-            offset = indicator_size // 3
-            cx = x + indicator_size // 2
-            cy = y + indicator_size // 2
-            painter.setPen(pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawLine(cx - offset, cy - offset, cx + offset, cy + offset)
-            painter.drawLine(cx - offset, cy + offset, cx + offset, cy - offset)
-        painter.restore()
+    def __lt__(self, other: QTreeWidgetItem) -> bool:
+        col = self.treeWidget().sortColumn() if self.treeWidget() else 0
+        a = self.data(col, _SORT_ROLE)
+        b = other.data(col, _SORT_ROLE)
+        return str(a or "") < str(b or "")
 
 
 class OrthancStudyDialog(QDialog):
@@ -181,7 +139,6 @@ class OrthancStudyDialog(QDialog):
         self._tree.itemExpanded.connect(self._on_item_expanded)
         self._tree.itemChanged.connect(self._on_item_changed)
         self._tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self._tree.setItemDelegateForColumn(0, _ThemedIndicatorDelegate(self._tree))
 
         self._status_label = QLabel()
         self._progress = QProgressBar()
@@ -359,7 +316,7 @@ class OrthancStudyDialog(QDialog):
             study_date_raw = study.study_date or ""
             display_date = self._format_study_date(study_date_raw)
             desc = study.study_description or ""
-            item = QTreeWidgetItem([patient_name, display_date, desc])
+            item = _StudyItem([patient_name, display_date, desc])
             item.setData(0, _STUDY_UID_ROLE, study.study_uid)
             item.setData(0, _SORT_ROLE, patient_name)
             item.setData(1, _SORT_ROLE, study_date_raw)
@@ -380,7 +337,7 @@ class OrthancStudyDialog(QDialog):
             for i in range(self._tree.topLevelItemCount()):
                 self._tree.topLevelItem(i).setHidden(False)
             return
-        cutoff = datetime.now() - __import__("datetime").timedelta(days=days)
+        cutoff = datetime.now() - timedelta(days=days)
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
             raw_date = item.data(1, _SORT_ROLE) or ""
