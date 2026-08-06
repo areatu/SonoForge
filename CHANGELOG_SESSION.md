@@ -1,5 +1,10 @@
 # Changelog — Текущая сессия
 
+## [2026-08-06 22:30] M-mode Time/HR: горизонтальный калипер без анатомической панели
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/main_window.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`
+- **Суть:** Кнопка «Время/ЧСС» больше не активирует анатомическую панель М-режима (`_ensure_mmode_active`/`_toggle_mmode`). Теперь: авто-калибровка из DICOM (глубина из `SequenceOfUltrasoundRegions`, время из `FrameTime`), при необходимости запуск полной калибровки ROI→depth→time, затем `start_mmode_time_calibration()` — калипер в текущем viewer окне. Обработчик мыши: `mmode_time` drag блокирует Y, движение только по горизонтали. Проверено на файле IM_0255: depth-калибровка из DICOM работает, time-калибровка требует ручного калипера (нет FrameTime). Тесты: 130+ зеленых.
+
 ## [2026-08-06] Сосуды: усреднение PSV/EDV без ЭКГ + ручная коррекция PSV
 - **Тип:** feature
 - **Файлы:** `src/echo_personal_tool/domain/services/cardiac_cycle_service.py`, `src/echo_personal_tool/presentation/doppler_overlay.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_cardiac_cycle_service.py`, `tests/unit/test_presentation_doppler_overlay.py`, `tests/unit/test_presentation_viewer_widget.py`, `tests/unit/test_i18n.py`
