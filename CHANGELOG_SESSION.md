@@ -75,3 +75,20 @@
 - **Тип:** perf
 - **Файлы:** `src/echo/personal_tool/presentation/orthanc_study_dialog.py`, `src/echo/personal_tool/application/dicom_query_service.py`, `src/echo/personal_tool/infrastructure/locales/ru.json`, `src/echo/personal_tool/infrastructure/locales/en.json`
 - **Суть:** 1) Запрос исследований вынесен в QRunnable/QThreadPool — UI больше не блокируется на 10-15с при HTTP timeout. 2) Диалог открывается мгновенно, статус "Поиск…", исследования появляются по мере загрузки. 3) Убран синхронный _check_ping (не нужен — query_studies уже возвращает [] при ошибке). 4) _on_find теперь тоже использует асинхронный режим.
+
+## [2026-08-06 23:59] Финальные исправления
+- **Тип:** fix
+- **Файлы:** `src/echo/personal_tool/presentation/styled_dialogs.py` (QSize), `src/echo/personal_tool/infrastructure/orthanc_client.py` (timeout 30→10s), `tests/unit/test_presentation_orthanc_study_dialog.py` (тесты после async рефакторинга)
+- **Суть:** 1) HTTP таймаут уменьшен с 30 до 10 секунд — быстрее fallback на DIMSE. 2) Тесты обновлены: TestCheckPing заменен на TestBuildStudyTree (проверка построения дерева и сортировки).
+
+## [2026-08-06 23:59] Финальная проверка сессии
+- **Тип:** verification
+- **Файлы:** все изменения сессии
+- **Результат:** Все изменения сессии синтаксически корректны, тесты проходят:
+  - test_presentation_orthanc_study_dialog.py: 34 passed
+  - test_presentation_user_preferences_dialog.py: 32 passed
+  - test_dicom_query_service.py: passed
+  - test_orthanc_client.py: passed
+  - test_presentation_styled_dialogs.py: passed
+  - test_presentation_viewer_widget.py: passed (после guard для _graphics)
+- **Найден и исправлен pre-existing баг:** viewer_widget.py eventFilter ссылался на self._graphics до инициализации (commit b6fd215, до сессии) → flaky AttributeError в тестах. Добавлен guard hasattr().
