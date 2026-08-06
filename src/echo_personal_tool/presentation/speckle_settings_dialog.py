@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.styled_dialogs import theme_button_box_shortcuts
 
 
 class SpeckleSettingsDialog(QDialog):
@@ -81,6 +82,7 @@ class SpeckleSettingsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        theme_button_box_shortcuts(buttons)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)

@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from PySide6.QtWidgets import QFileDialog, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QKeySequence
+from PySide6.QtWidgets import QDialogButtonBox, QFileDialog, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
@@ -227,3 +229,52 @@ def _style_dialog(dialog: QFileDialog) -> None:
             selection-background-color: {p["accent_tab"]};
         }}
     """)
+
+
+def theme_button_box_shortcuts(box: QDialogButtonBox) -> None:
+    """Color accelerator-key letters (e.g. the **O** in **&OK**) with a
+    theme-contrasting color — *text_dim* — so they stand out on both light
+    and dark themes.
+
+    Qt normally underlines the letter following ``&`` in button text.  When
+    we switch to rich-text formatting to apply a custom color, the ``&``
+    accelerator stops working, so the shortcut key is re-registered
+    explicitly via :meth:`QPushButton.setShortcut`.
+    """
+
+    p = get_theme_palette()
+    contrast_color = QColor(p["text_dim"])
+
+    _shortcut_keys: dict[QDialogButtonBox.StandardButton, Qt.Key] = {
+        QDialogButtonBox.StandardButton.Ok: Qt.Key.Key_O,
+        QDialogButtonBox.StandardButton.Cancel: Qt.Key.Key_C,
+        QDialogButtonBox.StandardButton.Save: Qt.Key.Key_S,
+        QDialogButtonBox.StandardButton.Discard: Qt.Key.Key_D,
+        QDialogButtonBox.StandardButton.Close: Qt.Key.Key_C,
+        QDialogButtonBox.StandardButton.Help: Qt.Key.Key_H,
+        QDialogButtonBox.StandardButton.Yes: Qt.Key.Key_Y,
+        QDialogButtonBox.StandardButton.No: Qt.Key.Key_N,
+        QDialogButtonBox.StandardButton.Abort: Qt.Key.Key_A,
+        QDialogButtonBox.StandardButton.Retry: Qt.Key.Key_R,
+        QDialogButtonBox.StandardButton.Ignore: Qt.Key.Key_I,
+    }
+
+    for std_button, key in _shortcut_keys.items():
+        btn = box.button(std_button)
+        if btn is None:
+            continue
+        raw_text = btn.text()
+        if not raw_text or "&" not in raw_text:
+            continue
+        match = re.search(r"&(\w)", raw_text)
+        if not match:
+            continue
+        shortcut_letter = match.group(1)
+        rest = raw_text.replace("&", "", 1)
+        rest = rest[len(shortcut_letter):]
+        btn.setTextFormat(Qt.TextFormat.RichText)
+        btn.setText(
+            f'<span style="color:{contrast_color.name()};font-weight:bold;">'
+            f'{shortcut_letter}</span>{rest}'
+        )
+        btn.setShortcut(QKeySequence("Alt+" + shortcut_letter.upper()))

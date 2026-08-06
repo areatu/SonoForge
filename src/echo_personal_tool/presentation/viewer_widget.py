@@ -6268,8 +6268,12 @@ class ViewerWidget(QWidget):
     def _update_results_overlay_for_caliper_drag(self, measurement: LinearMeasurement) -> None:
         if self._results_overlay_label is None:
             return
-        lines: list[str] = []
+        # Deduplicate by label — keep the most recent measurement per label.
+        deduped: dict[str, LinearMeasurement] = {}
         for m in self._stored_linear_measurements.values():
+            deduped[m.label] = m
+        lines: list[str] = []
+        for m in deduped.values():
             lines.append(m.display_text(length_unit=self._length_display_unit))
         html = "<br>".join(lines)
         self._results_overlay_label.setText(html)

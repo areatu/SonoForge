@@ -508,7 +508,13 @@ def format_results_overlay_html(
     for item in snapshot.planimeter:
         _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
+    # Deduplicate by label — keep the most recently stored measurement per label.
+    deduped: dict[str, LinearMeasurement] = {}
     for measurement in snapshot.linear_measurements:
+        deduped[measurement.label] = measurement
+    linear_for_overlay = list(deduped.values())
+
+    for measurement in linear_for_overlay:
         if measurement.label == "%D":
             if measurement.millimeter_length is not None:
                 display_label = tr(_LABEL_I18N_KEY.get("%D", "result.percent_d"))

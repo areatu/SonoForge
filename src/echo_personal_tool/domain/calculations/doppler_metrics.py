@@ -9,7 +9,7 @@ from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import DopplerResults
 
 
-_np_trapezoid = getattr(np, "trapezoid", np.trapz)
+_np_trapezoid = getattr(np, "trapezoid", None) or np.trapz
 
 
 def _normalize_label(label: str) -> str:
