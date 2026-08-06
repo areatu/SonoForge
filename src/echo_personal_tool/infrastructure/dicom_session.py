@@ -576,17 +576,20 @@ class DicomSession:
         self._first_frame = None
 
     def release_heavy(self) -> None:
-        """Free large buffers while keeping metadata for future re-open."""
-        # MATERIALIZE VIEWS: If _frames is a read-only view into _pixel_data_raw,
-        # copy it to detach from _pixel_data_raw before clearing.
-        if self._frames is not None and self._frames.base is not None:
-            self._frames = self._frames.copy()  # Now it's a writable owned array
-            self._first_frame = self._frames[0]
+        """Free large buffers while keeping metadata for future re-open.
 
+        Callers keep the reference returned by decode_all_frames(), so dropping
+        _frames here is safe — it prevents thread-local sessions from pinning
+        the full cine for the life of a pooled thread (was the cause of
+        multi-GB growth).  A read-only _frames view keeps its backing buffer
+        alive on its own, so no materialize copy is needed.
+        """
         self._raw_bytes = None
         self._pixel_data_raw = None
         self._encapsulated_frames = None
         self._bot_offsets = None
+        self._frames = None
+        self._first_frame = None
 
 
 def stack_pixel_array(pixel_array: np.ndarray) -> np.ndarray:

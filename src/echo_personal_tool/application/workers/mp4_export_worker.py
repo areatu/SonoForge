@@ -132,6 +132,7 @@ class Mp4ExportWorker(QRunnable):
                     self.signals.progress.emit(i + 1, total)
         finally:
             writer.release()
+            session.release_heavy()
 
         self.signals.finished.emit(self._dest_path)
 

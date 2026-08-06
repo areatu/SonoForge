@@ -309,20 +309,30 @@ def test_uncompressed_readonly_pipeline(tmp_path: Path) -> None:
 
 
 def test_readonly_materialization_on_release_heavy(tmp_path: Path) -> None:
-    """Verify that release_heavy() materializes read-only views before freeing _pixel_data_raw."""
+    """Verify that release_heavy() does not pin the full cine array in the session."""
     path = tmp_path / "materialize.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=5, rows=32, cols=32)
     session = DicomSession()
     session.open(path)
     frames = session.decode_all_frames()
+    original_bytes = [frames[i].tobytes() for i in range(frames.shape[0])]
 
     assert not frames.flags.writeable, "Bulk frames must be read-only"
     assert frames.base is not None, "Frames should be a view into _pixel_data_raw"
 
     session.release_heavy()
 
-    # After release_heavy, session._frames should be materialized (writable copy)
-    assert session._frames is not None, "session._frames should be preserved after release_heavy"
-    assert session._frames.shape == (5, 32, 32), "Frames shape should be preserved"
-    assert session._frames.flags.writeable, "Materialized frames should be writable"
-    assert session._frames.base is None, "Materialized frames should own their memory"
+    # After release_heavy, the session must NOT pin the full cine array —
+    # callers keep the reference returned by decode_all_frames().
+    assert session._frames is None, "session._frames must be released after release_heavy"
+    assert session._pixel_data_raw is None, "Raw pixel bytes must be freed"
+    assert session._raw_bytes is None, "File bytes must be freed"
+
+    # The caller's reference must remain fully usable (view owns its buffer).
+    assert frames.shape == (5, 32, 32), "Caller's frame array must stay valid"
+    assert [frames[i].tobytes() for i in range(frames.shape[0])] == original_bytes, \
+        "Frame data must be intact after release_heavy"
+
+    # decode_single_frame must still work after heavy buffers are freed (reload path).
+    reframe = session.decode_single_frame(2)
+    assert reframe.shape == (32, 32), "decode_single_frame should reload after release_heavy"

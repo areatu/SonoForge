@@ -115,7 +115,10 @@ class HeartRateWorker(QRunnable):
 
         session = get_thread_dicom_session()
         session.open(self._source_path)
-        all_frames = session.decode_all_frames()
+        try:
+            all_frames = session.decode_all_frames()
+        finally:
+            session.release_heavy()
         result: list[np.ndarray] = []
         for frame in all_frames:
             if frame.ndim == 3:
