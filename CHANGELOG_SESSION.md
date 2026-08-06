@@ -70,3 +70,8 @@
 - **Тип:** fix
 - **Файлы:** `src/echo_personal_tool/presentation/styled_dialogs.py`, `src/echo_personal_tool/application/dicom_query_service.py`, `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`, `tests/unit/test_presentation_user_preferences_dialog.py`
 - **Суть:** 1) DicomQueryService.query_series() теперь оборачивает вызовы в try/except с fallback на [], как query_studies — ошибка сервера не ломает диалог. 2) Исправлен шаблон ошибки: используется series_query_error вместо series_error (который имел незаполненные плейсхолдеры {current}/{total}). 3) Исправлен Qt.QSize → QSize в styled_dialogs.py:278 (багом ломался весь диалог настроек). 4) Тест test_creates_with_tabs: 7→5 вкладок после реструктуризации.
+
+## [2026-08-06 23:59] Асинхронная загрузка исследований
+- **Тип:** perf
+- **Файлы:** `src/echo/personal_tool/presentation/orthanc_study_dialog.py`, `src/echo/personal_tool/application/dicom_query_service.py`, `src/echo/personal_tool/infrastructure/locales/ru.json`, `src/echo/personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Запрос исследований вынесен в QRunnable/QThreadPool — UI больше не блокируется на 10-15с при HTTP timeout. 2) Диалог открывается мгновенно, статус "Поиск…", исследования появляются по мере загрузки. 3) Убран синхронный _check_ping (не нужен — query_studies уже возвращает [] при ошибке). 4) _on_find теперь тоже использует асинхронный режим.
