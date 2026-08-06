@@ -497,17 +497,17 @@ QCheckBox::indicator:checked {{
 QTreeWidget::indicator, QTreeView::indicator {{
     width: 18px;
     height: 18px;
-    border: none;
+    border: 1px solid {p["accent_tab"]};
     background: transparent;
     border-radius: 50%;
 }}
 QTreeWidget::indicator:checked, QTreeView::indicator:checked {{
     background: {p["text_dim"]};
-    border-color: {p["text_dim"]};
+    border: none;
 }}
 QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     background: transparent;
-    border: none;
+    border: 1px solid {p["accent_tab"]};
 }}
 
 /* ── SystemBar ──────────────────────────────────────────────── */

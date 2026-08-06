@@ -139,6 +139,8 @@ class OrthancStudyDialog(QDialog):
         self._tree.itemExpanded.connect(self._on_item_expanded)
         self._tree.itemChanged.connect(self._on_item_changed)
         self._tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._tree.setRootIsDecorated(True)
+        self._tree.itemClicked.connect(self._on_item_clicked)
 
         self._status_label = QLabel()
         self._progress = QProgressBar()
@@ -391,6 +393,14 @@ class OrthancStudyDialog(QDialog):
             child.setCheckState(0, Qt.CheckState.Unchecked)
             item.addChild(child)
         self._tree.blockSignals(False)
+
+    def _on_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        """Single-click expands/collapses study items (top-level only)."""
+        if item.parent() is not None:
+            return
+        if not item.data(0, _STUDY_UID_ROLE):
+            return
+        item.setExpanded(not item.isExpanded())
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if column != 0 or not item.data(0, _SERIES_UID_ROLE):
