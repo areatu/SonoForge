@@ -628,7 +628,7 @@ class TestCancelActiveTool:
     def test_cancel_doppler_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_cal_step = "roi"
+        w._doppler_cal_step = "baseline"
         w.cancel_active_tool()
         assert w._doppler_cal_step is None
 
@@ -3143,33 +3143,10 @@ class TestDopplerCalibrationClick:
         result = w._handle_doppler_calibration_click(event)
         assert result is False
 
-    def test_handle_doppler_calibration_click_roi_step(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_cal_step = "roi"
-        from PySide6.QtCore import QPointF
-        from PySide6.QtGui import QMouseEvent
-
-        event = QMouseEvent(
-            QEvent.Type.MouseButtonPress,
-            QPointF(32, 32),
-            QPointF(32, 32),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        result = w._handle_doppler_calibration_click(event)
-        assert result is True
-        assert w._doppler_roi_corner1 is not None
-
     def test_handle_doppler_calibration_click_baseline_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._doppler_cal_step = "baseline"
-        w._doppler_roi_corner1 = (10.0, 10.0)
-        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
-
-        w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3184,6 +3161,13 @@ class TestDopplerCalibrationClick:
         result = w._handle_doppler_calibration_click(event)
         assert result is True
         assert w._doppler_cal_step is None
+
+    def test_doppler_calibration_starts_at_baseline(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        assert w.start_doppler_calibration()
+        assert w._doppler_cal_step == "baseline"
+        assert w._doppler_pending_roi is None
 
 
 # ═══════════════════════════════════════════════════════════════════

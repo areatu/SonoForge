@@ -2177,12 +2177,12 @@ class ViewerWidget(QWidget):
         self.cancel_active_tool()
         self._clear_calibration_caliper()
         self._doppler_cal_kind = kind
-        self._doppler_cal_step = "roi"
+        self._doppler_cal_step = "baseline"
         self._doppler_roi_corner1 = None
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
         self._doppler_pending_velocity_span = None
-        self._measurement_label.setText(tr(_DOPPLER_CAL_ROI_STEP1_KEY))
+        self._measurement_label.setText(tr(_DOPPLER_CAL_BASELINE_KEY))
         self._measurement_label.show()
         return True
 
@@ -3089,43 +3089,19 @@ class ViewerWidget(QWidget):
             return False
         x, y = click
 
-        if self._doppler_cal_step == "roi":
-            if self._doppler_roi_corner1 is None:
-                self._doppler_roi_corner1 = (x, y)
-                self._measurement_label.setText(_DOPPLER_CAL_ROI_STEP2_KEY)
-                return True
-            roi = roi_from_corners(self._doppler_roi_corner1, (x, y))
+        if self._doppler_cal_step == "baseline":
+            self._doppler_pending_baseline_y = y
             height, width = self._current_frame.shape[:2]
-            roi = roi.normalized(float(width), float(height))
-            frame = self._current_frame
-            if frame.ndim == 3:
-                gray = np.mean(frame, axis=2)
-            else:
-                gray = frame
-            baseline_y = detect_baseline_y(gray, roi)
-            self._doppler_pending_roi = roi
-            self._doppler_pending_baseline_y = baseline_y
-            self._doppler_cal_step = "baseline"
+            roi = self._doppler_pending_roi or DopplerSpectrogramRoi(
+                x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height))
+            )
             partial = calibration_from_roi_and_baseline(
                 roi,
-                baseline_y,
+                y,
                 time_span_ms=0.0,
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
-            self._measurement_label.setText(_DOPPLER_CAL_BASELINE_KEY)
-            return True
-
-        if self._doppler_cal_step == "baseline":
-            self._doppler_pending_baseline_y = y
-            if self._doppler_pending_roi is not None:
-                partial = calibration_from_roi_and_baseline(
-                    self._doppler_pending_roi,
-                    y,
-                    time_span_ms=0.0,
-                    kind=self._doppler_cal_kind,
-                )
-                self._doppler.set_axis_mapping(build_axis_mapping(partial))
             self._begin_doppler_velocity_calibration()
             return True
 
@@ -5532,27 +5508,38 @@ class ViewerWidget(QWidget):
         if not accepted or self._current_frame is None:
             return
 
-        if self._doppler_pending_roi is not None and self._doppler_pending_baseline_y is not None:
-            roi = self._doppler_pending_roi
-            if length_px > 0.0:
-                velocity_span = span_cm_s * (roi.height / length_px)
-            else:
-                velocity_span = span_cm_s
-            self._doppler_pending_velocity_span = velocity_span
-            # Proceed to time span prompt (4th step)
-            self._prompt_spectral_time_span()
-            return
-
         height, width = self._current_frame.shape[:2]
-        mapping = DopplerAxisMapping.from_frame_size(
-            width,
-            height,
-            velocity_span_cm_s=span_cm_s,
+        # Use user-defined ROI if available; otherwise fall back to full frame.
+        if self._doppler_pending_roi is not None:
+            roi = self._doppler_pending_roi
+        else:
+            roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height)))
+
+        baseline_y = (
+            self._doppler_pending_baseline_y
+            if self._doppler_pending_baseline_y is not None
+            else roi.y0 + roi.height / 2.0
         )
-        self._doppler.set_axis_mapping(mapping)
-        self._doppler_axis_calibrated = False
+
+        if length_px > 0.0:
+            velocity_span = span_cm_s * (roi.height / length_px)
+        else:
+            velocity_span = span_cm_s
+
+        state = calibration_from_roi_and_baseline(
+            roi,
+            baseline_y,
+            velocity_span_cm_s=velocity_span,
+            time_span_ms=0.0,
+            kind=self._doppler_cal_kind,
+        )
+        self.apply_doppler_calibration_state(state)
+        self._doppler_pending_roi = None
+        self._doppler_pending_baseline_y = None
+        self._doppler_pending_velocity_span = None
+        self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
         if not self._syncing_state:
-            self.spectral_calibration_completed.emit(span_cm_s)
+            self.spectral_calibration_completed.emit(velocity_span)
 
     def _prompt_spectral_time_span(self) -> None:
         """4th step of calibration wizard: ask for time span (ms)."""
