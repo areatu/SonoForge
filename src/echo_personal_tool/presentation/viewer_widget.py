@@ -1028,6 +1028,8 @@ class ViewerWidget(QWidget):
         self._update_contour_hover((float(mapped.x()), float(mapped.y())))
 
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        if not hasattr(self, "_graphics") or self._graphics is None:
+            return super().eventFilter(watched, event)  # type: ignore[arg-type]
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
             if event.type() == QEvent.Type.MouseButtonPress:
