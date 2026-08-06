@@ -543,6 +543,8 @@
   "status.calibration_reset": "Ручная калибровка сброшена",
   "status.caliper_deleted": "Калипер удалён",
   "status.mmode_caliper_tool": "М-режим калипер: кликните вертикально на полосе М-режима",
+  "status.mmode_time_ready": "Калипер времени/ЧСС: кликните и тяните горизонтально для измерения времени",
+  "status.mmode_calibration_start": "Запуск калибровки М-режима — кликните для определения ROI…",
   "status.contour_deleted": "Контур удалён",
   "status.decoding": "Декодирование {name}… ({total} кадров)",
   "status.decoding_video": "Декодирование видео {name}… ({total} кадров)",
