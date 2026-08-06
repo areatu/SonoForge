@@ -53,8 +53,32 @@ def styled_save_file(
     _style_dialog(dialog)
     if dialog.exec() == QFileDialog.DialogCode.Accepted:
         files = dialog.selectedFiles()
-        return (files[0], dialog.selectedNameFilter()) if files else ("", "")
+        if files:
+            path = files[0]
+            name_filter = dialog.selectedNameFilter()
+            return (_append_extension(path, name_filter), name_filter)
+        return ("", "")
     return ("", "")
+
+
+def _append_extension(path: str, name_filter: str) -> str:
+    """Append an extension from *name_filter* if *path* lacks a matching one."""
+    import re
+    from pathlib import Path
+
+    path_obj = Path(path)
+    match = re.search(r"\(([^()]+)\)", name_filter)
+    filter_exts: list[str] = []
+    if match:
+        filter_exts = [p[1:] for p in match.group(1).split() if p.startswith("*")]
+    if not filter_exts:
+        return path
+    suffix = path_obj.suffix.lower()
+    if suffix:
+        if suffix in filter_exts:
+            return path
+        return f"{path}{filter_exts[0]}"
+    return f"{path}{filter_exts[0]}"
 
 
 def styled_select_directory(

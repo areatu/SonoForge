@@ -64,7 +64,7 @@ class OrthancDicomWebClient:
         *,
         auth_mode: str = "basic",
         http_headers: dict[str, str] | None = None,
-        timeout: float = 30.0,
+        timeout: float = 10.0,
         stow_dicom_web_url: str = "",
         tls_verify: bool = True,
     ):

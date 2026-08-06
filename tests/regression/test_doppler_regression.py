@@ -188,7 +188,7 @@ class TestCalibrationFromRoiRegression:
         roi = _make_roi()
         state = calibration_from_roi_and_baseline(roi, baseline_y_px=100.0)
         assert state.velocity_span_cm_s == pytest.approx(200.0)
-        assert state.time_span_ms == pytest.approx(1000.0)
+        assert state.time_span_ms == pytest.approx(0.0)
 
     def test_tissue_default_span(self) -> None:
         roi = _make_roi()

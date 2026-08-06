@@ -53,6 +53,7 @@ def format_measurement_report(
         _format_diastology_section(report_snapshot),
         _format_planimeter_section(report_snapshot),
         _format_linear_section(report_snapshot, length_display_unit=length_display_unit),
+        _format_vessel_section(report_snapshot),
         _format_indexed_section(report_snapshot),
     ):
         if section:
@@ -251,6 +252,23 @@ def _format_linear_section(
             for measurement in snapshot.linear_measurements
         ),
     ]
+
+
+def _format_vessel_section(snapshot: MeasurementSnapshot) -> list[str]:
+    vessels = snapshot.vessel_measurements
+    if not vessels:
+        return []
+    lines = [tr("domain.report.vessels")]
+    for measurement in vessels:
+        lines.append(_line("PSV", measurement.psv_cm_s, " cm/s"))
+        lines.append(_line("EDV", measurement.edv_cm_s, " cm/s"))
+        if measurement.ri is not None:
+            lines.append(_line("RI", measurement.ri, "", decimals=2))
+        if measurement.sd is not None:
+            lines.append(_line("S/D", measurement.sd, "", decimals=2))
+        if measurement.mv_approx is not None:
+            lines.append(_line("MV≈", measurement.mv_approx, " cm/s"))
+    return lines if len(lines) > 1 else []
 
 
 def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:

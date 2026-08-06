@@ -29,6 +29,27 @@ def viewer():
     w.close()
 
 
+def _calibrated_vessel_viewer(viewer, *, height=80, width=120, baseline=50, edge_row=20):
+    from echo_personal_tool.domain.models.doppler_roi import (
+        DopplerCalibrationState,
+        DopplerSpectrogramRoi,
+    )
+    from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
+
+    gray = np.zeros((height, width), dtype=np.uint8)
+    for col in range(10, width - 10):
+        gray[edge_row:baseline, col] = 180
+    viewer._current_frame = gray
+    state = DopplerCalibrationState(
+        roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=float(height)),
+        baseline_y_px=float(baseline),
+        velocity_span_cm_s=200.0,
+    )
+    viewer._doppler_calibration_state = state
+    viewer._doppler.set_axis_mapping(build_axis_mapping(state))
+    return state
+
+
 class TestResultsOverlayStyle:
     def test_returns_string(self):
         from echo_personal_tool.presentation.viewer_widget import _results_overlay_style
@@ -476,3 +497,173 @@ class TestContourViewBoxMouseEvents:
         # ContourViewBox.leavesEvent will check _viewer_widget is None and skip cleanup
         assert vb._viewer_widget is None
         vb.close()
+
+
+class TestSaveViewerImage:
+    def test_creates_file_from_grab(self, viewer, tmp_path):
+        from unittest.mock import patch
+
+        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        out = tmp_path / "frame.png"
+        with patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+            return_value=(str(out), "PNG (*.png)"),
+        ):
+            viewer._save_viewer_image()
+        assert out.exists()
+
+    def test_returns_early_when_no_frame(self, viewer):
+        from unittest.mock import patch
+
+        viewer._current_frame = None
+        with patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+        ) as mock_save:
+            viewer._save_viewer_image()
+        mock_save.assert_not_called()
+
+    def test_shows_error_when_pixmap_save_fails(self, viewer, tmp_path):
+        from unittest.mock import patch
+
+        from echo_personal_tool.presentation.viewer_widget import QMessageBox
+
+        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        out = tmp_path / "frame.png"
+        warnings = []
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(out), "PNG (*.png)"),
+            ),
+            patch.object(
+                viewer,
+                "grab",
+                return_value=MagicMock(
+                    isNull=lambda: False,
+                    copy=lambda *a, **k: MagicMock(
+                        isNull=lambda: False,
+                        save=lambda *a, **k: False,
+                    ),
+                ),
+            ),
+            patch.object(QMessageBox, "warning", side_effect=lambda *a, **k: warnings.append(a)),
+        ):
+            viewer._save_viewer_image()
+        assert not out.exists()
+        assert len(warnings) == 1
+        assert str(out) in warnings[0][2]
+
+
+class TestVesselAutoTrace:
+    def test_success_sets_vessel_done(self, viewer):
+        _calibrated_vessel_viewer(viewer)
+        assert viewer.start_vessel_auto_trace("normal") is True
+        assert viewer._doppler.vessel_status() == "done"
+        assert viewer._doppler.get_vessel_values() is not None
+        assert viewer._doppler._auto_envelope_item is not None
+
+    def test_preset_propagated(self, viewer):
+        _calibrated_vessel_viewer(viewer)
+        assert viewer.start_vessel_auto_trace("high") is True
+        assert viewer._doppler.vessel_status() == "done"
+
+    def test_not_calibrated_returns_false(self, viewer):
+        viewer._current_frame = np.zeros((80, 120), dtype=np.uint8)
+        assert viewer.start_vessel_auto_trace() is False
+
+    def test_no_signal_returns_false(self, viewer):
+        _calibrated_vessel_viewer(viewer)
+        viewer._current_frame = np.zeros((80, 120), dtype=np.uint8)
+        assert viewer.start_vessel_auto_trace() is False
+        assert viewer._doppler.vessel_status() == "none"
+
+    def test_no_frame_returns_false(self, viewer):
+        assert viewer.start_vessel_auto_trace() is False
+
+
+class TestVesselCycleCorrection:
+    def _cycles(self):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        return (
+            CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "envelope", 1.0),
+            CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "envelope", 1.0),
+        )
+
+    def _averaged(self, viewer):
+        from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+        from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
+
+        viewer._current_frame = np.zeros((200, 1000), dtype=np.uint8)
+        state = DopplerCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0),
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
+            time_span_ms=2000.0,
+        )
+        viewer._doppler_calibration_state = state
+        viewer._doppler.set_axis_mapping(build_axis_mapping(state))
+        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
+                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
+                    (900.0, 60.0), (1000.0, 70.0))
+        from unittest.mock import patch
+
+        with patch.object(viewer, "_extract_doppler_envelope", return_value=envelope), patch.object(
+            viewer, "_doppler_cardiac_cycles", return_value=self._cycles()
+        ):
+            assert viewer.average_vessel_cycles() is True
+
+    def _key(self, key):
+        from PySide6.QtCore import QEvent, Qt
+        from PySide6.QtGui import QKeyEvent
+
+        return QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier)
+
+    def test_average_activates_selection(self, viewer):
+        self._averaged(viewer)
+        assert viewer._doppler.vessel_cycle_selection_active() is True
+        assert viewer._doppler.vessel_cycle_count() == 2
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        candidate = viewer._doppler.vessel_cycle_candidate()
+        index = viewer._doppler.vessel_cycle_index()
+        count = viewer._doppler.vessel_cycle_count()
+        expected = tr("viewer.vessel_cycle_candidate", value=candidate, index=index + 1, count=count)
+        assert viewer._measurement_label.text() == expected
+
+    def test_left_right_moves_selection(self, viewer):
+        from PySide6.QtCore import Qt
+
+        self._averaged(viewer)
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
+        assert viewer._doppler.vessel_cycle_index() == 1
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Left))
+        assert viewer._doppler.vessel_cycle_index() == 0
+
+    def test_enter_assigns_candidate_and_accepts(self, viewer):
+        from PySide6.QtCore import Qt
+
+        self._averaged(viewer)
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
+        candidate = viewer._doppler.vessel_cycle_candidate()
+        accepted = []
+        viewer.vessel_accept_requested.connect(accepted.append)
+        from unittest.mock import patch
+
+        with patch.object(viewer, "_current_instance_uid", return_value="uid"):
+            viewer.keyPressEvent(self._key(Qt.Key.Key_Return))
+        assert len(accepted) == 1
+        assert accepted[0].psv_cm_s == pytest.approx(candidate)
+        assert viewer._doppler.vessel_status() == "none"
+
+    def test_escape_cancels_keeps_median(self, viewer):
+        from PySide6.QtCore import Qt
+
+        self._averaged(viewer)
+        median_psv, _ = viewer._doppler.get_vessel_values()
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Right))
+        viewer.keyPressEvent(self._key(Qt.Key.Key_Escape))
+        assert viewer._doppler.vessel_cycle_selection_active() is False
+        psv, _ = viewer._doppler.get_vessel_values()
+        assert psv == pytest.approx(median_psv)
+        assert viewer._doppler.vessel_status() == "done"

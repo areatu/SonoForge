@@ -16,6 +16,7 @@ import numpy as np
 from echo_personal_tool.domain.exceptions import IncompleteCineError
 
 _DEFAULT_EVICT_WINDOW = 40
+_MAX_CACHE_MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB cap
 
 
 class FrameCache:
@@ -28,6 +29,7 @@ class FrameCache:
         self._pinned: set[int] = set()
         self._sorted_keys: list[int] = []
         self._cached_frames: np.ndarray | None = None
+        self._memory_bytes: int = 0
 
     @property
     def frames(self) -> np.ndarray | None:
@@ -63,6 +65,7 @@ class FrameCache:
         self._sorted_keys = sorted(self._frame_store.keys())
         self._cached_frames = None
         self._pinned.clear()
+        self._memory_bytes = sum(f.nbytes for f in self._frame_store.values())
 
     def get(self, index: int) -> np.ndarray:
         if self._total_frames == 0:
@@ -79,14 +82,37 @@ class FrameCache:
         self._total_frames = total
 
     def put(self, index: int, frame: np.ndarray) -> None:
+        frame_bytes = frame.nbytes
         if index not in self._frame_store:
             bisect.insort(self._sorted_keys, index)
+        else:
+            self._memory_bytes -= self._frame_store[index].nbytes
         self._frame_store[index] = frame
+        self._memory_bytes += frame_bytes
         self._cached_frames = None
         # Evict frames outside the window to prevent unbounded growth
         # from stale prefetch loads or scroll overshoot.
         if len(self._sorted_keys) > self._evict_window * 2:
             self._evict()
+        # Enforce memory cap: evict oldest frames if over limit.
+        if self._memory_bytes > _MAX_CACHE_MEMORY_BYTES:
+            self._evict_to_memory_limit()
+
+    def _evict_to_memory_limit(self) -> None:
+        """Evict oldest frames until memory is under the cap."""
+        keys = list(self._sorted_keys)
+        for k in keys:
+            if self._memory_bytes <= _MAX_CACHE_MEMORY_BYTES // 2:
+                break
+            if k not in self._pinned:
+                frame = self._frame_store.pop(k, None)
+                if frame is not None:
+                    self._memory_bytes -= frame.nbytes
+                try:
+                    self._sorted_keys.remove(k)
+                except ValueError:
+                    pass
+        self._cached_frames = None
 
     def clear(self) -> None:
         self.source_path = None
@@ -96,6 +122,7 @@ class FrameCache:
         self._pinned.clear()
         self._sorted_keys.clear()
         self._cached_frames = None
+        self._memory_bytes = 0
 
     def frame_count(self) -> int:
         return self._total_frames
@@ -181,6 +208,7 @@ class FrameCache:
         self._cached_frames = result
         self._frame_store = {i: result[i] for i in range(result.shape[0])}
         self._sorted_keys = sorted(self._frame_store.keys())
+        self._memory_bytes = sum(f.nbytes for f in self._frame_store.values())
 
         return result
 
@@ -230,6 +258,8 @@ class FrameCache:
             return
         to_drop_set = set(to_drop)
         for k in to_drop:
-            del self._frame_store[k]
+            frame = self._frame_store.pop(k, None)
+            if frame is not None:
+                self._memory_bytes -= frame.nbytes
         self._sorted_keys = [k for k in keys if k not in to_drop_set]
         self._cached_frames = None

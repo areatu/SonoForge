@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 
+# ── Playback diagnostics (set ECHO_PLAYBACK_DIAG=1 to enable) ────────
+try:
+    from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics as _playback_diag
+except ImportError:
+    _playback_diag = None  # type: ignore[assignment]
+
 
 class FrameLoaderSignals(QObject):
     finished = Signal(np.ndarray)
@@ -79,6 +85,7 @@ class FrameLoaderWorker(QRunnable):
             )
 
     def _run_single(self) -> None:
+        _t0 = time.perf_counter()
         if self._media_format == "mp4":
             reader = get_thread_video_reader()
             reader.open(self._path)
@@ -90,21 +97,26 @@ class FrameLoaderWorker(QRunnable):
             session.open(self._path)
             pixels = session.decode_single_frame(self._frame_index)
             session.release_heavy()
+        _elapsed_ms = (time.perf_counter() - _t0) * 1000.0
+        # ── Playback diagnostics: single decode ──
+        if _playback_diag is not None:
+            _playback_diag.on_decode_batch(self._frame_index, 1, _elapsed_ms)
         try:
-            self.signals.finished.emit(np.ascontiguousarray(pixels))
+            self.signals.finished.emit(pixels)
         except RuntimeError:
             pass
 
     def _run_batch(self) -> None:
         end = min(self._frame_index + self._batch_size, self._total_frames)
         results: list[tuple[int, np.ndarray]] = []
+        _batch_t0 = time.perf_counter()
 
         if self._media_format == "mp4":
             reader = get_thread_video_reader()
             reader.open(self._path)
             for i in range(self._frame_index, end):
                 pixels = reader.read_frame(i)
-                results.append((i, np.ascontiguousarray(pixels)))
+                results.append((i, pixels))
         elif self._media_format == "dicom":
             # Sequential decode on a single session.
             session = get_thread_dicom_session()
@@ -113,8 +125,13 @@ class FrameLoaderWorker(QRunnable):
             end = min(end, actual_count)
             for i in range(self._frame_index, end):
                 pixels = session.decode_single_frame(i)
-                results.append((i, np.ascontiguousarray(pixels)))
+                results.append((i, pixels))
             session.release_heavy()
+
+        _batch_elapsed_ms = (time.perf_counter() - _batch_t0) * 1000.0
+        # ── Playback diagnostics: decode batch ──
+        if _playback_diag is not None:
+            _playback_diag.on_decode_batch(self._frame_index, len(results), _batch_elapsed_ms)
 
         try:
             self.signals.batch_finished.emit(results)

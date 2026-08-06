@@ -114,7 +114,10 @@ class OpticalFlowRefineWorker(QRunnable):
 
         session = get_thread_dicom_session()
         session.open(self._source_path)
-        all_frames = session.decode_all_frames()
+        try:
+            all_frames = session.decode_all_frames()
+        finally:
+            session.release_heavy()
         result: list[np.ndarray] = []
         for idx in indices:
             if 0 <= idx < len(all_frames):

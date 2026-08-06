@@ -13,6 +13,7 @@ from echo_personal_tool.domain.models.doppler import (
 )
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
 
 def merge_doppler_peaks(
@@ -126,6 +127,29 @@ def linear_measurements_for_instance(
     return tuple(m for m in measurements if m.sop_instance_uid == sop_instance_uid)
 
 
+def merge_vessel_measurements(
+    existing: tuple[VesselMeasurement, ...],
+    incoming: tuple[VesselMeasurement, ...],
+) -> tuple[VesselMeasurement, ...]:
+    """Replace vessel measurements by instance and frame; clear when incoming is empty."""
+    if not incoming:
+        return ()
+    by_key: dict[tuple[str, int], VesselMeasurement] = {}
+    for measurement in existing:
+        by_key[(measurement.sop_instance_uid, measurement.frame_index)] = measurement
+    for measurement in incoming:
+        by_key[(measurement.sop_instance_uid, measurement.frame_index)] = measurement
+    return tuple(by_key.values())
+
+
+def vessel_measurements_for_instance(
+    measurements: tuple[VesselMeasurement, ...],
+    sop_instance_uid: str,
+) -> tuple[VesselMeasurement, ...]:
+    """Return only vessel measurements belonging to the given instance."""
+    return tuple(m for m in measurements if m.sop_instance_uid == sop_instance_uid)
+
+
 @dataclass(frozen=True)
 class StudyMeasurementData:
     contours: tuple[Contour, ...] = ()
@@ -140,6 +164,7 @@ class StudyMeasurementData:
     height_cm: float | None = None
     weight_kg: float | None = None
     mmode_time_per_pixel_ms: float | None = None
+    vessel_measurements: tuple[VesselMeasurement, ...] = ()
 
     @property
     def doppler_measurement(self) -> DopplerMeasurementDTO | None:
@@ -392,6 +417,17 @@ class StudyMeasurementSessionStore:
             data,
             height_cm=height_cm,
             weight_kg=weight_kg,
+        )
+
+    def merge_vessel_measurements(
+        self,
+        study_uid: str,
+        incoming: tuple[VesselMeasurement, ...],
+    ) -> None:
+        data = self.get(study_uid)
+        self._studies[study_uid] = replace(
+            data,
+            vessel_measurements=merge_vessel_measurements(data.vessel_measurements, incoming),
         )
 
     def reset_measurements(self, study_uid: str) -> None:

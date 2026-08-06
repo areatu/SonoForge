@@ -7,6 +7,16 @@ import os
 import sys
 from pathlib import Path
 
+# Windows timer resolution: request 1ms granularity for PreciseTimer.
+# Cleaned up on app exit to allow OS idle states.
+if sys.platform == "win32":
+    try:
+        import ctypes
+
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except Exception:
+        pass
+
 # Memory diagnostics: log top allocations every 10s when ECHO_FREEZE_DIAG=1
 if os.environ.get("ECHO_FREEZE_DIAG") == "1":
     import tracemalloc
@@ -60,6 +70,35 @@ for _logger_name in ("pylibjpeg", "pylibjpeg.utils", "pydicom"):
 if os.environ.get("ECHO_DEBUG"):
     logging.getLogger("echo_personal_tool").setLevel(logging.DEBUG)
 
+# ── Diagnostic file logging for the server download pipeline ──
+# Writes DEBUG-level logs from download/query modules to diag.log so partial
+# study loads (e.g. "15 of 85 instances") can be diagnosed without console capture.
+_DIAG_LOGGERS = (
+    "echo_personal_tool.application.workers.orthanc_download_worker",
+    "echo_personal_tool.application.services.dicom_retrieve_service",
+    "echo_personal_tool.application.dicom_query_service",
+    "echo_personal_tool.infrastructure.orthanc_client",
+    "echo_personal_tool.infrastructure.dimse_client",
+    "echo_personal_tool.infrastructure.embedded_storage_scp",
+    "echo_personal_tool.infrastructure.dicom_metadata_mapper",
+    "echo_personal_tool.presentation.orthanc_study_dialog",
+)
+_diag_log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+try:
+    _diag_log_dir.mkdir(parents=True, exist_ok=True)
+    _diag_handler = logging.FileHandler(
+        str(_diag_log_dir / "diag.log"), mode="w", encoding="utf-8"
+    )
+    _diag_handler.setLevel(logging.DEBUG)
+    _diag_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    for _logger_name in _DIAG_LOGGERS:
+        logging.getLogger(_logger_name).setLevel(logging.DEBUG)
+        logging.getLogger(_logger_name).addHandler(_diag_handler)
+except OSError:
+    pass
+
 # ── First-run environment check ──
 # When running outside PyInstaller and outside a venv, check if deps/models
 # are available.  The bash launcher (sonoforge) handles this for normal installs;
@@ -92,10 +131,30 @@ from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_exp
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
 
 
+def _cleanup_winmm() -> None:
+    """Restore Windows timer resolution to default on exit."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeEndPeriod(1)
+        except Exception:
+            pass
+
+
 def main() -> int:
     patch_pyqtgraph_export_dialog()
     app = QApplication(sys.argv)
     app.setApplicationName("SonoForge")
+
+    # Enable OpenGL hardware acceleration for pyqtgraph texture uploads.
+    # On Windows with ANGLE this ensures GPU texture upload instead of software rendering.
+    try:
+        import pyqtgraph as pg
+
+        pg.setConfigOptions(useOpenGL=True)
+    except Exception:
+        pass
 
     # Set application icon (window icon + taskbar)
     from PySide6.QtGui import QIcon
@@ -127,6 +186,7 @@ def main() -> int:
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
     result = app.exec()
+    _cleanup_winmm()
     if is_enabled():
         print_summary()
     return result

@@ -19,7 +19,9 @@ _CACHE_MAX_BYTES = 64 * 1024 * 1024  # 64 MB
 
 
 class _DecodedPixelCache:
-    """Thread-safe LRU cache for decoded DICOM frames with byte-based limit."""
+    """Thread-safe LRU cache for decoded DICOM frames with byte-based limit.
+    get() returns zero-copy reference.
+    put() stores an OWNED WRITABLE copy — never a view — to survive release_heavy()."""
 
     def __init__(self, max_bytes: int = _CACHE_MAX_BYTES) -> None:
         self._max_bytes = max_bytes
@@ -40,14 +42,18 @@ class _DecodedPixelCache:
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
-            else:
-                entry_bytes = pixels.nbytes
-                # Evict oldest entries until we have room
-                while self._current_bytes + entry_bytes > self._max_bytes and self._cache:
-                    _, evicted = self._cache.popitem(last=False)
-                    self._current_bytes -= evicted.nbytes
-                self._cache[key] = pixels
-                self._current_bytes += entry_bytes
+                return
+
+            # BOUNDARY COPY: Cache must own writable memory
+            owned = np.array(pixels, copy=True)
+            entry_bytes = owned.nbytes
+
+            while self._current_bytes + entry_bytes > self._max_bytes and self._cache:
+                _, evicted = self._cache.popitem(last=False)
+                self._current_bytes -= evicted.nbytes
+
+            self._cache[key] = owned
+            self._current_bytes += entry_bytes
 
     def clear(self) -> None:
         with self._lock:

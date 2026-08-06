@@ -1,31 +1,50 @@
-# Task 1 Report: Add `area_tool_mode` field to UserPreferences
+# Task 1: M-mode Model Enhancement — Report
 
-## What I implemented
+## Status: DONE
 
-Added `area_tool_mode: str = "click"` field to the `UserPreferences` dataclass and wired it into `load_user_preferences()` via `_read_choice()` with valid values `{"click", "freehand"}`.
+## What Was Implemented
 
-## What I tested and test results
+Enhanced `MmodeCalibrationState` with a parallel API to `DopplerCalibrationState`:
 
-### TDD RED phase
-Added `TestAreaToolMode` class with 3 tests to `tests/unit/test_user_preferences.py`:
-- `test_default_is_click` — asserts default is `"click"`
-- `test_click_valid` — asserts `"click"` accepted
-- `test_freehand_valid` — asserts `"freehand"` accepted
+**New fields:**
+- `depth_from_dicom_tags: bool = False`
+- `time_from_dicom_tags: bool = False`
 
-All 3 tests **failed** with `AttributeError: 'UserPreferences' object has no attribute 'area_tool_mode'` and `TypeError: UserPreferences.__init__() got an unexpected keyword argument 'area_tool_mode'`.
+**New methods:**
+- `is_partial()` — True when exactly one axis (depth or time) is calibrated
+- `has_depth_scale()` — True when `vertical_mm_per_pixel` is set and > 0
+- `has_time_scale()` — True when `horizontal_ms_per_pixel` is set and > 0
+- `has_depth_from_dicom()` — True when `depth_from_dicom_tags` and valid depth
+- `has_time_from_dicom()` — True when `time_from_dicom_tags` and valid time
+- `is_dicom_trusted()` — True when `from_dicom_tags` and both axes complete
 
-### TDD GREEN phase
-After adding the field and load logic, all 3 new tests **passed**. Full test file (40 tests) also **passed**.
+**Changed behavior:**
+- `is_complete()` now requires **both** depth and time axes (previously only depth). This aligns M-mode with Doppler's completion semantics.
 
-## Files changed
+## Commits
 
-- `src/echo_personal_tool/infrastructure/user_preferences.py` — added `area_tool_mode` field + load logic
-- `tests/unit/test_user_preferences.py` — added `TestAreaToolMode` test class
+- `dd4a19f` — `feat(mmode): enhance MmodeCalibrationState with parallel API to Doppler`
 
-## Self-review findings
+## Test Results
 
-No issues. The field follows existing conventions (string choice validated by `_read_choice`), matches plan spec exactly.
+- 27/27 passing in `test_mmode_calibration.py`
+- Ruff: all checks passed
 
-## Commit
+### TDD Evidence
 
-`ba55efd` — `feat: add area_tool_mode preference field (click/freehand)`
+**RED:** All 10 new tests failed with `AttributeError: 'MmodeCalibrationState' object has no attribute 'is_partial'` (as expected — methods didn't exist yet).
+
+**GREEN:** After implementation, all 27 tests pass (10 new + 17 existing, with 3 existing tests updated for the `is_complete()` semantic change).
+
+## Files Changed
+
+- `src/echo_personal_tool/domain/models/frame_panels.py` — Added fields and methods to `MmodeCalibrationState`
+- `tests/unit/test_mmode_calibration.py` — Added `TestMmodeCalibrationStateEnhanced` (10 tests), updated 3 existing tests
+
+## Self-Review Findings
+
+**No concerns.** The implementation:
+- Follows the exact plan specification
+- Matches `DopplerCalibrationState` API pattern
+- Existing callers of `is_complete()` in `viewer_widget.py` and `main_window.py` will see the new behavior (M-mode now requires both axes for "complete"), which is the intended semantic alignment
+- `mmode_state_from_panel()` populates both axes from the panel, so normal flow is unaffected

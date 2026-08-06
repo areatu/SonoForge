@@ -21,16 +21,29 @@ def from_linear_measurements(
     lvedd_mm: float | None = None
     lvesd_mm: float | None = None
 
+    LVEDD_ALIASES = {
+        "lvedd",
+        "lvidd",
+        "lv_edd",
+        "lv_end_diastolic_diameter",
+    }
+    LVESD_ALIASES = {
+        "lvesd",
+        "lvids",
+        "lv_esd",
+        "lv_end_systolic_diameter",
+    }
+
     for measurement in measurements:
         if measurement.millimeter_length is None:
             continue
-        label = measurement.label.casefold()
-        if label == "lvedd":
+        label = measurement.label.strip().casefold()
+        if label in LVEDD_ALIASES:
             lvedd_mm = measurement.millimeter_length
-        elif label == "lvesd":
+        elif label in LVESD_ALIASES:
             lvesd_mm = measurement.millimeter_length
 
-    if lvedd_mm is None or lvesd_mm is None:
+    if lvedd_mm is None or lvesd_mm is None or lvesd_mm >= lvedd_mm:
         return None
 
     edv_ml = volume_ml(lvedd_mm)

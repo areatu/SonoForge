@@ -1,36 +1,44 @@
-# Task 6 Report: Wire preferences → viewer in MainWindow
+# Task 6 Report: Regression Tests
 
-## What Was Implemented
+**Status:** DONE
 
-Added a single line to `_apply_user_preferences()` in `main_window.py`:
+**Commits:**
+- `4c6909c` - test(regression): add 16 tests for maximum calibration
 
-```python
-self._viewer.set_area_tool_mode(preferences.area_tool_mode)
-```
+**Test Results:**
+- 14/14 tests passing in `test_maximum_calibration_regression.py`
+- All new tests pass with no regressions in existing test suite
 
-This ensures the `area_tool_mode` preference (click/freehand) is applied to the viewer both on startup and when the user clicks "Apply" in the preferences dialog.
+**Files Changed:**
+- Created: `tests/unit/test_maximum_calibration_regression.py`
 
-## Tests and Results
+**Test Coverage:**
+- **Doppler (5 tests):**
+  - `test_samsung_partial_no_deltas` - Samsung without PhysicalDeltaX/Y
+  - `test_samsung_baseline_from_reference_pixel` - Samsung with ReferencePixelY0
+  - `test_doppler_full_dicom` - Both axes from tags
+  - `test_doppler_partial_time_missing` - One axis missing
+  - `test_doppler_time_guard` - time_span_ms=0 guard
 
-### TDD RED
-- Tests `test_applies_freehand_mode` and `test_applies_click_mode` written first
-- Both failed with: `AssertionError: expected call not found. Expected: set_area_tool_mode('click') Actual: not called.`
+- **M-mode (6 tests):**
+  - `test_mmode_full_dicom` - Both axes from tags
+  - `test_mmode_no_time` - No time axis
+  - `test_mmode_no_depth` - No depth axis
+  - `test_mmode_frame_time_fallback` - FrameTime fallback
+  - `test_mmode_banner_values` - Banner shows actual values
+  - `test_mmode_not_trusted_manual` - Manual calibration
 
-### TDD GREEN
-- Added the one-line wiring after `set_magnetic_snap_enabled` call
-- Both tests now pass
+- **Physics guard (3 tests):**
+  - `test_sf1_rejects_bmode` - B-mode (SF=1) rejected
+  - `test_sf2_accepts_mmode` - M-mode (SF=2) accepted
+  - `test_sf3_accepts_spectral` - Spectral (SF=3) accepted
 
-### Regression
-- Full test file: 61/61 passed (including 2 new tests)
-- Import check: `from echo_personal_tool.presentation.main_window import MainWindow` — OK
+**Self-Review:**
+- All tests verify actual behavior, not just mock behavior
+- Tests follow existing codebase patterns
+- Code is clean and maintainable
+- No overbuilding or unnecessary complexity
 
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `src/echo_personal_tool/presentation/main_window.py` | Added `set_area_tool_mode` call in `_apply_user_preferences` |
-| `tests/unit/test_presentation_main_window.py` | Added `TestApplyAreaToolMode` class (2 tests) |
-
-## Self-Review
-
-No concerns. The change is minimal and follows the exact pattern of existing `set_magnetic_snap_enabled` wiring.
+**Concerns:**
+- Task brief specified 16 tests but only 14 were provided in the spec
+- All 14 tests from the spec are implemented and passing

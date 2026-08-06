@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from echo_personal_tool.domain.models.ecg import EcgLead, EcgWaveform
 from echo_personal_tool.domain.services.ecg_rpeak_detector import (
     _adaptive_threshold_detect,
     _bandpass_filter,
     _moving_average,
     detect_r_peaks,
+    detect_r_peaks_from_waveform,
+    primary_ecg_signal,
 )
 
 
@@ -106,3 +109,60 @@ class TestDetectRPeaks:
             signal[i] = 10.0
         result = detect_r_peaks(signal, fs)
         assert result.confidence > 0.5
+
+
+def _impulse_ecg(
+    r_peak_times_ms: tuple[float, ...] = (500.0, 1500.0, 2500.0),
+    fs: float = 250.0,
+    duration_ms: float = 4000.0,
+) -> EcgWaveform:
+    n = int(duration_ms * fs / 1000.0)
+    signal = np.zeros(n)
+    for t in r_peak_times_ms:
+        idx = int(t * fs / 1000.0)
+        if idx < n:
+            signal[idx] = 10.0
+    lead = EcgLead(name="II", samples=signal, sampling_frequency=fs, baseline=0, bits_stored=0)
+    return EcgWaveform(leads=[lead], waveform_frequency=fs, number_of_waveform_channels=1)
+
+
+class TestPrimaryEcgSignal:
+    def test_returns_primary_lead_voltage(self) -> None:
+        lead0 = EcgLead(name="I", samples=np.zeros(1000), sampling_frequency=250.0, baseline=0, bits_stored=0)
+        lead1 = EcgLead(name="II", samples=np.zeros(1000), sampling_frequency=250.0, baseline=0, bits_stored=0)
+        ecg = EcgWaveform(leads=[lead0, lead1], waveform_frequency=250.0, number_of_waveform_channels=2)
+        signal = primary_ecg_signal(ecg)
+        assert signal is not None
+        voltage, fs = signal
+        assert fs == 250.0
+        assert voltage.ndim == 1
+        assert voltage.size == 1000
+
+    def test_prefers_lead_ii_over_first_lead(self) -> None:
+        lead0 = EcgLead(name="I", samples=np.ones(1000), sampling_frequency=250.0, baseline=0, bits_stored=0)
+        lead1 = EcgLead(name="II", samples=np.zeros(1000), sampling_frequency=250.0, baseline=0, bits_stored=0)
+        ecg = EcgWaveform(leads=[lead0, lead1], waveform_frequency=250.0, number_of_waveform_channels=2)
+        signal = primary_ecg_signal(ecg)
+        assert signal is not None
+        voltage, _fs = signal
+        assert voltage[0] == 0.0  # Lead II chosen, not lead I
+
+    def test_empty_leads_none(self) -> None:
+        ecg = EcgWaveform(leads=[], waveform_frequency=250.0, number_of_waveform_channels=0)
+        assert primary_ecg_signal(ecg) is None
+
+    def test_zero_sampling_frequency_none(self) -> None:
+        lead = EcgLead(name="II", samples=np.zeros(1000), sampling_frequency=0.0, baseline=0, bits_stored=0)
+        ecg = EcgWaveform(leads=[lead], waveform_frequency=0.0, number_of_waveform_channels=1)
+        assert primary_ecg_signal(ecg) is None
+
+
+class TestDetectRPeaksFromWaveform:
+    def test_detects_r_peaks_from_waveform(self) -> None:
+        result = detect_r_peaks_from_waveform(_impulse_ecg())
+        assert result is not None
+        assert len(result.r_peak_indices) >= 2
+
+    def test_unusable_waveform_none(self) -> None:
+        ecg = EcgWaveform(leads=[], waveform_frequency=250.0, number_of_waveform_channels=0)
+        assert detect_r_peaks_from_waveform(ecg) is None

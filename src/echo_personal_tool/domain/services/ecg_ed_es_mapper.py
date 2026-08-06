@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from echo_personal_tool.domain.models.ecg import EcEDFrameMapping, RPeakResult
+from collections.abc import Callable
+from dataclasses import replace
+
+import numpy as np
+
+from echo_personal_tool.domain.models.ecg import EcEDFrameMapping, EcgWaveform, RPeakResult
+from echo_personal_tool.domain.services.ecg_rpeak_detector import detect_r_peaks_from_waveform
+
+_DEFAULT_CONFIDENCE_THRESHOLD = 0.4
 
 
 def map_rpeaks_to_frames(
@@ -67,4 +75,57 @@ def map_rpeaks_to_frames(
         cycle_start_frame=cycle_start,
         cycle_end_frame=cycle_end,
         source="ecg",
+    )
+
+
+def detect_ed_es_for_cine(
+    ecg: EcgWaveform | None,
+    frame_time_ms: float,
+    n_frames: int,
+    *,
+    r_peak_result: RPeakResult | None = None,
+    image_fallback: Callable[[], tuple[int, int]] | None = None,
+    confidence_threshold: float = _DEFAULT_CONFIDENCE_THRESHOLD,
+) -> EcEDFrameMapping:
+    """Detect ED/ES for a CINE sequence with an ECG-first policy.
+
+    Prefers ECG R-peaks when a usable waveform with reliable confidence is
+    available; otherwise falls back to the image-based detector (evaluated
+    lazily via *image_fallback*) or a neutral default. The returned mapping's
+    ``source`` reflects the winner ("ecg" or "image").
+    """
+    if n_frames <= 0:
+        return EcEDFrameMapping(0, 0, 0, 0, source="image")
+
+    if r_peak_result is None and ecg is not None:
+        r_peak_result = detect_r_peaks_from_waveform(ecg)
+    if (
+        r_peak_result is not None
+        and len(r_peak_result.r_peak_indices) > 0
+        and r_peak_result.confidence >= confidence_threshold
+    ):
+        mapping = map_rpeaks_to_frames(r_peak_result, frame_time_ms, n_frames)
+        return replace(mapping, r_peak_result=r_peak_result)
+
+    if image_fallback is not None:
+        try:
+            ed, es = image_fallback()
+        except Exception:  # noqa: BLE001
+            ed, es = 0, max(1, n_frames // 3)
+        ed = int(np.clip(ed, 0, n_frames - 1))
+        es = int(np.clip(es, 0, n_frames - 1))
+        return EcEDFrameMapping(
+            ed_frame_index=ed,
+            es_frame_index=es,
+            cycle_start_frame=min(ed, es),
+            cycle_end_frame=max(ed, es),
+            source="image",
+        )
+
+    return EcEDFrameMapping(
+        ed_frame_index=0,
+        es_frame_index=max(1, n_frames // 3),
+        cycle_start_frame=0,
+        cycle_end_frame=n_frames - 1,
+        source="image",
     )

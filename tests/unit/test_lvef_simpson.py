@@ -75,7 +75,7 @@ def test_calculate_missing_spacing_returns_none() -> None:
     assert calculate(contours, None) is None  # type: ignore[arg-type]
 
 
-def test_calculate_biplan_averages_views() -> None:
+def test_calculate_biplan_falls_back_to_monoplane_without_annulus() -> None:
     contours = (
         rectangle_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),
         rectangle_contour(phase="ES", view="A4C", width_px=80.0, height_px=40.0),
@@ -86,7 +86,7 @@ def test_calculate_biplan_averages_views() -> None:
     result = calculate(contours, (0.5, 0.5))
 
     assert result is not None
-    assert result.method == "simpson_biplan"
+    assert result.method == "simpson_monoplan"
     assert result.lvef_percent == pytest.approx(46.22950819672132, rel=1e-6)
 
 

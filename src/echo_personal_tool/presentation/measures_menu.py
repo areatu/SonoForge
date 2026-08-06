@@ -7,7 +7,10 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
+    QHBoxLayout,
+    QLabel,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -32,6 +35,7 @@ class _MenuButton:
     doppler_peak: str = ""
     doppler_interval: str = ""
     doppler_trace: str = ""
+    vessel: bool = False
     enabled: bool = True
 
     @property
@@ -49,6 +53,7 @@ def _btn(
     doppler_peak: str = "",
     doppler_interval: str = "",
     doppler_trace: str = "",
+    vessel: bool = False,
     enabled: bool = True,
 ) -> _MenuButton:
     return _MenuButton(
@@ -60,6 +65,7 @@ def _btn(
         doppler_peak=doppler_peak,
         doppler_interval=doppler_interval,
         doppler_trace=doppler_trace,
+        vessel=vessel,
         enabled=enabled,
     )
 
@@ -145,6 +151,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.mv_group",
         (
+            _btn("menu.trace_auto", MeasurementAction.DOPPLER_TRACE_AUTO),
             _btn("menu.trace_mv", doppler_trace="VTI MV"),
             _btn("menu.trace_mr", doppler_trace="VTI MR"),
             _btn("menu.vpeak_mv", doppler_peak="Vmax"),
@@ -168,8 +175,24 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (_btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),),
     ),
     (
+        "menu.vessels_group",
+        (
+            _btn("menu.vessel_psv_edv", MeasurementAction.VESSEL_PSV_EDV, vessel=True),
+            _btn("menu.vessel_auto_trace", MeasurementAction.VESSEL_AUTO_TRACE, vessel=True),
+            _btn("menu.vessel_average", MeasurementAction.VESSEL_AVERAGE, vessel=True),
+            _btn("menu.vessel_clear", MeasurementAction.VESSEL_CLEAR, vessel=True),
+            _btn("menu.vessel_accept", MeasurementAction.VESSEL_ACCEPT, vessel=True),
+        ),
+    ),
+    (
         "menu.mmode_group",
-        (_btn("menu.mmode_anatomic", MeasurementAction.MMODE),),
+        (
+            _btn("menu.mmode_anatomic", MeasurementAction.MMODE),
+            _btn("menu.mmode_caliper", MeasurementAction.MMODE_CALIPER),
+            _btn("menu.mmode_time_hr", MeasurementAction.MMODE_TIME_HR),
+            _btn("menu.teichholz_ed", MeasurementAction.TEICHHOLZ_ED),
+            _btn("menu.teichholz_es", MeasurementAction.TEICHHOLZ_ES),
+        ),
     ),
 )
 
@@ -363,6 +386,26 @@ class MeasuresMenuWidget(QWidget):
             layout.addWidget(section)
 
         layout.addStretch(1)
+        self._vessel_status_label = QLabel("")
+        self._vessel_status_label.setWordWrap(True)
+        self._vessel_status_label.setStyleSheet("color: #90caf9; font-size: 12px;")
+        layout.addWidget(self._vessel_status_label)
+
+        preset_row = QWidget()
+        preset_layout = QHBoxLayout(preset_row)
+        preset_layout.setContentsMargins(8, 0, 8, 0)
+        preset_layout.setSpacing(6)
+        preset_label = QLabel(tr("menu.vessel_preset"))
+        preset_label.setStyleSheet("color: #90caf9; font-size: 11px;")
+        self._vessel_preset_combo = QComboBox()
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_low"), "low")
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_normal"), "normal")
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_high"), "high")
+        self._vessel_preset_combo.setCurrentIndex(1)
+        self._vessel_preset_combo.setToolTip(tr("menu.vessel_preset_tip"))
+        preset_layout.addWidget(preset_label)
+        preset_layout.addWidget(self._vessel_preset_combo, stretch=1)
+        layout.addWidget(preset_row)
         scroll.setWidget(inner)
 
         # Clear old layout content if exists, otherwise create new layout
@@ -386,8 +429,12 @@ class MeasuresMenuWidget(QWidget):
         self,
         *,
         time_ok: bool,
+        vessel_ok: bool = False,
     ) -> None:
         for button, spec in self._tool_buttons:
+            if spec.vessel:
+                button.setEnabled(vessel_ok)
+                continue
             needs_time = bool(
                 spec.doppler_interval
                 or spec.doppler_trace
@@ -397,6 +444,12 @@ class MeasuresMenuWidget(QWidget):
             if not needs_time:
                 continue
             button.setEnabled(time_ok)
+
+    def set_vessel_status(self, text: str) -> None:
+        self._vessel_status_label.setText(text)
+
+    def vessel_preset(self) -> str:
+        return str(self._vessel_preset_combo.currentData() or "normal")
 
     def reload_text(self) -> None:
         for section in self._sections:

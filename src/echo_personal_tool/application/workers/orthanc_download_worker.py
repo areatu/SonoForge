@@ -22,7 +22,7 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
-from echo_personal_tool.infrastructure.dicom_validator import InvalidDicomError, validate_dicom_header
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import (
@@ -128,6 +128,15 @@ class OrthancDownloadWorker(QRunnable):
                 )
                 for inst in instances:
                     all_instances.append((series_uid, inst.sop_instance_uid))
+
+            # Deduplicate by SOP instance UID — server may return duplicates.
+            seen: set[str] = set()
+            unique_instances: list[tuple[str, str]] = []
+            for series_uid, inst_uid in all_instances:
+                if inst_uid not in seen:
+                    seen.add(inst_uid)
+                    unique_instances.append((series_uid, inst_uid))
+            all_instances = unique_instances
 
             total = len(all_instances)
             if total == 0:
@@ -268,7 +277,34 @@ class OrthancDownloadWorker(QRunnable):
         series_uid: str,
         instance_uid: str,
     ) -> bytes | None:
-        """Download single instance. Returns bytes or None on failure."""
+        """Download single instance with retries. Returns bytes or None on failure."""
+        if self._cancelled.is_set():
+            return None
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            if self._cancelled.is_set():
+                return None
+            data = self._attempt_download(study_uid, series_uid, instance_uid)
+            if data is not None:
+                return data
+            if attempt < max_attempts:
+                logger.warning(
+                    "[DIAG] download retry %d/3 instance=%s",
+                    attempt,
+                    instance_uid[:16],
+                )
+                time.sleep(1.0)
+
+        return None
+
+    def _attempt_download(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+    ) -> bytes | None:
+        """Download single instance once. Returns bytes or None on failure."""
         if self._cancelled.is_set():
             return None
 
@@ -348,10 +384,10 @@ class OrthancDownloadWorker(QRunnable):
                 try:
                     validate_dicom_header(dcm_path)
                     ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
-                except (InvalidDicomError, Exception):
-                    logger.warning("Failed to parse DICOM header: %s", dcm_path)
+                    instance = map_instance_metadata(ds, path=dcm_path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Skipping instance file %s: %s", dcm_path, exc)
                     continue
-                instance = map_instance_metadata(ds, path=dcm_path)
                 instances_by_series[instance.series_uid].append(instance)
                 if study_datetime is None:
                     try:

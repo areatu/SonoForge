@@ -628,7 +628,7 @@ class TestCancelActiveTool:
     def test_cancel_doppler_cal_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_cal_step = "roi"
+        w._doppler_cal_step = "baseline"
         w.cancel_active_tool()
         assert w._doppler_cal_step is None
 
@@ -880,6 +880,34 @@ class TestDopplerOperations:
         w = _make_viewer(qtbot)
         result = w.finish_doppler_trace()
         assert isinstance(result, bool)
+
+    def test_finish_doppler_trace_shows_vti_value(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+        roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0)
+        mapping = DopplerAxisMapping(
+            roi=roi,
+            baseline_y_px=100.0,
+            velocity_span_cm_s=200.0,
+            velocity_min_cm_s=-100.0,
+            velocity_max_cm_s=100.0,
+            plot_width=1000.0,
+            plot_height=200.0,
+            time_span_ms=2000.0,
+        )
+        w._doppler.set_axis_mapping(mapping)
+
+        w.start_doppler_envelope_trace(
+            ((0.0, 100.0), (100.0, 50.0), (200.0, 100.0)),
+            trace_label="VTI MV",
+        )
+        assert w.finish_doppler_trace() is True
+        assert "VTI MV" in w._measurement_label.text()
+        assert "10.0 cm" in w._measurement_label.text()
+        assert "—" not in w._measurement_label.text()
 
     def test_start_doppler_calibration(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -3115,33 +3143,10 @@ class TestDopplerCalibrationClick:
         result = w._handle_doppler_calibration_click(event)
         assert result is False
 
-    def test_handle_doppler_calibration_click_roi_step(self, qtbot) -> None:
-        w = _make_viewer(qtbot)
-        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
-        w._doppler_cal_step = "roi"
-        from PySide6.QtCore import QPointF
-        from PySide6.QtGui import QMouseEvent
-
-        event = QMouseEvent(
-            QEvent.Type.MouseButtonPress,
-            QPointF(32, 32),
-            QPointF(32, 32),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        result = w._handle_doppler_calibration_click(event)
-        assert result is True
-        assert w._doppler_roi_corner1 is not None
-
     def test_handle_doppler_calibration_click_baseline_step(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
         w._doppler_cal_step = "baseline"
-        w._doppler_roi_corner1 = (10.0, 10.0)
-        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
-
-        w._doppler_pending_roi = DopplerSpectrogramRoi(x0=10, y0=10, width=50, height=30)
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -3156,6 +3161,13 @@ class TestDopplerCalibrationClick:
         result = w._handle_doppler_calibration_click(event)
         assert result is True
         assert w._doppler_cal_step is None
+
+    def test_doppler_calibration_starts_at_baseline(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        assert w.start_doppler_calibration()
+        assert w._doppler_cal_step == "baseline"
+        assert w._doppler_pending_roi is None
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -962,6 +962,9 @@ class ReferenceFontSettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self._recolor_buttonbox_icons(buttons)
+        from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
+
+        theme_button_box_icons(buttons)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)

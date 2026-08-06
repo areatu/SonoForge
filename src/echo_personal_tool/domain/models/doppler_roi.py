@@ -53,23 +53,39 @@ class DopplerCalibrationState:
     roi: DopplerSpectrogramRoi
     baseline_y_px: float
     time_origin_ms: float = 0.0
-    time_span_ms: float = 1000.0
+    time_span_ms: float = 0.0
     velocity_span_cm_s: float = 200.0
     kind: DopplerKind = DopplerKind.SPECTRAL
     from_dicom_tags: bool = False
+    time_from_dicom_tags: bool = False
     velocity_from_dicom_tags: bool = False
+    velocity_per_pixel_cm_s: float | None = None
 
     def is_complete(self) -> bool:
-        return self.has_velocity_scale() and self.time_span_ms > 0.0
+        return self.has_velocity_scale() and self.has_time_scale()
+
+    def is_partial(self) -> bool:
+        return self.has_velocity_scale() != self.has_time_scale()
+
+    def has_time_scale(self) -> bool:
+        return self.time_span_ms > 0.0
 
     def has_velocity_scale(self) -> bool:
-        return self.roi.width > 0.0 and self.roi.height > 0.0 and self.velocity_span_cm_s > 0.0
+        return (
+            self.roi.width > 0.0
+            and self.roi.height > 0.0
+            and (self.velocity_span_cm_s > 0.0 or self.velocity_per_pixel_cm_s is not None)
+        )
 
     def has_time_scale_from_dicom(self) -> bool:
-        return self.from_dicom_tags and self.roi.width > 0.0 and self.time_span_ms > 0.0
+        return self.time_from_dicom_tags and self.roi.width > 0.0 and self.has_time_scale()
 
     def has_velocity_scale_from_dicom(self) -> bool:
-        return self.velocity_from_dicom_tags and self.roi.height > 0.0 and self.velocity_span_cm_s > 0.0
+        return (
+            self.velocity_from_dicom_tags
+            and self.roi.height > 0.0
+            and (self.velocity_span_cm_s > 0.0 or self.velocity_per_pixel_cm_s is not None)
+        )
 
     def is_dicom_trusted(self) -> bool:
         return self.from_dicom_tags and self.is_complete()

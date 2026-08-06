@@ -228,6 +228,7 @@ class MainWindow(QMainWindow):
         self._viewer.gold_export_requested.connect(self._on_gold_export_requested)
         self._viewer.mmode_column_ready.connect(self._on_mmode_column_ready)
         self._viewer.mmode_line_completed.connect(self._on_mmode_line_completed)
+        self._viewer.vessel_accept_requested.connect(self._on_vessel_accept_requested)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -1494,22 +1495,33 @@ class MainWindow(QMainWindow):
     def _update_properties_panel(self, state: ViewerState) -> None:
         """Update the properties panel with current instance info."""
         panel = self._tool_panel.properties_panel
-        if state.instance is None:
+        if state.instance is None or state.instance.path is None:
             panel.clear_all()
             return
-        inst = state.instance
-        # Instance info
-        panel.update_instance_info(
-            modality=inst.modality or "",
-            series_desc=inst.series_description or "",
-            frame_rate=1000.0 / inst.frame_time_ms if inst.frame_time_ms else None,
-            pixel_spacing=f"{inst.pixel_spacing[0]:.2f}×{inst.pixel_spacing[1]:.2f} mm" if inst.pixel_spacing else "",
-            number_of_frames=inst.number_of_frames,
-            patient_height_m=inst.patient_height_m,
-            patient_weight_kg=inst.patient_weight_kg,
-            media_format=inst.media_format or "",
-            frame_time_ms=inst.frame_time_ms,
+
+        from echo_personal_tool.infrastructure.properties_extractor import (
+            extract_properties_snapshot,
         )
+
+        mmode = self._viewer.get_mmode_calibration_state()
+        doppler = self._viewer.get_doppler_calibration_state()
+
+        snap = extract_properties_snapshot(
+            state.instance.path,
+            depth_ok=state.effective_pixel_spacing is not None,
+            mmode_calibrated=mmode.is_complete() if mmode else False,
+            mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
+            mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
+            mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
+            mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
+            mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
+            doppler_calibrated=doppler.is_complete() if doppler else False,
+            doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+            doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+            doppler_partial=doppler is not None and not doppler.is_complete(),
+        )
+        panel.update_from_snapshot(snap)
+
         # Latest measurement
         if state.linear_measurements:
             m = state.linear_measurements[-1]
@@ -1541,6 +1553,7 @@ class MainWindow(QMainWindow):
         )
         self._viewer.restore_doppler_state(calibration, dto)
         self._doppler_frame_context = (instance.sop_instance_uid, frame_index)
+        self._restore_vessel_for_current_frame()
 
     def _restore_doppler_for_current_instance(self) -> None:
         self._restore_doppler_for_current_frame()
@@ -1567,6 +1580,36 @@ class MainWindow(QMainWindow):
 
     def _on_doppler_frame_changed(self, frame_index: int) -> None:
         self._restore_doppler_for_current_frame()
+
+    def _on_vessel_accept_requested(self, measurement: object) -> None:
+        from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+
+        if not isinstance(measurement, VesselMeasurement):
+            return
+        if self._controller.accept_vessel_measurement(measurement):
+            self._show_status(tr("status.vessel_accepted"))
+
+    def _restore_vessel_for_current_frame(self) -> None:
+        from echo_personal_tool.application.study_measurement_session import (
+            vessel_measurements_for_instance,
+        )
+
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is None:
+            return
+        frame = self._controller.state_manager.snapshot.current_frame_index
+        study_uid = self._controller._current_study_uid
+        session = self._controller._measurement_session.get(study_uid) if study_uid else None
+        if session is None:
+            return
+        measurements = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance.sop_instance_uid,
+        )
+        for m in measurements:
+            if m.frame_index == frame:
+                self._viewer._doppler.show_vessel_measurement(m)
+                break
 
     def _restore_mmode_for_current_instance(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
@@ -1653,6 +1696,7 @@ class MainWindow(QMainWindow):
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
             time_ok=self._viewer.is_doppler_time_calibrated(),
+            vessel_ok=self._viewer.is_vessel_available(),
         )
 
     def _ensure_doppler_ready(self, *, require_time: bool = False) -> bool:
@@ -1746,6 +1790,10 @@ class MainWindow(QMainWindow):
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
+            MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
+            MeasurementAction.MMODE_TIME_HR: self._on_mmode_time_hr_from_menu,
+            MeasurementAction.TEICHHOLZ_ED: self._on_teichholz_ed_from_menu,
+            MeasurementAction.TEICHHOLZ_ES: self._on_teichholz_es_from_menu,
             MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
         }
         if action == MeasurementAction.CALIPER:
@@ -1765,6 +1813,28 @@ class MainWindow(QMainWindow):
             return
         if action == MeasurementAction.DOPPLER_TRACE:
             self._on_doppler_trace_tool(extra or "VTI")
+            return
+        if action == MeasurementAction.DOPPLER_TRACE_AUTO:
+            self._on_doppler_trace_auto()
+            return
+        if action == MeasurementAction.VESSEL_PSV_EDV:
+            if self._viewer.start_vessel_psv():
+                self._show_status(tr("status.vessel_psv"))
+            return
+        if action == MeasurementAction.VESSEL_AUTO_TRACE:
+            preset = self._tool_panel.measure._menu.vessel_preset()
+            if self._viewer.start_vessel_auto_trace(preset):
+                self._show_status(tr("status.vessel_auto_trace"))
+            return
+        if action == MeasurementAction.VESSEL_AVERAGE:
+            if self._viewer.average_vessel_cycles():
+                self._show_status(tr("status.vessel_average"))
+            return
+        if action == MeasurementAction.VESSEL_CLEAR:
+            self._viewer.clear_vessel_measurement()
+            return
+        if action == MeasurementAction.VESSEL_ACCEPT:
+            self._viewer.accept_vessel_measurement()
             return
         handler = handlers.get(action)
         if handler is not None:
@@ -1812,6 +1882,14 @@ class MainWindow(QMainWindow):
         self._viewer.set_doppler_tool_mode("trace", trace_label=trace_label)
         self._show_status(tr("status.doppler_trace_tool", trace_label=trace_label))
 
+    def _on_doppler_trace_auto(self) -> None:
+        if not self._ensure_doppler_ready(require_time=True):
+            return
+        if self._viewer.start_vti_auto_trace():
+            self._show_status(tr("status.vti_auto_trace"))
+        else:
+            self._show_status(tr("status.load_first_frame_doppler"))
+
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():
             return
@@ -1842,6 +1920,35 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.linear_caliper_tool", label=label))
         else:
             self._show_status("Load a frame first")
+
+    def _on_mmode_caliper_requested(self) -> None:
+        if self._viewer.start_mmode_vertical_caliper():
+            self._show_status(tr("status.mmode_caliper_tool"))
+        else:
+            self._show_status("M-mode calibration required")
+
+    def _on_mmode_time_hr_from_menu(self) -> None:
+        """Start horizontal time/HR measurement from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_horizontal_measurement()
+
+    def _ensure_mmode_active(self) -> None:
+        """Activate M-mode if not already active."""
+        if not self._mmode_active:
+            self._toggle_mmode()
+
+    def _on_teichholz_ed_from_menu(self) -> None:
+        """Start Teichholz ED workflow from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_teichholz_ed()
+
+    def _on_teichholz_es_from_menu(self) -> None:
+        """Start Teichholz ES workflow from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_teichholz_es()
 
     def _on_diameter_compare_requested(self) -> None:
         if self._viewer.start_diameter_compare():

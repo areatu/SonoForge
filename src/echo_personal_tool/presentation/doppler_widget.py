@@ -21,6 +21,8 @@ from echo_personal_tool.domain.models import (
     DopplerTrace,
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+from echo_personal_tool.domain.models.ecg import EcgWaveform
+from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 
 _PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "Vmax", "TR Vmax")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
@@ -99,10 +101,26 @@ class DopplerWidget(QWidget):
         self._status_label.setObjectName("dopplerToolStatus")
         self._status_label.setText(self._format_tool_status(self._tool_mode))
 
+        # ECG strip under spectrogram
+        self._ecg_strip = EcgStripWidget()
+
         layout = QVBoxLayout(self)
         layout.addLayout(self._toolbar)
         layout.addWidget(self._plot, stretch=1)
+        layout.addWidget(self._ecg_strip)
         layout.addWidget(self._status_label)
+
+    def set_ecg_waveform(self, ecg: EcgWaveform | None) -> None:
+        """Load and display ECG waveform in the strip under the spectrogram."""
+        self._ecg_strip.set_ecg(ecg)
+
+    def set_cardiac_cycles(self, cycles) -> None:
+        """Pass cardiac cycles to ECG strip for cycle highlighting."""
+        self._ecg_strip.set_cardiac_cycles(cycles)
+
+    def highlight_ecg_cycle(self, cycle_index: int | None) -> None:
+        """Highlight a specific ECG cycle."""
+        self._ecg_strip.highlight_cycle(cycle_index)
 
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
@@ -119,6 +137,10 @@ class DopplerWidget(QWidget):
             xRange=(mapping.time_origin_ms, mapping.time_origin_ms + mapping.time_span_ms),
             yRange=(mapping.velocity_min_cm_s, mapping.velocity_max_cm_s),
             padding=0.0,
+        )
+        # Sync ECG strip X-axis to spectrogram time range
+        self._ecg_strip._plot.setXRange(
+            mapping.time_origin_ms, mapping.time_origin_ms + mapping.time_span_ms, padding=0
         )
 
     def show_spectrogram(self, pixels: np.ndarray) -> None:

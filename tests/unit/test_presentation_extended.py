@@ -470,6 +470,155 @@ class TestPropertiesPanel:
         # No BMI row when height/weight are 0
         assert panel._instance_form.rowCount() == 1  # only modality
 
+    def test_mmode_banner_with_values_and_dicom_source(self, qtbot) -> None:
+        """M-mode banner shows actual values with DICOM source."""
+        from PySide6.QtWidgets import QLabel
+
+        from echo_personal_tool.domain.models.properties_snapshot import PropertiesSnapshot
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        snapshot = PropertiesSnapshot(
+            modality="US",
+            series_description="",
+            manufacturer=None,
+            manufacturer_model=None,
+            software_versions=None,
+            image_type=None,
+            number_of_frames=1,
+            media_format="dicom",
+            frame_time_ms=None,
+            cine_rate_fps=None,
+            frame_time_vector_present=False,
+            heart_rate_bpm=None,
+            pixel_spacing_mm=None,
+            pixel_spacing_source=None,
+            transducer_frequency_mhz=None,
+            regions=(),
+            depth_calibrated=False,
+            mmode_calibrated=True,
+            mmode_has_time_scale=True,
+            mmode_vertical_mm_per_pixel=0.15,
+            mmode_horizontal_ms_per_pixel=2.5,
+            mmode_has_depth_from_dicom=True,
+            mmode_has_time_from_dicom=True,
+            doppler_calibrated=False,
+            doppler_has_time_from_dicom=False,
+            doppler_has_velocity_from_dicom=False,
+            doppler_partial=False,
+            patient_height_m=None,
+            patient_weight_kg=None,
+            bsa_m2=None,
+        )
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.update_from_snapshot(snapshot)
+
+        # Find the M-mode row and check text
+        mmode_row = panel.findChild(QLabel, "mmode_calibration")
+        assert mmode_row is not None
+        assert "0.15 mm/px" in mmode_row.text()
+        assert "2.50 ms/px" in mmode_row.text()
+        assert "(DICOM)" in mmode_row.text()
+
+    def test_mmode_banner_partial_no_depth(self, qtbot) -> None:
+        """M-mode banner shows partial status when no depth."""
+        from PySide6.QtWidgets import QLabel
+
+        from echo_personal_tool.domain.models.properties_snapshot import PropertiesSnapshot
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        snapshot = PropertiesSnapshot(
+            modality="US",
+            series_description="",
+            manufacturer=None,
+            manufacturer_model=None,
+            software_versions=None,
+            image_type=None,
+            number_of_frames=1,
+            media_format="dicom",
+            frame_time_ms=None,
+            cine_rate_fps=None,
+            frame_time_vector_present=False,
+            heart_rate_bpm=None,
+            pixel_spacing_mm=None,
+            pixel_spacing_source=None,
+            transducer_frequency_mhz=None,
+            regions=(),
+            depth_calibrated=False,
+            mmode_calibrated=False,
+            mmode_has_time_scale=True,
+            mmode_vertical_mm_per_pixel=None,
+            mmode_horizontal_ms_per_pixel=None,
+            mmode_has_depth_from_dicom=False,
+            mmode_has_time_from_dicom=True,
+            doppler_calibrated=False,
+            doppler_has_time_from_dicom=False,
+            doppler_has_velocity_from_dicom=False,
+            doppler_partial=False,
+            patient_height_m=None,
+            patient_weight_kg=None,
+            bsa_m2=None,
+        )
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.update_from_snapshot(snapshot)
+
+        mmode_row = panel.findChild(QLabel, "mmode_calibration")
+        assert mmode_row is not None
+        assert "Partial" in mmode_row.text()
+
+    def test_mmode_banner_values_only_no_source(self, qtbot) -> None:
+        """M-mode banner shows values without source when not from DICOM."""
+        from PySide6.QtWidgets import QLabel
+
+        from echo_personal_tool.domain.models.properties_snapshot import PropertiesSnapshot
+        from echo_personal_tool.presentation.properties_panel import PropertiesPanel
+
+        snapshot = PropertiesSnapshot(
+            modality="US",
+            series_description="",
+            manufacturer=None,
+            manufacturer_model=None,
+            software_versions=None,
+            image_type=None,
+            number_of_frames=1,
+            media_format="dicom",
+            frame_time_ms=None,
+            cine_rate_fps=None,
+            frame_time_vector_present=False,
+            heart_rate_bpm=None,
+            pixel_spacing_mm=None,
+            pixel_spacing_source=None,
+            transducer_frequency_mhz=None,
+            regions=(),
+            depth_calibrated=False,
+            mmode_calibrated=True,
+            mmode_has_time_scale=True,
+            mmode_vertical_mm_per_pixel=0.12,
+            mmode_horizontal_ms_per_pixel=3.3,
+            mmode_has_depth_from_dicom=False,
+            mmode_has_time_from_dicom=False,
+            doppler_calibrated=False,
+            doppler_has_time_from_dicom=False,
+            doppler_has_velocity_from_dicom=False,
+            doppler_partial=False,
+            patient_height_m=None,
+            patient_weight_kg=None,
+            bsa_m2=None,
+        )
+
+        panel = PropertiesPanel()
+        qtbot.addWidget(panel)
+        panel.update_from_snapshot(snapshot)
+
+        mmode_row = panel.findChild(QLabel, "mmode_calibration")
+        assert mmode_row is not None
+        assert "0.12 mm/px" in mmode_row.text()
+        assert "3.30 ms/px" in mmode_row.text()
+        assert "(DICOM)" not in mmode_row.text()
+
 
 # ── measurement_results_dialog ─────────────────────────────────────
 

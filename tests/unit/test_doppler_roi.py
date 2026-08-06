@@ -96,15 +96,67 @@ class TestDopplerCalibrationState:
         roi = self._make_roi()
         state = DopplerCalibrationState(roi=roi, baseline_y_px=50.0)
         assert state.time_origin_ms == 0.0
-        assert state.time_span_ms == 1000.0
+        assert state.time_span_ms == 0.0
         assert state.velocity_span_cm_s == 200.0
         assert state.kind == DopplerKind.SPECTRAL
         assert state.from_dicom_tags is False
         assert state.velocity_from_dicom_tags is False
 
-    def test_is_complete(self) -> None:
+    def test_has_time_scale(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(roi=roi, baseline_y_px=50.0, time_span_ms=800.0)
+        assert state.has_time_scale() is True
+
+    def test_no_time_scale_when_zero(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(roi=roi, baseline_y_px=50.0)
+        assert state.has_time_scale() is False
+
+    def test_is_complete_requires_time(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(roi=roi, baseline_y_px=50.0)
+        assert state.is_complete() is False
+
+    def test_is_partial_velocity_only(self) -> None:
+        """ROI ok + velocity present + no time → partial."""
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi, baseline_y_px=50.0,
+            velocity_span_cm_s=200.0, time_span_ms=0.0,
+        )
+        assert state.is_partial() is True
+
+    def test_is_partial_time_only(self) -> None:
+        """ROI ok + time present + no velocity → partial."""
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi, baseline_y_px=50.0,
+            velocity_span_cm_s=0.0, time_span_ms=800.0,
+        )
+        assert state.is_partial() is True
+
+    def test_not_partial_when_complete(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi, baseline_y_px=50.0,
+            velocity_span_cm_s=200.0, time_span_ms=800.0,
+        )
+        assert state.is_partial() is False
+
+    def test_not_partial_when_neither(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi, baseline_y_px=50.0,
+            velocity_span_cm_s=0.0, time_span_ms=0.0,
+        )
+        assert state.is_partial() is False
+
+    def test_is_complete(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi, baseline_y_px=50.0,
+            velocity_span_cm_s=200.0, time_span_ms=800.0,
+        )
         assert state.is_complete() is True
 
     def test_is_not_complete_zero_velocity(self) -> None:
@@ -141,6 +193,8 @@ class TestDopplerCalibrationState:
             roi=roi,
             baseline_y_px=50.0,
             from_dicom_tags=True,
+            time_from_dicom_tags=True,
+            time_span_ms=800.0,
         )
         assert state.has_time_scale_from_dicom() is True
 
@@ -150,6 +204,17 @@ class TestDopplerCalibrationState:
             roi=roi,
             baseline_y_px=50.0,
             from_dicom_tags=False,
+        )
+        assert state.has_time_scale_from_dicom() is False
+
+    def test_no_time_scale_from_dicom_when_time_not_from_dicom(self) -> None:
+        """from_dicom_tags=True but time_from_dicom_tags=False → has_time_scale_from_dicom=False."""
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            from_dicom_tags=True,
+            time_from_dicom_tags=False,
         )
         assert state.has_time_scale_from_dicom() is False
 
@@ -168,6 +233,8 @@ class TestDopplerCalibrationState:
             roi=roi,
             baseline_y_px=50.0,
             from_dicom_tags=True,
+            time_span_ms=800.0,
+            velocity_span_cm_s=200.0,
         )
         assert state.is_dicom_trusted() is True
 
@@ -195,3 +262,34 @@ class TestDopplerCalibrationState:
         state = DopplerCalibrationState(roi=roi, baseline_y_px=50.0)
         with pytest.raises(dataclasses.FrozenInstanceError):
             state.baseline_y_px = 100.0  # type: ignore[misc]
+
+    def test_has_velocity_scale_with_per_pixel(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
+            velocity_per_pixel_cm_s=-0.5,
+        )
+        assert state.has_velocity_scale() is True
+
+    def test_no_velocity_scale_without_per_pixel(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
+            velocity_per_pixel_cm_s=None,
+        )
+        assert state.has_velocity_scale() is False
+
+    def test_has_velocity_scale_from_dicom_with_per_pixel(self) -> None:
+        roi = self._make_roi()
+        state = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_from_dicom_tags=True,
+            velocity_span_cm_s=0.0,
+            velocity_per_pixel_cm_s=0.36,
+        )
+        assert state.has_velocity_scale_from_dicom() is True

@@ -140,38 +140,32 @@ class TestSeriesLabel:
         assert "10" in label
 
 
-class TestCheckPing:
-    def test_ping_success(self, dialog, mock_client):
-        mock_client.ping.return_value = True
-        dialog._check_ping()
-        assert "available" in dialog._status_label.text().lower() or "доступен" in dialog._status_label.text().lower()
+class TestBuildStudyTree:
+    def _study(self, name="John", date="20240101", desc="Echo", uid="uid-123"):
+        study = MagicMock()
+        study.patient_name = name
+        study.study_date = date
+        study.study_description = desc
+        study.study_uid = uid
+        return study
 
-    def test_ping_failure(self, dialog, mock_client):
-        mock_client.ping.return_value = False
-        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"):
-            dialog._check_ping()
-
-
-class TestLoadStudies:
-    def test_load_studies_empty(self, dialog, mock_client):
-        mock_client.query_studies.return_value = []
-        dialog._load_studies()
+    def test_empty(self, dialog):
+        dialog._build_study_tree([])
         assert dialog._tree.topLevelItemCount() == 0
 
-    def test_load_studies_with_data(self, dialog, mock_client):
-        study = MagicMock()
-        study.patient_name = "John"
-        study.study_date = "20240101"
-        study.study_description = "Echo"
-        study.study_uid = "uid-123"
-        mock_client.query_studies.return_value = [study]
-        dialog._load_studies()
+    def test_with_data(self, dialog):
+        dialog._build_study_tree([self._study()])
         assert dialog._tree.topLevelItemCount() == 1
 
-    def test_load_studies_exception(self, dialog, mock_client):
-        mock_client.query_studies.side_effect = Exception("Network error")
-        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"):
-            dialog._load_studies()
+    def test_sorts_by_date_desc(self, dialog):
+        dialog._build_study_tree([
+            self._study(date="20240101", uid="a"),
+            self._study(date="20240615", uid="b"),
+            self._study(date="20240310", uid="c"),
+        ])
+        assert dialog._tree.topLevelItemCount() == 3
+        # Newest first
+        assert dialog._tree.topLevelItem(0).data(1, 258) == "20240615"  # _SORT_ROLE = UserRole+2 = 258
 
 
 class TestOnItemChanged:

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import logging
 from dataclasses import replace
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer
+from datetime import datetime, timedelta
+
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -44,6 +48,38 @@ _SORT_ROLE = Qt.ItemDataRole.UserRole + 2
 _CANCEL_FORCE_CLOSE_MS = 30_000
 
 log = logging.getLogger(__name__)
+
+
+class _StudyItem(QTreeWidgetItem):
+    """Sort by the raw date/string stored in _SORT_ROLE, not display text."""
+
+    def __lt__(self, other: QTreeWidgetItem) -> bool:
+        col = self.treeWidget().sortColumn() if self.treeWidget() else 0
+        a = self.data(col, _SORT_ROLE)
+        b = other.data(col, _SORT_ROLE)
+        return str(a or "") < str(b or "")
+
+
+class _StudyQuerySignals(QObject):
+    finished = Signal(object)  # list[StudyInfo]
+
+
+class _StudyQueryWorker(QRunnable):
+    """Fetch studies from Orthanc in a background thread."""
+
+    def __init__(self, query_fn: Callable[[], list], signals: _StudyQuerySignals) -> None:
+        super().__init__()
+        self._query_fn = query_fn
+        self._signals = signals
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        try:
+            studies = self._query_fn()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[DLG] study query failed: %s", exc)
+            studies = []
+        self._signals.finished.emit(studies)
 
 
 class OrthancStudyDialog(QDialog):
@@ -101,9 +137,18 @@ class OrthancStudyDialog(QDialog):
             self._source_combo.setCurrentIndex(max(source_idx, 0))
         self._source_combo.currentIndexChanged.connect(self._on_source_changed)
 
+        # Date filter
+        self._date_filter_combo = QComboBox()
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_all"), 0)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_1d"), 1)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_3d"), 3)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_30d"), 30)
+        self._date_filter_combo.currentIndexChanged.connect(self._on_date_filter_changed)
+
         search_row = QHBoxLayout()
         search_row.addWidget(self._search_edit, stretch=1)
         search_row.addWidget(self._source_combo)
+        search_row.addWidget(self._date_filter_combo)
         search_row.addWidget(self._find_btn)
 
         self._tree = QTreeWidget()
@@ -117,6 +162,8 @@ class OrthancStudyDialog(QDialog):
         self._tree.itemExpanded.connect(self._on_item_expanded)
         self._tree.itemChanged.connect(self._on_item_changed)
         self._tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._tree.setRootIsDecorated(True)
+        self._tree.itemClicked.connect(self._on_item_clicked)
 
         self._status_label = QLabel()
         self._progress = QProgressBar()
@@ -169,10 +216,23 @@ class OrthancStudyDialog(QDialog):
 
     def _init_network(self) -> None:
         log.info("[DLG] _init_network called")
-        self._check_ping()
-        log.info("[DLG] _check_ping done, loading studies")
-        self._load_studies()
-        log.info("[DLG] _load_studies done, tree items=%d", self._tree.topLevelItemCount())
+        self._status_label.setText(tr("orthanc.searching"))
+        self._load_studies_async()
+
+    def _load_studies_async(self) -> None:
+        """Query studies in a background thread to avoid blocking the UI."""
+        text = self._search_edit.text().strip()
+        patient_name = text or None
+
+        def _query() -> list:
+            if self._query_service is not None:
+                return self._query_service.query_studies(patient_name=patient_name)
+            return self._client.query_studies(patient_name=patient_name)
+
+        signals = _StudyQuerySignals()
+        signals.finished.connect(self._on_studies_loaded)
+        worker = _StudyQueryWorker(_query, signals)
+        QThreadPool.globalInstance().start(worker)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
@@ -232,22 +292,6 @@ class OrthancStudyDialog(QDialog):
             self._client.close()
             self._client_closed = True
 
-    def _check_ping(self) -> None:
-        # Skip DICOMweb ping in DIMSE-only mode
-        if self._server_settings and self._server_settings.dimse_enabled:
-            if not self._server_settings.url or self._server_settings.use_mock:
-                self._status_label.setText(tr("orthanc.dimse_info_banner"))
-                return
-        if self._client.ping():
-            self._status_label.setText(tr("orthanc.server_available"))
-            return
-        self._status_label.setText(tr("orthanc.server_unavailable"))
-        QMessageBox.warning(
-            self,
-            tr("orthanc.connect_error.title"),
-            tr("orthanc.connect_error.body"),
-        )
-
     def _on_source_changed(self) -> None:
         source_val = self._source_combo.currentData()
         if self._query_service is not None and source_val:
@@ -269,38 +313,64 @@ class OrthancStudyDialog(QDialog):
         if self._server_settings is not None:
             self._server_settings = replace(self._server_settings, query_source=source_val)
 
-    def _load_studies(self) -> None:
-        text = self._search_edit.text().strip()
-        patient_name = text or None
-        try:
-            if self._query_service is not None:
-                studies = self._query_service.query_studies(patient_name=patient_name)
-            else:
-                studies = self._client.query_studies(patient_name=patient_name)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, tr("orthanc.find"), tr("orthanc.find_error", message=str(exc)))
-            return
+    def _on_studies_loaded(self, studies: list) -> None:
+        log.info("[DLG] _on_studies_loaded: count=%d", len(studies))
+        self._build_study_tree(studies)
+        self._filter_studies_by_date(self._date_filter_combo.currentData())
+        self._update_load_button()
 
+    def _build_study_tree(self, studies: list) -> None:
         studies = sorted(
             studies,
             key=lambda s: (s.study_date or "", s.patient_name or ""),
             reverse=True,
         )
-
         self._tree.blockSignals(True)
         self._tree.clear()
         for study in studies:
             patient_name = study.patient_name or ""
-            study_date = study.study_date or ""
+            study_date_raw = study.study_date or ""
+            display_date = self._format_study_date(study_date_raw)
             desc = study.study_description or ""
-            item = QTreeWidgetItem([patient_name, study_date, desc])
+            item = _StudyItem([patient_name, display_date, desc])
             item.setData(0, _STUDY_UID_ROLE, study.study_uid)
             item.setData(0, _SORT_ROLE, patient_name)
-            item.setData(1, _SORT_ROLE, study_date)
+            item.setData(1, _SORT_ROLE, study_date_raw)
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
             self._tree.addTopLevelItem(item)
         self._tree.blockSignals(False)
-        self._update_load_button()
+        self._status_label.setText(tr("orthanc.ready"))
+
+    def _load_studies(self) -> None:
+        """Synchronous wrapper for _on_find button — uses async internally."""
+        self._load_studies_async()
+
+    def _format_study_date(self, raw_date: str) -> str:
+        """Convert DICOM date 'YYYYMMDD' to 'DD.MM.YYYY'."""
+        if len(raw_date) == 8 and raw_date.isdigit():
+            return f"{raw_date[6:8]}.{raw_date[4:6]}.{raw_date[:4]}"
+        return raw_date
+
+    def _filter_studies_by_date(self, days: int) -> None:
+        """Hide/show top-level study items based on the selected date filter."""
+        if days <= 0:
+            for i in range(self._tree.topLevelItemCount()):
+                self._tree.topLevelItem(i).setHidden(False)
+            return
+        cutoff = datetime.now() - timedelta(days=days)
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            raw_date = item.data(1, _SORT_ROLE) or ""
+            try:
+                item_date = datetime.strptime(raw_date, "%Y%m%d")
+            except ValueError:
+                item.setHidden(False)
+                continue
+            item.setHidden(item_date < cutoff)
+
+    def _on_date_filter_changed(self) -> None:
+        days = self._date_filter_combo.currentData()
+        self._filter_studies_by_date(days)
 
     def _series_label(self, series: SeriesInfo) -> str:
         parts = [series.modality, series.description]
@@ -330,7 +400,7 @@ class OrthancStudyDialog(QDialog):
             else:
                 series_list = self._client.query_series(str(study_uid))
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, tr("orthanc.series"), tr("orthanc.series_error", message=str(exc)))
+            QMessageBox.warning(self, tr("orthanc.series"), tr("orthanc.series_query_error", message=str(exc)))
             return
 
         self._tree.blockSignals(True)
@@ -341,6 +411,14 @@ class OrthancStudyDialog(QDialog):
             child.setCheckState(0, Qt.CheckState.Unchecked)
             item.addChild(child)
         self._tree.blockSignals(False)
+
+    def _on_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        """Single-click expands/collapses study items (top-level only)."""
+        if item.parent() is not None:
+            return
+        if not item.data(0, _STUDY_UID_ROLE):
+            return
+        item.setExpanded(not item.isExpanded())
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if column != 0 or not item.data(0, _SERIES_UID_ROLE):

@@ -54,6 +54,7 @@ from echo_personal_tool.domain.models import (
     StudyMetadata,
     TemporalFusionConfig,
     TemporalFusionResult,
+    VesselMeasurement,
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
@@ -111,6 +112,12 @@ _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 logger = logging.getLogger(__name__)
 
+# ── Playback diagnostics (set ECHO_PLAYBACK_DIAG=1 to enable) ────────
+try:
+    from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics as _playback_diag
+except ImportError:
+    _playback_diag = None  # type: ignore[assignment]
+
 
 class AppController(QObject):
     """Coordinates scanning and frame loading between UI and infrastructure."""
@@ -149,7 +156,7 @@ class AppController(QObject):
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._last_frame_shown_at: float = 0.0
         self._playback_warmup_pending = False
-        self._playback_poll_interval_ms = 5
+        self._playback_poll_interval_ms = 16
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
         self._loaded_source_path: Path | None = None
@@ -626,6 +633,11 @@ class AppController(QObject):
             self._playback_warmup_pending = False
         self._state_manager.set_playing(is_playing)
         if is_playing:
+            # ── Playback diagnostics: start ──
+            if _playback_diag is not None:
+                total = self._state_manager.snapshot.total_frames
+                fps = 1000.0 / self._playback_interval_ms() if self._playback_interval_ms() > 0 else 30.0
+                _playback_diag.start(fps_target=fps, frame_count=total)
             current = self._state_manager.snapshot.current_frame_index
             self._prefetch_playback_buffer(current)
             if self._playback_warmup_pending:
@@ -633,6 +645,12 @@ class AppController(QObject):
                 return
             self._last_frame_shown_at = perf_counter()
             self._reschedule_playback_timer()
+        else:
+            # ── Playback diagnostics: stop ──
+            if _playback_diag is not None and _playback_diag.enabled:
+                _playback_diag.snapshot_memory()
+                report = _playback_diag.stop()
+                logger.info("Playback diagnostics report:\n%s", report.summary())
 
     def toggle_playback(self) -> None:
         self.set_playing(not self._state_manager.snapshot.is_playing)
@@ -1122,6 +1140,14 @@ class AppController(QObject):
         self._measurement_session.merge_linear_measurements(study_uid, measurement_tuple)
         self._recompute_measurements()
 
+    def accept_vessel_measurement(self, measurement: object) -> bool:
+        if not isinstance(measurement, VesselMeasurement):
+            raise TypeError("Expected a VesselMeasurement")
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_vessel_measurements(study_uid, (measurement,))
+        self._recompute_measurements()
+        return True
+
     def on_manual_calibration(self, spacing: object) -> None:
         if not isinstance(spacing, tuple) or len(spacing) != 2:
             raise TypeError("Expected manual calibration spacing as (row, column) tuple")
@@ -1294,10 +1320,15 @@ class AppController(QObject):
         contours = instance_contours
         from echo_personal_tool.application.study_measurement_session import (
             linear_measurements_for_instance,
+            vessel_measurements_for_instance,
         )
 
         instance_linear = linear_measurements_for_instance(
             session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
             instance_uid,
         )
         logger.debug(
@@ -1310,6 +1341,7 @@ class AppController(QObject):
             doppler_dto=doppler_dto,
             state=state,
             session=session,
+            vessel_measurements=instance_vessel,
         )
 
     def _recompute_measurements(self) -> None:
@@ -1321,10 +1353,15 @@ class AppController(QObject):
         instance_uid = state.instance.sop_instance_uid if state.instance else ""
         from echo_personal_tool.application.study_measurement_session import (
             linear_measurements_for_instance,
+            vessel_measurements_for_instance,
         )
 
         instance_linear = linear_measurements_for_instance(
             session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
             instance_uid,
         )
         logger.debug(
@@ -1339,6 +1376,7 @@ class AppController(QObject):
             doppler_dto=doppler_dto,
             state=state,
             session=session,
+            vessel_measurements=instance_vessel,
         )
         self._state_manager.set_measurement_snapshot(snapshot, emit=False)
         self._state_manager.set_linear_measurements(instance_linear, emit=False)
@@ -1352,6 +1390,7 @@ class AppController(QObject):
         doppler_dto: DopplerMeasurementDTO | None,
         state: ViewerState,
         session: StudyMeasurementData,
+        vessel_measurements: tuple[VesselMeasurement, ...] = (),
     ) -> MeasurementSnapshot:
         doppler = compute(doppler_dto) if doppler_dto is not None else None
         pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(
@@ -1392,6 +1431,7 @@ class AppController(QObject):
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
             planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
         )
         indexed = compute_indexed_measurements(
             base_snapshot,
@@ -1405,6 +1445,8 @@ class AppController(QObject):
                 e_over_e_prime=doppler.e_over_e_prime,
                 lav_index_ml_m2=lav_i,
                 tr_vmax_cm_s=doppler.tr_vmax_cm_s,
+                e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
+                e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
             )
         return MeasurementSnapshot(
             doppler=doppler,
@@ -1424,6 +1466,7 @@ class AppController(QObject):
             weight_kg=session.weight_kg,
             indexed=indexed,
             planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
         )
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
@@ -1765,8 +1808,10 @@ class AppController(QObject):
             if self._current_instance is None or self._current_instance.path != path:
                 return
             # Adaptive batch sizing: EMA of batch latency
+            batch_elapsed_ms = 0.0
             if self._prefetch_batch_start > 0:
                 elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
+                batch_elapsed_ms = elapsed_ms
                 self._prefetch_batch_start = 0.0
                 alpha = 0.3
                 self._prefetch_ema_latency_ms = alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
@@ -1775,6 +1820,11 @@ class AppController(QObject):
                     self._adaptive_batch_size += 2
                 elif self._prefetch_ema_latency_ms > 60 and self._adaptive_batch_size > 2:
                     self._adaptive_batch_size -= 1
+            # ── Playback diagnostics: decode batch ──
+            if _playback_diag is not None and batch_elapsed_ms > 0:
+                _playback_diag.on_decode_batch(
+                    frames[0][0] if frames else 0, len(frames), batch_elapsed_ms
+                )
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f ema=%.1fms batch_size=%d",
@@ -1855,6 +1905,9 @@ class AppController(QObject):
                 self._frame_cache.set_current(next_idx)
                 self.step_frame(1)
                 self._last_frame_shown_at = perf_counter()
+                # ── Playback diagnostics: frame tick ──
+                if _playback_diag is not None:
+                    _playback_diag.on_frame_tick(next_idx, phase="cache_hit")
                 self._prefetch_playback_buffer(next_idx)
                 self._reschedule_playback_timer()
                 if _FREEZE_DIAG:
@@ -1911,6 +1964,9 @@ class AppController(QObject):
 
             self._prefetch_playback_buffer(current)
             self._reschedule_playback_timer(poll=True)
+            # ── Playback diagnostics: cache miss ──
+            if _playback_diag is not None:
+                _playback_diag.on_frame_tick(current, phase="cache_miss")
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[advance] frame=%d cache_miss prefetch_pending elapsed=%.2fms",

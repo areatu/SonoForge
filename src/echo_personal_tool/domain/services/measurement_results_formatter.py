@@ -508,7 +508,13 @@ def format_results_overlay_html(
     for item in snapshot.planimeter:
         _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
+    # Deduplicate by label — keep the most recently stored measurement per label.
+    deduped: dict[str, LinearMeasurement] = {}
     for measurement in snapshot.linear_measurements:
+        deduped[measurement.label] = measurement
+    linear_for_overlay = list(deduped.values())
+
+    for measurement in linear_for_overlay:
         if measurement.label == "%D":
             if measurement.millimeter_length is not None:
                 display_label = tr(_LABEL_I18N_KEY.get("%D", "result.percent_d"))
@@ -562,6 +568,13 @@ def format_results_overlay_html(
         else:
             text = measurement.display_text(length_unit=length_display_unit)
             parts.append(f'<span style="color:{_COLOR_NORMAL};">{text}</span>')
+
+    for vessel in snapshot.vessel_measurements:
+        _html_append(parts, "PSV", vessel.psv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "EDV", vessel.edv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "RI", vessel.ri, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "S/D", vessel.sd, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "MV≈", vessel.mv_approx, "cm/s", sex_male=sex_male)
 
     return "<br>".join(parts)
 

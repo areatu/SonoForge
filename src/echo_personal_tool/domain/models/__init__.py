@@ -47,6 +47,7 @@ from echo_personal_tool.domain.models.temporal_fusion import (
     TemporalFusionConfig,
     TemporalFusionResult,
 )
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 __all__ = [
@@ -83,5 +84,6 @@ __all__ = [
     "TrackingKernel",
     "TrackingResult",
     "ViewerState",
+    "VesselMeasurement",
     "pixel_to_mm_length",
 ]

@@ -296,3 +296,553 @@ class TestHandleClickInTraceMode:
         overlay.set_tool_mode("trace")
         result = overlay.handle_click(100.0, 10.0, double=True)
         assert result is False
+
+
+class TestVesselMode:
+    def test_set_vessel_mode_and_status(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        assert overlay.vessel_status() == "psv"
+        overlay.handle_vessel_click(200.0, 100.0)
+        assert overlay.vessel_status() == "edv"
+        overlay.handle_vessel_click(300.0, 50.0)
+        assert overlay.vessel_status() == "done"
+        assert overlay.get_vessel_values() is not None
+
+    def test_vessel_metrics_emitted(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        received = []
+        overlay.vessel_changed.connect(received.append)
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 100.0)
+        overlay.handle_vessel_click(300.0, 50.0)
+        assert received and received[-1] is not None
+
+    def test_clear_vessel(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 100.0)
+        overlay.handle_vessel_click(300.0, 50.0)
+        overlay.clear_vessel()
+        assert overlay.vessel_status() == "none"
+        assert overlay.get_vessel_values() is None
+
+    def test_vessel_values_map_velocity(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        # baseline at y=100, span 200 => pixels_per_cm_s = 200/200 = 1
+        overlay.handle_vessel_click(200.0, 50.0)   # PSV -> 50 cm/s
+        overlay.handle_vessel_click(300.0, 100.0)  # EDV -> 0 cm/s
+        psv, edv = overlay.get_vessel_values()
+        assert psv == pytest.approx(50.0)
+        assert edv == pytest.approx(0.0)
+
+    def test_move_vessel_caliper_drag(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)
+        overlay.handle_vessel_click(300.0, 100.0)
+        assert overlay.begin_vessel_drag(201.0, 50.0) is True
+        overlay.move_vessel_caliper(200.0, 60.0)
+        psv, _ = overlay.get_vessel_values()
+        assert psv == pytest.approx(40.0)
+        overlay.finish_vessel_drag()
+        assert overlay.vessel_status() == "done"
+
+    def test_vessel_text_includes_units(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)  # PSV -> 50 cm/s
+        overlay.handle_vessel_click(300.0, 90.0)  # EDV -> 10 cm/s
+        assert overlay._vessel_text_item is not None
+        text = overlay._vessel_text_item.toPlainText()
+        assert "PSV: 50.0 cm/s" in text
+        assert "EDV: 10.0 cm/s" in text
+        assert "MV≈: 23.3 cm/s" in text
+
+    def test_vessel_text_has_opaque_background(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)
+        overlay.handle_vessel_click(300.0, 100.0)
+        fill = overlay._vessel_text_item.fill
+        assert fill is not None
+        color = fill.color()
+        assert color.alpha() > 150
+
+    def test_vessel_no_vertical_lines(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.set_vessel_mode()
+        overlay.handle_vessel_click(200.0, 50.0)
+        overlay.handle_vessel_click(300.0, 100.0)
+        from pyqtgraph import PlotDataItem
+
+        for item in mock_plot.items:
+            if not isinstance(item, PlotDataItem):
+                continue
+            pen = item.opts.get("pen")
+            if pen is None:
+                continue
+            assert pen.color().name() not in ("#e53935", "#43a047")
+
+
+class TestDerivePsvEdvIndices:
+    def test_finds_interior_edv_min(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        # velocities cm/s: [10, 30, 60, 80, 90, 75, 50, 35, 22, 40] -> y = 100 - v
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 4
+        assert edv_idx == 8
+
+    def test_flat_end_falls_back_to_last_point(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        # minimum in the window is only ~1 cm/s below the end -> unreliable
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 30, 45, 58, 70, 69])
+        )
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 4
+        assert edv_idx == 9
+
+    def test_short_envelope_uses_last_point(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 2
+        assert edv_idx == 3
+
+    def test_psv_near_end_short_diastolic_fallback(self):
+        from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
+
+        # velocities cm/s: [20, 40, 60, 80, 70, 50, 30, 20, 15, 90] -> PSV at the last point
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([80, 60, 40, 20, 30, 50, 70, 80, 85, 10])
+        )
+        psv_idx, edv_idx = derive_psv_edv_indices(envelope)
+        assert psv_idx == 9
+        assert edv_idx == 9
+
+
+class TestAutoTrace:
+    def test_apply_auto_trace_sets_vessel_done(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        result = overlay.apply_auto_trace(envelope)
+        assert result is not None
+        psv, edv = result
+        assert psv == pytest.approx(60.0)
+        assert edv == pytest.approx(30.0)
+        assert overlay.vessel_status() == "done"
+        psv_v, edv_v = overlay.get_vessel_values()
+        assert psv_v == pytest.approx(60.0)
+        assert edv_v == pytest.approx(30.0)
+        assert overlay._auto_envelope_item is not None
+        assert overlay._auto_envelope_item in mock_plot.items
+
+    def test_apply_auto_trace_places_edv_at_diastolic_min(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        result = overlay.apply_auto_trace(envelope)
+        assert result == pytest.approx((90.0, 22.0))
+        assert overlay._vessel_psv_px == envelope[4]
+        assert overlay._vessel_edv_px == envelope[8]
+
+    def test_apply_auto_trace_short_envelope_returns_none(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_auto_trace(((100.0, 50.0),)) is None
+        assert overlay._auto_envelope_item is None
+
+    def test_apply_auto_trace_empty_returns_none(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_auto_trace(()) is None
+
+    def test_clear_vessel_removes_envelope(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.apply_auto_trace(((100.0, 50.0), (200.0, 60.0)))
+        assert overlay._auto_envelope_item is not None
+        overlay.clear_vessel()
+        assert overlay._auto_envelope_item is None
+
+    def test_clear_measurements_clears_vessel_state(self, overlay, mock_plot):
+        """Vessel PSV/EDV markers, auto-trace line, and text must be cleared by
+        clear_measurements() (used on file switch) so stale measurements do not
+        linger over a newly loaded study."""
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay.apply_auto_trace(((100.0, 50.0), (200.0, 60.0)))
+        assert overlay._vessel_psv_px is not None
+        assert overlay._vessel_edv_px is not None
+        assert overlay._auto_envelope_item is not None
+        overlay.clear_measurements(keep_calibration_graphics=False)
+        assert overlay._vessel_psv_px is None
+        assert overlay._vessel_edv_px is None
+        assert overlay._auto_envelope_item is None
+        assert overlay.vessel_status() == "none"
+
+
+class TestAutoTraceWithCycles:
+    def test_apply_auto_trace_uses_ecg_cycle(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=0.0,
+            end_ms=2500.0,
+            r_peak_ms=0.0,
+            ed_ms=0.0,
+            es_ms=2500.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        result = overlay.apply_auto_trace(envelope, cycles=(cycle,))
+        assert result == pytest.approx((90.0, 22.0))
+        assert overlay.vessel_cycle_source() == "ecg"
+
+    def test_apply_auto_trace_falls_back_when_cycle_absent(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=2500.0,
+            end_ms=4000.0,
+            r_peak_ms=2500.0,
+            ed_ms=2500.0,
+            es_ms=4000.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        result = overlay.apply_auto_trace(envelope, cycles=(cycle,))
+        assert result == pytest.approx((90.0, 22.0))
+        assert overlay.vessel_cycle_source() == "image"
+
+    def test_apply_auto_trace_no_cycles_source_image(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        overlay.apply_auto_trace(envelope)
+        assert overlay.vessel_cycle_source() == "image"
+
+    def test_clear_vessel_resets_cycle_source(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=0.0,
+            end_ms=2500.0,
+            r_peak_ms=0.0,
+            ed_ms=0.0,
+            es_ms=2500.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        overlay.apply_auto_trace(envelope, cycles=(cycle,))
+        assert overlay.vessel_cycle_source() == "ecg"
+        overlay.clear_vessel()
+        assert overlay.vessel_cycle_source() is None
+
+
+class TestAutoVtiTrace:
+    def test_commits_trace_from_envelope(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 50.0), (200.0, 60.0), (300.0, 40.0), (400.0, 70.0))
+        assert overlay.apply_auto_vti_trace(envelope, trace_label="VTI") is True
+        assert len(overlay._traces) == 1
+        assert overlay._traces[0].label == "VTI"
+        assert overlay._auto_envelope_item is not None
+
+    def test_short_envelope_returns_false(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_auto_vti_trace(((100.0, 50.0),)) is False
+        assert overlay._traces == []
+
+    def test_empty_envelope_returns_false(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_auto_vti_trace(()) is False
+
+    def test_clips_to_selected_cycle(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        # cycle 900..1500 ms -> x 550..800 -> envelope points at x=600,700,800
+        cycle = CardiacCycle(
+            start_ms=900.0,
+            end_ms=1500.0,
+            r_peak_ms=900.0,
+            ed_ms=900.0,
+            es_ms=1500.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        assert overlay.apply_auto_vti_trace(envelope, cycles=(cycle,)) is True
+        trace = overlay._traces[0]
+        assert len(trace.points) == 3
+        times = [p[0] for p in trace.points]
+        assert min(times) >= 900.0
+        assert max(times) <= 1500.0
+
+    def test_cycle_absent_falls_back_to_whole_envelope(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple(
+            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
+        )
+        cycle = CardiacCycle(
+            start_ms=5000.0,
+            end_ms=6000.0,
+            r_peak_ms=5000.0,
+            ed_ms=5000.0,
+            es_ms=6000.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        assert overlay.apply_auto_vti_trace(envelope, cycles=(cycle,)) is True
+        assert len(overlay._traces[0].points) == 10
+
+
+class TestAveragedVessel:
+    def test_averages_psv_edv_across_cycles(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = (
+            (100.0, 70.0),
+            (200.0, 40.0),
+            (300.0, 30.0),
+            (400.0, 55.0),
+            (500.0, 65.0),
+            (600.0, 35.0),
+            (700.0, 25.0),
+            (800.0, 50.0),
+            (900.0, 60.0),
+            (1000.0, 70.0),
+        )
+        cycle1 = CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "ecg", 0.9)
+        cycle2 = CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "ecg", 0.9)
+        result = overlay.apply_averaged_vessel(envelope, cycles=(cycle1, cycle2))
+        assert result is not None
+        psv, edv = result
+        assert psv == pytest.approx(72.5)
+        assert edv == pytest.approx(32.5)
+        assert overlay.vessel_cycle_source() == "ecg"
+        assert overlay.vessel_averaged_cycles() == 2
+        assert overlay.vessel_status() == "done"
+        assert overlay._vessel_cycle_selection is True
+        assert len(overlay._vessel_cycles) == 2
+
+    def test_requires_cycles(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_averaged_vessel(((100.0, 50.0), (200.0, 60.0))) is None
+        assert overlay.vessel_averaged_cycles() == 1
+
+    def test_empty_returns_none(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.apply_averaged_vessel(()) is None
+
+    def test_clear_vessel_resets_averaged_cycles(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 70.0), (300.0, 30.0), (500.0, 65.0), (700.0, 25.0), (900.0, 60.0))
+        cycle = CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "ecg", 0.9)
+        overlay.apply_averaged_vessel(envelope, cycles=(cycle,))
+        assert overlay.vessel_averaged_cycles() == 1
+        overlay.clear_vessel()
+        assert overlay.vessel_averaged_cycles() == 1
+
+
+class TestAveragedVesselMedian:
+    def _artifact_envelope(self):
+        # velocities = 100 - y; cycle2 PSV is an artifact spike (y=0 -> 100 cm/s)
+        return (
+            (100.0, 50.0), (200.0, 50.0), (300.0, 10.0), (400.0, 50.0), (500.0, 90.0),
+            (600.0, 50.0), (700.0, 50.0), (800.0, 0.0), (900.0, 50.0), (1000.0, 90.0),
+            (1100.0, 50.0), (1200.0, 50.0), (1300.0, 10.0), (1400.0, 50.0), (1500.0, 90.0),
+        )
+
+    def _three_cycles(self):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        return (
+            CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "ecg", 0.9),
+            CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "ecg", 0.9),
+            CardiacCycle(2000.0, 3000.0, 2000.0, 2000.0, 3000.0, "ecg", 0.9),
+        )
+
+    def test_median_ignores_artifact_cycle(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        result = overlay.apply_averaged_vessel(self._artifact_envelope(), cycles=self._three_cycles())
+        assert result is not None
+        psv, edv = result
+        # mean would be (90 + 100 + 90)/3 = 93.3; median stays 90
+        assert psv == pytest.approx(90.0)
+        assert edv == pytest.approx(10.0)
+
+    def test_stores_cycles_and_candidates(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.apply_averaged_vessel(self._artifact_envelope(), cycles=self._three_cycles())
+        assert len(overlay._vessel_cycles) == 3
+        assert overlay._vessel_cycle_index == 0
+        assert overlay._vessel_cycle_selection is True
+        # cycle 1 artifact candidate at t=1600, 100 cm/s
+        assert overlay._vessel_cycle_psv_candidates[1] == (1600.0, 100.0)
+
+    def test_envelope_cycles_set_envelope_source(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
+                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
+                    (900.0, 60.0), (1000.0, 70.0))
+        cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "envelope", 1.0)
+        overlay.apply_averaged_vessel(envelope, cycles=(cycle,))
+        assert overlay.vessel_cycle_source() == "envelope"
+
+
+def _vessel_mapping_with_time():
+    from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+    from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+    roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0)
+    return DopplerAxisMapping(
+        roi=roi,
+        baseline_y_px=100.0,
+        velocity_span_cm_s=200.0,
+        velocity_min_cm_s=-100.0,
+        velocity_max_cm_s=100.0,
+        plot_width=1000.0,
+        plot_height=200.0,
+        time_span_ms=2000.0,
+    )
+
+
+def _vessel_mapping():
+    from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+    from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+    roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=1000.0, height=200.0)
+    return DopplerAxisMapping(
+        roi=roi,
+        baseline_y_px=100.0,
+        velocity_span_cm_s=200.0,
+        velocity_min_cm_s=-100.0,
+        velocity_max_cm_s=100.0,
+        plot_width=1000.0,
+        plot_height=200.0,
+    )
+
+
+class TestVesselCycleCorrection:
+    def _averaged(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
+                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
+                    (900.0, 60.0), (1000.0, 70.0))
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        cycles = (
+            CardiacCycle(0.0, 1000.0, 0.0, 0.0, 1000.0, "envelope", 1.0),
+            CardiacCycle(1000.0, 2000.0, 1000.0, 1000.0, 2000.0, "envelope", 1.0),
+        )
+        overlay.apply_averaged_vessel(envelope, cycles=cycles)
+        return envelope
+
+    def test_draws_band_on_selected_cycle(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        assert overlay._vessel_cycle_band is not None
+        assert overlay._vessel_cycle_band in mock_plot.items
+        assert overlay._vessel_cycle_text is not None
+
+    def test_arrow_moves_index_and_redraws(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        assert overlay.vessel_cycle_index() == 0
+        assert overlay.move_vessel_cycle(1) is True
+        assert overlay.vessel_cycle_index() == 1
+        assert overlay.vessel_cycle_candidate() == pytest.approx(75.0)
+
+    def test_arrow_wraps_around(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        overlay.move_vessel_cycle(-1)
+        assert overlay.vessel_cycle_index() == 1
+
+    def test_assign_applies_candidate_and_exits(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        overlay.move_vessel_cycle(1)
+        assert overlay.assign_vessel_cycle_psv() is True
+        assert overlay.vessel_cycle_selection_active() is False
+        psv, edv = overlay.get_vessel_values()
+        assert psv == pytest.approx(75.0)
+        assert edv == pytest.approx(32.5)
+        assert overlay.vessel_status() == "done"
+
+    def test_cancel_keeps_median_psv(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        median_psv, _ = overlay.get_vessel_values()
+        overlay.move_vessel_cycle(1)
+        assert overlay.cancel_vessel_cycle_selection() is True
+        psv, _ = overlay.get_vessel_values()
+        assert psv == pytest.approx(median_psv)
+        assert overlay._vessel_cycle_band is None
+
+    def test_candidate_none_when_inactive(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        assert overlay.vessel_cycle_candidate() is None
+
+    def test_selection_active_requires_candidates(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping())
+        overlay._vessel_cycle_selection = True
+        assert overlay.vessel_cycle_selection_active() is False
+
+    def test_auto_trace_clears_selection_state(self, overlay, mock_plot):
+        envelope = self._averaged(overlay, mock_plot)
+        assert overlay.vessel_cycle_selection_active() is True
+        assert overlay._vessel_cycle_band is not None
+        overlay.apply_auto_trace(envelope)
+        assert overlay.vessel_cycle_selection_active() is False
+        assert overlay._vessel_cycles == ()
+        assert overlay._vessel_cycle_psv_candidates == ()
+        assert overlay._vessel_cycle_band is None
+        overlay._redraw_vessel_graphics()
+        assert overlay._vessel_cycle_band is None
+
+    def test_failed_reapply_clears_selection(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        assert overlay.vessel_cycle_selection_active() is True
+        assert overlay._vessel_cycle_band is not None
+        assert overlay.apply_averaged_vessel(()) is None
+        assert overlay.vessel_cycle_selection_active() is False
+        assert overlay.vessel_cycle_count() == 0
+        assert overlay._vessel_cycle_band is None
+
+    def test_auto_trace_short_envelope_clears_selection(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        assert overlay.vessel_cycle_selection_active() is True
+        assert overlay._vessel_cycle_band is not None
+        assert overlay.apply_auto_trace(((100.0, 70.0),)) is None
+        assert overlay.vessel_cycle_selection_active() is False
+        assert overlay._vessel_cycle_band is None
+
+    def test_clear_vessel_resets_selection(self, overlay, mock_plot):
+        self._averaged(overlay, mock_plot)
+        overlay.clear_vessel()
+        assert overlay.vessel_cycle_selection_active() is False
+        assert overlay.vessel_cycle_count() == 0
+        assert overlay._vessel_cycle_band is None
