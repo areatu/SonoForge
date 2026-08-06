@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialogButtonBox, QFileDialog, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
@@ -270,12 +270,12 @@ def theme_button_box_icons(box: QDialogButtonBox) -> None:
     ok_btn = box.button(QDialogButtonBox.StandardButton.Ok)
     if ok_btn is not None and ok_btn.icon().isNull():
         ok_btn.setIcon(_svg_icon("ok"))
-        ok_btn.setIconSize(Qt.QSize(16, 16))
+        ok_btn.setIconSize(QSize(16, 16))
 
     cancel_btn = box.button(QDialogButtonBox.StandardButton.Cancel)
     if cancel_btn is not None and cancel_btn.icon().isNull():
         cancel_btn.setIcon(_svg_icon("close"))
-        cancel_btn.setIconSize(Qt.QSize(16, 16))
+        cancel_btn.setIconSize(QSize(16, 16))
 
     close_btn = box.button(QDialogButtonBox.StandardButton.Close)
     if close_btn is not None and close_btn.icon().isNull():

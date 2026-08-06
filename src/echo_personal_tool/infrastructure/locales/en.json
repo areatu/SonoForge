@@ -306,6 +306,7 @@
   "orthanc.series": "Series",
   "orthanc.series_done": "Loading [{current}/{total}] complete",
   "orthanc.series_error": "Series query error: {message}",
+  "orthanc.series_query_error": "Failed to load series: {message}",
   "orthanc.series_error_status": "Error in series {uid}",
   "orthanc.server_available": "Server available",
   "orthanc.server_unavailable": "Server unavailable — mock or check settings",

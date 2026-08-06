@@ -60,3 +60,8 @@
 - **Тип:** fix
 - **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/presentation/dark_theme.py`
 - **Суть:** 1) Чекбоксы теперь всегда имеют тонкую синюю окантовку (accent_tab) — видно место клика даже в темной теме. 2) При выделении исследования появляется сплошной кружок (●) в text_dim цвете. 3) Добавлен обработчик одиночного клика (itemClicked) — исследования раскрываются по одиночному клику, не требуя двойного.
+
+## [2026-08-06 23:59] Фильтр дат и проверка ошибок
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Фильтр дат изменен с Все/7дн/30дн/90дн на Все/1день/3дня/30дней. 2) UnboundLocalError в user_preferences_dialog.py — уже исправлен (display_form определяется перед использованием).

@@ -306,6 +306,7 @@
   "orthanc.series": "Серии",
   "orthanc.series_done": "Загрузка [{current}/{total}] завершена",
   "orthanc.series_error": "Ошибка [{current}/{total}]: {message}",
+  "orthanc.series_query_error": "Ошибка загрузки серий: {message}",
   "orthanc.series_error_status": "Ошибка в серии {uid}",
   "orthanc.server_available": "Сервер доступен",
   "orthanc.server_unavailable": "Сервер недоступен — mock или проверьте настройки",

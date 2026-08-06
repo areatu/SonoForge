@@ -60,11 +60,23 @@ class DicomQueryService:
 
     def query_series(self, study_uid: str) -> list[SeriesInfo]:
         if self._source == QuerySource.DIMSE and self._dimse is not None:
-            return self._dimse.c_find_series(study_uid)
+            try:
+                return self._dimse.c_find_series(study_uid)
+            except Exception:  # noqa: BLE001
+                logger.debug("DIMSE c_find_series failed for %s", study_uid, exc_info=True)
+                return []
         if self._web is not None:
-            return self._web.query_series(study_uid)
+            try:
+                return self._web.query_series(study_uid)
+            except Exception:  # noqa: BLE001
+                logger.debug("DICOMweb query_series failed for %s", study_uid, exc_info=True)
+                return []
         if self._dimse is not None:
-            return self._dimse.c_find_series(study_uid)
+            try:
+                return self._dimse.c_find_series(study_uid)
+            except Exception:  # noqa: BLE001
+                logger.debug("DIMSE c_find_series fallback failed for %s", study_uid, exc_info=True)
+                return []
         return []
 
     def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:

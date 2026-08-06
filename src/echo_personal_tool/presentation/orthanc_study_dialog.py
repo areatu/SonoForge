@@ -382,7 +382,7 @@ class OrthancStudyDialog(QDialog):
             else:
                 series_list = self._client.query_series(str(study_uid))
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, tr("orthanc.series"), tr("orthanc.series_error", message=str(exc)))
+            QMessageBox.warning(self, tr("orthanc.series"), tr("orthanc.series_query_error", message=str(exc)))
             return
 
         self._tree.blockSignals(True)
