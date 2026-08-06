@@ -18,9 +18,7 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
 def test_spatial_smoothing_preserves_shape():
     positions = np.random.randn(10, 32, 2)
     ncc = np.full((10, 32), 0.8)
-    kernels = [
-        TrackingKernel(center=(0, 0), node_index=i, layer="endo") for i in range(32)
-    ]
+    kernels = [TrackingKernel(center=(0, 0), node_index=i, layer="endo") for i in range(32)]
     config = SpeckleConfig(spatial_smoothing=1.0, temporal_smoothing=0.0)
     out = smooth_trajectories(positions, ncc, kernels, config)
     assert out.shape == positions.shape
@@ -32,19 +30,14 @@ def test_temporal_smoothing_reduces_jitter():
     positions = np.zeros((20, 4, 2))
     positions[:, :, 0] = t[:, None] + np.random.randn(20, 4) * 0.5
     ncc = np.full((20, 4), 0.9)
-    kernels = [
-        TrackingKernel(center=(0, 0), node_index=i, layer="endo") for i in range(4)
-    ]
+    kernels = [TrackingKernel(center=(0, 0), node_index=i, layer="endo") for i in range(4)]
     config = SpeckleConfig(spatial_smoothing=0.0, temporal_smoothing=2.0)
     out = smooth_trajectories(positions, ncc, kernels, config)
     assert np.std(np.diff(out[:, 0, 0])) < np.std(np.diff(positions[:, 0, 0]))
 
 
 def test_extract_trajectories_bidirectional_layout():
-    kernels = [
-        TrackingKernel(center=(float(i), float(i + 1)), node_index=i, layer="endo")
-        for i in range(3)
-    ]
+    kernels = [TrackingKernel(center=(float(i), float(i + 1)), node_index=i, layer="endo") for i in range(3)]
     results = [
         TrackingResult(
             frame_index=1,

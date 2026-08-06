@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +27,9 @@ def _load_locales() -> None:
         path = _LOCALES_DIR / f"{lang}.json"
         if path.exists():
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     data = json.load(f)
-                _translations[lang] = {
-                    k: v for k, v in data.items() if not k.startswith("_")
-                }
+                _translations[lang] = {k: v for k, v in data.items() if not k.startswith("_")}
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load locale %s: %s", lang, e)
                 _translations[lang] = {}

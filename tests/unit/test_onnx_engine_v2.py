@@ -2,13 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from unittest.mock import MagicMock
-
-import numpy as np
-import pytest
-
 from echo_personal_tool.infrastructure.onnx_engine import (
     OnnxInferenceEngine,
     _resolve_io_names,
@@ -25,11 +18,7 @@ class TestResolveInputSize:
         engine = OnnxInferenceEngine.__new__(OnnxInferenceEngine)
         engine._manifest = {
             "active_model": "test_model",
-            "models": {
-                "test_model": {
-                    "onnx": {"input_shape": [1, 3, 224, 224]}
-                }
-            },
+            "models": {"test_model": {"onnx": {"input_shape": [1, 3, 224, 224]}}},
         }
         assert engine._resolve_input_size() == 224
 
@@ -37,11 +26,7 @@ class TestResolveInputSize:
         engine = OnnxInferenceEngine.__new__(OnnxInferenceEngine)
         engine._manifest = {
             "active_model": "test_model",
-            "models": {
-                "test_model": {
-                    "onnx": {"input_shape": [1, 3, 112, 112]}
-                }
-            },
+            "models": {"test_model": {"onnx": {"input_shape": [1, 3, 112, 112]}}},
         }
         assert engine._resolve_input_size() == 112
 

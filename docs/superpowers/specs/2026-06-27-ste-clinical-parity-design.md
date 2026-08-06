@@ -147,7 +147,7 @@ def track_cine_bidirectional(
 **Config:**
 
 ```python
-spatial_smoothing: float = 1.0   # 0=off, 1=vendor default, 2=heavy
+spatial_smoothing: float = 1.0  # 0=off, 1=vendor default, 2=heavy
 temporal_smoothing: float = 1.0
 quality_weighted_smoothing: bool = True
 ```
@@ -284,24 +284,30 @@ class SpeckleConfig:
     @classmethod
     def preset_standard(cls) -> SpeckleConfig:
         return cls(
-            kernel_size=20, search_radius=20,
-            spatial_smoothing=1.0, temporal_smoothing=1.0,
+            kernel_size=20,
+            search_radius=20,
+            spatial_smoothing=1.0,
+            temporal_smoothing=1.0,
             drift_compensation=True,
         )
 
     @classmethod
     def preset_tomtec(cls) -> SpeckleConfig:
         return cls(
-            kernel_size=18, search_radius=18,
-            spatial_smoothing=1.2, temporal_smoothing=1.1,
+            kernel_size=18,
+            search_radius=18,
+            spatial_smoothing=1.2,
+            temporal_smoothing=1.1,
             drift_compensation=True,
         )
 
     @classmethod
     def preset_debug(cls) -> SpeckleConfig:
         return cls(
-            bidirectional=False, spatial_smoothing=0.0,
-            temporal_smoothing=0.0, drift_compensation=False,
+            bidirectional=False,
+            spatial_smoothing=0.0,
+            temporal_smoothing=0.0,
+            drift_compensation=False,
         )
 ```
 
@@ -330,7 +336,7 @@ class TrackingKernel:
     radius: int = 10
     node_index: int = 0
     layer: str = "endo"
-    aha_segment: int = 0          # 1–17, 0=unassigned
+    aha_segment: int = 0  # 1–17, 0=unassigned
     arc_length_param: float = 0.0  # [0, 1] along contour
 ```
 
@@ -349,9 +355,7 @@ def run(self) -> None:
     # Preliminary ED/ES from area on ED contour (before tracking)
     ed_index, es_index = detect_ed_es_from_frames(self._frames, zone, config)
 
-    tracking_results = track_cine_bidirectional(
-        self._frames, kernels, ed_index, config, ...
-    )
+    tracking_results = track_cine_bidirectional(self._frames, kernels, ed_index, config, ...)
     positions, ncc_matrix = extract_trajectories(tracking_results, kernels)
     smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
 

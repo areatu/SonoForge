@@ -21,7 +21,7 @@ class YamlStorage:
 
     def load(self) -> dict[str, Any]:
         """Load YAML and return raw dict."""
-        with open(self._path, "r", encoding="utf-8") as f:
+        with open(self._path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if data is None:
             return {"topics": []}

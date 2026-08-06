@@ -56,9 +56,7 @@ MIN_PDF_FONT_SIZE = 8
 MAX_PDF_FONT_SIZE = 16
 DEFAULT_PDF_FONT_SIZE = 10
 
-DEFAULT_INTERESTING_DICOM_TAGS = (
-    "StudyDate,SeriesDescription,HeartRate,FrameRate"
-)
+DEFAULT_INTERESTING_DICOM_TAGS = "StudyDate,SeriesDescription,HeartRate,FrameRate"
 
 
 @dataclass
@@ -91,6 +89,7 @@ class UserPreferences:
     calibration_tick_snap_enabled: bool = True
     auto_depth_calibration_enabled: bool = True
     length_display_unit: str = "mm"
+    area_tool_mode: str = "click"
     show_dicom_tag_inspector: bool = False
     interesting_dicom_tags: str = DEFAULT_INTERESTING_DICOM_TAGS
     confirm_reset: bool = True
@@ -111,6 +110,7 @@ class UserPreferences:
     show_doppler_mk_av: bool = False
     show_doppler_tk_pv: bool = False
     show_rv_s_prime: bool = False
+    despeckle_enabled: bool = False
 
 
 def _settings_store() -> QSettings:
@@ -280,9 +280,7 @@ def load_user_preferences() -> UserPreferences:
             {"mm", "cm"},
         ),
         show_dicom_tag_inspector=_read_bool(store.value("show_dicom_tag_inspector"), False),
-        interesting_dicom_tags=str(
-            store.value("interesting_dicom_tags", DEFAULT_INTERESTING_DICOM_TAGS)
-        ),
+        interesting_dicom_tags=str(store.value("interesting_dicom_tags", DEFAULT_INTERESTING_DICOM_TAGS)),
         confirm_reset=_read_bool(store.value("confirm_reset"), True),
         pdf_font_size=_clamp_int(
             store.value("pdf_font_size"),
@@ -307,6 +305,8 @@ def load_user_preferences() -> UserPreferences:
         show_doppler_mk_av=_read_bool(store.value("show_doppler_mk_av"), False),
         show_doppler_tk_pv=_read_bool(store.value("show_doppler_tk_pv"), False),
         show_rv_s_prime=_read_bool(store.value("show_rv_s_prime"), False),
+        despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
+        area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
     )
 
 

@@ -50,14 +50,20 @@ def create_installer():
     print("Building installer exe with PyInstaller...")
     sep = ";" if os.name == "nt" else ":"
     cmd = [
-        sys.executable, "-m", "PyInstaller",
+        sys.executable,
+        "-m",
+        "PyInstaller",
         "--onefile",
-        "--name", "SonoForge-Setup",
+        "--name",
+        "SonoForge-Setup",
         "--console",
         "--clean",
-        "--distpath", str(PROJECT_ROOT / "dist"),
-        "--add-data", f"{zip_path}{sep}.",
-        "--specpath", str(PROJECT_ROOT / "dist"),
+        "--distpath",
+        str(PROJECT_ROOT / "dist"),
+        "--add-data",
+        f"{zip_path}{sep}.",
+        "--specpath",
+        str(PROJECT_ROOT / "dist"),
         str(INSTALLER_STUB),
     ]
     result = subprocess.call(cmd)

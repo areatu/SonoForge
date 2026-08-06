@@ -30,9 +30,7 @@ def test_scheduler_deduplicates_same_uid() -> None:
     duplicate_while_in_flight: bool
 
     batch = scheduler.next_batch(limit=2)
-    duplicate_while_in_flight = scheduler.enqueue(
-        "uid-1", ThumbnailPriority.P0_VISIBLE_SELECTED
-    )
+    duplicate_while_in_flight = scheduler.enqueue("uid-1", ThumbnailPriority.P0_VISIBLE_SELECTED)
 
     assert first is True
     assert duplicate_same_priority is False

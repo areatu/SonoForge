@@ -40,9 +40,7 @@ def test_compute_aha_segment_strain_min_per_segment():
     per_kernel_strain = np.array([-10.0, -15.0, -20.0, -99.0])
     ncc_scores = np.array([0.8, 0.6, 0.9, 0.1])
 
-    segment_strain, segment_quality = compute_aha_segment_strain(
-        per_kernel_strain, kernels, ncc_scores
-    )
+    segment_strain, segment_quality = compute_aha_segment_strain(per_kernel_strain, kernels, ncc_scores)
 
     assert segment_strain[1] == -15.0
     assert segment_strain[2] == -20.0

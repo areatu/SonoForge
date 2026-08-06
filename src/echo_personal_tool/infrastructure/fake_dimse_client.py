@@ -167,8 +167,6 @@ class FakeDimseClient:
         instances = self.c_find_instances(study_uid, series_uid)
         count = 0
         for inst in instances:
-            received[inst.sop_instance_uid] = self.c_get_instance(
-                study_uid, series_uid, inst.sop_instance_uid
-            )
+            received[inst.sop_instance_uid] = self.c_get_instance(study_uid, series_uid, inst.sop_instance_uid)
             count += 1
         return CMoveResult(completed=count, failed=0, warning=0)

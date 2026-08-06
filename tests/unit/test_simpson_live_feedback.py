@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController

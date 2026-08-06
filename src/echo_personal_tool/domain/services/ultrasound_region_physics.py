@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from pydicom.dataset import Dataset
+
+logger = logging.getLogger(__name__)
 
 # DICOM PS3.3 C.8.5.5 Physical Units
 PHYSICAL_UNIT_CM = 1
@@ -42,7 +46,11 @@ def region_physical_deltas(region: Dataset) -> tuple[float | None, float | None,
     return delta_x, delta_y, units_x, units_y
 
 
-def horizontal_ms_per_pixel(delta_x: float, units_x: int) -> float | None:
+def horizontal_ms_per_pixel(
+    delta_x: float,
+    units_x: int,
+    spatial_format: int | None = None,
+) -> float | None:
     """M-mode / spectral sweep: milliseconds per pixel on the time axis."""
     if delta_x <= 0.0:
         return None
@@ -51,6 +59,10 @@ def horizontal_ms_per_pixel(delta_x: float, units_x: int) -> float | None:
     # Vendor quirk: time increment mis-tagged as Hz while value is seconds/pixel.
     if units_x == PHYSICAL_UNIT_HZ and delta_x < 1.0:
         return delta_x * 1000.0
+    # Samsung mis-tags tissue Doppler regions as SF=1 (2D) when they are spectral.
+    # Trust time units even for B-mode regions if delta_x is plausible as ms/px.
+    if spatial_format is not None and spatial_format == SPATIAL_2D:
+        return None
     return None
 
 
@@ -71,17 +83,27 @@ def vertical_mm_per_pixel(delta_y: float, units_y: int) -> float | None:
 def time_span_ms_from_region(width_px: float, delta_x: float, units_x: int) -> float | None:
     """Full horizontal span of a spectrogram/M-mode strip in milliseconds."""
     ms_per_px = horizontal_ms_per_pixel(delta_x, units_x)
-    if ms_per_px is None or width_px <= 0.0:
+    if ms_per_px is None:
+        logger.debug("Cannot compute time span: delta_x=%s, units_x=%s", delta_x, units_x)
+        return None
+    if width_px <= 0.0:
         return None
     return width_px * ms_per_px
 
 
 def velocity_span_cm_s_from_region(height_px: float, delta_y: float, units_y: int) -> float | None:
-    """Full vertical velocity span (cm/s) for spectral Doppler."""
+    """Full vertical velocity span (cm/s) for spectral Doppler.
+
+    Negative delta_y is valid — it means the spectrum is inverted
+    (positive velocity points up). Use abs() for the full scale.
+    """
     # units_y=6 is standard cm/s; units_y=7 is a known vendor mis-tag (also cm/s)
-    if units_y not in (PHYSICAL_UNIT_CM_PER_SEC, 7) or delta_y <= 0.0 or height_px <= 0.0:
+    if units_y not in (PHYSICAL_UNIT_CM_PER_SEC, 7):
+        logger.debug("Unsupported velocity units: %s", units_y)
         return None
-    return height_px * delta_y
+    if delta_y == 0.0 or height_px <= 0.0:
+        return None
+    return height_px * abs(delta_y)
 
 
 def is_spatial_calibration_region(region: Dataset) -> bool:
@@ -93,9 +115,11 @@ def is_spatial_calibration_region(region: Dataset) -> bool:
     if spatial == SPATIAL_2D and data_type == 1:
         return True
     _, _, units_x, units_y = region_physical_deltas(region)
-    if units_x is not None and units_x not in _SPATIAL_UNIT_CODES:
+    if units_x is None or units_y is None:
         return False
-    if units_y is not None and units_y not in _SPATIAL_UNIT_CODES:
+    if units_x not in _SPATIAL_UNIT_CODES:
+        return False
+    if units_y not in _SPATIAL_UNIT_CODES:
         return False
     return True
 
@@ -105,7 +129,37 @@ def is_spectral_doppler_region(region: Dataset) -> bool:
     data_type = int(region.get("RegionDataType", 0) or 0)
     if spatial == SPATIAL_SPECTRAL:
         return True
-    return data_type in DOPPLER_DATA_TYPES
+    if data_type in DOPPLER_DATA_TYPES:
+        return True
+    return False
+
+
+def is_maybe_doppler_from_units(region: Dataset) -> bool:
+    """Samsung mis-tags tissue/spectral Doppler as SF=1 (2D). Trust time/velocity units.
+
+    Excludes SF=2 (M-mode) — those are correctly tagged and handled separately.
+    Rejects SF=1 regions where DeltaX ≈ DeltaY (spatial B-mode resolution mis-tagged as SEC).
+    """
+    spatial = int(region.get("RegionSpatialFormat", 0) or 0)
+    data_type = int(region.get("RegionDataType", 0) or 0)
+    # Exclude Color Flow (DT=2) — not spectral
+    if data_type == 2:
+        return False
+    # SF=2 (M-mode) — correctly tagged, handled by mmode_state_from_panel
+    if spatial == SPATIAL_M_MODE:
+        return False
+    # SF=1 — potential Samsung mis-tagged tissue/spectral Doppler
+    if spatial == SPATIAL_2D:
+        delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
+        # Velocity units on Y axis → genuine tissue/spectral Doppler
+        if units_y in (PHYSICAL_UNIT_CM_PER_SEC, 7):
+            return True
+        # SEC/Hz on X axis: only if DeltaX != DeltaY (not spatial B-mode resolution).
+        # Samsung B-mode: DeltaX == DeltaY with UnitsX=UnitsY=3 (cm mis-tagged as SEC).
+        if units_x in (PHYSICAL_UNIT_SEC, PHYSICAL_UNIT_HZ) and delta_x is not None and delta_y is not None:
+            if abs(delta_x - delta_y) > 1e-6:
+                return True
+    return False
 
 
 def is_mmode_region(region: Dataset) -> bool:
@@ -115,7 +169,10 @@ def is_mmode_region(region: Dataset) -> bool:
 def spectral_doppler_region_priority(region: Dataset) -> int:
     """Higher = preferred when multiple regions match Doppler."""
     if not is_spectral_doppler_region(region):
-        return -1
+        # Fallback regions from is_maybe_doppler_from_units
+        if not is_maybe_doppler_from_units(region):
+            return -1
+        return 1  # SF=1 fallback
     data_type = int(region.get("RegionDataType", 0) or 0)
     if data_type == 3:
         return 4

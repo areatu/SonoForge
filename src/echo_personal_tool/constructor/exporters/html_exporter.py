@@ -7,6 +7,7 @@ from pathlib import Path
 
 from echo_personal_tool.constructor.models import ReferenceModel
 from echo_personal_tool.constructor.storage.image_storage import ImageStorage
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 def export_to_html(
@@ -30,16 +31,16 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
         "<head>",
         "<meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width, initial-scale=1'>",
-        "<title>Справочник эхокардиографии</title>",
+        f"<title>{tr('constructor.export.html_title')}</title>",
         "<style>",
         _CSS,
         "</style>",
         "</head>",
         "<body>",
         "<div class='container'>",
-        "<h1>Справочник эхокардиографии</h1>",
+        f"<h1>{tr('constructor.export.html_title')}</h1>",
         "<div class='search-box'>",
-        "<input type='text' id='search' placeholder='Поиск...' oninput='filterTable()'>",
+        f"<input type='text' id='search' placeholder='{tr('constructor.export.html_search')}' oninput='filterTable()'>",
         "</div>",
     ]
 
@@ -49,7 +50,7 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
         parts.append("<div class='section-content'>")
 
         for patho in topic.pathologies:
-            parts.append(f"<div class='pathology-card'>")
+            parts.append("<div class='pathology-card'>")
             parts.append(f"<h3>{patho.name}</h3>")
             if patho.description:
                 parts.append(f"<p class='pathology-desc'>{patho.description}</p>")
@@ -58,8 +59,8 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
             if params:
                 parts.append("<table class='param-table'>")
                 parts.append(
-                    "<thead><tr><th>ID</th><th>Название</th><th>Ед.</th>"
-                    "<th>Норм М</th><th>Норм Ж</th><th>Описание</th></tr></thead>"
+                    f"<thead><tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th>"
+                    f"<th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th><th>{tr('constructor.export.col_desc')}</th></tr></thead>"
                     "<tbody>"
                 )
                 for param in params:
@@ -81,8 +82,8 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
                     parts.append(f"<h4>{grad.name}</h4>")
                     parts.append("<table class='param-table'>")
                     parts.append(
-                        "<thead><tr><th>ID</th><th>Название</th><th>Ед.</th>"
-                        "<th>Норм М</th><th>Норм Ж</th></tr></thead><tbody>"
+                        f"<thead><tr><th>ID</th><th>{tr('constructor.export.col_name')}</th><th>{tr('constructor.export.col_unit')}</th>"
+                        f"<th>{tr('constructor.export.col_norm_male')}</th><th>{tr('constructor.export.col_norm_female')}</th></tr></thead><tbody>"
                     )
                     for param in grad.parameters:
                         norm_m = _format_norm(param.norm_male)
@@ -112,7 +113,9 @@ def _build_html(model: ReferenceModel, image_storage: ImageStorage) -> str:
                         else:
                             parts.append(f"<p class='img-missing'>📷 {img_name}</p>")
                     else:
-                        parts.append(f"<p class='img-missing'>📷 {img_name} (не найден)</p>")
+                        parts.append(
+                            f"<p class='img-missing'>📷 {img_name} {tr('constructor.export.html_not_found')}</p>"
+                        )
                 parts.append("</div>")
 
             parts.append("</div>")  # pathology-card
@@ -183,7 +186,7 @@ def _format_norm(norm) -> str:
 
 _CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e8eef4; line-height: 1.6; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e8eef4; line-height: 1.6; }  # noqa: E501
 .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
 h1 { font-size: 24px; margin-bottom: 16px; color: #f1f5f9; }
 h2 { font-size: 20px; margin: 24px 0 12px; color: #94a3b8; cursor: pointer; }
@@ -192,9 +195,9 @@ h3 { font-size: 16px; margin: 12px 0 8px; color: #e8eef4; }
 h4 { font-size: 14px; margin: 8px 0 4px; color: #94a3b8; }
 .toggle { font-size: 12px; margin-left: 8px; }
 .search-box { margin-bottom: 16px; }
-.search-box input { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #e8eef4; font-size: 14px; }
+.search-box input { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #e8eef4; font-size: 14px; }  # noqa: E501
 .search-box input:focus { outline: none; border-color: #3b82f6; }
-.pathology-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
+.pathology-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }  # noqa: E501
 .pathology-desc { color: #94a3b8; font-style: italic; margin: 4px 0 8px; }
 .param-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
 .param-table th, .param-table td { border: 1px solid #334155; padding: 6px 10px; text-align: left; }

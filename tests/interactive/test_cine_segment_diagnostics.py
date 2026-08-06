@@ -17,6 +17,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from tests.fixtures.generate_synthetic_media import write_synthetic_composite_cine_mp4
 
 from echo_personal_tool.domain.services.cine_segment_diagnostics import (
     diagnose_cine_frame,
@@ -26,7 +27,6 @@ from echo_personal_tool.domain.services.cine_segment_diagnostics import (
 )
 from echo_personal_tool.domain.services.segment_roi import echonet_crop_mode_for_media
 from echo_personal_tool.domain.services.segmentation_service import crop_frame_for_echonet
-from tests.fixtures.generate_synthetic_media import write_synthetic_composite_cine_mp4
 
 pytestmark = pytest.mark.interactive
 
@@ -98,7 +98,4 @@ def test_user_mp4_segmentation_diagnostic(tmp_path: Path) -> None:
         roi_xyxy=report.roi_xyxy,
         crop_mode=report.crop_mode,
     )
-    print(
-        f"crop rect: y={transform.crop_y0} x={transform.crop_x0} "
-        f"h={transform.crop_height} w={transform.crop_width}"
-    )
+    print(f"crop rect: y={transform.crop_y0} x={transform.crop_x0} h={transform.crop_height} w={transform.crop_width}")

@@ -10,8 +10,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from echo_personal_tool.domain.services.contour_geometry import resample_open_arc
-from echo_personal_tool.domain.services.contour_geometry import smooth_open_arc
+from echo_personal_tool.domain.services.contour_geometry import resample_open_arc, smooth_open_arc
 
 _NEIGHBOR_OFFSETS: tuple[tuple[int, int], ...] = (
     (1, 0),
@@ -383,10 +382,7 @@ def mask_to_contour(
     scale_x = original_width / mask_width
     scale_y = original_height / mask_height
 
-    return [
-        (x * scale_x, y * scale_y)
-        for x, y in boundary
-    ]
+    return [(x * scale_x, y * scale_y) for x, y in boundary]
 
 
 def smooth_contour(
@@ -762,13 +758,18 @@ def _annulus_and_apex_from_mask_pixels(
         raise ValueError(msg)
 
     septal, lateral = _mitral_annulus_endpoints(
-        ann_xs, ann_ys, prefer_high_y=annulus_at_bottom,
+        ann_xs,
+        ann_ys,
+        prefer_high_y=annulus_at_bottom,
     )
 
     # Boundary snap when full mask is available
     if mask is not None:
         septal, lateral = _snap_annulus_to_mask_boundary(
-            septal, lateral, mask, basal_y_range=basal_y_range,
+            septal,
+            lateral,
+            mask,
+            basal_y_range=basal_y_range,
         )
 
     if np.any(apex_mask):
@@ -816,13 +817,19 @@ def _fallback_annulus_wider_band(
         raise ValueError(msg)
 
     septal, lateral = _mitral_annulus_endpoints(
-        ann_xs, ann_ys, trim_percentile=8.0, prefer_high_y=annulus_at_bottom,
+        ann_xs,
+        ann_ys,
+        trim_percentile=8.0,
+        prefer_high_y=annulus_at_bottom,
     )
 
     # Boundary snap when full mask is available
     if mask is not None:
         septal, lateral = _snap_annulus_to_mask_boundary(
-            septal, lateral, mask, basal_y_range=basal_y_range,
+            septal,
+            lateral,
+            mask,
+            basal_y_range=basal_y_range,
         )
 
     if np.any(apex_mask):
@@ -1010,24 +1017,35 @@ def open_arc_from_cavity_mask(
     component_mask = component.astype(np.uint8)
     try:
         septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
-            ys, xs, y_min=y_min, y_max=y_max, annulus_end=annulus_end,
+            ys,
+            xs,
+            y_min=y_min,
+            y_max=y_max,
+            annulus_end=annulus_end,
             mask=component_mask,
         )
     except ValueError:
         try:
             septal, lateral, apex = _fallback_annulus_wider_band(
-                ys, xs, y_min=y_min, y_max=y_max,
+                ys,
+                xs,
+                y_min=y_min,
+                y_max=y_max,
                 mask=component_mask,
             )
         except ValueError:
             try:
                 septal, lateral, apex = _fallback_annulus_sector_chord(
-                    ys, xs, y_min=y_min, y_max=y_max,
+                    ys,
+                    xs,
+                    y_min=y_min,
+                    y_max=y_max,
                 )
             except ValueError:
                 frame_h, frame_w = original_shape or binary.shape[:2]
                 septal, lateral, apex = _ma_onnx_fallback(
-                    component_mask, (frame_h, frame_w),
+                    component_mask,
+                    (frame_h, frame_w),
                 )
 
     if view == "A4C" and annulus_end == "auto":
@@ -1035,7 +1053,11 @@ def open_arc_from_cavity_mask(
         if annulus_mid_y < apex[1]:
             try:
                 septal, lateral, apex = _annulus_and_apex_from_mask_pixels(
-                    ys, xs, y_min=y_min, y_max=y_max, annulus_end="bottom",
+                    ys,
+                    xs,
+                    y_min=y_min,
+                    y_max=y_max,
+                    annulus_end="bottom",
                     mask=component_mask,
                 )
             except ValueError:
@@ -1043,7 +1065,10 @@ def open_arc_from_cavity_mask(
 
     frame_shape = original_shape or binary.shape[:2]
     septal, lateral = _try_refine_annulus_with_onnx(
-        septal, lateral, component_mask, frame_shape,
+        septal,
+        lateral,
+        component_mask,
+        frame_shape,
     )
 
     boundary = mask_to_contour(component_mask, frame_shape)

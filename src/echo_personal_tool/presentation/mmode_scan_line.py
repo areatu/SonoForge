@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
 import pyqtgraph as pg
+from PySide6.QtCore import Qt
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QWidget
@@ -55,16 +55,18 @@ class _MModeNodeItem(pg.ScatterPlotItem):
             if view_box is not None:
                 pos = view_box.mapSceneToView(ev.scenePos())
                 new_pos = (float(pos.x()), float(pos.y()))
-                if self._viewer_widget._mmode_line_item is not None and \
-                   self._viewer_widget._mmode_line_item.vertical_lock:
-                    original = self._viewer_widget._mmode_line_item.line_start \
-                        if self._endpoint_index == 0 \
+                if (
+                    self._viewer_widget._mmode_line_item is not None
+                    and self._viewer_widget._mmode_line_item.vertical_lock
+                ):
+                    original = (
+                        self._viewer_widget._mmode_line_item.line_start
+                        if self._endpoint_index == 0
                         else self._viewer_widget._mmode_line_item.line_end
+                    )
                     if original is not None:
                         new_pos = (original[0], new_pos[1])
-                self._viewer_widget._mmode_node_dragging(
-                    self._endpoint_index, new_pos
-                )
+                self._viewer_widget._mmode_node_dragging(self._endpoint_index, new_pos)
 
     def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() != Qt.MouseButton.LeftButton:
@@ -199,9 +201,11 @@ class MModeScanLineItem:
         if self._end_node is not None and self.line_end is not None:
             self._end_node.setData([self.line_end[0]], [self.line_end[1]])
         if self.vertical_lock and self._view is not None and self.line_end is not None:
-            h = self._viewer_widget._current_frame.shape[0] \
-                if self._viewer_widget is not None \
-                and self._viewer_widget._current_frame is not None else 1.0
+            h = (
+                self._viewer_widget._current_frame.shape[0]
+                if self._viewer_widget is not None and self._viewer_widget._current_frame is not None
+                else 1.0
+            )
             self._update_guides(self.line_end, h)
 
     def _sync_line_data(self) -> None:

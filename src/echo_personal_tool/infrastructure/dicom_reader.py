@@ -15,14 +15,18 @@ from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_ses
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 
 _CACHE_MAX_ENTRIES = 32
+_CACHE_MAX_BYTES = 64 * 1024 * 1024  # 64 MB
 
 
 class _DecodedPixelCache:
-    """Thread-safe LRU cache for decoded DICOM frames."""
+    """Thread-safe LRU cache for decoded DICOM frames with byte-based limit.
+    get() returns zero-copy reference.
+    put() stores an OWNED WRITABLE copy — never a view — to survive release_heavy()."""
 
-    def __init__(self, max_entries: int = _CACHE_MAX_ENTRIES) -> None:
-        self._max = max_entries
+    def __init__(self, max_bytes: int = _CACHE_MAX_BYTES) -> None:
+        self._max_bytes = max_bytes
         self._cache: OrderedDict[tuple[str, int], np.ndarray] = OrderedDict()
+        self._current_bytes = 0
         self._lock = Lock()
 
     def get(self, path: Path, frame_index: int) -> np.ndarray | None:
@@ -38,10 +42,18 @@ class _DecodedPixelCache:
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
-            else:
-                if len(self._cache) >= self._max:
-                    self._cache.popitem(last=False)
-                self._cache[key] = pixels
+                return
+
+            # BOUNDARY COPY: Cache must own writable memory
+            owned = np.array(pixels, copy=True)
+            entry_bytes = owned.nbytes
+
+            while self._current_bytes + entry_bytes > self._max_bytes and self._cache:
+                _, evicted = self._cache.popitem(last=False)
+                self._current_bytes -= evicted.nbytes
+
+            self._cache[key] = owned
+            self._current_bytes += entry_bytes
 
     def clear(self) -> None:
         with self._lock:

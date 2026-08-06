@@ -107,11 +107,11 @@ On speckle tracking:
 
 ```python
 class FrameCache:
-    _store: dict[int, np.ndarray]       # frame_index → pixels
-    _pinned: set[int]                    # indices protected from eviction
+    _store: dict[int, np.ndarray]  # frame_index → pixels
+    _pinned: set[int]  # indices protected from eviction
     _total_frames: int
     _current_index: int
-    _evict_window: int = 40             # default (adaptive: system_profiler)
+    _evict_window: int = 40  # default (adaptive: system_profiler)
     _max_memory_bytes: int = 512 * 2**20
 ```
 
@@ -155,11 +155,11 @@ class FrameCache:
 ```python
 @dataclass(frozen=True)
 class SystemProfile:
-    cpu_cores: int           # os.cpu_count()
-    total_ram_gb: float      # psutil.virtual_memory().total / 1e9
-    has_gpu: bool            # try: cv2.cuda.getCudaEnabledDeviceCount()
-    gpu_vram_gb: float       # nvidia-smi, pyadl, or 0
-    is_low_end: bool         # cores <= 4 OR ram <= 16 OR no GPU
+    cpu_cores: int  # os.cpu_count()
+    total_ram_gb: float  # psutil.virtual_memory().total / 1e9
+    has_gpu: bool  # try: cv2.cuda.getCudaEnabledDeviceCount()
+    gpu_vram_gb: float  # nvidia-smi, pyadl, or 0
+    is_low_end: bool  # cores <= 4 OR ram <= 16 OR no GPU
 ```
 
 **Adaptive config mapping:**

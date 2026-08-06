@@ -17,15 +17,10 @@ from echo_personal_tool.domain.services.lv_temporal_fusion import (
     fuse_annulus_endpoints,
     mask_vote_fusion,
     temporal_fuse,
-    _component_wise_median,
-    _ma_centroid,
-    _ma_length,
 )
 
 
-def _circle_mask(
-    height: int, width: int, cy: float, cx: float, r: float
-) -> np.ndarray:
+def _circle_mask(height: int, width: int, cy: float, cx: float, r: float) -> np.ndarray:
     ys, xs = np.ogrid[:height, :width]
     return ((ys - cy) ** 2 + (xs - cx) ** 2 <= r**2).astype(np.uint8)
 
@@ -51,6 +46,7 @@ def _make_contour(
 
 # --- compute_window ---
 
+
 def test_compute_window_basic() -> None:
     w = compute_window(anchor=10, total_frames=20, window=2)
     assert w == [8, 9, 10, 11, 12]
@@ -72,6 +68,7 @@ def test_compute_window_single_frame() -> None:
 
 
 # --- align_mask_to_anchor ---
+
 
 def test_align_mask_to_anchor_translates_mask() -> None:
     mask = np.zeros((100, 100), dtype=np.uint8)
@@ -96,6 +93,7 @@ def test_align_mask_no_shift_when_centroids_match() -> None:
 
 
 # --- mask_vote_fusion ---
+
 
 def test_mask_vote_fusion_majority() -> None:
     m1 = np.zeros((10, 10), dtype=np.uint8)
@@ -135,6 +133,7 @@ def test_mask_vote_fusion_empty() -> None:
 
 # --- clamp_nodes_to_center ---
 
+
 def test_CLAMP_NODES_TO_CENTER_no_shift_when_within_cap() -> None:
     center = [(10.0, 10.0), (20.0, 20.0)]
     median = [(11.0, 11.0), (21.0, 21.0)]
@@ -155,6 +154,7 @@ def test_CLAMP_NODES_TO_CENTER_clamps_when_outside_cap() -> None:
 
 
 # --- fuse_annulus_endpoints ---
+
 
 def test_fuse_annulus_endpoints_median_with_center() -> None:
     center = ((10.0, 0.0), (90.0, 0.0))
@@ -188,6 +188,7 @@ def test_fuse_annulus_endpoints_no_neighbors() -> None:
 
 # --- apply_apex_direction_lock ---
 
+
 def test_apex_lock_neighbours_more_apical() -> None:
     fused_apex = (50.0, 60.0)
     center_apex = (50.0, 50.0)
@@ -216,6 +217,7 @@ def test_apex_lock_no_neighbors() -> None:
 
 
 # --- temporal_fuse (integration) ---
+
 
 def test_temporal_fuse_falls_back_to_center_when_no_neighbors() -> None:
     center_mask = _circle_mask(100, 100, 50, 50, 20)
@@ -275,14 +277,18 @@ def test_temporal_fuse_produces_fused_contour_with_neighbors() -> None:
 
 # --- apex cap tests ---
 
+
 def test_clamp_nodes_apex_uses_tighter_cap() -> None:
     """Apex node should be clamped with apex_shift_cap, not general shift_cap."""
     center = [(10.0, 10.0), (20.0, 20.0), (30.0, 30.0)]
     median = [(15.0, 10.0), (30.0, 20.0), (30.0, 30.0)]  # node 1 shifted by 10
     # General cap=10 allows it; apex cap=3 should clamp
     result = clamp_nodes_to_center(
-        median, center, shift_cap=10.0,
-        apex_index=1, apex_shift_cap=3.0,
+        median,
+        center,
+        shift_cap=10.0,
+        apex_index=1,
+        apex_shift_cap=3.0,
     )
     # Node 0: no apex, uses general cap (5 < 10, OK)
     assert result[0] == (15.0, 10.0)
@@ -303,6 +309,7 @@ def test_clamp_nodes_no_apex_index_uses_general_cap() -> None:
 
 # --- aligned annulus δ test ---
 
+
 def test_fuse_annulus_uses_center_not_fused_mask() -> None:
     """Annulus δ clamp should use center_contour.mitral_annulus, not fused mask."""
     center_mask = _circle_mask(100, 100, 50, 50, 20)
@@ -320,7 +327,8 @@ def test_fuse_annulus_uses_center_not_fused_mask() -> None:
     neighbor = _make_contour(points_n, annulus_n, apex_n, frame_index=12)
 
     config = TemporalFusionConfig(
-        window=2, vote_threshold=2,
+        window=2,
+        vote_threshold=2,
         annulus_max_shift_ratio_ed=0.001,  # very tight δ
     )
 
@@ -342,6 +350,7 @@ def test_fuse_annulus_uses_center_not_fused_mask() -> None:
 
 
 # --- partial fusion early-exit test ---
+
 
 def test_compute_window_partial_fusion_threshold() -> None:
     """With window=2 and 5 frames, early-exit at 3 valid should work."""

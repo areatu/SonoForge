@@ -46,6 +46,7 @@ Add a VS Code-inspired **Customize Layout** system to the Standard main window. 
 @dataclass
 class LayoutConfig:
     """Immutable snapshot — always replace, never mutate in place."""
+
     swap_places: bool = False
     gallery_horizontal: bool = False
     activity_bar: bool = False
@@ -66,10 +67,12 @@ class UserPreferences:
     ...
     layout_state_json: str = ""  # json.dumps(asdict(LayoutConfig()))
 
+
 # main_window.py
 def _save_layout_state(self) -> None:
     self._user_preferences.layout_state_json = json.dumps(asdict(self._layout_config))
     save_user_preferences(self._user_preferences)
+
 
 def _load_layout_state(self) -> LayoutConfig:
     raw = self._user_preferences.layout_state_json
@@ -209,27 +212,40 @@ Let me revise the logic:
 
 ```python
 def decide_left(cfg):
-    if cfg.activity_bar and cfg.swap_places:  return activity_bar
+    if cfg.activity_bar and cfg.swap_places:
+        return activity_bar
     if cfg.swap_places:
-        if cfg.gallery_horizontal:             return tool_panel  # left side
+        if cfg.gallery_horizontal:
+            return tool_panel  # left side
         return tool_panel
-    if cfg.gallery_horizontal:                 return viewer1
-    if cfg.activity_bar:                       return gallery
+    if cfg.gallery_horizontal:
+        return viewer1
+    if cfg.activity_bar:
+        return gallery
     return gallery
 
+
 def decide_center(cfg):
-    if cfg.multiview:   return QSplitter([viewer1, viewer2])
-    if cfg.gallery_horizontal:   return None
+    if cfg.multiview:
+        return QSplitter([viewer1, viewer2])
+    if cfg.gallery_horizontal:
+        return None
     return viewer1
 
+
 def decide_right(cfg):
-    if cfg.activity_bar and not cfg.swap_places:  return activity_bar
-    if cfg.activity_bar and cfg.swap_places:      return gallery
-    if cfg.swap_places:
-        if cfg.gallery_horizontal:                 return viewer1
+    if cfg.activity_bar and not cfg.swap_places:
+        return activity_bar
+    if cfg.activity_bar and cfg.swap_places:
         return gallery
-    if cfg.gallery_horizontal:                     return tool_panel
+    if cfg.swap_places:
+        if cfg.gallery_horizontal:
+            return viewer1
+        return gallery
+    if cfg.gallery_horizontal:
+        return tool_panel
     return tool_panel
+
 
 def decide_bottom(cfg):
     return gallery if cfg.gallery_horizontal else None
@@ -277,11 +293,11 @@ def _show_layout_menu(self) -> None:
     menu.setObjectName("layoutMenu")
 
     items = [
-        ("Swap Places",     "swap_places",       "⇄  Менять местами Gallery и Tools"),
+        ("Swap Places", "swap_places", "⇄  Менять местами Gallery и Tools"),
         ("Horizontal Gallery", "gallery_horizontal", "⊞  Миниатюры снизу, 2 ряда"),
-        ("Activity Bar",    "activity_bar",      "≡  Узкая панель инструментов"),
-        ("Status Bar",      "status_bar_visible", "_  Полоса статуса"),
-        ("Multiview",       "multiview",          "▭  Два независимых окна просмотра"),
+        ("Activity Bar", "activity_bar", "≡  Узкая панель инструментов"),
+        ("Status Bar", "status_bar_visible", "_  Полоса статуса"),
+        ("Multiview", "multiview", "▭  Два независимых окна просмотра"),
     ]
     for label, attr, tooltip in items:
         action = menu.addAction(tooltip)
@@ -289,9 +305,7 @@ def _show_layout_menu(self) -> None:
         action.setChecked(getattr(self._layout_config, attr))
         action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
 
-    menu.exec(self._system_bar._btn_layout.mapToGlobal(
-        QPoint(0, self._system_bar._btn_layout.height())
-    ))
+    menu.exec(self._system_bar._btn_layout.mapToGlobal(QPoint(0, self._system_bar._btn_layout.height())))
 ```
 
 ### 5.3 ThumbnailGallery — Horizontal Mode
@@ -300,7 +314,7 @@ def _show_layout_menu(self) -> None:
 def set_horizontal_mode(self, enabled: bool) -> None:
     if enabled:
         self._saved_width = self.width()  # for restore
-        self.setFixedWidth(16777215)      # remove fixed width constraint
+        self.setFixedWidth(16777215)  # remove fixed width constraint
         self.setFixedHeight(self._cell_h * 2 + self._cell_spacing + 4)
         self.setWrapping(True)
         self.setFlow(QListWidget.Flow.LeftToRight)
@@ -321,7 +335,8 @@ def set_horizontal_mode(self, enabled: bool) -> None:
 ```python
 class ActivityBar(QWidget):
     """Vertical icon bar (VS Code style, ~48px)."""
-    tab_activated = Signal(str)    # "measures" | "controls" | "dicom"
+
+    tab_activated = Signal(str)  # "measures" | "controls" | "dicom"
     tab_deactivated = Signal(str)
 
     def __init__(self, parent=None):
@@ -334,7 +349,7 @@ class ActivityBar(QWidget):
         for name, icon_file in [
             ("measures", "activity_measures.svg"),
             ("controls", "activity_controls.svg"),
-            ("dicom",    "activity_dicom.svg"),
+            ("dicom", "activity_dicom.svg"),
         ]:
             btn = QPushButton()
             btn.setIcon(_load_icon(icon_file.replace(".svg", "")))
@@ -370,12 +385,11 @@ def _on_activity_tab_activated(self, tab: str) -> None:
     if tab in tab_map:
         self._tool_panel._tabs.setCurrentIndex(tab_map[tab])
     # Position tool panel next to activity bar
-    activity_on_right = (
-        self._layout_config.activity_bar and not self._layout_config.swap_places
-    )
+    activity_on_right = self._layout_config.activity_bar and not self._layout_config.swap_places
     # tool_panel is already in the layout if decide_right returned None for activity_bar+swap
     # Actually tool_panel should appear as an overlay or insert next to activity bar
     self._tool_panel.show()
+
 
 def _on_activity_tab_deactivated(self, tab: str) -> None:
     self._tool_panel.hide()
@@ -399,6 +413,7 @@ self._viewer2: ViewerWidget | None = None
 self._active_viewer: ViewerWidget = self._viewer
 self._viewer.installEventFilter(self)  # track focus
 
+
 def _ensure_viewer2(self) -> None:
     if self._viewer2 is not None:
         return
@@ -407,11 +422,13 @@ def _ensure_viewer2(self) -> None:
     # Sync initial state from viewer1
     self._viewer2.set_state(self._controller.state_manager.snapshot)
 
+
 def eventFilter(self, obj, event) -> bool:
     if event.type() == QEvent.Type.MouseButtonPress:
         if obj is self._viewer or obj is self._viewer2:
             self._active_viewer = obj
     return super().eventFilter(obj, event)
+
 
 # Play/pause uses active viewer:
 def _toggle_playback_shortcut(self) -> None:
@@ -420,6 +437,7 @@ def _toggle_playback_shortcut(self) -> None:
         self._controller.toggle_viewer2_playback()
     else:
         self._controller.toggle_playback()
+
 
 # Ctrl+click on thumbnail → load into viewer2
 def _on_instance_selected(self, selected) -> None:
@@ -450,12 +468,11 @@ Approach A is simpler. For fully independent instance loading (Ctrl+click), view
 _viewer2_instance: InstanceMetadata | None = None
 _viewer2_frame: int = 0
 
+
 def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
     self._viewer2_instance = instance
     self._viewer2_frame = 0
-    self._controller.load_instance_for_viewer(
-        self._viewer2, instance, frame_index=0
-    )
+    self._controller.load_instance_for_viewer(self._viewer2, instance, frame_index=0)
 ```
 
 Controller side:

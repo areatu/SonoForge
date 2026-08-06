@@ -31,9 +31,7 @@ def validate_dicom_header(
         raise InvalidDicomError(f"File too small for DICOM ({size} bytes): {path.name}")
 
     if size > max_size_bytes:
-        raise InvalidDicomError(
-            f"File exceeds {max_size_bytes // 1_000_000} MB limit ({size} bytes): {path.name}"
-        )
+        raise InvalidDicomError(f"File exceeds {max_size_bytes // 1_000_000} MB limit ({size} bytes): {path.name}")
 
     with path.open("rb") as fh:
         fh.seek(_PREAMBLE_SIZE)

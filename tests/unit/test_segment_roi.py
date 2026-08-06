@@ -6,7 +6,6 @@ import numpy as np
 
 from echo_personal_tool.domain.services.segment_roi import (
     ECHONET_CROP_CENTER_SQUARE,
-    ECHONET_CROP_FULL_ROI,
     echonet_crop_mode_for_media,
     resolve_cine_segment_roi_xyxy,
     resolve_segment_roi_xyxy,

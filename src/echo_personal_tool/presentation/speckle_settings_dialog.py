@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
+from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
 
 
 class SpeckleSettingsDialog(QDialog):
@@ -32,7 +34,7 @@ class SpeckleSettingsDialog(QDialog):
         n_frames: int = 0,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Speckle Settings")
+        self.setWindowTitle(tr("dialog.speckle_settings.title"))
 
         self._preset_combo = QComboBox(self)
         self._preset_combo.addItem("Standard", "standard")
@@ -77,11 +79,10 @@ class SpeckleSettingsDialog(QDialog):
         form.addRow(self._es_auto_check)
         form.addRow("ES frame:", self._es_spin)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        theme_button_box_icons(buttons)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)

@@ -5,19 +5,21 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.domain.ports import QuerySource
 from echo_personal_tool.infrastructure import server_settings as ss
+from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.server_settings import (
     ServerSettings,
     load_server_settings,
     save_server_settings,
 )
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
-from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 
 
 @pytest.fixture
@@ -43,7 +45,9 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def test_persist_query_source_updates_qsettings(
-    qapp, isolated_settings: None, tmp_path,
+    qapp,
+    isolated_settings: None,
+    tmp_path,
 ) -> None:
     save_server_settings(ServerSettings(query_source="dicomweb"))
     dialog = OrthancStudyDialog(
@@ -56,7 +60,9 @@ def test_persist_query_source_updates_qsettings(
 
 
 def test_source_combo_persists_on_change(
-    qapp, isolated_settings: None, tmp_path,
+    qapp,
+    isolated_settings: None,
+    tmp_path,
 ) -> None:
     from echo_personal_tool.application.dicom_query_service import DicomQueryService
     from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient

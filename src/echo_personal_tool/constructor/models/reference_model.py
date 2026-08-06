@@ -91,10 +91,7 @@ class PathologyModel:
 
     def __post_init__(self) -> None:
         # Convert dicts to GradationModel if needed
-        self.gradations = [
-            g if isinstance(g, GradationModel) else GradationModel.from_dict(g)
-            for g in self.gradations
-        ]
+        self.gradations = [g if isinstance(g, GradationModel) else GradationModel.from_dict(g) for g in self.gradations]
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -167,6 +164,7 @@ class ReferenceModel:
     def to_yaml(self) -> str:
         """Serialize to YAML string."""
         import yaml
+
         return yaml.dump(
             self.to_dict(),
             allow_unicode=True,
@@ -184,6 +182,7 @@ class ReferenceModel:
     @classmethod
     def from_yaml(cls, yaml_str: str) -> ReferenceModel:
         import yaml
+
         data = yaml.safe_load(yaml_str)
         return cls.from_dict(data or {"topics": []})
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.gui
+
 from unittest.mock import MagicMock
 
-import pytest
 import pyqtgraph as pg
 
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
@@ -51,17 +54,9 @@ def test_guide_graphics_created_on_set_end_with_vertical_lock():
     assert item._guide_v is not None
 
 
-def test_vertical_lock_button_exists(qtbot):
-    from echo_personal_tool.presentation.mmode_widget import MModeWidget
-    widget = MModeWidget()
-    qtbot.addWidget(widget)
-    assert hasattr(widget, '_vertical_lock_btn')
-    assert widget._vertical_lock_btn.isCheckable()
-
-
 def test_viewer_widget_vertical_lock_flag():
-    from unittest.mock import MagicMock
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
     viewer = ViewerWidget.__new__(ViewerWidget)
     viewer._mmode_vertical_lock = False
     assert viewer._mmode_vertical_lock is False
@@ -69,7 +64,9 @@ def test_viewer_widget_vertical_lock_flag():
 
 def test_viewer_widget_set_mmode_vertical_lock():
     from unittest.mock import MagicMock
+
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
     viewer = ViewerWidget.__new__(ViewerWidget)
     viewer._mmode_vertical_lock = False
     mock_line_item = MagicMock()
@@ -81,6 +78,7 @@ def test_viewer_widget_set_mmode_vertical_lock():
 
 def test_viewer_widget_set_mmode_vertical_lock_no_item():
     from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
     viewer = ViewerWidget.__new__(ViewerWidget)
     viewer._mmode_vertical_lock = False
     viewer._mmode_line_item = None

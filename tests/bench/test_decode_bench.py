@@ -8,7 +8,6 @@ Run:  ECHO_BENCH=1 pytest tests/bench/test_decode_bench.py -v --benchmark-only
 from __future__ import annotations
 
 import os
-import struct
 from io import BytesIO
 from pathlib import Path
 
@@ -17,9 +16,9 @@ import pytest
 
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.infrastructure.dicom_session import (
+    DicomSession,
     _decode_compressed_frame,
     _decode_uncompressed_frame,
-    DicomSession,
 )
 
 _BENCH = pytest.mark.skipif(
@@ -29,6 +28,7 @@ _BENCH = pytest.mark.skipif(
 
 
 # ── Uncompressed decode: zero-copy vs copy ──────────────────────────
+
 
 def _make_raw_pixel_data(rows: int, cols: int, bpp: int, n_frames: int) -> bytes:
     """Create synthetic uncompressed DICOM pixel data."""
@@ -67,23 +67,36 @@ def test_bench_decode_uncompressed_with_copy(benchmark) -> None:
 
 # ── pydicom + pylibjpeg decode (compressed codecs) ──────────────────
 
-def _make_test_dicom(tmp_path: Path, use_jpeg: bool, use_jpeg2000: bool, rows: int, cols: int, frame_count: int) -> Path:
+
+def _make_test_dicom(
+    tmp_path: Path, use_jpeg: bool, use_jpeg2000: bool, rows: int, cols: int, frame_count: int
+) -> Path:
     """Create synthetic DICOM file for decode benchmarks."""
     from tests.fixtures.generate_synthetic_dicom import (
         write_synthetic_jpeg2000_multiframe_dicom,
         write_synthetic_jpeg_multiframe_dicom,
         write_synthetic_multiframe_dicom,
     )
+
     if use_jpeg:
         return write_synthetic_jpeg_multiframe_dicom(
-            tmp_path / "jpeg.dcm", frame_count=frame_count, rows=rows, cols=cols,
+            tmp_path / "jpeg.dcm",
+            frame_count=frame_count,
+            rows=rows,
+            cols=cols,
         )
     if use_jpeg2000:
         return write_synthetic_jpeg2000_multiframe_dicom(
-            tmp_path / "j2k.dcm", frame_count=frame_count, rows=rows, cols=cols,
+            tmp_path / "j2k.dcm",
+            frame_count=frame_count,
+            rows=rows,
+            cols=cols,
         )
     return write_synthetic_multiframe_dicom(
-        tmp_path / "raw.dcm", frame_count=frame_count, rows=rows, cols=cols,
+        tmp_path / "raw.dcm",
+        frame_count=frame_count,
+        rows=rows,
+        cols=cols,
     )
 
 
@@ -179,6 +192,7 @@ def test_bench_decode_fragment_jpeg2000_single(benchmark) -> None:
         pytest.skip("openjpeg not available")
 
     import numpy as np
+
     frame = np.random.default_rng(42).integers(0, 255, (512, 512), dtype=np.uint8)
     encoded = openjpeg.encode(frame)
 
@@ -211,8 +225,9 @@ def test_bench_decode_fragment_jpeg_cv2(benchmark) -> None:
 @_BENCH
 def test_bench_pydicom_pixel_array_fallback(benchmark, tmp_path: Path) -> None:
     """pydicom.pixel_array fallback — full DICOM parse with pixel decode."""
-    from tests.fixtures.generate_synthetic_dicom import write_synthetic_multiframe_dicom
     import pydicom
+    from tests.fixtures.generate_synthetic_dicom import write_synthetic_multiframe_dicom
+
     from echo_personal_tool.infrastructure.dicom_session import stack_pixel_array
 
     dcm = write_synthetic_multiframe_dicom(
@@ -221,7 +236,6 @@ def test_bench_pydicom_pixel_array_fallback(benchmark, tmp_path: Path) -> None:
         rows=256,
         cols=256,
     )
-    from io import BytesIO
     raw = dcm.read_bytes()
 
     def _fallback() -> None:
@@ -233,6 +247,7 @@ def test_bench_pydicom_pixel_array_fallback(benchmark, tmp_path: Path) -> None:
 
 
 # ── FrameCache eviction cost ────────────────────────────────────────
+
 
 @_BENCH
 def test_bench_evict_200_frames_sweep(benchmark, tmp_path: Path) -> None:
@@ -268,6 +283,7 @@ def test_bench_evict_with_pinned_frames(benchmark, tmp_path: Path) -> None:
 
 # ── FrameCache.frames property (memoized) ───────────────────────────
 
+
 @_BENCH
 def test_bench_frames_property_first_call(benchmark, tmp_path: Path) -> None:
     """First .frames call — triggers np.stack reconstruction."""
@@ -299,6 +315,7 @@ def test_bench_frames_property_cached(benchmark, tmp_path: Path) -> None:
 
 
 # ── bisect vs linear eviction ───────────────────────────────────────
+
 
 @_BENCH
 def test_bench_sorted_keys_eviction_logic(benchmark, tmp_path: Path) -> None:

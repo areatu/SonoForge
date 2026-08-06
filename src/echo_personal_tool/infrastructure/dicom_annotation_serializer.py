@@ -15,7 +15,6 @@ import logging
 
 import pydicom
 from pydicom.dataset import Dataset
-from pydicom.sequence import Sequence as DicomSequence
 
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
@@ -202,22 +201,26 @@ def read_annotations_from_dicom(ds: Dataset) -> tuple[list[LinearMeasurement], l
                 # Caliper (line between two points)
                 start, end = points
                 pixel_length = ((end[0] - start[0]) ** 2 + (end[1] - start[1]) ** 2) ** 0.5
-                calipers.append(LinearMeasurement(
-                    label=layer_name or "Measurement",
-                    pixel_length=pixel_length,
-                    millimeter_length=None,
-                    start=start,
-                    end=end,
-                ))
+                calipers.append(
+                    LinearMeasurement(
+                        label=layer_name or "Measurement",
+                        pixel_length=pixel_length,
+                        millimeter_length=None,
+                        start=start,
+                        end=end,
+                    )
+                )
             elif len(points) > 2:
                 # Contour (polygon)
-                contours.append(Contour(
-                    phase="ED",
-                    view="A4C",
-                    chamber="LV",
-                    points=points,
-                    source="dicom",
-                    measurement_label=layer_name,
-                ))
+                contours.append(
+                    Contour(
+                        phase="ED",
+                        view="A4C",
+                        chamber="LV",
+                        points=points,
+                        source="dicom",
+                        measurement_label=layer_name,
+                    )
+                )
 
     return calipers, contours

@@ -12,7 +12,6 @@ asserting hard limits (hardware-dependent).
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +29,7 @@ def _mem_mb() -> float:
     """Current process RSS in MB (approximate)."""
     try:
         import psutil
+
         return psutil.Process().memory_info().rss / 1e6
     except ImportError:
         return 0.0
@@ -41,6 +41,7 @@ def _make_frames(n: int, h: int = 64, w: int = 64, dtype: type = np.uint8) -> np
 
 
 # ── Peak RAM for cine sizes ─────────────────────────────────────────
+
 
 @_BENCH
 def test_bench_mem_30_frame_cine(benchmark, tmp_path: Path) -> None:
@@ -84,6 +85,7 @@ def test_bench_mem_200_frame_cine(benchmark, tmp_path: Path) -> None:
 
 # ── FrameCache memory_bytes tracking ────────────────────────────────
 
+
 @_BENCH
 def test_bench_memory_bytes_tracking(benchmark, tmp_path: Path) -> None:
     """memory_bytes() call overhead — used for RAM warnings."""
@@ -101,6 +103,7 @@ def test_bench_memory_bytes_tracking(benchmark, tmp_path: Path) -> None:
 
 
 # ── Zero-copy view vs heap allocation ──────────────────────────────
+
 
 @_BENCH
 def test_bench_zero_copy_view_lifetime(benchmark) -> None:
@@ -132,6 +135,7 @@ def test_bench_heap_copy_allocation(benchmark) -> None:
 
 
 # ── Eviction memory reclamation ────────────────────────────────────
+
 
 @_BENCH
 def test_bench_eviction_reclaims_memory(benchmark, tmp_path: Path) -> None:

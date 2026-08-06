@@ -18,14 +18,14 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.media_formats import (
     MediaFormat,
     detect_media_format,
     is_ignored_scan_path,
     is_media_file,
 )
-from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
-from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.media_metadata_mapper import (
     JPEG_SERIES_DESCRIPTION,
     MP4_SERIES_DESCRIPTION,
@@ -105,6 +105,7 @@ class LocalMediaDirectoryScanner:
 
         if len(study_uids_seen) > 1:
             from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+
             logger.warning(
                 "Multiple StudyInstanceUID values in %s: %s",
                 study_folder,
@@ -112,9 +113,7 @@ class LocalMediaDirectoryScanner:
             )
 
         resolved_study_uid = study_uid or synthetic_study_uid(study_folder)
-        resolved_study_datetime = study_datetime or datetime.fromtimestamp(
-            study_folder.stat().st_mtime
-        )
+        resolved_study_datetime = study_datetime or datetime.fromtimestamp(study_folder.stat().st_mtime)
 
         series_list: list[SeriesMetadata] = []
         for series_uid, instances in dicom_by_series.items():

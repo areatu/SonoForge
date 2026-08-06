@@ -81,6 +81,7 @@ Expected: FAIL — `ImportError: cannot import name 'papillary_mask_cleanup'`
 ```python
 # Add to segmentation_service.py after logits_to_mask
 
+
 def papillary_mask_cleanup(
     mask: np.ndarray,
     *,
@@ -330,15 +331,14 @@ git commit -m "feat: gate Simpson on accepted AI contours via review_pending"
 
 ```python
 def test_on_auto_segment_finished_sets_review_pending(
-    qapp, monkeypatch,
+    qapp,
+    monkeypatch,
 ) -> None:
     controller, _, _, instance, pixels = _prepared_controller(monkeypatch)
     controller.set_simpson_workflow_context(phase="ED", view="A4C")
     mask = _circle_mask(height=64, width=48, center_y=32, center_x=24, radius=18)
 
-    controller._on_auto_segment_finished(
-        "ED", "A4C", "LV", instance.path, 0, (64, 48), mask
-    )
+    controller._on_auto_segment_finished("ED", "A4C", "LV", instance.path, 0, (64, 48), mask)
 
     contours = controller.state_manager.snapshot.contours
     assert len(contours) == 1
@@ -350,9 +350,7 @@ def test_accept_ai_contour_review_clears_pending(qapp, monkeypatch) -> None:
     controller, _, _, instance, _ = _prepared_controller(monkeypatch)
     controller.set_simpson_workflow_context(phase="ED", view="A4C")
     mask = _circle_mask(height=64, width=48, center_y=32, center_x=24, radius=18)
-    controller._on_auto_segment_finished(
-        "ED", "A4C", "LV", instance.path, 0, (64, 48), mask
-    )
+    controller._on_auto_segment_finished("ED", "A4C", "LV", instance.path, 0, (64, 48), mask)
     assert controller.accept_ai_contour_review("A4C", "ED") is True
     assert controller.state_manager.snapshot.contours[0].review_pending is False
 
@@ -417,6 +415,7 @@ self.status_message.emit(
 ```python
 def is_lv_auto_session_active(self) -> bool:
     return self._auto_segment_phase in {"ED", "ES"} and self._auto_segment_view == "A4C"
+
 
 def accept_ai_contour_review(self, view: str, phase: str) -> bool:
     phase_key = phase.upper()
@@ -529,10 +528,7 @@ git commit -m "feat: LV Auto buttons trigger ONNX; Enter accepts AI contour"
 ```python
 def test_lv_auto_biplane_buttons_disabled(_qapp) -> None:
     menu = MeasuresMenuWidget()
-    buttons = [
-        child for child in menu.findChildren(QPushButton)
-        if child.text().startswith("Simpson Biplane")
-    ]
+    buttons = [child for child in menu.findChildren(QPushButton) if child.text().startswith("Simpson Biplane")]
     assert len(buttons) == 2
     assert all(not button.isEnabled() for button in buttons)
     assert all("следующей" in button.toolTip() for button in buttons)
@@ -541,8 +537,8 @@ def test_lv_auto_biplane_buttons_disabled(_qapp) -> None:
 - [ ] **Step 2: Disable biplane in `_MENU`**
 
 ```python
-_btn("Simpson Biplane EDV", MeasurementAction.MBS_SIMPSON, view="A2C", phase="ED", enabled=False),
-_btn("Simpson Biplane ESV", MeasurementAction.MBS_SIMPSON, view="A2C", phase="ES", enabled=False),
+(_btn("Simpson Biplane EDV", MeasurementAction.MBS_SIMPSON, view="A2C", phase="ED", enabled=False),)
+(_btn("Simpson Biplane ESV", MeasurementAction.MBS_SIMPSON, view="A2C", phase="ES", enabled=False),)
 ```
 
 In `MeasuresAccordionSection` button loop:
@@ -589,11 +585,7 @@ def _contour_pen_for(self, contour: Contour) -> pg.QtGui.QPen:
 def pending_ai_review_contour(self) -> Contour | None:
     frame_index = self._current_frame_index
     for contour in self._stored_contours:
-        if (
-            contour.source == "ai"
-            and contour.review_pending
-            and contour.frame_index == frame_index
-        ):
+        if contour.source == "ai" and contour.review_pending and contour.frame_index == frame_index:
             return contour
     return None
 ```
@@ -608,9 +600,15 @@ def discard_pending_ai_contour(self) -> bool:
     if pending is None:
         return False
     self._stored_contours = [
-        c for c in self._stored_contours
-        if not (c.source == "ai" and c.review_pending and c.frame_index == pending.frame_index
-                and c.phase == pending.phase and c.view == pending.view)
+        c
+        for c in self._stored_contours
+        if not (
+            c.source == "ai"
+            and c.review_pending
+            and c.frame_index == pending.frame_index
+            and c.phase == pending.phase
+            and c.view == pending.view
+        )
     ]
     self._render_contours_for_current_frame()
     return True
@@ -682,9 +680,11 @@ git commit -m "test: gate I hotkey on LV Auto session"
 ```python
 if self._should_auto_refine_after_segment() and self._current_frame_pixels is not None:
     from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
+
     draft = Contour(...)  # build draft without storing yet
     refined, _ = refine_open_arc_contour(
-        self._current_frame_pixels, draft,
+        self._current_frame_pixels,
+        draft,
         display_levels=self._state_manager.snapshot.display_levels,
     )
     open_points = list(refined.points)

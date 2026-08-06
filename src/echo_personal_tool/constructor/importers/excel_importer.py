@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
-import yaml
 
 
 def import_excel_file(path: Path) -> dict[str, Any]:
@@ -55,15 +54,19 @@ def import_excel_file(path: Path) -> dict[str, Any]:
 
         if parameters:
             slug = sheet_name.lower().replace(" ", "_")
-            topics.append({
-                "name": sheet_name,
-                "slug": slug,
-                "pathologies": [{
+            topics.append(
+                {
                     "name": sheet_name,
-                    "slug": f"{slug}_all",
-                    "parameters": parameters,
-                }],
-            })
+                    "slug": slug,
+                    "pathologies": [
+                        {
+                            "name": sheet_name,
+                            "slug": f"{slug}_all",
+                            "parameters": parameters,
+                        }
+                    ],
+                }
+            )
 
     return {"topics": topics}
 

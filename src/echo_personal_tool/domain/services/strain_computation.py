@@ -35,9 +35,7 @@ def compute_longitudinal_strain_gl(
     return strain
 
 
-def apply_drift_compensation(
-    strain: np.ndarray, ed_index: int, end_index: int
-) -> np.ndarray:
+def apply_drift_compensation(strain: np.ndarray, ed_index: int, end_index: int) -> np.ndarray:
     """Linear detrend so strain[ed_index]=0 and strain[end_index]=0."""
     out = strain.copy()
     if len(out) < 2 or ed_index == end_index:

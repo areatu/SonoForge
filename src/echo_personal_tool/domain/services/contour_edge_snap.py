@@ -351,6 +351,71 @@ def snap_weighted_nodes(
     return updated
 
 
+def outward_normal_at_index_closed(
+    points: Sequence[Sequence[float]],
+    index: int,
+) -> tuple[float, float]:
+    """Unit outward normal for a closed polygon (wraps around at ends)."""
+    n = len(points)
+    previous = points[(index - 1) % n]
+    current = points[index]
+    following = points[(index + 1) % n]
+    tangent_x = following[0] - previous[0]
+    tangent_y = following[1] - previous[1]
+    length = float(np.hypot(tangent_x, tangent_y))
+    if length <= 1e-6:
+        return (0.0, -1.0)
+    tangent_x /= length
+    tangent_y /= length
+    normal_x = -tangent_y
+    normal_y = tangent_x
+    centroid_x = sum(float(point[0]) for point in points) / len(points)
+    centroid_y = sum(float(point[1]) for point in points) / len(points)
+    to_interior_x = centroid_x - current[0]
+    to_interior_y = centroid_y - current[1]
+    if normal_x * to_interior_x + normal_y * to_interior_y > 0.0:
+        normal_x = -normal_x
+        normal_y = -normal_y
+    return (normal_x, normal_y)
+
+
+def snap_closed_polygon(
+    points: list[tuple[float, float]],
+    edge_map: EdgeMap,
+    *,
+    config: EdgeSnapConfig | None = None,
+) -> list[tuple[float, float]]:
+    """Snap each vertex of a closed polygon toward the nearest edge.
+
+    Uses outward normals directed away from the polygon centroid.
+    Uses outward_normal_at_index_closed (modular indexing) to avoid
+    IndexError on the last point.
+    """
+    if len(points) < 3:
+        return list(points)
+
+    cfg = config or EdgeSnapConfig(
+        search_radius_px=10.0,
+        inward_only=False,
+        outward_only=True,
+        intensity_fallback=True,
+        min_edge_strength=0.0,
+    )
+    updated = list(points)
+    for index in range(len(points)):
+        normal = outward_normal_at_index_closed(points, index)
+        snapped = snap_magnetic_point(
+            edge_map,
+            points[index][0],
+            points[index][1],
+            normal,
+            cfg,
+        )
+        if snapped is not None:
+            updated[index] = snapped
+    return updated
+
+
 def _to_grayscale(frame: np.ndarray) -> np.ndarray:
     array = np.asarray(frame)
     if array.ndim == 3:

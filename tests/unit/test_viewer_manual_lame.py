@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.gui
+
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     point_line_distance,
@@ -52,6 +54,4 @@ def test_finish_manual_lv_uses_lame_warp_not_triangle(qtbot) -> None:
 
     inferred = infer_apex_from_open_arc(contour.points, septal, lateral)
     apex_height = point_line_distance(apex, septal, lateral)
-    assert point_line_distance(inferred, septal, lateral) == pytest.approx(
-        apex_height, rel=0.1, abs=5.0
-    )
+    assert point_line_distance(inferred, septal, lateral) == pytest.approx(apex_height, rel=0.1, abs=5.0)

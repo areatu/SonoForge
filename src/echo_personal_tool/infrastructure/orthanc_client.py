@@ -64,7 +64,7 @@ class OrthancDicomWebClient:
         *,
         auth_mode: str = "basic",
         http_headers: dict[str, str] | None = None,
-        timeout: float = 30.0,
+        timeout: float = 10.0,
         stow_dicom_web_url: str = "",
         tls_verify: bool = True,
     ):
@@ -274,13 +274,7 @@ def _build_stow_multipart_body(boundary: str, dicom_files: list[bytes]) -> bytes
     """Build multipart/related body for STOW-RS per DICOMweb Part 18."""
     parts: list[bytes] = []
     for f in dicom_files:
-        parts.append(
-            f"--{boundary}\r\n"
-            f"Content-Type: application/dicom\r\n"
-            f"\r\n".encode()
-            + f
-            + b"\r\n"
-        )
+        parts.append(f"--{boundary}\r\nContent-Type: application/dicom\r\n\r\n".encode() + f + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode())
     return b"".join(parts)
 

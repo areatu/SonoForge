@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.application.dicom_query_service import DicomQueryService
-from echo_personal_tool.domain.models.orthanc import StudyInfo
 from echo_personal_tool.domain.ports import QuerySource
-from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 
 
 def test_auto_uses_web_first() -> None:

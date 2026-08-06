@@ -8,27 +8,46 @@ def grade_diastolic_function(
     e_over_e_prime: float | None,
     lav_index_ml_m2: float | None,
     tr_vmax_cm_s: float | None,
+    e_prime_sept_cm_s: float | None = None,
+    e_prime_lat_cm_s: float | None = None,
     age_years: float | None = None,
 ) -> str | None:
-    """Return ASE 2016-style grade label from available indices.
+    """Return ASE 2016-style category label from available indices.
 
-    Simplified rules when full dataset is incomplete:
-    - E/e' > 14 → abnormal (Grade II+ if LAVi elevated)
-    - E/e' 9–14 → indeterminate / Grade I
-    - E/e' < 9 with normal LAVi → normal
+    Simplified majority-rule criteria-based assessment:
+    - E/e' > 14
+    - septal e' < 7 cm/s (or lateral e' < 10 cm/s)
+    - LAVi > 34 mL/m²
+    - TR Vmax > 280 cm/s (2.8 m/s)
+
+    Returns Normal / Indeterminate / Abnormal / Insufficient data / None.
     """
-    if e_over_e_prime is None:
+    criteria = []
+
+    if e_over_e_prime is not None:
+        criteria.append(e_over_e_prime > 14.0)
+
+    if e_prime_sept_cm_s is not None:
+        criteria.append(e_prime_sept_cm_s < 7.0)
+    elif e_prime_lat_cm_s is not None:
+        criteria.append(e_prime_lat_cm_s < 10.0)
+
+    if lav_index_ml_m2 is not None:
+        criteria.append(lav_index_ml_m2 > 34.0)
+
+    if tr_vmax_cm_s is not None:
+        criteria.append(tr_vmax_cm_s > 280.0)
+
+    if not criteria:
         return None
 
-    lav_elevated = lav_index_ml_m2 is not None and lav_index_ml_m2 > 34.0
-    tr_elevated = tr_vmax_cm_s is not None and tr_vmax_cm_s > 280.0
+    positive = sum(criteria)
+    total = len(criteria)
 
-    if e_over_e_prime >= 14.0:
-        if lav_elevated or tr_elevated:
-            return "Grade II (abnormal)"
-        return "Grade I (elevated E/e')"
-    if e_over_e_prime >= 9.0:
-        return "Grade I (indeterminate)"
-    if lav_elevated:
-        return "Grade I (normal E/e', elevated LAVi)"
-    return "Normal"
+    if total < 3:
+        return "Insufficient data"
+    if positive / total > 0.5:
+        return "Abnormal"
+    if positive / total < 0.5:
+        return "Normal"
+    return "Indeterminate"

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -26,9 +28,7 @@ def qapp() -> QApplication:
     return app
 
 
-def test_dicom_decode_worker_first_frame_only(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_dicom_decode_worker_first_frame_only(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     """first_frame_only=True: emits first_frame_ready, does NOT emit finished."""
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=10, rows=16, cols=16)
@@ -52,9 +52,7 @@ def test_dicom_decode_worker_first_frame_only(
     assert failed_events == []
 
 
-def test_dicom_decode_worker_full_decode(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_dicom_decode_worker_full_decode(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     """first_frame_only=False (default): emits both first_frame_ready and finished."""
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=5, rows=16, cols=16)
@@ -76,9 +74,7 @@ def test_dicom_decode_worker_full_decode(
     assert finished_events[0].shape[0] == 5
 
 
-def test_video_decode_worker_first_frame_only(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_video_decode_worker_first_frame_only(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     """first_frame_only=True: emits first_frame_ready, does NOT emit finished."""
     path = tmp_path / "clip.mp4"
     write_synthetic_mp4(path, frame_count=10, width=20, height=16)
@@ -102,9 +98,7 @@ def test_video_decode_worker_first_frame_only(
     assert failed_events == []
 
 
-def test_video_decode_worker_full_decode(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_video_decode_worker_full_decode(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     """first_frame_only=False (default): emits both first_frame_ready and finished."""
     path = tmp_path / "clip.mp4"
     write_synthetic_mp4(path, frame_count=5, width=20, height=16)

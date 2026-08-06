@@ -44,14 +44,18 @@ def _color_frame(w: int = 512, h: int = 512) -> np.ndarray:
 
 # ── W/L LUT ────────────────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_wl_lut_uint16(benchmark) -> None:
     """Window/Level via LUT on 512x512 uint16."""
     frame = _uint16_gray()
     benchmark(
-        apply_wl_lut, frame,
-        dr_low_pct=5.0, dr_high_pct=95.0,
-        window_scale=0.8, level_offset=0.0,
+        apply_wl_lut,
+        frame,
+        dr_low_pct=5.0,
+        dr_high_pct=95.0,
+        window_scale=0.8,
+        level_offset=0.0,
     )
 
 
@@ -60,13 +64,17 @@ def test_bench_wl_lut_uint8(benchmark) -> None:
     """Window/Level via LUT on 512x512 uint8."""
     frame = _uint8_gray()
     benchmark(
-        apply_wl_lut, frame,
-        dr_low_pct=5.0, dr_high_pct=95.0,
-        window_scale=0.8, level_offset=0.0,
+        apply_wl_lut,
+        frame,
+        dr_low_pct=5.0,
+        dr_high_pct=95.0,
+        window_scale=0.8,
+        level_offset=0.0,
     )
 
 
 # ── Grayscale conversion ───────────────────────────────────────────
+
 
 @_BENCH
 def test_bench_to_grayscale_uint8(benchmark) -> None:
@@ -84,6 +92,7 @@ def test_bench_to_grayscale_array_float64(benchmark) -> None:
 
 # ── Color Doppler ──────────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_to_display_rgb(benchmark) -> None:
     """BGR → RGB conversion for color Doppler display."""
@@ -96,10 +105,12 @@ def test_bench_color_frame_detection(benchmark) -> None:
     """is_color_frame check — called every frame in show_frame_fast."""
     gray = _uint8_gray()
     color = _color_frame()
+
     def _detect() -> None:
         for _ in range(100):
             _ = is_color_frame(gray)
             _ = is_color_frame(color)
+
     benchmark(_detect)
 
 
@@ -108,8 +119,10 @@ def test_bench_grayscale_check(benchmark) -> None:
     """is_effective_grayscale — display mode caching check."""
     gray = _uint8_gray()
     color = _color_frame()
+
     def _check() -> None:
         for _ in range(100):
             _ = is_effective_grayscale(gray)
             _ = is_effective_grayscale(color)
+
     benchmark(_check)

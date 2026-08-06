@@ -8,15 +8,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
+
+from echo_personal_tool.infrastructure.i18n import tr
 
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
@@ -25,21 +24,21 @@ logger = logging.getLogger(__name__)
 
 # Segment colors matching Clinical style
 SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
-    1: (0, 200, 255),    # БазПерг - cyan
-    2: (0, 150, 255),    # Базбок - blue
-    3: (0, 255, 100),    # СрПерг - green
-    4: (255, 255, 0),    # Србок - yellow
-    5: (255, 100, 0),    # АпПер - orange
-    6: (255, 0, 100),    # АпЛат - pink
+    1: (0, 200, 255),  # БазПерг - cyan
+    2: (0, 150, 255),  # Базбок - blue
+    3: (0, 255, 100),  # СрПерг - green
+    4: (255, 255, 0),  # Србок - yellow
+    5: (255, 100, 0),  # АпПер - orange
+    6: (255, 0, 100),  # АпЛат - pink
 }
 
 SEGMENT_NAMES_RU: dict[int, str] = {
-    1: "БазПерг",
-    2: "Базбок",
-    3: "СрПерг",
-    4: "Србок",
-    5: "АпПер",
-    6: "АпЛат",
+    1: tr("strain.seg_basal_septal"),
+    2: tr("strain.seg_basal_lateral"),
+    3: tr("strain.seg_mid_septal"),
+    4: tr("strain.seg_mid_lateral"),
+    5: tr("strain.seg_apical_septal"),
+    6: tr("strain.seg_apical_lateral"),
 }
 
 # View segment ranges
@@ -81,7 +80,7 @@ class SegmentCurvePanel(QWidget):
         self._plot = pg.PlotWidget()
         self._plot.setBackground("black")
         self._plot.setLabel("left", "%")
-        self._plot.setLabel("bottom", "Время(ms)")
+        self._plot.setLabel("bottom", tr("strain.time_axis"))
         self._plot.showGrid(x=True, y=True, alpha=0.2)
         self._plot.setMinimumHeight(120)
         self._plot.setMaximumHeight(200)
@@ -141,7 +140,7 @@ class SegmentCurvePanel(QWidget):
             # Align to common length
             curves_array = np.full((len(segment_strains), max_len), np.nan)
             for i, curve in enumerate(segment_strains.values()):
-                curves_array[i, :len(curve)] = curve
+                curves_array[i, : len(curve)] = curve
             mean_curve = np.nanmean(curves_array, axis=0)
             x_mean = np.arange(max_len) * frame_time_ms
             pen_mean = pg.mkPen(255, 255, 255, width=2, style=Qt.PenStyle.DashLine)
@@ -152,7 +151,8 @@ class SegmentCurvePanel(QWidget):
             self._plot.removeItem(self._es_marker)
         es_x = es_index * frame_time_ms
         self._es_marker = pg.InfiniteLine(
-            pos=es_x, angle=90,
+            pos=es_x,
+            angle=90,
             pen=pg.mkPen("#ffd54f", width=2, style=Qt.PenStyle.DashLine),
         )
         self._plot.addItem(self._es_marker)
@@ -181,7 +181,8 @@ class SegmentCurvePanel(QWidget):
         # Frame marker
         marker_x = current_frame * frame_time_ms
         self._ecg_marker = pg.InfiniteLine(
-            pos=marker_x, angle=90,
+            pos=marker_x,
+            angle=90,
             pen=pg.mkPen("#ffd54f", width=1, style=Qt.PenStyle.DashLine),
         )
         self._ecg_plot.addItem(self._ecg_marker)
@@ -286,8 +287,11 @@ class StrainCurvesView(QWidget):
                             seg_strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
                     segment_curves[seg_id] = seg_strain
 
-        # Generate synthetic ECG
-        ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
+        # ECG trace (use real ECG if available, otherwise synthetic)
+        if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0:
+            ecg = result.ecg_trace_for_display
+        else:
+            ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
 
         # Update A4C panel
         a4c_curves = {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A4C"]}

@@ -11,6 +11,7 @@ from echo_personal_tool.domain.services.mmode_smoothing import (
     spatial_smooth,
     temporal_smooth,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool
 
 _SWEEP_SPEEDS: dict[str, int] = {
@@ -39,9 +40,7 @@ class MModeWidget(QWidget):
         self._depth_mm_per_pixel: float | None = None
         self._previous_column: np.ndarray | None = None
 
-        self._image_buffer = np.zeros(
-            (self._num_samples, self._buffer_width), dtype=np.uint8
-        )
+        self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
 
         self._plot = pg.PlotWidget()
         self._plot.setLabel("bottom", "Time", units="px")
@@ -54,7 +53,7 @@ class MModeWidget(QWidget):
         self._view_box.setMenuEnabled(False)
         self._image_item = pg.ImageItem(axisOrder="row-major")
         self._view_box.addItem(self._image_item)
-        self._image_item.setImage(self._image_buffer, autoLevels=True)
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
 
         self._sweep_line = pg.InfiniteLine(
             angle=90, pen=pg.mkPen("red", width=1, style=Qt.PenStyle.DashLine), movable=False
@@ -90,9 +89,11 @@ class MModeWidget(QWidget):
 
         # Measurement buttons
         self._measure_btns: dict[str, QPushButton] = {}
-        for label, slot in [("▼ Вертикаль", self._start_vertical_measurement),
-                           ("◄ Горизонталь", self._start_horizontal_measurement),
-                           ("↗ Произвольное", self._start_arbitrary_measurement)]:
+        for label, slot in [
+            (tr("mmode.vertical"), self._start_vertical_measurement),
+            (tr("mmode.horizontal"), self._start_horizontal_measurement),
+            (tr("mmode.arbitrary"), self._start_arbitrary_measurement),
+        ]:
             btn = QPushButton(label)
             btn.setFixedHeight(22)
             btn.setCheckable(True)
@@ -101,13 +102,13 @@ class MModeWidget(QWidget):
             toolbar.addWidget(btn)
 
         # Teichholz buttons
-        self._teichholz_ed_btn = QPushButton("📐 Тейхольц ED")
+        self._teichholz_ed_btn = QPushButton(tr("mmode.teichholz_ed"))
         self._teichholz_ed_btn.setFixedHeight(22)
         self._teichholz_ed_btn.setCheckable(True)
         self._teichholz_ed_btn.clicked.connect(self._start_teichholz_ed)
         toolbar.addWidget(self._teichholz_ed_btn)
 
-        self._teichholz_es_btn = QPushButton("📐 Тейхольц ESV")
+        self._teichholz_es_btn = QPushButton(tr("mmode.teichholz_es"))
         self._teichholz_es_btn.setFixedHeight(22)
         self._teichholz_es_btn.setCheckable(True)
         self._teichholz_es_btn.setEnabled(False)
@@ -119,7 +120,7 @@ class MModeWidget(QWidget):
         self._teichholz_status.setStyleSheet("color: #ffb300; font-weight: bold;")
         toolbar.addWidget(self._teichholz_status)
 
-        self._clear_meas_btn = QPushButton("Очистить")
+        self._clear_meas_btn = QPushButton(tr("mmode.clear"))
         self._clear_meas_btn.setFixedHeight(22)
         self._clear_meas_btn.clicked.connect(self._clear_measurements)
         toolbar.addWidget(self._clear_meas_btn)
@@ -147,11 +148,9 @@ class MModeWidget(QWidget):
         for l, btn in self._speed_buttons.items():
             btn.setChecked(l == label)
         self._buffer_width = new_width
-        self._image_buffer = np.zeros(
-            (self._num_samples, self._buffer_width), dtype=np.uint8
-        )
+        self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
         self._sweep_x = 0
-        self._image_item.setImage(self._image_buffer, autoLevels=True)
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
         self._apply_image_rect()
         self.sweep_speed_changed.emit(new_width)
 
@@ -182,14 +181,14 @@ class MModeWidget(QWidget):
         self._measurement_tool.cancel()
         for btn in self._measure_btns.values():
             btn.setChecked(False)
-        self._measure_btns["▼ Вертикаль"].setChecked(True)
+        self._measure_btns[tr("mmode.vertical")].setChecked(True)
         self._measurement_tool.start_vertical()
 
     def _start_horizontal_measurement(self) -> None:
         self._measurement_tool.cancel()
         for btn in self._measure_btns.values():
             btn.setChecked(False)
-        self._measure_btns["◄ Горизонталь"].setChecked(True)
+        self._measure_btns[tr("mmode.horizontal")].setChecked(True)
         self._measurement_tool.start_horizontal()
 
     def _start_arbitrary_measurement(self) -> None:
@@ -198,7 +197,7 @@ class MModeWidget(QWidget):
             btn.setChecked(False)
         self._teichholz_ed_btn.setChecked(False)
         self._teichholz_es_btn.setChecked(False)
-        self._measure_btns["↗ Произвольное"].setChecked(True)
+        self._measure_btns[tr("mmode.arbitrary")].setChecked(True)
         self._measurement_tool.start_arbitrary()
 
     def _start_teichholz_ed(self) -> None:
@@ -208,7 +207,7 @@ class MModeWidget(QWidget):
             btn.setChecked(False)
         self._teichholz_es_btn.setChecked(False)
         self._teichholz_ed_btn.setChecked(True)
-        self._teichholz_status.setText("Кликните: МЖП → КДР → ЗСЛЖ")
+        self._teichholz_status.setText(tr("mmode.teichholz_click"))
         self._measurement_tool.start_teichholz_ed()
 
     def _start_teichholz_es(self) -> None:
@@ -218,7 +217,7 @@ class MModeWidget(QWidget):
             btn.setChecked(False)
         self._teichholz_ed_btn.setChecked(False)
         self._teichholz_es_btn.setChecked(True)
-        self._teichholz_status.setText("Измерьте КСР (вертикально)")
+        self._teichholz_status.setText(tr("mmode.teichholz_measure_es"))
         self._measurement_tool.start_teichholz_es()
 
     def _clear_measurements(self) -> None:
@@ -234,14 +233,14 @@ class MModeWidget(QWidget):
         """Handle completion of 3 ED calipers."""
         self._teichholz_ed_btn.setChecked(False)
         self._teichholz_es_btn.setEnabled(True)
-        self._teichholz_status.setText("ED готово! Нажмите КСР для измерения КСР")
+        self._teichholz_status.setText(tr("mmode.teichholz_ed_done"))
         self.teichholz_ed_complete.emit(measurements)
 
     def _on_teichholz_es_complete(self, measurement) -> None:
         """Handle completion of ESV caliper."""
         self._teichholz_es_btn.setChecked(False)
         self._teichholz_es_btn.setEnabled(False)
-        self._teichholz_status.setText("Тейхольц: все измерения готовы")
+        self._teichholz_status.setText(tr("mmode.teichholz_all_done"))
         self.teichholz_es_complete.emit(measurement)
 
     def _on_teichholz_es_highlight(self) -> None:
@@ -262,11 +261,9 @@ class MModeWidget(QWidget):
         self._scan_end = end
         if num_samples != self._num_samples:
             self._num_samples = num_samples
-            self._image_buffer = np.zeros(
-                (self._num_samples, self._buffer_width), dtype=np.uint8
-            )
+            self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
             self._sweep_x = 0
-            self._image_item.setImage(self._image_buffer, autoLevels=True)
+            self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
             self._sweep_line.setValue(0)
 
     def on_new_column(self, column: np.ndarray) -> None:
@@ -279,7 +276,7 @@ class MModeWidget(QWidget):
         self._previous_column = col.copy()
         self._image_buffer[:n, self._sweep_x] = col.astype(np.uint8)
         self._sweep_x = (self._sweep_x + 1) % self._buffer_width
-        self._image_item.setImage(self._image_buffer, autoLevels=True)
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
         # Sweep line position in physical X units
         if self._time_ms_per_pixel is not None and self._time_ms_per_pixel > 0:
             self._sweep_line.setValue(self._sweep_x * self._time_ms_per_pixel)
@@ -290,8 +287,14 @@ class MModeWidget(QWidget):
         self._image_buffer[:] = 0
         self._sweep_x = 0
         self._previous_column = None
-        self._image_item.setImage(self._image_buffer, autoLevels=True)
+        self._image_item.setImage(self._image_buffer, autoLevels=False, levels=(0, 255))
         self._sweep_line.setValue(0)
+
+    def clear_calibration(self) -> None:
+        """Reset time/depth calibration so the next file starts fresh."""
+        self._time_ms_per_pixel = None
+        self._depth_mm_per_pixel = None
+        self._apply_image_rect()
 
     def recalculate_from_frames(
         self,
@@ -349,6 +352,4 @@ class MModeWidget(QWidget):
         self._view_box.setXRange(0, x_size)
         # Update measurement tool calibration
         if self._depth_mm_per_pixel is not None and self._time_ms_per_pixel is not None:
-            self._measurement_tool.set_calibration(
-                self._depth_mm_per_pixel, self._time_ms_per_pixel, self._num_samples
-            )
+            self._measurement_tool.set_calibration(self._depth_mm_per_pixel, self._time_ms_per_pixel, self._num_samples)

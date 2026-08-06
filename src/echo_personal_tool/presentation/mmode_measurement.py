@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
-import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget
+
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 @dataclass
@@ -52,10 +52,15 @@ class MModeMeasurementItem:
 
     def remove(self) -> None:
         for item in (
-            self._line_item, self._start_node, self._end_node,
-            self._guide_h_start, self._guide_h_end,
-            self._guide_v_start, self._guide_v_end,
-            self._label, self._es_highlight,
+            self._line_item,
+            self._start_node,
+            self._end_node,
+            self._guide_h_start,
+            self._guide_h_end,
+            self._guide_v_start,
+            self._guide_v_end,
+            self._label,
+            self._es_highlight,
         ):
             if item is not None:
                 self._view.removeItem(item)
@@ -137,7 +142,7 @@ class MModeMeasurementItem:
             parts.append(f"{m.value_ms:.1f} ms")
             if m.value_ms > 0:
                 hr = 60000.0 / m.value_ms
-                parts.append(f"ЧСС {hr:.0f}")
+                parts.append(f"{tr('mmode.label_hr')} {hr:.0f}")
         text = "  ".join(parts)
         mid_x = (sx + ex) / 2
         mid_y = (sy + ey) / 2
@@ -152,7 +157,8 @@ class MModeMeasurementItem:
         ex, ey = self._measurement.end
         if self._es_highlight is None:
             self._es_highlight = pg.ScatterPlotItem(
-                symbol="o", size=16,
+                symbol="o",
+                size=16,
                 pen=self._ES_HIGHLIGHT_PEN,
                 brush=self._ES_HIGHLIGHT_BRUSH,
             )
@@ -170,7 +176,9 @@ class MModeMeasurementTool(QWidget):
     teichholz_es_highlight = Signal()  # Emitted to show ESV highlight
 
     # Labels for the 3 ED calipers in Teichholz workflow
-    _TEICHHOLZ_ED_LABELS = ["МЖП", "КДР", "ЗСЛЖ"]
+    @staticmethod
+    def _teichholz_ed_labels() -> list[str]:
+        return [tr("mmode.teich_ed_labels.0"), tr("mmode.teich_ed_labels.1"), tr("mmode.teich_ed_labels.2")]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -250,9 +258,9 @@ class MModeMeasurementTool(QWidget):
         # Determine label
         label = ""
         if self._active_mode == "teichholz_ed":
-            label = self._TEICHHOLZ_ED_LABELS[self._teichholz_ed_index]
+            label = self._teichholz_ed_labels()[self._teichholz_ed_index]
         elif self._active_mode == "teichholz_es":
-            label = "КСР"
+            label = tr("mmode.label_es")
 
         m = MModeMeasurement(kind=self._active_mode, start=start, end=end, label=label)
 

@@ -70,7 +70,7 @@ def detect_spectrogram_roi(
     y1 = float(y_start + sy1)
 
     # Detect horizontal extent: find columns with significant content
-    spectrogram_region = gray[int(y0):int(y1), :]
+    spectrogram_region = gray[int(y0) : int(y1), :]
     col_mean = np.mean(spectrogram_region, axis=0)
 
     # Spectrogram spans most of the width (excluding B-mode overlay on sides)

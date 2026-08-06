@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 import logging
-import sys
 import weakref
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
     QEasingCurve,
-    QPropertyAnimation,
-    QTimer,
-    Qt,
     QObject,
-    QEvent,
-    QPoint,
+    QPropertyAnimation,
 )
-from PySide6.QtGui import QEnterEvent, QColor
 from PySide6.QtWidgets import (
     QDialog,
     QGraphicsOpacityEffect,
@@ -39,6 +33,7 @@ def _reduce_motion_enabled() -> bool:
     """Check if user prefers reduced motion (accessibility)."""
     try:
         from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+
         return load_user_preferences().reduce_motion
     except Exception:
         return False
@@ -48,7 +43,7 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     h = hex_color.lstrip("#")
     if len(h) < 6:
         return (46, 64, 84)  # fallback to bg_button
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
@@ -86,9 +81,11 @@ class HoverButtonMixin(QObject):
 def _init_time_source():
     try:
         from PySide6.QtCore import QDateTime
+
         return lambda: QDateTime.currentMSecsSinceEpoch()
     except Exception:
         import time
+
         return lambda: int(time.time() * 1000)
 
 

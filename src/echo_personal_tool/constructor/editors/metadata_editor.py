@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor
 from echo_personal_tool.constructor.models import ParameterModel
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -33,9 +34,7 @@ class MetadataEditor(BaseEditor):
     def _build_ui(self) -> None:
         p = get_theme_palette()
         self.setFixedHeight(80)
-        self.setStyleSheet(
-            f"background: {p['bg_control']}; border-top: 1px solid {p['border']};"
-        )
+        self.setStyleSheet(f"background: {p['bg_control']}; border-top: 1px solid {p['border']};")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 4, 12, 4)
@@ -46,21 +45,21 @@ class MetadataEditor(BaseEditor):
         row1.setSpacing(12)
 
         # Sex
-        sex_label = QLabel("Пол:")
+        sex_label = QLabel(tr("constructor.meta.sex_label"))
         sex_label.setStyleSheet(f"color: {p['text']};")
         row1.addWidget(sex_label)
 
-        self._sex_male = QRadioButton("М")
+        self._sex_male = QRadioButton(tr("constructor.meta.sex_male"))
         self._sex_male.setStyleSheet(f"color: {p['text']};")
         self._sex_male.toggled.connect(self._on_changed)
         row1.addWidget(self._sex_male)
 
-        self._sex_female = QRadioButton("Ж")
+        self._sex_female = QRadioButton(tr("constructor.meta.sex_female"))
         self._sex_female.setStyleSheet(f"color: {p['text']};")
         self._sex_female.toggled.connect(self._on_changed)
         row1.addWidget(self._sex_female)
 
-        self._sex_both = QRadioButton("Оба")
+        self._sex_both = QRadioButton(tr("constructor.meta.sex_both"))
         self._sex_both.setChecked(True)
         self._sex_both.setStyleSheet(f"color: {p['text']};")
         self._sex_both.toggled.connect(self._on_changed)
@@ -69,7 +68,7 @@ class MetadataEditor(BaseEditor):
         row1.addSpacing(12)
 
         # Age
-        age_label = QLabel("Возраст:")
+        age_label = QLabel(tr("constructor.meta.age_label"))
         age_label.setStyleSheet(f"color: {p['text']};")
         row1.addWidget(age_label)
 
@@ -79,7 +78,7 @@ class MetadataEditor(BaseEditor):
         self._age_spin.setSpecialValueText("—")
         self._age_spin.setFixedWidth(60)
         self._age_spin.setStyleSheet(
-            f"QSpinBox {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px; }}"
+            f"QSpinBox {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px; }}"  # noqa: E501
         )
         self._age_spin.valueChanged.connect(self._on_changed)
         row1.addWidget(self._age_spin)
@@ -87,14 +86,14 @@ class MetadataEditor(BaseEditor):
         row1.addSpacing(12)
 
         # Source
-        source_label = QLabel("Источник:")
+        source_label = QLabel(tr("constructor.meta.source_label"))
         source_label.setStyleSheet(f"color: {p['text']};")
         row1.addWidget(source_label)
 
         self._source_edit = QLineEdit()
         self._source_edit.setPlaceholderText("ASE 2017, Guidelines...")
         self._source_edit.setStyleSheet(
-            f"QLineEdit {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px 6px; }}"
+            f"QLineEdit {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px 6px; }}"  # noqa: E501
         )
         self._source_edit.textChanged.connect(self._on_changed)
         row1.addWidget(self._source_edit, 1)
@@ -105,14 +104,14 @@ class MetadataEditor(BaseEditor):
         row2 = QHBoxLayout()
         row2.setSpacing(12)
 
-        desc_label = QLabel("Описание:")
+        desc_label = QLabel(tr("constructor.meta.desc_label"))
         desc_label.setStyleSheet(f"color: {p['text']};")
         row2.addWidget(desc_label)
 
         self._desc_edit = QLineEdit()
-        self._desc_edit.setPlaceholderText("Описание патологии...")
+        self._desc_edit.setPlaceholderText(tr("constructor.meta.desc_placeholder"))
         self._desc_edit.setStyleSheet(
-            f"QLineEdit {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px 6px; }}"
+            f"QLineEdit {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px 6px; }}"  # noqa: E501
         )
         self._desc_edit.textChanged.connect(self._on_changed)
         row2.addWidget(self._desc_edit, 1)

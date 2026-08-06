@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
@@ -413,6 +415,7 @@ def test_request_auto_segment_requires_a4c_view(
 @pytest.fixture(autouse=True)
 def _en_locale():
     from echo_personal_tool.infrastructure.i18n import set_language
+
     set_language("en")
     yield
     set_language("ru")

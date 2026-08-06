@@ -163,7 +163,10 @@ def resolve_cine_segment_roi_xyxy(frame: np.ndarray) -> tuple[float, float, floa
     x0, x1 = _trim_lateral_content_columns(grayscale, y0=panel_y0, y1=panel_y1)
     panel_roi = (float(x0), float(panel_y0), float(x1), float(panel_y1))
     return _trim_sector_content_bounds(
-        grayscale, panel_roi, trim_bottom=False, apex_guard=True,
+        grayscale,
+        panel_roi,
+        trim_bottom=False,
+        apex_guard=True,
     )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
@@ -11,6 +12,8 @@ from echo_personal_tool.domain.models import (
     DopplerTrace,
 )
 from echo_personal_tool.presentation.doppler_widget import DopplerWidget
+
+pytestmark = pytest.mark.gui
 
 
 def test_tool_mode_round_trip(qtbot) -> None:
@@ -86,9 +89,7 @@ def test_interval_marker_two_click_flow_emits_updated_measurement(qtbot) -> None
 
     assert widget._handle_plot_click(150.0, 0.0) is True
     assert widget._active_interval_start == 150.0
-    assert widget._status_label.text() == (
-        "Tool: Interval marker (T) | Click interval end (label: DT)"
-    )
+    assert widget._status_label.text() == ("Tool: Interval marker (T) | Click interval end (label: DT)")
 
     with qtbot.waitSignal(widget.markers_changed, timeout=1000) as blocker:
         assert widget._handle_plot_click(310.0, 0.0) is True
@@ -107,9 +108,7 @@ def test_interval_marker_two_click_flow_emits_updated_measurement(qtbot) -> None
     assert widget.get_measurement_dto() == expected
     assert blocker.args == [expected]
     assert len(widget._interval_items) == 1
-    assert widget._status_label.text() == (
-        "Tool: Interval marker (T) | Click interval start (label: IVRT)"
-    )
+    assert widget._status_label.text() == ("Tool: Interval marker (T) | Click interval start (label: IVRT)")
 
 
 def test_clear_measurements_resets_markers_and_plot_items(qtbot) -> None:
@@ -179,6 +178,4 @@ def test_trace_clicks_and_finish_trace_emit_updated_measurement(qtbot) -> None:
     assert blocker.args == [expected]
     assert widget._active_partial_points == []
     assert len(widget._trace_items) == 1
-    assert widget._status_label.text() == (
-        "Tool: VTI trace (V) | Click points, double-click to finish"
-    )
+    assert widget._status_label.text() == ("Tool: VTI trace (V) | Click points, double-click to finish")

@@ -46,6 +46,7 @@ def _resolve_pixel_spacing(
     if instance_path.is_file():
         try:
             from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+
             meta = DicomReaderImpl().read_metadata(instance_path)
             if meta.pixel_spacing is not None:
                 return meta.pixel_spacing
@@ -98,9 +99,7 @@ def _compute_pair_lvef(
 
     result["lvef_auto"] = round(auto_result.lvef_percent, 2)
     result["lvef_gold"] = round(gold_result.lvef_percent, 2)
-    result["lvef_delta"] = round(
-        lvef_delta(auto_result.lvef_percent, gold_result.lvef_percent) or 0.0, 2
-    )
+    result["lvef_delta"] = round(lvef_delta(auto_result.lvef_percent, gold_result.lvef_percent) or 0.0, 2)
 
     # Diagnostic volumes
     if auto_result.a4c and auto_result.a4c.edv_ml is not None:

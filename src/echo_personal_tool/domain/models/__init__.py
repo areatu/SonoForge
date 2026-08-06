@@ -1,13 +1,15 @@
 from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.temporal_fusion import (
-    TemporalFusionConfig,
-    TemporalFusionResult,
-)
 from echo_personal_tool.domain.models.doppler import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
     DopplerPeakMarker,
     DopplerTrace,
+)
+from echo_personal_tool.domain.models.ecg import (
+    EcEDFrameMapping,
+    EcgLead,
+    EcgWaveform,
+    RPeakResult,
 )
 from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
@@ -41,6 +43,11 @@ from echo_personal_tool.domain.models.speckle import (
     TrackingKernel,
     TrackingResult,
 )
+from echo_personal_tool.domain.models.temporal_fusion import (
+    TemporalFusionConfig,
+    TemporalFusionResult,
+)
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 
 __all__ = [
@@ -51,6 +58,9 @@ __all__ = [
     "DopplerPeakMarker",
     "DopplerResults",
     "DopplerTrace",
+    "EcEDFrameMapping",
+    "EcgLead",
+    "EcgWaveform",
     "IndexedMeasurements",
     "InstanceInfo",
     "InstanceMetadata",
@@ -61,6 +71,7 @@ __all__ = [
     "LvefResult",
     "MeasurementSnapshot",
     "MyocardialZone",
+    "RPeakResult",
     "SeriesInfo",
     "SeriesMetadata",
     "SpeckleConfig",
@@ -73,5 +84,6 @@ __all__ = [
     "TrackingKernel",
     "TrackingResult",
     "ViewerState",
+    "VesselMeasurement",
     "pixel_to_mm_length",
 ]

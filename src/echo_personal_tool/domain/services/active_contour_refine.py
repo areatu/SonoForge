@@ -18,6 +18,7 @@ class ActiveContourConfig:
     step_size: float = 0.35
     max_iterations: int = 80
     gradient_samples: int = 17
+    convergence_tol: float = 0.1  # stop when total displacement < tol px
 
 
 def refine_open_arc(
@@ -42,11 +43,7 @@ def refine_open_arc(
     points = [[float(x), float(y)] for x, y in initial_points]
     points[0] = [float(annulus[0][0]), float(annulus[0][1])]
     points[-1] = [float(annulus[1][0]), float(annulus[1][1])]
-    template = (
-        list(template_points)
-        if template_points is not None
-        else [tuple(point) for point in points]
-    )
+    template = list(template_points) if template_points is not None else [tuple(point) for point in points]
     if len(template) != len(points):
         msg = "template_points must match initial_points length"
         raise ValueError(msg)
@@ -55,18 +52,14 @@ def refine_open_arc(
     offsets = np.linspace(-radius, radius, cfg.gradient_samples)
 
     for _ in range(cfg.max_iterations):
-        moved = False
+        total_displacement = 0.0
         next_points = [point[:] for point in points]
         for index in range(1, len(points) - 1):
             px, py = points[index]
             force_x = cfg.k_int * (template[index][0] - px)
             force_y = cfg.k_int * (template[index][1] - py)
-            force_x += cfg.k_smooth * (
-                points[index - 1][0] + points[index + 1][0] - 2.0 * px
-            )
-            force_y += cfg.k_smooth * (
-                points[index - 1][1] + points[index + 1][1] - 2.0 * py
-            )
+            force_x += cfg.k_smooth * (points[index - 1][0] + points[index + 1][0] - 2.0 * px)
+            force_y += cfg.k_smooth * (points[index - 1][1] + points[index + 1][1] - 2.0 * py)
 
             normal_x, normal_y = _outward_normal(index, points)
             best_offset = 0.0
@@ -85,8 +78,7 @@ def refine_open_arc(
 
             delta_x = cfg.step_size * force_x
             delta_y = cfg.step_size * force_y
-            if abs(delta_x) > 1e-6 or abs(delta_y) > 1e-6:
-                moved = True
+            total_displacement += abs(delta_x) + abs(delta_y)
             next_x = _clamp(px + delta_x, 0.0, width - 1.0)
             next_y = _clamp(py + delta_y, 0.0, height - 1.0)
             next_points[index] = [next_x, next_y]
@@ -94,7 +86,7 @@ def refine_open_arc(
         next_points[0] = [float(annulus[0][0]), float(annulus[0][1])]
         next_points[-1] = [float(annulus[1][0]), float(annulus[1][1])]
         points = next_points
-        if not moved:
+        if total_displacement < cfg.convergence_tol:
             break
 
     return [(point[0], point[1]) for point in points]

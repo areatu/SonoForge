@@ -9,8 +9,8 @@ from pathlib import Path
 import pydicom
 
 from echo_personal_tool.domain.services.dicom_tag_dictionary import (
-    TagInfo,
     TAG_CONSTANTS,
+    TagInfo,
     lookup,
     search_by_keyword,
 )

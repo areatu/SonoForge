@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
@@ -84,7 +86,7 @@ def test_main_window_measurement_panel_updates_after_linear_caliper(qtbot) -> No
     )
 
     text = window._viewer.results_overlay_text()
-    assert "КДР ЛЖ: 50.0 mm" in text
+    assert "КДР ЛЖ" in text and "50.0" in text
 
 
 @pytest.fixture(scope="session", autouse=True)

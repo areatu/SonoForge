@@ -26,9 +26,14 @@ def _t(group: int, elem: int) -> int:
 
 _TAGS: dict[int, TagInfo] = {}
 
+
 def _add(
-    group: int, elem: int, keyword: str,
-    vr: str, description: str, vm: str | None = None,
+    group: int,
+    elem: int,
+    keyword: str,
+    vr: str,
+    description: str,
+    vm: str | None = None,
 ) -> None:
     tag_int = _t(group, elem)
     _TAGS[tag_int] = TagInfo(tag=tag_int, keyword=keyword, vr=vr, description=description, vm=vm)
@@ -128,8 +133,11 @@ _add(0x0028, 0x0008, "NumberOfFrames", "IS", "Number of Frames")
 _add(0x0028, 0x0010, "Rows", "US", "Rows")
 _add(0x0028, 0x0011, "Columns", "US", "Columns")
 _add(
-    0x0028, 0x0014, "UltrasoundColorDataRepresentation",
-    "US", "Ultrasound Color Data Representation",
+    0x0028,
+    0x0014,
+    "UltrasoundColorDataRepresentation",
+    "US",
+    "Ultrasound Color Data Representation",
 )
 _add(0x0028, 0x0030, "PixelSpacing", "DS", "Pixel Spacing", "2")
 _add(0x0028, 0x0034, "PixelAspectRatio", "IS", "Pixel Aspect Ratio", "2")
@@ -149,18 +157,25 @@ _add(0x0028, 0x1055, "WindowCenterAndWidthExplanation", "LO", "Window Center & W
 _add(0x0028, 0x1056, "VOILUTFunction", "CS", "VOI LUT Function")
 _add(0x0028, 0x1090, "RecommendedViewingMode", "CS", "Recommended Viewing Mode")
 _add(
-    0x0028, 0x1101, "RedPaletteColorLookupTableDescriptor",
-    "US", "Red Palette Color LUT Descriptor",
+    0x0028,
+    0x1101,
+    "RedPaletteColorLookupTableDescriptor",
+    "US",
+    "Red Palette Color LUT Descriptor",
 )
 _add(
-    0x0028, 0x1102,
+    0x0028,
+    0x1102,
     "GreenPaletteColorLookupTableDescriptor",
-    "US", "Green Palette Color LUT Descriptor",
+    "US",
+    "Green Palette Color LUT Descriptor",
 )
 _add(
-    0x0028, 0x1103,
+    0x0028,
+    0x1103,
     "BluePaletteColorLookupTableDescriptor",
-    "US", "Blue Palette Color LUT Descriptor",
+    "US",
+    "Blue Palette Color LUT Descriptor",
 )
 _add(0x0028, 0x1221, "ColorSpace", "CS", "Color Space")
 
@@ -207,8 +222,11 @@ _add(0x0018, 0x6004, "FrameRate", "DS", "Frame Rate")
 _add(0x0018, 0x6008, "TransducerFrequency", "DS", "Transducer Frequency")
 _add(0x0018, 0x6011, "TransducerType", "CS", "Transducer Type")
 _add(
-    0x0018, 0x6014, "TransducerBeamFormerCodeDesignation",
-    "LO", "Transducer Beam Former Code Designation",
+    0x0018,
+    0x6014,
+    "TransducerBeamFormerCodeDesignation",
+    "LO",
+    "Transducer Beam Former Code Designation",
 )
 _add(0x0018, 0x6016, "TransducerApplication", "LO", "Transducer Application")
 _add(0x0018, 0x6030, "PulseRepetitionFrequency", "DS", "Pulse Repetition Frequency")
@@ -249,9 +267,11 @@ _add(0x0008, 0x0071, "AcquisitionContrast", "CS", "Acquisition Contrast")
 _add(0x0008, 0x1072, "PhysicianOfRecord", "PN", "Physician(s) of Record")
 _add(0x0008, 0x107E, "PhysicianOfReadingStudy", "PN", "Physician(s) Reading Study")
 _add(
-    0x0008, 0x109A,
+    0x0008,
+    0x109A,
     "ReferencedPerformedProcedureStepSequence",
-    "SQ", "Referenced Performed Procedure Step Sequence",
+    "SQ",
+    "Referenced Performed Procedure Step Sequence",
 )
 
 # ── Equipment (0018xxxx continued) ──────────────────────────────────────────
@@ -264,9 +284,11 @@ _add(0x0018, 0x1044, "ContrastBolusStopVolumeNumber", "IS", "Contrast/Bolus Stop
 _add(0x0018, 0x1046, "ContrastBolusTotalDose", "DS", "Contrast/Bolus Total Dose")
 _add(0x0018, 0x1048, "ContrastBolusIngredient", "CS", "Contrast/Bolus Ingredient")
 _add(
-    0x0018, 0x1049,
+    0x0018,
+    0x1049,
     "ContrastBolusIngredientConcentration",
-    "DS", "Contrast/Bolus Ingredient Concentration",
+    "DS",
+    "Contrast/Bolus Ingredient Concentration",
 )
 
 # ── Display Shutter / Film (0018xxxx continued) ──────────────────────────────
@@ -294,12 +316,18 @@ _add(0x0008, 0x120A, "ReferencedAccessionSequence", "SQ", "Referenced Accession 
 
 # ── Common Functional Groups Sequence (5200xxxx) ─────────────────────────────
 _add(
-    0x5200, 0x9229, "SharedFunctionalGroupsSequence",
-    "SQ", "Shared Functional Groups Sequence",
+    0x5200,
+    0x9229,
+    "SharedFunctionalGroupsSequence",
+    "SQ",
+    "Shared Functional Groups Sequence",
 )
 _add(
-    0x5200, 0x9230, "PerFrameFunctionalGroupsSequence",
-    "SQ", "Per-Frame Functional Groups Sequence",
+    0x5200,
+    0x9230,
+    "PerFrameFunctionalGroupsSequence",
+    "SQ",
+    "Per-Frame Functional Groups Sequence",
 )
 _add(0x5200, 0x9232, "FrameContentSequence", "SQ", "Frame Content Sequence")
 
@@ -321,26 +349,51 @@ _add(0x0042, 0x0013, "ContentTemplateSequence", "SQ", "Content Template Sequence
 
 # ── Application State (0070xxxx) ─────────────────────────────────────────────
 _add(
-    0x0070, 0x005A,
+    0x0070,
+    0x005A,
     "DisplayAreaTopLeftHandCornerTrial",
-    "DS", "Display Area Top Left Hand Corner (Trial)",
+    "DS",
+    "Display Area Top Left Hand Corner (Trial)",
 )
 _add(
-    0x0070, 0x005B,
+    0x0070,
+    0x005B,
     "DisplayAreaBottomRightHandCornerTrial",
-    "DS", "Display Area Bottom Right Hand Corner (Trial)",
+    "DS",
+    "Display Area Bottom Right Hand Corner (Trial)",
 )
 _add(
-    0x0070, 0x0275,
+    0x0070,
+    0x0275,
     "GraphicLayerRecommendedDisplayGrayscaleValue",
-    "US", "Graphic Layer Recommended Display Grayscale Value",
+    "US",
+    "Graphic Layer Recommended Display Grayscale Value",
 )
 
 # ── Digital Signature (0400xxxx) ─────────────────────────────────────────────
 _add(0x0400, 0x0550, "DataSetTrailingPadding", "UT", "Dataset Trailing Padding")
 
 # ── Waveform (5400xxxx) ──────────────────────────────────────────────────────
+_add(0x5400, 0x0010, "WaveformSequence", "SQ", "Waveform Sequence")
+_add(0x5400, 0x0020, "WaveformChannel", "US", "Waveform Channel Number")
 _add(0x5400, 0x0100, "WaveformSampleValue", "US/SS", "Waveform Sample Value")
+_add(0x5400, 0x0110, "ChannelMinimumValue", "SS/US", "Channel Minimum Value")
+_add(0x5400, 0x0112, "ChannelMaximumValue", "SS/US", "Channel Maximum Value")
+_add(0x5400, 0x1004, "WaveformBitsAllocated", "US", "Waveform Bits Allocated")
+_add(0x5400, 0x1006, "WaveformSampleInterpretation", "CS", "Waveform Sample Interpretation")
+_add(0x5400, 0x100A, "WaveformPaddingValue", "OW/US", "Waveform Padding Value")
+
+# ── Waveform Channel Definition ─────────────────────────────────────────────
+_add(0x003A, 0x001A, "WaveformSampleRate", "DS", "Waveform Sample Rate")
+_add(0x003A, 0x0200, "ChannelDefinitionSequence", "SQ", "Channel Definition Sequence")
+_add(0x003A, 0x0202, "WaveformChannelNumber", "IS", "Waveform Channel Number")
+_add(0x003A, 0x0204, "ChannelLabel", "LO", "Channel Label")
+_add(0x003A, 0x0206, "ChannelSourceSequence", "SQ", "Channel Source Sequence")
+_add(0x003A, 0x0208, "ChannelBaseline", "SS", "Channel Baseline")
+_add(0x003A, 0x0210, "ChannelSensitivity", "DS", "Channel Sensitivity")
+_add(0x003A, 0x0211, "ChannelSensitivityUnitsSequence", "SQ", "Channel Sensitivity Units Sequence")
+_add(0x003A, 0x0212, "ChannelSensitivityCorrectionFactor", "DS", "Channel Sensitivity Correction Factor")
+_add(0x003A, 0x0213, "ChannelBaseline", "DS", "Channel Baseline")
 
 # ── Common Private Tags (vendor-specific but widely used in echo) ────────────
 _add(0x0009, 0x0010, "PrivateCreator", "LO", "Private Creator")
@@ -358,6 +411,7 @@ _add(0x0008, 0x0016, "SOPClassUID", "UI", "SOP Class UID")
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
+
 
 def lookup(tag_number_or_hex: int | str | tuple[int, int]) -> TagInfo | None:
     """Look up a DICOM tag by integer, hex string, or (group, element) tuple.
@@ -393,6 +447,7 @@ def search_by_keyword(pattern: str) -> list[TagInfo]:
 
 # ─── Module-level constants for the most common echo tags ─────────────────────
 _TAG_CONSTANTS: dict[str, int] = {}
+
 
 def _define_constant(name: str, tag_int: int) -> None:
     globals()[name] = tag_int

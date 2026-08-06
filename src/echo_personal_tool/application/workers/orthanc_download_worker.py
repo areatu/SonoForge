@@ -22,7 +22,7 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
-from echo_personal_tool.infrastructure.dicom_validator import InvalidDicomError, validate_dicom_header
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import (
@@ -116,6 +116,7 @@ class OrthancDownloadWorker(QRunnable):
                     self._finish_cancelled()
                     return
                 from echo_personal_tool.infrastructure.i18n import tr
+
                 self.signals.status.emit(tr("orthanc.querying_instances", uid=series_uid[:12]))
                 t_q = time.monotonic()
                 instances = _client.query_instances(self._study_uid, series_uid)
@@ -128,27 +129,29 @@ class OrthancDownloadWorker(QRunnable):
                 for inst in instances:
                     all_instances.append((series_uid, inst.sop_instance_uid))
 
+            # Deduplicate by SOP instance UID — server may return duplicates.
+            seen: set[str] = set()
+            unique_instances: list[tuple[str, str]] = []
+            for series_uid, inst_uid in all_instances:
+                if inst_uid not in seen:
+                    seen.add(inst_uid)
+                    unique_instances.append((series_uid, inst_uid))
+            all_instances = unique_instances
+
             total = len(all_instances)
             if total == 0:
                 self.signals.studies_ready.emit([])
                 self.signals.done.emit(self._session_id, self._study_uid)
                 return
 
-            if (
-                self._retrieve_service is not None
-                and self._retrieve_service.default_source == "cmove"
-            ):
+            if self._retrieve_service is not None and self._retrieve_service.default_source == "cmove":
                 for series_uid in self._series_uids:
                     if self._cancelled.is_set():
                         self._finish_cancelled()
                         return
-                    self.signals.status.emit(
-                        f"C-MOVE prefetch series {series_uid[:12]}…"
-                    )
+                    self.signals.status.emit(f"C-MOVE prefetch series {series_uid[:12]}…")
                     try:
-                        self._retrieve_service.prefetch_series(
-                            self._study_uid, series_uid
-                        )
+                        self._retrieve_service.prefetch_series(self._study_uid, series_uid)
                     except Exception as exc:  # noqa: BLE001
                         logger.warning(
                             "C-MOVE series prefetch failed series=%s: %s",
@@ -165,6 +168,7 @@ class OrthancDownloadWorker(QRunnable):
 
             self.signals.progress.emit(0, total, self._series_uids[0])
             from echo_personal_tool.infrastructure.i18n import tr
+
             self.signals.status.emit(tr("orthanc.downloading_count", count=total))
 
             saved_count = 0
@@ -214,7 +218,9 @@ class OrthancDownloadWorker(QRunnable):
                     with self._lock:
                         done = saved_count + failed_count
                     self.signals.progress.emit(done, total, series_uid)
-                    self.signals.status.emit(f"Загружено {done}/{total}")
+                    from echo_personal_tool.infrastructure.i18n import tr
+
+                    self.signals.status.emit(tr("orthanc.downloaded", done=str(done), total=str(total)))
 
             elapsed_total = time.monotonic() - t_start
             logger.info(
@@ -231,9 +237,11 @@ class OrthancDownloadWorker(QRunnable):
                 self.signals.done.emit(self._session_id, self._study_uid)
             else:
                 detail = "; ".join(errors[:5]) if errors else ""
-                message = f"Загружено {saved_count}/{total}"
+                message = tr("orthanc.downloaded", done=str(saved_count), total=str(total))
                 if detail:
-                    message += f". Ошибки: {detail}"
+                    message = tr(
+                        "orthanc.downloaded_with_errors", saved=str(saved_count), total=str(total), detail=detail
+                    )
                 if saved_count > 0:
                     self.signals.studies_ready.emit(self._build_studies_metadata())
                     self.signals.done.emit(self._session_id, self._study_uid)
@@ -255,9 +263,7 @@ class OrthancDownloadWorker(QRunnable):
     def _make_thread_client(self) -> OrthancDicomWebClient:
         if self._server_settings is not None:
             download_timeout = max(self._server_settings.network_timeout * 10, 300.0)
-            return OrthancDicomWebClient.from_settings(
-                self._server_settings, timeout=download_timeout
-            )
+            return OrthancDicomWebClient.from_settings(self._server_settings, timeout=download_timeout)
         return OrthancDicomWebClient(
             self._base_url or "",
             self._username or "",
@@ -271,16 +277,41 @@ class OrthancDownloadWorker(QRunnable):
         series_uid: str,
         instance_uid: str,
     ) -> bytes | None:
-        """Download single instance. Returns bytes or None on failure."""
+        """Download single instance with retries. Returns bytes or None on failure."""
+        if self._cancelled.is_set():
+            return None
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            if self._cancelled.is_set():
+                return None
+            data = self._attempt_download(study_uid, series_uid, instance_uid)
+            if data is not None:
+                return data
+            if attempt < max_attempts:
+                logger.warning(
+                    "[DIAG] download retry %d/3 instance=%s",
+                    attempt,
+                    instance_uid[:16],
+                )
+                time.sleep(1.0)
+
+        return None
+
+    def _attempt_download(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+    ) -> bytes | None:
+        """Download single instance once. Returns bytes or None on failure."""
         if self._cancelled.is_set():
             return None
 
         # Use retrieve service if available (supports DIMSE/C-GET/C-MOVE)
         if self._retrieve_service is not None:
             try:
-                data = self._retrieve_service.retrieve_instance(
-                    study_uid, series_uid, instance_uid
-                )
+                data = self._retrieve_service.retrieve_instance(study_uid, series_uid, instance_uid)
                 if not data:
                     return None
                 self._cache.save_instance(
@@ -353,10 +384,10 @@ class OrthancDownloadWorker(QRunnable):
                 try:
                     validate_dicom_header(dcm_path)
                     ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
-                except (InvalidDicomError, Exception):
-                    logger.warning("Failed to parse DICOM header: %s", dcm_path)
+                    instance = map_instance_metadata(ds, path=dcm_path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Skipping instance file %s: %s", dcm_path, exc)
                     continue
-                instance = map_instance_metadata(ds, path=dcm_path)
                 instances_by_series[instance.series_uid].append(instance)
                 if study_datetime is None:
                     try:

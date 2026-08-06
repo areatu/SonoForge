@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 
 _VALID_CHAMBERS = ("LV", "LA", "RA", "RV")
 
@@ -198,7 +197,7 @@ def make_gold_frame(
         "mitral_annulus": mitral_annulus,
         "source": source,
         "annotator": annotator,
-        "annotated_at": datetime.now(timezone.utc).isoformat(),
+        "annotated_at": datetime.now(UTC).isoformat(),
     }
     if apex_landmark is not None:
         frame["apex_landmark"] = apex_landmark
@@ -381,10 +380,7 @@ def repair_gold_from_backup(
     Returns ``(repaired_gold, recovered_frames)`` where *recovered_frames* lists
     frames present in backup but absent from current for the same (instance, phase).
     """
-    current_keys = {
-        frame_merge_key(frame, study=current)
-        for frame in current.get("frames", [])
-    }
+    current_keys = {frame_merge_key(frame, study=current) for frame in current.get("frames", [])}
     recovered: list[dict[str, Any]] = []
     merged = {**current, "frames": list(current.get("frames", []))}
     for frame in backup.get("frames", []):

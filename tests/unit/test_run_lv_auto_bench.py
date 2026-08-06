@@ -2,13 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import numpy as np
-import pytest
-
-from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.bench_metrics import zero_edit_accept
 
 

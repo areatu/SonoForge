@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QApplication
 
@@ -86,6 +88,7 @@ def test_scan_line_graphics_created_on_set_end(qtbot) -> None:
 def test_mmode_node_item_is_scatter(qtbot) -> None:
     node = _MModeNodeItem(viewer_widget=None, endpoint_index=0, position=(10.0, 20.0))
     import pyqtgraph as pg
+
     assert isinstance(node, pg.ScatterPlotItem)
 
 

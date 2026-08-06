@@ -19,9 +19,7 @@ A4C_SEGMENT_NAMES = {
 }
 
 
-def _angle_deg_from_center(
-    center: tuple[float, float], point: tuple[float, float]
-) -> float:
+def _angle_deg_from_center(center: tuple[float, float], point: tuple[float, float]) -> float:
     dx = point[0] - center[0]
     dy = point[1] - center[1]
     return math.degrees(math.atan2(dy, dx)) % 360.0
@@ -106,11 +104,7 @@ def compute_gls_from_segments(
     if not segment_strain:
         return 0.0
 
-    passing = [
-        strain
-        for seg, strain in segment_strain.items()
-        if segment_quality.get(seg, 0.0) >= min_quality
-    ]
+    passing = [strain for seg, strain in segment_strain.items() if segment_quality.get(seg, 0.0) >= min_quality]
     if not passing:
         passing = list(segment_strain.values())
     return float(np.min(passing))

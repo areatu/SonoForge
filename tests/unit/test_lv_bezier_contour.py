@@ -64,7 +64,9 @@ def test_bezier_control_points_produce_s_shape() -> None:
     lateral = (100.0, 0.0)
     apex = (50.0, 60.0)
     pts = _build_control_points(
-        septal, lateral, apex,
+        septal,
+        lateral,
+        apex,
         septal_base_frac=0.04,
         septal_apex_frac=0.06,
         septal_shift_frac=0.03,
@@ -109,7 +111,9 @@ def test_septal_shift_moves_both_control_points() -> None:
     lateral = (100.0, 0.0)
     apex = (50.0, 60.0)
     pts_unshifted = _build_control_points(
-        septal, lateral, apex,
+        septal,
+        lateral,
+        apex,
         septal_base_frac=0.04,
         septal_apex_frac=0.06,
         septal_shift_frac=0.0,
@@ -119,7 +123,9 @@ def test_septal_shift_moves_both_control_points() -> None:
         lateral_t=0.35,
     )
     pts_shifted = _build_control_points(
-        septal, lateral, apex,
+        septal,
+        lateral,
+        apex,
         septal_base_frac=0.04,
         septal_apex_frac=0.06,
         septal_shift_frac=0.05,
@@ -144,9 +150,7 @@ def test_es_uses_different_defaults_than_ed() -> None:
     apex = (50.0, 60.0)
     ed = fit_lv_bezier_contour(septal, lateral, apex, phase="ED")
     es = fit_lv_bezier_contour(septal, lateral, apex, phase="ES")
-    max_dist = max(
-        math.hypot(e[0] - d[0], e[1] - d[1]) for e, d in zip(es.points, ed.points)
-    )
+    max_dist = max(math.hypot(e[0] - d[0], e[1] - d[1]) for e, d in zip(es.points, ed.points))
     assert max_dist > 1.0
 
 
@@ -159,8 +163,6 @@ def test_fit_lv_bezier_contour_with_custom_params() -> None:
     assert len(contour.points) > 0
     assert contour.points[0] == pytest.approx(septal, abs=1e-6)
     assert contour.points[-1] == pytest.approx(lateral, abs=1e-6)
-    max_height = max(
-        point_line_distance(p, septal, lateral) for p in contour.points
-    )
+    max_height = max(point_line_distance(p, septal, lateral) for p in contour.points)
     apex_height = point_line_distance(apex, septal, lateral)
     assert max_height >= apex_height * 0.95

@@ -8,7 +8,8 @@
 [![License GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-green?style=for-the-badge)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/areatu/SonoForge/ci.yml?style=for-the-badge&label=CI)](https://github.com/areatu/SonoForge/actions)
 [![Release](https://img.shields.io/github/v/release/areatu/SonoForge?style=for-the-badge&color=blue)](https://github.com/areatu/SonoForge/releases)
-[![DOI](https://img.shields.io/badge/DOI-10.5281/zenodo.XXXXXXX-blue?style=for-the-badge)](https://zenodo.org/)
+[![Coverage Status](https://img.shields.io/badge/Coverage-Coveralls-yellow?style=for-the-badge&logo=coveralls&logoColor=white)](https://coveralls.io/github/areatu/SonoForge?branch=main)
+[![DOI](https://zenodo.org/badge/1262306651.svg)](https://doi.org/10.5281/zenodo.21463212)
 
 ---
 
@@ -43,15 +44,28 @@ First run will automatically create a virtual environment, install Python depend
 </details>
 
 <details>
-<summary><strong>Windows (.zip)</strong></summary>
+<summary><strong>Windows (.exe)</strong></summary>
 
-1. Download `SonoForge-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Extract to any folder
-3. Run `SonoForge\bin\SonoForge.bat`
+1. Download `SonoForge-Setup-*.exe` from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Run the installer and follow the setup wizard
+3. Launch SonoForge from the Start Menu or desktop shortcut
 
-> **Requires:** Python 3.10+ ([download](https://www.python.org/downloads/), check "Add to PATH" during installation)
+> **Requires:** Windows 10/11 (64-bit)
 
 First run will automatically set up the environment and install all dependencies.
+
+</details>
+
+<details>
+<summary><strong>macOS (.zip)</strong></summary>
+
+1. Download `SonoForge-macOS-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Extract to Applications folder
+3. Run `SonoForge.app`
+
+> **Requires:** macOS 12.0+ (Intel or Apple Silicon)
+
+First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
 
 </details>
 
@@ -79,14 +93,6 @@ python -m echo_personal_tool
 
 SonoForge provides a comprehensive set of tools for **echocardiographic assessment**, from basic measurements to advanced AI-powered analysis.
 
-<div align="center">
-
-![LV Auto Segmentation](docs/screenshots/lv-auto-segmentation.png)
-
-*AI-powered LV segmentation with automatic volume calculation*
-
-</div>
-
 ### 📊 Cardiac Measurements
 
 | Category | Measurements | Description |
@@ -97,6 +103,15 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 | **RV Function** | FAC (Fractional Area Change), TAPSE, RV S' | Right ventricular assessment |
 | **LV Mass** | LVM, LVMI (indexed to BSA), RWT (Relative Wall Thickness) | Geometric and anatomical LV mass calculations |
 | **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
+| **ECG-Based HR** | Heart rate from ECG waveform | Automatic ED/ES detection from ECG R-peaks |
+
+<div align="center">
+
+![Linear Measurements](docs/screenshots/lv-linear-measurements.png)
+
+*B-Mode linear measurements with automatic LV mass and LVMI calculation*
+
+</div>
 
 ### 🤖 AI-Powered Segmentation
 
@@ -104,6 +119,7 @@ SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentati
 
 - **LV Auto Segmentation** — Automatic left ventricle contouring in A4C view using EchoNet-Dynamic deep learning model (press `I`)
 - **LA Segmentation** — Left atrium cavity segmentation in end-systolic frames
+- **LA AI Assist** — AI-assisted LA contour refinement with optical flow boundary detection
 - **Mitral Annulus Detection** — AI-assisted landmark detection for mitral valve annulus
 - **Temporal Fusion** — Multi-frame temporal consistency using N±2 neighbor voting for stable contour propagation
 - **Active Contour Refinement** — Edge-snapping and gradient-based contour refinement (press `R`)
@@ -113,7 +129,7 @@ SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentati
 
 ![LA Segmentation](docs/screenshots/la-segmentation.png)
 
-*Left atrium segmentation with automatic volume and BSA-indexed calculation*
+*Left atrium segmentation with automatic volume calculation and BSA indexing*
 
 </div>
 
@@ -169,14 +185,21 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 - **Window/Level** — Interactive image contrast/brightness adjustment
 - **Crosshair** — Spatial reference across synchronized views
 - **Keyboard Shortcuts** — Full keyboard navigation for efficient workflow
+- **Internationalization (i18n)** — English and Russian language support with live switching
 
 <div align="center">
 
 ![M-Mode Measurements](docs/screenshots/mmode-measurements.png)
 
-*M-Mode with Teichholz measurements: IVSd, LVIDd, LVPWd, LVEF*
+*M-Mode with Teichholz calculations: IVSd, LVIDd, LVPWd, LVEF*
 
 </div>
+
+---
+
+## 🎥 Demo
+
+[![SonoForge Demo](https://img.youtube.com/vi/vbcIFMZP-3o/maxresdefault.jpg)](https://youtu.be/vbcIFMZP-3o)
 
 ---
 
@@ -260,7 +283,8 @@ src/echo_personal_tool/
 ### Security Features
 
 - ✅ **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
-- ✅ **Model Integrity** — SHA256 verification for ONNX AI models at load time
+- ✅ **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 §6.1
+- ✅ **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
 - ✅ **Network Timeouts** — Configurable timeouts for DICOMweb/DIMSE connections
 - ✅ **PHI Sanitization** — Patient identifiers truncated in log files
 - ✅ **In-Memory Processing** — All DICOM data processed in RAM, no temp files
@@ -289,6 +313,8 @@ ruff check src tests
 # Format
 ruff format src tests
 ```
+
+**Test Coverage:** ~77% with 1400+ unit tests across all layers (domain, application, presentation, infrastructure).
 
 ### Areas for Contribution
 
@@ -320,6 +346,15 @@ If you use SonoForge in your research or clinical practice, please cite:
 ## 📄 License
 
 [GPL-3.0](LICENSE) — Free software, open source. You are free to use, modify, and distribute this software.
+
+---
+
+## ⚠️ Disclaimer
+
+This software is intended for research, education, and informational purposes only.
+It is NOT intended for clinical diagnosis, treatment decisions, or patient care.
+Always consult a qualified healthcare professional for medical decisions.
+This software has not been reviewed or approved by the FDA, CE, or any regulatory body.
 
 ---
 

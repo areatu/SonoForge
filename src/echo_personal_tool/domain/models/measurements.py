@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class DopplerResults:
     dt_ms: float | None = None
     ivrt_ms: float | None = None
     at_ms: float | None = None
+    et_ms: float | None = None
     e_prime_sept_cm_s: float | None = None
     e_prime_lat_cm_s: float | None = None
     e_prime_avg_cm_s: float | None = None
@@ -128,3 +130,4 @@ class MeasurementSnapshot:
     weight_kg: float | None = None
     indexed: IndexedMeasurements | None = None
     planimeter: tuple[PlanimeterResult, ...] = ()
+    vessel_measurements: tuple[VesselMeasurement, ...] = ()

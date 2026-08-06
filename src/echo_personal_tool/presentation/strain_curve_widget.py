@@ -29,12 +29,8 @@ class StrainCurveWidget(QWidget):
         self._plot.setMinimumHeight(180)
         layout.addWidget(self._plot)
 
-        self._longitudinal_curve = self._plot.plot(
-            pen=pg.mkPen("#2196f3", width=2), name="Longitudinal"
-        )
-        self._radial_curve = self._plot.plot(
-            pen=pg.mkPen("#f44336", width=2), name="Radial"
-        )
+        self._longitudinal_curve = self._plot.plot(pen=pg.mkPen("#2196f3", width=2), name="Longitudinal")
+        self._radial_curve = self._plot.plot(pen=pg.mkPen("#f44336", width=2), name="Radial")
 
         self._ed_line: pg.InfiniteLine | None = None
         self._es_line: pg.InfiniteLine | None = None
@@ -90,12 +86,14 @@ class StrainCurveWidget(QWidget):
             self._plot.removeItem(self._es_line)
 
         self._ed_line = pg.InfiniteLine(
-            pos=ed_index, angle=90,
+            pos=ed_index,
+            angle=90,
             pen=pg.mkPen("#4caf50", width=1, style=Qt.PenStyle.DashLine),
             label="ED",
         )
         self._es_line = pg.InfiniteLine(
-            pos=es_index, angle=90,
+            pos=es_index,
+            angle=90,
             pen=pg.mkPen("#ff9800", width=1, style=Qt.PenStyle.DashLine),
             label="ES",
         )

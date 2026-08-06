@@ -18,7 +18,7 @@ def extract_mmode_column(
     ys = start[1] + t * (end[1] - start[1])
     coords = np.array([ys, xs])
     result = map_coordinates(
-        frame.astype(np.float64),
+        frame.astype(np.float32),
         coords,
         order=1,
         mode="nearest",

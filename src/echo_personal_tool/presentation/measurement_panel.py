@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import (
@@ -21,6 +20,7 @@ from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 class MeasurementPanel(QWidget):
@@ -168,6 +168,10 @@ class MeasurementPanel(QWidget):
         if linear_lines:
             sections.append(linear_lines)
 
+        vessel_lines = self._format_vessel_section(snapshot)
+        if vessel_lines:
+            sections.append(vessel_lines)
+
         indexed_lines = self._format_indexed_section(snapshot)
         if indexed_lines:
             sections.append(indexed_lines)
@@ -226,9 +230,7 @@ class MeasurementPanel(QWidget):
         def append_view(view_label: str, metrics: LvViewMetrics | None) -> None:
             if metrics is None:
                 return
-            length = (
-                metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
-            )
+            length = metrics.length_ed_mm if metrics.length_ed_mm is not None else metrics.length_es_mm
             length_suffix = " mm" if snapshot is None or snapshot.spacing_calibrated else " px"
             volume_suffix = " mL" if snapshot is None or snapshot.spacing_calibrated else " px³"
             length_line = self._optional_line(tr("panel.lv_length").format(view=view_label), length, length_suffix)
@@ -367,8 +369,25 @@ class MeasurementPanel(QWidget):
             *(f"  {measurement.display_text()}" for measurement in measurements),
         ]
 
+    def _format_vessel_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
+        vessels = snapshot.vessel_measurements if snapshot is not None else ()
+        if not vessels:
+            return []
+        lines = [tr("panel.vessels")]
+        for measurement in vessels:
+            lines.append(self._line("PSV", measurement.psv_cm_s, " cm/s"))
+            lines.append(self._line("EDV", measurement.edv_cm_s, " cm/s"))
+            if measurement.ri is not None:
+                lines.append(self._line("RI", measurement.ri, decimals=2))
+            if measurement.sd is not None:
+                lines.append(self._line("S/D", measurement.sd, decimals=2))
+            if measurement.mv_approx is not None:
+                lines.append(self._line("MV≈", measurement.mv_approx, " cm/s"))
+        return lines if len(lines) > 1 else []
+
     def _format_indexed_section(self, snapshot: MeasurementSnapshot | None) -> list[str]:
         from echo_personal_tool.infrastructure.i18n import tr
+
         indexed = snapshot.indexed if snapshot is not None else None
         if indexed is None:
             return []

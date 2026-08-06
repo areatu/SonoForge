@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from echo_personal_tool.application.dicom_query_service import DicomQueryService
 from echo_personal_tool.domain.ports import (
-    DimseClient,
     DicomUploadClient,
     DicomWebClient,
+    DimseClient,
     QuerySource,
 )
 from echo_personal_tool.infrastructure.dimse_client import PynetdimseClient
 from echo_personal_tool.infrastructure.dimse_upload_adapter import DimseUploadAdapter
-from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 

@@ -21,6 +21,8 @@ from echo_personal_tool.domain.models import (
     DopplerTrace,
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+from echo_personal_tool.domain.models.ecg import EcgWaveform
+from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 
 _PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "Vmax", "TR Vmax")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
@@ -58,9 +60,7 @@ class DopplerWidget(QWidget):
 
         self._interval_items: list[pg.PlotDataItem] = []
 
-        self._trace_item = pg.PlotDataItem(
-            pen=pg.mkPen("#1565c0", width=2, style=Qt.PenStyle.DashLine)
-        )
+        self._trace_item = pg.PlotDataItem(pen=pg.mkPen("#1565c0", width=2, style=Qt.PenStyle.DashLine))
         self._trace_item.setZValue(15)
         self._plot.addItem(self._trace_item)
         self._trace_items: list[pg.PlotDataItem] = []
@@ -101,10 +101,26 @@ class DopplerWidget(QWidget):
         self._status_label.setObjectName("dopplerToolStatus")
         self._status_label.setText(self._format_tool_status(self._tool_mode))
 
+        # ECG strip under spectrogram
+        self._ecg_strip = EcgStripWidget()
+
         layout = QVBoxLayout(self)
         layout.addLayout(self._toolbar)
         layout.addWidget(self._plot, stretch=1)
+        layout.addWidget(self._ecg_strip)
         layout.addWidget(self._status_label)
+
+    def set_ecg_waveform(self, ecg: EcgWaveform | None) -> None:
+        """Load and display ECG waveform in the strip under the spectrogram."""
+        self._ecg_strip.set_ecg(ecg)
+
+    def set_cardiac_cycles(self, cycles) -> None:
+        """Pass cardiac cycles to ECG strip for cycle highlighting."""
+        self._ecg_strip.set_cardiac_cycles(cycles)
+
+    def highlight_ecg_cycle(self, cycle_index: int | None) -> None:
+        """Highlight a specific ECG cycle."""
+        self._ecg_strip.highlight_cycle(cycle_index)
 
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
@@ -122,6 +138,10 @@ class DopplerWidget(QWidget):
             yRange=(mapping.velocity_min_cm_s, mapping.velocity_max_cm_s),
             padding=0.0,
         )
+        # Sync ECG strip X-axis to spectrogram time range
+        self._ecg_strip._plot.setXRange(
+            mapping.time_origin_ms, mapping.time_origin_ms + mapping.time_span_ms, padding=0
+        )
 
     def show_spectrogram(self, pixels: np.ndarray) -> None:
         """Display a grayscale spectrogram in the plot coordinate space."""
@@ -136,9 +156,7 @@ class DopplerWidget(QWidget):
         mapping = self._axis_mapping
         span = mapping.velocity_max_cm_s - mapping.velocity_min_cm_s
         self._image_item.setImage(image, autoLevels=False)
-        self._image_item.setRect(
-            QRectF(mapping.time_origin_ms, mapping.velocity_min_cm_s, mapping.time_span_ms, span)
-        )
+        self._image_item.setRect(QRectF(mapping.time_origin_ms, mapping.velocity_min_cm_s, mapping.time_span_ms, span))
         self._update_image_levels(image)
         self._plot.setRange(
             xRange=(mapping.time_origin_ms, mapping.time_origin_ms + mapping.time_span_ms),
@@ -160,9 +178,7 @@ class DopplerWidget(QWidget):
 
     def cancel_active_tool(self) -> bool:
         had_active_state = (
-            self._tool_mode != "none"
-            or bool(self._active_partial_points)
-            or self._active_interval_start is not None
+            self._tool_mode != "none" or bool(self._active_partial_points) or self._active_interval_start is not None
         )
         self._tool_mode = "none"
         self._clear_partial_state()

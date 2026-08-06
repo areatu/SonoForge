@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRunnable, QThreadPool, Signal, QObject
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -25,6 +25,7 @@ from echo_personal_tool.infrastructure.server_settings import (
     load_server_settings,
     save_server_settings,
 )
+from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
 
 
 class ServerSettingsForm(QWidget):
@@ -43,9 +44,7 @@ class ServerSettingsForm(QWidget):
         self._password_edit = QLineEdit()
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._headers_edit = QPlainTextEdit()
-        self._headers_edit.setPlaceholderText(
-            "Authorization: Basic cGFjczpwYcIBTU2NBRERS\nX-Custom-Header: value"
-        )
+        self._headers_edit.setPlaceholderText("Authorization: Basic cGFjczpwYcIBTU2NBRERS\nX-Custom-Header: value")
         self._headers_edit.setFixedHeight(72)
         self._mock_check = QCheckBox(tr("server_settings.mock"))
         self._tls_verify_check = QCheckBox("Verify SSL certificate")
@@ -98,9 +97,7 @@ class ServerSettingsForm(QWidget):
         self._dimse_tls_warning.setStyleSheet("color: #fb923c; font-weight: bold;")
         self._dimse_tls_warning.hide()
         dimse_form.addRow("", self._dimse_tls_warning)
-        self._dimse_tls_verify.toggled.connect(
-            lambda checked: self._dimse_tls_warning.setVisible(not checked)
-        )
+        self._dimse_tls_verify.toggled.connect(lambda checked: self._dimse_tls_warning.setVisible(not checked))
         self._dimse_tls_ca_path = QLineEdit()
         self._dimse_tls_ca_path.setPlaceholderText("/path/to/ca.pem")
         dimse_form.addRow(tr("server_settings.ca_certificate"), self._dimse_tls_ca_path)
@@ -191,6 +188,7 @@ class ServerSettingsForm(QWidget):
 
     def _on_dimse_echo_result(self, ok: bool, message: str) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading
+
         set_button_loading(self._dimse_echo_btn, False)
         if ok:
             self._dimse_echo_label.setText(tr("server_settings.dimse_echo_ok"))
@@ -258,6 +256,7 @@ class ServerSettingsForm(QWidget):
 
 def show_server_settings_dialog(parent: QWidget | None = None) -> bool:
     from echo_personal_tool.presentation.ui_animations import exec_animated
+
     dialog = ServerSettingsDialog(parent)
     return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
@@ -269,11 +268,10 @@ class ServerSettingsDialog(QDialog):
 
         self._form = ServerSettingsForm(self)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
+        theme_button_box_icons(buttons)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._form)

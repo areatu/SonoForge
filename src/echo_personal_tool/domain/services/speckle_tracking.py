@@ -70,7 +70,7 @@ def block_match_single(
     best_ncc = 0.0
 
     for level in range(config.pyramid_levels - 1, -1, -1):
-        scale = 2 ** level
+        scale = 2**level
         ref_cx_l = orig_cx / scale
         ref_cy_l = orig_cy / scale
         cx_l = cx / scale
@@ -143,9 +143,7 @@ def track_frame_pair(
     positions = np.zeros((n, 2), dtype=np.float64)
 
     for i, kernel_obj in enumerate(kernels):
-        dx, dy, ncc = block_match_single(
-            pyramids_ref, pyramids_tgt, kernel_obj.center, config
-        )
+        dx, dy, ncc = block_match_single(pyramids_ref, pyramids_tgt, kernel_obj.center, config)
         displacements[i] = [dx, dy]
         ncc_scores[i] = ncc
         positions[i] = [
@@ -231,9 +229,7 @@ def build_zone_mask_from_kernels(
         return np.zeros((h, w), dtype=bool)
     hull = cv2.convexHull(endo_pts)
     cv2.fillPoly(mask, [hull], 1)
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (wall_thickness_px, wall_thickness_px)
-    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (wall_thickness_px, wall_thickness_px))
     dilated = cv2.dilate(mask, kernel, iterations=1)
     return dilated.astype(bool)
 
@@ -308,9 +304,7 @@ def track_cine_bidirectional(
             bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
             for i in range(n_kernels):
                 if v_fwd[i] and bwd.valid_mask[i]:
-                    closure_err = float(np.linalg.norm(
-                        bwd.kernel_positions[i] - ed_centers[i]
-                    ))
+                    closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - ed_centers[i]))
                     if closure_err > config.search_radius * 0.8:
                         valid_all[t, i] = False
                     else:
@@ -406,7 +400,10 @@ def track_cine_incremental(
 
     logger.info(
         "STE progressive zone: ed=%d, es=%d, n_frames=%d, iterations=%d",
-        ed_index, es_index, n_frames, n_iterations,
+        ed_index,
+        es_index,
+        n_frames,
+        n_iterations,
     )
 
     current_ed_centers = ed_centers.copy()
@@ -450,11 +447,18 @@ def track_cine_incremental(
             ]
 
             progressive_mask = build_zone_mask_from_kernels(
-                interp_centers, endo_mask, frame_shape, wall_thickness_px,
+                interp_centers,
+                endo_mask,
+                frame_shape,
+                wall_thickness_px,
             )
 
             match = track_frame_from_reference(
-                ed_frame, frames[t], interp_kernels, config, progressive_mask,
+                ed_frame,
+                frames[t],
+                interp_kernels,
+                config,
+                progressive_mask,
             )
 
             final_positions[t] = match.kernel_positions
@@ -464,8 +468,7 @@ def track_cine_incremental(
             if config.bidirectional:
                 bwd_kernels = [
                     TrackingKernel(
-                        center=(float(match.kernel_positions[i, 0]),
-                                float(match.kernel_positions[i, 1])),
+                        center=(float(match.kernel_positions[i, 0]), float(match.kernel_positions[i, 1])),
                         node_index=initial_kernels[i].node_index,
                         layer=initial_kernels[i].layer,
                         radius=initial_kernels[i].radius,
@@ -477,15 +480,11 @@ def track_cine_incremental(
                 bwd = track_frame_pair(frames[t], ed_frame, bwd_kernels, config)
                 for i in range(n_kernels):
                     if match.valid_mask[i] and bwd.valid_mask[i]:
-                        closure_err = float(np.linalg.norm(
-                            bwd.kernel_positions[i] - current_ed_centers[i]
-                        ))
+                        closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - current_ed_centers[i]))
                         if closure_err > config.search_radius * 0.8:
                             final_valid[t, i] = False
                         else:
-                            final_ncc[t, i] = (
-                                match.ncc_scores[i] + bwd.ncc_scores[i]
-                            ) / 2.0
+                            final_ncc[t, i] = (match.ncc_scores[i] + bwd.ncc_scores[i]) / 2.0
 
             if progress_callback:
                 progress_callback(t + 1, n_frames)
@@ -523,7 +522,10 @@ def track_cine(
 ) -> list[TrackingResult]:
     if config.bidirectional and config.ed_anchored:
         return track_cine_bidirectional(
-            frames, initial_kernels, ed_index=0, config=config,
+            frames,
+            initial_kernels,
+            ed_index=0,
+            config=config,
             progress_callback=progress_callback,
         )
     n_frames = frames.shape[0]

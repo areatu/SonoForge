@@ -165,9 +165,7 @@ def test_open_arc_from_cavity_mask_uses_wider_end_as_annulus() -> None:
     mask = np.zeros((height, width), dtype=np.uint8)
     center_y, center_x, radius_y, radius_x = 220.0, 200.0, 150.0, 90.0
     ys, xs = np.ogrid[:height, :width]
-    mask[
-        ((ys - center_y) ** 2 / radius_y**2 + (xs - center_x) ** 2 / radius_x**2) <= 1.0
-    ] = 1
+    mask[((ys - center_y) ** 2 / radius_y**2 + (xs - center_x) ** 2 / radius_x**2) <= 1.0] = 1
 
     open_points, annulus, apex = open_arc_from_cavity_mask(mask, num_nodes=32)
     septal, lateral = annulus
@@ -207,11 +205,11 @@ def test_mitral_annulus_endpoints_allow_sloped_mv_line() -> None:
 
 def test_mask_to_contour_embedded_echonet_blob_has_full_span() -> None:
     from echo_personal_tool.domain.services.segmentation_service import (
+        closed_polygon_to_open_arc,
         crop_frame_for_echonet,
         embed_echonet_mask,
         papillary_mask_cleanup,
         smooth_contour,
-        closed_polygon_to_open_arc,
     )
 
     height, width = 600, 800
@@ -224,9 +222,7 @@ def test_mask_to_contour_embedded_echonet_blob_has_full_span() -> None:
     embedded = embed_echonet_mask(onnx_mask, transform)
     cleaned = papillary_mask_cleanup(embedded)
     closed = smooth_contour(mask_to_contour(cleaned, (height, width)), num_nodes=32)
-    max_span = max(
-        math.hypot(a[0] - b[0], a[1] - b[1]) for a in closed for b in closed
-    )
+    max_span = max(math.hypot(a[0] - b[0], a[1] - b[1]) for a in closed for b in closed)
 
     assert max_span > 100.0
     arc, annulus = closed_polygon_to_open_arc(closed)
@@ -448,7 +444,9 @@ class TestSnapAnnulusToMaskBoundary:
         mask = np.zeros((100, 100), dtype=np.uint8)
         mask[70:90, 20:80] = 1  # basal band blob
         septal, lateral = _snap_annulus_to_mask_boundary(
-            (35.0, 80.0), (65.0, 80.0), mask,
+            (35.0, 80.0),
+            (65.0, 80.0),
+            mask,
             basal_y_range=(70, 90),
         )
         assert septal[0] < lateral[0]
@@ -467,7 +465,9 @@ class TestSnapAnnulusToMaskBoundary:
         mask[70:90, 20:80] = 1
         # Points already on boundary (left edge = 20, right edge = 79)
         septal, lateral = _snap_annulus_to_mask_boundary(
-            (20.0, 80.0), (79.0, 80.0), mask,
+            (20.0, 80.0),
+            (79.0, 80.0),
+            mask,
             basal_y_range=(70, 90),
         )
         assert abs(septal[0] - 20.0) < 2.0
@@ -483,7 +483,8 @@ class TestBlendAnnulusWithArcTips:
         annulus = ((20.0, 80.0), (80.0, 80.0))
         open_points = [(22.0, 82.0), (50.0, 40.0), (78.0, 82.0)]
         result = _blend_annulus_with_arc_tips(
-            annulus, open_points,
+            annulus,
+            open_points,
             max_blend_dist_px=10.0,
             blend_weight=0.3,
         )
@@ -500,7 +501,8 @@ class TestBlendAnnulusWithArcTips:
         annulus = ((20.0, 80.0), (80.0, 80.0))
         open_points = [(100.0, 10.0), (50.0, 40.0), (150.0, 10.0)]
         result = _blend_annulus_with_arc_tips(
-            annulus, open_points,
+            annulus,
+            open_points,
             max_blend_dist_px=5.0,
             blend_weight=0.3,
         )
@@ -521,9 +523,7 @@ class TestSnapWiredIntoOpenArc:
         mask = np.zeros((height, width), dtype=np.uint8)
         center_y, center_x, radius_y, radius_x = 220.0, 200.0, 150.0, 90.0
         ys, xs = np.ogrid[:height, :width]
-        mask[
-            ((ys - center_y) ** 2 / radius_y**2 + (xs - center_x) ** 2 / radius_x**2) <= 1.0
-        ] = 1
+        mask[((ys - center_y) ** 2 / radius_y**2 + (xs - center_x) ** 2 / radius_x**2) <= 1.0] = 1
 
         open_points, annulus, apex = open_arc_from_cavity_mask(mask, num_nodes=32)
         septal, lateral = annulus
@@ -533,4 +533,3 @@ class TestSnapWiredIntoOpenArc:
         assert abs(lateral[0] - septal[0]) > 20.0
         assert open_points[0] == septal
         assert open_points[-1] == lateral
-

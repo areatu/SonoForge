@@ -84,10 +84,7 @@ def interpolate_invalid_kernels(
                     dist_total = ri - li
                     if dist_total > 0:
                         alpha = (j - li) / dist_total
-                        out[t, idx_arr[j], :] = (
-                            out[t, idx_arr[li], :] * (1.0 - alpha) +
-                            out[t, idx_arr[ri], :] * alpha
-                        )
+                        out[t, idx_arr[j], :] = out[t, idx_arr[li], :] * (1.0 - alpha) + out[t, idx_arr[ri], :] * alpha
                 elif len(left_valid) > 0:
                     li = left_valid[-1]
                     out[t, idx_arr[j], :] = out[t, idx_arr[li], :]

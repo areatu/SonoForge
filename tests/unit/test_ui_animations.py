@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import QEasingCurve
-from PySide6.QtGui import QEnterEvent
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication, QDialog, QGraphicsOpacityEffect, QPushButton
 
 from echo_personal_tool.presentation.ui_animations import (
@@ -116,4 +116,5 @@ def test_hover_button_mixin_is_noop(app):
 
 def test_exec_animated_exists():
     from echo_personal_tool.presentation.ui_animations import exec_animated
+
     assert exec_animated is not None

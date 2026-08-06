@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import sys
-from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -70,9 +71,7 @@ class _PendingPool:
 
         mock = MagicMock()
         mock.ready.return_value = False
-        mock.get.side_effect = lambda timeout=None: (_ for _ in ()).throw(
-            __import__("multiprocessing").TimeoutError
-        )
+        mock.get.side_effect = lambda timeout=None: (_ for _ in ()).throw(__import__("multiprocessing").TimeoutError)
         return mock
 
 
@@ -112,12 +111,15 @@ def test_worker_emits_finished_with_mask(
     worker = OnnxWorker(frame, models_dir=tmp_path, parent=parent)
     worker.signals.finished.connect(received.append)
 
-    with patch(
-        "echo_personal_tool.application.workers.onnx_worker._get_pool",
-        return_value=_InlinePool(),
-    ), patch(
-        "echo_personal_tool.application.workers.onnx_worker.run_segment_in_subprocess",
-        return_value=mask.tobytes(),
+    with (
+        patch(
+            "echo_personal_tool.application.workers.onnx_worker._get_pool",
+            return_value=_InlinePool(),
+        ),
+        patch(
+            "echo_personal_tool.application.workers.onnx_worker.run_segment_in_subprocess",
+            return_value=mask.tobytes(),
+        ),
     ):
         _run_worker(qtbot, worker)
         qtbot.waitUntil(lambda: len(received) == 1, timeout=5000)
@@ -137,12 +139,15 @@ def test_worker_emits_failed_on_exception(
     worker = OnnxWorker(frame, models_dir=tmp_path, parent=parent)
     worker.signals.failed.connect(errors.append)
 
-    with patch(
-        "echo_personal_tool.application.workers.onnx_worker._get_pool",
-        return_value=_InlinePool(),
-    ), patch(
-        "echo_personal_tool.application.workers.onnx_worker.run_segment_in_subprocess",
-        side_effect=RuntimeError("segmentation failed"),
+    with (
+        patch(
+            "echo_personal_tool.application.workers.onnx_worker._get_pool",
+            return_value=_InlinePool(),
+        ),
+        patch(
+            "echo_personal_tool.application.workers.onnx_worker.run_segment_in_subprocess",
+            side_effect=RuntimeError("segmentation failed"),
+        ),
     ):
         _run_worker(qtbot, worker)
         qtbot.waitUntil(lambda: len(errors) == 1, timeout=5000)

@@ -19,9 +19,7 @@ def test_query_studies_returns_fixture_data() -> None:
     studies = client.query_studies()
     assert len(studies) >= 1
     assert studies[0].patient_name == "TEST^PATIENT"
-    assert studies[0].study_uid == (
-        "1.2.410.200001.1.1185.2062614048.1.20240404.1120546412.448.1"
-    )
+    assert studies[0].study_uid == ("1.2.410.200001.1.1185.2062614048.1.20240404.1120546412.448.1")
 
 
 def test_query_studies_filters_by_patient_name() -> None:

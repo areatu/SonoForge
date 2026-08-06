@@ -6,11 +6,14 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PySide6.QtCore import Qt
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 from echo_personal_tool.presentation.main_window import MainWindow
+
+pytestmark = pytest.mark.gui
 
 
 def _make_window(qtbot) -> MainWindow:
@@ -118,9 +121,7 @@ def test_escape_and_enter_delegate_to_active_doppler_tool(qtbot, monkeypatch) ->
     assert cancel_calls == [True]
 
 
-def test_studies_loaded_requests_visible_previews_once_in_real_flow(
-    qtbot, monkeypatch
-) -> None:
+def test_studies_loaded_requests_visible_previews_once_in_real_flow(qtbot, monkeypatch) -> None:
     window = _make_window(qtbot)
     window._browser.resize(320, 260)
     window._browser.show()

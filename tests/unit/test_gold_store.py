@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 
 from echo_personal_tool.domain.services.gold_store import (
+    audit_gold_instance_completeness,
     dedupe_gold_frames,
+    frame_instance_key,
+    frame_merge_key,
     gold_filename,
     load_gold,
     make_gold_frame,
@@ -17,12 +20,9 @@ from echo_personal_tool.domain.services.gold_store import (
     parse_chamber_from_gold_path,
     rebuild_manifest_from_gold_dir,
     remove_gold_frame,
+    repair_gold_from_backup,
     save_gold,
     try_load_gold,
-    frame_instance_key,
-    frame_merge_key,
-    audit_gold_instance_completeness,
-    repair_gold_from_backup,
 )
 
 

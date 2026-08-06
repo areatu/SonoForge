@@ -102,9 +102,7 @@ def test_live_dimse_c_get_instance(orthanc_dimse_settings: ServerSettings) -> No
     series_list = client.c_find_series(studies[0].study_uid)
     if not series_list:
         pytest.skip("No series found")
-    instances = client.c_find_instances(
-        studies[0].study_uid, series_list[0].series_uid
-    )
+    instances = client.c_find_instances(studies[0].study_uid, series_list[0].series_uid)
     if not instances:
         pytest.skip("No instances found")
     data = client.c_get_instance(
@@ -177,9 +175,7 @@ def test_live_dicom_retrieve_service_cget(orthanc_dimse_settings: ServerSettings
     series_list = client.c_find_series(studies[0].study_uid)
     if not series_list:
         pytest.skip("No series found")
-    instances = client.c_find_instances(
-        studies[0].study_uid, series_list[0].series_uid
-    )
+    instances = client.c_find_instances(studies[0].study_uid, series_list[0].series_uid)
     if not instances:
         pytest.skip("No instances found")
 

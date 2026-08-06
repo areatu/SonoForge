@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from PySide6.QtCore import QPointF, Qt
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.domain.models import InstanceMetadata
@@ -109,6 +109,7 @@ def test_graphics_view_smooth_hint(qtbot) -> None:
     qtbot.addWidget(viewer)
 
     from PySide6.QtGui import QPainter
+
     hints = viewer._graphics.renderHints()
     assert bool(hints & QPainter.RenderHint.SmoothPixmapTransform)
 

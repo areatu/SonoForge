@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pytest
 
@@ -23,7 +21,7 @@ def _ellipse_mask(
 ) -> np.ndarray:
     """Synthetic filled ellipse mask (simulates LA cavity on A4C)."""
     mask = np.zeros(shape, dtype=np.uint8)
-    y_grid, x_grid = np.ogrid[:shape[0], :shape[1]]
+    y_grid, x_grid = np.ogrid[: shape[0], : shape[1]]
     ((y_grid - cy) / max(ry, 1)) ** 2 + ((x_grid - cx) / max(rx, 1)) ** 2 <= 1.0
     inside = ((y_grid - cy) / max(ry, 1)) ** 2 + ((x_grid - cx) / max(rx, 1)) ** 2 <= 1.0
     mask[inside] = 1
@@ -50,6 +48,7 @@ def _make_contour(
 # ---------------------------------------------------------------------------
 # la_mask_to_contour — synthetic masks
 # ---------------------------------------------------------------------------
+
 
 class TestLaMaskToContour:
     def test_ellipse_produces_valid_open_arc(self) -> None:
@@ -121,11 +120,18 @@ class TestLaMaskToContour:
 # explain_la_auto_reject_reason — quality gate
 # ---------------------------------------------------------------------------
 
+
 class TestExplainLaAutoRejectReason:
     def test_valid_contour_passes(self) -> None:
-        pts = [(80.0, 180.0), (100.0, 130.0), (120.0, 100.0),
-               (140.0, 80.0), (160.0, 100.0), (180.0, 130.0),
-               (200.0, 180.0)]
+        pts = [
+            (80.0, 180.0),
+            (100.0, 130.0),
+            (120.0, 100.0),
+            (140.0, 80.0),
+            (160.0, 100.0),
+            (180.0, 130.0),
+            (200.0, 180.0),
+        ]
         ma = ((80.0, 180.0), (200.0, 180.0))
         apex = (140.0, 80.0)
         c = _make_contour(pts, ma=ma, apex=apex)
@@ -167,8 +173,7 @@ class TestExplainLaAutoRejectReason:
         assert "инвертирована" in reason
 
     def test_centroid_outside_roi_rejects(self) -> None:
-        pts = [(80, 180), (100, 130), (120, 100), (140, 80),
-               (160, 100), (180, 130), (200, 180)]
+        pts = [(80, 180), (100, 130), (120, 100), (140, 80), (160, 100), (180, 130), (200, 180)]
         ma = ((80.0, 180.0), (200.0, 180.0))
         apex = (140.0, 80.0)
         c = _make_contour(pts, ma=ma, apex=apex)

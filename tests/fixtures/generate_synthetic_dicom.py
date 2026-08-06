@@ -10,8 +10,8 @@ from pydicom.dataset import FileDataset, FileMetaDataset
 from pydicom.encaps import encapsulate, encapsulate_extended
 from pydicom.uid import (
     ExplicitVRLittleEndian,
-    JPEGBaseline8Bit,
     JPEG2000Lossless,
+    JPEGBaseline8Bit,
     generate_uid,
 )
 

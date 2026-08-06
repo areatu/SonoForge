@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from importlib import resources
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize, QPoint
-from PySide6.QtGui import QResizeEvent, QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -23,6 +22,7 @@ _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 def _icon_dir() -> Path:
     import sys
+
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
         return Path(meipass) / "echo_personal_tool" / "resources" / "icons"
@@ -31,6 +31,7 @@ def _icon_dir() -> Path:
 
 def _load_icon(name: str) -> QIcon:
     from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
     svg_path = _icon_dir() / f"{name}.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
@@ -99,6 +100,7 @@ class SystemBar(QWidget):
     doppler_calibration_requested = Signal()
     settings_requested = Signal()
     references_requested = Signal()
+    heart_rate_requested = Signal()
     minimize_requested = Signal()
     maximize_requested = Signal()
     close_requested = Signal()
@@ -109,6 +111,7 @@ class SystemBar(QWidget):
         self.setObjectName("systemBar")
 
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._study_label = QLabel(tr("system_bar.no_study"))
         self._study_label.setMinimumWidth(120)
         self._study_label.setSizePolicy(
@@ -129,7 +132,7 @@ class SystemBar(QWidget):
         btn_open.clicked.connect(self.open_folder_requested.emit)
         self._btn_open = btn_open
 
-        btn_load_server = QPushButton("Загрузить с сервера…")
+        btn_load_server = QPushButton(tr("system_bar.load_server"))
         btn_load_server.setIcon(_load_icon("cloud_download"))
         btn_load_server.clicked.connect(self.load_from_server_requested.emit)
         self._btn_load_server = btn_load_server
@@ -141,7 +144,7 @@ class SystemBar(QWidget):
 
         self._btn_settings = QPushButton(tr("system_bar.settings"))
         self._btn_settings.setIcon(_load_icon("settings"))
-        self._btn_settings.setToolTip("Параметры измерений и отображения")
+        self._btn_settings.setToolTip(tr("system_bar.settings_tooltip"))
         self._btn_settings.clicked.connect(self.settings_requested.emit)
 
         btn_caliper = QPushButton("Caliper")
@@ -158,16 +161,20 @@ class SystemBar(QWidget):
 
         btn_doppler_calibration = QPushButton("Calibration Doppler")
         btn_doppler_calibration.setIcon(_load_icon("show_chart"))
-        btn_doppler_calibration.setToolTip(
-            "Doppler spectrogram: ROI → baseline → velocity scale"
-        )
+        btn_doppler_calibration.setToolTip("Doppler spectrogram: ROI → baseline → velocity scale")
         btn_doppler_calibration.clicked.connect(self.doppler_calibration_requested.emit)
         self._btn_doppler_calibration = btn_doppler_calibration
 
         self._btn_references = QPushButton(tr("system_bar.references"))
         self._btn_references.setIcon(_load_icon("description"))
-        self._btn_references.setToolTip("Справочник нормативных значений ASE")
+        self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
+
+        btn_heart_rate = QPushButton("HR")
+        btn_heart_rate.setIcon(_load_icon("heart_rate"))
+        btn_heart_rate.setToolTip("Estimate heart rate from cine (Optical Flow / Area-Time)")
+        btn_heart_rate.clicked.connect(self.heart_rate_requested.emit)
+        self._btn_heart_rate = btn_heart_rate
 
         btn_reset = QPushButton("Reset")
         btn_reset.setIcon(_load_icon("refresh"))
@@ -202,10 +209,18 @@ class SystemBar(QWidget):
 
         # Install hover lerp mixin on all buttons
         for btn in (
-            btn_open, btn_load_server, btn_send_server,
-            self._btn_settings, btn_caliper, btn_calibration,
-            btn_doppler_calibration, self._btn_references, btn_reset,
-            self._btn_layout, self._btn_minimize, self._btn_maximize,
+            btn_open,
+            btn_load_server,
+            btn_send_server,
+            self._btn_settings,
+            btn_caliper,
+            btn_calibration,
+            btn_doppler_calibration,
+            self._btn_references,
+            btn_reset,
+            self._btn_layout,
+            self._btn_minimize,
+            self._btn_maximize,
             self._btn_close,
         ):
             HoverButtonMixin.install(btn)
@@ -218,6 +233,7 @@ class SystemBar(QWidget):
 
         # App logo
         from echo_personal_tool.presentation.dark_theme import get_logo_path
+
         _logo = get_logo_path()
         if _logo.exists():
             self._logo_label = QLabel()
@@ -248,6 +264,7 @@ class SystemBar(QWidget):
             btn_caliper,
             btn_calibration,
             btn_doppler_calibration,
+            btn_heart_rate,
             self._btn_references,
             btn_reset,
             self._btn_layout,
@@ -286,6 +303,7 @@ class SystemBar(QWidget):
 
     def clear_study_context(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._study_label.setText(tr("system_bar.no_study"))
         self._study_label.setToolTip("")
 
@@ -294,6 +312,7 @@ class SystemBar(QWidget):
         # Refresh logo for current theme
         if self._logo_label is not None:
             from echo_personal_tool.presentation.dark_theme import get_logo_path
+
             _pixmap = QPixmap(str(get_logo_path()))
             self._logo_label.setPixmap(_pixmap.scaledToHeight(28, Qt.SmoothTransformation))
         self._btn_open.setIcon(_load_icon("folder_open"))
@@ -303,6 +322,7 @@ class SystemBar(QWidget):
         self._btn_caliper.setIcon(_load_icon("straighten"))
         self._btn_calibration.setIcon(_load_icon("tune"))
         self._btn_doppler_calibration.setIcon(_load_icon("show_chart"))
+        self._btn_heart_rate.setIcon(_load_icon("heart_rate"))
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_reset.setIcon(_load_icon("refresh"))
         self._btn_layout.setIcon(_load_icon("layout"))
@@ -313,6 +333,7 @@ class SystemBar(QWidget):
     def reload_text(self) -> None:
         """Update all button text and tooltips for current language."""
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._btn_open.setText(tr("system_bar.open_folder"))
         self._btn_load_server.setText(tr("system_bar.load_from_server"))
         self._btn_send_server.setText(tr("system_bar.send_to_server"))
@@ -343,6 +364,7 @@ class SystemBar(QWidget):
 
     def update_maximize_button(self, is_maximized: bool) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         if is_maximized:
             self._btn_maximize.setIcon(_load_icon("restore"))
             self._btn_maximize.setToolTip(tr("system_bar.restore"))
@@ -358,10 +380,7 @@ class SystemBar(QWidget):
             self._drag_pos = event.globalPosition().toPoint() - window.pos()
 
     def mouseMoveEvent(self, event) -> None:
-        if (
-            hasattr(self, "_drag_pos")
-            and event.buttons() & Qt.MouseButton.LeftButton
-        ):
+        if hasattr(self, "_drag_pos") and event.buttons() & Qt.MouseButton.LeftButton:
             self.window().move(event.globalPosition().toPoint() - self._drag_pos)
 
     def mouseDoubleClickEvent(self, event) -> None:

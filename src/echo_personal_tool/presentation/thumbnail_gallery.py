@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import inspect
 import shutil
+from collections import OrderedDict
 from collections.abc import Callable
 
-from PySide6.QtCore import QPropertyAnimation, QSize, Qt, QTimer, Signal, QEasingCurve
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -27,6 +27,7 @@ from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, T
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
 _VISIBLE_PADDING = 8
 _SCROLL_DEBOUNCE_MS = 25
+_THUMBNAIL_PIXMAP_MAX = 200
 
 _THUMBNAIL_SCALES: dict[str, dict[str, tuple[int, int]]] = {
     "small": {"thumb": (72, 54), "cell": (84, 66)},
@@ -37,9 +38,7 @@ _COLUMN_COUNT = 2
 _CELL_SPACING = 2
 _SCROLLBAR_GUTTER = 24
 
-ThumbnailLoader = (
-    Callable[[InstanceMetadata], None] | Callable[[InstanceMetadata, ThumbnailPriority], None]
-)
+ThumbnailLoader = Callable[[InstanceMetadata], None] | Callable[[InstanceMetadata, ThumbnailPriority], None]
 
 
 class ThumbnailGalleryDelegate(QStyledItemDelegate):
@@ -176,7 +175,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self.customContextMenuRequested.connect(self._on_context_menu)
 
         self._thumbnail_cache: dict[str, QIcon] = {}
-        self._thumbnail_pixmaps: dict[str, QPixmap] = {}
+        self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._items_by_uid: dict[str, QListWidgetItem] = {}
         self._instances: list[InstanceMetadata] = []
         self._thumbnail_loader: ThumbnailLoader | None = None
@@ -226,9 +225,7 @@ class ThumbnailGalleryWidget(QListWidget):
     def wheelEvent(self, event) -> None:
         if self._horizontal_mode:
             delta = event.angleDelta().y()
-            self.horizontalScrollBar().setValue(
-                self.horizontalScrollBar().value() - delta
-            )
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta)
         else:
             super().wheelEvent(event)
 
@@ -250,6 +247,8 @@ class ThumbnailGalleryWidget(QListWidget):
         self.clear()
         self._items_by_uid.clear()
         self._instances.clear()
+        self._thumbnail_pixmaps.clear()
+        self._thumbnail_cache.clear()
         index = 1
         for study in studies:
             for series in study.series:
@@ -309,9 +308,7 @@ class ThumbnailGalleryWidget(QListWidget):
             if uid not in visible_uids and uid != selected_uid:
                 continue
             priority = (
-                ThumbnailPriority.P0_VISIBLE_SELECTED
-                if uid == selected_uid
-                else ThumbnailPriority.P1_NEAR_VISIBLE
+                ThumbnailPriority.P0_VISIBLE_SELECTED if uid == selected_uid else ThumbnailPriority.P1_NEAR_VISIBLE
             )
             if self._loader_accepts_priority:
                 self._thumbnail_loader(instance, priority)  # type: ignore[misc]
@@ -323,8 +320,14 @@ class ThumbnailGalleryWidget(QListWidget):
             return
         pixmap = QPixmap.fromImage(image)
         icon = QIcon(pixmap)
+        if instance_uid in self._thumbnail_pixmaps:
+            self._thumbnail_pixmaps.move_to_end(instance_uid)
+        else:
+            if len(self._thumbnail_pixmaps) >= _THUMBNAIL_PIXMAP_MAX:
+                evicted_uid, _ = self._thumbnail_pixmaps.popitem(last=False)
+                self._thumbnail_cache.pop(evicted_uid, None)
+            self._thumbnail_pixmaps[instance_uid] = pixmap
         self._thumbnail_cache[instance_uid] = icon
-        self._thumbnail_pixmaps[instance_uid] = pixmap
         item = self._items_by_uid.get(instance_uid)
         if item is not None:
             item.setIcon(icon)
@@ -373,9 +376,12 @@ class ThumbnailGalleryWidget(QListWidget):
         if instance.path is None:
             return
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
         default_name = instance.path.name
         dest, _ = styled_save_file(
-            self, tr("gallery.save_file"), default_name,
+            self,
+            tr("gallery.save_file"),
+            default_name,
         )
         if dest:
             shutil.copy2(str(instance.path), dest)
@@ -419,7 +425,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self._anim.setStartValue(self._saved_width)
         self._anim.setEndValue(0)
         self._anim.setEasingCurve(QEasingCurve.Type.OutQuint)
-        self._anim.finished.connect(lambda: (self.hide(), setattr(self, '_collapsed', True)))
+        self._anim.finished.connect(lambda: (self.hide(), setattr(self, "_collapsed", True)))
         self._anim.start()
 
     def _animate_expand(self) -> None:
@@ -431,11 +437,13 @@ class ThumbnailGalleryWidget(QListWidget):
         self._anim.setStartValue(0)
         self._anim.setEndValue(target)
         self._anim.setEasingCurve(QEasingCurve.Type.OutQuint)
-        self._anim.finished.connect(lambda: (
-            self.setMaximumWidth(16777215),
-            self.setFixedWidth(target),
-            setattr(self, '_collapsed', False),
-        ))
+        self._anim.finished.connect(
+            lambda: (
+                self.setMaximumWidth(16777215),
+                self.setFixedWidth(target),
+                setattr(self, "_collapsed", False),
+            )
+        )
         self._anim.start()
 
     @property

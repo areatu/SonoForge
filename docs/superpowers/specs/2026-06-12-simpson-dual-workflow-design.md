@@ -182,17 +182,18 @@ Add per-view optional fields populated as contours become available:
 ```python
 @dataclass(frozen=True)
 class LvViewMetrics:
-    length_ed_mm: float | None = None   # from ED contour
-    length_es_mm: float | None = None   # from ES contour
-    edv_ml: float | None = None         # КДО — ED contour volume
-    esv_ml: float | None = None         # КСО — ES contour volume
+    length_ed_mm: float | None = None  # from ED contour
+    length_es_mm: float | None = None  # from ES contour
+    edv_ml: float | None = None  # КДО — ED contour volume
+    esv_ml: float | None = None  # КСО — ES contour volume
+
 
 @dataclass(frozen=True)
 class LvefResult:
     a4c: LvViewMetrics | None = None
     a2c: LvViewMetrics | None = None
-    lvef_percent: float | None = None   # aggregate when computable
-    method: str | None = None           # simpson_monoplan / simpson_biplan
+    lvef_percent: float | None = None  # aggregate when computable
+    method: str | None = None  # simpson_monoplan / simpson_biplan
 ```
 
 `calculate()` returns `LvefResult` when **at least one** LV contour exists (partial OK). `lvef_percent` and `method` set only when both ED and ES exist for at least one view (existing mono/biplane averaging logic).

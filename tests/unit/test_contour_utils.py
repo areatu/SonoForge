@@ -1,4 +1,5 @@
 import numpy as np
+
 from echo_personal_tool.domain.services.contour_utils import resample_contour
 
 

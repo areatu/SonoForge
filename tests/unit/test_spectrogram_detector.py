@@ -1,4 +1,5 @@
 """Tests for spectrogram_detector."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -28,7 +29,7 @@ def _make_composite_frame(
 
     # Add some bright signal peaks in spectrogram
     for y in range(spec_start + 20, height - 20, 40):
-        frame[y:y+3, width//4:3*width//4] = 120
+        frame[y : y + 3, width // 4 : 3 * width // 4] = 120
 
     return frame
 

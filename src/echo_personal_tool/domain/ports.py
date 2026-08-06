@@ -62,6 +62,7 @@ class QuerySource(Enum):
 
 class RetrievalSource(Enum):
     """Source for downloading DICOM instances."""
+
     WADO = "wado"
     DIMSE = "dimse"
     CMOVE = "cmove"
@@ -83,15 +84,14 @@ class DicomWebClient(Protocol):
 
     def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]: ...
 
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes: ...
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes: ...
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult: ...
 
 
 class CMoveResult:
     """Result of a C-MOVE operation."""
+
     def __init__(self, completed: int, failed: int, warning: int):
         self.completed = completed
         self.failed = failed

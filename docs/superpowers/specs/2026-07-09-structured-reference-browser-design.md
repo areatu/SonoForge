@@ -32,6 +32,7 @@ class NormRange:
     low: float | None
     high: float | None
 
+
 @dataclass
 class ParameterRef:
     id: str
@@ -42,10 +43,12 @@ class ParameterRef:
     pathology_desc: str | None
     source: str | None
 
+
 @dataclass
 class GradationRef:
     name: str
     parameters: list[ParameterRef]
+
 
 @dataclass
 class PathologyRef:
@@ -55,6 +58,7 @@ class PathologyRef:
     image_path: str | None
     gradations: list[GradationRef] | None
     parameters: list[ParameterRef] | None
+
 
 @dataclass
 class TopicRef:

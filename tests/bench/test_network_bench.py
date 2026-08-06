@@ -15,8 +15,8 @@ import os
 
 import pytest
 
-from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.orthanc_client import _build_stow_multipart_body
 
 _BENCH = pytest.mark.skipif(
@@ -26,6 +26,7 @@ _BENCH = pytest.mark.skipif(
 
 
 # ── FakeDimseClient benchmarks ──────────────────────────────────────
+
 
 @_BENCH
 def test_bench_dimse_c_echo_fake(benchmark) -> None:
@@ -75,6 +76,7 @@ def test_bench_dimse_c_store_fake(benchmark) -> None:
 
 # ── FakeDicomWebClient benchmarks ──────────────────────────────────
 
+
 @_BENCH
 def test_bench_web_query_studies(benchmark) -> None:
     """QIDO-RS query_studies on FakeDicomWebClient."""
@@ -106,6 +108,7 @@ def test_bench_web_stow_instances(benchmark) -> None:
 
 # ── STOW multipart body build ──────────────────────────────────────
 
+
 @_BENCH
 def test_bench_stow_multipart_1_file(benchmark) -> None:
     """Multipart body construction for 1 DICOM file."""
@@ -129,11 +132,13 @@ def test_bench_stow_multipart_50_files(benchmark) -> None:
 
 # ── DicomQueryService ──────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_query_service_auto(benchmark) -> None:
     """DicomQueryService AUTO mode — web first, dimse fallback."""
     from echo_personal_tool.application.dicom_query_service import DicomQueryService
     from echo_personal_tool.domain.ports import QuerySource
+
     svc = DicomQueryService(
         web=FakeDicomWebClient(),
         dimse=FakeDimseClient(),
@@ -147,6 +152,7 @@ def test_bench_query_service_dimse_only(benchmark) -> None:
     """DicomQueryService DIMSE-only mode."""
     from echo_personal_tool.application.dicom_query_service import DicomQueryService
     from echo_personal_tool.domain.ports import QuerySource
+
     svc = DicomQueryService(
         web=FakeDicomWebClient(),
         dimse=FakeDimseClient(),
@@ -160,6 +166,7 @@ def test_bench_query_service_series(benchmark) -> None:
     """DicomQueryService query_series delegation."""
     from echo_personal_tool.application.dicom_query_service import DicomQueryService
     from echo_personal_tool.domain.ports import QuerySource
+
     svc = DicomQueryService(
         web=FakeDicomWebClient(),
         dimse=FakeDimseClient(),

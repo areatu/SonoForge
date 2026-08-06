@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from echo_personal_tool.infrastructure.pixel_utils import (
     apply_wl_lut,

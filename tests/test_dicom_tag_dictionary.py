@@ -69,8 +69,11 @@ class TestTagInfo:
 
     def test_optional_vm(self) -> None:
         info = TagInfo(
-            tag=0x00280030, keyword="PixelSpacing",
-            vr="DS", description="Pixel Spacing", vm="2",
+            tag=0x00280030,
+            keyword="PixelSpacing",
+            vr="DS",
+            description="Pixel Spacing",
+            vm="2",
         )
         assert info.vm == "2"
 

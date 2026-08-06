@@ -39,6 +39,7 @@ topics:
     slug: lv_dimensions
     image_paths:
     - LV_measures.jpg
+    - 01-LV.png
     parameters:
     - id: lvedd
       name: Конечно-диастолический диаметр (LVEDD)
@@ -273,7 +274,6 @@ topics:
   - name: Сегменты и кровоснабжение левого желудочка
     slug: lv_segments
     image_paths:
-    - coronary.jpeg
     - LV_segments2.jpg
     - LV_segments.jpg
     parameters:
@@ -332,6 +332,7 @@ topics:
     slug: la_dimensions
     image_paths:
     - LA_volume.jpg
+    - 01-LA.png
     parameters:
     - id: lav
       name: Объём левого предсердия (LAV)
@@ -389,6 +390,8 @@ topics:
   pathologies:
   - name: Размеры, объёмы и площадь правого желудочка
     slug: rv_dimensions
+    image_paths:
+    - 01-RV.png
     parameters:
     - id: rvd1
       name: Базальный диаметр ПЖ (RVD1)
@@ -620,6 +623,8 @@ topics:
   pathologies:
   - name: Размеры правого предсердия
     slug: ra_dimensions
+    image_paths:
+    - 01-RA.png
     parameters:
     - id: ra_area
       name: Площадь правого предсердия
@@ -669,6 +674,7 @@ topics:
     slug: ra_pressure
     image_paths:
     - IVC_collapse.jpg
+    - 01-PH.png
     parameters:
     - id: rap
       name: Давление в правом предсердии (RAP)
@@ -708,6 +714,7 @@ topics:
     image_paths:
     - MR111.png
     - MR112.png
+    - 01-MR.png
     gradations:
     - name: Лёгкая
       parameters:
@@ -793,6 +800,7 @@ topics:
     image_paths:
     - MR_secondary.png
     - MR_visual.png
+    - 01-MR.png
     gradations:
     - name: Лёгкая
       parameters:
@@ -855,6 +863,7 @@ topics:
     - Mitral_stenosis_1.png
     - Mitral_stenosis_2.png
     - MV_stenosis.png
+    - 01-MS.png
     parameters:
     - id: ms_area
       name: Площадь МК
@@ -928,6 +937,7 @@ topics:
     image_paths:
     - Aortic_stenosis.png
     - AV_pathology.png
+    - 01-AS.png
     gradations:
     - name: Лёгкий
       parameters:
@@ -1103,6 +1113,7 @@ topics:
     image_paths:
     - Aortic_regurgitation_1.png
     - Aortic_regurgitation_2.png
+    - 01-AR.png
     gradations:
     - name: Лёгкая
       parameters:
@@ -1198,6 +1209,7 @@ topics:
     slug: tricuspid_regurgitation
     image_paths:
     - Tricuspid_regurgitation.png
+    - 01-TR.png
     gradations:
     - name: Лёгкая
       parameters:
@@ -1282,6 +1294,7 @@ topics:
     slug: tricuspid_stenosis
     image_paths:
     - Tricuspid_stenosis.png
+    - 01-TS.png
     parameters:
     - id: ts_area
       name: Площадь ТК
@@ -1312,6 +1325,8 @@ topics:
   pathologies:
   - name: Легочная регургитация
     slug: pulmonary_regurgitation
+    image_paths:
+    - 01-PR.png
     gradations:
     - name: Лёгкая
       parameters:
@@ -1410,6 +1425,8 @@ topics:
   pathologies:
   - name: Размеры
     slug: aortic_dimensions
+    image_paths:
+    - 01-AO.png
     parameters:
     - id: asc_aorta
       name: Восходящая аорта (анулярный уровень)

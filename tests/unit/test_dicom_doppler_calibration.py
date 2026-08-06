@@ -113,6 +113,108 @@ def test_parse_velocity_only_vendor_mis_tag() -> None:
     assert state.has_velocity_scale_from_dicom()
 
 
+def _samsung_like_region(
+    *,
+    dtype: int = 3,
+    units_x: int = 3,
+    units_y: int = 6,
+    width: int = 1000,
+    height: int = 400,
+    ref_pixel_y0: float | None = None,
+) -> Dataset:
+    """Build a Samsung-like region: has bounds + units + optional ReferencePixelY0, but NO deltas."""
+    region = Dataset()
+    region.RegionSpatialFormat = 3
+    region.RegionDataType = dtype
+    region.RegionLocationMinX0 = 0
+    region.RegionLocationMinY0 = 50
+    region.RegionLocationMaxX1 = width
+    region.RegionLocationMaxY1 = 50 + height
+    region.PhysicalUnitsXDirection = units_x
+    region.PhysicalUnitsYDirection = units_y
+    if ref_pixel_y0 is not None:
+        region.ReferencePixelY0 = ref_pixel_y0
+    return region
+
+
+def test_samsung_partial_region_returns_candidate() -> None:
+    """Samsung RS85-like: has bounds + units but NO PhysicalDeltaX/Y → partial ROI+baseline."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None, "Partial region (bounds only) should produce a candidate"
+    assert state.from_dicom_tags is True
+    assert state.roi.width > 0
+    assert state.roi.height > 0
+    assert not state.velocity_from_dicom_tags
+
+
+def test_samsung_baseline_from_reference_pixel_y0() -> None:
+    """Samsung ReferencePixelY0 is region-relative → baseline = MinY0 + RefY0."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=180.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.baseline_y_px == 50.0 + 180.0
+
+
+def test_tag_baseline_at_roi_top_edge_is_rejected() -> None:
+    """ReferencePixelY0=0 puts baseline at ROI top edge → unreliable, ignored."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=0.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    # Without a frame, fallback is ROI center (50 + 400/2).
+    assert state.baseline_y_px == 50.0 + 200.0
+
+
+def test_tag_baseline_at_roi_bottom_edge_is_rejected() -> None:
+    """ReferencePixelY0 landing at ROI bottom edge → unreliable, ignored."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, ref_pixel_y0=400.0),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.baseline_y_px == 50.0 + 200.0
+
+
+def test_samsung_partial_with_units_but_no_deltas_no_time_velocity() -> None:
+    """No deltas → time_span_ms=0 (not 1000), velocity uses default."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _samsung_like_region(dtype=3, units_x=3, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.from_dicom_tags is True
+    assert state.time_from_dicom_tags is False
+    assert state.time_span_ms == 0.0
+    assert state.has_time_scale_from_dicom() is False
+    assert state.roi.width > 0
+    assert state.roi.height > 0
+
+
+def test_full_dicom_has_time_from_dicom_tags() -> None:
+    """When deltas are present, time_from_dicom_tags should be True."""
+    ds = Dataset()
+    ds.SequenceOfUltrasoundRegions = [
+        _doppler_region(dtype=3, delta_x=0.024, units_x=3, delta_y=0.5, units_y=6),
+    ]
+    state = try_parse_from_dataset(ds)
+    assert state is not None
+    assert state.time_from_dicom_tags is True
+    assert state.velocity_from_dicom_tags is True
+    assert state.has_time_scale_from_dicom() is True
+    assert state.has_velocity_scale_from_dicom() is True
+
+
 def test_parse_user_download_dicom_when_available() -> None:
     root = Path(os.environ.get("ECHO_TEST_DICOM_DIR", ""))
     if not root.exists():

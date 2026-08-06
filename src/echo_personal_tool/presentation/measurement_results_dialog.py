@@ -9,7 +9,6 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -66,6 +65,7 @@ class MeasurementResultsDialog(QDialog):
 
     def _export_pdf(self) -> None:
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
         path, _ = styled_save_file(
             self,
             tr("measurement_results.save_pdf"),

@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
@@ -167,30 +169,24 @@ def test_load_instance_not_blocked_by_thumbnail_backlog(
 
     thread_pool = _SlotLimitedThreadPool(max_running=3)
     controller = AppController(thread_pool=thread_pool, thumbnail_max_in_flight=2)
-    backlog_instances = [
-        _thumbnail_instance(f"thumb-{index}", tmp_path) for index in range(8)
-    ]
+    backlog_instances = [_thumbnail_instance(f"thumb-{index}", tmp_path) for index in range(8)]
 
     controller.request_thumbnail_previews(
         backlog_instances,
         ThumbnailPriority.P2_BACKGROUND,
     )
 
-    running_thumbnail_workers = [
-        worker for worker in thread_pool.running if isinstance(worker, _FakeThumbnailWorker)
-    ]
+    running_thumbnail_workers = [worker for worker in thread_pool.running if isinstance(worker, _FakeThumbnailWorker)]
     assert len(running_thumbnail_workers) == 2
 
     main_instance = _thumbnail_instance("main-uid", tmp_path)
     controller.load_instance(main_instance)
 
     running_decode_workers = [
-        worker for worker in thread_pool.running
-        if isinstance(worker, (_FakeFrameLoaderWorker, _FakeVideoDecodeWorker))
+        worker for worker in thread_pool.running if isinstance(worker, (_FakeFrameLoaderWorker, _FakeVideoDecodeWorker))
     ]
     queued_decode_workers = [
-        worker for worker in thread_pool.queued
-        if isinstance(worker, (_FakeFrameLoaderWorker, _FakeVideoDecodeWorker))
+        worker for worker in thread_pool.queued if isinstance(worker, (_FakeFrameLoaderWorker, _FakeVideoDecodeWorker))
     ]
     assert len(running_decode_workers) == 1
     assert queued_decode_workers == []
@@ -226,9 +222,7 @@ def test_p0_thumbnail_request_preempts_background(
     )
 
     started_uids = [
-        worker.sop_instance_uid
-        for worker in thread_pool.started
-        if isinstance(worker, _FakeThumbnailWorker)
+        worker.sop_instance_uid for worker in thread_pool.started if isinstance(worker, _FakeThumbnailWorker)
     ]
     assert started_uids[:2] == ["bg-1", "p0"]
 
@@ -278,9 +272,7 @@ def test_pending_thumbnail_set_replaced_by_scheduler_state(
     controller.request_thumbnail_preview(dup, ThumbnailPriority.P0_VISIBLE_SELECTED)
     controller.request_thumbnail_previews([dup, dup], ThumbnailPriority.P0_VISIBLE_SELECTED)
 
-    assert controller._thumbnail_in_flight == {
-        "dup-state": ThumbnailPriority.P1_NEAR_VISIBLE
-    }
+    assert controller._thumbnail_in_flight == {"dup-state": ThumbnailPriority.P1_NEAR_VISIBLE}
     started_dup_workers = [
         worker
         for worker in thread_pool.started
@@ -319,8 +311,6 @@ def test_thumbnail_failure_releases_slot_and_dispatches_next(
     thread_pool.started[0].signals.failed.emit("fail-1", "decode error")
 
     started_uids = [
-        worker.sop_instance_uid
-        for worker in thread_pool.started
-        if isinstance(worker, _FakeThumbnailWorker)
+        worker.sop_instance_uid for worker in thread_pool.started if isinstance(worker, _FakeThumbnailWorker)
     ]
     assert started_uids[:2] == ["fail-1", "next-2"]

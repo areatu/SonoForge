@@ -82,10 +82,7 @@ def _append_abnormal_indexed(
             lvef.a4c
             and lvef.a4c.edv_ml is not None
             and indexed.simpson_a4c_edvi_ml_m2 is not None
-            and (
-                is_outside_norm(indexed.simpson_a4c_edvi_ml_m2, LVEDVI_MLM2)
-                or _lvedd_abnormal(snapshot)
-            )
+            and (is_outside_norm(indexed.simpson_a4c_edvi_ml_m2, LVEDVI_MLM2) or _lvedd_abnormal(snapshot))
         ):
             _append_line(lines, tr("indexed.edv_4c"), indexed.simpson_a4c_edvi_ml_m2, "mL/m²")
         if (
@@ -99,10 +96,7 @@ def _append_abnormal_indexed(
             lvef.a2c
             and lvef.a2c.edv_ml is not None
             and indexed.simpson_a2c_edvi_ml_m2 is not None
-            and (
-                is_outside_norm(indexed.simpson_a2c_edvi_ml_m2, LVEDVI_MLM2)
-                or _lvedd_abnormal(snapshot)
-            )
+            and (is_outside_norm(indexed.simpson_a2c_edvi_ml_m2, LVEDVI_MLM2) or _lvedd_abnormal(snapshot))
         ):
             _append_line(lines, tr("indexed.edv_2c"), indexed.simpson_a2c_edvi_ml_m2, "mL/m²")
         if (
@@ -116,14 +110,10 @@ def _append_abnormal_indexed(
     teich = snapshot.teichholz
     if teich is not None:
         if indexed.teichholz_edvi_ml_m2 is not None and (
-            is_outside_norm(indexed.teichholz_edvi_ml_m2, LVEDVI_MLM2)
-            or _lvedd_abnormal(snapshot)
+            is_outside_norm(indexed.teichholz_edvi_ml_m2, LVEDVI_MLM2) or _lvedd_abnormal(snapshot)
         ):
             _append_line(lines, tr("indexed.teichholz_ed"), indexed.teichholz_edvi_ml_m2, "mL/m²")
-        if (
-            indexed.teichholz_esvi_ml_m2 is not None
-            and is_outside_norm(indexed.teichholz_esvi_ml_m2, LVESVI_MLM2)
-        ):
+        if indexed.teichholz_esvi_ml_m2 is not None and is_outside_norm(indexed.teichholz_esvi_ml_m2, LVESVI_MLM2):
             _append_line(lines, tr("indexed.teichholz_es"), indexed.teichholz_esvi_ml_m2, "mL/m²")
 
     if not skip_lav_rav:
@@ -132,9 +122,7 @@ def _append_abnormal_indexed(
             _append_line(lines, tr("indexed.lav_line"), lav_index, "mL/m²")
 
         rav_ml = _rav_absolute_ml(snapshot)
-        if rav_ml is not None and indexed.rav_index_ml_m2 is not None and is_outside_norm(
-            rav_ml, RAV_ML
-        ):
+        if rav_ml is not None and indexed.rav_index_ml_m2 is not None and is_outside_norm(rav_ml, RAV_ML):
             _append_line(lines, tr("indexed.rav_line"), indexed.rav_index_ml_m2, "mL/m²")
 
     indexed_linear = {label.casefold(): value for label, value in indexed.linear_index_mm_m2}

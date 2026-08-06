@@ -12,9 +12,7 @@ def _open_arc(*, chamber: str, phase: str, view: str, width: float, height: floa
     annulus = ((0.0, 0.0), (width, 0.0))
     n = 9
     angles = [math.pi - i * math.pi / (n - 1) for i in range(n)]
-    points = [
-        (width / 2.0 + (width / 2.0) * math.cos(a), height * math.sin(a)) for a in angles
-    ]
+    points = [(width / 2.0 + (width / 2.0) * math.cos(a), height * math.sin(a)) for a in angles]
     return Contour(
         phase=phase,
         view=view,

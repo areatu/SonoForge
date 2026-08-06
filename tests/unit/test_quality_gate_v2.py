@@ -2,13 +2,7 @@
 
 from __future__ import annotations
 
-import math
-
-import pytest
-
 from echo_personal_tool.domain.calculations.lvef_simpson import (
-    _MIN_ARC_DEPTH_RATIO,
-    _MIN_LV_AUTO_ANNULUS_MM,
     _contour_arc_depth_px,
     _contour_centroid,
     explain_lv_auto_reject_reason,
@@ -37,15 +31,16 @@ def _make_contour(
 class TestExplainRejectV2:
     def test_valid_contour_passes(self) -> None:
         contour = _make_contour()
-        assert explain_lv_auto_reject_reason(contour, (0.15, 0.15)) is None
+        # MA=20px * 0.3mm/px = 6mm >= 5mm
+        assert explain_lv_auto_reject_reason(contour, (0.3, 0.3)) is None
 
     def test_no_annulus_rejects(self) -> None:
         contour = _make_contour(mitral_annulus=None)
         assert "не построен" in explain_lv_auto_reject_reason(contour, None)
 
     def test_small_annulus_mm_rejects(self) -> None:
-        """MA length < 3mm with spacing-aware check."""
-        # MA length = 25px, spacing = 0.1 mm/px → 2.5mm < 3mm
+        """MA length < 5mm with spacing-aware check."""
+        # MA length = 25px, spacing = 0.1 mm/px → 2.5mm < 5mm
         # 25px >= 20px px threshold, so passes px check
         contour = _make_contour(mitral_annulus=((0, 0), (25, 0)))
         reason = explain_lv_auto_reject_reason(contour, (0.1, 0.1))
@@ -53,10 +48,10 @@ class TestExplainRejectV2:
         assert "мм" in reason
 
     def test_large_annulus_mm_passes(self) -> None:
-        """MA length >= 3mm passes."""
-        # MA length = 20px, spacing = 0.2 mm/px → 4mm >= 3mm
-        contour = _make_contour(mitral_annulus=((0, 0), (20, 0)))
-        reason = explain_lv_auto_reject_reason(contour, (0.2, 0.2))
+        """MA length >= 5mm passes."""
+        # MA length = 40px, spacing = 0.15 mm/px → 6mm >= 5mm
+        contour = _make_contour(mitral_annulus=((0, 0), (40, 0)))
+        reason = explain_lv_auto_reject_reason(contour, (0.15, 0.15))
         # Should pass the MA check (may fail other checks)
         assert "мм" not in (reason or "")
 
@@ -90,7 +85,9 @@ class TestExplainRejectV2:
             mitral_annulus=((40, 40), (60, 40)),
         )
         reason = explain_lv_auto_reject_reason(
-            contour, None, roi_xyxy=(0, 0, 30, 30),
+            contour,
+            None,
+            roi_xyxy=(0, 0, 30, 30),
         )
         assert reason is not None
         assert "ROI" in reason
@@ -102,7 +99,9 @@ class TestExplainRejectV2:
             mitral_annulus=((10, 10), (30, 10)),
         )
         reason = explain_lv_auto_reject_reason(
-            contour, None, roi_xyxy=(0, 0, 50, 50),
+            contour,
+            None,
+            roi_xyxy=(0, 0, 50, 50),
         )
         assert reason is None
 
@@ -142,3 +141,29 @@ class TestCentroid:
     def test_too_few_points(self) -> None:
         contour = _make_contour(points=[(0, 0), (10, 0)])
         assert _contour_centroid(contour) is None
+
+
+class TestSelfIntersection:
+    def test_no_intersection(self) -> None:
+        from echo_personal_tool.domain.calculations.lvef_simpson import _contour_self_intersects
+
+        points = [(0, 0), (10, 30), (20, 0)]
+        assert not _contour_self_intersects(points)
+
+    def test_self_intersection(self) -> None:
+        from echo_personal_tool.domain.calculations.lvef_simpson import _contour_self_intersects
+
+        # Bow-tie shape: segments cross
+        points = [(0, 0), (20, 20), (20, 0), (0, 20)]
+        assert _contour_self_intersects(points)
+
+    def test_rejects_self_intersecting_contour(self) -> None:
+        # Bow-tie shape
+        points = [(0, 0), (20, 20), (20, 0), (0, 20)]
+        contour = _make_contour(
+            points=points,
+            mitral_annulus=((0, 0), (20, 0)),
+        )
+        reason = explain_lv_auto_reject_reason(contour, None)
+        assert reason is not None
+        assert "самопересекается" in reason

@@ -20,11 +20,7 @@ def allowed_exporter_classes(gitem: object) -> frozenset[type]:
     """Return exporter classes valid for the selected graphics item."""
     if isinstance(gitem, PlotItem):
         return frozenset(pg_exporters.listExporters())
-    return frozenset(
-        exporter
-        for exporter in pg_exporters.listExporters()
-        if exporter not in _PLOT_ONLY_EXPORTERS
-    )
+    return frozenset(exporter for exporter in pg_exporters.listExporters() if exporter not in _PLOT_ONLY_EXPORTERS)
 
 
 def patch_pyqtgraph_export_dialog() -> None:

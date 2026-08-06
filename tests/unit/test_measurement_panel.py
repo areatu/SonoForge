@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.domain.models import (
     ChamberSimpsonResult,
     DopplerResults,
@@ -14,6 +16,8 @@ from echo_personal_tool.domain.models import (
     ViewerState,
 )
 from echo_personal_tool.presentation.measurement_panel import MeasurementPanel
+
+pytestmark = pytest.mark.gui
 
 
 def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:

@@ -61,10 +61,7 @@ def detect_doppler_grid_lines(
     # Filter out top/bottom margins
     margin_top = int(strip.shape[0] * 0.05)
     margin_bottom = int(strip.shape[0] * 0.05)
-    candidates = [
-        ry0 + c for c in candidates
-        if margin_top <= c < strip.shape[0] - margin_bottom
-    ]
+    candidates = [ry0 + c for c in candidates if margin_top <= c < strip.shape[0] - margin_bottom]
 
     return sorted(candidates)
 

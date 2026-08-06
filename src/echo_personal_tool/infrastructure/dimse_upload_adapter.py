@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from echo_personal_tool.domain.ports import DicomUploadClient, DimseClient
+from echo_personal_tool.domain.ports import DimseClient
 
 
 class DimseUploadAdapter:

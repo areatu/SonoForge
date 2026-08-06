@@ -15,14 +15,26 @@ from echo_personal_tool.domain.services.contour_edge_snap import (
 
 MAX_REFINE_STEP = 30
 REFINE_STEP_STRIDE = 3
+REFINE_STEP_STRIDE_AI = 5
 LOCK_SCORE_MIN = 12.0
 REFINE_SMOOTH_BLEND = 0.70
 REFINE_SMOOTH_ITERATIONS = 6
 
 
-def next_refine_step(current_step: int, *, stride: int | None = None) -> int:
-    """Next ±N px search radius for one R press."""
-    step_stride = max(1, int(stride if stride is not None else REFINE_STEP_STRIDE))
+def next_refine_step(
+    current_step: int,
+    *,
+    stride: int | None = None,
+    source: str = "manual",
+) -> int:
+    """Next ±N px search radius for one R press.
+
+    AI contours start with a larger stride (5 px) because they are
+    typically farther from the true wall than user-drawn contours.
+    """
+    if stride is None:
+        stride = REFINE_STEP_STRIDE_AI if source == "ai" else REFINE_STEP_STRIDE
+    step_stride = max(1, int(stride))
     if current_step <= 0:
         return min(step_stride, MAX_REFINE_STEP)
     return min(current_step + step_stride, MAX_REFINE_STEP)
@@ -44,7 +56,7 @@ def smooth_refined_open_arc(
     blend: float | None = None,
     iterations: int | None = None,
 ) -> list[tuple[float, float]]:
-    """Laplacian smooth after edge snap; locked nodes and MV ends stay fixed."""
+    """Taubin smooth after edge snap; locked nodes and MV ends stay fixed."""
     from echo_personal_tool.domain.services.contour_geometry import smooth_open_arc
 
     if len(points) < 3:
@@ -59,6 +71,7 @@ def smooth_refined_open_arc(
         iterations=smooth_iters,
         blend=min(max(smooth_blend, 0.0), 0.95),
         pinned_indices=locked_indices,
+        taubin=True,
     )
 
 

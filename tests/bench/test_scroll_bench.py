@@ -30,6 +30,7 @@ def _make_frames(n: int, dtype: type = np.uint8) -> np.ndarray:
 
 # ── Single frame latency ────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_scroll_single_frame_hit(benchmark, tmp_path: Path) -> None:
     """Scroll forward by 1 frame — all frames in cache (best case)."""
@@ -65,6 +66,7 @@ def test_bench_scroll_single_frame_miss(benchmark, tmp_path: Path) -> None:
 
 # ── Rapid scroll burst ──────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_scroll_rapid_forward_20(benchmark, tmp_path: Path) -> None:
     """20 consecutive forward scrolls — simulates wheel spinning."""
@@ -96,6 +98,7 @@ def test_bench_scroll_rapid_backward_20(benchmark, tmp_path: Path) -> None:
 
 
 # ── Directional prefetch hit rate ───────────────────────────────────
+
 
 @_BENCH
 def test_bench_directional_prefetch_forward(benchmark, tmp_path: Path) -> None:

@@ -32,9 +32,7 @@ def test_from_measurements_computes_lav_from_contour_and_caliper() -> None:
         chamber="LA",
         points=[(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)],
     )
-    measurements = (
-        LinearMeasurement(label="LAL", pixel_length=50.0, millimeter_length=50.0),
-    )
+    measurements = (LinearMeasurement(label="LAL", pixel_length=50.0, millimeter_length=50.0),)
     result = from_measurements((la_contour,), measurements, (1.0, 1.0))
     assert result is not None
     assert result.area_cm2 == pytest.approx(50.0)

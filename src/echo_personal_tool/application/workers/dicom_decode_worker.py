@@ -45,15 +45,11 @@ class DicomDecodeWorker(QRunnable):
             session.open(self._path)
 
             t_meta = time.perf_counter()
-            logger.debug(
-                "DICOM metadata parsed in %.1f ms", (t_meta - t0) * 1000
-            )
+            logger.debug("DICOM metadata parsed in %.1f ms", (t_meta - t0) * 1000)
 
             first_frame = session.decode_first_frame()
             t_first = time.perf_counter()
-            logger.debug(
-                "First frame decoded in %.1f ms", (t_first - t_meta) * 1000
-            )
+            logger.debug("First frame decoded in %.1f ms", (t_first - t_meta) * 1000)
 
             self.signals.first_frame_ready.emit(
                 self._request_id,
@@ -67,6 +63,7 @@ class DicomDecodeWorker(QRunnable):
                 return
 
             frames = session.decode_all_frames()
+            session.release_heavy()
             t_all = time.perf_counter()
             logger.debug(
                 "All %d frames decoded in %.1f ms",

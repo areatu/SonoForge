@@ -27,35 +27,21 @@ class _SignalCapture:
 
     def connect(self, worker: OrthancDownloadWorker) -> None:
         worker.signals.progress.connect(
-            lambda current, total, series_uid: self.progress.append(
-                (current, total, series_uid)
-            )
+            lambda current, total, series_uid: self.progress.append((current, total, series_uid))
         )
-        worker.signals.series_done.connect(
-            lambda series_uid, status: self.series_done.append((series_uid, status))
-        )
-        worker.signals.done.connect(
-            lambda session_id, study_uid: self.done.append((session_id, study_uid))
-        )
-        worker.signals.failed.connect(
-            lambda uid, message: self.failed.append((uid, message))
-        )
-        worker.signals.cancelled.connect(
-            lambda session_id: self.cancelled.append(session_id)
-        )
+        worker.signals.series_done.connect(lambda series_uid, status: self.series_done.append((series_uid, status)))
+        worker.signals.done.connect(lambda session_id, study_uid: self.done.append((session_id, study_uid)))
+        worker.signals.failed.connect(lambda uid, message: self.failed.append((uid, message)))
+        worker.signals.cancelled.connect(lambda session_id: self.cancelled.append(session_id))
 
 
 class _FailingDownloadClient(FakeDicomWebClient):
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         raise TimeoutError("WADO timeout")
 
 
 class _QueryErrorClient(FakeDicomWebClient):
-    def query_instances(
-        self, study_uid: str, series_uid: str
-    ) -> list[InstanceInfo]:
+    def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
         raise RuntimeError("QIDO failed")
 
 
@@ -65,9 +51,7 @@ class _SlowDownloadClient(FakeDicomWebClient):
         self._worker = worker
         self._calls = 0
 
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         self._calls += 1
         if self._calls == 1:
             self._worker.cancel()
@@ -80,15 +64,11 @@ def test_download_saves_instances_and_emits_done(tmp_path: Path) -> None:
     session_id = cache.create_session()
     capture = _SignalCapture()
 
-    worker = OrthancDownloadWorker(
-        client, cache, session_id, STUDY_UID, [SERIES_UID]
-    )
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
     capture.connect(worker)
     worker.run()
 
-    expected_path = (
-        tmp_path / f"session-{session_id}" / STUDY_UID / SERIES_UID / f"{INSTANCE_UID}.dcm"
-    )
+    expected_path = tmp_path / f"session-{session_id}" / STUDY_UID / SERIES_UID / f"{INSTANCE_UID}.dcm"
     assert expected_path.exists()
     assert expected_path.read_bytes()[128:132] == b"DICM"
     assert capture.progress
@@ -105,9 +85,7 @@ def test_series_failed_when_download_fails(tmp_path: Path) -> None:
     session_id = cache.create_session()
     capture = _SignalCapture()
 
-    worker = OrthancDownloadWorker(
-        client, cache, session_id, STUDY_UID, [SERIES_UID]
-    )
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
     capture.connect(worker)
     worker.run()
 
@@ -124,9 +102,7 @@ def test_catastrophic_error_emits_failed(tmp_path: Path) -> None:
     session_id = cache.create_session()
     capture = _SignalCapture()
 
-    worker = OrthancDownloadWorker(
-        client, cache, session_id, STUDY_UID, [SERIES_UID]
-    )
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
     capture.connect(worker)
     worker.run()
 

@@ -3,15 +3,17 @@
 
 import io
 import sys
-sys.path.insert(0, 'src')
+
+sys.path.insert(0, "src")
 
 import pydicom
+
+from echo_personal_tool.domain.models.contour import Contour
+from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import (
     annotate_dicom,
     read_annotations_from_dicom,
 )
-from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 
 
 def test_annotation_roundtrip():
@@ -32,15 +34,22 @@ def test_annotation_roundtrip():
     ds.file_meta.TransferSyntaxUID = "1.2.840.10008.1.2.1"
 
     calipers = [
-        LinearMeasurement(label="LVEDD", pixel_length=200.0, millimeter_length=52.3,
-                          start=(100.0, 200.0), end=(300.0, 200.0)),
-        LinearMeasurement(label="IVSd", pixel_length=100.0, millimeter_length=8.5,
-                          start=(150.0, 150.0), end=(250.0, 150.0)),
+        LinearMeasurement(
+            label="LVEDD", pixel_length=200.0, millimeter_length=52.3, start=(100.0, 200.0), end=(300.0, 200.0)
+        ),
+        LinearMeasurement(
+            label="IVSd", pixel_length=100.0, millimeter_length=8.5, start=(150.0, 150.0), end=(250.0, 150.0)
+        ),
     ]
     contours = [
-        Contour(phase="ED", view="A4C", chamber="LV",
-                points=[(100, 100), (200, 150), (300, 200), (250, 300), (150, 250)],
-                source="manual", measurement_label="LV Contour"),
+        Contour(
+            phase="ED",
+            view="A4C",
+            chamber="LV",
+            points=[(100, 100), (200, 150), (300, 200), (250, 300), (150, 250)],
+            source="manual",
+            measurement_label="LV Contour",
+        ),
     ]
 
     ds = annotate_dicom(ds, calipers=calipers, contours=contours)
@@ -75,5 +84,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n=== FAILED: {e} ===")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

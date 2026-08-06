@@ -100,9 +100,7 @@ def test_mmode_caliper_distance() -> None:
 
 
 def test_mmode_caliper_with_values() -> None:
-    cal = MModeCaliperMeasurement(
-        kind="time", start=(10.0, 0.0), end=(100.0, 0.0), value_ms=320.0
-    )
+    cal = MModeCaliperMeasurement(kind="time", start=(10.0, 0.0), end=(100.0, 0.0), value_ms=320.0)
     assert cal.value_ms == 320.0
 ```
 
@@ -406,9 +404,7 @@ class MModeWidget(QWidget):
         self._time_ms_per_pixel: float | None = None
         self._depth_mm_per_pixel: float | None = None
 
-        self._image_buffer = np.zeros(
-            (self._num_samples, self._buffer_width), dtype=np.uint8
-        )
+        self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
 
         self._plot = pg.PlotWidget()
         self._plot.setLabel("bottom", "Time", units="px")
@@ -421,9 +417,7 @@ class MModeWidget(QWidget):
         self._view_box.addItem(self._image_item)
         self._image_item.setImage(self._image_buffer, autoLevels=True)
 
-        self._sweep_line = pg.InfiniteLine(
-            angle=90, pen=pg.mkPen("red", width=1, style=Qt.DashLine), movable=False
-        )
+        self._sweep_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("red", width=1, style=Qt.DashLine), movable=False)
         self._view_box.addItem(self._sweep_line)
         self._sweep_line.setValue(0)
 
@@ -441,9 +435,7 @@ class MModeWidget(QWidget):
         self._scan_end = end
         if num_samples != self._num_samples:
             self._num_samples = num_samples
-            self._image_buffer = np.zeros(
-                (self._num_samples, self._buffer_width), dtype=np.uint8
-            )
+            self._image_buffer = np.zeros((self._num_samples, self._buffer_width), dtype=np.uint8)
             self._sweep_x = 0
             self._image_item.setImage(self._image_buffer, autoLevels=True)
             self._sweep_line.setValue(0)
@@ -600,6 +592,7 @@ def test_scan_line_graphics_created_on_set_end(qtbot) -> None:
 def test_mmode_node_item_is_scatter(qtbot) -> None:
     node = _MModeNodeItem(viewer_widget=None, endpoint_index=0, position=(10.0, 20.0))
     import pyqtgraph as pg
+
     assert isinstance(node, pg.ScatterPlotItem)
 
 
@@ -650,7 +643,7 @@ class _MModeNodeItem(pg.ScatterPlotItem):
         ev.accept()
 
     def mouseDragEvent(self, ev: object) -> None:
-        if self._viewer_widget is not None and hasattr(ev, 'scenePos'):
+        if self._viewer_widget is not None and hasattr(ev, "scenePos"):
             view_box = self.getViewBox()
             if view_box is not None:
                 pos = view_box.mapSceneToView(ev.scenePos())
@@ -805,41 +798,43 @@ self._mmode_vertical_splitter: QSplitter | None = None
 Add to `MainWindow` class:
 
 ```python
-    def _toggle_mmode(self) -> None:
-        self._mmode_active = not self._mmode_active
-        if self._mmode_active:
-            self._activate_mmode()
-        else:
-            self._deactivate_mmode()
+def _toggle_mmode(self) -> None:
+    self._mmode_active = not self._mmode_active
+    if self._mmode_active:
+        self._activate_mmode()
+    else:
+        self._deactivate_mmode()
 
-    def _activate_mmode(self) -> None:
-        if self._mmode_widget is None:
-            self._mmode_widget = MModeWidget()
-        self._mmode_vertical_splitter = QSplitter(Qt.Vertical)
-        self._mmode_vertical_splitter.setHandleWidth(4)
-        self._mmode_vertical_splitter.addWidget(self._viewer)
-        self._mmode_vertical_splitter.addWidget(self._mmode_widget)
-        self._mmode_vertical_splitter.setSizes([500, 500])
-        self._mmode_vertical_splitter.setStretchFactor(0, 1)
-        self._mmode_vertical_splitter.setStretchFactor(1, 1)
 
-        index = self._content_splitter.indexOf(self._viewer)
-        if index >= 0:
-            self._content_splitter.insertWidget(index, self._mmode_vertical_splitter)
-            self._content_splitter.setStretchFactor(index, 1)
-            self._mmode_vertical_splitter.show()
+def _activate_mmode(self) -> None:
+    if self._mmode_widget is None:
+        self._mmode_widget = MModeWidget()
+    self._mmode_vertical_splitter = QSplitter(Qt.Vertical)
+    self._mmode_vertical_splitter.setHandleWidth(4)
+    self._mmode_vertical_splitter.addWidget(self._viewer)
+    self._mmode_vertical_splitter.addWidget(self._mmode_widget)
+    self._mmode_vertical_splitter.setSizes([500, 500])
+    self._mmode_vertical_splitter.setStretchFactor(0, 1)
+    self._mmode_vertical_splitter.setStretchFactor(1, 1)
 
-    def _deactivate_mmode(self) -> None:
-        if self._mmode_vertical_splitter is None:
-            return
-        index = self._content_splitter.indexOf(self._mmode_vertical_splitter)
-        if index >= 0:
-            self._content_splitter.insertWidget(index, self._viewer)
-            self._content_splitter.setStretchFactor(index, 1)
-        self._mmode_vertical_splitter.deleteLater()
-        self._mmode_vertical_splitter = None
-        if self._mmode_widget is not None:
-            self._mmode_widget.clear_buffer()
+    index = self._content_splitter.indexOf(self._viewer)
+    if index >= 0:
+        self._content_splitter.insertWidget(index, self._mmode_vertical_splitter)
+        self._content_splitter.setStretchFactor(index, 1)
+        self._mmode_vertical_splitter.show()
+
+
+def _deactivate_mmode(self) -> None:
+    if self._mmode_vertical_splitter is None:
+        return
+    index = self._content_splitter.indexOf(self._mmode_vertical_splitter)
+    if index >= 0:
+        self._content_splitter.insertWidget(index, self._viewer)
+        self._content_splitter.setStretchFactor(index, 1)
+    self._mmode_vertical_splitter.deleteLater()
+    self._mmode_vertical_splitter = None
+    if self._mmode_widget is not None:
+        self._mmode_widget.clear_buffer()
 ```
 
 - [ ] **Step 3: Connect hotkey**
@@ -896,14 +891,15 @@ Add new signals after existing signals (around line 595):
 Add to `ViewerWidget` class:
 
 ```python
-    def start_mmode_line(self) -> None:
-        from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
-        self._mmode_line_active = True
-        self._mmode_line_click_step = "start"
-        if self._mmode_line_item is not None:
-            self._mmode_line_item.remove_from_view(self._view)
-        self._mmode_line_item = MModeScanLineItem(viewer_widget=self)
-        self.setCursor(Qt.CrossCursor)
+def start_mmode_line(self) -> None:
+    from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+
+    self._mmode_line_active = True
+    self._mmode_line_click_step = "start"
+    if self._mmode_line_item is not None:
+        self._mmode_line_item.remove_from_view(self._view)
+    self._mmode_line_item = MModeScanLineItem(viewer_widget=self)
+    self.setCursor(Qt.CrossCursor)
 ```
 
 - [ ] **Step 3: Add cancel_mmode_line method**
@@ -944,21 +940,23 @@ Add to ContourViewBox.mousePressEvent or ViewerWidget event handling:
 Add drag handler methods (called by `_MModeNodeItem`):
 
 ```python
-    def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
-        pass  # drag state managed by ContourViewBox existing drag flow
+def _begin_mmode_node_drag(self, endpoint_index: int) -> None:
+    pass  # drag state managed by ContourViewBox existing drag flow
 
-    def _mmode_node_dragging(self, endpoint_index: int, pos: tuple[float, float]) -> None:
-        if self._mmode_line_item is None:
-            return
-        if endpoint_index == 0:
-            self._mmode_line_item.move_start_to(pos)
-        else:
-            self._mmode_line_item.move_end_to(pos)
+
+def _mmode_node_dragging(self, endpoint_index: int, pos: tuple[float, float]) -> None:
+    if self._mmode_line_item is None:
+        return
+    if endpoint_index == 0:
+        self._mmode_line_item.move_start_to(pos)
+    else:
+        self._mmode_line_item.move_end_to(pos)
+    self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
+
+
+def _end_mmode_node_drag(self, endpoint_index: int) -> None:
+    if self._mmode_line_item is not None:
         self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
-
-    def _end_mmode_node_drag(self, endpoint_index: int) -> None:
-        if self._mmode_line_item is not None:
-            self.mmode_line_completed.emit(*self._mmode_line_item.get_endpoints())
 ```
 
 - [ ] **Step 5: Hook into show_frame to emit column**
@@ -1035,11 +1033,11 @@ Add handler:
 - [ ] **Step 4: Connect mmode_line_completed to recalculate**
 
 ```python
-    def _on_mmode_line_completed(self, start: object, end: object) -> None:
-        if self._mmode_widget is not None:
-            cached_frames = self._controller.get_cached_frames() if hasattr(self._controller, 'get_cached_frames') else []
-            if cached_frames:
-                self._mmode_widget.recalculate_from_frames(cached_frames, start, end)
+def _on_mmode_line_completed(self, start: object, end: object) -> None:
+    if self._mmode_widget is not None:
+        cached_frames = self._controller.get_cached_frames() if hasattr(self._controller, "get_cached_frames") else []
+        if cached_frames:
+            self._mmode_widget.recalculate_from_frames(cached_frames, start, end)
 ```
 
 - [ ] **Step 5: Run existing tests**
@@ -1288,7 +1286,9 @@ def _sample_instance() -> InstanceMetadata:
 def test_mmode_toggle_creates_widget(qtbot) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(), total_frames=10, frame_time_ms=33.3,
+        _sample_instance(),
+        total_frames=10,
+        frame_time_ms=33.3,
     )
     window = MainWindow(controller=controller)
     qtbot.addWidget(window)
@@ -1334,6 +1334,7 @@ def test_mmode_scan_line_endpoints() -> None:
 
 def test_mmode_caliper_with_full_pipeline() -> None:
     from echo_personal_tool.presentation.mmode_caliper import MModeCaliperTool
+
     tool = MModeCaliperTool(depth_mm_per_pixel=0.2, time_ms_per_pixel=5.0)
     tool.start_distance_caliper()
     tool.on_click(10.0, 10.0)

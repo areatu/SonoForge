@@ -25,10 +25,7 @@ def _inner_arc(center: float, radius: float, *, count: int = 32) -> list[tuple[f
     septal = (center - 20.0, center)
     lateral = (center + 20.0, center)
     angles = np.linspace(math.pi, 0.0, count)
-    points = [
-        (center + radius * math.cos(angle), center - radius * math.sin(angle))
-        for angle in angles
-    ]
+    points = [(center + radius * math.cos(angle), center - radius * math.sin(angle)) for angle in angles]
     points[0] = septal
     points[-1] = lateral
     return points
@@ -102,13 +99,8 @@ def test_stepped_refine_locked_nodes_do_not_move_on_next_pass() -> None:
     points = _inner_arc(center, 22.0)
     annulus = (points[0], points[-1])
 
-    first = run_stepped_refine_pass(
-        frame, points, annulus=annulus, locked_indices=frozenset(), step=6
-    )
-    locked_positions = {
-        index: first.points[index]
-        for index in first.locked_indices
-    }
+    first = run_stepped_refine_pass(frame, points, annulus=annulus, locked_indices=frozenset(), step=6)
+    locked_positions = {index: first.points[index] for index in first.locked_indices}
     second = run_stepped_refine_pass(
         frame,
         first.points,
@@ -138,8 +130,5 @@ def test_stepped_refine_expands_search_without_infinite_growth() -> None:
         )
         locked = result.locked_indices
         current = result.points
-        max_radius = max(
-            math.hypot(current[i][0] - center, current[i][1] - center)
-            for i in range(1, len(current) - 1)
-        )
+        max_radius = max(math.hypot(current[i][0] - center, current[i][1] - center) for i in range(1, len(current) - 1))
     assert max_radius <= 43.0

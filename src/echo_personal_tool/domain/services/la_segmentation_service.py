@@ -8,16 +8,16 @@ import numpy as np
 from scipy import ndimage
 
 from echo_personal_tool.domain.models import Contour
+from echo_personal_tool.domain.services.bench_metrics import mask_iou
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
-    point_line_distance,
     resample_open_arc_landmarks,
 )
-from echo_personal_tool.domain.services.bench_metrics import mask_iou
 from echo_personal_tool.domain.services.mbs_lite_service import (
     _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
-    _warp_elliptical_open_arc,
+    _warp_superellipse_open_arc,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 
 # ---------------------------------------------------------------------------
 # Quality-gate thresholds
@@ -31,6 +31,7 @@ _MAX_LA_ELLIPSE_RESIDUAL = 0.35
 # ---------------------------------------------------------------------------
 # Landmark extraction from binary mask
 # ---------------------------------------------------------------------------
+
 
 def _largest_component(binary: np.ndarray) -> np.ndarray:
     labeled, count = ndimage.label(binary)
@@ -119,8 +120,50 @@ def _la_landmarks_from_mask(
 
 
 # ---------------------------------------------------------------------------
+# Landmark blending: AI mask + user clicks
+# ---------------------------------------------------------------------------
+
+
+def la_landmarks_from_mask_or_user(
+    mask: np.ndarray,
+    *,
+    user_septal: tuple[float, float] | None = None,
+    user_lateral: tuple[float, float] | None = None,
+    user_apex: tuple[float, float] | None = None,
+    blend_factor: float = 0.7,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Extract LA landmarks from AI mask, optionally blending with user clicks.
+
+    Returns (septal, lateral, apex). If user landmarks are None,
+    uses pure AI landmarks. Otherwise blends: result = AI * blend_factor + user * (1 - blend_factor).
+    """
+    component = _largest_component(np.asarray(mask) > 0)
+    ai_septal, ai_lateral, ai_apex = _la_landmarks_from_mask(component)
+
+    if user_septal is None or user_lateral is None or user_apex is None:
+        return ai_septal, ai_lateral, ai_apex
+
+    def _blend(
+        ai: tuple[float, float],
+        user: tuple[float, float],
+        w: float,
+    ) -> tuple[float, float]:
+        return (
+            ai[0] * w + user[0] * (1 - w),
+            ai[1] * w + user[1] * (1 - w),
+        )
+
+    return (
+        _blend(ai_septal, user_septal, blend_factor),
+        _blend(ai_lateral, user_lateral, blend_factor),
+        _blend(ai_apex, user_apex, blend_factor),
+    )
+
+
+# ---------------------------------------------------------------------------
 # la_mask_to_contour — main public API
 # ---------------------------------------------------------------------------
+
 
 def la_mask_to_contour(
     mask: np.ndarray,
@@ -145,8 +188,8 @@ def la_mask_to_contour(
     component = _largest_component(binary)
     septal, lateral, apex = _la_landmarks_from_mask(component)
 
-    # Fit elliptical open arc (LA-specific half-ellipse template)
-    template = _warp_elliptical_open_arc(
+    # Fit superellipse open arc (LA-specific template, adaptive shape)
+    template = _warp_superellipse_open_arc(
         septal,
         lateral,
         apex,
@@ -169,6 +212,7 @@ def la_mask_to_contour(
 # ---------------------------------------------------------------------------
 # Quality gate
 # ---------------------------------------------------------------------------
+
 
 def _mask_ellipse_fit_residual(mask: np.ndarray, contour: Contour) -> float:
     """1 − IoU(mask, filled contour polygon), normalized ellipse-fit error."""
@@ -195,7 +239,7 @@ def explain_la_auto_reject_reason(
 ) -> str | None:
     """Return a short Russian reason when LA auto contour should not enter review."""
     if contour.mitral_annulus is None or len(contour.points) < 3:
-        return "контур ЛА не построен"
+        return tr("domain.la_seg.no_contour")
 
     septal, lateral = contour.mitral_annulus
     apex = contour.apex_landmark
@@ -203,7 +247,7 @@ def explain_la_auto_reject_reason(
     # MV span (pixel distance)
     mv_span_px = math.hypot(lateral[0] - septal[0], lateral[1] - septal[1])
     if mv_span_px < 5.0:
-        return "митральное кольцо не найдено (проверьте вид A4C ES)"
+        return tr("domain.la_seg.no_annulus")
 
     # Spacing-aware MV span check
     if pixel_spacing is not None:
@@ -211,38 +255,28 @@ def explain_la_auto_reject_reason(
         if row_spacing > 0 and col_spacing > 0:
             mv_span_mm = mv_span_px * ((row_spacing + col_spacing) / 2.0)
             if mv_span_mm < _MIN_LA_MV_SPAN_MM:
-                return (
-                    f"митральное кольцо слишком мало "
-                    f"({mv_span_mm:.1f} мм < {_MIN_LA_MV_SPAN_MM} мм) — "
-                    "проверьте вид A4C и калибровку"
-                )
+                return tr("domain.la_seg.annulus_too_small", mv_span_mm=mv_span_mm, min_mm=_MIN_LA_MV_SPAN_MM)
 
     # Apex must be above MV chord (image Y: smaller Y = superior)
     ma_mid_y = (septal[1] + lateral[1]) / 2.0
     if apex is not None and apex[1] >= ma_mid_y + 10.0:
-        return "геометрия ЛА инвертирована (крышка ниже митрального кольца)"
+        return tr("domain.la_seg.inverted")
 
     # Long axis: MA midpoint → apex
     if apex is not None:
         ma_mid_x = (septal[0] + lateral[0]) / 2.0
         long_axis_px = math.hypot(apex[0] - ma_mid_x, apex[1] - ma_mid_y)
         if long_axis_px < _MIN_LA_LONG_AXIS_PX:
-            return "ось ЛА слишком короткая — выберите другой кадр"
+            return tr("domain.la_seg.axis_too_short")
 
     # Mask area gate
     if mask_pixels is not None and mask_pixels < _MIN_LA_MASK_AREA_PX:
-        return (
-            f"полость ЛА слишком мала ({mask_pixels} px < {_MIN_LA_MASK_AREA_PX} px) — "
-            "выберите другой кадр"
-        )
+        return tr("domain.la_seg.cavity_too_small", pixels=str(mask_pixels), min_px=str(_MIN_LA_MASK_AREA_PX))
 
     if mask is not None:
         residual = _mask_ellipse_fit_residual(mask, contour)
         if residual > _MAX_LA_ELLIPSE_RESIDUAL:
-            return (
-                f"маска ЛА слишком нерегулярна для эллиптического контура "
-                f"(остаток {residual:.2f} > {_MAX_LA_ELLIPSE_RESIDUAL})"
-            )
+            return tr("domain.la_seg.mask_irregular", residual=residual, max_residual=_MAX_LA_ELLIPSE_RESIDUAL)
 
     # Centroid outside ROI
     if roi_xyxy is not None and len(contour.points) >= 3:
@@ -252,6 +286,6 @@ def explain_la_auto_reject_reason(
         cy = sum(ys) / len(ys)
         rx0, ry0, rx1, ry1 = roi_xyxy
         if not (rx0 <= cx <= rx1 and ry0 <= cy <= ry1):
-            return "центр контура ЛА вне ROI — проверьте выделение сектора"
+            return tr("domain.la_seg.center_outside_roi")
 
     return None

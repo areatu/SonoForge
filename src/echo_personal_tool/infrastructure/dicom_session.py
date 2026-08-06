@@ -30,21 +30,29 @@ def _cleanup_all_sessions() -> None:
             pass
     _all_sessions.clear()
 
-_UNCOMPRESSED_SYNTAXES = frozenset({
-    "1.2.840.10008.1.2",
-    "1.2.840.10008.1.2.1",
-    "1.2.840.10008.1.2.2",
-})
 
-_JPEG2000_SYNTAXES = frozenset({
-    "1.2.840.10008.1.2.4.90",
-    "1.2.840.10008.1.2.4.91",
-    "1.2.840.10008.1.2.4.92",
-    "1.2.840.10008.1.2.4.93",
-})
+_UNCOMPRESSED_SYNTAXES = frozenset(
+    {
+        "1.2.840.10008.1.2",
+        "1.2.840.10008.1.2.1",
+        "1.2.840.10008.1.2.2",
+    }
+)
+
+_JPEG2000_SYNTAXES = frozenset(
+    {
+        "1.2.840.10008.1.2.4.90",
+        "1.2.840.10008.1.2.4.91",
+        "1.2.840.10008.1.2.4.92",
+        "1.2.840.10008.1.2.4.93",
+    }
+)
 
 _MAX_DECODE_WORKERS = 4
 _PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
+
+
+_max_sessions = 10
 
 
 def get_thread_dicom_session() -> DicomSession:
@@ -54,10 +62,24 @@ def get_thread_dicom_session() -> DicomSession:
         session = DicomSession()
         _thread_local.dicom_session = session
         _all_sessions.append(session)
+        # Prune oldest sessions to prevent unbounded growth.
+        while len(_all_sessions) > _max_sessions:
+            old = _all_sessions.pop(0)
+            try:
+                old.release()
+            except Exception:
+                pass
         if not _cleanup_registered:
             atexit.register(_cleanup_all_sessions)
             _cleanup_registered = True
     return session
+
+
+def read_ecg_waveform(path: Path | str):
+    """Return the ECG waveform stored in a DICOM file (None when absent)."""
+    session = get_thread_dicom_session()
+    session.open(path)
+    return session.waveform
 
 
 def release_stale_sessions(exclude: DicomSession | None = None) -> None:
@@ -88,7 +110,14 @@ def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
             try:
                 vr = vr_bytes.decode("ascii")
                 is_explicit = all(c.isalpha() for c in vr) and vr in (
-                    "OB", "OW", "OF", "SQ", "UC", "UN", "UR", "UT",
+                    "OB",
+                    "OW",
+                    "OF",
+                    "SQ",
+                    "UC",
+                    "UN",
+                    "UR",
+                    "UT",
                 )
             except Exception:
                 is_explicit = False
@@ -238,7 +267,8 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
 def _decode_uncompressed_frame(
     pixel_data: bytes, offset: int, size: int, rows: int, cols: int, bytes_per_pixel: int
 ) -> np.ndarray:
-    """Decode a single uncompressed frame — owned copy to avoid use-after-free."""
+    """Decode single uncompressed frame. Returns OWNED WRITABLE array.
+    This is the ONLY copy for single-frame path."""
     raw = pixel_data[offset : offset + size]
     if bytes_per_pixel == 1:
         return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
@@ -273,25 +303,38 @@ class DicomSession:
     def is_decoded(self) -> bool:
         return self._frames is not None and self._frames.shape[0] == self._frame_count
 
+    def _has_loadable_pixels(self) -> bool:
+        """Return True if heavy pixel bytes are still held for the open file."""
+        if self._raw_bytes is not None or self._pixel_data_raw is not None:
+            return True
+        if self._encapsulated_frames is not None:
+            return True
+        return False
+
     def open(self, path: Path | str) -> None:
         resolved = Path(path).resolve()
         if self._open_path == resolved and self._metadata is not None:
-            return
-        # When switching to a different file, release heavy buffers in ALL
-        # other thread-local sessions.  This is now safe because
-        # release_stale_sessions() no longer checks _raw_bytes — it frees
-        # _pixel_data_raw and _encapsulated_frames too.
-        release_stale_sessions(exclude=self)
+            # Reopening the SAME file. If a previous release_heavy() freed the
+            # heavy pixel buffers on this thread-local session, we MUST reload
+            # raw bytes, otherwise _decode_single_frame() would later hit
+            # _pixel_data_raw=None → TypeError.  Only early-return when the
+            # decode buffers are still alive.
+            if self._has_loadable_pixels():
+                return
+        else:
+            # When switching to a different file, release heavy buffers in ALL
+            # other thread-local sessions.  This is now safe because
+            # release_stale_sessions() no longer checks _raw_bytes — it frees
+            # _pixel_data_raw and _encapsulated_frames too.
+            release_stale_sessions(exclude=self)
         self.release()
+        if not resolved.is_file():
+            raise FileNotFoundError(f"DICOM file not found: {resolved}")
         self._open_path = resolved
         self._raw_bytes = resolved.read_bytes()
-        self._metadata = pydicom.dcmread(
-            BytesIO(self._raw_bytes), stop_before_pixels=True, force=True
-        )
+        self._metadata = pydicom.dcmread(BytesIO(self._raw_bytes), stop_before_pixels=True, force=True)
         self._frame_count = int(getattr(self._metadata, "NumberOfFrames", 1))
-        tsuid = str(
-            getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1")
-        )
+        tsuid = str(getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1"))
         self._transfer_syntax_uid = tsuid
         self._extended_offsets = _extended_offsets_from_metadata(self._metadata)
         self._is_uncompressed = tsuid in _UNCOMPRESSED_SYNTAXES
@@ -310,9 +353,7 @@ class DicomSession:
         samples = int(getattr(ds, "SamplesPerPixel", 1))
         bytes_per_pixel = (int(getattr(ds, "BitsAllocated", 8)) // 8) * samples
         frame_size = rows * cols * bytes_per_pixel
-        self._frame_slices = [
-            (i * frame_size, frame_size) for i in range(self._frame_count)
-        ]
+        self._frame_slices = [(i * frame_size, frame_size) for i in range(self._frame_count)]
 
     def annotations(self) -> tuple:
         """Extract calipers and contours from DICOM Graphic Annotation."""
@@ -320,18 +361,51 @@ class DicomSession:
             return ([], [])
         return read_annotations_from_dicom(self._metadata)
 
+    @property
+    def waveform(self):
+        """Extract ECG waveform from DICOM WaveformSequence (lazy)."""
+        from echo_personal_tool.infrastructure.dicom_waveform_parser import (
+            parse_waveform_from_dicom,
+        )
+
+        if self._metadata is None:
+            return None
+        return parse_waveform_from_dicom(self._metadata)
+
     def _ensure_pixel_data(self) -> None:
         """Load raw pixel data bytes, avoiding a second pydicom parse when possible."""
         if self._pixel_data_raw is not None:
             return
         if self._raw_bytes is None:
             return
+
         extracted = _extract_pixel_data_from_bytes(self._raw_bytes)
         if extracted is not None:
             self._pixel_data_raw = extracted
         else:
             full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
-            self._pixel_data_raw = bytes(full_ds.PixelData)
+            # Ensure file_meta exists with Transfer Syntax UID
+            if not hasattr(full_ds, "file_meta") or full_ds.file_meta is None:
+                from pydicom.dataset import FileMetaDataset
+
+                full_ds.file_meta = FileMetaDataset()
+            if not hasattr(full_ds.file_meta, "TransferSyntaxUID") or full_ds.file_meta.TransferSyntaxUID is None:
+                from pydicom.uid import ImplicitVRLittleEndian
+
+                full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+
+            # SAFE EXTRACTION: Check for any type of PixelData
+            if hasattr(full_ds, "PixelData"):
+                self._pixel_data_raw = bytes(full_ds.PixelData)
+            elif hasattr(full_ds, "FloatPixelData"):
+                self._pixel_data_raw = bytes(full_ds.FloatPixelData)
+            elif hasattr(full_ds, "DoubleFloatPixelData"):
+                self._pixel_data_raw = bytes(full_ds.DoubleFloatPixelData)
+            else:
+                # File has no pixels (e.g., SR or PR). Mark as empty bytes
+                # to avoid repeated parsing.
+                self._pixel_data_raw = b""
+
         # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
         self._raw_bytes = None
         if not self._is_uncompressed:
@@ -366,12 +440,35 @@ class DicomSession:
 
         self._ensure_pixel_data()
 
+        # FAST PATH: uncompressed → direct 3D view into _pixel_data_raw (zero-copy)
+        if self._is_uncompressed and self._pixel_data_raw is not None and self._frame_slices:
+            ds = self._metadata
+            rows, cols = int(ds.Rows), int(ds.Columns)
+            samples = int(getattr(ds, "SamplesPerPixel", 1))
+            bits_allocated = int(ds.BitsAllocated)
+            bpp = (bits_allocated // 8) * samples
+            expected = self._frame_count * rows * cols * bpp
+            if len(self._pixel_data_raw) >= expected:
+                # dtype based on BitsAllocated, not bpp
+                dtype = np.dtype(f"uint{bits_allocated}")
+                element_size = np.dtype(dtype).itemsize
+                count_elements = expected // element_size
+                buf = np.frombuffer(self._pixel_data_raw, dtype=dtype, count=count_elements)
+                if samples == 1:
+                    self._frames = buf.reshape((self._frame_count, rows, cols))
+                else:
+                    self._frames = buf.reshape((self._frame_count, rows, cols, samples))
+
+                # SPEC-001 ENFORCEMENT: Mark as read-only to prevent downstream mutations
+                self._frames.flags.writeable = False
+                self._first_frame = self._frames[0]
+                return self._frames
+
+        # SLOW PATH: compressed (JPEG-2000) — parallel decode
         first_frame = getattr(self, "_first_frame", None)
         if first_frame is None:
             first_frame = self._decode_single_frame(0)
-        self._frames = np.empty(
-            (self._frame_count,) + first_frame.shape, dtype=first_frame.dtype
-        )
+        self._frames = np.empty((self._frame_count,) + first_frame.shape, dtype=first_frame.dtype)
         self._frames[0] = first_frame
 
         remaining = list(range(1, self._frame_count))
@@ -380,9 +477,7 @@ class DicomSession:
 
         max_workers = min(len(remaining), _MAX_DECODE_WORKERS)
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {
-                pool.submit(self._decode_single_frame, i): i for i in remaining
-            }
+            futures = {pool.submit(self._decode_single_frame, i): i for i in remaining}
             for future in as_completed(futures):
                 idx = futures[future]
                 self._frames[idx] = future.result()
@@ -392,18 +487,14 @@ class DicomSession:
     def _decode_single_frame(self, index: int) -> np.ndarray:
         ds = self._metadata
         if index < 0 or index >= self._frame_count:
-            raise IndexError(
-                f"Frame index {index} out of range [0, {self._frame_count})"
-            )
+            raise IndexError(f"Frame index {index} out of range [0, {self._frame_count})")
         rows, cols = int(ds.Rows), int(ds.Columns)
 
-        if self._is_uncompressed and self._frame_slices is not None:
+        if self._is_uncompressed and self._frame_slices is not None and self._pixel_data_raw is not None:
             samples = int(getattr(ds, "SamplesPerPixel", 1))
             bytes_per_pixel = (int(ds.BitsAllocated) // 8) * samples
             offset, size = self._frame_slices[index]
-            return _decode_uncompressed_frame(
-                self._pixel_data_raw, offset, size, rows, cols, bytes_per_pixel
-            )
+            return _decode_uncompressed_frame(self._pixel_data_raw, offset, size, rows, cols, bytes_per_pixel)
 
         compressed = self._encapsulated_frame_bytes(index)
         if compressed is not None:
@@ -420,7 +511,41 @@ class DicomSession:
 
     def _decode_pydicom_fallback(self, index: int) -> np.ndarray:
         """Fallback: full pydicom decode, extract frame index."""
+        # _ensure_pixel_data() frees _raw_bytes after extracting pixel bytes.
+        # If a compressed frame cannot be fast-decoded we still need the full
+        # file here, so reload it from disk (cached until release_heavy()).
+        if self._raw_bytes is None:
+            if self._open_path is not None and Path(self._open_path).is_file():
+                self._raw_bytes = Path(self._open_path).read_bytes()
+            else:
+                raise ValueError(
+                    "Cannot decode fallback: raw bytes are not available. "
+                    "The file may have no pixel data or heavy buffers were released."
+                )
+
         full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
+        # Ensure file_meta exists with Transfer Syntax UID
+        if not hasattr(full_ds, "file_meta") or full_ds.file_meta is None:
+            from pydicom.dataset import FileMetaDataset
+
+            full_ds.file_meta = FileMetaDataset()
+        if not hasattr(full_ds.file_meta, "TransferSyntaxUID") or full_ds.file_meta.TransferSyntaxUID is None:
+            from pydicom.uid import ImplicitVRLittleEndian
+
+            full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+
+        # PROTECTION 2: Explicit check for pixel data
+        has_pixel_data = (
+            hasattr(full_ds, "PixelData")
+            or hasattr(full_ds, "FloatPixelData")
+            or hasattr(full_ds, "DoubleFloatPixelData")
+        )
+        if not has_pixel_data:
+            raise ValueError(
+                "DICOM file has no pixel data to decode. "
+                "It may be a non-image DICOM (e.g., Structured Report, Presentation State)."
+            )
+
         pixel_array = full_ds.pixel_array
         frames = stack_pixel_array(pixel_array)
         return np.ascontiguousarray(frames[index])
@@ -433,17 +558,18 @@ class DicomSession:
         return self._decode_single_frame(index)
 
     def read_frame(self, frame_index: int) -> np.ndarray:
+        """Return frame array. MAY BE READ-ONLY. Caller MUST NOT modify in-place.
+        Decoder already guarantees owned contiguous memory for single frames,
+        or read-only view for bulk decode_all_frames()."""
         if self._frames is not None:
             if frame_index < 0 or frame_index >= self._frames.shape[0]:
-                raise IndexError(
-                    f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})"
-                )
-            return np.ascontiguousarray(self._frames[frame_index]).copy()
+                raise IndexError(f"Frame index {frame_index} out of range [0, {self._frames.shape[0]})")
+            return self._frames[frame_index]  # Zero-copy view (read-only if bulk)
+
         if frame_index < 0 or frame_index >= self._frame_count:
-            raise IndexError(
-                f"Frame index {frame_index} out of range [0, {self._frame_count})"
-            )
-        return np.ascontiguousarray(self.decode_single_frame(frame_index)).copy()
+            raise IndexError(f"Frame index {frame_index} out of range [0, {self._frame_count})")
+        self._ensure_pixel_data()
+        return self._decode_single_frame(frame_index)  # Writable owned copy
 
     def release(self) -> None:
         self._open_path = None
@@ -460,7 +586,14 @@ class DicomSession:
         self._first_frame = None
 
     def release_heavy(self) -> None:
-        """Free large buffers while keeping metadata for future re-open."""
+        """Free large buffers while keeping metadata for future re-open.
+
+        Callers keep the reference returned by decode_all_frames(), so dropping
+        _frames here is safe — it prevents thread-local sessions from pinning
+        the full cine for the life of a pooled thread (was the cause of
+        multi-GB growth).  A read-only _frames view keeps its backing buffer
+        alive on its own, so no materialize copy is needed.
+        """
         self._raw_bytes = None
         self._pixel_data_raw = None
         self._encapsulated_frames = None
@@ -489,7 +622,5 @@ def stack_pixel_array(pixel_array: np.ndarray) -> np.ndarray:
     if frames.ndim == 4 and frames.shape[-1] not in (3,):
         raise ValueError(f"Expected color channels last in {frames.shape}")
     if frames.ndim not in (3, 4):
-        raise ValueError(
-            f"Expected (N,H,W) or (N,H,W,C) after normalization, got {frames.shape}"
-        )
+        raise ValueError(f"Expected (N,H,W) or (N,H,W,C) after normalization, got {frames.shape}")
     return np.ascontiguousarray(frames)

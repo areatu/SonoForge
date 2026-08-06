@@ -18,6 +18,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# macOS icon (generated in CI)
+*.icns
+
 # Virtual environments
 .venv/
 .venv-build/
@@ -74,3 +77,6 @@ AGENTS.md
 
 # Server settings (contains potentially sensitive data)
 server_TOKKD.md
+traceback.txtAGENTS.md
+
+CHANGELOG_SESSION.md

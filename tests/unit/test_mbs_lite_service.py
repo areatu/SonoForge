@@ -50,7 +50,10 @@ def test_fit_contour_dome_is_not_triangle() -> None:
     lateral = (100.0, 0.0)
     apex = (50.0, 60.0)
     contour = fit_contour_from_landmarks(
-        septal=septal, lateral=lateral, apex=apex, phase="ED",
+        septal=septal,
+        lateral=lateral,
+        apex=apex,
+        phase="ED",
     )
     quarter = contour.points[len(contour.points) // 4]
     triangle_x = 0.25 * apex[0]
@@ -272,8 +275,7 @@ def test_refine_ai_stepped_refine_locks_on_ring() -> None:
     septal = (center - 20.0, center)
     lateral = (center + 20.0, center)
     ai_points = [
-        (center + 22.0 * math.cos(angle), center - 22.0 * math.sin(angle))
-        for angle in np.linspace(math.pi, 0.0, 32)
+        (center + 22.0 * math.cos(angle), center - 22.0 * math.sin(angle)) for angle in np.linspace(math.pi, 0.0, 32)
     ]
     ai_points[0] = septal
     ai_points[-1] = lateral
@@ -296,10 +298,7 @@ def test_refine_ai_stepped_refine_locks_on_ring() -> None:
             break
     assert len(current.refine_locked_indices) > 0
 
-    locked_positions = {
-        index: current.points[index]
-        for index in current.refine_locked_indices
-    }
+    locked_positions = {index: current.points[index] for index in current.refine_locked_indices}
     next_pass, _mode2 = refine_open_arc_contour(frame, current)
     for index, position in locked_positions.items():
         assert next_pass.points[index] == position

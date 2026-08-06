@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
@@ -85,9 +87,7 @@ def test_worker_preview_default_size_is_96(
         assert frame_index == 0
         return np.zeros((8, 8), dtype=np.uint8)
 
-    def fake_numpy_pixels_to_qimage(
-        _pixels: np.ndarray, size: int = THUMBNAIL_SIZE, **_kw: object
-    ) -> QImage:
+    def fake_numpy_pixels_to_qimage(_pixels: np.ndarray, size: int = THUMBNAIL_SIZE, **_kw: object) -> QImage:
         captured["size"] = size
         return QImage(8, 8, QImage.Format.Format_Grayscale8)
 
@@ -115,9 +115,7 @@ def test_worker_preview_only_false_is_ignored_in_mvp(
         assert frame_index == 0
         return np.zeros((8, 8), dtype=np.uint8)
 
-    def fake_numpy_pixels_to_qimage(
-        _pixels: np.ndarray, size: int = THUMBNAIL_SIZE, **_kw: object
-    ) -> QImage:
+    def fake_numpy_pixels_to_qimage(_pixels: np.ndarray, size: int = THUMBNAIL_SIZE, **_kw: object) -> QImage:
         captured["size"] = size
         return QImage(8, 8, QImage.Format.Format_Grayscale8)
 

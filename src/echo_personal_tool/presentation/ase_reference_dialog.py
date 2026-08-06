@@ -13,19 +13,17 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFontComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QMenuBar,
     QMenu,
+    QMenuBar,
     QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
-    QSpacerItem,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -33,7 +31,6 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.services.ase_reference_parser import (
     default_ase_reference_path,
-    default_references_dir,
     load_ase_reference_text,
     markdown_to_html,
     scan_references_dir,
@@ -58,8 +55,8 @@ _PDF_DPI_BASE = 150
 
 def _load_icon(name: str) -> QPixmap:
     """Load an SVG icon from the resources/icons directory, recolored to theme text."""
-    from PySide6.QtGui import QIcon
     import sys
+
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
         icon_dir = Path(meipass) / "echo_personal_tool" / "resources" / "icons"
@@ -133,13 +130,9 @@ class _DocTab(QWidget):
     def _apply_style(self, active: bool) -> None:
         p = get_theme_palette()
         if active:
-            self.setStyleSheet(
-                f"_DocTab {{ background: {p['accent_tab']}; border-radius: 3px; }}"
-            )
+            self.setStyleSheet(f"_DocTab {{ background: {p['accent_tab']}; border-radius: 3px; }}")
         else:
-            self.setStyleSheet(
-                f"_DocTab {{ background: {p['bg_control']}; border-radius: 3px; }}"
-            )
+            self.setStyleSheet(f"_DocTab {{ background: {p['bg_control']}; border-radius: 3px; }}")
         self._apply_label_style(active)
 
     def _apply_label_style(self, active: bool) -> None:
@@ -151,12 +144,12 @@ class _DocTab(QWidget):
             )
         else:
             self._btn_label.setStyleSheet(
-                f"QPushButton {{ border: none; padding: 0; background: transparent; "
-                f"color: {p['text_dim']}; }}"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p['text_dim']}; }}"
             )
 
     def _apply_close_style(self, active: bool) -> None:
         from PySide6.QtGui import QIcon
+
         p = get_theme_palette()
         close_pixmap = _load_icon("close")
         if not close_pixmap.isNull():
@@ -233,9 +226,7 @@ class AseReferenceDialog(QDialog):
         self.resize(1020, 750)
 
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
-        self._font_family = str(
-            self._settings.value("font_family", _DEFAULT_FONT_FAMILY)
-        )
+        self._font_family = str(self._settings.value("font_family", _DEFAULT_FONT_FAMILY))
         self._font_size = int(self._settings.value("font_size", _DEFAULT_FONT_SIZE))
 
         # Dragging state
@@ -272,7 +263,7 @@ class AseReferenceDialog(QDialog):
         self._tabs_layout.setSpacing(2)
 
         # Structured reference tab (first, non-closable)
-        self._btn_structured_tab = QPushButton("Справочник")
+        self._btn_structured_tab = QPushButton(tr("ase_ref.structured_tab"))
         self._btn_structured_tab.setCheckable(True)
         self._btn_structured_tab.setChecked(True)
         self._btn_structured_tab.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -353,20 +344,22 @@ class AseReferenceDialog(QDialog):
         self._pdf_zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._combo_pdf_view = QComboBox()
-        self._combo_pdf_view.addItems([
-            tr("ase_refs.pdf_view_single"),
-            tr("ase_refs.pdf_view_double"),
-            tr("ase_refs.pdf_view_continuous"),
-        ])
+        self._combo_pdf_view.addItems(
+            [
+                tr("ase_refs.pdf_view_single"),
+                tr("ase_refs.pdf_view_double"),
+                tr("ase_refs.pdf_view_continuous"),
+            ]
+        )
         self._combo_pdf_view.currentIndexChanged.connect(self._pdf_view_mode_changed)
 
-        self._btn_pdf_prev = QPushButton("\u25C0")
+        self._btn_pdf_prev = QPushButton("\u25c0")
         self._btn_pdf_prev.setFixedSize(28, 24)
         self._btn_pdf_prev.clicked.connect(self._pdf_prev_page)
         self._btn_pdf_page = QLabel("1 / 1")
         self._btn_pdf_page.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._btn_pdf_page.setFixedWidth(80)
-        self._btn_pdf_next = QPushButton("\u25B6")
+        self._btn_pdf_next = QPushButton("\u25b6")
         self._btn_pdf_next.setFixedSize(28, 24)
         self._btn_pdf_next.clicked.connect(self._pdf_next_page)
 
@@ -391,9 +384,7 @@ class AseReferenceDialog(QDialog):
 
         # ── Structured reference widget ──
         try:
-            self._structured_widget = StructuredReferenceWidget(
-                ReferenceDataStore().load()
-            )
+            self._structured_widget = StructuredReferenceWidget(ReferenceDataStore().load())
         except Exception:  # noqa: BLE001
             self._structured_widget = None
         if self._structured_widget is not None:
@@ -411,7 +402,7 @@ class AseReferenceDialog(QDialog):
 
     def _build_title_bar(self) -> QWidget:
         from PySide6.QtGui import QIcon
-        from PySide6.QtWidgets import QSizePolicy
+
         p = get_theme_palette()
         bar = QWidget()
         bar.setFixedHeight(32)
@@ -459,8 +450,8 @@ class AseReferenceDialog(QDialog):
         btn_close.setToolTip(tr("ase_refs.close"))
         btn_close.clicked.connect(self.reject)
         btn_close.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; padding: 0; }}"
-            f"QPushButton:hover {{ background: #e81123; color: white; }}"
+            "QPushButton { background: transparent; border: none; padding: 0; }"
+            "QPushButton:hover { background: #e81123; color: white; }"
         )
 
         wc_layout.addWidget(self._btn_minimize)
@@ -498,6 +489,7 @@ class AseReferenceDialog(QDialog):
     def changeEvent(self, event) -> None:  # type: ignore[override]
         if event.type() == event.Type.WindowStateChange:
             from PySide6.QtGui import QIcon as _QIcon
+
             is_now_maximized = self.isMaximized()
             if is_now_maximized != self._is_maximized:
                 self._is_maximized = is_now_maximized
@@ -553,7 +545,7 @@ class AseReferenceDialog(QDialog):
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
         file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
         file_menu.addSeparator()
-        file_menu.addAction("Конструктор", self._open_constructor)
+        file_menu.addAction(tr("ase_ref.constructor_menu"), self._open_constructor)
         file_menu.addSeparator()
         file_menu.addAction(tr("ase_refs.reload"), self._reload_active_document)
         menu_bar.addMenu(file_menu)
@@ -566,6 +558,7 @@ class AseReferenceDialog(QDialog):
 
     def _open_constructor(self) -> None:
         from echo_personal_tool.constructor.constructor_dialog import show_constructor_dialog
+
         show_constructor_dialog(self)
         # Reload reference data after constructor closes
         if self._structured_widget is not None:
@@ -578,6 +571,7 @@ class AseReferenceDialog(QDialog):
 
     def _load_default_documents(self) -> None:
         from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+
         prefs = load_user_preferences()
         ref_dir = Path(prefs.references_dir) if prefs.references_dir else None
         try:
@@ -715,12 +709,8 @@ class AseReferenceDialog(QDialog):
                 except RuntimeError:
                     pass
                 idx = doc_idx  # capture
-                widget._btn_label.clicked.connect(
-                    lambda _checked, ii=idx: self._switch_to_doc(ii)
-                )
-                widget.close_requested.connect(
-                    lambda ii=idx: self._close_doc_tab(ii)
-                )
+                widget._btn_label.clicked.connect(lambda _checked, ii=idx: self._switch_to_doc(ii))
+                widget.close_requested.connect(lambda ii=idx: self._close_doc_tab(ii))
                 doc_idx += 1
 
     def _browser_context_menu(self, pos: QPoint) -> None:
@@ -729,18 +719,14 @@ class AseReferenceDialog(QDialog):
         anchor = self._browser.anchorAt(pos)
         if anchor:
             copy_link = menu.addAction(tr("ase_refs.copy_link_location"))
-            copy_link.triggered.connect(
-                lambda: QApplication.clipboard().setText(anchor)
-            )
+            copy_link.triggered.connect(lambda: QApplication.clipboard().setText(anchor))
             open_link = menu.addAction(tr("ase_refs.open_link"))
             open_link.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(anchor)))
             menu.addSeparator()
         if self._browser.textCursor().hasSelection():
             copy_action = menu.addAction(tr("ase_refs.copy"))
             copy_action.triggered.connect(
-                lambda: QApplication.clipboard().setText(
-                    self._browser.textCursor().selectedText()
-                )
+                lambda: QApplication.clipboard().setText(self._browser.textCursor().selectedText())
             )
         if menu.actions():
             menu.exec(self._browser.mapToGlobal(pos))
@@ -828,6 +814,7 @@ class AseReferenceDialog(QDialog):
                 combined = QPixmap(total_w, max_h)
                 combined.fill(0)
                 from PySide6.QtGui import QPainter
+
                 x = 0
                 for p in pixmaps:
                     painter = QPainter(combined)
@@ -841,9 +828,7 @@ class AseReferenceDialog(QDialog):
                 self._pdf_label.setPixmap(pixmap)
 
         self._pdf_zoom_label.setText(f"{int(self._pdf_zoom * 100)}%")
-        self._btn_pdf_page.setText(
-            f"{self._pdf_current_page + 1} / {self._pdf_total_pages}"
-        )
+        self._btn_pdf_page.setText(f"{self._pdf_current_page + 1} / {self._pdf_total_pages}")
         self._btn_pdf_prev.setEnabled(self._pdf_current_page > 0)
         self._btn_pdf_next.setEnabled(self._pdf_current_page < self._pdf_total_pages - 1)
 
@@ -895,6 +880,7 @@ class AseReferenceDialog(QDialog):
 
     def _add_document(self) -> None:
         from echo_personal_tool.presentation.styled_dialogs import styled_open_file
+
         path_str, _ = styled_open_file(
             self,
             tr("ase_refs.open_document"),
@@ -972,12 +958,13 @@ class ReferenceFontSettingsDialog(QDialog):
         form.addRow(tr("ase_refs.font"), self._family)
         form.addRow(tr("ase_refs.font_size"), self._size)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self._recolor_buttonbox_icons(buttons)
+        from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
+
+        theme_button_box_icons(buttons)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -990,9 +977,11 @@ class ReferenceFontSettingsDialog(QDialog):
         return self._size.value()
 
     def _recolor_buttonbox_icons(self, box: QDialogButtonBox) -> None:
-        from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
+
         from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
         p = get_theme_palette()
         color = QColor(p["text"])
         for btn in box.findChildren(QPushButton):

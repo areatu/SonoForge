@@ -12,10 +12,10 @@ import functools
 import logging
 import os
 import time
-import traceback
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 _ENABLED = os.environ.get("ECHO_PROFILE", "0") == "1"
 _LOG = logging.getLogger("echo_personal_tool.profiler")

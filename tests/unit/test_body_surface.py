@@ -51,9 +51,7 @@ def test_compute_indexed_volumes_and_linear() -> None:
             chamber="LA",
             a4c=LvViewMetrics(esv_ml=40.0),
         ),
-        linear_measurements=(
-            LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),
-        ),
+        linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),),
     )
 
     indexed = compute_indexed_measurements(snapshot, height_cm=170.0, weight_kg=70.0)
@@ -67,6 +65,8 @@ def test_compute_indexed_volumes_and_linear() -> None:
     assert indexed.lvmi_g_m2 is None
     assert len(indexed.linear_index_mm_m2) == 1
     assert indexed.linear_index_mm_m2[0][0] == "LVEDD"
+
+
 def test_compute_indexed_lvmi() -> None:
     snapshot = MeasurementSnapshot(lvm_g=120.0)
     indexed = compute_indexed_measurements(snapshot, height_cm=170.0, weight_kg=70.0)

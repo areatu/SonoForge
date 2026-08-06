@@ -55,7 +55,7 @@ def load_ase_reference_text(path: Path | None = None) -> str:
 
 def markdown_to_html(text: str) -> str:
     lines = text.splitlines()
-    parts = ['<html><body>']
+    parts = ["<html><body>"]
     index = 0
     while index < len(lines):
         line = lines[index]

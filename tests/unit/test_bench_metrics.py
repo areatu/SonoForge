@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from echo_personal_tool.domain.services.bench_metrics import (
     aggregate_bench_results,
@@ -116,8 +115,17 @@ class TestAggregateResults:
         assert result["median_iou"] is None
 
     def test_single_row(self) -> None:
-        rows = [{"iou": 0.85, "septal_err": 3.0, "lateral_err": 4.0,
-                 "lvef_delta": 2.0, "zero_edit": True, "light_edit": True, "reject": False}]
+        rows = [
+            {
+                "iou": 0.85,
+                "septal_err": 3.0,
+                "lateral_err": 4.0,
+                "lvef_delta": 2.0,
+                "zero_edit": True,
+                "light_edit": True,
+                "reject": False,
+            }
+        ]
         result = aggregate_bench_results(rows)
         assert result["total"] == 1
         assert result["median_iou"] == 0.85
@@ -126,10 +134,24 @@ class TestAggregateResults:
 
     def test_mixed_rows(self) -> None:
         rows = [
-            {"iou": 0.90, "septal_err": 2.0, "lateral_err": 3.0,
-             "lvef_delta": 1.0, "zero_edit": True, "light_edit": True, "reject": False},
-            {"iou": 0.50, "septal_err": 8.0, "lateral_err": 9.0,
-             "lvef_delta": 8.0, "zero_edit": False, "light_edit": False, "reject": True},
+            {
+                "iou": 0.90,
+                "septal_err": 2.0,
+                "lateral_err": 3.0,
+                "lvef_delta": 1.0,
+                "zero_edit": True,
+                "light_edit": True,
+                "reject": False,
+            },
+            {
+                "iou": 0.50,
+                "septal_err": 8.0,
+                "lateral_err": 9.0,
+                "lvef_delta": 8.0,
+                "zero_edit": False,
+                "light_edit": False,
+                "reject": True,
+            },
         ]
         result = aggregate_bench_results(rows)
         assert result["total"] == 2

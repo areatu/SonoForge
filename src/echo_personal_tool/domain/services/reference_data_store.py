@@ -1,4 +1,5 @@
 """Structured reference data model and YAML loader."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -96,14 +97,16 @@ def _parse_pathologies(raw: list[dict]) -> list[PathologyRef]:
         else:
             image_paths = []
 
-        result.append(PathologyRef(
-            name=p["name"],
-            slug=p["slug"],
-            description=p.get("description"),
-            image_paths=image_paths,
-            gradations=_parse_gradations(p["gradations"]) if "gradations" in p else None,
-            parameters=_parse_parameters(p.get("parameters", [])) if "parameters" in p else None,
-        ))
+        result.append(
+            PathologyRef(
+                name=p["name"],
+                slug=p["slug"],
+                description=p.get("description"),
+                image_paths=image_paths,
+                gradations=_parse_gradations(p["gradations"]) if "gradations" in p else None,
+                parameters=_parse_parameters(p.get("parameters", [])) if "parameters" in p else None,
+            )
+        )
     return result
 
 
@@ -121,7 +124,10 @@ class ReferenceDataStore:
 
     def load(self) -> ReferenceDataStore:
         raw = yaml.safe_load(self._yaml_path.read_text(encoding="utf-8"))
-        self._topics = [TopicRef(name=t["name"], slug=t["slug"], pathologies=_parse_pathologies(t.get("pathologies", []))) for t in raw.get("topics", [])]
+        self._topics = [
+            TopicRef(name=t["name"], slug=t["slug"], pathologies=_parse_pathologies(t.get("pathologies", [])))
+            for t in raw.get("topics", [])
+        ]
         self._rebuild_index()
         return self
 

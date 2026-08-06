@@ -130,7 +130,6 @@ def format_results_overlay(
     return "\n".join(lines)
 
 
-
 _norm_store_cache: ReferenceDataStore | None = None
 
 
@@ -140,6 +139,7 @@ def _get_norm_store() -> ReferenceDataStore:
         from echo_personal_tool.domain.services.reference_data_store import (
             ReferenceDataStore as _RDS,
         )
+
         _norm_store_cache = _RDS()
         _norm_store_cache.load()
     return _norm_store_cache
@@ -291,13 +291,42 @@ def format_results_overlay_html(
             _html_append(parts, tr("result.mv_dt"), dop.dt_ms, "ms", param_id="dt", sex_male=sex_male)
             _html_append(parts, tr("result.ivrt"), dop.ivrt_ms, "ms", param_id="dt", sex_male=sex_male)
             _html_append(parts, tr("result.at"), dop.at_ms, "ms", param_id="dt", sex_male=sex_male)
-        _html_append(parts, tr("result.e_prime_sept"), dop.e_prime_sept_cm_s, "cm/s", param_id="e_prime_sept", sex_male=sex_male)
-        _html_append(parts, tr("result.e_prime_lat"), dop.e_prime_lat_cm_s, "cm/s", param_id="e_prime_lat", sex_male=sex_male)
-        _html_append(parts, tr("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s", param_id="e_e_prime_avg", sex_male=sex_male)
-        _html_append(parts, tr("result.e_over_e_prime"), dop.e_over_e_prime, "", param_id="e_e_prime_avg", sex_male=sex_male)
-        _html_append(parts, tr("result.e_over_e_prime_sept"), dop.e_over_e_prime_sept, "", param_id="e_e_prime_avg", sex_male=sex_male)
-        _html_append(parts, tr("result.e_over_e_prime_lat"), dop.e_over_e_prime_lat, "", param_id="e_e_prime_avg", sex_male=sex_male)
-        _html_append(parts, tr("result.e_prime_over_a_prime"), dop.e_prime_over_a_prime, "", param_id="e_e_prime_avg", sex_male=sex_male)
+        _html_append(
+            parts, tr("result.e_prime_sept"), dop.e_prime_sept_cm_s, "cm/s", param_id="e_prime_sept", sex_male=sex_male
+        )
+        _html_append(
+            parts, tr("result.e_prime_lat"), dop.e_prime_lat_cm_s, "cm/s", param_id="e_prime_lat", sex_male=sex_male
+        )
+        _html_append(
+            parts, tr("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s", param_id="e_e_prime_avg", sex_male=sex_male
+        )
+        _html_append(
+            parts, tr("result.e_over_e_prime"), dop.e_over_e_prime, "", param_id="e_e_prime_avg", sex_male=sex_male
+        )
+        _html_append(
+            parts,
+            tr("result.e_over_e_prime_sept"),
+            dop.e_over_e_prime_sept,
+            "",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            tr("result.e_over_e_prime_lat"),
+            dop.e_over_e_prime_lat,
+            "",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
+        _html_append(
+            parts,
+            tr("result.e_prime_over_a_prime"),
+            dop.e_prime_over_a_prime,
+            "",
+            param_id="e_e_prime_avg",
+            sex_male=sex_male,
+        )
         _html_append(parts, tr("result.vpeak"), dop.vpeak_cm_s, "cm/s", sex_male=sex_male)
         _html_append(parts, tr("result.pgpeak"), dop.pgpeak_mmhg, "mmHg", sex_male=sex_male)
         _html_append(parts, tr("result.tr_vmax"), dop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)
@@ -311,13 +340,21 @@ def format_results_overlay_html(
     lvef = snapshot.lvef
     if lvef is not None:
         if lvef.a4c and lvef.a4c.edv_ml is not None:
-            _html_append(parts, tr("panel.kdo_lv", view="4C"), lvef.a4c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.kdo_lv", view="4C"), lvef.a4c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male
+            )
         if lvef.a4c and lvef.a4c.esv_ml is not None:
-            _html_append(parts, tr("panel.kso_lv", view="4C"), lvef.a4c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.kso_lv", view="4C"), lvef.a4c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
+            )
         if lvef.a2c and lvef.a2c.edv_ml is not None:
-            _html_append(parts, tr("panel.kdo_lv", view="2C"), lvef.a2c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.kdo_lv", view="2C"), lvef.a2c.edv_ml, volume_unit, param_id="lvedvi", sex_male=sex_male
+            )
         if lvef.a2c and lvef.a2c.esv_ml is not None:
-            _html_append(parts, tr("panel.kso_lv", view="2C"), lvef.a2c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.kso_lv", view="2C"), lvef.a2c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
+            )
         _html_append(parts, tr("panel.lvef"), lvef.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
 
     teich = snapshot.teichholz
@@ -336,15 +373,28 @@ def format_results_overlay_html(
     if la is not None:
         lav_4c = es_volume_from_view(la.a4c)
         if lav_4c is not None:
-            _html_append(parts, tr("panel.lav_4c_short"), lav_4c, volume_unit, param_id="la_vol_index", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.lav_4c_short"), lav_4c, volume_unit, param_id="la_vol_index", sex_male=sex_male
+            )
         lav_bi = biplane_es_volume_ml(la.a4c, la.a2c)
         if lav_bi is not None:
-            _html_append(parts, tr("panel.lav_bi_short"), lav_bi, volume_unit, param_id="la_vol_index", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.lav_bi_short"), lav_bi, volume_unit, param_id="la_vol_index", sex_male=sex_male
+            )
         if la.area_cm2 is not None:
             area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
-            _html_append(parts, tr("panel.s_la"), la.area_cm2, area_unit, decimals=2, param_id="la_vol_index", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.s_la"), la.area_cm2, area_unit, decimals=2, param_id="la_vol_index", sex_male=sex_male
+            )
     elif snapshot.la_volume and snapshot.la_volume.volume_ml is not None:
-        _html_append(parts, tr("result.lav"), snapshot.la_volume.volume_ml, volume_unit, param_id="la_vol_index", sex_male=sex_male)
+        _html_append(
+            parts,
+            tr("result.lav"),
+            snapshot.la_volume.volume_ml,
+            volume_unit,
+            param_id="la_vol_index",
+            sex_male=sex_male,
+        )
 
     ra = snapshot.ra_simpson
     if ra is not None:
@@ -353,7 +403,9 @@ def format_results_overlay_html(
             _html_append(parts, tr("result.rav_4c"), rav, volume_unit, param_id="ra_area", sex_male=sex_male)
         if ra.area_cm2 is not None:
             area_unit = "cm²" if snapshot.spacing_calibrated else "px²"
-            _html_append(parts, tr("panel.s_ra"), ra.area_cm2, area_unit, decimals=2, param_id="ra_area", sex_male=sex_male)
+            _html_append(
+                parts, tr("panel.s_ra"), ra.area_cm2, area_unit, decimals=2, param_id="ra_area", sex_male=sex_male
+            )
 
     if snapshot.rv_fac_percent is not None:
         _html_append(parts, tr("result.fac"), snapshot.rv_fac_percent, "%", param_id="fac", sex_male=sex_male)
@@ -371,26 +423,71 @@ def format_results_overlay_html(
         if lav_index is not None:
             _html_append(parts, tr("indexed.lav_line"), lav_index, "mL/m²", param_id="lavi", sex_male=sex_male)
         if indexed.rav_index_ml_m2 is not None:
-            _html_append(parts, tr("indexed.rav_line"), indexed.rav_index_ml_m2, "mL/m²", param_id="ra_area", sex_male=sex_male)
+            _html_append(
+                parts, tr("indexed.rav_line"), indexed.rav_index_ml_m2, "mL/m²", param_id="ra_area", sex_male=sex_male
+            )
         if indexed.lvmi_g_m2 is not None:
             _html_append(parts, tr("indexed.lvmi_line"), indexed.lvmi_g_m2, "g/m²", param_id="lvmi", sex_male=sex_male)
         lvef = snapshot.lvef
         if lvef is not None:
             if lvef.a4c and indexed.simpson_a4c_edvi_ml_m2 is not None:
-                _html_append(parts, tr("indexed.edv_4c"), indexed.simpson_a4c_edvi_ml_m2, "mL/m²", param_id="lvedvi", sex_male=sex_male)
+                _html_append(
+                    parts,
+                    tr("indexed.edv_4c"),
+                    indexed.simpson_a4c_edvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvedvi",
+                    sex_male=sex_male,
+                )
             if lvef.a4c and indexed.simpson_a4c_esvi_ml_m2 is not None:
-                _html_append(parts, tr("indexed.esv_4c"), indexed.simpson_a4c_esvi_ml_m2, "mL/m²", param_id="lvesvi", sex_male=sex_male)
+                _html_append(
+                    parts,
+                    tr("indexed.esv_4c"),
+                    indexed.simpson_a4c_esvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvesvi",
+                    sex_male=sex_male,
+                )
             if lvef.a2c and indexed.simpson_a2c_edvi_ml_m2 is not None:
-                _html_append(parts, tr("indexed.edv_2c"), indexed.simpson_a2c_edvi_ml_m2, "mL/m²", param_id="lvedvi", sex_male=sex_male)
+                _html_append(
+                    parts,
+                    tr("indexed.edv_2c"),
+                    indexed.simpson_a2c_edvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvedvi",
+                    sex_male=sex_male,
+                )
             if lvef.a2c and indexed.simpson_a2c_esvi_ml_m2 is not None:
-                _html_append(parts, tr("indexed.esv_2c"), indexed.simpson_a2c_esvi_ml_m2, "mL/m²", param_id="lvesvi", sex_male=sex_male)
+                _html_append(
+                    parts,
+                    tr("indexed.esv_2c"),
+                    indexed.simpson_a2c_esvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvesvi",
+                    sex_male=sex_male,
+                )
         teich = snapshot.teichholz
         if teich is not None:
             if indexed.teichholz_edvi_ml_m2 is not None:
-                _html_append(parts, tr("indexed.teichholz_ed"), indexed.teichholz_edvi_ml_m2, "mL/m²", param_id="lvedvi", sex_male=sex_male)
+                _html_append(
+                    parts,
+                    tr("indexed.teichholz_ed"),
+                    indexed.teichholz_edvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvedvi",
+                    sex_male=sex_male,
+                )
             if indexed.teichholz_esvi_ml_m2 is not None:
-                _html_append(parts, tr("indexed.teichholz_es"), indexed.teichholz_esvi_ml_m2, "mL/m²", param_id="lvesvi", sex_male=sex_male)
+                _html_append(
+                    parts,
+                    tr("indexed.teichholz_es"),
+                    indexed.teichholz_esvi_ml_m2,
+                    "mL/m²",
+                    param_id="lvesvi",
+                    sex_male=sex_male,
+                )
         from echo_personal_tool.domain.services.indexed_results_formatter import should_show_indexed_linear
+
         _INDEXED_PARAM_ID_MAP = {"ivsd": "ivsd", "lvedd": "lvedd", "lvpwd": "lvpwd", "lvesd": "lvesd"}
         for measurement in snapshot.linear_measurements:
             if measurement.millimeter_length is None:
@@ -404,12 +501,56 @@ def format_results_overlay_html(
             if should_show_indexed_linear(measurement.label, measurement.millimeter_length):
                 param_id = _INDEXED_PARAM_ID_MAP.get(measurement.label.casefold())
                 label_text = _indexed_linear_label(measurement.label)
-                _html_append(parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=param_id, sex_male=sex_male)
+                _html_append(
+                    parts, label_text, indexed_mm_m2, "mm/m²", decimals=2, param_id=param_id, sex_male=sex_male
+                )
 
     for item in snapshot.planimeter:
         _html_append(parts, item.label, item.value, item.unit, decimals=2 if item.kind == "area" else 1)
 
+    # Deduplicate by label — keep the most recently stored measurement per label.
+    deduped: dict[str, LinearMeasurement] = {}
     for measurement in snapshot.linear_measurements:
+        deduped[measurement.label] = measurement
+    linear_for_overlay = list(deduped.values())
+
+    for measurement in linear_for_overlay:
+        if measurement.label == "%D":
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get("%D", "result.percent_d"))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "%",
+                    decimals=1,
+                    sex_male=sex_male,
+                )
+            continue
+        if measurement.label == "%S":
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get("%S", "result.percent_s"))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "%",
+                    decimals=1,
+                    sex_male=sex_male,
+                )
+            continue
+        if measurement.label in ("S1", "S2"):
+            if measurement.millimeter_length is not None:
+                display_label = tr(_LABEL_I18N_KEY.get(measurement.label, f"result.{measurement.label.lower()}"))
+                _html_append(
+                    parts,
+                    display_label,
+                    measurement.millimeter_length,
+                    "cm²",
+                    decimals=2,
+                    sex_male=sex_male,
+                )
+            continue
         if measurement.millimeter_length is not None:
             param_id = _CALIPER_PARAM_ID_MAP.get(measurement.label.casefold())
             display_label = measurement.label
@@ -427,6 +568,13 @@ def format_results_overlay_html(
         else:
             text = measurement.display_text(length_unit=length_display_unit)
             parts.append(f'<span style="color:{_COLOR_NORMAL};">{text}</span>')
+
+    for vessel in snapshot.vessel_measurements:
+        _html_append(parts, "PSV", vessel.psv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "EDV", vessel.edv_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, "RI", vessel.ri, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "S/D", vessel.sd, "", decimals=2, sex_male=sex_male)
+        _html_append(parts, "MV≈", vessel.mv_approx, "cm/s", sex_male=sex_male)
 
     return "<br>".join(parts)
 

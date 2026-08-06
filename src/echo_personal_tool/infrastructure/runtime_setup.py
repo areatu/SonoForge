@@ -4,23 +4,20 @@ from __future__ import annotations
 
 import importlib
 import logging
-import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from echo_personal_tool import __version__
-from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-_MODELS_RELEASE_URL = (
-    "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
-)
+_MODELS_RELEASE_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
 _DATA_DIR = Path.home() / ".local" / "share" / "sonoforge"
 _VENV_DIR = _DATA_DIR / "venv"
 _MODELS_DIR = _DATA_DIR / "models"
@@ -127,7 +124,15 @@ def download_models(progress_callback: Callable[[str, int], None] | None = None)
 
             _report(progress_callback, "Extracting models...", 85)
             with tarfile.open(archive, "r:gz") as tar:
-                tar.extractall(path=_DATA_DIR)
+                # Validate all members stay within target directory (prevent tar slip)
+                abs_dest = _DATA_DIR.resolve()
+                for member in tar.getmembers():
+                    member_path = (abs_dest / member.name).resolve()
+                    if not str(member_path).startswith(str(abs_dest)):
+                        raise ValueError(f"Tar member escapes target dir: {member.name}")
+                # Extract each member individually (safer than extractall)
+                for member in tar.getmembers():
+                    tar.extract(member, path=_DATA_DIR)
 
         if (_MODELS_DIR / "model_manifest.json").is_file():
             _report(progress_callback, "Models ready.", 100)
@@ -163,7 +168,7 @@ def _download_file(
                     pct = int(downloaded * 70 / total) + 10  # 10-80% range
                     _report(
                         progress_callback,
-                        f"Downloading... {downloaded // (1024*1024)}/{total // (1024*1024)} MB",
+                        f"Downloading... {downloaded // (1024 * 1024)}/{total // (1024 * 1024)} MB",
                         pct,
                     )
 
@@ -188,9 +193,7 @@ def show_setup_dialog() -> bool:
     try:
         from PySide6.QtCore import Qt, QThread, Signal
         from PySide6.QtWidgets import (
-            QApplication,
             QDialog,
-            QHBoxLayout,
             QLabel,
             QProgressBar,
             QPushButton,
@@ -204,20 +207,19 @@ def show_setup_dialog() -> bool:
     if status.deps_installed and status.models_exist:
         return True
 
+    # In frozen (PyInstaller) builds, deps are bundled — only download models.
+    frozen = getattr(sys, "frozen", False)
+
     class SetupWorker(QThread):
         progress = Signal(str, int)
         finished = Signal(bool)
 
         def run(self) -> None:
             success = True
-            if not status.deps_installed:
-                success = install_deps(
-                    progress_callback=lambda msg, pct: self.progress.emit(msg, pct)
-                )
+            if not frozen and not status.deps_installed:
+                success = install_deps(progress_callback=lambda msg, pct: self.progress.emit(msg, pct))
             if success and not status.models_exist:
-                success = download_models(
-                    progress_callback=lambda msg, pct: self.progress.emit(msg, pct)
-                )
+                success = download_models(progress_callback=lambda msg, pct: self.progress.emit(msg, pct))
             self.finished.emit(success)
 
     dialog = QDialog()
@@ -228,8 +230,9 @@ def show_setup_dialog() -> bool:
     layout = QVBoxLayout(dialog)
 
     # Logo
-    from PySide6.QtGui import QPixmap
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPixmap
+
     _logo_path = Path(__file__).resolve().parent.parent / "resources" / "logo.png"
     if _logo_path.exists():
         logo_label = QLabel()
@@ -256,9 +259,7 @@ def show_setup_dialog() -> bool:
 
     worker = SetupWorker()
     worker.progress.connect(lambda msg, pct: (status_label.setText(msg), progress_bar.setValue(pct)))
-    worker.finished.connect(
-        lambda ok: (dialog.accept() if ok else dialog.reject())
-    )
+    worker.finished.connect(lambda ok: dialog.accept() if ok else dialog.reject())
 
     dialog.show()
     worker.start()

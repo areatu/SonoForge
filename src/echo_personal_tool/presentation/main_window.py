@@ -21,12 +21,11 @@ from time import perf_counter
 from typing import Literal
 
 import numpy as np
-from PySide6.QtCore import QEvent, QPoint, QPropertyAnimation, QEasingCurve, QSignalBlocker, Qt, QThreadPool, QTimer
+from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, QSignalBlocker, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QFileDialog,
     QHBoxLayout,
     QMainWindow,
     QMenu,
@@ -38,21 +37,19 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.application.app_controller import AppController
-from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import (
-    format_results_overlay,
     format_results_overlay_html,
 )
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_query_service,
     make_dicom_web_client,
 )
 from echo_personal_tool.infrastructure.server_settings import load_server_settings
-from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.infrastructure.user_preferences import (
     UserPreferences,
     load_user_preferences,
@@ -60,19 +57,20 @@ from echo_personal_tool.infrastructure.user_preferences import (
 )
 from echo_personal_tool.presentation.ase_reference_dialog import show_ase_reference_dialog
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
+from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
+from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
-from echo_personal_tool.ui.strain_window import StrainWindow
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
-from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 from echo_personal_tool.resources.bundled_fonts import ui_font
+from echo_personal_tool.ui.strain_window import StrainWindow
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +83,7 @@ _TOOL_PANEL_WIDTH = 280
 @dataclass
 class LayoutConfig:
     """Immutable snapshot — always replace, never mutate in place."""
+
     swap_places: bool = False
     gallery_horizontal: bool = False
     activity_bar: bool = False
@@ -215,34 +214,21 @@ class MainWindow(QMainWindow):
         self._viewer.contour_completed.connect(self._on_contour_completed)
         self._viewer.contour_landmark_rejected.connect(self._show_status)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
-        self._viewer.linear_measurements_changed.connect(
-            self._controller.on_linear_measurements_changed
-        )
-        self._viewer.linear_caliper_sequence_completed.connect(
-            self._on_linear_caliper_sequence_completed
-        )
+        self._viewer.linear_measurements_changed.connect(self._controller.on_linear_measurements_changed)
+        self._viewer.linear_caliper_sequence_completed.connect(self._on_linear_caliper_sequence_completed)
         self._viewer.calibration_completed.connect(self._controller.on_manual_calibration)
         self._viewer.doppler_markers_changed.connect(self._controller.on_doppler_markers_changed)
-        self._viewer.doppler_calibration_changed.connect(
-            self._controller.on_doppler_calibration_changed
-        )
+        self._viewer.doppler_calibration_changed.connect(self._controller.on_doppler_calibration_changed)
         self._viewer.doppler_frame_changing.connect(self._on_doppler_frame_changing)
         self._viewer.doppler_frame_changed.connect(self._on_doppler_frame_changed)
-        self._viewer.mmode_time_calibration_completed.connect(
-            self._controller.on_mmode_time_calibration
-        )
-        self._viewer.mmode_calibration_changed.connect(
-            self._controller.on_mmode_calibration_changed
-        )
-        self._viewer.results_overlay_position_changed.connect(
-            self._on_results_overlay_position_changed
-        )
-        self._viewer.results_overlay_parameter_clicked.connect(
-            self._on_results_overlay_parameter_clicked
-        )
+        self._viewer.mmode_time_calibration_completed.connect(self._controller.on_mmode_time_calibration)
+        self._viewer.mmode_calibration_changed.connect(self._controller.on_mmode_calibration_changed)
+        self._viewer.results_overlay_position_changed.connect(self._on_results_overlay_position_changed)
+        self._viewer.results_overlay_parameter_clicked.connect(self._on_results_overlay_parameter_clicked)
         self._viewer.gold_export_requested.connect(self._on_gold_export_requested)
         self._viewer.mmode_column_ready.connect(self._on_mmode_column_ready)
         self._viewer.mmode_line_completed.connect(self._on_mmode_line_completed)
+        self._viewer.vessel_accept_requested.connect(self._on_vessel_accept_requested)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -270,6 +256,14 @@ class MainWindow(QMainWindow):
         status = QStatusBar()
         self.setStatusBar(status)
         self._show_status(tr("status.startup"))
+
+        # Permanent "Research use only" warning in status bar
+        from PySide6.QtWidgets import QLabel
+
+        self._research_warning = QLabel(tr("layout.research_use_only"))
+        self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
+        status.addPermanentWidget(self._research_warning)
+
         self._install_shortcuts()
         self._rebuild_layout()
 
@@ -515,12 +509,11 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(getattr(self._layout_config, attr))
             action.triggered.connect(lambda checked, a=attr: self._on_layout_toggle(a, checked))
-        menu.exec(self._system_bar._btn_layout.mapToGlobal(
-            QPoint(0, self._system_bar._btn_layout.height())
-        ))
+        menu.exec(self._system_bar._btn_layout.mapToGlobal(QPoint(0, self._system_bar._btn_layout.height())))
 
     def _on_layout_toggle(self, attr: str, checked: bool) -> None:
         from dataclasses import replace
+
         self._layout_config = replace(self._layout_config, **{attr: checked})
         self._rebuild_layout()
 
@@ -594,10 +587,7 @@ class MainWindow(QMainWindow):
                 self._ensure_activity_bar()
 
             use_splitter = (
-                not cfg.activity_bar
-                and not cfg.gallery_horizontal
-                and not cfg.multiview
-                and not cfg.swap_places
+                not cfg.activity_bar and not cfg.gallery_horizontal and not cfg.multiview and not cfg.swap_places
             )
 
             if cfg.multiview:
@@ -738,6 +728,7 @@ class MainWindow(QMainWindow):
         if self._activity_bar is not None:
             return
         from echo_personal_tool.presentation.activity_bar import ActivityBar
+
         self._activity_bar = ActivityBar()
         self._activity_bar.tab_activated.connect(self._on_activity_tab_activated)
         self._activity_bar.tab_deactivated.connect(self._on_activity_tab_deactivated)
@@ -751,13 +742,9 @@ class MainWindow(QMainWindow):
         elif action == "esv":
             self._on_lv2d_es()
         elif action == "edv":
-            self._on_measure_action(
-                MeasurementAction.MANUAL_SIMPSON, "A4C", "ED", ""
-            )
+            self._on_measure_action(MeasurementAction.MANUAL_SIMPSON, "A4C", "ED", "")
         elif action == "es":
-            self._on_measure_action(
-                MeasurementAction.MANUAL_SIMPSON, "A4C", "ES", ""
-            )
+            self._on_measure_action(MeasurementAction.MANUAL_SIMPSON, "A4C", "ES", "")
 
     def _remove_tool_panel_from_content_layout(self) -> None:
         idx = self._content_layout.indexOf(self._tool_panel)
@@ -811,6 +798,7 @@ class MainWindow(QMainWindow):
             self._last_overlay_position = None
             self._current_overlay_study_uid = None
         from echo_personal_tool.infrastructure.i18n import set_language
+
         set_language(preferences.language)
         self._reload_ui_language()
         app = QApplication.instance()
@@ -822,15 +810,16 @@ class MainWindow(QMainWindow):
         )
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
+
         from echo_personal_tool.presentation.dark_theme import get_logo_path
+
         self.setWindowIcon(QIcon(str(get_logo_path())))
         self._system_bar.reload_icons()
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
-            self._tool_panel.controls._magnetic_snap_check.setChecked(
-                preferences.magnetic_snap_enabled
-            )
+            self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
         self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
+        self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
@@ -845,11 +834,17 @@ class MainWindow(QMainWindow):
             self._activity_bar.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
 
     def _on_magnetic_snap_changed(self, enabled: bool) -> None:
         self._viewer.set_magnetic_snap_enabled(enabled)
         self._user_preferences.magnetic_snap_enabled = enabled
+        save_user_preferences(self._user_preferences)
+
+    def _on_despeckle_changed(self, enabled: bool) -> None:
+        self._viewer.set_despeckle_enabled(enabled)
+        self._user_preferences.despeckle_enabled = enabled
         save_user_preferences(self._user_preferences)
 
     def _on_results_overlay_position_changed(self, x_ratio: float, y_ratio: float) -> None:
@@ -896,18 +891,25 @@ class MainWindow(QMainWindow):
     def _on_mmode_column_ready(self, column: object, frame_index: object) -> None:
         if self._mmode_widget is not None and self._mmode_active:
             import numpy as np
+
             if isinstance(column, np.ndarray):
                 self._mmode_widget.on_new_column(column)
 
     def _on_mmode_line_completed(self, start: object, end: object) -> None:
         if self._mmode_widget is not None and isinstance(start, tuple) and isinstance(end, tuple):
-            cached_frames = self._controller.get_cached_frames() if hasattr(self._controller, 'get_cached_frames') else []
+            cached_frames = (
+                self._controller.get_cached_frames() if hasattr(self._controller, "get_cached_frames") else []
+            )
             if cached_frames:
                 self._mmode_widget.recalculate_from_frames(cached_frames, start, end)
             # Apply calibration to M-mode depth axis
             # Priority: M-mode specific calibration > B-mode pixel spacing > fallback
             depth_mm = 0.0
-            mmode_cal = self._viewer.get_mmode_calibration_state() if hasattr(self._viewer, 'get_mmode_calibration_state') else None
+            mmode_cal = (
+                self._viewer.get_mmode_calibration_state()
+                if hasattr(self._viewer, "get_mmode_calibration_state")
+                else None
+            )
             if mmode_cal is not None and mmode_cal.is_complete():
                 depth_mm = self._mmode_widget._num_samples * mmode_cal.vertical_mm_per_pixel
             else:
@@ -923,7 +925,11 @@ class MainWindow(QMainWindow):
             if depth_mm > 0:
                 self._mmode_widget.set_depth_range_mm(depth_mm)
             state = self._controller.state_manager.snapshot
-            if state.instance is not None and state.instance.frame_time_ms is not None and state.instance.frame_time_ms > 0:
+            if (
+                state.instance is not None
+                and state.instance.frame_time_ms is not None
+                and state.instance.frame_time_ms > 0
+            ):
                 self._mmode_widget.set_time_calibration_ms_per_pixel(state.instance.frame_time_ms)
             self._show_status(tr("status.mmode_line_placed"))
 
@@ -937,18 +943,22 @@ class MainWindow(QMainWindow):
         if ivsd is None or lvidd is None or lvpwd is None:
             return
         from echo_personal_tool.domain.calculations.teichholz_mmode import compute_teichholz_from_mmode
+
         study_uid = self._controller._current_study_uid
         session = self._controller._measurement_session.get(study_uid) if study_uid else None
         height_cm = session.height_cm if session else None
         weight_kg = session.weight_kg if session else None
         result = compute_teichholz_from_mmode(
-            ivsd_mm=ivsd, lvidd_mm=lvidd, lvpwd_mm=lvpwd,
-            height_cm=height_cm, weight_kg=weight_kg,
+            ivsd_mm=ivsd,
+            lvidd_mm=lvidd,
+            lvpwd_mm=lvpwd,
+            height_cm=height_cm,
+            weight_kg=weight_kg,
         )
         self._show_status(
-            f"МЖП={ivsd:.1f} КДР={lvidd:.1f} ЗСЛЖ={lvpwd:.1f} "
-            f"КДО={result.edv_ml:.1f} мл  "
-            f"ОТС={result.rwt:.2f}  ММЛЖ={result.lvm_g:.1f} г"
+            f"{tr('mmode.teich_ed_labels.0')}={ivsd:.1f} {tr('mmode.teich_ed_labels.1')}={lvidd:.1f} {tr('mmode.teich_ed_labels.2')}={lvpwd:.1f} "
+            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('strain.unit_ml')}  "
+            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
         )
 
     def _on_teichholz_es_complete(self, measurement) -> None:
@@ -957,6 +967,7 @@ class MainWindow(QMainWindow):
             return
         from echo_personal_tool.domain.calculations.teichholz_mmode import compute_teichholz_from_mmode
         from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+
         if self._mmode_widget is None:
             return
         ed_values = self._mmode_widget._measurement_tool.get_teichholz_ed_values()
@@ -969,9 +980,12 @@ class MainWindow(QMainWindow):
         height_cm = session.height_cm if session else None
         weight_kg = session.weight_kg if session else None
         result = compute_teichholz_from_mmode(
-            ivsd_mm=ivsd, lvidd_mm=lvidd, lvpwd_mm=lvpwd,
+            ivsd_mm=ivsd,
+            lvidd_mm=lvidd,
+            lvpwd_mm=lvpwd,
             lvesd_mm=lvesd,
-            height_cm=height_cm, weight_kg=weight_kg,
+            height_cm=height_cm,
+            weight_kg=weight_kg,
         )
         # Store as linear measurements for overlay integration
         instance = self._controller.state_manager.snapshot.instance
@@ -985,13 +999,13 @@ class MainWindow(QMainWindow):
         if study_uid:
             self._controller._measurement_session.merge_linear_measurements(study_uid, linear)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
-        lvmi_str = f"  ИММЛЖ={result.lvmi_g_m2:.1f} г/м²" if result.lvmi_g_m2 else ""
+        lvmi_str = f"  {tr('domain.report.lvmi')}={result.lvmi_g_m2:.1f} g/m²" if result.lvmi_g_m2 else ""
         self._show_status(
-            f"Тейхольц: МЖП={result.ivsd_mm:.1f} ЗСЛЖ={result.lvpwd_mm:.1f} "
-            f"КДР={result.lvidd_mm:.1f} КСР={lvesd:.1f} "
-            f"КДО={result.edv_ml:.1f} КСО={result.esv_ml:.1f} "
-            f"ФВ={result.lvef_percent:.1f}%  "
-            f"ОТС={result.rwt:.2f}  ММЛЖ={result.lvm_g:.1f} г"
+            f"{tr('mmode.teichholz')}: {tr('mmode.teich_ed_labels.0')}={result.ivsd_mm:.1f} {tr('mmode.teich_ed_labels.2')}={result.lvpwd_mm:.1f} "
+            f"{tr('mmode.teich_ed_labels.1')}={result.lvidd_mm:.1f} {tr('mmode.label_es')}={lvesd:.1f} "
+            f"{tr('domain.report.kdo')}={result.edv_ml:.1f} {tr('domain.report.kso')}={result.esv_ml:.1f} "
+            f"{tr('domain.report.fv')}={result.lvef_percent:.1f}%  "
+            f"{tr('domain.report.rwt')}={result.rwt:.2f}  {tr('domain.report.lvm')}={result.lvm_g:.1f} g"
             f"{lvmi_str}"
         )
 
@@ -1023,6 +1037,7 @@ class MainWindow(QMainWindow):
     def _open_folder(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+
         directory = styled_select_directory(self, tr("dialog.select_folder"))
         if not directory:
             return
@@ -1035,19 +1050,25 @@ class MainWindow(QMainWindow):
         if not isinstance(instance, InstanceMetadata) or instance.path is None:
             return
         from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
         dest, _ = styled_save_file(
-            self, tr("dialog.export_mp4.title"), "", "MP4 (*.mp4)",
+            self,
+            tr("dialog.export_mp4.title"),
+            "",
+            "MP4 (*.mp4)",
         )
         if not dest:
             return
         if instance.media_format == "mp4":
             import shutil as _shutil
+
             _shutil.copy2(str(instance.path), dest)
             self._show_status(tr("status.mp4_copied", dest=dest))
             return
         from echo_personal_tool.application.workers.mp4_export_worker import (
             Mp4ExportWorker,
         )
+
         self._show_status(tr("status.mp4_exporting"))
         worker = Mp4ExportWorker(
             source_path=Path(instance.path),
@@ -1077,6 +1098,7 @@ class MainWindow(QMainWindow):
     @_prof
     def _open_orthanc_dialog(self) -> None:
         from echo_personal_tool.presentation.ui_animations import exec_animated
+
         settings = load_server_settings()
         client = make_dicom_web_client(settings)
         query_service = make_dicom_query_service(settings)
@@ -1104,8 +1126,7 @@ class MainWindow(QMainWindow):
                 session_id, _study_uid = result
                 path = self._orthanc_cache.session_path(session_id)
                 log_path = path / "scan_errors.log"
-                logger.info("[MW] scan fallback: session=%s path=%s exists=%s",
-                            session_id[:8], path, path.exists())
+                logger.info("[MW] scan fallback: session=%s path=%s exists=%s", session_id[:8], path, path.exists())
                 self._controller.open_folder(path, error_log_path=log_path)
         else:
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
@@ -1124,7 +1145,7 @@ class MainWindow(QMainWindow):
         try:
             if self._viewer is not None:
                 contours = self._viewer.contours()
-                if hasattr(self._viewer, '_stored_linear_measurements'):
+                if hasattr(self._viewer, "_stored_linear_measurements"):
                     linear = list(self._viewer._stored_linear_measurements.values())
                 else:
                     linear = []
@@ -1183,6 +1204,7 @@ class MainWindow(QMainWindow):
 
     def _on_scan_failed(self, message: str) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         QMessageBox.warning(self, tr("error.scan_failed"), message)
 
     def _on_instance_selected(self, selected: object) -> None:
@@ -1192,6 +1214,7 @@ class MainWindow(QMainWindow):
         if modifiers & Qt.KeyboardModifier.ControlModifier:
             if not self._layout_config.multiview:
                 from dataclasses import replace
+
                 self._layout_config = replace(self._layout_config, multiview=True)
                 self._rebuild_layout()
             self._load_instance_into_viewer2(selected)
@@ -1199,9 +1222,7 @@ class MainWindow(QMainWindow):
         self._click_to_frame_started_at = perf_counter()
         previous = self._controller.state_manager.snapshot.instance
         if previous is not None:
-            self._instance_overlay_cache[previous.sop_instance_uid] = (
-                self._viewer.results_overlay_text()
-            )
+            self._instance_overlay_cache[previous.sop_instance_uid] = self._viewer.results_overlay_text()
             if self._viewer.results_overlay_custom_position():
                 x_ratio, y_ratio = self._viewer.results_overlay_position()
                 self._instance_overlay_positions[previous.sop_instance_uid] = (x_ratio, y_ratio)
@@ -1232,6 +1253,7 @@ class MainWindow(QMainWindow):
             self._viewer.cancel_mmode_line()
             if self._mmode_widget is not None:
                 self._mmode_widget.clear_buffer()
+                self._mmode_widget.clear_calibration()
             # Restart M-mode line placement for new file
             self._viewer.start_mmode_line()
 
@@ -1261,19 +1283,24 @@ class MainWindow(QMainWindow):
             except (RuntimeError, IndexError):
                 pass
         from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
+
         worker = FrameLoaderWorker(
-            instance.path, frame_index, instance.media_format,
+            instance.path,
+            frame_index,
+            instance.media_format,
             total_frames=instance.number_of_frames,
         )
         worker.signals.finished.connect(
-            lambda pixels, inst=instance: self._on_viewer2_frame_loaded(pixels, inst)
-            if self._viewer2 is not None else None
-        , Qt.ConnectionType.QueuedConnection)
+            lambda pixels, inst=instance: (
+                self._on_viewer2_frame_loaded(pixels, inst) if self._viewer2 is not None else None
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.signals.failed.connect(
-            lambda msg: self._show_status(f"viewer2 load failed: {msg}")
-            if self._viewer2 is not None else None
-        , Qt.ConnectionType.QueuedConnection)
+            lambda msg: self._show_status(f"viewer2 load failed: {msg}") if self._viewer2 is not None else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         QThreadPool.globalInstance().start(worker)
 
@@ -1380,13 +1407,13 @@ class MainWindow(QMainWindow):
                 if self._controller.try_auto_depth_calibration(image):
                     self._viewer.show_calibration_ok_overlay()
                 elif self._viewer.start_calibration_caliper():
-                    self._show_status(
-                        tr("status.calibration_click")
-                    )
+                    self._show_status(tr("status.calibration_click"))
         if _FREEZE_DIAG:
             _diag_log.warning(
                 "[frame_display] playing=%s scroll=%s render_ms=%.2f",
-                is_playing, scroll_active, (perf_counter() - _ft0) * 1000,
+                is_playing,
+                scroll_active,
+                (perf_counter() - _ft0) * 1000,
             )
 
     def _deferred_instance_switch_restore(self, image: np.ndarray, is_playing: bool) -> None:
@@ -1404,9 +1431,7 @@ class MainWindow(QMainWindow):
             if self._controller.try_auto_depth_calibration(image):
                 self._viewer.show_calibration_ok_overlay()
             elif self._viewer.start_calibration_caliper():
-                self._show_status(
-                    tr("status.calibration_click")
-                )
+                self._show_status(tr("status.calibration_click"))
 
     def _on_slider_frame_selected(self, index: int) -> None:
         self._slider_navigating = True
@@ -1425,12 +1450,14 @@ class MainWindow(QMainWindow):
         self._sync_doppler_tool_availability()
         if _FREEZE_DIAG:
             _diag_log.warning(
-                "[scroll_settled] total_ms=%.2f", (perf_counter() - _t0) * 1000,
+                "[scroll_settled] total_ms=%.2f",
+                (perf_counter() - _t0) * 1000,
             )
 
     @_prof
     def _on_frame_load_failed(self, message: str) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._click_to_frame_started_at = None
         QMessageBox.warning(self, tr("error.load_failed"), message)
 
@@ -1468,22 +1495,33 @@ class MainWindow(QMainWindow):
     def _update_properties_panel(self, state: ViewerState) -> None:
         """Update the properties panel with current instance info."""
         panel = self._tool_panel.properties_panel
-        if state.instance is None:
+        if state.instance is None or state.instance.path is None:
             panel.clear_all()
             return
-        inst = state.instance
-        # Instance info
-        panel.update_instance_info(
-            modality=inst.modality or "",
-            series_desc=inst.series_description or "",
-            frame_rate=1000.0 / inst.frame_time_ms if inst.frame_time_ms else None,
-            pixel_spacing=f"{inst.pixel_spacing[0]:.2f}×{inst.pixel_spacing[1]:.2f} mm" if inst.pixel_spacing else "",
-            number_of_frames=inst.number_of_frames,
-            patient_height_m=inst.patient_height_m,
-            patient_weight_kg=inst.patient_weight_kg,
-            media_format=inst.media_format or "",
-            frame_time_ms=inst.frame_time_ms,
+
+        from echo_personal_tool.infrastructure.properties_extractor import (
+            extract_properties_snapshot,
         )
+
+        mmode = self._viewer.get_mmode_calibration_state()
+        doppler = self._viewer.get_doppler_calibration_state()
+
+        snap = extract_properties_snapshot(
+            state.instance.path,
+            depth_ok=state.effective_pixel_spacing is not None,
+            mmode_calibrated=mmode.is_complete() if mmode else False,
+            mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
+            mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
+            mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
+            mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
+            mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
+            doppler_calibrated=doppler.is_complete() if doppler else False,
+            doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+            doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+            doppler_partial=doppler is not None and not doppler.is_complete(),
+        )
+        panel.update_from_snapshot(snap)
+
         # Latest measurement
         if state.linear_measurements:
             m = state.linear_measurements[-1]
@@ -1506,9 +1544,7 @@ class MainWindow(QMainWindow):
             frame_index,
         )
         if calibration is None and instance.media_format == "dicom":
-            calibration = self._controller.get_doppler_calibration_for_instance(
-                instance.sop_instance_uid
-            )
+            calibration = self._controller.get_doppler_calibration_for_instance(instance.sop_instance_uid)
             if calibration is not None and instance.number_of_frames > 1:
                 calibration = None
         dto = self._controller.get_doppler_dto_for_instance_frame(
@@ -1517,6 +1553,7 @@ class MainWindow(QMainWindow):
         )
         self._viewer.restore_doppler_state(calibration, dto)
         self._doppler_frame_context = (instance.sop_instance_uid, frame_index)
+        self._restore_vessel_for_current_frame()
 
     def _restore_doppler_for_current_instance(self) -> None:
         self._restore_doppler_for_current_frame()
@@ -1544,13 +1581,41 @@ class MainWindow(QMainWindow):
     def _on_doppler_frame_changed(self, frame_index: int) -> None:
         self._restore_doppler_for_current_frame()
 
+    def _on_vessel_accept_requested(self, measurement: object) -> None:
+        from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+
+        if not isinstance(measurement, VesselMeasurement):
+            return
+        if self._controller.accept_vessel_measurement(measurement):
+            self._show_status(tr("status.vessel_accepted"))
+
+    def _restore_vessel_for_current_frame(self) -> None:
+        from echo_personal_tool.application.study_measurement_session import (
+            vessel_measurements_for_instance,
+        )
+
+        instance = self._controller.state_manager.snapshot.instance
+        if instance is None:
+            return
+        frame = self._controller.state_manager.snapshot.current_frame_index
+        study_uid = self._controller._current_study_uid
+        session = self._controller._measurement_session.get(study_uid) if study_uid else None
+        if session is None:
+            return
+        measurements = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance.sop_instance_uid,
+        )
+        for m in measurements:
+            if m.frame_index == frame:
+                self._viewer._doppler.show_vessel_measurement(m)
+                break
+
     def _restore_mmode_for_current_instance(self) -> None:
         instance = self._controller.state_manager.snapshot.instance
         if instance is None:
             return
-        calibration = self._controller.get_mmode_calibration_for_instance(
-            instance.sop_instance_uid
-        )
+        calibration = self._controller.get_mmode_calibration_for_instance(instance.sop_instance_uid)
         self._viewer.restore_mmode_state(calibration)
 
     def _ensure_mmode_ready_for_tapse(self) -> bool:
@@ -1558,9 +1623,7 @@ class MainWindow(QMainWindow):
             return True
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None:
-            saved = self._controller.get_mmode_calibration_for_instance(
-                instance.sop_instance_uid
-            )
+            saved = self._controller.get_mmode_calibration_for_instance(instance.sop_instance_uid)
             if saved is not None:
                 self._viewer.apply_mmode_calibration_state(saved)
                 return True
@@ -1570,17 +1633,13 @@ class MainWindow(QMainWindow):
                 self._controller.on_mmode_calibration_changed(state)
             return True
         if self._viewer.start_mmode_panel_calibration():
-            self._show_status(
-                tr("status.mmode_tapse_click")
-            )
+            self._show_status(tr("status.mmode_tapse_click"))
         else:
             self._show_status(tr("status.load_first_frame_mmode"))
         return False
 
     @_prof
     def _sync_results_overlay(self, state: ViewerState) -> None:
-        import logging
-        _dbg = logging.getLogger(__name__)
         time_calibrated = self._viewer.is_doppler_time_calibrated()
         instance = state.instance
         instance_uid = instance.sop_instance_uid if instance is not None else None
@@ -1591,9 +1650,10 @@ class MainWindow(QMainWindow):
             time_calibrated=time_calibrated,
             length_display_unit=self._user_preferences.length_display_unit,
         )
-        _dbg.debug(
+        logger.debug(
             "_sync_overlay: uid=%s html_len=%d linear=%d",
-            instance_uid, len(fresh_html),
+            instance_uid,
+            len(fresh_html),
             len(overlay_snapshot.linear_measurements) if overlay_snapshot else 0,
         )
 
@@ -1636,6 +1696,7 @@ class MainWindow(QMainWindow):
     def _sync_doppler_tool_availability(self) -> None:
         self._tool_panel.set_doppler_tool_availability(
             time_ok=self._viewer.is_doppler_time_calibrated(),
+            vessel_ok=self._viewer.is_vessel_available(),
         )
 
     def _ensure_doppler_ready(self, *, require_time: bool = False) -> bool:
@@ -1645,9 +1706,7 @@ class MainWindow(QMainWindow):
         if require_time:
             if self._viewer.is_doppler_time_calibrated():
                 return True
-            self._show_status(
-                tr("status.doppler_no_time")
-            )
+            self._show_status(tr("status.doppler_no_time"))
             return False
         return True
 
@@ -1658,9 +1717,8 @@ class MainWindow(QMainWindow):
         self._system_bar.reset_session_requested.connect(self._on_reset_measurements_requested)
         self._system_bar.caliper_requested.connect(lambda: self._on_caliper_requested())
         self._system_bar.calibration_requested.connect(self._on_calibration_requested)
-        self._system_bar.doppler_calibration_requested.connect(
-            self._on_doppler_calibration_requested
-        )
+        self._system_bar.doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
+        self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
         self._system_bar.minimize_requested.connect(self.showMinimized)
@@ -1668,20 +1726,26 @@ class MainWindow(QMainWindow):
         self._system_bar.close_requested.connect(self.close)
         self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
         self._tool_panel.action_requested.connect(self._on_measure_action)
-        self._tool_panel.patient_metrics_changed.connect(
-            self._controller.on_patient_metrics_changed
-        )
+        self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
+        self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
+        self._apply_despeckle_from_preferences()
 
     def _apply_magnetic_snap_from_preferences(self) -> None:
         enabled = self._user_preferences.magnetic_snap_enabled
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(enabled)
         self._viewer.set_magnetic_snap_enabled(enabled)
+
+    def _apply_despeckle_from_preferences(self) -> None:
+        enabled = self._user_preferences.despeckle_enabled
+        with QSignalBlocker(self._tool_panel.controls._despeckle_check):
+            self._tool_panel.controls._despeckle_check.setChecked(enabled)
+        self._viewer.set_despeckle_enabled(enabled)
 
     def _on_auto_play_changed(self, enabled: bool) -> None:
         self._user_preferences.auto_play = enabled
@@ -1707,15 +1771,14 @@ class MainWindow(QMainWindow):
             MeasurementAction.RESET: self._on_reset_measurements_requested,
             MeasurementAction.SPLINE_AREA: self._on_spline_area_requested,
             MeasurementAction.SPLINE_VOLUME: self._on_spline_volume_requested,
-            MeasurementAction.MANUAL_SIMPSON: (
-                lambda: self._on_manual_simpson_requested(view, phase)
-            ),
+            MeasurementAction.MANUAL_SIMPSON: (lambda: self._on_manual_simpson_requested(view, phase)),
             MeasurementAction.MBS_SIMPSON: (lambda: self._on_mbs_simpson_requested(view, phase)),
             MeasurementAction.LV2D_ALL_DIASTOLE: self._on_lv2d_all_diastole,
             MeasurementAction.LV2D_ES: self._on_lv2d_es,
             MeasurementAction.LA_DIAMETER: self._on_la_diameter,
             MeasurementAction.LAV_4C: self._on_lav_4c,
             MeasurementAction.LAV_4C_AUTO: self._on_lav_4c_auto,
+            MeasurementAction.LAV_4C_AI_PLUS: self._on_lav_4c_ai_plus,
             MeasurementAction.LAV_BI: self._on_lav_bi,
             MeasurementAction.RA_DIAMETER: self._on_ra_diameter,
             MeasurementAction.RA_AREA: self._on_ra_area,
@@ -1727,9 +1790,17 @@ class MainWindow(QMainWindow):
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
+            MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
+            MeasurementAction.MMODE_TIME_HR: self._on_mmode_time_hr_from_menu,
+            MeasurementAction.TEICHHOLZ_ED: self._on_teichholz_ed_from_menu,
+            MeasurementAction.TEICHHOLZ_ES: self._on_teichholz_es_from_menu,
+            MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
         }
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
+            return
+        if action == MeasurementAction.DIAMETER_COMPARE:
+            self._on_diameter_compare_requested()
             return
         if action == MeasurementAction.DOPPLER_PEAK:
             self._on_doppler_peak_tool(extra or None)
@@ -1742,6 +1813,28 @@ class MainWindow(QMainWindow):
             return
         if action == MeasurementAction.DOPPLER_TRACE:
             self._on_doppler_trace_tool(extra or "VTI")
+            return
+        if action == MeasurementAction.DOPPLER_TRACE_AUTO:
+            self._on_doppler_trace_auto()
+            return
+        if action == MeasurementAction.VESSEL_PSV_EDV:
+            if self._viewer.start_vessel_psv():
+                self._show_status(tr("status.vessel_psv"))
+            return
+        if action == MeasurementAction.VESSEL_AUTO_TRACE:
+            preset = self._tool_panel.measure._menu.vessel_preset()
+            if self._viewer.start_vessel_auto_trace(preset):
+                self._show_status(tr("status.vessel_auto_trace"))
+            return
+        if action == MeasurementAction.VESSEL_AVERAGE:
+            if self._viewer.average_vessel_cycles():
+                self._show_status(tr("status.vessel_average"))
+            return
+        if action == MeasurementAction.VESSEL_CLEAR:
+            self._viewer.clear_vessel_measurement()
+            return
+        if action == MeasurementAction.VESSEL_ACCEPT:
+            self._viewer.accept_vessel_measurement()
             return
         handler = handlers.get(action)
         if handler is not None:
@@ -1767,7 +1860,7 @@ class MainWindow(QMainWindow):
         if not self._ensure_doppler_ready():
             return
         self._viewer.set_doppler_tool_mode("peak", peak_label=label or "E")
-        self._show_status(tr("status.doppler_peak_tool", label=label or 'E'))
+        self._show_status(tr("status.doppler_peak_tool", label=label or "E"))
 
     def _on_doppler_mitral_inflow(self) -> None:
         if not self._ensure_doppler_ready(require_time=True):
@@ -1781,15 +1874,21 @@ class MainWindow(QMainWindow):
         if not self._ensure_doppler_ready(require_time=True):
             return
         self._viewer.set_doppler_tool_mode("interval", interval_label=label or "DT")
-        self._show_status(tr("status.doppler_interval_tool", label=label or 'DT'))
+        self._show_status(tr("status.doppler_interval_tool", label=label or "DT"))
 
     def _on_doppler_trace_tool(self, trace_label: str = "VTI") -> None:
         if not self._ensure_doppler_ready(require_time=True):
             return
         self._viewer.set_doppler_tool_mode("trace", trace_label=trace_label)
-        self._show_status(
-            tr("status.doppler_trace_tool", trace_label=trace_label)
-        )
+        self._show_status(tr("status.doppler_trace_tool", trace_label=trace_label))
+
+    def _on_doppler_trace_auto(self) -> None:
+        if not self._ensure_doppler_ready(require_time=True):
+            return
+        if self._viewer.start_vti_auto_trace():
+            self._show_status(tr("status.vti_auto_trace"))
+        else:
+            self._show_status(tr("status.load_first_frame_doppler"))
 
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():
@@ -1805,7 +1904,7 @@ class MainWindow(QMainWindow):
             "A4C",
             overlay=f"RV FAC {phase}: TV lateral → septal → free wall",
             status=(
-                f"RV FAC {phase}: 1) TV lateral  2) TV septal  3) free wall · Enter — {tr('status.ready_done', line='confirm')}"
+                f"RV FAC {phase}: 1) TV lateral  2) TV septal  3) free wall · Enter — {tr('status.ready_done', line='confirm')}"  # noqa: E501
             ),
         ):
             self._show_status("Load a frame first or cancel the active tool (Esc)")
@@ -1817,10 +1916,48 @@ class MainWindow(QMainWindow):
     def _on_caliper_requested(self, label: str | None = None) -> None:
         if label and self._viewer.start_linear_caliper_for(label):
             self._show_status(tr("status.linear_caliper_tool", label=label))
-        elif (label := self._viewer.activate_generic_dist_caliper()):
+        elif label := self._viewer.activate_generic_dist_caliper():
             self._show_status(tr("status.linear_caliper_tool", label=label))
         else:
             self._show_status("Load a frame first")
+
+    def _on_mmode_caliper_requested(self) -> None:
+        if self._viewer.start_mmode_vertical_caliper():
+            self._show_status(tr("status.mmode_caliper_tool"))
+        else:
+            self._show_status("M-mode calibration required")
+
+    def _on_mmode_time_hr_from_menu(self) -> None:
+        """Start horizontal time/HR measurement from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_horizontal_measurement()
+
+    def _ensure_mmode_active(self) -> None:
+        """Activate M-mode if not already active."""
+        if not self._mmode_active:
+            self._toggle_mmode()
+
+    def _on_teichholz_ed_from_menu(self) -> None:
+        """Start Teichholz ED workflow from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_teichholz_ed()
+
+    def _on_teichholz_es_from_menu(self) -> None:
+        """Start Teichholz ES workflow from Measures menu."""
+        self._ensure_mmode_active()
+        if self._mmode_widget is not None:
+            self._mmode_widget._start_teichholz_es()
+
+    def _on_diameter_compare_requested(self) -> None:
+        if self._viewer.start_diameter_compare():
+            self._show_status(tr("viewer.dcmp_click_start"))
+        else:
+            self._show_status("Load a frame first")
+
+    def _on_area_compare_requested(self) -> None:
+        self._viewer.start_area_compare()
 
     @_prof
     def _on_reset_measurements_requested(self) -> None:
@@ -1874,11 +2011,69 @@ class MainWindow(QMainWindow):
             return
         self._viewer.toggle_calibration_caliper()
         if self._viewer.is_calibration_active:
-            self._show_status(
-                tr("status.calibration_bmode_click")
-            )
+            self._show_status(tr("status.calibration_bmode_click"))
         else:
             self._show_status(tr("status.calibration_cancelled"))
+
+    def _on_heart_rate_requested(self) -> None:
+        snapshot = self._controller.state_manager.snapshot
+        if snapshot.instance is None:
+            self._show_status("Load a cine first")
+            return
+        from PySide6.QtCore import QThreadPool
+
+        from echo_personal_tool.application.workers.heart_rate_worker import (
+            HeartRateWorker,
+        )
+
+        # Collect contour areas for area-time method
+        contour_areas: list[float] | None = None
+        contour_frame_indices: list[int] | None = None
+        contours = self._viewer.contours()
+        if contours:
+            from echo_personal_tool.domain.services.contour_geometry import (
+                polygon_area_mm2,
+            )
+
+            pixel_spacing = snapshot.instance.pixel_spacing or (1.0, 1.0)
+            areas: list[float] = []
+            indices: list[int] = []
+            for c in contours:
+                if c.chamber == "LV" and len(c.points) >= 3:
+                    area = polygon_area_mm2(c.points, pixel_spacing)
+                    areas.append(area)
+                    indices.append(c.frame_index)
+            if len(areas) >= 4:
+                contour_areas = areas
+                contour_frame_indices = indices
+
+        worker = HeartRateWorker(
+            source_path=snapshot.instance.path,
+            media_format=snapshot.instance.media_format,
+            frame_time_ms=snapshot.instance.frame_time_ms,
+            contour_areas=contour_areas,
+            contour_frame_indices=contour_frame_indices,
+        )
+        worker.signals.finished.connect(self._on_heart_rate_result, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_heart_rate_failed, Qt.ConnectionType.QueuedConnection)
+        self._show_status("Estimating heart rate…")
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_heart_rate_result(self, bpm: float, confidence: float, method: str) -> None:
+        method_label = {"optical_flow": "Optical Flow", "area_time": "Area-Time", "combined": "Combined"}.get(
+            method, method
+        )
+        msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
+        self._show_status(msg)
+        overlay = self._viewer.results_overlay_text()
+        hr_line = f"HR: {bpm:.0f} BPM"
+        if overlay:
+            self._viewer.set_results_overlay(f"{overlay}\n{hr_line}")
+        else:
+            self._viewer.set_results_overlay(hr_line)
+
+    def _on_heart_rate_failed(self, error: str) -> None:
+        self._show_status(f"HR estimation failed: {error}")
 
     def _get_current_frame_index(self) -> int | None:
         snapshot = self._controller.state_manager.snapshot
@@ -1921,6 +2116,7 @@ class MainWindow(QMainWindow):
             n_frames=n_frames,
         )
         from echo_personal_tool.presentation.ui_animations import exec_animated
+
         if exec_animated(settings) != QDialog.DialogCode.Accepted:
             self._show_status(tr("status.speckle_cancelled"))
             return
@@ -2027,9 +2223,7 @@ class MainWindow(QMainWindow):
     def _on_manual_simpson_requested(self, view: str, phase: str) -> None:
         if self._viewer.start_contour(phase=phase, view=view, chamber="LV"):
             self._viewer.clear_frame_overlay()
-            self._viewer.append_frame_overlay(
-                f"Manual LV {view} {phase}: annulus septal → lateral → apex"
-            )
+            self._viewer.append_frame_overlay(f"Manual LV {view} {phase}: annulus septal → lateral → apex")
             self._show_status(f"Manual Simpson {view} {phase}: click annulus septal, lateral, apex")
         else:
             self._show_status("Load a frame first or cancel the active tool (Esc)")
@@ -2135,6 +2329,16 @@ class MainWindow(QMainWindow):
         self._viewer.append_frame_overlay(tr("status.lav4c_auto_overlay"))
         self._controller.request_la_auto_segment()
 
+    def _on_lav_4c_ai_plus(self) -> None:
+        """Start AI-assisted manual LA contour: 3 clicks → AI refinement."""
+        self._start_chamber_contour(
+            "LA",
+            "ES",
+            "A4C",
+            overlay=tr("status.lav4c_ai_plus_overlay"),
+            status=tr("status.lav4c_ai_plus_status"),
+        )
+
     def _on_lav_bi(self) -> None:
         has_a4c = self._has_chamber_contour("LA", "A4C", "ES")
         has_a2c = self._has_chamber_contour("LA", "A2C", "ES")
@@ -2199,6 +2403,10 @@ class MainWindow(QMainWindow):
             return
         extra_lines: tuple[str, ...] = ()
         if chamber in {"AREA", "VOL"}:
+            if self._viewer._comparison_state.kind == "area":
+                self._viewer._handle_area_compare_contour(contour)
+                self._sync_results_overlay(self._controller.state_manager.snapshot)
+                return
             spacing = self._controller.state_manager.snapshot.effective_pixel_spacing
             calibrated = spacing is not None
             from echo_personal_tool.domain.services.planimeter_formatter import (
@@ -2221,9 +2429,7 @@ class MainWindow(QMainWindow):
         if chamber == "LV" and contour.phase.upper() == "ED":
             mode = "mbs" if contour.source in {"model", "ai"} else "manual"
             view = contour.view.upper()
-            es_action = (
-                MeasurementAction.MBS_SIMPSON if mode == "mbs" else MeasurementAction.MANUAL_SIMPSON
-            )
+            es_action = MeasurementAction.MBS_SIMPSON if mode == "mbs" else MeasurementAction.MANUAL_SIMPSON
             self._tool_panel.measure.highlight_action(es_action, view=view, phase="ES")
             view_label = "4C" if view == "A4C" else "2C"
             es_name = "ESV Auto" if mode == "mbs" else "LVEF Simpson ESV"
@@ -2314,11 +2520,13 @@ class MainWindow(QMainWindow):
             elif phase == "ES":
                 self._rv_fac_awaiting_es = False
                 self._tool_panel.measure.clear_action_highlight()
-                snapshot = self._controller.state_manager.snapshot.measurement_snapshot
-                if snapshot is not None and snapshot.rv_fac_percent is not None:
+                overlay_snap = self._controller.compute_overlay_snapshot(
+                    self._controller.state_manager.snapshot,
+                )
+                if overlay_snap is not None and overlay_snap.rv_fac_percent is not None:
                     extra_lines = (
                         *extra_lines,
-                        f"FAC: {snapshot.rv_fac_percent:.1f} %",
+                        f"FAC: {overlay_snap.rv_fac_percent:.1f} %",
                     )
 
         self._viewer._refresh_frame_overlays(extra_lines=extra_lines)
@@ -2343,7 +2551,9 @@ class MainWindow(QMainWindow):
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 self._active_viewer = self._viewer
             elif self._viewer2 is not None and watched in (
-                self._viewer2, self._viewer2._graphics, self._viewer2._view,
+                self._viewer2,
+                self._viewer2._graphics,
+                self._viewer2._view,
             ):
                 self._active_viewer = self._viewer2
         if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
@@ -2351,7 +2561,9 @@ class MainWindow(QMainWindow):
                 if self._handle_key_press(event):
                     return True
             if self._viewer2 is not None and watched in (
-                self._viewer2, self._viewer2._graphics, self._viewer2._view,
+                self._viewer2,
+                self._viewer2._graphics,
+                self._viewer2._view,
             ):
                 if self._handle_key_press(event):
                     return True
@@ -2387,9 +2599,7 @@ class MainWindow(QMainWindow):
         if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             v.toggle_calibration_caliper()
             if v.is_calibration_active:
-                self._show_status(
-                    tr("status.calibration_click")
-                )
+                self._show_status(tr("status.calibration_click"))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_K and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
@@ -2442,10 +2652,7 @@ class MainWindow(QMainWindow):
                 self._show_status(tr("status.no_lv_open_arc"))
             event.accept()
             return True
-        if (
-            event.key() == Qt.Key.Key_I
-            and event.modifiers() == Qt.KeyboardModifier.NoModifier
-        ):
+        if event.key() == Qt.Key.Key_I and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             self._request_auto_segment_shortcut()
             event.accept()
             return True

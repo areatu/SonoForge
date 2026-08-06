@@ -5,14 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QHeaderView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -28,6 +26,7 @@ from echo_personal_tool.constructor.models import (
     ParameterModel,
     PathologyModel,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -57,20 +56,18 @@ class ParameterTableEditor(BaseEditor):
 
         # Header
         header_widget = QWidget()
-        header_widget.setStyleSheet(
-            f"background: {p['bg_control']}; border-bottom: 1px solid {p['border']};"
-        )
+        header_widget.setStyleSheet(f"background: {p['bg_control']}; border-bottom: 1px solid {p['border']};")
         header_layout = QVBoxLayout(header_widget)
         header_layout.setContentsMargins(8, 4, 8, 4)
 
         title_row = QHBoxLayout()
-        title = QLabel("Параметры")
+        title = QLabel(tr("constructor.param.header"))
         title.setStyleSheet(f"color: {p['text']}; font-weight: bold;")
         title_row.addWidget(title)
         title_row.addStretch()
 
         # Font controls
-        fl = QLabel("Шрифт:")
+        fl = QLabel(tr("constructor.param.font_label"))
         fl.setStyleSheet(f"color: {p['text']}; font-size: 11px;")
         title_row.addWidget(fl)
 
@@ -84,7 +81,7 @@ class ParameterTableEditor(BaseEditor):
         self._font_combo.currentTextChanged.connect(self._on_font_changed)
         title_row.addWidget(self._font_combo)
 
-        sl = QLabel("Размер:")
+        sl = QLabel(tr("constructor.param.size_label"))
         sl.setStyleSheet(f"color: {p['text']}; font-size: 11px;")
         title_row.addWidget(sl)
 
@@ -104,9 +101,9 @@ class ParameterTableEditor(BaseEditor):
         # Buttons
         btn_row = QHBoxLayout()
         for text, slot in [
-            ("+ Параметр", self._add_parameter),
-            ("+ Столбец", self._add_column),
-            ("Удалить столбец", self._delete_column),
+            (tr("constructor.param.add_param"), self._add_parameter),
+            (tr("constructor.param.add_column"), self._add_column),
+            (tr("constructor.param.delete_column"), self._delete_column),
         ]:
             btn = QPushButton(text)
             btn.setFixedHeight(26)
@@ -123,13 +120,14 @@ class ParameterTableEditor(BaseEditor):
 
         # Column visibility toggles
         vis_row = QHBoxLayout()
-        vis_label = QLabel("Показать:")
+        vis_label = QLabel(tr("constructor.param.show_label"))
         vis_label.setStyleSheet(f"color: {p['text']}; font-size: 11px;")
         vis_row.addWidget(vis_label)
 
         self._col_visibility: dict[str, bool] = {c[0]: True for c in self._columns}
         self._col_checkboxes: dict[str, QCheckBox] = {}
         from PySide6.QtWidgets import QCheckBox
+
         for field, label in self._columns:
             cb = QCheckBox(label)
             cb.setChecked(True)
@@ -141,7 +139,7 @@ class ParameterTableEditor(BaseEditor):
         header_layout.addLayout(vis_row)
 
         # Column indicator
-        self._col_indicator = QLabel("Столбец: — | Перетащите заголовок для перемещения")
+        self._col_indicator = QLabel(tr("constructor.param.column_indicator_empty"))
         self._col_indicator.setStyleSheet(f"color: {p['text_dim']}; font-size: 11px;")
         header_layout.addWidget(self._col_indicator)
 
@@ -155,9 +153,7 @@ class ParameterTableEditor(BaseEditor):
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setAlternatingRowColors(True)
         self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self._table.horizontalHeader().setSectionsMovable(True)
         self._table.horizontalHeader().sectionMoved.connect(self._on_column_moved)
         self._table.verticalHeader().setVisible(True)
@@ -205,10 +201,7 @@ class ParameterTableEditor(BaseEditor):
         self._refresh_table()
 
     def filter(self, query: str) -> None:
-        self._parameters = [
-            p for p in self._all_params
-            if query in p.id.lower() or query in p.name.lower()
-        ]
+        self._parameters = [p for p in self._all_params if query in p.id.lower() or query in p.name.lower()]
         self._refresh_table()
 
     def clear_filter(self) -> None:
@@ -298,7 +291,7 @@ class ParameterTableEditor(BaseEditor):
     def _on_cell_clicked(self, row: int, col: int) -> None:
         self._selected_col = col
         col_name = self._columns[col][1] if col < len(self._columns) else ""
-        self._col_indicator.setText(f"Столбец: {col_name} (номер {col + 1}) | Перетащите заголовок для перемещения")
+        self._col_indicator.setText(tr("constructor.param.column_indicator_active", name=col_name, num=str(col + 1)))
         if row < len(self._parameters):
             self.parameter_selected.emit(self._parameters[row].id)
 
@@ -333,7 +326,7 @@ class ParameterTableEditor(BaseEditor):
     # ── Add / Delete ──
 
     def _add_parameter(self) -> None:
-        new_param = ParameterModel(id=f"param_{len(self._parameters) + 1}", name="Новый параметр")
+        new_param = ParameterModel(id=f"param_{len(self._parameters) + 1}", name=tr("constructor.param.new_param"))
         self._parameters.append(new_param)
         self._all_params.append(new_param)
         self._refresh_table()
@@ -341,7 +334,10 @@ class ParameterTableEditor(BaseEditor):
 
     def _add_column(self) -> None:
         from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self, "Новый столбец", "Имя столбца:")
+
+        name, ok = QInputDialog.getText(
+            self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
+        )
         if ok and name:
             slug = name.lower().replace(" ", "_")
             self._columns.append((slug, name))
@@ -351,19 +347,21 @@ class ParameterTableEditor(BaseEditor):
     def _delete_column(self) -> None:
         col = self._selected_col
         if col < 0 or col >= len(self._columns):
-            QMessageBox.warning(self, "Ошибка", "Кликните на столбец для удаления")
+            QMessageBox.warning(self, tr("constructor.param.error"), tr("constructor.param.click_column"))
             return
         field, label = self._columns[col]
         if field in ("id", "name"):
-            QMessageBox.warning(self, "Ошибка", "Нельзя удалить обязательные столбцы")
+            QMessageBox.warning(self, tr("constructor.param.error"), tr("constructor.param.cannot_delete_required"))
             return
         reply = QMessageBox.question(
-            self, "Удалить столбец", f"Удалить столбец «{label}»?"
+            self,
+            tr("constructor.param.delete_column_confirm_title"),
+            tr("constructor.param.delete_column_confirm", name=label),
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._columns.pop(col)
             self._selected_col = -1
-            self._col_indicator.setText("Столбец: —")
+            self._col_indicator.setText(tr("constructor.param.column_indicator_empty_short"))
             self._refresh_table()
             self.parameters_changed.emit()
 
@@ -372,8 +370,9 @@ class ParameterTableEditor(BaseEditor):
         if not rows:
             return
         reply = QMessageBox.question(
-            self, "Удалить параметры",
-            f"Удалить {len(rows)} параметров?"
+            self,
+            tr("constructor.param.delete_params_title"),
+            tr("constructor.param.delete_params_confirm", count=str(len(rows))),
         )
         if reply == QMessageBox.StandardButton.Yes:
             for row in rows:
@@ -400,41 +399,42 @@ class ParameterTableEditor(BaseEditor):
     def _context_menu(self, pos: Any) -> None:
         p = get_theme_palette()
         from PySide6.QtWidgets import QMenu
+
         menu = QMenu(self)
         menu.setStyleSheet(
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
-        menu.addAction("Добавить параметр", self._add_parameter)
-        menu.addAction("Добавить столбец", self._add_column)
-        menu.addAction("Удалить столбец", self._delete_column)
+        menu.addAction(tr("constructor.param.add_param"), self._add_parameter)
+        menu.addAction(tr("constructor.param.add_column"), self._add_column)
+        menu.addAction(tr("constructor.param.delete_column"), self._delete_column)
         menu.addSeparator()
-        menu.addAction("Удалить выбранные", self.delete_selected)
+        menu.addAction(tr("constructor.param.delete_selected"), self.delete_selected)
         menu.exec(self._table.mapToGlobal(pos))
 
 
 _FLAT_COLUMNS = [
     ("id", "ID"),
-    ("name", "Название"),
-    ("unit", "Ед."),
-    ("norm_male_low", "Норм М (от)"),
-    ("norm_male_high", "Норм М (до)"),
-    ("norm_female_low", "Норм Ж (от)"),
-    ("norm_female_high", "Норм Ж (до)"),
-    ("pathology_desc", "Описание"),
-    ("source", "Источник"),
+    ("name", tr("constructor.param.col_name")),
+    ("unit", tr("constructor.param.col_unit")),
+    ("norm_male_low", tr("constructor.param.col_norm_male_low")),
+    ("norm_male_high", tr("constructor.param.col_norm_male_high")),
+    ("norm_female_low", tr("constructor.param.col_norm_female_low")),
+    ("norm_female_high", tr("constructor.param.col_norm_female_high")),
+    ("pathology_desc", tr("constructor.param.col_desc")),
+    ("source", tr("constructor.param.col_source")),
 ]
 
 _GRADATION_COLUMNS = [
     ("id", "ID"),
-    ("name", "Название"),
-    ("unit", "Ед."),
-    ("norm_male_low", "Норм М (от)"),
-    ("norm_male_high", "Норм М (до)"),
-    ("norm_female_low", "Норм Ж (от)"),
-    ("norm_female_high", "Норм Ж (до)"),
-    ("pathology_desc", "Описание патологии"),
-    ("source", "Источник"),
+    ("name", tr("constructor.param.col_name")),
+    ("unit", tr("constructor.param.col_unit")),
+    ("norm_male_low", tr("constructor.param.col_norm_male_low")),
+    ("norm_male_high", tr("constructor.param.col_norm_male_high")),
+    ("norm_female_low", tr("constructor.param.col_norm_female_low")),
+    ("norm_female_high", tr("constructor.param.col_norm_female_high")),
+    ("pathology_desc", tr("constructor.param.col_pathology_desc")),
+    ("source", tr("constructor.param.col_source")),
 ]
 
 

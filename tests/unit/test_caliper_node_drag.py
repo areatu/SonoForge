@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QApplication
 
@@ -61,9 +63,7 @@ def _chain_click(viewer: ViewerWidget, x: float, y: float = 32.0) -> None:
     assert viewer._handle_linear_caliper_mouse_press(ev)
 
 
-def _find_node_for_endpoint(
-    viewer: ViewerWidget, caliper_key: tuple[str, int], endpoint: int
-):
+def _find_node_for_endpoint(viewer: ViewerWidget, caliper_key: tuple[str, int], endpoint: int):
     for item in viewer._persistent_linear_graphics:
         if len(item) >= 4 and item[3] == caliper_key:
             return item[1] if endpoint == 0 else item[2]

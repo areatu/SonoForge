@@ -24,7 +24,6 @@ def _semicircle_arc(num: int = 5) -> list[tuple[float, float]]:
     return [(5.0 + 5.0 * math.cos(a), 5.0 * math.sin(a)) for a in angles]
 
 
-
 def test_resample_open_arc_preserves_endpoints_and_count() -> None:
     arc = _semicircle_arc(4)
     result = resample_open_arc(arc, num_nodes=8)
@@ -37,8 +36,7 @@ def test_resample_open_arc_equal_spacing() -> None:
     arc = _semicircle_arc(4)
     result = resample_open_arc(arc, num_nodes=9)
     seg_lens = [
-        math.hypot(result[i + 1][0] - result[i][0], result[i + 1][1] - result[i][1])
-        for i in range(len(result) - 1)
+        math.hypot(result[i + 1][0] - result[i][0], result[i + 1][1] - result[i][1]) for i in range(len(result) - 1)
     ]
     assert max(seg_lens) - min(seg_lens) == pytest.approx(0.0, abs=0.5)
 

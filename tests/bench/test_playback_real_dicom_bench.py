@@ -21,10 +21,12 @@ _BENCH = pytest.mark.skipif(
     reason="Set ECHO_BENCH=1 to run benchmarks",
 )
 
-_REAL_DICOM = Path(os.environ.get(
-    "ECHO_REAL_DICOM",
-    "",
-))
+_REAL_DICOM = Path(
+    os.environ.get(
+        "ECHO_REAL_DICOM",
+        "",
+    )
+)
 
 
 def _load_real_frames() -> tuple[np.ndarray, dict]:

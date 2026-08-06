@@ -42,6 +42,7 @@ MODEL_ID = "echonet_la_resnet50_224"
 # Dataset
 # ---------------------------------------------------------------------------
 
+
 def rasterize_polygon(
     points: list[list[float]],
     shape: tuple[int, int],
@@ -162,10 +163,14 @@ class LaGoldDataset(torch.utils.data.Dataset):
             h, w = frame.shape[:2]
             mask = rasterize_polygon(sample["points"], (h, w))
             roi_xyxy = resolve_segment_roi_xyxy(
-                frame, media_format="dicom", instance_path=instance_path,
+                frame,
+                media_format="dicom",
+                instance_path=instance_path,
             )
             cropped_frame, transform = crop_frame_for_echonet(
-                frame, roi_xyxy=roi_xyxy, crop_mode="full_roi",
+                frame,
+                roi_xyxy=roi_xyxy,
+                crop_mode="full_roi",
             )
             cropped_mask = mask[
                 transform.crop_y0 : transform.crop_y0 + transform.crop_height,
@@ -195,6 +200,7 @@ class LaGoldDataset(torch.utils.data.Dataset):
 # Augmentation
 # ---------------------------------------------------------------------------
 
+
 def augment_pair(
     frame: torch.Tensor,
     mask: torch.Tensor,
@@ -222,6 +228,7 @@ def augment_pair(
 # Loss: BCE + Dice
 # ---------------------------------------------------------------------------
 
+
 def bce_dice_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """Combined BCE + Dice loss for binary segmentation."""
     bce = F.binary_cross_entropy_with_logits(logits, target)
@@ -236,21 +243,20 @@ def bce_dice_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 # Model: frozen backbone + trainable decoder head
 # ---------------------------------------------------------------------------
 
+
 def build_la_model() -> nn.Module:
     """DeepLabV3-ResNet50 with frozen backbone, trainable 1-class head."""
     try:
-        model = torchvision.models.segmentation.deeplabv3_resnet50(
-            weights=None, aux_loss=False
-        )
+        model = torchvision.models.segmentation.deeplabv3_resnet50(weights=None, aux_loss=False)
     except TypeError:
-        model = torchvision.models.segmentation.deeplabv3_resnet50(
-            pretrained=False, aux_loss=False
-        )
+        model = torchvision.models.segmentation.deeplabv3_resnet50(pretrained=False, aux_loss=False)
 
     # Replace classifier head
     classifier = model.classifier[-1]
     model.classifier[-1] = nn.Conv2d(
-        classifier.in_channels, 1, kernel_size=classifier.kernel_size,
+        classifier.in_channels,
+        1,
+        kernel_size=classifier.kernel_size,
     )
 
     # Freeze backbone; train full ASPP classifier head (1-class output)
@@ -270,6 +276,7 @@ def build_la_model() -> nn.Module:
 # Training loop
 # ---------------------------------------------------------------------------
 
+
 def train(
     model: nn.Module,
     dataset: LaGoldDataset,
@@ -285,10 +292,14 @@ def train(
         sys.exit(1)
 
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, drop_last=len(dataset) >= batch_size,
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=len(dataset) >= batch_size,
     )
     optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=lr,
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr,
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
@@ -329,6 +340,7 @@ def train(
 # ONNX export
 # ---------------------------------------------------------------------------
 
+
 class _Wrapper(nn.Module):
     def __init__(self, backbone: nn.Module) -> None:
         super().__init__()
@@ -350,10 +362,14 @@ def export_onnx(
     dummy = torch.randn(1, 3, input_size, input_size)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.onnx.export(
-        wrapper, dummy, str(output_path),
-        export_params=True, opset_version=opset,
+        wrapper,
+        dummy,
+        str(output_path),
+        export_params=True,
+        opset_version=opset,
         do_constant_folding=True,
-        input_names=["input"], output_names=["logits"],
+        input_names=["input"],
+        output_names=["logits"],
         dynamic_axes={"input": {0: "batch"}, "logits": {0: "batch"}},
     )
     print(f"ONNX exported: {output_path} ({output_path.stat().st_size:,} bytes)")
@@ -408,6 +424,7 @@ def update_manifest(onnx_path: Path, *, input_size: int = INPUT_SIZE) -> None:
 
 def _sha256(path: Path) -> str:
     import hashlib
+
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -425,15 +442,13 @@ def verify_onnx(onnx_path: Path, input_size: int = INPUT_SIZE) -> None:
     sample = np.random.randn(1, 3, input_size, input_size).astype(np.float32)
     outputs = session.run(None, {"input": sample})
     logits = outputs[0]
-    print(
-        f"Verify OK: shape={logits.shape}, "
-        f"range=[{logits.min():.3f}, {logits.max():.3f}]"
-    )
+    print(f"Verify OK: shape={logits.shape}, range=[{logits.min():.3f}, {logits.max():.3f}]")
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Fine-tune LA segmentation + ONNX export")
@@ -467,7 +482,8 @@ def main() -> int:
     model = build_la_model()
 
     train(
-        model, dataset,
+        model,
+        dataset,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,

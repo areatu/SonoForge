@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
 
@@ -11,6 +12,8 @@ from echo_personal_tool.resources.bundled_fonts import (
     ensure_bundled_fonts_loaded,
     report_cyrillic_font_path,
 )
+
+pytestmark = pytest.mark.gui
 
 
 def test_bundled_fonts_register_in_qt(qapp: QApplication) -> None:

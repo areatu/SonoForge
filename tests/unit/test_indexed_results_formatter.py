@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements
 from echo_personal_tool.domain.models import (
     IndexedMeasurements,
@@ -36,9 +34,7 @@ def test_shows_lvmi_when_out_of_norm() -> None:
 def test_shows_edvi_when_lvedd_abnormal() -> None:
     base = MeasurementSnapshot(
         lvef=LvefResult(a4c=LvViewMetrics(edv_ml=180.0, esv_ml=70.0)),
-        linear_measurements=(
-            LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=62.0),
-        ),
+        linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=62.0),),
         height_cm=170.0,
         weight_kg=70.0,
     )
@@ -56,9 +52,7 @@ def test_shows_edvi_when_lvedd_abnormal() -> None:
 
 def test_shows_aorta_index_when_annulus_large() -> None:
     snapshot = MeasurementSnapshot(
-        linear_measurements=(
-            LinearMeasurement(label="Annulus", pixel_length=100.0, millimeter_length=40.0),
-        ),
+        linear_measurements=(LinearMeasurement(label="Annulus", pixel_length=100.0, millimeter_length=40.0),),
         height_cm=170.0,
         weight_kg=70.0,
         indexed=IndexedMeasurements(

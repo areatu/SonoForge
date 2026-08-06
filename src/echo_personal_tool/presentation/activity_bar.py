@@ -9,7 +9,6 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -21,6 +20,7 @@ _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
 def _icon_dir() -> Path:
     import sys
+
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
         return Path(meipass) / "echo_personal_tool" / "resources" / "icons"
@@ -30,7 +30,9 @@ def _icon_dir() -> Path:
 def _load_icon(name: str, size: int = 48) -> QIcon:
     from PySide6.QtGui import QPainter
     from PySide6.QtSvg import QSvgRenderer
+
     from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
     svg_path = _icon_dir() / f"{name}.svg"
     if svg_path.is_file():
         svg_text = svg_path.read_text(encoding="utf-8")
@@ -108,6 +110,7 @@ class ActivityBar(QWidget):
 
         self._action_buttons: dict[str, QPushButton] = {}
         from echo_personal_tool.infrastructure.i18n import tr
+
         _labels = {
             "caliper": (tr("activity.caliper_big"), tr("activity.caliper_small")),
             "lv2d": (tr("activity.lv2d_big"), tr("activity.lv2d_small")),
@@ -116,7 +119,11 @@ class ActivityBar(QWidget):
             "es": (tr("activity.es_big"), tr("activity.es_small")),
         }
         for name in [
-            "caliper", "lv2d", "esv", "edv", "es",
+            "caliper",
+            "lv2d",
+            "esv",
+            "edv",
+            "es",
         ]:
             big, small = _labels.get(name, (name, ""))
             btn = _TextButton(big, small)
@@ -143,6 +150,7 @@ class ActivityBar(QWidget):
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         tab_names = {"measures": tr("tool_panel.measures"), "controls": tr("tool_panel.controls")}
         for name, btn in self._buttons.items():
             btn.setToolTip(tab_names.get(name, name.capitalize()))

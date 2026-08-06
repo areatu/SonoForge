@@ -60,17 +60,13 @@ def test_from_linear_measurements_case_insensitive_labels() -> None:
 
 
 def test_from_linear_measurements_missing_lvedd_returns_none() -> None:
-    measurements = (
-        LinearMeasurement(label="LVESD", pixel_length=70.0, millimeter_length=35.0),
-    )
+    measurements = (LinearMeasurement(label="LVESD", pixel_length=70.0, millimeter_length=35.0),)
 
     assert from_linear_measurements(measurements) is None
 
 
 def test_from_linear_measurements_missing_lvesd_returns_none() -> None:
-    measurements = (
-        LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),
-    )
+    measurements = (LinearMeasurement(label="LVEDD", pixel_length=100.0, millimeter_length=50.0),)
 
     assert from_linear_measurements(measurements) is None
 

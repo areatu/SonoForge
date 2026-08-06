@@ -14,7 +14,7 @@ class DopplerAxisMapping:
     """Linear map from plot coordinates to time (ms) and velocity (cm/s)."""
 
     time_origin_ms: float = 0.0
-    time_span_ms: float = 1000.0
+    time_span_ms: float = 0.0
     velocity_min_cm_s: float = -100.0
     velocity_max_cm_s: float = 100.0
     plot_width: float = 1000.0
@@ -36,7 +36,7 @@ class DopplerAxisMapping:
         height: float,
         *,
         velocity_span_cm_s: float = 200.0,
-        time_span_ms: float = 1000.0,
+        time_span_ms: float = 0.0,
     ) -> DopplerAxisMapping:
         """Uncalibrated mapping over the full frame (identity pixel grid)."""
         half = velocity_span_cm_s / 2.0
@@ -52,17 +52,14 @@ class DopplerAxisMapping:
     @property
     def has_roi_calibration(self) -> bool:
         return (
-            self.roi is not None
-            and self.plot_width > 0.0
-            and self.plot_height > 0.0
-            and self.baseline_y_px is not None
+            self.roi is not None and self.plot_width > 0.0 and self.plot_height > 0.0 and self.baseline_y_px is not None
         )
 
     def baseline_plot_y(self) -> float | None:
         return self.baseline_y_px
 
     def time_ms_from_x(self, x: float) -> float:
-        if self.plot_width <= 0.0:
+        if self.plot_width <= 0.0 or self.time_span_ms <= 0.0:
             return self.time_origin_ms
         local_x = x - self.plot_origin_x
         return self.time_origin_ms + (local_x / self.plot_width) * self.time_span_ms

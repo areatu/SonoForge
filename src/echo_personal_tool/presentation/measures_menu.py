@@ -7,7 +7,10 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
+    QHBoxLayout,
+    QLabel,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -32,11 +35,11 @@ class _MenuButton:
     doppler_peak: str = ""
     doppler_interval: str = ""
     doppler_trace: str = ""
+    vessel: bool = False
     enabled: bool = True
 
     @property
     def label(self) -> str:
-        from echo_personal_tool.infrastructure.i18n import tr
         return tr(self.label_key)
 
 
@@ -50,6 +53,7 @@ def _btn(
     doppler_peak: str = "",
     doppler_interval: str = "",
     doppler_trace: str = "",
+    vessel: bool = False,
     enabled: bool = True,
 ) -> _MenuButton:
     return _MenuButton(
@@ -61,6 +65,7 @@ def _btn(
         doppler_peak=doppler_peak,
         doppler_interval=doppler_interval,
         doppler_trace=doppler_trace,
+        vessel=vessel,
         enabled=enabled,
     )
 
@@ -72,6 +77,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.caliper", MeasurementAction.CALIPER),
             _btn("menu.spline_area", MeasurementAction.SPLINE_AREA),
             _btn("menu.spline_volume", MeasurementAction.SPLINE_VOLUME),
+            _btn("menu.diameter_compare", MeasurementAction.DIAMETER_COMPARE),
+            _btn("menu.area_compare", MeasurementAction.AREA_COMPARE),
         ),
     ),
     (
@@ -107,6 +114,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         (
             _btn("menu.la_lavir", MeasurementAction.LA_DIAMETER),
             _btn("menu.lav_4c", MeasurementAction.LAV_4C),
+            _btn("menu.lav_4c_ai_plus", MeasurementAction.LAV_4C_AI_PLUS),
             _btn("menu.lav_bi", MeasurementAction.LAV_BI),
         ),
     ),
@@ -143,6 +151,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.mv_group",
         (
+            _btn("menu.trace_auto", MeasurementAction.DOPPLER_TRACE_AUTO),
             _btn("menu.trace_mv", doppler_trace="VTI MV"),
             _btn("menu.trace_mr", doppler_trace="VTI MR"),
             _btn("menu.vpeak_mv", doppler_peak="Vmax"),
@@ -163,14 +172,26 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     ),
     (
         "menu.strain_group",
+        (_btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),),
+    ),
+    (
+        "menu.vessels_group",
         (
-            _btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),
+            _btn("menu.vessel_psv_edv", MeasurementAction.VESSEL_PSV_EDV, vessel=True),
+            _btn("menu.vessel_auto_trace", MeasurementAction.VESSEL_AUTO_TRACE, vessel=True),
+            _btn("menu.vessel_average", MeasurementAction.VESSEL_AVERAGE, vessel=True),
+            _btn("menu.vessel_clear", MeasurementAction.VESSEL_CLEAR, vessel=True),
+            _btn("menu.vessel_accept", MeasurementAction.VESSEL_ACCEPT, vessel=True),
         ),
     ),
     (
         "menu.mmode_group",
         (
             _btn("menu.mmode_anatomic", MeasurementAction.MMODE),
+            _btn("menu.mmode_caliper", MeasurementAction.MMODE_CALIPER),
+            _btn("menu.mmode_time_hr", MeasurementAction.MMODE_TIME_HR),
+            _btn("menu.teichholz_ed", MeasurementAction.TEICHHOLZ_ED),
+            _btn("menu.teichholz_es", MeasurementAction.TEICHHOLZ_ES),
         ),
     ),
 )
@@ -186,7 +207,7 @@ _EXPERIMENTAL_GROUPS: dict[str, str] = {
 
 def _filter_menu(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
-    preferences: "UserPreferences | None" = None,
+    preferences: UserPreferences | None = None,
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
     """Filter menu based on user preferences for experimental features."""
     if preferences is None:
@@ -234,7 +255,6 @@ class MeasuresAccordionSection(QWidget):
         self._content_height = 0
         self._title_key = title_key
 
-        from echo_personal_tool.infrastructure.i18n import tr
         self._header = QPushButton(tr(title_key))
         self._header.setObjectName("measuresSectionTitle")
         self._header.setFlat(True)
@@ -306,7 +326,6 @@ class MeasuresAccordionSection(QWidget):
         return button in self._body.findChildren(QPushButton)
 
     def reload_text(self) -> None:
-        from echo_personal_tool.infrastructure.i18n import tr
         self._header.setText(tr(self._title_key))
         buttons = self._body.findChildren(QPushButton)
         for i, button in enumerate(buttons):
@@ -338,7 +357,7 @@ class MeasuresMenuWidget(QWidget):
     def _build_menu(self) -> None:
         """Build or rebuild the menu with current preferences."""
         # Clear existing content
-        for section in self._sections if hasattr(self, '_sections') else []:
+        for section in self._sections if hasattr(self, "_sections") else []:
             section.deleteLater()
         self._sections = []
         self._tool_buttons = []
@@ -367,10 +386,30 @@ class MeasuresMenuWidget(QWidget):
             layout.addWidget(section)
 
         layout.addStretch(1)
+        self._vessel_status_label = QLabel("")
+        self._vessel_status_label.setWordWrap(True)
+        self._vessel_status_label.setStyleSheet("color: #90caf9; font-size: 12px;")
+        layout.addWidget(self._vessel_status_label)
+
+        preset_row = QWidget()
+        preset_layout = QHBoxLayout(preset_row)
+        preset_layout.setContentsMargins(8, 0, 8, 0)
+        preset_layout.setSpacing(6)
+        preset_label = QLabel(tr("menu.vessel_preset"))
+        preset_label.setStyleSheet("color: #90caf9; font-size: 11px;")
+        self._vessel_preset_combo = QComboBox()
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_low"), "low")
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_normal"), "normal")
+        self._vessel_preset_combo.addItem(tr("menu.vessel_preset_high"), "high")
+        self._vessel_preset_combo.setCurrentIndex(1)
+        self._vessel_preset_combo.setToolTip(tr("menu.vessel_preset_tip"))
+        preset_layout.addWidget(preset_label)
+        preset_layout.addWidget(self._vessel_preset_combo, stretch=1)
+        layout.addWidget(preset_row)
         scroll.setWidget(inner)
 
         # Clear old layout content if exists, otherwise create new layout
-        if hasattr(self, '_outer_layout') and self._outer_layout is not None:
+        if hasattr(self, "_outer_layout") and self._outer_layout is not None:
             while self._outer_layout.count():
                 item = self._outer_layout.takeAt(0)
                 if item.widget():
@@ -390,8 +429,12 @@ class MeasuresMenuWidget(QWidget):
         self,
         *,
         time_ok: bool,
+        vessel_ok: bool = False,
     ) -> None:
         for button, spec in self._tool_buttons:
+            if spec.vessel:
+                button.setEnabled(vessel_ok)
+                continue
             needs_time = bool(
                 spec.doppler_interval
                 or spec.doppler_trace
@@ -401,6 +444,12 @@ class MeasuresMenuWidget(QWidget):
             if not needs_time:
                 continue
             button.setEnabled(time_ok)
+
+    def set_vessel_status(self, text: str) -> None:
+        self._vessel_status_label.setText(text)
+
+    def vessel_preset(self) -> str:
+        return str(self._vessel_preset_combo.currentData() or "normal")
 
     def reload_text(self) -> None:
         for section in self._sections:
@@ -446,9 +495,7 @@ class MeasuresMenuWidget(QWidget):
         if self._blink_target is None:
             return
         self._blink_on = not self._blink_on
-        self._blink_target.setStyleSheet(
-            self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE
-        )
+        self._blink_target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
 
     def _ensure_section_visible(self, button: QPushButton) -> None:
         for section in self._sections:

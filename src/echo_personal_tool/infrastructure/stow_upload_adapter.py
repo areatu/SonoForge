@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from echo_personal_tool.domain.ports import DicomUploadClient, DicomWebClient
+from echo_personal_tool.domain.ports import DicomWebClient
 
 
 class StowUploadAdapter:

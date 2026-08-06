@@ -1,17 +1,13 @@
 """Tests for ReferenceDataStore."""
+
 from __future__ import annotations
 
 import pytest
-import yaml
-from echo_personal_tool.domain.services.reference_data_store import (
-    ReferenceDataStore,
-    TopicRef,
-    PathologyRef,
-    GradationRef,
-    ParameterRef,
-    NormRange,
-)
 
+from echo_personal_tool.domain.services.reference_data_store import (
+    NormRange,
+    ReferenceDataStore,
+)
 
 _SAMPLE_YAML = """
 topics:

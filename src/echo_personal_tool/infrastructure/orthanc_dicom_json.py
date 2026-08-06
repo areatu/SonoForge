@@ -64,17 +64,13 @@ def parse_series(payload: list[dict], study_uid: str) -> list[SeriesInfo]:
             study_uid=study_uid,
             modality=tag_value(item, TAG_MODALITY),
             description=tag_value(item, TAG_SERIES_DESCRIPTION),
-            instance_count=(
-                int(c) if (c := tag_value(item, TAG_NUMBER_OF_SERIES_RELATED_INSTANCES)) else None
-            ),
+            instance_count=(int(c) if (c := tag_value(item, TAG_NUMBER_OF_SERIES_RELATED_INSTANCES)) else None),
         )
         for item in payload
     ]
 
 
-def parse_instances(
-    payload: list[dict], study_uid: str, series_uid: str
-) -> list[InstanceInfo]:
+def parse_instances(payload: list[dict], study_uid: str, series_uid: str) -> list[InstanceInfo]:
     return [
         InstanceInfo(
             sop_instance_uid=tag_value(item, TAG_SOP_INSTANCE_UID),

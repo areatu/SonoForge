@@ -1,10 +1,10 @@
 from .reference_model import (
+    GradationModel,
+    NormRangeModel,
+    ParameterModel,
+    PathologyModel,
     ReferenceModel,
     TopicModel,
-    PathologyModel,
-    GradationModel,
-    ParameterModel,
-    NormRangeModel,
 )
 
 __all__ = [

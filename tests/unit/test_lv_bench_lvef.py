@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.bench_lvef import (
     _compute_pair_lvef,
@@ -62,8 +60,10 @@ class TestResolvePixelSpacing:
 class TestComputePairLvef:
     def test_returns_skip_when_spacing_none(self) -> None:
         result = _compute_pair_lvef(
-            auto_ed=None, auto_es=None,
-            gold_ed=None, gold_es=None,
+            auto_ed=None,
+            auto_es=None,
+            gold_ed=None,
+            gold_es=None,
             spacing=None,
         )
         assert result["lvef_skip_reason"] == "no_pixel_spacing"
@@ -73,7 +73,8 @@ class TestComputePairLvef:
 
     def test_returns_skip_when_auto_contours_missing(self) -> None:
         result = _compute_pair_lvef(
-            auto_ed=None, auto_es=None,
+            auto_ed=None,
+            auto_es=None,
             gold_ed=Contour(phase="ed", points=[(0, 0), (10, 0), (10, 10)]),
             gold_es=Contour(phase="es", points=[(0, 0), (5, 0), (5, 5)]),
             spacing=(1.0, 1.0),
@@ -83,16 +84,20 @@ class TestComputePairLvef:
 
     def test_returns_skip_when_gold_contours_missing(self) -> None:
         auto_ed = Contour(
-            phase="ed", points=[(0, 0), (20, 0), (20, 30)],
+            phase="ed",
+            points=[(0, 0), (20, 0), (20, 30)],
             mitral_annulus=((0, 0), (20, 0)),
         )
         auto_es = Contour(
-            phase="es", points=[(0, 0), (10, 0), (10, 15)],
+            phase="es",
+            points=[(0, 0), (10, 0), (10, 15)],
             mitral_annulus=((0, 0), (10, 0)),
         )
         result = _compute_pair_lvef(
-            auto_ed=auto_ed, auto_es=auto_es,
-            gold_ed=None, gold_es=None,
+            auto_ed=auto_ed,
+            auto_es=auto_es,
+            gold_ed=None,
+            gold_es=None,
             spacing=(1.0, 1.0),
         )
         assert result["lvef_skip_reason"] == "missing_gold"

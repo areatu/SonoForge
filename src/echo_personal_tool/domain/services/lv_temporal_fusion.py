@@ -16,15 +16,13 @@ from echo_personal_tool.domain.models.temporal_fusion import (
     TemporalFusionConfig,
     TemporalFusionResult,
 )
+from echo_personal_tool.domain.services.contour_geometry import (
+    smooth_open_arc,
+)
 from echo_personal_tool.domain.services.segmentation_service import (
     exclude_papillary_concavities,
-    mask_to_contour,
     open_arc_from_cavity_mask,
     papillary_mask_cleanup,
-)
-from echo_personal_tool.domain.services.contour_geometry import (
-    apex_point,
-    smooth_open_arc,
 )
 
 
@@ -34,10 +32,7 @@ def compute_window(
     window: int = 2,
 ) -> list[int]:
     """Frame indices in [anchor-W .. anchor+W] clamped to [0, total_frames-1]."""
-    return [
-        i
-        for i in range(max(0, anchor - window), min(total_frames, anchor + window + 1))
-    ]
+    return [i for i in range(max(0, anchor - window), min(total_frames, anchor + window + 1))]
 
 
 def align_mask_to_anchor(
@@ -213,7 +208,7 @@ def _arc_span(points: list[tuple[float, float]]) -> float:
         return 0.0
     max_span = 0.0
     for i, first in enumerate(points):
-        for second in points[i + 1:]:
+        for second in points[i + 1 :]:
             span = math.hypot(second[0] - first[0], second[1] - first[1])
             max_span = max(max_span, span)
     return max_span
@@ -276,9 +271,7 @@ def temporal_fuse(
     6. Apex direction lock.
     7. Papillary concavity exclusion + smooth.
     """
-    valid_neighbor_ids = sorted(
-        i for i in neighbor_masks if i in neighbor_contours
-    )
+    valid_neighbor_ids = sorted(i for i in neighbor_masks if i in neighbor_contours)
     all_masks = [center_mask] + [neighbor_masks[i] for i in valid_neighbor_ids]
     all_contours = [center_contour] + [neighbor_contours[i] for i in valid_neighbor_ids]
 
@@ -328,17 +321,23 @@ def temporal_fuse(
         if c.apex_landmark is not None:
             aligned_apex = (c.apex_landmark[0] + dx, c.apex_landmark[1] + dy)
         aligned_neighbor_contours[i] = Contour(
-            phase=c.phase, view=c.view, chamber=c.chamber,
-            points=aligned_points, source=c.source,
-            mitral_annulus=aligned_annulus, apex_landmark=aligned_apex,
-            num_nodes=c.num_nodes, frame_index=c.frame_index,
+            phase=c.phase,
+            view=c.view,
+            chamber=c.chamber,
+            points=aligned_points,
+            source=c.source,
+            mitral_annulus=aligned_annulus,
+            apex_landmark=aligned_apex,
+            num_nodes=c.num_nodes,
+            frame_index=c.frame_index,
             sop_instance_uid=c.sop_instance_uid,
         )
 
     # --- 1b. Outlier rejection ---
     if config.outlier_rejection:
         aligned_neighbor_contours = reject_outlier_neighbors(
-            center_contour, aligned_neighbor_contours,
+            center_contour,
+            aligned_neighbor_contours,
             max_shift_ratio=config.max_neighbor_shift_ratio,
         )
         # Rebuild valid_neighbor_ids and aligned_masks after rejection
@@ -363,12 +362,13 @@ def temporal_fuse(
         for i in valid_neighbor_ids:
             nc = aligned_neighbor_contours.get(i, neighbor_contours[i])
             confidence_scores[i] = compute_neighbor_confidence(
-                center_contour, nc, phase=phase,
+                center_contour,
+                nc,
+                phase=phase,
             )
         # Filter by minimum confidence
         valid_neighbor_ids = [
-            i for i in valid_neighbor_ids
-            if confidence_scores.get(i, 0.0) >= config.min_confidence_score
+            i for i in valid_neighbor_ids if confidence_scores.get(i, 0.0) >= config.min_confidence_score
         ]
 
     # --- 2. Mask vote fusion ---
@@ -436,8 +436,11 @@ def temporal_fuse(
             for j in range(len(open_points))
         ]
         fused_nodes = clamp_nodes_to_center(
-            median_nodes, center_nodes, shift_cap,
-            apex_index=apex_idx, apex_shift_cap=apex_shift_cap,
+            median_nodes,
+            center_nodes,
+            shift_cap,
+            apex_index=apex_idx,
+            apex_shift_cap=apex_shift_cap,
         )
     else:
         fused_nodes = list(open_points)
@@ -464,17 +467,18 @@ def temporal_fuse(
         ]
         center_apex = center_contour.apex_landmark or apex
         epsilon = config.apex_max_shift_ratio(phase) * ma_len
-        fused_apex = apply_apex_direction_lock(
-            apex, neighbor_apices, center_apex, epsilon
-        )
+        fused_apex = apply_apex_direction_lock(apex, neighbor_apices, center_apex, epsilon)
     else:
         fused_apex = apex
 
     # --- 7. Concavity exclusion + smooth ---
     refined = exclude_papillary_concavities(
-        fused_nodes, fused_annulus, fused_apex, phase=phase,
+        fused_nodes,
+        fused_annulus,
+        fused_apex,
+        phase=phase,
     )
-    smoothed = smooth_open_arc(refined, fused_annulus, apex=fused_apex, iterations=4, blend=0.0)
+    smoothed = smooth_open_arc(refined, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
 
     fused_contour = Contour(
         phase=center_contour.phase,

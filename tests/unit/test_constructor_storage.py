@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import yaml
 
 from echo_personal_tool.constructor.storage.schema_validator import (
     SchemaValidator,
-    ValidationError,
 )
 from echo_personal_tool.constructor.storage.yaml_storage import YamlStorage
 
@@ -63,7 +61,7 @@ class TestYamlStorage:
         storage.save(sample_data)
 
         # Verify file was written
-        with open(yaml_file, "r", encoding="utf-8") as f:
+        with open(yaml_file, encoding="utf-8") as f:
             loaded = yaml.safe_load(f)
         assert loaded == sample_data
 

@@ -1,4 +1,5 @@
 """Interactive structured reference browser widget."""
+
 from __future__ import annotations
 
 import copy
@@ -31,6 +32,7 @@ from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
     TopicRef,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 _IMAGES_DIR = Path(__file__).resolve().parents[1] / "resources" / "references" / "images"
@@ -51,31 +53,31 @@ _TOPIC_ICONS: dict[str, str] = {
 }
 
 _TOPIC_LABELS: dict[str, str] = {
-    "left_ventricle": "ЛЖ",
-    "left_atrium": "ЛП",
-    "right_ventricle": "ПЖ",
-    "right_atrium": "ПП",
-    "mitral_valve": "МК",
-    "aortic_valve": "АК",
-    "tricuspid_valve": "ТК",
-    "pulmonary_valve": "ЛК",
-    "aorta": "Аорта",
-    "prosthetic_valves": "Протезы",
-    "other": "Прочее",
+    "left_ventricle": tr("ref_topic.left_ventricle"),
+    "left_atrium": tr("ref_topic.left_atrium"),
+    "right_ventricle": tr("ref_topic.right_ventricle"),
+    "right_atrium": tr("ref_topic.right_atrium"),
+    "mitral_valve": tr("ref_topic.mitral_valve"),
+    "aortic_valve": tr("ref_topic.aortic_valve"),
+    "tricuspid_valve": tr("ref_topic.tricuspid_valve"),
+    "pulmonary_valve": tr("ref_topic.pulmonary_valve"),
+    "aorta": tr("ref_topic.aorta"),
+    "prosthetic_valves": tr("ref_topic.prosthetic_valves"),
+    "other": tr("ref_topic.other"),
 }
 
 _TOPIC_FULL_NAMES: dict[str, str] = {
-    "left_ventricle": "Левый\nжелудочек",
-    "left_atrium": "Левое\nпредсердие",
-    "right_ventricle": "Правый\nжелудочек",
-    "right_atrium": "Правое\nпредсердие",
-    "mitral_valve": "Митральный\nклапан",
-    "aortic_valve": "Аортальный\nклапан",
-    "tricuspid_valve": "Трикуспидальный\nклапан",
-    "pulmonary_valve": "Лёгочный\nклапан",
-    "aorta": "Аорта",
-    "prosthetic_valves": "Протезы\nклапанов",
-    "other": "Прочее",
+    "left_ventricle": tr("ref_topic.left_ventricle_full"),
+    "left_atrium": tr("ref_topic.left_atrium_full"),
+    "right_ventricle": tr("ref_topic.right_ventricle_full"),
+    "right_atrium": tr("ref_topic.right_atrium_full"),
+    "mitral_valve": tr("ref_topic.mitral_valve_full"),
+    "aortic_valve": tr("ref_topic.aortic_valve_full"),
+    "tricuspid_valve": tr("ref_topic.tricuspid_valve_full"),
+    "pulmonary_valve": tr("ref_topic.pulmonary_valve_full"),
+    "aorta": tr("ref_topic.aorta_full"),
+    "prosthetic_valves": tr("ref_topic.prosthetic_valves_full"),
+    "other": tr("ref_topic.other_full"),
 }
 
 
@@ -119,10 +121,10 @@ class _ParameterCard(QWidget):
         if norm_text:
             norm_value = f"{norm_text} {unit}".strip() if unit else norm_text
             norm_table = self._make_table(
-                headers=["Показатель", "Значение"],
+                headers=[tr("ref_table.header_param"), tr("ref_table.header_value")],
                 rows=[[param.name, norm_value]],
-                header_bg=p['bg_control'],
-                value_color=p['accent_tab'],
+                header_bg=p["bg_control"],
+                value_color=p["accent_tab"],
             )
             layout.addWidget(norm_table)
 
@@ -177,7 +179,7 @@ class _ParameterCard(QWidget):
         vbox.setSpacing(0)
 
         # Merged header label
-        header = QLabel("  Патология")
+        header = QLabel("  " + tr("ref_table.pathology_header"))
         header.setStyleSheet(
             f"font-size: 12px; font-weight: bold; color: {p['text']}; "
             f"background: {p['bg_control']}; padding: 3px 6px; border: 1px solid {p['border']};"
@@ -199,7 +201,7 @@ class _ParameterCard(QWidget):
 
         for r, (grad_name, grad_value) in enumerate(rows):
             name_item = QTableWidgetItem(grad_name)
-            name_item.setForeground(QColor(p['text_dim']))
+            name_item.setForeground(QColor(p["text_dim"]))
             val_item = QTableWidgetItem(grad_value)
             table.setItem(r, 0, name_item)
             table.setItem(r, 1, val_item)
@@ -221,7 +223,7 @@ class _ParameterCard(QWidget):
         # Try gradation format first
         gradations = []
         for part in parts:
-            m = re.match(r'^([^:]+):\s*(.+)$', part)
+            m = re.match(r"^([^:]+):\s*(.+)$", part)
             if m:
                 gradations.append((m.group(1).strip(), m.group(2).strip()))
 
@@ -358,7 +360,7 @@ class StructuredReferenceWidget(QWidget):
         top_layout.setContentsMargins(8, 4, 8, 4)
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Поиск параметра...")
+        self._search_input.setPlaceholderText(tr("ref_table.search_placeholder"))
         self._search_input.textChanged.connect(self._on_search_changed)
         self._search_input.returnPressed.connect(self._on_search_enter)
         self._search_input.installEventFilter(self)
@@ -421,14 +423,14 @@ class StructuredReferenceWidget(QWidget):
         sex_layout.setSpacing(4)
 
         sex_group = QButtonGroup(self)
-        self._male_radio = QRadioButton("Муж")
-        self._female_radio = QRadioButton("Жен")
+        self._male_radio = QRadioButton(tr("ref_table.sex_male"))
+        self._female_radio = QRadioButton(tr("ref_table.sex_female"))
         self._male_radio.setChecked(True)
         sex_group.addButton(self._male_radio, 0)
         sex_group.addButton(self._female_radio, 1)
         sex_group.idClicked.connect(self._on_sex_changed)
 
-        sex_label = QLabel("Пол:")
+        sex_label = QLabel(tr("ref_table.sex_label"))
         sex_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
         sex_layout.addWidget(sex_label)
         sex_layout.addWidget(self._male_radio)
@@ -441,12 +443,12 @@ class StructuredReferenceWidget(QWidget):
         age_layout.setContentsMargins(4, 2, 4, 4)
         age_layout.setSpacing(4)
 
-        age_label = QLabel("Возраст:")
+        age_label = QLabel(tr("ref_table.age_label"))
         age_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
         self._age_input = QLineEdit()
-        self._age_input.setPlaceholderText("л")
+        self._age_input.setPlaceholderText(tr("ref_table.age_placeholder"))
         self._age_input.setMaximumWidth(50)
-        self._age_input.setStyleSheet(f"font-size: 12px; padding: 2px;")
+        self._age_input.setStyleSheet("font-size: 12px; padding: 2px;")
         self._age_input.textChanged.connect(self._on_age_changed)
 
         age_layout.addWidget(age_label)
@@ -481,9 +483,7 @@ class StructuredReferenceWidget(QWidget):
         # Parameter cards (left half) in a scroll area
         self._cards_scroll = QScrollArea()
         self._cards_scroll.setWidgetResizable(True)
-        self._cards_scroll.setStyleSheet(
-            f"QScrollArea {{ border: none; background: transparent; }}"
-        )
+        self._cards_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self._cards_container = QWidget()
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
@@ -500,13 +500,11 @@ class StructuredReferenceWidget(QWidget):
         image_layout.setContentsMargins(0, 0, 0, 0)
         self._image_label = QLabel()
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._image_label.setStyleSheet(
             f"border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 12px; color: {p['text_dim']};"
         )
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
         image_layout.addWidget(self._image_label, stretch=1)
 
         # Image navigation bar (< counter >)
@@ -515,14 +513,14 @@ class StructuredReferenceWidget(QWidget):
         nav_layout = QHBoxLayout(nav_bar)
         nav_layout.setContentsMargins(4, 2, 4, 2)
         nav_layout.setSpacing(4)
-        self._btn_img_prev = QPushButton("\u25C0")
+        self._btn_img_prev = QPushButton("\u25c0")
         self._btn_img_prev.setFixedSize(28, 22)
         self._btn_img_prev.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_img_prev.clicked.connect(self._prev_image)
         self._btn_img_prev.setEnabled(False)
         self._image_counter_label = QLabel("0 / 0")
         self._image_counter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._btn_img_next = QPushButton("\u25B6")
+        self._btn_img_next = QPushButton("\u25b6")
         self._btn_img_next.setFixedSize(28, 22)
         self._btn_img_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_img_next.clicked.connect(self._next_image)
@@ -557,7 +555,7 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.clear()
         self._clear_cards()
         self._image_label.clear()
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
         self._image_paths = []
         self._current_image_index = 0
         self._update_nav_buttons()
@@ -593,7 +591,7 @@ class StructuredReferenceWidget(QWidget):
 
     def _scale_image(self) -> None:
         # Guard against recursive calls from resizeEvent
-        if getattr(self, '_scaling', False):
+        if getattr(self, "_scaling", False):
             return
         self._scaling = True
         try:
@@ -606,15 +604,16 @@ class StructuredReferenceWidget(QWidget):
 
             # Skip if container size hasn't changed
             cache_key = (cw, ch)
-            if getattr(self, '_last_scale_size', None) == cache_key:
+            if getattr(self, "_last_scale_size", None) == cache_key:
                 return
             self._last_scale_size = cache_key
 
-            if getattr(self, '_is_svg', False) and self._svg_text:
+            if getattr(self, "_is_svg", False) and self._svg_text:
                 # Render SVG at actual display resolution using QSvgRenderer
                 try:
-                    from PySide6.QtSvg import QSvgRenderer
                     from PySide6.QtGui import QImage, QPainter
+                    from PySide6.QtSvg import QSvgRenderer
+
                     renderer = QSvgRenderer()
                     renderer.load(self._svg_text.encode("utf-8"))
                     if renderer.isValid():
@@ -675,7 +674,8 @@ class StructuredReferenceWidget(QWidget):
             target_w = cw
             target_h = max(int(cw * img_aspect), 1)
         return pixmap.scaled(
-            target_w, target_h,
+            target_w,
+            target_h,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
@@ -729,7 +729,7 @@ class StructuredReferenceWidget(QWidget):
             self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
             self._param_cards.append(card)
         self._image_label.clear()
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
 
     def _on_topic_clicked(self, topic: TopicRef) -> None:
         self._current_topic = topic
@@ -742,7 +742,7 @@ class StructuredReferenceWidget(QWidget):
         self._pathology_list.blockSignals(False)
         self._clear_cards()
         self._image_label.clear()
-        self._image_label.setText("Нет изображения")
+        self._image_label.setText(tr("reference.no_image"))
         self._source_label.clear()
 
     def _on_pathology_row_changed(self, row: int) -> None:
@@ -768,8 +768,7 @@ class StructuredReferenceWidget(QWidget):
                     existing = seen[param.id]
                     if param.pathology_desc:
                         existing.pathology_desc = (
-                            (existing.pathology_desc or "")
-                            + " / " + f"{grad.name}: {param.pathology_desc}"
+                            (existing.pathology_desc or "") + " / " + f"{grad.name}: {param.pathology_desc}"
                         ).lstrip(" /")
                 else:
                     dup = copy.copy(param)
@@ -808,9 +807,9 @@ class StructuredReferenceWidget(QWidget):
 
         p = get_theme_palette()
         columns = [
-            ("name", "Показатель"),
-            ("norm_male", "Норм М"),
-            ("norm_female", "Норм Ж"),
+            ("name", tr("ref_table.col_param")),
+            ("norm_male", tr("ref_table.col_norm_male")),
+            ("norm_female", tr("ref_table.col_norm_female")),
         ]
 
         table = QTableWidget(len(params), len(columns))
@@ -829,9 +828,7 @@ class StructuredReferenceWidget(QWidget):
             f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
             f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
         )
-        table.horizontalHeader().setStyleSheet(
-            f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}"
-        )
+        table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
         table.setStyleSheet(
             f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
             f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
@@ -850,12 +847,12 @@ class StructuredReferenceWidget(QWidget):
             values = [name_text, norm_m, norm_f]
             for c, val in enumerate(values):
                 item = QTableWidgetItem(val)
-                item.setForeground(QColor(p['text']))
+                item.setForeground(QColor(p["text"]))
                 # Color-code norms and empty cells
                 if c in (1, 2) and val:
-                    item.setForeground(QColor(p['accent_tab']))
+                    item.setForeground(QColor(p["accent_tab"]))
                 elif not val:
-                    item.setForeground(QColor(p['text_dim']))
+                    item.setForeground(QColor(p["text_dim"]))
                 table.setItem(r, c, item)
 
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
@@ -882,20 +879,16 @@ class StructuredReferenceWidget(QWidget):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         # Headers
-        headers = ["Параметр"] + grad_names
+        headers = [tr("ref_table.col_param")] + grad_names
         table.setHorizontalHeaderLabels(headers)
         header_style = (
             f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
             f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
         )
-        table.horizontalHeader().setStyleSheet(
-            f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}"
-        )
+        table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
         table.setStyleSheet(
             f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
             f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
@@ -909,7 +902,7 @@ class StructuredReferenceWidget(QWidget):
             if param.unit:
                 name_text += f" ({param.unit})"
             name_item = QTableWidgetItem(name_text)
-            name_item.setForeground(QColor(p['text']))
+            name_item.setForeground(QColor(p["text"]))
             font = name_item.font()
             font.setBold(True)
             name_item.setFont(font)
@@ -923,7 +916,7 @@ class StructuredReferenceWidget(QWidget):
                         value = gp.pathology_desc or ""
                         break
                 val_item = QTableWidgetItem(value)
-                val_item.setForeground(QColor(p['text']))
+                val_item.setForeground(QColor(p["text"]))
                 table.setItem(r, 1 + g_idx, val_item)
 
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
@@ -967,7 +960,7 @@ class StructuredReferenceWidget(QWidget):
     def _load_image(self) -> None:
         if self._current_pathology is None or not self._current_pathology.image_paths:
             self._image_label.clear()
-            self._image_label.setText("Нет изображения")
+            self._image_label.setText(tr("reference.no_image"))
             self._image_paths = []
             self._current_image_index = 0
             self._update_nav_buttons()
@@ -982,14 +975,14 @@ class StructuredReferenceWidget(QWidget):
         """Display the image at _current_image_index."""
         if not self._image_paths:
             self._image_label.clear()
-            self._image_label.setText("Нет изображения")
+            self._image_label.setText(tr("reference.no_image"))
             return
 
         path_str = self._image_paths[self._current_image_index]
         img_path = _IMAGES_DIR / path_str
         if not img_path.is_file():
             self._image_label.clear()
-            self._image_label.setText(f"Изображение: {path_str}")
+            self._image_label.setText(tr("ref_table.image_label", path=path_str))
             return
 
         if img_path.suffix.lower() == ".svg":
@@ -1007,7 +1000,7 @@ class StructuredReferenceWidget(QWidget):
 
         if not self._is_svg and self._original_pixmap.isNull():
             self._image_label.clear()
-            self._image_label.setText("Нет изображения")
+            self._image_label.setText(tr("reference.no_image"))
             return
 
         self._last_scale_size = None
@@ -1035,7 +1028,7 @@ class StructuredReferenceWidget(QWidget):
         params = self._get_current_parameters()
         sources = sorted({p.source for p in params if p.source})
         if sources:
-            self._source_label.setText("Источники: " + "; ".join(sources))
+            self._source_label.setText(tr("reference.sources") + "; ".join(sources))
         else:
             self._source_label.clear()
         # Clear card selection highlight when source changes
@@ -1046,6 +1039,7 @@ class StructuredReferenceWidget(QWidget):
         result = self._store.lookup(param_id)
         if result is None:
             import logging
+
             logging.getLogger(__name__).debug("navigate_to_param: param_id=%r not found in YAML", param_id)
             return
         topic, patho, grad = result

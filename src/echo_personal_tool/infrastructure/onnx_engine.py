@@ -88,17 +88,22 @@ def _resolve_io_names(
     return input_name, output_name
 
 
+class ModelIntegrityError(RuntimeError):
+    """Raised when ONNX model fails SHA256 verification."""
+
+
 def _verify_model_integrity(model_path: Path, expected_sha256: str | None) -> None:
-    """Check SHA256 of ONNX model against manifest. Logs warning on mismatch."""
+    """Check SHA256 of ONNX model against manifest.
+
+    Raises ModelIntegrityError if checksum does not match, preventing
+    corrupted or tampered models from being used for inference.
+    """
     if not expected_sha256:
         return
     actual = hashlib.sha256(model_path.read_bytes()).hexdigest()
     if actual != expected_sha256:
-        logger.warning(
-            "Model integrity mismatch: %s (expected %s…, got %s…)",
-            model_path.name,
-            expected_sha256[:16],
-            actual[:16],
+        raise ModelIntegrityError(
+            f"Model integrity check failed for {model_path.name}: expected {expected_sha256[:16]}…, got {actual[:16]}…",
         )
 
 
@@ -135,14 +140,17 @@ class OnnxInferenceEngine:
         self._manifest_section = manifest_section
         self._model_path = (
             _resolve_model_path(
-                self._models_dir, self._manifest, manifest_section=manifest_section,
+                self._models_dir,
+                self._manifest,
+                manifest_section=manifest_section,
             )
             if self._manifest is not None
             else None
         )
         if self._manifest is not None:
             self._input_name, self._output_name = _resolve_io_names(
-                self._manifest, manifest_section=manifest_section,
+                self._manifest,
+                manifest_section=manifest_section,
             )
         else:
             self._input_name, self._output_name = "input", "logits"
@@ -158,11 +166,7 @@ class OnnxInferenceEngine:
             self._session = None
 
     def is_available(self) -> bool:
-        return (
-            self._manifest is not None
-            and self._model_path is not None
-            and self._model_path.is_file()
-        )
+        return self._manifest is not None and self._model_path is not None and self._model_path.is_file()
 
     @property
     def crop_mode(self) -> str:

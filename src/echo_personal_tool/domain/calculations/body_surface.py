@@ -34,7 +34,7 @@ def bsa_du_bois_m2(height_cm: float, weight_kg: float) -> float | None:
     """Du Bois body surface area from height (cm) and weight (kg)."""
     if height_cm <= 0.0 or weight_kg <= 0.0:
         return None
-    return 0.007184 * (height_cm ** 0.725) * (weight_kg ** 0.425)
+    return 0.007184 * (height_cm**0.725) * (weight_kg**0.425)
 
 
 def compute_indexed_measurements(
@@ -58,9 +58,7 @@ def compute_indexed_measurements(
     lav_4c = _chamber_es_volume(la.a4c) if la is not None else None
     lav_bi = _biplane_es_volume(la.a4c, la.a2c) if la is not None else None
     lav_area_length = (
-        snapshot.la_volume.volume_ml
-        if snapshot.la_volume and snapshot.la_volume.volume_ml is not None
-        else None
+        snapshot.la_volume.volume_ml if snapshot.la_volume and snapshot.la_volume.volume_ml is not None else None
     )
     rav = None
     if ra is not None:

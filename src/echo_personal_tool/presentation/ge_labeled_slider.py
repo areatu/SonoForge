@@ -7,7 +7,6 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.dark_theme import (
-    ACCENT_BRIGHT,
     SLIDER_FILL,
     SLIDER_TRACK,
     get_theme_palette,
@@ -146,13 +145,13 @@ class GeLabeledSlider(QWidget):
                 background: transparent;
             }}
             QSlider::handle:horizontal {{
-                background: {p['accent_bright']};
+                background: {p["accent_bright"]};
                 width: 6px;
                 margin: -2px 0;
                 border-radius: 2px;
             }}
             QSlider::handle:horizontal:hover {{
-                background: {p['accent_tab']};
+                background: {p["accent_tab"]};
             }}
             """
         )

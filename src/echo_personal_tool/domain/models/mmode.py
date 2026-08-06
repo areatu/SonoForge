@@ -30,6 +30,7 @@ class MModeCaliperMeasurement:
 @dataclass(frozen=True)
 class TeichholzMModeResult:
     """Computed Teichholz LV function from M-mode calipers."""
+
     ivsd_mm: float
     lvidd_mm: float
     lvpwd_mm: float

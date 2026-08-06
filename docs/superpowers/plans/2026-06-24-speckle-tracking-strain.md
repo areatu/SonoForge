@@ -36,26 +36,28 @@ All domain services are pure functions operating on `np.ndarray` + dataclasses. 
 ```python
 @dataclass(frozen=True)
 class TrackingKernel:
-    center: tuple[float, float]     # (x, y) in pixel coords
-    radius: int = 10                # half-size of kernel (20x20 px default)
-    node_index: int                 # which contour node this kernel tracks
+    center: tuple[float, float]  # (x, y) in pixel coords
+    radius: int = 10  # half-size of kernel (20x20 px default)
+    node_index: int  # which contour node this kernel tracks
+
 
 @dataclass
 class TrackingResult:
     frame_index: int
-    displacements: np.ndarray       # (N, 2) — dx, dy per kernel (pixels)
-    ncc_scores: np.ndarray          # (N,) — NCC confidence per kernel
-    valid_mask: np.ndarray          # (N,) — bool, True if NCC > threshold
-    kernel_positions: np.ndarray    # (N, 2) — updated (x,y) after tracking
+    displacements: np.ndarray  # (N, 2) — dx, dy per kernel (pixels)
+    ncc_scores: np.ndarray  # (N,) — NCC confidence per kernel
+    valid_mask: np.ndarray  # (N,) — bool, True if NCC > threshold
+    kernel_positions: np.ndarray  # (N, 2) — updated (x,y) after tracking
+
 
 @dataclass(frozen=True)
 class SpeckleConfig:
-    kernel_size: int = 20           # 20x20 px correlation block
-    search_radius: int = 20         # 40x40 px search region
-    pyramid_levels: int = 2         # Gaussian pyramid depth
-    ncc_threshold: float = 0.5      # minimum NCC to accept match
-    outlier_sigma: float = 3.0      # MAD-based outlier rejection (3σ)
-    subpixel: bool = True           # parabolic interpolation
+    kernel_size: int = 20  # 20x20 px correlation block
+    search_radius: int = 20  # 40x40 px search region
+    pyramid_levels: int = 2  # Gaussian pyramid depth
+    ncc_threshold: float = 0.5  # minimum NCC to accept match
+    outlier_sigma: float = 3.0  # MAD-based outlier rejection (3σ)
+    subpixel: bool = True  # parabolic interpolation
 ```
 
 ### 1.2 Core Tracker — `domain/services/speckle_tracking.py` (NEW)
@@ -129,15 +131,16 @@ Add FrameTimeVector parsing to `_frame_time_ms`:
 def _frame_time_ms(dataset: Dataset) -> float | None:
     # Existing: scalar FrameTime
     # NEW: also parse FrameTimeVector → per-frame timing
-    if hasattr(dataset, 'FrameTimeVector'):
+    if hasattr(dataset, "FrameTimeVector"):
         vector = dataset.FrameTimeVector  # numpy array of ms deltas
-        return float(np.mean(vector))     # average for strain rate
+        return float(np.mean(vector))  # average for strain rate
     ...
+
 
 def _frame_time_vector(dataset: Dataset) -> list[float] | None:
     """Parse FrameTimeVector → list of per-frame deltas (ms).
     Returns None if tag absent."""
-    if not hasattr(dataset, 'FrameTimeVector'):
+    if not hasattr(dataset, "FrameTimeVector"):
         return None
     return [float(x) for x in dataset.FrameTimeVector]
 ```
@@ -168,6 +171,7 @@ def kernels_from_contour(contour: Contour, pixel_spacing: tuple[float, float]) -
     Uses contour.points (32 nodes) as kernel centers.
     Kernel radius = 10 px (half of 20x20)."""
 
+
 def resample_contour_for_tracking(
     contour: Contour,
     num_kernels: int = 64,
@@ -184,12 +188,13 @@ def resample_contour_for_tracking(
 
 ```python
 def compute_lagrangian_strain(
-    reference_positions: np.ndarray,    # (N, 2) at frame 0
-    current_positions: np.ndarray,      # (N, 2) at frame t
-    reference_length: float,            # initial inter-node distance (mm)
+    reference_positions: np.ndarray,  # (N, 2) at frame 0
+    current_positions: np.ndarray,  # (N, 2) at frame t
+    reference_length: float,  # initial inter-node distance (mm)
 ) -> np.ndarray:
     """Green-Lagrange strain: E = 0.5 * ((L/L0)^2 - 1).
     Returns strain per kernel pair (N-1 values)."""
+
 
 def compute_longitudinal_strain(
     tracking_results: list[TrackingResult],
@@ -201,6 +206,7 @@ def compute_longitudinal_strain(
     Uses inter-node distances along the arc.
     Returns (num_frames,) array of strain values (%)."""
 
+
 def compute_radial_strain(
     tracking_results: list[TrackingResult],
     kernels: list[TrackingKernel],
@@ -209,6 +215,7 @@ def compute_radial_strain(
     """Compute radial (circumferential) strain from tracking.
     Returns (num_frames,) array of strain values (%)."""
 
+
 def compute_gls(
     longitudinal_strain: np.ndarray,
     ed_index: int,
@@ -216,6 +223,7 @@ def compute_gls(
 ) -> float:
     """Global Longitudinal Strain: peak negative strain between ED→ES.
     Returns GLS as negative percentage (e.g., -18.5%)."""
+
 
 def compute_strain_rate(
     strain_curve: np.ndarray,
@@ -228,8 +236,8 @@ def compute_strain_rate(
 
 ```python
 def estimate_heart_rate_fft(
-    frames: np.ndarray,                # (N, H, W)
-    roi: np.ndarray | None = None,     # optional myocardial ROI mask
+    frames: np.ndarray,  # (N, H, W)
+    roi: np.ndarray | None = None,  # optional myocardial ROI mask
     fps: float = 30.0,
 ) -> float:
     """Estimate heart rate from mean myocardial intensity over time.
@@ -237,6 +245,7 @@ def estimate_heart_rate_fft(
     2. Apply Hanning window → FFT
     3. Find dominant frequency in 40-200 BPM range
     4. Return HR in BPM."""
+
 
 def auto_detect_ed_es(
     frames: np.ndarray,
@@ -247,6 +256,7 @@ def auto_detect_ed_es(
     ED = frame with maximum LV area (or maximum mean displacement from centroid).
     ES = frame with minimum LV area (or minimum centroid distance).
     Returns (ed_index, es_index)."""
+
 
 def detect_cardiac_phases(
     frames: np.ndarray,
@@ -345,12 +355,15 @@ Add speckle tracking state and controls:
 speckle_tracking_requested = Signal()
 strain_computed = Signal(object)  # StrainResultDTO
 
+
 # New methods
 def _on_speckle_tracking_requested(self) -> None:
     """Get current contour → create kernels → run tracking in worker."""
 
+
 def _show_speckle_results(self, result: SpeckleTrackingResult) -> None:
     """Update overlay + strain curve widget."""
+
 
 def toggle_speckle_overlay(self, visible: bool) -> None: ...
 ```

@@ -123,45 +123,25 @@ def _build_control_points(
 
     # Базальная перегородка: +perp → в сторону полости ЛЖ + глобальный сдвиг к ПЖ
     p_base_x = (
-        (1.0 - septal_base_t) * septal[0]
-        + septal_base_t * apex[0]
-        + dir_sa[0] * chord_sa * septal_base_frac
-        + shift_x
+        (1.0 - septal_base_t) * septal[0] + septal_base_t * apex[0] + dir_sa[0] * chord_sa * septal_base_frac + shift_x
     )
     p_base_y = (
-        (1.0 - septal_base_t) * septal[1]
-        + septal_base_t * apex[1]
-        + dir_sa[1] * chord_sa * septal_base_frac
-        + shift_y
+        (1.0 - septal_base_t) * septal[1] + septal_base_t * apex[1] + dir_sa[1] * chord_sa * septal_base_frac + shift_y
     )
 
     # Апикальная перегородка: −perp → в сторону ПЖ + глобальный сдвиг к ПЖ
     p_apex_x = (
-        (1.0 - septal_apex_t) * septal[0]
-        + septal_apex_t * apex[0]
-        - dir_sa[0] * chord_sa * septal_apex_frac
-        + shift_x
+        (1.0 - septal_apex_t) * septal[0] + septal_apex_t * apex[0] - dir_sa[0] * chord_sa * septal_apex_frac + shift_x
     )
     p_apex_y = (
-        (1.0 - septal_apex_t) * septal[1]
-        + septal_apex_t * apex[1]
-        - dir_sa[1] * chord_sa * septal_apex_frac
-        + shift_y
+        (1.0 - septal_apex_t) * septal[1] + septal_apex_t * apex[1] - dir_sa[1] * chord_sa * septal_apex_frac + shift_y
     )
 
     # Латеральная стенка: −perp → наружу
     chord_al = math.hypot(lateral[0] - apex[0], lateral[1] - apex[1])
     dir_al = _perp_toward(apex, lateral, septal)
-    p3_x = (
-        (1.0 - lateral_t) * apex[0]
-        + lateral_t * lateral[0]
-        - dir_al[0] * chord_al * lateral_bow_frac
-    )
-    p3_y = (
-        (1.0 - lateral_t) * apex[1]
-        + lateral_t * lateral[1]
-        - dir_al[1] * chord_al * lateral_bow_frac
-    )
+    p3_x = (1.0 - lateral_t) * apex[0] + lateral_t * lateral[0] - dir_al[0] * chord_al * lateral_bow_frac
+    p3_y = (1.0 - lateral_t) * apex[1] + lateral_t * lateral[1] - dir_al[1] * chord_al * lateral_bow_frac
 
     return [
         septal,

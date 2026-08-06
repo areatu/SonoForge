@@ -29,9 +29,7 @@ class SpeckleOverlay(QWidget):
         self._plot.addItem(self._zone_item)
 
         brush_fill = pg.mkBrush(66, 165, 245, 30)
-        self._endo_fill = pg.PlotDataItem(
-            pen=None, brush=brush_fill
-        )
+        self._endo_fill = pg.PlotDataItem(pen=None, brush=brush_fill)
         self._endo_fill.setZValue(1)
         self._plot.addItem(self._endo_fill)
 

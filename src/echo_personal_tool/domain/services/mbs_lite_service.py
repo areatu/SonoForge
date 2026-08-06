@@ -13,11 +13,6 @@ from echo_personal_tool.domain.services.active_contour_refine import (
     ActiveContourConfig,
     refine_open_arc,
 )
-from echo_personal_tool.domain.services.stepped_border_refine import (
-    format_stepped_refine_status,
-    next_refine_step,
-    run_stepped_refine_pass,
-)
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     apex_point,
@@ -26,13 +21,17 @@ from echo_personal_tool.domain.services.contour_geometry import (
     smooth_open_arc,
 )
 from echo_personal_tool.domain.services.lv_bezier_contour import (
-    LvBezierParams,
     build_lv_bezier_template_for_contour,
     fit_lv_bezier_contour,
 )
 from echo_personal_tool.domain.services.rv_shape_template import (
     RV_FAC_NODE_COUNT,
     warp_rv_crescent_open_arc,
+)
+from echo_personal_tool.domain.services.stepped_border_refine import (
+    format_stepped_refine_status,
+    next_refine_step,
+    run_stepped_refine_pass,
 )
 
 _MIN_ANNULUS_LENGTH_PX = 10.0
@@ -42,6 +41,15 @@ _TEMPLATE_POINT_COUNT = 81
 # LA / RA open-arc template: short diameter = long diameter × ratio (default 85%).
 # Long diameter = MA midpoint → apex; short axis is perpendicular to that line.
 _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO = 0.85
+
+
+def _adaptive_superellipse_n(aspect_ratio: float) -> float:
+    """Compute superellipse exponent from short/long axis ratio.
+
+    aspect_ratio ~0.4 -> n=2.0 (ellipse)
+    aspect_ratio ~0.85 -> n=3.5 (rounded rectangle)
+    """
+    return 2.0 + 2.0 * max(0.0, min(1.0, (aspect_ratio - 0.4) / 0.45))
 
 
 def _warp_elliptical_open_arc(
@@ -99,6 +107,76 @@ def _warp_elliptical_open_arc(
     return warped
 
 
+def _warp_superellipse_open_arc(
+    septal: tuple[float, float],
+    lateral: tuple[float, float],
+    apex: tuple[float, float],
+    *,
+    num_points: int = 81,
+    short_axis_ratio: float = _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
+    n: float | None = None,
+) -> list[tuple[float, float]]:
+    """Sample open arc as a half-superellipse for LA/RA.
+
+    When n=2 this is equivalent to a half-ellipse. Higher n produces
+    rounded-rectangle shapes that better match typical atrial geometry.
+    If *n* is None, the exponent is chosen adaptively from the aspect ratio.
+    """
+    if num_points < 3:
+        msg = "num_points must be at least 3"
+        raise ValueError(msg)
+    if not 0.0 < short_axis_ratio <= 1.0:
+        msg = "short_axis_ratio must be in (0, 1]"
+        raise ValueError(msg)
+
+    ma_dx = lateral[0] - septal[0]
+    ma_dy = lateral[1] - septal[1]
+    ma_length = math.hypot(ma_dx, ma_dy)
+    if ma_length <= 0.0:
+        msg = "mitral annulus length must be positive"
+        raise ValueError(msg)
+
+    mid_x = (septal[0] + lateral[0]) / 2.0
+    mid_y = (septal[1] + lateral[1]) / 2.0
+    long_dx = apex[0] - mid_x
+    long_dy = apex[1] - mid_y
+    long_length = math.hypot(long_dx, long_dy)
+    if long_length <= 0.0:
+        msg = "apex must be off the mitral annulus line"
+        raise ValueError(msg)
+
+    long_x = long_dx / long_length
+    long_y = long_dy / long_length
+    short_u_x = ma_dx / ma_length
+    short_u_y = ma_dy / ma_length
+    short_half = (long_length * short_axis_ratio) / 2.0
+
+    if n is None:
+        aspect_ratio = (short_half * 2.0) / long_length
+        n = _adaptive_superellipse_n(aspect_ratio)
+
+    exp = 2.0 / n
+
+    warped: list[tuple[float, float]] = []
+    for index in range(num_points):
+        t = index / (num_points - 1)
+        theta = math.pi * (1.0 - t)
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        # |cos(theta)|^exp with sign preservation
+        offset_short = short_half * math.copysign(abs(cos_t) ** exp, cos_t)
+        offset_long = long_length * math.copysign(abs(sin_t) ** exp, sin_t)
+        warped.append(
+            (
+                mid_x + offset_short * short_u_x + offset_long * long_x,
+                mid_y + offset_short * short_u_y + offset_long * long_y,
+            )
+        )
+    warped[0] = septal
+    warped[-1] = lateral
+    return warped
+
+
 def fit_contour_from_landmarks(
     *,
     septal: tuple[float, float],
@@ -137,7 +215,7 @@ def fit_contour_from_landmarks(
             num_points=_TEMPLATE_POINT_COUNT,
         )
     else:
-        warped = _warp_elliptical_open_arc(
+        warped = _warp_superellipse_open_arc(
             septal,
             lateral,
             apex,
@@ -173,14 +251,12 @@ def infer_apex_from_open_arc(
 
 
 def build_atrial_ellipse_template_for_contour(contour: Contour) -> list[tuple[float, float]]:
-    """Regenerate atrial ellipse template resampled to contour node count."""
+    """Regenerate atrial superellipse template resampled to contour node count."""
     if contour.mitral_annulus is None:
         return list(contour.points)
     septal, lateral = contour.mitral_annulus
-    apex = contour.apex_landmark or infer_apex_from_open_arc(
-        contour.points, septal, lateral
-    )
-    warped = _warp_elliptical_open_arc(
+    apex = contour.apex_landmark or infer_apex_from_open_arc(contour.points, septal, lateral)
+    warped = _warp_superellipse_open_arc(
         septal,
         lateral,
         apex,
@@ -201,9 +277,7 @@ def build_rv_quarter_sine_template_for_contour(contour: Contour) -> list[tuple[f
     if contour.mitral_annulus is None:
         return list(contour.points)
     septal, lateral = contour.mitral_annulus
-    apex = contour.apex_landmark or infer_apex_from_open_arc(
-        contour.points, septal, lateral
-    )
+    apex = contour.apex_landmark or infer_apex_from_open_arc(contour.points, septal, lateral)
     warped = warp_rv_crescent_open_arc(
         septal,
         lateral,
@@ -219,7 +293,6 @@ def build_rv_quarter_sine_template_for_contour(contour: Contour) -> list[tuple[f
     )
 
 
-
 def refine_open_arc_contour(
     frame: np.ndarray,
     contour: Contour,
@@ -232,13 +305,11 @@ def refine_open_arc_contour(
         return contour, "geometry"
 
     septal, lateral = contour.mitral_annulus
-    apex = contour.apex_landmark or infer_apex_from_open_arc(
-        contour.points, septal, lateral
-    )
+    apex = contour.apex_landmark or infer_apex_from_open_arc(contour.points, septal, lateral)
     original_points = list(contour.points)
 
     if frame is not None and frame.size > 0 and contour.source in {"ai", "manual"}:
-        next_step = next_refine_step(contour.refine_step)
+        next_step = next_refine_step(contour.refine_step, source=contour.source)
         locked = frozenset(contour.refine_locked_indices)
         result = run_stepped_refine_pass(
             frame,
@@ -330,7 +401,9 @@ def _refine_internal_template(contour: Contour) -> list[tuple[float, float]]:
 
 
 def _active_contour_config_for_contour(
-    contour: Contour, *, cine: bool = False,
+    contour: Contour,
+    *,
+    cine: bool = False,
 ) -> ActiveContourConfig:
     if contour.source == "manual":
         return ActiveContourConfig(
@@ -363,13 +436,9 @@ def _refined_is_sane(
 ) -> bool:
     if len(refined) != len(original):
         return False
-    if refined[0] != septal and math.hypot(
-        refined[0][0] - septal[0], refined[0][1] - septal[1]
-    ) > 2.0:
+    if refined[0] != septal and math.hypot(refined[0][0] - septal[0], refined[0][1] - septal[1]) > 2.0:
         return False
-    if refined[-1] != lateral and math.hypot(
-        refined[-1][0] - lateral[0], refined[-1][1] - lateral[1]
-    ) > 2.0:
+    if refined[-1] != lateral and math.hypot(refined[-1][0] - lateral[0], refined[-1][1] - lateral[1]) > 2.0:
         return False
     orig_area = _polyline_length(original)
     new_area = _polyline_length(refined)
@@ -408,10 +477,7 @@ def _open_arc_depth(
 ) -> float:
     if len(points) < 3:
         return 0.0
-    return max(
-        point_line_distance(point, septal, lateral)
-        for point in points[1:-1]
-    )
+    return max(point_line_distance(point, septal, lateral) for point in points[1:-1])
 
 
 def _smooth_contour_points(contour: Contour) -> Contour:
@@ -419,9 +485,7 @@ def _smooth_contour_points(contour: Contour) -> Contour:
         return contour
 
     septal, lateral = contour.mitral_annulus
-    apex = contour.apex_landmark or infer_apex_from_open_arc(
-        contour.points, septal, lateral
-    )
+    apex = contour.apex_landmark or infer_apex_from_open_arc(contour.points, septal, lateral)
     smoothed = smooth_open_arc(
         contour.points,
         contour.mitral_annulus,

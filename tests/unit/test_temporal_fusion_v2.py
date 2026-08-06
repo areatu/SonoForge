@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
-import numpy as np
-import pytest
-
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.temporal_fusion import TemporalFusionConfig
 from echo_personal_tool.domain.services.lv_temporal_fusion import (

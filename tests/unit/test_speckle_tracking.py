@@ -56,10 +56,7 @@ def _make_synthetic_cine(n_frames: int, shift_per_frame: float = 0.5) -> np.ndar
 
 def _make_test_kernels() -> list[TrackingKernel]:
     centers = [(58.0, 64.0), (68.0, 64.0), (64.0, 58.0), (64.0, 70.0)]
-    return [
-        TrackingKernel(center=c, node_index=i, layer="endo")
-        for i, c in enumerate(centers)
-    ]
+    return [TrackingKernel(center=c, node_index=i, layer="endo") for i, c in enumerate(centers)]
 
 
 def _ed_closure_error(
@@ -296,11 +293,18 @@ class TestCardiacCycleDetector:
         assert hr == 0.0
 
     def test_auto_detect_ed_es(self) -> None:
-        base_positions = np.array([
-            [50.0, 30.0], [60.0, 30.0], [70.0, 40.0],
-            [70.0, 60.0], [60.0, 70.0], [50.0, 70.0],
-            [40.0, 60.0], [40.0, 40.0],
-        ])
+        base_positions = np.array(
+            [
+                [50.0, 30.0],
+                [60.0, 30.0],
+                [70.0, 40.0],
+                [70.0, 60.0],
+                [60.0, 70.0],
+                [50.0, 70.0],
+                [40.0, 60.0],
+                [40.0, 40.0],
+            ]
+        )
         expand = np.array([0.0, 0.0, 5.0, 5.0, 0.0, 0.0, -5.0, -5.0])
         shrink = np.array([0.0, 0.0, -3.0, -3.0, 0.0, 0.0, 3.0, 3.0])
 

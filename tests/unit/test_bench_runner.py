@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from echo_personal_tool.domain.services.gold_store import make_gold_frame, save_gold
@@ -39,8 +37,11 @@ def bench_manifest(tmp_path: Path) -> Path:
     }
     save_gold(gold_dir / "test_study_001.json", gold_data)
 
-    manifest = {"studies": [{"study_id": "test_study_001", "instance_path": "/nonexistent/test.dcm",
-                              "ed_frame": 0, "es_frame": 5}]}
+    manifest = {
+        "studies": [
+            {"study_id": "test_study_001", "instance_path": "/nonexistent/test.dcm", "ed_frame": 0, "es_frame": 5}
+        ]
+    }
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(manifest))
     return manifest_path
@@ -49,6 +50,7 @@ def bench_manifest(tmp_path: Path) -> Path:
 class TestBenchRun:
     def test_empty_manifest(self, tmp_path: Path) -> None:
         from scripts.run_lv_auto_bench import run_bench
+
         manifest_path = tmp_path / "empty.json"
         manifest_path.write_text(json.dumps({"studies": []}))
         result = run_bench(manifest_path)
@@ -56,16 +58,18 @@ class TestBenchRun:
 
     def test_missing_gold_file(self, tmp_path: Path) -> None:
         from scripts.run_lv_auto_bench import run_bench
+
         manifest_path = tmp_path / "manifest.json"
-        manifest_path.write_text(json.dumps({
-            "studies": [{"study_id": "no_gold", "instance_path": "/x.dcm", "ed_frame": 0}]
-        }))
+        manifest_path.write_text(
+            json.dumps({"studies": [{"study_id": "no_gold", "instance_path": "/x.dcm", "ed_frame": 0}]})
+        )
         result = run_bench(manifest_path)
         # No gold file → study is skipped, 0 rows produced
         assert result["rows"] == []
 
     def test_output_csv_created(self, tmp_path: Path, bench_manifest: Path) -> None:
         from scripts.run_lv_auto_bench import run_bench
+
         output = tmp_path / "reports" / "test.csv"
         # This will fail to load DICOM (nonexistent path) but should still
         # produce a CSV with skip rows

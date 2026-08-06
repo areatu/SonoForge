@@ -14,13 +14,13 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QToolButton,
@@ -55,6 +55,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
+from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
 
 
 def show_user_preferences_dialog(
@@ -63,6 +64,7 @@ def show_user_preferences_dialog(
     on_apply: Callable[[UserPreferences], None] | None = None,
 ) -> bool:
     from echo_personal_tool.presentation.ui_animations import exec_animated
+
     dialog = UserPreferencesDialog(parent, on_apply=on_apply)
     return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
@@ -70,6 +72,24 @@ def show_user_preferences_dialog(
 def _scrollable_tab(form: QFormLayout) -> QWidget:
     host = QWidget()
     host.setLayout(form)
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(host)
+    return scroll
+
+
+def _group_box(title: str, form: QFormLayout) -> QGroupBox:
+    box = QGroupBox(title)
+    box.setLayout(form)
+    return box
+
+
+def _scrollable_grouped(*groups: tuple[str, QFormLayout]) -> QWidget:
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(4, 8, 4, 8)
+    for title, form in groups:
+        layout.addWidget(_group_box(title, form))
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setWidget(host)
@@ -85,10 +105,7 @@ class UserPreferencesDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self._on_apply = on_apply
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.Dialog
-        )
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.resize(780, 560)
         self._drag_pos = None
@@ -108,6 +125,7 @@ class UserPreferencesDialog(QDialog):
 
         btn_close = QPushButton()
         from echo_personal_tool.presentation.system_bar import _load_icon
+
         btn_close.setIcon(_load_icon("close"))
         btn_close.setObjectName("closeButton")
         btn_close.setFixedSize(28, 23)
@@ -156,7 +174,6 @@ class UserPreferencesDialog(QDialog):
         interface_form.addRow(tr("preferences.results_overlay_font_size"), self._overlay_font_spin)
         interface_form.addRow(tr("preferences.results_overlay_opacity"), self._overlay_opacity_spin)
         interface_form.addRow(tr("preferences.caliper_width"), self._caliper_spin)
-        tabs.addTab(_scrollable_tab(interface_form), tr("preferences.tab_interface"))
 
         display_form = QFormLayout()
         self._playback_spin = QDoubleSpinBox()
@@ -195,7 +212,14 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
-        tabs.addTab(_scrollable_tab(display_form), tr("preferences.tab_display"))
+
+        tabs.addTab(
+            _scrollable_grouped(
+                ("", interface_form),
+                (tr("preferences.block_display"), display_form),
+            ),
+            tr("preferences.tab_interface"),
+        )
 
         measure_form = QFormLayout()
         self._manual_contour_spin = QDoubleSpinBox()
@@ -240,14 +264,17 @@ class UserPreferencesDialog(QDialog):
         self._calibration_tick_snap.setChecked(current.calibration_tick_snap_enabled)
         self._auto_depth_cal = QCheckBox(tr("preferences.auto_depth_cal"))
         self._auto_depth_cal.setChecked(current.auto_depth_calibration_enabled)
-        self._auto_depth_cal.setToolTip(
-            tr("preferences.auto_depth_cal_tooltip")
-        )
+        self._auto_depth_cal.setToolTip(tr("preferences.auto_depth_cal_tooltip"))
         self._length_unit = QComboBox()
         self._length_unit.addItem(tr("preferences.unit_mm"), "mm")
         self._length_unit.addItem(tr("preferences.unit_cm"), "cm")
         unit_index = self._length_unit.findData(current.length_display_unit)
         self._length_unit.setCurrentIndex(max(unit_index, 0))
+        self._area_tool_mode_combo = QComboBox()
+        self._area_tool_mode_combo.addItem(tr("preferences.area_mode_click"), "click")
+        self._area_tool_mode_combo.addItem(tr("preferences.area_mode_freehand"), "freehand")
+        area_mode_index = self._area_tool_mode_combo.findData(current.area_tool_mode)
+        self._area_tool_mode_combo.setCurrentIndex(max(area_mode_index, 0))
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -259,20 +286,10 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(self._calibration_tick_snap)
         measure_form.addRow(self._auto_depth_cal)
         measure_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
+        measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
-        dicom_form = QFormLayout()
-        self._show_dicom_inspector = QCheckBox()
-        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
-        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
-        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
-        self._interesting_tags.setToolTip(
-            tr("preferences.tags_tooltip")
-        )
-        dicom_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
-        dicom_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
-        tabs.addTab(_scrollable_tab(dicom_form), "DICOM")
-
+        # --- Gold annotation ---
         gold_form = QFormLayout()
         self._gold_enabled = QCheckBox()
         self._gold_enabled.setChecked(current.gold_annotation_enabled)
@@ -285,8 +302,18 @@ class UserPreferencesDialog(QDialog):
         gold_path_row.addWidget(self._gold_path_browse)
         gold_form.addRow(tr("preferences.gold_enabled"), self._gold_enabled)
         gold_form.addRow(tr("preferences.gold_path"), gold_path_row)
-        tabs.addTab(_scrollable_tab(gold_form), tr("preferences.tab_gold"))
 
+        # --- DICOM ---
+        dicom_form = QFormLayout()
+        self._show_dicom_inspector = QCheckBox()
+        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
+        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
+        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
+        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
+        dicom_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
+        dicom_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
+
+        # --- References ---
         refs_form = QFormLayout()
         self._refs_dir = QLineEdit(current.references_dir)
         self._refs_dir.setPlaceholderText(str(Path.home() / "ECHO2026-references"))
@@ -296,8 +323,8 @@ class UserPreferencesDialog(QDialog):
         refs_dir_row.addWidget(self._refs_dir)
         refs_dir_row.addWidget(self._refs_dir_browse)
         refs_form.addRow(tr("preferences.references_dir"), refs_dir_row)
-        tabs.addTab(_scrollable_tab(refs_form), tr("preferences.tab_references"))
 
+        # --- Other tab (consolidated with blocks) ---
         other_form = QFormLayout()
         self._confirm_reset = QCheckBox()
         self._confirm_reset.setChecked(current.confirm_reset)
@@ -313,7 +340,17 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
         other_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
-        tabs.addTab(_scrollable_tab(other_form), tr("preferences.tab_other"))
+
+        # --- Other tab: confirm/pfd/startup + Gold + DICOM + References ---
+        tabs.addTab(
+            _scrollable_grouped(
+                ("", other_form),
+                (tr("preferences.block_gold"), gold_form),
+                (tr("preferences.block_dicom"), dicom_form),
+                (tr("preferences.block_references"), refs_form),
+            ),
+            tr("preferences.tab_other"),
+        )
 
         # Experimental features tab
         exp_form = QFormLayout()
@@ -327,22 +364,21 @@ class UserPreferencesDialog(QDialog):
         self._show_doppler_tk_pv.setChecked(current.show_doppler_tk_pv)
         self._show_rv_s_prime = QCheckBox()
         self._show_rv_s_prime.setChecked(current.show_rv_s_prime)
-        exp_form.addRow("Показать Стрейн", self._show_strain)
-        exp_form.addRow("Показать Диастолическую функцию", self._show_diastolic)
-        exp_form.addRow("Показать Doppler МК/АК", self._show_doppler_mk_av)
-        exp_form.addRow("Показать Doppler ТК/ЛК", self._show_doppler_tk_pv)
-        exp_form.addRow("Показать s' ПЖ", self._show_rv_s_prime)
-        tabs.addTab(_scrollable_tab(exp_form), "Экспериментальные")
+        exp_form.addRow(tr("prefs.show_strain"), self._show_strain)
+        exp_form.addRow(tr("prefs.show_diastolic"), self._show_diastolic)
+        exp_form.addRow(tr("prefs.show_doppler_mk_av"), self._show_doppler_mk_av)
+        exp_form.addRow(tr("prefs.show_doppler_tk_lk"), self._show_doppler_tk_pv)
+        exp_form.addRow(tr("prefs.show_rv_s_prime"), self._show_rv_s_prime)
+        tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()
         tabs.addTab(self._server_form, tr("preferences.tab_server"))
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         self._recolor_buttonbox_icons(buttons)
+        theme_button_box_icons(buttons)
 
         reset_row = QHBoxLayout()
         reset_defaults_btn = QPushButton(tr("preferences.reset_defaults"))
@@ -378,6 +414,7 @@ class UserPreferencesDialog(QDialog):
 
     def _browse_gold_path(self) -> None:
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+
         path = styled_select_directory(
             self,
             tr("preferences.gold_browse_title"),
@@ -388,6 +425,7 @@ class UserPreferencesDialog(QDialog):
 
     def _browse_references_dir(self) -> None:
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
+
         path = styled_select_directory(
             self,
             tr("references_dir_browse_title"),
@@ -427,6 +465,7 @@ class UserPreferencesDialog(QDialog):
             calibration_tick_snap_enabled=self._calibration_tick_snap.isChecked(),
             auto_depth_calibration_enabled=self._auto_depth_cal.isChecked(),
             length_display_unit=str(self._length_unit.currentData()),
+            area_tool_mode=str(self._area_tool_mode_combo.currentData()),
             show_dicom_tag_inspector=self._show_dicom_inspector.isChecked(),
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),
@@ -470,16 +509,19 @@ class UserPreferencesDialog(QDialog):
         tab_bar = self._tabs.tabBar()
         for btn in tab_bar.findChildren(QToolButton):
             # Scroll buttons are children of the tab bar with no text
-            if not btn.text() and btn.width() < 60:
+            if not btn.text():
+                btn.setMinimumWidth(28)
                 if btn.x() < tab_bar.width() // 2:
-                    btn.setText("\u25c0")  # ◀
+                    btn.setText("<")
                 else:
-                    btn.setText("\u25b6")  # ▶
+                    btn.setText(">")
 
     def _recolor_buttonbox_icons(self, box: QDialogButtonBox) -> None:
-        from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
         from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
+
         from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
         p = get_theme_palette()
         color = QColor(p["text"])
         for btn in box.findChildren(QPushButton):

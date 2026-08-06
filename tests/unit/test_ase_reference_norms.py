@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.services.ase_reference_norms import (
+    LAVI_MLM2,
+    LV_IVSD_MM,
+    LVMI_GM2,
     is_outside_norm,
     should_show_indexed_linear,
-    LAVI_MLM2,
-    LVMI_GM2,
-    LV_IVSD_MM,
 )
 
 

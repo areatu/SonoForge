@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 from PySide6.QtWidgets import QPushButton
 
 from echo_personal_tool.application.app_controller import AppController
@@ -15,6 +15,8 @@ from echo_personal_tool.presentation.main_window import MainWindow
 from echo_personal_tool.presentation.measurement_tools_panel import MeasurementToolsPanel
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+pytestmark = pytest.mark.gui
 
 
 def test_measurement_tools_panel_has_manual_and_mbs_buttons(qtbot) -> None:
@@ -38,7 +40,7 @@ def test_measurement_tools_panel_has_manual_and_mbs_buttons(qtbot) -> None:
         "S ПП",
         "ОПП",
         "TAPSE",
-        "ПЖ основание",
+        "ПЖ базальный",
     }
 
 
@@ -272,8 +274,29 @@ def test_frame_overlay_clears_on_frame_change(qtbot) -> None:
     assert not viewer._overlay_label.isVisible()
 
 
+def test_area_compare_button_emits_signal(qtbot) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    panel = MeasurementToolsPanel()
+    qtbot.addWidget(panel)
+    received: list[bool] = []
+    panel.area_compare_requested.connect(lambda: received.append(True))
+
+    # Find and click the area compare button
+    # Note: "Сравнение площадей" is the translation for tools.area_compare
+    for button in panel.findChildren(QPushButton):
+        if button.text() == "Сравнение площадей":
+            button.click()
+            break
+    else:
+        raise AssertionError("Area Compare button not found")
+    assert received == [True]
+
+
 def test_tool_panel_has_results_button_under_patient_metrics(qtbot) -> None:
     from echo_personal_tool.infrastructure.i18n import set_language
+
     set_language("ru")
     panel = ToolPanel()
     qtbot.addWidget(panel)

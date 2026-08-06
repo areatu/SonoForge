@@ -73,9 +73,7 @@ class DicomUploadWorker(QRunnable):
                     success += 1
                 self.signals.progress.emit(i + 1, total)
 
-            self.signals.finished.emit(
-                StowResult(success_count=success, failed_uids=failed_uids)
-            )
+            self.signals.finished.emit(StowResult(success_count=success, failed_uids=failed_uids))
         except Exception as exc:  # noqa: BLE001
             logger.exception("DicomUploadWorker failed")
             self.signals.failed.emit(str(exc))

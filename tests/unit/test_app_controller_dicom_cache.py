@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
@@ -271,13 +273,14 @@ def test_lazy_frame_load_falls_back_to_frame_loader(
 
 
 def test_scroll_batch_sets_target_frame(
-    qapp, monkeypatch, tmp_path,
+    qapp,
+    monkeypatch,
+    tmp_path,
 ) -> None:
     started: list[object] = []
 
     class _SpyLoader:
-        def __init__(self, path, frame_index=0, media_format="dicom", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="dicom", parent=None, total_frames=0, batch_size=0):
             self._frame_index = frame_index
             self._batch_size = batch_size
             self.signals = SimpleNamespace(
@@ -306,4 +309,3 @@ def test_scroll_batch_sets_target_frame(
     controller._state_manager.set_frame(15)
 
     assert controller._batch_target_frame == 15
-

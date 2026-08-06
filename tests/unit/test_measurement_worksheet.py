@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.measurements import (
     DopplerResults,
@@ -9,6 +11,8 @@ from echo_personal_tool.domain.models.measurements import (
 )
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measurement_worksheet import MeasurementWorksheet
+
+pytestmark = pytest.mark.gui
 
 
 def test_worksheet_emits_action_on_click(qtbot) -> None:

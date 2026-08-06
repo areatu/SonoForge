@@ -3,22 +3,24 @@
 
 import io
 import sys
-sys.path.insert(0, 'src')
+
+sys.path.insert(0, "src")
 
 import pydicom
+
+from echo_personal_tool.domain.models.contour import Contour
+from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.infrastructure.dicom_annotation_serializer import (
     annotate_dicom,
     read_annotations_from_dicom,
 )
-from echo_personal_tool.domain.models.contour import Contour
-from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 
 
 def test_with_real_dicom():
     """Test annotation injection into a real DICOM file."""
     # Use a test DICOM file
     dcm_path = ".venv/lib/python3.11/site-packages/pydicom/data/test_files/CT_small.dcm"
-    
+
     print(f"=== Loading DICOM: {dcm_path} ===")
     ds = pydicom.dcmread(dcm_path, force=True)
     print(f"  PatientName: {getattr(ds, 'PatientName', 'N/A')}")
@@ -28,13 +30,19 @@ def test_with_real_dicom():
 
     # Add calipers
     calipers = [
-        LinearMeasurement(label="LVEDD", pixel_length=150.0, millimeter_length=45.0,
-                          start=(50.0, 100.0), end=(200.0, 100.0)),
+        LinearMeasurement(
+            label="LVEDD", pixel_length=150.0, millimeter_length=45.0, start=(50.0, 100.0), end=(200.0, 100.0)
+        ),
     ]
     contours = [
-        Contour(phase="ED", view="A4C", chamber="LV",
-                points=[(50, 50), (100, 75), (150, 100), (125, 150), (75, 125)],
-                source="manual", measurement_label="LV"),
+        Contour(
+            phase="ED",
+            view="A4C",
+            chamber="LV",
+            points=[(50, 50), (100, 75), (150, 100), (125, 150), (75, 125)],
+            source="manual",
+            measurement_label="LV",
+        ),
     ]
 
     print("\n=== Injecting annotations ===")
@@ -75,5 +83,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n=== FAILED: {e} ===")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

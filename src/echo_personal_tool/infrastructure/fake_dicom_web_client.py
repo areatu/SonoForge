@@ -28,23 +28,17 @@ class FakeDicomWebClient:
 
     def _load_studies(self) -> list[dict]:
         if self._studies_payload is None:
-            self._studies_payload = json.loads(
-                (self._fixtures / "studies.json").read_text(encoding="utf-8")
-            )
+            self._studies_payload = json.loads((self._fixtures / "studies.json").read_text(encoding="utf-8"))
         return self._studies_payload
 
     def _load_series(self) -> list[dict]:
         if self._series_payload is None:
-            self._series_payload = json.loads(
-                (self._fixtures / "series.json").read_text(encoding="utf-8")
-            )
+            self._series_payload = json.loads((self._fixtures / "series.json").read_text(encoding="utf-8"))
         return self._series_payload
 
     def _load_instances(self) -> list[dict]:
         if self._instances_payload is None:
-            self._instances_payload = json.loads(
-                (self._fixtures / "instances.json").read_text(encoding="utf-8")
-            )
+            self._instances_payload = json.loads((self._fixtures / "instances.json").read_text(encoding="utf-8"))
         return self._instances_payload
 
     def _load_sample_dcm(self) -> bytes:
@@ -78,9 +72,7 @@ class FakeDicomWebClient:
     def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
         return parse_instances(self._load_instances(), study_uid, series_uid)
 
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         return self._load_sample_dcm()
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult:

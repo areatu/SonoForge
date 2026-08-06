@@ -144,9 +144,7 @@ def detect_ed_es_from_frames(
     return ed_index, es_index
 
 
-def detect_cycle_boundaries(
-    areas: np.ndarray, min_cycle_frames: int = 15
-) -> list[tuple[int, int]]:
+def detect_cycle_boundaries(areas: np.ndarray, min_cycle_frames: int = 15) -> list[tuple[int, int]]:
     """Detect cardiac cycles from smoothed area signal.
 
     Returns cycles as inclusive (start, end) frame ranges where cycle starts are
@@ -331,9 +329,7 @@ def detect_cardiac_phases(
     frame_time_ms = 1000.0 / fps
     frames_per_cycle = cycle_length_ms / frame_time_ms
 
-    ed_index, es_index = auto_detect_ed_es(
-        tracking_results, kernels, pixel_spacing
-    )
+    ed_index, es_index = auto_detect_ed_es(tracking_results, kernels, pixel_spacing)
     systole_fraction = 0.35
 
     phases: dict[str, int] = {"ED": ed_index, "ES": es_index}

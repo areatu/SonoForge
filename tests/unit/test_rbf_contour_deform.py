@@ -169,10 +169,13 @@ def test_influence_tier_steps_1_3_5_7_then_none() -> None:
     assert influence_tier_for_arc_distance(five, spacing) == 5
     seven = (TIER3_MAX_SPACING_RATIO + TIER4_MAX_SPACING_RATIO) / 2 * spacing
     assert influence_tier_for_arc_distance(seven, spacing) == 7
-    assert influence_tier_for_arc_distance(
-        (HOVER_MAX_SPACING_RATIO + 0.1) * spacing,
-        spacing,
-    ) is None
+    assert (
+        influence_tier_for_arc_distance(
+            (HOVER_MAX_SPACING_RATIO + 0.1) * spacing,
+            spacing,
+        )
+        is None
+    )
 
 
 def test_tiered_influence_weights_never_exceed_seven_nodes() -> None:

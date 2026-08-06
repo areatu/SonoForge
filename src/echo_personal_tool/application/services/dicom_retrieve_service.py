@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Protocol
 
-from echo_personal_tool.domain.ports import DimseClient, DicomWebClient
+from echo_personal_tool.domain.ports import DicomWebClient, DimseClient
 from echo_personal_tool.infrastructure.dimse_client import DimseMoveDestinationError
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 class RetrieveAdapter(Protocol):
     """Protocol for retrieval adapters."""
 
-    def retrieve_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def retrieve_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         """Download a single DICOM instance."""
         ...
 
@@ -29,9 +27,7 @@ class WadoRetrieveAdapter:
     def __init__(self, client: DicomWebClient):
         self._client = client
 
-    def retrieve_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def retrieve_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         return self._client.download_instance(study_uid, series_uid, instance_uid)
 
 
@@ -49,9 +45,7 @@ class CGetRetrieveAdapter:
         self._settings = settings
         self._is_cancelled = is_cancelled
 
-    def retrieve_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def retrieve_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         tls_args = self._build_tls_args()
         return self._client.c_get_instance(
             study_uid,
@@ -69,9 +63,7 @@ class CGetRetrieveAdapter:
         ssl_cx = ssl.create_default_context()
         if self._settings.dimse_tls_ca_path:
             ssl_cx.load_verify_locations(cafile=self._settings.dimse_tls_ca_path)
-        ssl_cx.verify_mode = (
-            ssl.CERT_REQUIRED if self._settings.dimse_tls_verify else ssl.CERT_NONE
-        )
+        ssl_cx.verify_mode = ssl.CERT_REQUIRED if self._settings.dimse_tls_verify else ssl.CERT_NONE
         if self._settings.dimse_tls_cert_path and self._settings.dimse_tls_key_path:
             ssl_cx.load_cert_chain(
                 certfile=self._settings.dimse_tls_cert_path,
@@ -88,9 +80,7 @@ class CMoveRetrieveAdapter:
         self._settings = settings
         self._series_cache: dict[str, dict[str, bytes]] = {}
 
-    def retrieve_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def retrieve_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         if series_uid in self._series_cache:
             cached = self._series_cache[series_uid]
             if instance_uid in cached:
@@ -135,16 +125,12 @@ class CMoveRetrieveAdapter:
                     )
 
                 if instance_uid not in received:
-                    raise RetrieveError(
-                        f"C-MOVE: instance {instance_uid} not received"
-                    )
+                    raise RetrieveError(f"C-MOVE: instance {instance_uid} not received")
                 return received[instance_uid]
         except DimseMoveDestinationError as exc:
             raise RetrieveError(str(exc)) from exc
 
-    def retrieve_series(
-        self, study_uid: str, series_uid: str
-    ) -> dict[str, bytes]:
+    def retrieve_series(self, study_uid: str, series_uid: str) -> dict[str, bytes]:
         """Download all instances in a series via C-MOVE (more efficient)."""
         if series_uid in self._series_cache:
             return self._series_cache[series_uid]
@@ -198,9 +184,7 @@ class CMoveRetrieveAdapter:
         ssl_cx = ssl.create_default_context()
         if self._settings.dimse_tls_ca_path:
             ssl_cx.load_verify_locations(cafile=self._settings.dimse_tls_ca_path)
-        ssl_cx.verify_mode = (
-            ssl.CERT_REQUIRED if self._settings.dimse_tls_verify else ssl.CERT_NONE
-        )
+        ssl_cx.verify_mode = ssl.CERT_REQUIRED if self._settings.dimse_tls_verify else ssl.CERT_NONE
         if self._settings.dimse_tls_cert_path and self._settings.dimse_tls_key_path:
             ssl_cx.load_cert_chain(
                 certfile=self._settings.dimse_tls_cert_path,

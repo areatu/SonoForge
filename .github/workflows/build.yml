@@ -1,0 +1,176 @@
+name: Build (test artifacts)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev librsvg2-bin
+
+          python -m pip install --upgrade pip
+          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom numpy scipy opencv-python-headless httpx psutil pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+
+      - name: Build .deb (lite)
+        run: ./build/linux/build-lite.sh
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonoforge-linux
+          path: dist/sonoforge_*.deb
+          retention-days: 30
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "." 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+          }
+
+      - name: Build standalone exe
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonoforge-windows
+          path: dist/SonoForge.exe
+          retention-days: 30
+
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+
+      - name: Convert icon to .icns
+        run: |
+          mkdir -p icon.iconset
+          sips -z 16 16     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_512x512.png
+          sips -z 1024 1024 src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o src/echo_personal_tool/resources/logo.icns
+          rm -rf icon.iconset
+
+      - name: Build standalone macOS Intel app
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+
+      - name: Create DMG
+        run: |
+          if [ -d dist/SonoForge.app ]; then
+            hdiutil create -volname "SonoForge" -srcfolder dist/SonoForge.app -ov -format UDZO dist/SonoForge-macos-intel.dmg
+          else
+            echo "No .app bundle found"
+            ls -la dist/
+            exit 1
+          fi
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonoforge-macos-intel
+          path: dist/SonoForge-macos-intel.dmg
+          retention-days: 30
+
+  build-macos-apple-silicon:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "." 2>/dev/null || python -m pip install pyside6 pyqtgraph pydicom pylibjpeg pylibjpeg-openjpeg pylibjpeg-libjpeg "numpy<2" scipy opencv-python-headless httpx psutil pymupdf pynetdicom pyyaml jsonschema onnxruntime reportlab openpyxl keyring
+
+      - name: Convert icon to .icns
+        run: |
+          mkdir -p icon.iconset
+          sips -z 16 16     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64     src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512   src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_512x512.png
+          sips -z 1024 1024 src/echo_personal_tool/resources/logo.png --out icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o src/echo_personal_tool/resources/logo.icns
+          rm -rf icon.iconset
+
+      - name: Build standalone macOS Apple Silicon app
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+
+      - name: Create DMG
+        run: |
+          if [ -d dist/SonoForge.app ]; then
+            hdiutil create -volname "SonoForge" -srcfolder dist/SonoForge.app -ov -format UDZO dist/SonoForge-macos-arm64.dmg
+          else
+            echo "No .app bundle found"
+            ls -la dist/
+            exit 1
+          fi
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: sonoforge-macos-arm64
+          path: dist/SonoForge-macos-arm64.dmg
+          retention-days: 30

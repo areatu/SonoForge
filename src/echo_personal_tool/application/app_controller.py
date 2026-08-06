@@ -3,28 +3,16 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import logging
+import os
 import sys
 from functools import partial
 from pathlib import Path
-
-# Debug file logging for measurement flow tracing
-import os
-_LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
-_LOG_PATH = _LOG_DIR / "errors.log"
-_file_handler = logging.FileHandler(str(_LOG_PATH), mode="w", encoding="utf-8")
-_file_handler.setLevel(logging.WARNING)
-_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_file_handler)
 from time import perf_counter
 
 import numpy as np
-from PySide6.QtCore import Qt, QObject, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
-
-from echo_personal_tool.infrastructure.profiler import profiled as _prof
 
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
@@ -39,10 +27,10 @@ from echo_personal_tool.application.thumbnail_scheduler import (
 )
 from echo_personal_tool.application.workers.dicom_decode_worker import DicomDecodeWorker
 from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
-from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
 from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
+from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements
 from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
 from echo_personal_tool.domain.calculations.diastology_grade import grade_diastolic_function
@@ -66,6 +54,7 @@ from echo_personal_tool.domain.models import (
     StudyMetadata,
     TemporalFusionConfig,
     TemporalFusionResult,
+    VesselMeasurement,
 )
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
@@ -73,7 +62,14 @@ from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.models.speckle import SpeckleConfig
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
+from echo_personal_tool.domain.services.auto_depth_calibration import (
+    try_auto_depth_calibration,
+)
 from echo_personal_tool.domain.services.contour_geometry import apex_point
+from echo_personal_tool.domain.services.lv_temporal_fusion import (
+    compute_window,
+    temporal_fuse,
+)
 from echo_personal_tool.domain.services.planimeter_formatter import planimeter_results_from_contours
 from echo_personal_tool.domain.services.segment_roi import (
     echonet_crop_mode_for_media,
@@ -88,32 +84,39 @@ from echo_personal_tool.domain.services.segmentation_service import (
     papillary_mask_cleanup,
     smooth_contour,
 )
-from echo_personal_tool.domain.services.lv_temporal_fusion import (
-    compute_window,
-    temporal_fuse,
-)
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.onnx_engine import (
     OnnxInferenceEngine,
     _default_models_dir,
     _load_manifest,
 )
-from echo_personal_tool.domain.services.auto_depth_calibration import (
-    try_auto_depth_calibration,
-)
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
 )
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
+# ── Logging setup (after all imports) ────────────────────────────────
+_LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_LOG_PATH = _LOG_DIR / "errors.log"
+_file_handler = logging.FileHandler(str(_LOG_PATH), mode="w", encoding="utf-8")
+_file_handler.setLevel(logging.WARNING)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_file_handler)
+
 _FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
 
 # ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
-import os as _os
-_FREEZE_DIAG = _os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
+_FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
 logger = logging.getLogger(__name__)
+
+# ── Playback diagnostics (set ECHO_PLAYBACK_DIAG=1 to enable) ────────
+try:
+    from echo_personal_tool.infrastructure.playback_diagnostics import diagnostics as _playback_diag
+except ImportError:
+    _playback_diag = None  # type: ignore[assignment]
 
 
 class AppController(QObject):
@@ -129,6 +132,7 @@ class AppController(QObject):
     decode_finished = Signal()
     speckle_result_ready = Signal(object)
     scroll_settled = Signal()
+    la_assist_contour_ready = Signal(object)
 
     def __init__(
         self,
@@ -152,7 +156,7 @@ class AppController(QObject):
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._last_frame_shown_at: float = 0.0
         self._playback_warmup_pending = False
-        self._playback_poll_interval_ms = 33
+        self._playback_poll_interval_ms = 16
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
         self._loaded_source_path: Path | None = None
@@ -183,6 +187,7 @@ class AppController(QObject):
         self._prefetch_load_started_at: float = 0.0
         self._prefetch_batch_start: float = 0.0
         self._prefetch_ema_latency_ms: float = 0.0
+        self._prefetch_cooldown_until: float = 0.0
         self._diag_frame_counter: int = 0
         self._adaptive_batch_size: int = self._playback_config.batch_size
         self._scroll_load_id: int = 0
@@ -222,7 +227,7 @@ class AppController(QObject):
         # Safety: if too many workers are retained, force-release the oldest
         # to prevent unbounded memory growth (each holds decoded numpy arrays).
         if len(self._live_workers) > 8:
-            leaked = list(self._live_workers)[:len(self._live_workers) - 4]
+            leaked = list(self._live_workers)[: len(self._live_workers) - 4]
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[retain_worker] LEAK DETECTED: force-releasing %d stale workers",
@@ -236,8 +241,16 @@ class AppController(QObject):
         """Release a retained worker after its signals have been processed."""
         self._live_workers.discard(worker)
         if len(self._live_workers) == 0:
-            import gc
-            gc.collect()
+            QTimer.singleShot(0, self._deferred_gc_collect)
+
+    def _deferred_gc_collect(self) -> None:
+        import gc
+        import threading
+
+        def _bg_collect():
+            gc.collect(generation=0)
+
+        threading.Thread(target=_bg_collect, daemon=True).start()
 
     @property
     def studies(self) -> list[StudyMetadata]:
@@ -294,11 +307,7 @@ class AppController(QObject):
         count = len(self._studies)
         n_inst = sum(len(s.instances) for st in self._studies for s in st.series)
         logger.info("[CTRL] _on_studies_scanned: %d studies, %d instances", count, n_inst)
-        elapsed_ms = (
-            (perf_counter() - self._scan_started_at) * 1000.0
-            if self._scan_started_at is not None
-            else None
-        )
+        elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
         if elapsed_ms is None:
             logger.info("scan_done studies=%d", count)
         else:
@@ -308,11 +317,7 @@ class AppController(QObject):
         self.studies_loaded.emit(self._studies)
 
     def _on_scan_failed(self, message: str) -> None:
-        elapsed_ms = (
-            (perf_counter() - self._scan_started_at) * 1000.0
-            if self._scan_started_at is not None
-            else None
-        )
+        elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
         if elapsed_ms is None:
             logger.warning("scan_failed reason=%s", message)
         else:
@@ -331,10 +336,7 @@ class AppController(QObject):
         self._playback_warmup_pending = False
         self._current_instance = instance
         self._clear_fusion_state()
-        if (
-            instance.patient_height_m is not None
-            and instance.patient_weight_kg is not None
-        ):
+        if instance.patient_height_m is not None and instance.patient_weight_kg is not None:
             self.on_patient_metrics_changed(
                 instance.patient_height_m * 100,
                 instance.patient_weight_kg,
@@ -357,6 +359,7 @@ class AppController(QObject):
         # Free heavy DICOM buffers (pixel data, encapsulated frames) from
         # all thread-local sessions when switching instances.
         from echo_personal_tool.infrastructure.dicom_session import release_stale_sessions
+
         release_stale_sessions()
         self._last_pinned_frame = None
         self._loaded_source_path = None
@@ -381,7 +384,7 @@ class AppController(QObject):
         if not session_contours and instance.path is not None and instance.media_format == "dicom":
             try:
                 import pydicom
-                from io import BytesIO
+
                 ds = pydicom.dcmread(str(instance.path), stop_before_pixels=True, force=True)
                 dicom_calipers, dicom_contours = read_annotations_from_dicom(ds)
                 if dicom_contours:
@@ -391,9 +394,7 @@ class AppController(QObject):
                 logger.debug("Could not read DICOM annotations: %s", exc)
         if instance.media_format != "dicom":
             session_contours = tuple(
-                contour
-                for contour in session_contours
-                if not (contour.source == "ai" and contour.review_pending)
+                contour for contour in session_contours if not (contour.source == "ai" and contour.review_pending)
             )
             self._measurement_session.set_cine_segment_roi(study_uid, instance.sop_instance_uid, None)
         self._state_manager.set_contours(session_contours, emit=False)
@@ -414,9 +415,7 @@ class AppController(QObject):
         self._recompute_measurements()
         if instance.media_format == "dicom":
             request_id = self._decode_request_id
-            self.status_message.emit(
-                tr("status.decoding", name=instance.path.name, total=str(total_frames))
-            )
+            self.status_message.emit(tr("status.decoding", name=instance.path.name, total=str(total_frames)))
             self._frame_cache.set_total_frames(instance.path, total_frames)
             worker = DicomDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
             worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
@@ -427,9 +426,7 @@ class AppController(QObject):
             return
         if instance.media_format == "mp4":
             request_id = self._decode_request_id
-            self.status_message.emit(
-                tr("status.decoding_video", name=instance.path.name, total=str(total_frames))
-            )
+            self.status_message.emit(tr("status.decoding_video", name=instance.path.name, total=str(total_frames)))
             self._frame_cache.set_total_frames(instance.path, total_frames)
             worker = VideoDecodeWorker(instance.path, request_id, parent=self, first_frame_only=True)
             worker.signals.first_frame_ready.connect(self._on_first_frame_ready, Qt.ConnectionType.QueuedConnection)
@@ -503,6 +500,7 @@ class AppController(QObject):
         if not self._first_preview_emitted:
             self._first_preview_emitted = True
             from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
+
             logger.info("first_preview_emitted uid=%s", sanitize_uid(sop_instance_uid))
         self.thumbnail_loaded.emit(sop_instance_uid, image)
         self._pump_thumbnail_queue()
@@ -573,10 +571,12 @@ class AppController(QObject):
             batch_size=len(batch),
         )
         worker.signals.batch_finished.connect(
-            partial(self._on_leading_scan_batch_loaded, request_id, path, total)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_leading_scan_batch_loaded, request_id, path, total), Qt.ConnectionType.QueuedConnection
+        )
 
-        worker.signals.failed.connect(partial(self._on_leading_scan_failed, request_id, path, total), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(
+            partial(self._on_leading_scan_failed, request_id, path, total), Qt.ConnectionType.QueuedConnection
+        )
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -612,9 +612,7 @@ class AppController(QObject):
                 self._ensure_leading_static_scanned()
                 state = self._state_manager.snapshot
                 if state.current_frame_index == 0:
-                    leading = self._leading_static_frames.get(
-                        self._current_instance.path.resolve(), 0
-                    )
+                    leading = self._leading_static_frames.get(self._current_instance.path.resolve(), 0)
                     if leading > 0:
                         target = min(leading + 1, max(0, state.total_frames - 1))
                         if target > 0:
@@ -635,6 +633,11 @@ class AppController(QObject):
             self._playback_warmup_pending = False
         self._state_manager.set_playing(is_playing)
         if is_playing:
+            # ── Playback diagnostics: start ──
+            if _playback_diag is not None:
+                total = self._state_manager.snapshot.total_frames
+                fps = 1000.0 / self._playback_interval_ms() if self._playback_interval_ms() > 0 else 30.0
+                _playback_diag.start(fps_target=fps, frame_count=total)
             current = self._state_manager.snapshot.current_frame_index
             self._prefetch_playback_buffer(current)
             if self._playback_warmup_pending:
@@ -642,6 +645,12 @@ class AppController(QObject):
                 return
             self._last_frame_shown_at = perf_counter()
             self._reschedule_playback_timer()
+        else:
+            # ── Playback diagnostics: stop ──
+            if _playback_diag is not None and _playback_diag.enabled:
+                _playback_diag.snapshot_memory()
+                report = _playback_diag.stop()
+                logger.info("Playback diagnostics report:\n%s", report.summary())
 
     def toggle_playback(self) -> None:
         self.set_playing(not self._state_manager.snapshot.is_playing)
@@ -725,7 +734,9 @@ class AppController(QObject):
             return
 
         import os
+
         from echo_personal_tool.infrastructure.user_preferences import _read_bool, _settings_store
+
         store = _settings_store()
         gold_enabled = _read_bool(store.value("gold_annotation_enabled"), False)
         if not gold_enabled and os.environ.get("ECHO_GOLD_EXPORT", "") != "1":
@@ -796,9 +807,7 @@ class AppController(QObject):
 
         rebuild_manifest_from_gold_dir(gold_root)
 
-        self.status_message.emit(
-            tr("app.gold_saved", phase=phase, frame=frame_index + 1, path=str(gold_path))
-        )
+        self.status_message.emit(tr("app.gold_saved", phase=phase, frame=frame_index + 1, path=str(gold_path)))
 
     @staticmethod
     def _gold_contour_matches(
@@ -860,10 +869,7 @@ class AppController(QObject):
             self.status_message.emit(tr("app.segmentation_unavailable"))
             return
 
-        if (
-            self._current_frame_pixels is None
-            or self._loaded_frame_index != state.current_frame_index
-        ):
+        if self._current_frame_pixels is None or self._loaded_frame_index != state.current_frame_index:
             self.status_message.emit(tr("status.frame_not_loaded"))
             return
 
@@ -874,9 +880,7 @@ class AppController(QObject):
         frame = np.ascontiguousarray(self._current_frame_pixels)
         original_shape = (int(frame.shape[0]), int(frame.shape[1]))
         instance_path = self._current_instance.path if self._current_instance is not None else None
-        media_format = (
-            self._current_instance.media_format if self._current_instance is not None else "dicom"
-        )
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
         frame_index = state.current_frame_index
         roi_xyxy = self._resolve_segment_roi_bounds(
             frame,
@@ -902,16 +906,17 @@ class AppController(QObject):
                 instance_path,
                 frame_index,
                 original_shape,
-            )
-        , Qt.ConnectionType.QueuedConnection)
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.signals.failed.connect(
-            partial(self._on_auto_segment_failed, instance_path, frame_index)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_auto_segment_failed, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
 
         worker.signals.timed_out.connect(
-            partial(self._on_auto_segment_timed_out, instance_path, frame_index)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
 
         worker.setAutoDelete(False)
         self._retain_worker(worker)
@@ -1044,9 +1049,7 @@ class AppController(QObject):
             raise TypeError("Expected numeric time_per_pixel_ms")
         study_uid = self._resolve_study_uid()
         self._measurement_session.set_mmode_time_per_pixel_ms(study_uid, float(time_per_pixel_ms))
-        self.status_message.emit(
-            tr("status.mmode_time", time=f"{float(time_per_pixel_ms):.3f}")
-        )
+        self.status_message.emit(tr("status.mmode_time", time=f"{float(time_per_pixel_ms):.3f}"))
 
     def on_mmode_calibration_changed(self, calibration: object) -> None:
         from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
@@ -1096,9 +1099,7 @@ class AppController(QObject):
         )
 
     def on_contours_changed(self, contours: object) -> None:
-        if not isinstance(contours, list) or not all(
-            isinstance(contour, Contour) for contour in contours
-        ):
+        if not isinstance(contours, list) or not all(isinstance(contour, Contour) for contour in contours):
             raise TypeError("Expected a list of Contour objects")
 
         instance = self._current_instance or self._state_manager.snapshot.instance
@@ -1107,9 +1108,7 @@ class AppController(QObject):
         tagged: list[Contour] = []
         for contour in contours:
             if contour.sop_instance_uid != instance.sop_instance_uid:
-                tagged.append(
-                    dataclasses.replace(contour, sop_instance_uid=instance.sop_instance_uid)
-                )
+                tagged.append(dataclasses.replace(contour, sop_instance_uid=instance.sop_instance_uid))
             else:
                 tagged.append(contour)
         contour_tuple = tuple(tagged)
@@ -1132,12 +1131,22 @@ class AppController(QObject):
         for m in measurement_tuple:
             logger.warning(
                 "  -> label=%s uid=%s mm=%.1f",
-                m.label, m.sop_instance_uid, m.millimeter_length or 0,
+                m.label,
+                m.sop_instance_uid,
+                m.millimeter_length or 0,
             )
         self._state_manager.set_linear_measurements(measurement_tuple, emit=False)
         study_uid = self._resolve_study_uid()
         self._measurement_session.merge_linear_measurements(study_uid, measurement_tuple)
         self._recompute_measurements()
+
+    def accept_vessel_measurement(self, measurement: object) -> bool:
+        if not isinstance(measurement, VesselMeasurement):
+            raise TypeError("Expected a VesselMeasurement")
+        study_uid = self._resolve_study_uid()
+        self._measurement_session.merge_vessel_measurements(study_uid, (measurement,))
+        self._recompute_measurements()
+        return True
 
     def on_manual_calibration(self, spacing: object) -> None:
         if not isinstance(spacing, tuple) or len(spacing) != 2:
@@ -1150,9 +1159,7 @@ class AppController(QObject):
         study_uid = self._resolve_study_uid()
         self._measurement_session.set_manual_pixel_spacing(study_uid, spacing_tuple)
         self._recompute_measurements()
-        self.status_message.emit(
-            tr("status.calibration_info", row=row_spacing, col=col_spacing)
-        )
+        self.status_message.emit(tr("status.calibration_info", row=row_spacing, col=col_spacing))
 
     def needs_manual_calibration(self) -> bool:
         instance = self._current_instance
@@ -1194,10 +1201,7 @@ class AppController(QObject):
             return
         study_uid = self._resolve_study_uid()
         session = self._measurement_session.get(study_uid)
-        if (
-            self._state_manager.snapshot.manual_pixel_spacing is None
-            and session.manual_pixel_spacing is None
-        ):
+        if self._state_manager.snapshot.manual_pixel_spacing is None and session.manual_pixel_spacing is None:
             return
         self._state_manager.clear_manual_pixel_spacing()
         self._measurement_session.set_manual_pixel_spacing(study_uid, None)
@@ -1220,9 +1224,7 @@ class AppController(QObject):
 
     def _reschedule_playback_timer(self, *, poll: bool = False) -> None:
         delay_ms = (
-            self._playback_poll_interval_ms
-            if poll or self._playback_warmup_pending
-            else self._playback_interval_ms()
+            self._playback_poll_interval_ms if poll or self._playback_warmup_pending else self._playback_interval_ms()
         )
         if not poll and not self._playback_warmup_pending and self._last_frame_shown_at > 0:
             elapsed_ms = (perf_counter() - self._last_frame_shown_at) * 1000.0
@@ -1277,9 +1279,7 @@ class AppController(QObject):
             for series in study.series:
                 if series.series_uid == active.series_uid:
                     return study.study_uid
-                if any(
-                    item.sop_instance_uid == active.sop_instance_uid for item in series.instances
-                ):
+                if any(item.sop_instance_uid == active.sop_instance_uid for item in series.instances):
                     return study.study_uid
         if self._current_study_uid is not None:
             return self._current_study_uid
@@ -1294,7 +1294,8 @@ class AppController(QObject):
         session = self._measurement_session.get(study_uid)
         logger.debug(
             "compute_overlay: uid=%s session_linear=%d",
-            instance.sop_instance_uid, len(session.linear_measurements),
+            instance.sop_instance_uid,
+            len(session.linear_measurements),
         )
         frame_index = state.current_frame_index
         doppler_dto = self._measurement_session.get_doppler_for_instance(
@@ -1315,18 +1316,24 @@ class AppController(QObject):
         # Filter contours to current instance so volumes use the correct pixel spacing.
         # Fall back to study-wide contours when the current instance has none.
         instance_uid = instance.sop_instance_uid
-        instance_contours = tuple(
-            c for c in session.contours if c.sop_instance_uid == instance_uid
-        )
+        instance_contours = tuple(c for c in session.contours if c.sop_instance_uid == instance_uid)
         contours = instance_contours
         from echo_personal_tool.application.study_measurement_session import (
             linear_measurements_for_instance,
+            vessel_measurements_for_instance,
         )
+
         instance_linear = linear_measurements_for_instance(
-            session.linear_measurements, instance_uid,
+            session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance_uid,
         )
         logger.debug(
-            "compute_overlay: filtered=%d", len(instance_linear),
+            "compute_overlay: filtered=%d",
+            len(instance_linear),
         )
         return self._build_measurement_snapshot(
             contours=contours,
@@ -1334,6 +1341,7 @@ class AppController(QObject):
             doppler_dto=doppler_dto,
             state=state,
             session=session,
+            vessel_measurements=instance_vessel,
         )
 
     def _recompute_measurements(self) -> None:
@@ -1345,13 +1353,22 @@ class AppController(QObject):
         instance_uid = state.instance.sop_instance_uid if state.instance else ""
         from echo_personal_tool.application.study_measurement_session import (
             linear_measurements_for_instance,
+            vessel_measurements_for_instance,
         )
+
         instance_linear = linear_measurements_for_instance(
-            session.linear_measurements, instance_uid,
+            session.linear_measurements,
+            instance_uid,
+        )
+        instance_vessel = vessel_measurements_for_instance(
+            session.vessel_measurements,
+            instance_uid,
         )
         logger.debug(
             "_recompute: uid=%s session_total=%d filtered=%d",
-            instance_uid, len(session.linear_measurements), len(instance_linear),
+            instance_uid,
+            len(session.linear_measurements),
+            len(instance_linear),
         )
         snapshot = self._build_measurement_snapshot(
             contours=session.contours,
@@ -1359,6 +1376,7 @@ class AppController(QObject):
             doppler_dto=doppler_dto,
             state=state,
             session=session,
+            vessel_measurements=instance_vessel,
         )
         self._state_manager.set_measurement_snapshot(snapshot, emit=False)
         self._state_manager.set_linear_measurements(instance_linear, emit=False)
@@ -1372,6 +1390,7 @@ class AppController(QObject):
         doppler_dto: DopplerMeasurementDTO | None,
         state: ViewerState,
         session: StudyMeasurementData,
+        vessel_measurements: tuple[VesselMeasurement, ...] = (),
     ) -> MeasurementSnapshot:
         doppler = compute(doppler_dto) if doppler_dto is not None else None
         pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(
@@ -1390,9 +1409,7 @@ class AppController(QObject):
         )
         lvm_g = lvm_from_linear(linear_measurements)
         rwt = rwt_from_linear(linear_measurements)
-        rv_fac_percent = (
-            from_rv_contours(contours, pixel_spacing) if spacing_calibrated else None
-        )
+        rv_fac_percent = from_rv_contours(contours, pixel_spacing) if spacing_calibrated else None
         planimeter = planimeter_results_from_contours(
             contours,
             pixel_spacing,
@@ -1414,6 +1431,7 @@ class AppController(QObject):
             height_cm=session.height_cm,
             weight_kg=session.weight_kg,
             planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
         )
         indexed = compute_indexed_measurements(
             base_snapshot,
@@ -1427,6 +1445,8 @@ class AppController(QObject):
                 e_over_e_prime=doppler.e_over_e_prime,
                 lav_index_ml_m2=lav_i,
                 tr_vmax_cm_s=doppler.tr_vmax_cm_s,
+                e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
+                e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
             )
         return MeasurementSnapshot(
             doppler=doppler,
@@ -1446,6 +1466,7 @@ class AppController(QObject):
             weight_kg=session.weight_kg,
             indexed=indexed,
             planimeter=planimeter,
+            vessel_measurements=vessel_measurements,
         )
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
@@ -1497,7 +1518,8 @@ class AppController(QObject):
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[request_frame] STALE pending_load_id=%d after %.1fs, clearing",
-                    self._pending_load_id, perf_counter() - self._scroll_load_started_at,
+                    self._pending_load_id,
+                    perf_counter() - self._scroll_load_started_at,
                 )
             self._pending_load_id = 0
 
@@ -1527,10 +1549,13 @@ class AppController(QObject):
                 request_id,
                 self._current_instance.path,
                 state.current_frame_index,
-            )
-        , Qt.ConnectionType.QueuedConnection)
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
-        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(
+            partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection
+        )
         self._retain_worker(worker)
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -1547,7 +1572,9 @@ class AppController(QObject):
         if _FREEZE_DIAG:
             _diag_log.warning(
                 "[scroll_start] target=%d scroll=%d old_scroll_load=%d",
-                target, scroll, self._scroll_load_id,
+                target,
+                scroll,
+                self._scroll_load_id,
             )
         self._load_request_id += 1
         request_id = self._load_request_id
@@ -1567,10 +1594,13 @@ class AppController(QObject):
         )
         self._batch_load_id = request_id
         worker.signals.batch_finished.connect(
-            partial(self._on_scroll_target_loaded, request_id, self._current_instance.path)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_scroll_target_loaded, request_id, self._current_instance.path),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
-        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(
+            partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection
+        )
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -1619,9 +1649,7 @@ class AppController(QObject):
             if start >= total:
                 return
             target_ahead = (
-                cfg.scroll_batch_size
-                if ahead >= cfg.min_buffer
-                else min(cfg.min_buffer, cfg.scroll_batch_size)
+                cfg.scroll_batch_size if ahead >= cfg.min_buffer else min(cfg.min_buffer, cfg.scroll_batch_size)
             )
             slots_needed = target_ahead - ahead
             batch_size = min(slots_needed, total - start)
@@ -1635,9 +1663,7 @@ class AppController(QObject):
             if start < 0:
                 return
             target_behind = (
-                cfg.scroll_batch_size
-                if behind >= cfg.min_buffer
-                else min(cfg.min_buffer, cfg.scroll_batch_size)
+                cfg.scroll_batch_size if behind >= cfg.min_buffer else min(cfg.min_buffer, cfg.scroll_batch_size)
             )
             slots_needed = target_behind - behind
             batch_size = min(slots_needed, start + 1)
@@ -1659,10 +1685,13 @@ class AppController(QObject):
             batch_size=batch_size,
         )
         worker.signals.batch_finished.connect(
-            partial(self._on_scroll_neighbors_loaded, request_id, self._current_instance.path)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_scroll_neighbors_loaded, request_id, self._current_instance.path),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
-        worker.signals.failed.connect(partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(
+            partial(self._on_frame_load_failed, request_id), Qt.ConnectionType.QueuedConnection
+        )
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -1690,6 +1719,8 @@ class AppController(QObject):
             return
         if not self._state_manager.snapshot.is_playing:
             return
+        if perf_counter() < self._prefetch_cooldown_until:
+            return
         if self._prefetch_load_id != 0:
             # Stale prefetch guard: if the worker hasn't completed within
             # _PREFETCH_TIMEOUT_SEC, force-clear it to prevent playback stall.
@@ -1698,13 +1729,16 @@ class AppController(QObject):
                 if _FREEZE_DIAG:
                     _diag_log.warning(
                         "[prefetch] center=%d BLOCKED by pending_load_id=%d (%.1fs old)",
-                        center, self._prefetch_load_id, stale_sec,
+                        center,
+                        self._prefetch_load_id,
+                        stale_sec,
                     )
                 return
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[prefetch] STALE timeout! clearing pending_load_id=%d after %.1fs",
-                    self._prefetch_load_id, stale_sec,
+                    self._prefetch_load_id,
+                    stale_sec,
                 )
             self._prefetch_load_id = 0
 
@@ -1748,8 +1782,9 @@ class AppController(QObject):
             batch_size=batch,
         )
         worker.signals.batch_finished.connect(
-            partial(self._on_prefetch_batch_loaded, request_id, self._current_instance.path)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_prefetch_batch_loaded, request_id, self._current_instance.path),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id), Qt.ConnectionType.QueuedConnection)
         self._retain_worker(worker)
@@ -1758,13 +1793,14 @@ class AppController(QObject):
         if _FREEZE_DIAG:
             _diag_log.warning(
                 "[prefetch_submit] req=%d start=%d batch=%d active_threads=%d",
-                request_id, start, batch, self._thread_pool.activeThreadCount(),
+                request_id,
+                start,
+                batch,
+                self._thread_pool.activeThreadCount(),
             )
         self._thread_pool.start(worker)
 
-    def _on_prefetch_batch_loaded(
-        self, request_id: int, path: Path, frames: list
-    ) -> None:
+    def _on_prefetch_batch_loaded(self, request_id: int, path: Path, frames: list) -> None:
         is_current = request_id == self._prefetch_load_id
         if is_current:
             total_ms = (perf_counter() - self._prefetch_load_started_at) * 1000.0
@@ -1772,29 +1808,40 @@ class AppController(QObject):
             if self._current_instance is None or self._current_instance.path != path:
                 return
             # Adaptive batch sizing: EMA of batch latency
+            batch_elapsed_ms = 0.0
             if self._prefetch_batch_start > 0:
                 elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
+                batch_elapsed_ms = elapsed_ms
                 self._prefetch_batch_start = 0.0
                 alpha = 0.3
-                self._prefetch_ema_latency_ms = (
-                    alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
-                )
+                self._prefetch_ema_latency_ms = alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
                 cfg = self._playback_config
                 if self._prefetch_ema_latency_ms < 10 and self._adaptive_batch_size < 16:
                     self._adaptive_batch_size += 2
                 elif self._prefetch_ema_latency_ms > 60 and self._adaptive_batch_size > 2:
                     self._adaptive_batch_size -= 1
+            # ── Playback diagnostics: decode batch ──
+            if _playback_diag is not None and batch_elapsed_ms > 0:
+                _playback_diag.on_decode_batch(
+                    frames[0][0] if frames else 0, len(frames), batch_elapsed_ms
+                )
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f ema=%.1fms batch_size=%d",
-                    request_id, len(frames), elapsed_ms if self._prefetch_batch_start == 0 else 0,
-                    total_ms, self._prefetch_ema_latency_ms, self._adaptive_batch_size,
+                    request_id,
+                    len(frames),
+                    elapsed_ms if self._prefetch_batch_start == 0 else 0,
+                    total_ms,
+                    self._prefetch_ema_latency_ms,
+                    self._adaptive_batch_size,
                 )
         else:
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[prefetch_batch] STALE req=%d (current=%d) frames=%d — caching anyway",
-                    request_id, self._prefetch_load_id, len(frames),
+                    request_id,
+                    self._prefetch_load_id,
+                    len(frames),
                 )
         # Always cache frames even for stale requests — they may be
         # needed if playback catches up to that region.
@@ -1808,6 +1855,7 @@ class AppController(QObject):
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
+        self._prefetch_cooldown_until = perf_counter() + 5.0
         self.status_message.emit(tr("status.prefetch_failed", message=message))
 
     def _advance_playback(self) -> None:
@@ -1857,16 +1905,22 @@ class AppController(QObject):
                 self._frame_cache.set_current(next_idx)
                 self.step_frame(1)
                 self._last_frame_shown_at = perf_counter()
+                # ── Playback diagnostics: frame tick ──
+                if _playback_diag is not None:
+                    _playback_diag.on_frame_tick(next_idx, phase="cache_hit")
                 self._prefetch_playback_buffer(next_idx)
                 self._reschedule_playback_timer()
                 if _FREEZE_DIAG:
                     _diag_log.warning(
                         "[advance] frame=%d→%d cache_hit=True elapsed=%.2fms",
-                        current, next_idx, (perf_counter() - _t0) * 1000,
+                        current,
+                        next_idx,
+                        (perf_counter() - _t0) * 1000,
                     )
                     self._diag_frame_counter += 1
                     if self._diag_frame_counter % 50 == 0:
                         import os as _os
+
                         proc = _os.getpid()
                         try:
                             with open(f"/proc/{proc}/status") as _f:
@@ -1910,10 +1964,14 @@ class AppController(QObject):
 
             self._prefetch_playback_buffer(current)
             self._reschedule_playback_timer(poll=True)
+            # ── Playback diagnostics: cache miss ──
+            if _playback_diag is not None:
+                _playback_diag.on_frame_tick(current, phase="cache_miss")
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[advance] frame=%d cache_miss prefetch_pending elapsed=%.2fms",
-                    current, (perf_counter() - _t0) * 1000,
+                    current,
+                    (perf_counter() - _t0) * 1000,
                 )
             return
 
@@ -1927,9 +1985,7 @@ class AppController(QObject):
     def _load_playback_frame(self, frame_index: int) -> None:
         self._prefetch_playback_buffer(frame_index - 1)
 
-    def _on_playback_frame_loaded(
-        self, request_id: int, path: Path, frame_index: int, pixels: np.ndarray
-    ) -> None:
+    def _on_playback_frame_loaded(self, request_id: int, path: Path, frame_index: int, pixels: np.ndarray) -> None:
         if request_id != self._pending_load_id:
             return
         self._pending_load_id = 0
@@ -1953,7 +2009,9 @@ class AppController(QObject):
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[frame_load_single] REJECTED req=%d current_pending=%d frame=%d",
-                    request_id, self._pending_load_id, frame_index,
+                    request_id,
+                    self._pending_load_id,
+                    frame_index,
                 )
             return
         if self._current_instance is None or self._current_instance.path != path:
@@ -1977,7 +2035,8 @@ class AppController(QObject):
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[scroll_target] REJECTED req=%d current_scroll_load=%d frames=%s",
-                    request_id, self._scroll_load_id,
+                    request_id,
+                    self._scroll_load_id,
                     [idx for idx, _ in frames],
                 )
             return
@@ -1992,7 +2051,9 @@ class AppController(QObject):
         if _FREEZE_DIAG:
             _diag_log.warning(
                 "[scroll_target] OK req=%d target=%d frames=%s",
-                request_id, target, [idx for idx, _ in frames],
+                request_id,
+                target,
+                [idx for idx, _ in frames],
             )
         emitted = False
         for idx, pixels in frames:
@@ -2006,7 +2067,8 @@ class AppController(QObject):
         if not emitted and _FREEZE_DIAG:
             _diag_log.warning(
                 "[scroll_target] NO_MATCH! target=%d not in frames=%s",
-                target, [idx for idx, _ in frames],
+                target,
+                [idx for idx, _ in frames],
             )
         self._maybe_start_scroll_neighbors(target)
 
@@ -2051,7 +2113,10 @@ class AppController(QObject):
         if _FREEZE_DIAG:
             _diag_log.warning(
                 "[load_failed] req=%d msg=%s pending=%d scroll=%d",
-                request_id, message, self._pending_load_id, self._scroll_load_id,
+                request_id,
+                message,
+                self._pending_load_id,
+                self._scroll_load_id,
             )
         is_current = False
         if request_id == self._pending_load_id:
@@ -2121,12 +2186,11 @@ class AppController(QObject):
 
         self._frame_cache.load(path, frames)
         from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+
         get_thread_dicom_session().release()
         if self._frame_cache.memory_bytes() > _FRAME_CACHE_WARN_BYTES:
             size_mb = self._frame_cache.memory_bytes() / (1024 * 1024)
-            self.status_message.emit(
-                tr("status.dicom_cache_warning", size_mb=f"{size_mb:.1f}")
-            )
+            self.status_message.emit(tr("status.dicom_cache_warning", size_mb=f"{size_mb:.1f}"))
 
         frame_count = self._frame_cache.frame_count()
         if frame_count != self._state_manager.snapshot.total_frames:
@@ -2287,6 +2351,10 @@ class AppController(QObject):
             annulus_max_shift_ratio_ed=tf.get("annulus_max_shift_ratio_ed", 0.015),
             annulus_max_shift_ratio_es=tf.get("annulus_max_shift_ratio_es", 0.012),
             apex_direction_lock=tf.get("apex_direction_lock", True),
+            confidence_weighted=tf.get("confidence_weighted", True),
+            outlier_rejection=tf.get("outlier_rejection", True),
+            max_neighbor_shift_ratio=tf.get("max_neighbor_shift_ratio", 0.15),
+            min_confidence_score=tf.get("min_confidence_score", 0.3),
         )
 
     def _on_auto_segment_finished(
@@ -2307,15 +2375,10 @@ class AppController(QObject):
 
         cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
         if int(np.count_nonzero(cleaned_mask)) < 80:
-            self.status_message.emit(
-                tr("app.segmentation_mask_too_small")
-            )
+            self.status_message.emit(tr("app.segmentation_mask_too_small"))
             return
 
-        is_cine = (
-            self._current_instance is not None
-            and self._current_instance.media_format != "dicom"
-        )
+        is_cine = self._current_instance is not None and self._current_instance.media_format != "dicom"
 
         try:
             open_points, annulus, apex = self._open_arc_from_cleaned_mask(
@@ -2343,9 +2406,7 @@ class AppController(QObject):
         if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
             from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
 
-            instance_uid = (
-                self._current_instance.sop_instance_uid if self._current_instance is not None else None
-            )
+            instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
             draft = Contour(
                 phase=phase,
                 view=view,
@@ -2359,7 +2420,9 @@ class AppController(QObject):
                 sop_instance_uid=instance_uid,
             )
             refined, _ = refine_open_arc_contour(
-                self._current_frame_pixels, draft, cine=is_cine,
+                self._current_frame_pixels,
+                draft,
+                cine=is_cine,
             )
             refined_points = list(refined.points)
             if refined.mitral_annulus is not None:
@@ -2367,9 +2430,7 @@ class AppController(QObject):
             if refined.apex_landmark is not None:
                 apex = refined.apex_landmark
 
-        instance_uid = (
-            self._current_instance.sop_instance_uid if self._current_instance is not None else None
-        )
+        instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
         contour = Contour(
             phase=phase,
             view=view,
@@ -2390,18 +2451,14 @@ class AppController(QObject):
         if reject_reason is not None:
             mask_px = int(np.count_nonzero(cleaned_mask))
             arc_px = _contour_arc_span_px(contour)
-            self.status_message.emit(
-                tr("app.segmentation_reject", reason=reject_reason, mask=mask_px, arc=arc_px)
-            )
+            self.status_message.emit(tr("app.segmentation_reject", reason=reject_reason, mask=mask_px, arc=arc_px))
             return
 
         review_status = tr("app.ai_review_prompt", view=view, phase=phase)
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours
-            if not (
-                existing.phase == phase and existing.view == view and existing.chamber == chamber
-            )
+            if not (existing.phase == phase and existing.view == view and existing.chamber == chamber)
         ]
         contours.append(contour)
         self.status_message.emit(review_status)
@@ -2440,10 +2497,6 @@ class AppController(QObject):
 
     def request_la_auto_segment(self) -> None:
         """Request LA auto-segmentation on the current A4C ES frame."""
-        from echo_personal_tool.domain.services.la_segmentation_service import (
-            explain_la_auto_reject_reason,
-            la_mask_to_contour,
-        )
 
         if self._segment_in_progress:
             self.status_message.emit(tr("status.segmentation_in_progress"))
@@ -2470,12 +2523,13 @@ class AppController(QObject):
         frame = np.ascontiguousarray(self._current_frame_pixels)
         original_shape = (int(frame.shape[0]), int(frame.shape[1]))
         instance_path = self._current_instance.path if self._current_instance is not None else None
-        media_format = (
-            self._current_instance.media_format if self._current_instance is not None else "dicom"
-        )
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
         frame_index = state.current_frame_index
         roi_xyxy = self._resolve_segment_roi_bounds(
-            frame, instance_path, media_format=media_format, phase=phase,
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase=phase,
         )
         self._last_segment_roi_xyxy = roi_xyxy
         crop_mode = echonet_crop_mode_for_media(media_format)
@@ -2486,23 +2540,32 @@ class AppController(QObject):
 
         self._segment_in_progress = True
         worker = OnnxWorker(
-            frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode,
-            manifest_section="la_inference", parent=self,
+            frame,
+            roi_xyxy=roi_xyxy,
+            crop_mode=crop_mode,
+            manifest_section="la_inference",
+            parent=self,
         )
         worker.signals.finished.connect(
             partial(
                 self._on_la_auto_segment_finished,
-                phase, view, chamber, instance_path, frame_index, original_shape,
-            )
-        , Qt.ConnectionType.QueuedConnection)
+                phase,
+                view,
+                chamber,
+                instance_path,
+                frame_index,
+                original_shape,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.signals.failed.connect(
-            partial(self._on_auto_segment_failed, instance_path, frame_index)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_auto_segment_failed, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
 
         worker.signals.timed_out.connect(
-            partial(self._on_auto_segment_timed_out, instance_path, frame_index)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_auto_segment_timed_out, instance_path, frame_index), Qt.ConnectionType.QueuedConnection
+        )
 
         worker.setAutoDelete(False)
         self._retain_worker(worker)
@@ -2513,7 +2576,12 @@ class AppController(QObject):
 
     def _la_segmenter_available(self) -> bool:
         """Check if LA ONNX model is available."""
-        from echo_personal_tool.infrastructure.onnx_engine import _default_models_dir, _load_manifest, _resolve_model_path
+        from echo_personal_tool.infrastructure.onnx_engine import (
+            _default_models_dir,
+            _load_manifest,
+            _resolve_model_path,
+        )
+
         models_dir = _default_models_dir()
         manifest = _load_manifest(models_dir)
         if manifest is None:
@@ -2550,7 +2618,7 @@ class AppController(QObject):
 
         try:
             open_points, annulus, apex = la_mask_to_contour(mask, num_nodes=32)
-        except ValueError as exc:
+        except ValueError:
             self.status_message.emit(tr("app.segmentation_no_contour"))
             return
 
@@ -2560,17 +2628,23 @@ class AppController(QObject):
         ):
             from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
 
-            instance_uid = (
-                self._current_instance.sop_instance_uid if self._current_instance is not None else None
-            )
+            instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
             draft = Contour(
-                phase=phase, view=view, chamber=chamber,
-                mitral_annulus=annulus, apex_landmark=apex,
-                points=open_points, source="ai", num_nodes=32,
-                frame_index=frame_index, sop_instance_uid=instance_uid,
+                phase=phase,
+                view=view,
+                chamber=chamber,
+                mitral_annulus=annulus,
+                apex_landmark=apex,
+                points=open_points,
+                source="ai",
+                num_nodes=32,
+                frame_index=frame_index,
+                sop_instance_uid=instance_uid,
             )
             refined, _ = refine_open_arc_contour(
-                self._current_frame_pixels, draft, cine=False,
+                self._current_frame_pixels,
+                draft,
+                cine=False,
             )
             open_points = list(refined.points)
             if refined.mitral_annulus is not None:
@@ -2578,15 +2652,21 @@ class AppController(QObject):
             if refined.apex_landmark is not None:
                 apex = refined.apex_landmark
 
-        instance_uid = (
-            self._current_instance.sop_instance_uid if self._current_instance is not None else None
-        )
+        instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
         contour = Contour(
-            phase=phase, view=view, chamber=chamber,
-            mitral_annulus=annulus, apex_landmark=apex,
-            points=open_points, source="ai", num_nodes=32,
-            frame_index=frame_index, sop_instance_uid=instance_uid,
-            review_pending=True, refine_step=0, refine_locked_indices=(),
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            mitral_annulus=annulus,
+            apex_landmark=apex,
+            points=open_points,
+            source="ai",
+            num_nodes=32,
+            frame_index=frame_index,
+            sop_instance_uid=instance_uid,
+            review_pending=True,
+            refine_step=0,
+            refine_locked_indices=(),
         )
 
         pixel_spacing, _ = self._resolve_pixel_spacing(self._state_manager.snapshot)
@@ -2598,19 +2678,140 @@ class AppController(QObject):
             roi_xyxy=self._last_segment_roi_xyxy,
         )
         if reject_reason is not None:
-            self.status_message.emit(
-                tr("app.segmentation_reject", reason=reject_reason, mask=mask_pixels, arc=0)
-            )
+            self.status_message.emit(tr("app.segmentation_reject", reason=reject_reason, mask=mask_pixels, arc=0))
             return
 
         review_status = tr("app.ai_review_prompt", view=view, phase=phase)
         contours = [
-            existing for existing in self._state_manager.snapshot.contours
+            existing
+            for existing in self._state_manager.snapshot.contours
             if not (existing.phase == phase and existing.view == view and existing.chamber == chamber)
         ]
         contours.append(contour)
         self.status_message.emit(review_status)
         self.on_contours_changed(contours)
+
+    # ── LA Assist for Manual Contour ────────────────────────────────────
+
+    def request_la_assist_for_manual(
+        self,
+        *,
+        frame_index: int,
+        user_septal: tuple[float, float],
+        user_lateral: tuple[float, float],
+        user_apex: tuple[float, float],
+    ) -> None:
+        """Run LA inference to assist manual contour placement.
+
+        Blends AI-derived landmarks with user-provided ones, then
+        creates a contour with the blended shape.
+        """
+        if not self._la_segmenter_available():
+            return
+
+        if self._current_frame_pixels is None:
+            return
+
+        frame = np.ascontiguousarray(self._current_frame_pixels)
+        instance_path = self._current_instance.path if self._current_instance is not None else None
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
+        roi_xyxy = self._resolve_segment_roi_bounds(
+            frame,
+            instance_path,
+            media_format=media_format,
+            phase="ES",
+        )
+        crop_mode = echonet_crop_mode_for_media(media_format)
+
+        if media_format != "dicom" and frame.ndim == 3 and frame.shape[2] == 3:
+            gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
+            frame = np.stack([gray, gray, gray], axis=-1)
+
+        worker = OnnxWorker(
+            frame,
+            roi_xyxy=roi_xyxy,
+            crop_mode=crop_mode,
+            manifest_section="la_inference",
+            parent=self,
+        )
+        worker.signals.finished.connect(
+            partial(
+                self._on_la_assist_finished,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                frame_index=frame_index,
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.failed.connect(
+            lambda err: logger.warning("[LA-assist] inference failed: %s", err),
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.timed_out.connect(
+            lambda: logger.warning("[LA-assist] inference timed out"),
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.timed_out.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
+    def _on_la_assist_finished(
+        self,
+        result: dict,
+        *,
+        user_septal: tuple[float, float],
+        user_lateral: tuple[float, float],
+        user_apex: tuple[float, float],
+        frame_index: int,
+    ) -> None:
+        """Handle LA inference result for manual contour assist."""
+        mask = result.get("mask")
+        if mask is None or mask.sum() < 80:
+            return  # Fallback: keep geometric ellipse
+
+        try:
+            from echo_personal_tool.domain.services.la_segmentation_service import (
+                la_landmarks_from_mask_or_user,
+            )
+            from echo_personal_tool.domain.services.mbs_lite_service import (
+                fit_contour_from_landmarks,
+            )
+
+            # Blend AI landmarks with user landmarks
+            blended_septal, blended_lateral, blended_apex = la_landmarks_from_mask_or_user(
+                mask,
+                user_septal=user_septal,
+                user_lateral=user_lateral,
+                user_apex=user_apex,
+                blend_factor=0.7,
+            )
+
+            # Build contour from blended landmarks
+            contour = fit_contour_from_landmarks(
+                septal=blended_septal,
+                lateral=blended_lateral,
+                apex=blended_apex,
+                phase="ES",
+                view="A4C",
+                chamber="LA",
+            )
+            contour = dataclasses.replace(
+                contour,
+                source="manual",
+                frame_index=frame_index,
+                review_pending=False,
+            )
+
+            # Emit for viewer to pick up
+            self.la_assist_contour_ready.emit(contour)
+
+        except Exception:
+            logger.warning("[LA-assist] failed to build contour from blended landmarks", exc_info=True)
 
     # ── Temporal Fusion ──────────────────────────────────────────────────
 
@@ -2655,9 +2856,7 @@ class AppController(QObject):
         self._fusion_processed = {frame_index}  # anchor already done
         self._fusion_result = None
 
-        self.status_message.emit(
-            tr("status.temporal_fusion_started", count=len(neighbors))
-        )
+        self.status_message.emit(tr("status.temporal_fusion_started", count=len(neighbors)))
 
         for neighbor_idx in neighbors:
             self._queue_neighbor_segment(neighbor_idx, phase, view, chamber, instance_path)
@@ -2690,12 +2889,13 @@ class AppController(QObject):
                 chamber=chamber,
                 instance_path=instance_path,
                 neighbor_idx=neighbor_idx,
-            )
-        , Qt.ConnectionType.QueuedConnection)
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.signals.failed.connect(
-            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+        )
         self._retain_worker(worker)
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -2719,9 +2919,7 @@ class AppController(QObject):
 
         frame = np.ascontiguousarray(pixels)
         original_shape = (int(frame.shape[0]), int(frame.shape[1]))
-        media_format = (
-            self._current_instance.media_format if self._current_instance is not None else "dicom"
-        )
+        media_format = self._current_instance.media_format if self._current_instance is not None else "dicom"
 
         roi_xyxy = self._resolve_segment_roi_bounds(
             frame,
@@ -2745,16 +2943,17 @@ class AppController(QObject):
                 neighbor_idx=neighbor_idx,
                 original_shape=original_shape,
                 phase=phase,
-            )
-        , Qt.ConnectionType.QueuedConnection)
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         worker.signals.failed.connect(
-            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+        )
 
         worker.signals.timed_out.connect(
-            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx)
-        , Qt.ConnectionType.QueuedConnection)
+            partial(self._on_neighbor_segment_failed, neighbor_idx=neighbor_idx), Qt.ConnectionType.QueuedConnection
+        )
 
         self._thread_pool.start(worker)
 
@@ -2791,9 +2990,7 @@ class AppController(QObject):
 
         refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
 
-        instance_uid = (
-            self._current_instance.sop_instance_uid if self._current_instance is not None else None
-        )
+        instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
         contour = Contour(
             phase=phase,
             view=view,
@@ -2812,9 +3009,7 @@ class AppController(QObject):
         self._fusion_processed.add(neighbor_idx)
 
         done = len(self._fusion_processed)
-        self.status_message.emit(
-            tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window))
-        )
+        self.status_message.emit(tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window)))
 
         self._try_complete_temporal_fusion()
 
@@ -2822,9 +3017,7 @@ class AppController(QObject):
         """Neighbor segment failed — mark processed and try fusion."""
         self._fusion_processed.add(neighbor_idx)
         done = len(self._fusion_processed)
-        self.status_message.emit(
-            tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window))
-        )
+        self.status_message.emit(tr("status.temporal_fusion_progress", done=done, total=len(self._fusion_window)))
         self._try_complete_temporal_fusion()
 
     def _try_complete_temporal_fusion(self) -> None:
@@ -2881,18 +3074,30 @@ class AppController(QObject):
         if self._current_frame_pixels is not None and self._should_auto_refine_after_segment():
             from echo_personal_tool.domain.services.mbs_lite_service import refine_open_arc_contour
 
-            is_cine = (
-                self._current_instance is not None
-                and self._current_instance.media_format != "dicom"
-            )
+            is_cine = self._current_instance is not None and self._current_instance.media_format != "dicom"
             refined, _ = refine_open_arc_contour(
-                self._current_frame_pixels, fused_contour, cine=is_cine,
+                self._current_frame_pixels,
+                fused_contour,
+                cine=is_cine,
             )
             fused_contour = refined
             # Keep fusion_result in sync with refined contour
             self._fusion_result = dataclasses.replace(result, fused_contour=fused_contour)
 
         # Replace pending contour with fused contour
+        # Quality gate: reject fused contour if it fails geometry checks
+        from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
+
+        pixel_spacing = None
+        if self._current_instance is not None:
+            ps = getattr(self._current_instance, "pixel_spacing", None)
+            if ps is not None:
+                pixel_spacing = (ps[0], ps[1]) if len(ps) >= 2 else None
+        reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
+        if reject_reason is not None:
+            logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
+            fused_contour = center_contour
+
         contours = [
             existing
             for existing in self._state_manager.snapshot.contours
@@ -2912,6 +3117,11 @@ class AppController(QObject):
                 requested=result.frames_requested,
             )
         )
+
+        # Release fusion intermediate data to free memory
+        self._fusion_masks.clear()
+        self._fusion_contours.clear()
+        self._fusion_processed.clear()
 
     # ── Speckle Tracking ──────────────────────────────────────────────────
 
@@ -2936,7 +3146,7 @@ class AppController(QObject):
         try:
             frames = self._frame_cache.require_full_cine()
         except RuntimeError:
-            self.status_message.emit("Speckle tracking: загрузите полную cine-последовательность")
+            self.status_message.emit(tr("app.speckle_reload_cine"))
             return
 
         if contour is None:

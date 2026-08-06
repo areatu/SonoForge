@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -24,9 +26,7 @@ def qapp() -> QApplication:
     return app
 
 
-def test_dicom_decode_worker_emits_all_frames(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_dicom_decode_worker_emits_all_frames(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
     path = tmp_path / "multi.dcm"
     write_synthetic_multiframe_dicom(path, frame_count=4, rows=16, cols=16)
@@ -34,9 +34,7 @@ def test_dicom_decode_worker_emits_all_frames(
     finished: list[tuple[int, Path, np.ndarray]] = []
     worker = DicomDecodeWorker(path, request_id=7, parent=parent)
     worker.signals.finished.connect(
-        lambda request_id, decoded_path, frames: finished.append(
-            (request_id, decoded_path, frames)
-        )
+        lambda request_id, decoded_path, frames: finished.append((request_id, decoded_path, frames))
     )
     QThreadPool.globalInstance().start(worker)
     qtbot.waitUntil(lambda: len(finished) == 1, timeout=10000)
@@ -48,16 +46,12 @@ def test_dicom_decode_worker_emits_all_frames(
     assert frames[2, 0, 0] == 2
 
 
-def test_dicom_decode_worker_emits_failed_for_missing_file(
-    qapp: QApplication, qtbot, tmp_path: Path
-) -> None:
+def test_dicom_decode_worker_emits_failed_for_missing_file(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
     path = tmp_path / "missing.dcm"
     errors: list[tuple[int, str]] = []
     worker = DicomDecodeWorker(path, request_id=1, parent=parent)
-    worker.signals.failed.connect(
-        lambda request_id, message: errors.append((request_id, message))
-    )
+    worker.signals.failed.connect(lambda request_id, message: errors.append((request_id, message)))
     QThreadPool.globalInstance().start(worker)
     qtbot.waitUntil(lambda: len(errors) == 1, timeout=5000)
     assert errors[0][0] == 1

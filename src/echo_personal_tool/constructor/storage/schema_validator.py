@@ -27,7 +27,7 @@ class SchemaValidator:
 
     def __init__(self) -> None:
         schema_path = _SCHEMA_DIR / "references_schema.json"
-        with open(schema_path, "r", encoding="utf-8") as f:
+        with open(schema_path, encoding="utf-8") as f:
             self._schema: dict[str, Any] = json.load(f)
 
     def validate(self, data: dict[str, Any]) -> list[ValidationError]:
@@ -37,10 +37,12 @@ class SchemaValidator:
         # Schema validation
         validator = jsonschema.Draft202012Validator(self._schema)
         for err in validator.iter_errors(data):
-            errors.append(ValidationError(
-                path=".".join(str(p) for p in err.absolute_path) or "<root>",
-                message=err.message,
-            ))
+            errors.append(
+                ValidationError(
+                    path=".".join(str(p) for p in err.absolute_path) or "<root>",
+                    message=err.message,
+                )
+            )
 
         # Semantic: unique param IDs
         errors.extend(self._check_unique_ids(data))
@@ -60,10 +62,12 @@ class SchemaValidator:
                     pid = param.get("id", "")
                     loc = f"topics[{t_idx}].pathologies[{p_idx}].parameters"
                     if pid in seen_flat:
-                        errors.append(ValidationError(
-                            path=f"{loc}(id={pid})",
-                            message=f"Duplicate param id '{pid}' in flat parameters (first at {seen_flat[pid]})",
-                        ))
+                        errors.append(
+                            ValidationError(
+                                path=f"{loc}(id={pid})",
+                                message=f"Duplicate param id '{pid}' in flat parameters (first at {seen_flat[pid]})",
+                            )
+                        )
                     else:
                         seen_flat[pid] = f"{loc}(id={pid})"
 
@@ -74,10 +78,12 @@ class SchemaValidator:
                         pid = param.get("id", "")
                         loc = f"topics[{t_idx}].pathologies[{p_idx}].gradations[{g_idx}].parameters"
                         if pid in seen_grad:
-                            errors.append(ValidationError(
-                                path=f"{loc}(id={pid})",
-                                message=f"Duplicate param id '{pid}' in gradation '{grad.get('name', '')}' (first at {seen_grad[pid]})",
-                            ))
+                            errors.append(
+                                ValidationError(
+                                    path=f"{loc}(id={pid})",
+                                    message=f"Duplicate param id '{pid}' in gradation '{grad.get('name', '')}' (first at {seen_grad[pid]})",  # noqa: E501
+                                )
+                            )
                         else:
                             seen_grad[pid] = f"{loc}(id={pid})"
 
@@ -91,10 +97,12 @@ class SchemaValidator:
         for t_idx, topic in enumerate(data.get("topics", [])):
             slug = topic.get("slug", "")
             if slug in seen_topics:
-                errors.append(ValidationError(
-                    path=f"topics[{t_idx}].slug",
-                    message=f"Duplicate topic slug '{slug}' (first at {seen_topics[slug]})",
-                ))
+                errors.append(
+                    ValidationError(
+                        path=f"topics[{t_idx}].slug",
+                        message=f"Duplicate topic slug '{slug}' (first at {seen_topics[slug]})",
+                    )
+                )
             else:
                 seen_topics[slug] = f"topics[{t_idx}].slug"
 
@@ -102,10 +110,12 @@ class SchemaValidator:
                 pslug = pathology.get("slug", "")
                 key = f"{slug}/{pslug}"
                 if key in seen_pathos:
-                    errors.append(ValidationError(
-                        path=f"topics[{t_idx}].pathologies[{p_idx}].slug",
-                        message=f"Duplicate pathology slug '{pslug}' under topic '{slug}'",
-                    ))
+                    errors.append(
+                        ValidationError(
+                            path=f"topics[{t_idx}].pathologies[{p_idx}].slug",
+                            message=f"Duplicate pathology slug '{pslug}' under topic '{slug}'",
+                        )
+                    )
                 else:
                     seen_pathos[key] = f"topics[{t_idx}].pathologies[{p_idx}].slug"
 

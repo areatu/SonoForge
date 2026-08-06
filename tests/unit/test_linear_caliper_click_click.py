@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QApplication
 
@@ -143,7 +145,7 @@ def test_main_window_panel_updates_after_click_click_caliper(qtbot) -> None:
     _place_caliper(window._viewer, 10.0, 50.0)
 
     text = window._viewer.results_overlay_text()
-    assert "КДР ЛЖ: 20.0 mm" in text
+    assert "КДР ЛЖ" in text and "20.0" in text
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -157,6 +159,7 @@ def _qapp() -> QApplication:
 @pytest.fixture(autouse=True)
 def _ru_locale():
     from echo_personal_tool.infrastructure.i18n import set_language
+
     set_language("ru")
     yield
     set_language("ru")

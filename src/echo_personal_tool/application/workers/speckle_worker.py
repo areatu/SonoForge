@@ -15,15 +15,18 @@ from echo_personal_tool.domain.models.speckle import (
     SpeckleConfig,
     StrainResult,
 )
+from echo_personal_tool.domain.services.aha_segments import (
+    assign_aha_segments,
+    compute_aha_segment_strain,
+    compute_gls_from_segments,
+)
 from echo_personal_tool.domain.services.cardiac_cycle_detector import (
     auto_detect_ed_es,
     build_myocardial_roi_mask,
     detect_ed_es_from_frames,
     estimate_heart_rate_fft,
-    _shoelace_area,
 )
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
-from echo_personal_tool.domain.services.aha_segments import assign_aha_segments, compute_aha_segment_strain, compute_gls_from_segments
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
     preprocess_echo_frame,
@@ -33,8 +36,6 @@ from echo_personal_tool.domain.services.speckle_tracking import (
 from echo_personal_tool.domain.services.strain_computation import (
     apply_drift_compensation,
     compute_gls,
-    compute_longitudinal_strain_gl,
-    compute_radial_strain_gl,
     compute_strain_rate,
     compute_weighted_longitudinal_strain_gl,
     compute_weighted_radial_strain_gl,
@@ -72,7 +73,6 @@ class SpeckleTrackingSignals(QObject):
 
 
 class SpeckleTrackingWorker(QRunnable):
-
     def __init__(
         self,
         frames: np.ndarray,
@@ -83,6 +83,7 @@ class SpeckleTrackingWorker(QRunnable):
         config_preset: str = "standard",
         manual_ed: int | None = None,
         manual_es: int | None = None,
+        ecg_waveform=None,
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -93,6 +94,7 @@ class SpeckleTrackingWorker(QRunnable):
         self._config_preset = config_preset
         self._manual_ed = manual_ed
         self._manual_es = manual_es
+        self._ecg_waveform = ecg_waveform
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
@@ -105,24 +107,42 @@ class SpeckleTrackingWorker(QRunnable):
             avg_spacing = np.mean(self._pixel_spacing)
             kernel_radius = max(config.kernel_size // 2, 4)
             kernels = sample_kernels_in_zone(
-                self._zone, kernel_radius=kernel_radius,
+                self._zone,
+                kernel_radius=kernel_radius,
             )
             kernels = assign_aha_segments(kernels, lv_center=lv_center, view="A4C")
 
             manual_phases = self._manual_ed is not None and self._manual_es is not None
             logger.info(
-                "STE: manual_ed=%s manual_es=%s n_frames=%d",
-                self._manual_ed, self._manual_es, n_frames,
+                "STE: manual_ed=%s manual_es=%s n_frames=%d ecg=%s",
+                self._manual_ed,
+                self._manual_es,
+                n_frames,
+                self._ecg_waveform is not None,
             )
+            ed_es_source = "image"
+            r_peak_result = None
+
             if manual_phases:
                 global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
                 global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
             else:
-                global_ed, global_es = detect_ed_es_from_frames(
-                    self._frames, self._zone, config
+                # ECG-first policy: use R-peaks when reliable, else image fallback.
+                from echo_personal_tool.domain.services.ecg_ed_es_mapper import detect_ed_es_for_cine
+
+                def image_fallback() -> tuple[int, int]:
+                    return detect_ed_es_from_frames(self._frames, self._zone, config)
+
+                mapping = detect_ed_es_for_cine(
+                    self._ecg_waveform,
+                    self._frame_time_ms,
+                    n_frames,
+                    image_fallback=image_fallback,
                 )
-                global_ed = int(np.clip(global_ed, 0, n_frames - 1))
-                global_es = int(np.clip(global_es, 0, n_frames - 1))
+                global_ed = mapping.ed_frame_index
+                global_es = mapping.es_frame_index
+                ed_es_source = mapping.source
+                r_peak_result = mapping.r_peak_result
 
             phase_start = min(global_ed, global_es)
             phase_end = max(global_ed, global_es)
@@ -130,16 +150,19 @@ class SpeckleTrackingWorker(QRunnable):
             local_es = global_es - phase_start
             logger.info(
                 "STE: global_ed=%d global_es=%d phase=[%d..%d] tracking_mode=%s",
-                global_ed, global_es, phase_start, phase_end, config.tracking_mode,
+                global_ed,
+                global_es,
+                phase_start,
+                phase_end,
+                config.tracking_mode,
             )
 
             tracking_frames_raw = self._frames[phase_start : phase_end + 1]
 
             logger.info("STE: preprocessing frames (CLAHE + log)")
-            preprocessed = np.stack([
-                preprocess_echo_frame(tracking_frames_raw[i])
-                for i in range(tracking_frames_raw.shape[0])
-            ])
+            preprocessed = np.stack(
+                [preprocess_echo_frame(tracking_frames_raw[i]) for i in range(tracking_frames_raw.shape[0])]
+            )
 
             zone_mask = build_zone_mask(self._zone, preprocessed.shape[1:3])
             track_ed_index = local_ed
@@ -152,9 +175,7 @@ class SpeckleTrackingWorker(QRunnable):
                     kernels,
                     ed_index=track_ed_index,
                     config=config,
-                    progress_callback=lambda cur, tot: self.signals.progress.emit(
-                        int((cur / max(tot, 1)) * 70), 100
-                    ),
+                    progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                     zone_mask=zone_mask,
                     wall_thickness_px=wall_thickness_px,
                 )
@@ -164,36 +185,33 @@ class SpeckleTrackingWorker(QRunnable):
                     kernels,
                     ed_index=track_ed_index,
                     config=config,
-                    progress_callback=lambda cur, tot: self.signals.progress.emit(
-                        int((cur / max(tot, 1)) * 70), 100
-                    ),
+                    progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                 )
 
             if not manual_phases and global_ed == global_es:
-                new_local_ed, new_local_es = auto_detect_ed_es(
-                    tracking_results, kernels, self._pixel_spacing
-                )
-                new_local_ed = int(
-                    np.clip(new_local_ed, 0, int(preprocessed.shape[0]) - 1)
-                )
-                new_local_es = int(
-                    np.clip(new_local_es, 0, int(preprocessed.shape[0]) - 1)
-                )
+                new_local_ed, new_local_es = auto_detect_ed_es(tracking_results, kernels, self._pixel_spacing)
+                new_local_ed = int(np.clip(new_local_ed, 0, int(preprocessed.shape[0]) - 1))
+                new_local_es = int(np.clip(new_local_es, 0, int(preprocessed.shape[0]) - 1))
                 global_ed = phase_start + new_local_ed
                 global_es = phase_start + new_local_es
                 local_ed = new_local_ed
                 local_es = new_local_es
 
             self.signals.progress.emit(70, 100)
-            positions, ncc_matrix = extract_trajectories(
-                tracking_results, kernels, ed_index=track_ed_index
-            )
+            positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)
             positions = interpolate_invalid_kernels(
-                positions, ncc_matrix, kernels, config.ncc_threshold,
+                positions,
+                ncc_matrix,
+                kernels,
+                config.ncc_threshold,
             )
             smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
             smoothed = apply_motion_model(
-                smoothed, ncc_matrix, kernels, track_ed_index, config.ncc_threshold,
+                smoothed,
+                ncc_matrix,
+                kernels,
+                track_ed_index,
+                config.ncc_threshold,
             )
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
@@ -206,13 +224,9 @@ class SpeckleTrackingWorker(QRunnable):
                 smoothed, local_ed, self._pixel_spacing, endo_indices, ed_ncc
             )
             if config.drift_compensation:
-                window_long = apply_drift_compensation(
-                    window_long, local_ed, local_es
-                )
+                window_long = apply_drift_compensation(window_long, local_ed, local_es)
 
-            longitudinal = _embed_window_curve(
-                window_long, n_frames, phase_start, phase_end
-            )
+            longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 
             n_pairs = min(len(endo_indices), len(epi_indices))
             if n_pairs > 0:
@@ -224,9 +238,7 @@ class SpeckleTrackingWorker(QRunnable):
                     epi_indices[:n_pairs],
                     ed_ncc,
                 )
-                radial = _embed_window_curve(
-                    window_radial, n_frames, phase_start, phase_end
-                )
+                radial = _embed_window_curve(window_radial, n_frames, phase_start, phase_end)
             else:
                 radial = np.full(n_frames, np.nan)
 
@@ -236,9 +248,7 @@ class SpeckleTrackingWorker(QRunnable):
             heart_rate = estimate_heart_rate_fft(self._frames, roi_mask=roi_mask, fps=fps)
 
             frame_times = [self._frame_time_ms] * n_frames
-            strain_rate = compute_strain_rate(
-                np.nan_to_num(longitudinal, nan=0.0), frame_times
-            )
+            strain_rate = compute_strain_rate(np.nan_to_num(longitudinal, nan=0.0), frame_times)
 
             per_kernel = np.zeros(len(kernels), dtype=np.float64)
             ed_contour = None
@@ -270,9 +280,7 @@ class SpeckleTrackingWorker(QRunnable):
             es_valid = es_ncc >= config.ncc_threshold
             gls = compute_gls(window_long, local_ed, local_es)
             quality_slice = ncc_matrix[local_ed : local_es + 1]
-            tracking_quality_mean = (
-                float(np.mean(quality_slice)) if quality_slice.size else 0.0
-            )
+            tracking_quality_mean = float(np.mean(quality_slice)) if quality_slice.size else 0.0
 
             segment_strain, segment_quality = compute_aha_segment_strain(
                 per_kernel, kernels, es_ncc if es_ncc is not None else np.ones(len(kernels))
@@ -280,7 +288,8 @@ class SpeckleTrackingWorker(QRunnable):
 
             logger.info(
                 "STE segment_strain: %s, segment_quality: %s",
-                segment_strain, segment_quality,
+                segment_strain,
+                segment_quality,
             )
             logger.info(
                 "STE per_kernel (endo only): %s",
@@ -298,7 +307,10 @@ class SpeckleTrackingWorker(QRunnable):
 
             logger.info(
                 "STE quality gate: %d/%d kernels accepted (min_quality=%.2f), %d rejected",
-                n_accepted, n_kernels, min_quality, n_rejected,
+                n_accepted,
+                n_kernels,
+                min_quality,
+                n_rejected,
             )
 
             # Log rejected kernels details
@@ -308,20 +320,23 @@ class SpeckleTrackingWorker(QRunnable):
                     k = kernels[idx]
                     logger.info(
                         "  Rejected kernel %d: center=(%.1f,%.1f) layer=%s segment=%d ncc=%.3f",
-                        idx, k.center[0], k.center[1], k.layer,
-                        k.aha_segment, float(es_ncc_for_gate[idx]),
+                        idx,
+                        k.center[0],
+                        k.center[1],
+                        k.layer,
+                        k.aha_segment,
+                        float(es_ncc_for_gate[idx]),
                     )
 
             # Compute quality-gated GLS using segment strains
             if segment_strain:
-                gls_quality_gated = compute_gls_from_segments(
-                    segment_strain, segment_quality, min_quality=min_quality
-                )
+                gls_quality_gated = compute_gls_from_segments(segment_strain, segment_quality, min_quality=min_quality)
                 # Use quality-gated GLS if available, otherwise fallback to curve-based GLS
                 if gls_quality_gated != 0.0:
                     logger.info(
                         "STE GLS: curve-based=%.2f%%, quality-gated=%.2f%%",
-                        gls, gls_quality_gated,
+                        gls,
+                        gls_quality_gated,
                     )
                     gls = gls_quality_gated
             tracked_positions_all = np.full((n_frames, n_kernels, 2), np.nan)
@@ -338,31 +353,55 @@ class SpeckleTrackingWorker(QRunnable):
             self.signals.progress.emit(100, 100)
 
             self._dump_ste_debug(
-                smoothed=smoothed, ncc_matrix=ncc_matrix, kernels=kernels,
-                ed_contour=ed_contour, es_contour=es_contour,
-                endo_indices=endo_indices, epi_indices=epi_indices,
-                longitudinal=longitudinal, radial=radial, gls=gls,
-                global_ed=global_ed, global_es=global_es,
-                phase_start=phase_start, phase_end=phase_end,
-                pixel_spacing=self._pixel_spacing, config=config,
+                smoothed=smoothed,
+                ncc_matrix=ncc_matrix,
+                kernels=kernels,
+                ed_contour=ed_contour,
+                es_contour=es_contour,
+                endo_indices=endo_indices,
+                epi_indices=epi_indices,
+                longitudinal=longitudinal,
+                radial=radial,
+                gls=gls,
+                global_ed=global_ed,
+                global_es=global_es,
+                phase_start=phase_start,
+                phase_end=phase_end,
+                pixel_spacing=self._pixel_spacing,
+                config=config,
             )
 
             last = tracking_results[-1] if tracking_results else None
+
+            # Prepare ECG trace for display
+            ecg_trace_display = None
+            if self._ecg_waveform is not None:
+                ecg_trace_display = self._ecg_waveform.as_voltage_mv()
+
             result = StrainResult(
-                longitudinal=longitudinal, radial=radial, gls=gls,
-                strain_rate=strain_rate, ed_index=global_ed, es_index=global_es,
-                heart_rate_bpm=heart_rate, phases={"ED": global_ed, "ES": global_es},
-                zone=self._zone, kernels=kernels,
+                longitudinal=longitudinal,
+                radial=radial,
+                gls=gls,
+                strain_rate=strain_rate,
+                ed_index=global_ed,
+                es_index=global_es,
+                heart_rate_bpm=heart_rate,
+                phases={"ED": global_ed, "ES": global_es},
+                zone=self._zone,
+                kernels=kernels,
                 last_displacements=last.displacements if last is not None else None,
-                last_ncc_scores=es_ncc, last_valid_mask=es_valid,
+                last_ncc_scores=es_ncc,
+                last_valid_mask=es_valid,
                 cumulative_displacements=cumulative,
                 per_kernel_longitudinal=per_kernel,
-                ed_contour=ed_contour, es_contour=es_contour,
+                ed_contour=ed_contour,
+                es_contour=es_contour,
                 tracked_es_positions=tracked_es_positions,
                 tracked_ed_positions=tracked_ed_positions,
                 tracked_positions_all=tracked_positions_all,
                 ncc_all_frames=ncc_all_frames,
-                es_ncc_scores=es_ncc, es_valid_mask=es_valid,
+                es_ncc_scores=es_ncc,
+                es_valid_mask=es_valid,
                 segment_strain=segment_strain,
                 segment_quality=segment_quality,
                 drift_compensation_applied=bool(config.drift_compensation),
@@ -373,6 +412,10 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels_accepted_count=n_accepted,
                 kernels_rejected_count=n_rejected,
                 kernels_total_count=n_kernels,
+                ecg_waveform=self._ecg_waveform,
+                r_peak_result=r_peak_result,
+                ed_es_source=ed_es_source,
+                ecg_trace_for_display=ecg_trace_display,
             )
             self.signals.finished.emit(result)
 

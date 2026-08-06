@@ -8,11 +8,9 @@ from collections.abc import Iterator
 import pytest
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage
-from pynetdicom import AE, evt
-from pynetdicom.sop_class import StudyRootQueryRetrieveInformationModelMove
+from pynetdicom import AE
 
 from echo_personal_tool.infrastructure.embedded_storage_scp import EmbeddedStorageSCP
-
 
 _SOP_UID = "1.2.3.4.5.6"
 _STUDY_UID = "1.2.840.113619.2.55.3.604688123.802.1760000000.1"

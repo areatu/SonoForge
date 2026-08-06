@@ -15,7 +15,6 @@ from echo_personal_tool.application.services.dicom_retrieve_service import (
 from echo_personal_tool.domain.ports import CMoveResult
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
-
 _STUDY_UID = "1.2.840.113619.2.55.3.604688123.802.1760000000.1"
 _SERIES_UID = "1.2.840.113619.2.55.3.604688123.802.1760000000.2"
 _INSTANCE_UID = "1.2.840.113619.2.55.3.604688123.802.1760000000.3"
@@ -41,9 +40,7 @@ class MockDicomWebClient:
     def query_instances(self, study_uid: str, series_uid: str):
         return []
 
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         self.download_calls.append((study_uid, series_uid, instance_uid))
         return self._data
 
@@ -100,9 +97,7 @@ class MockDimseClient:
         received: dict[str, bytes],
         tls_args: tuple | None = None,
     ) -> CMoveResult:
-        self.c_move_calls.append(
-            (study_uid, series_uid, instance_uids, move_destination_ae)
-        )
+        self.c_move_calls.append((study_uid, series_uid, instance_uids, move_destination_ae))
         for uid in instance_uids:
             received[uid] = self._data
         return CMoveResult(completed=len(instance_uids), failed=0, warning=0)
@@ -148,9 +143,7 @@ def test_service_with_wado() -> None:
         default_source="wado",
     )
 
-    result = service.retrieve_instance(
-        _STUDY_UID, _SERIES_UID, _INSTANCE_UID, source="wado"
-    )
+    result = service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID, source="wado")
 
     assert result == _MOCK_BYTES
     assert web_client.download_calls == [(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)]
@@ -163,9 +156,7 @@ def test_service_with_dimse() -> None:
         default_source="dimse",
     )
 
-    result = service.retrieve_instance(
-        _STUDY_UID, _SERIES_UID, _INSTANCE_UID, source="dimse"
-    )
+    result = service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID, source="dimse")
 
     assert result == _MOCK_BYTES
     assert dimse_client.c_get_calls == [(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)]

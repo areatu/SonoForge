@@ -54,7 +54,9 @@ def collect_dicom_bytes(
                         ds = annotate_dicom(ds, calipers=calipers, contours=contours)
                         logger.info(
                             "Injected %d calipers, %d contours into %s",
-                            len(calipers), len(contours), uid,
+                            len(calipers),
+                            len(contours),
+                            uid,
                         )
 
                 # Serialize to bytes via BytesIO

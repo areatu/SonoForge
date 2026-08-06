@@ -1,0 +1,94 @@
+# Changelog — Текущая сессия
+
+## [2026-08-06] Сосуды: усреднение PSV/EDV без ЭКГ + ручная коррекция PSV
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/services/cardiac_cycle_service.py`, `src/echo_personal_tool/presentation/doppler_overlay.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_cardiac_cycle_service.py`, `tests/unit/test_presentation_doppler_overlay.py`, `tests/unit/test_presentation_viewer_widget.py`, `tests/unit/test_i18n.py`
+- **Суть:** Усреднение PSV/EDV теперь работает без ЭКГ: циклы детектируются из спектрального envelope (`detect_cycles_from_envelope`, fallback во всех ветках `get_cycles`). EDV — адаптивное окно (≤30 мс/10 точек) перед systolic upstroke с fallback на минимум; PSV/EDV усредняются медианой (не средним). Добавлен ручной режим коррекции PSV: полоса-подсветка текущего цикла-кандидата, ←/→ перебор циклов, Enter — принять PSV кандидата, Esc — отмена; i18n-ключи очищены от упоминаний ЭКГ, добавлен `viewer.vessel_cycle_candidate`. Реализовано через subagent-driven development (6 задач + финальное ревью, 9 коммитов на ветке `optimize/memory`, `d6c074b..d7467cf`).
+- **Тип-заметка:** в рабочем дереве остаются чужие незакоммиченные in-flight правки `doppler_metrics.py`/`measurements.py` (не наши, не трогать).
+
+## [2026-08-03] Сосуды: измерения PSV/EDV в панели Measurements
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/calculations/vessel_metrics.py`, `src/echo_personal_tool/domain/models/vessel_measurement.py`, `src/echo_personal_tool/domain/models/measurements.py`, `src/echo_personal_tool/application/study_measurement_session.py`, `src/echo_personal_tool/application/app_controller.py`, `src/echo_personal_tool/presentation/doppler_overlay.py`, `src/echo_personal_tool/presentation/measures_menu.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/presentation/measurement_action.py`, `src/echo_personal_tool/presentation/main_window.py`, `src/echo_personal_tool/presentation/tool_panel.py`, `src/echo_personal_tool/domain/services/measurement_report_formatter.py`, `src/echo_personal_tool/domain/services/measurement_results_formatter.py`, `src/echo_personal_tool/presentation/measurement_panel.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`
+- **Суть:** Добавлены ручные измерения сосудов на кадре спектрального допплера: клик на пике (PSV) и второй клик (EDV) → RI, S/D, MV≈ (суррогаты). Кнопка «PSV/EDV» запускает единый последовательный поток (кнопка EDV и хоткей E удалены как дубликат). Измерения сохраняются per (instance, frame), отображаются в overlay, отчёте (PDF) и правой панели.
+
+## [2026-07-30] macOS: Intel support + DMG вместо zip
+- **Тип:** fix
+- **Файлы:** `.github/workflows/release.yml`, `sonoforge-standalone.spec`
+- **Суть:** Исправлена ошибка "bad CPU type in executable" — добавлена отдельная сборка для Intel Mac (`macos-13`). Заменены zip-архивы на DMG-диски с .app bundle и иконкой .icns. Конвертация .png → .icns через `sips` + `iconutil`.
+
+## [2026-07-24] Тестовое покрытие: +275 тестов, 35% → 37%
+- **Тип:** test
+- **Файлы:** `tests/unit/test_optical_flow_refine.py`, `tests/unit/test_doppler_envelope.py`, `tests/unit/test_doppler_trace_and_baseline.py`, `tests/unit/test_doppler_calibration.py`, `tests/unit/test_doppler_axis.py`, `tests/unit/test_mmode_calibration.py`, `tests/unit/test_heart_rate_worker.py`, `tests/unit/test_optical_flow_refine_worker.py`, `tests/unit/test_strain_computation.py`, `tests/unit/test_tracking_smoothing_v2.py`, `tests/unit/test_planimeter.py`, `tests/unit/test_planimeter_formatter.py`, `tests/unit/test_measurement_report_formatter_v2.py`, `tests/unit/test_measurement_results_formatter_v2.py`, `tests/unit/test_frame_panel_parser.py`, `tests/unit/test_linear_measurement.py`, `tests/unit/test_profiler.py`, `tests/unit/test_gui_presentation.py`
+- **Суть:** Добавлены unit-тесты для domain services (optical_flow_refine, doppler, strain, tracking_smoothing, planimeter, formatters), workers (heart_rate, optical_flow_refine), presentation (mmode_caliper, ui_animations, caliper_label_item). Ключевые модули доведены до 90-100% покрытия. Скоммичено и запушено в main.
+
+## [2026-08-03] Doppler baseline: визуальный детектор линии вместо минимума яркости
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/domain/services/doppler_baseline.py`, `src/echo_personal_tool/infrastructure/dicom_doppler_calibration.py`, `tests/unit/test_doppler_baseline.py`, `tests/unit/test_dicom_doppler_calibration.py`
+- **Суть:** Добавлен `detect_baseline_line_y` — поиск тонкой (≤8px) горизонтальной полосы одного цвета по методу оператора (цвет-агностичен, адаптивный порог `max(0.5, 0.75·пик)`). `detect_baseline_y` и калибровка переведены на приоритет «линия → тег → интенсивность». Ключевое: `ReferencePixelY0=0` (IM_0247/0252/0254) теперь корректен — база подтверждается видимой линией на верхней кромке ROI (343 vs прежние ~606). Верифицировано на 6 реальных Philips-файлах; +6 юнит-тестов.
+
+## [2026-08-06 21:30] Дедупликация измерений в оверлее + стилизация ярлыков клавиш + упрощение ручной Doppler калибровки
+- **Тип:** feature + fix
+- **Файлы:** `src/echo_personal_tool/domain/services/measurement_results_formatter.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/presentation/styled_dialogs.py`, `src/echo_personal_tool/presentation/user_preferences_dialog.py`, `src/echo_personal_tool/presentation/ase_reference_dialog.py`, `src/echo_personal_tool/presentation/speckle_settings_dialog.py`, `src/echo_personal_tool/presentation/server_settings_dialog.py`, `src/echo_personal_tool/presentation/dicom_upload_dialog.py`, `src/echo_personal_tool/domain/services/vti_cycle_service.py`, `src/echo_personal_tool/domain/calculations/doppler_metrics.py`, `tests/unit/test_viewer_widget.py`
+- **Суть:** 1) `format_results_overlay_html` и `_update_results_overlay_for_caliper_drag`: дедупликация линейных измерений по `label` — при повторном измерении того же параметра перезаписывается последним значением, а не дублируется. 2) `theme_button_box_shortcuts()`: новая утилита в `styled_dialogs.py` для окрашивания ярлыков ускорителей (буква после `&`, напр. `O` в `&OK`) цветом `text_dim` — светлым для тёмной темы и тёмным для светлой. Применена ко всем диалогам с кнопками OK/Cancel (user_preferences, ase_reference, speckle_settings, server_settings, dicom_upload). 3) Ручная Doppler калибровка: убран ROI-этап (концы углов), калибровка начинается с установки базовой линии → диалог скорости → применение (без диалога времени). Авто-калибровка из DICOM-тегов не изменена. 4) Исправлена предсуществующая ошибка `np.trapz` в `vti_cycle_service.py` и `doppler_metrics.py` (`getattr(np, "trapezoid", np.trapz)` эвалюировал `np.trapz` заранее — заменено на `getattr(..., None) or np.trapz`).
+
+## [2026-08-06 22:00] Иконки ✓/✗ на кнопках OK/Cancel + упрощение Doppler калибровки
+- **Тип:** feature + fix
+- **Файлы:** `src/echo_personal_tool/presentation/styled_dialogs.py`, `src/echo_personal_tool/resources/icons/ok.svg`, `src/echo_personal_tool/presentation/user_preferences_dialog.py`, `src/echo_personal_tool/presentation/ase_reference_dialog.py`, `src/echo_personal_tool/presentation/speckle_settings_dialog.py`, `src/echo_personal_tool/presentation/server_settings_dialog.py`, `src/echo_personal_tool/presentation/dicom_upload_dialog.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `tests/unit/test_viewer_widget.py`, `src/echo_personal_tool/domain/services/vti_cycle_service.py`, `src/echo_personal_tool/domain/calculations/doppler_metrics.py`
+- **Суть:** 1) `theme_button_box_shortcuts` → `theme_button_box_icons`: добавлены SVG-иконки ✓ (ok.svg) для OK и ✗ (close.svg) для Cancel/Close на кнопках QDialogButtonBox, окрашенные в `text_dim` (светло-синий для тёмной темы, тёмно-синий для светлой). Применено ко всем 5 диалогам. 2) Ручная Doppler калибровка: убран ROI-этап, поток теперь baseline → диалог скорости → применение без диалога времени. Авто-калибровка не изменена.
+
+## [2026-08-06 23:30] Улучшения диалога "Загрузить с сервера" + финальная проверка
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Добавлен фильтр по дате (QComboBox: Все/7 дней/30 дней/90 дней) с сортировкой по дате исследования. 2) Формат даты изменён с `20260806` на `06.08.2026` (DD.MM.YYYY). 3) Чекбоксы заменены на кастомные маркеры: сплошной кружок ● (checked) и крестик ✗ (unchecked), окрашенные в `text_dim` для контрасти с темой.
+
+## [2026-08-06 23:45] Реструктуризация диалога Настройки
+- **Тип:** refactor
+- **Файлы:** `src/echo_personal_tool/presentation/user_preferences_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Настройки "Отображение" перенесены в закладку "Интерфейс" в отдельный блок (QGroupBox с тонкой синей границей accent_tab). 2) "Разметка Gold", "DICOM" и "References" перенесены из отдельных закладок в закладку "Прочее", каждая в отдельном блоке. 3) Добавлены helper-функции `_group_box()` и `_scrollable_grouped()` для создания сгруппированных блоков с заголовками.
+
+## [2026-08-06 23:55] Исправления в диалоге Загрузить с сервера
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/presentation/dark_theme.py`
+- **Суть:** 1) Сортировка теперь работает по _SORT_ROLE (сырой дата), а не отображаемому тексту — исправлена проблема с обратным порядком дат. 2) Кастомный delegate удалён (он ломал клики), заменён CSS-стилями: выбранные исследования — крупный сплошной кружок ● (text_dim), невыбранные — пустые. 3) Исправлен __import__("datetime") на корректный импорт timedelta.
+
+## [2026-08-06 23:58] Fix: display_form порядок определения в Settings диалоге
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/user_preferences_dialog.py`
+- **Суть:** `display_form` использовался в `_scrollable_grouped()` до определения — перенесено определение и все `addRow` вызовы перед `tabs.addTab()`.
+
+## [2026-08-06 23:59] Исправления чекбоксов и кликов в диалоге сервера
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/presentation/dark_theme.py`
+- **Суть:** 1) Чекбоксы теперь всегда имеют тонкую синюю окантовку (accent_tab) — видно место клика даже в темной теме. 2) При выделении исследования появляется сплошной кружок (●) в text_dim цвете. 3) Добавлен обработчик одиночного клика (itemClicked) — исследования раскрываются по одиночному клику, не требуя двойного.
+
+## [2026-08-06 23:59] Фильтр дат и проверка ошибок
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Фильтр дат изменен с Все/7дн/30дн/90дн на Все/1день/3дня/30дней. 2) UnboundLocalError в user_preferences_dialog.py — уже исправлен (display_form определяется перед использованием).
+
+## [2026-08-06 23:59] Исправление ошибок после review
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/styled_dialogs.py`, `src/echo_personal_tool/application/dicom_query_service.py`, `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`, `tests/unit/test_presentation_user_preferences_dialog.py`
+- **Суть:** 1) DicomQueryService.query_series() теперь оборачивает вызовы в try/except с fallback на [], как query_studies — ошибка сервера не ломает диалог. 2) Исправлен шаблон ошибки: используется series_query_error вместо series_error (который имел незаполненные плейсхолдеры {current}/{total}). 3) Исправлен Qt.QSize → QSize в styled_dialogs.py:278 (багом ломался весь диалог настроек). 4) Тест test_creates_with_tabs: 7→5 вкладок после реструктуризации.
+
+## [2026-08-06 23:59] Асинхронная загрузка исследований
+- **Тип:** perf
+- **Файлы:** `src/echo/personal_tool/presentation/orthanc_study_dialog.py`, `src/echo/personal_tool/application/dicom_query_service.py`, `src/echo/personal_tool/infrastructure/locales/ru.json`, `src/echo/personal_tool/infrastructure/locales/en.json`
+- **Суть:** 1) Запрос исследований вынесен в QRunnable/QThreadPool — UI больше не блокируется на 10-15с при HTTP timeout. 2) Диалог открывается мгновенно, статус "Поиск…", исследования появляются по мере загрузки. 3) Убран синхронный _check_ping (не нужен — query_studies уже возвращает [] при ошибке). 4) _on_find теперь тоже использует асинхронный режим.
+
+## [2026-08-06 23:59] Финальные исправления
+- **Тип:** fix
+- **Файлы:** `src/echo/personal_tool/presentation/styled_dialogs.py` (QSize), `src/echo/personal_tool/infrastructure/orthanc_client.py` (timeout 30→10s), `tests/unit/test_presentation_orthanc_study_dialog.py` (тесты после async рефакторинга)
+- **Суть:** 1) HTTP таймаут уменьшен с 30 до 10 секунд — быстрее fallback на DIMSE. 2) Тесты обновлены: TestCheckPing заменен на TestBuildStudyTree (проверка построения дерева и сортировки).
+
+## [2026-08-06 23:59] Финальная проверка сессии
+- **Тип:** verification
+- **Файлы:** все изменения сессии
+- **Результат:** Все изменения сессии синтаксически корректны, тесты проходят:
+  - test_presentation_orthanc_study_dialog.py: 34 passed
+  - test_presentation_user_preferences_dialog.py: 32 passed
+  - test_dicom_query_service.py: passed
+  - test_orthanc_client.py: passed
+  - test_presentation_styled_dialogs.py: passed
+  - test_presentation_viewer_widget.py: passed (после guard для _graphics)
+- **Найден и исправлен pre-existing баг:** viewer_widget.py eventFilter ссылался на self._graphics до инициализации (commit b6fd215, до сессии) → flaky AttributeError в тестах. Добавлен guard hasattr().

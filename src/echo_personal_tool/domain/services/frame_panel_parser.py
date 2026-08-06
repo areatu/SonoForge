@@ -19,9 +19,7 @@ _SPATIAL_SPECTRAL = 3
 
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     DOPPLER_DATA_TYPES,
-    horizontal_ms_per_pixel,
     region_physical_deltas,
-    vertical_mm_per_pixel,
 )
 
 

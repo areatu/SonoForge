@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from echo_personal_tool.domain.services.segment_roi import (
     _trim_sector_content_bounds,
@@ -56,6 +55,9 @@ class TestApexGuard:
         roi = (0.0, 0.0, 100.0, 100.0)
         # With 50% threshold, should allow trim
         result = _trim_sector_content_bounds(
-            frame, roi, apex_guard=True, apex_guard_max_removal_ratio=0.50,
+            frame,
+            roi,
+            apex_guard=True,
+            apex_guard_max_removal_ratio=0.50,
         )
         assert result != roi

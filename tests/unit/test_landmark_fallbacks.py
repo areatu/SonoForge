@@ -49,7 +49,10 @@ class TestFallbackSectorChord:
         ys, xs = np.where(mask > 0)
         y_min, y_max = int(ys.min()), int(ys.max())
         septal, lateral, apex = _fallback_annulus_sector_chord(
-            ys, xs, y_min=y_min, y_max=y_max,
+            ys,
+            xs,
+            y_min=y_min,
+            y_max=y_max,
         )
         assert septal[0] < lateral[0]
         assert apex[1] > septal[1]  # apex below annulus

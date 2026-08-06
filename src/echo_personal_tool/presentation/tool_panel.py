@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagInspectorWidget
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
+from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
@@ -34,20 +34,21 @@ class _PatientMetricsRow(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         from echo_personal_tool.infrastructure.i18n import tr
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        height_label = QLabel(tr("tools.height"))
-        height_label.setStyleSheet(self._LABEL_STYLE)
-        layout.addWidget(height_label)
+        self._height_label = QLabel(tr("tools.height"))
+        self._height_label.setStyleSheet(self._LABEL_STYLE)
+        layout.addWidget(self._height_label)
         self._height_spin = QSpinBox()
         self._height_spin.setRange(0, 250)
         self._height_spin.setSpecialValueText("")
         self._height_spin.valueChanged.connect(self._emit_metrics)
         layout.addWidget(self._height_spin)
-        weight_label = QLabel(tr("tools.weight"))
-        weight_label.setStyleSheet(self._LABEL_STYLE)
-        layout.addWidget(weight_label)
+        self._weight_label = QLabel(tr("tools.weight"))
+        self._weight_label.setStyleSheet(self._LABEL_STYLE)
+        layout.addWidget(self._weight_label)
         self._weight_spin = QSpinBox()
         self._weight_spin.setRange(0, 300)
         self._weight_spin.setSpecialValueText("")
@@ -71,26 +72,38 @@ class _PatientMetricsRow(QWidget):
         self._height_spin.blockSignals(False)
         self._weight_spin.blockSignals(False)
 
+    def reload_text(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        self._height_label.setText(tr("tools.height"))
+        self._weight_label.setText(tr("tools.weight"))
+
 
 class ControlsTab(QWidget):
     """Window / Level / DR sliders (Clinical controls)."""
 
     magnetic_snap_changed = Signal(bool)
+    despeckle_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         from echo_personal_tool.infrastructure.i18n import tr
+
         self.window_slider = TopLabeledSlider(tr("tools.window"), minimum=1, maximum=400, value=100)
         self.level_slider = TopLabeledSlider(tr("tools.level"), minimum=0, maximum=100, value=50)
         self.dr_slider = TopLabeledSlider(tr("tools.dr"), minimum=0, maximum=100, value=50)
-        self.dr_slider.slider().setToolTip(
-            "Dynamic range: center = full range; left = clip dark (typical for US)"
-        )
+        self.dr_slider.slider().setToolTip("Dynamic range: center = full range; left = clip dark (typical for US)")
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._magnetic_snap_check = QCheckBox(tr("tools.magnetic_snap"))
         self._magnetic_snap_check.setChecked(True)
         self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
         self._magnetic_snap_check.toggled.connect(self.magnetic_snap_changed.emit)
+
+        self._despeckle_check = QCheckBox("Grayscale (remove color)")
+        self._despeckle_check.setChecked(False)
+        self._despeckle_check.setToolTip("Remove color from Doppler, ECG overlays — display in grayscale")
+        self._despeckle_check.toggled.connect(self.despeckle_changed.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 12, 8, 8)
@@ -99,6 +112,7 @@ class ControlsTab(QWidget):
         layout.addWidget(self.level_slider)
         layout.addWidget(self.dr_slider)
         layout.addWidget(self._magnetic_snap_check)
+        layout.addWidget(self._despeckle_check)
         layout.addStretch(1)
 
 
@@ -118,6 +132,7 @@ class MeasureTab(QWidget):
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._auto_play_check = QCheckBox(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._auto_play_check.toggled.connect(self.auto_play_changed.emit)
@@ -167,13 +182,15 @@ class MeasureTab(QWidget):
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         self._auto_play_check.setText(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._results_button.setText(tr("tool_panel.measures"))
         self._menu.reload_text()
+        self._patient_metrics.reload_text()
 
-    def set_doppler_tool_availability(self, *, time_ok: bool) -> None:
-        self._menu.set_doppler_tool_availability(time_ok=time_ok)
+    def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
+        self._menu.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
 
     def highlight_action(
         self,
@@ -196,6 +213,7 @@ class ToolPanel(QWidget):
     auto_play_changed = Signal(bool)
     results_requested = Signal()
     magnetic_snap_changed = Signal(bool)
+    despeckle_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -220,6 +238,7 @@ class ToolPanel(QWidget):
         self.measure.auto_play_changed.connect(self.auto_play_changed.emit)
         self.measure.results_requested.connect(self.results_requested.emit)
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
+        self.controls.despeckle_changed.connect(self.despeckle_changed.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -233,6 +252,7 @@ class ToolPanel(QWidget):
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         self.measure.reload_text()
         self._tabs.setTabText(0, tr("tool_panel.measures"))
         self._tabs.setTabText(1, tr("tool_panel.controls"))
@@ -240,6 +260,7 @@ class ToolPanel(QWidget):
     def set_dicom_inspector_visible(self, visible: bool) -> None:
         """Show/hide the DICOM Tags tab."""
         from echo_personal_tool.infrastructure.i18n import tr
+
         idx = self._tabs.indexOf(self._tag_inspector)
         if visible and idx == -1:
             self._tabs.addTab(self._tag_inspector, tr("tool_panel.dicom_tags"))
@@ -259,8 +280,8 @@ class ToolPanel(QWidget):
         """Access the properties panel to update it."""
         return self._properties_panel
 
-    def set_doppler_tool_availability(self, *, time_ok: bool) -> None:
-        self.measure.set_doppler_tool_availability(time_ok=time_ok)
+    def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
+        self.measure.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
 
     def toggle_collapse(self) -> None:
         if self._collapsed:
@@ -284,8 +305,9 @@ class ToolPanel(QWidget):
         tab_bar = self._tabs.tabBar()
         for btn in tab_bar.findChildren(QToolButton):
             # Scroll buttons are children of the tab bar with no text
-            if not btn.text() and btn.width() < 60:
+            if not btn.text():
+                btn.setMinimumWidth(28)
                 if btn.x() < tab_bar.width() // 2:
-                    btn.setText("\u25c0")  # ◀
+                    btn.setText("<")
                 else:
-                    btn.setText("\u25b6")  # ▶
+                    btn.setText(">")

@@ -9,7 +9,6 @@ from echo_personal_tool.domain.calculations.planimeter import (
     closed_polygon_volume_ml,
     format_area_result,
     format_volume_result,
-    is_planimeter_polygon,
 )
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.measurements import PlanimeterResult
@@ -30,16 +29,12 @@ def planimeter_results_from_contours(
         if chamber == GENERIC_AREA_CHAMBER:
             area_cm2 = closed_polygon_area_cm2(contour, pixel_spacing)
             if area_cm2 is not None:
-                results.append(
-                    PlanimeterResult(label=label, kind="area", value=area_cm2, unit="cm²")
-                )
+                results.append(PlanimeterResult(label=label, kind="area", value=area_cm2, unit="cm²"))
         elif chamber == GENERIC_VOLUME_CHAMBER:
             volume_ml = closed_polygon_volume_ml(contour, pixel_spacing)
             if volume_ml is not None:
                 unit = "mL" if spacing_calibrated else "px³"
-                results.append(
-                    PlanimeterResult(label=label, kind="volume", value=volume_ml, unit=unit)
-                )
+                results.append(PlanimeterResult(label=label, kind="volume", value=volume_ml, unit=unit))
     return tuple(results)
 
 

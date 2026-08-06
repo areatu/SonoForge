@@ -426,8 +426,7 @@ def _closest_interior_index(
         return max(0, len(points) // 2)
     return min(
         range(1, len(points) - 1),
-        key=lambda index: (points[index][0] - target[0]) ** 2
-        + (points[index][1] - target[1]) ** 2,
+        key=lambda index: (points[index][0] - target[0]) ** 2 + (points[index][1] - target[1]) ** 2,
     )
 
 
@@ -467,8 +466,15 @@ def smooth_open_arc(
     iterations: int = SMOOTH_OPEN_ARC_ITERATIONS,
     blend: float = SMOOTH_OPEN_ARC_BLEND,
     pinned_indices: frozenset[int] | set[int] | None = None,
+    taubin: bool = False,
+    taubin_mu: float = -0.53,
 ) -> list[tuple[float, float]]:
-    """Laplacian smooth interior nodes; MA endpoints and pinned nodes stay fixed."""
+    """Smooth interior nodes; MA endpoints and pinned nodes stay fixed.
+
+    When *taubin* is True, uses Taubin lambda-mu smoothing which
+    alternates positive (lambda) and negative (mu) steps to preserve
+    contour area and prevent shrinkage.
+    """
     del apex
     if len(points) < 3:
         return [(float(x), float(y)) for x, y in points]
@@ -488,8 +494,21 @@ def smooth_open_arc(
                 continue
             neighbor_x = 0.5 * (coords[index - 1][0] + coords[index + 1][0])
             neighbor_y = 0.5 * (coords[index - 1][1] + coords[index + 1][1])
+            # Lambda step: positive smoothing
             next_coords[index][0] = (1.0 - blend) * coords[index][0] + blend * neighbor_x
             next_coords[index][1] = (1.0 - blend) * coords[index][1] + blend * neighbor_y
+
+        if taubin:
+            # Mu step: anti-shrinkage (move back slightly)
+            for index in range(1, len(next_coords) - 1):
+                if index in pinned:
+                    continue
+                neighbor_x = 0.5 * (next_coords[index - 1][0] + next_coords[index + 1][0])
+                neighbor_y = 0.5 * (next_coords[index - 1][1] + next_coords[index + 1][1])
+                mu_blend = abs(taubin_mu)
+                next_coords[index][0] = (1.0 - mu_blend) * next_coords[index][0] + mu_blend * neighbor_x
+                next_coords[index][1] = (1.0 - mu_blend) * next_coords[index][1] + mu_blend * neighbor_y
+
         next_coords[0] = [float(septal[0]), float(septal[1])]
         next_coords[-1] = [float(lateral[0]), float(lateral[1])]
         coords = next_coords
@@ -627,10 +646,7 @@ def polygon_area_mm2(
         return 0.0
 
     row_spacing, col_spacing = pixel_spacing
-    mm_points = [
-        (float(col) * col_spacing, float(row) * row_spacing)
-        for col, row in polygon_points
-    ]
+    mm_points = [(float(col) * col_spacing, float(row) * row_spacing) for col, row in polygon_points]
     area = 0.0
     for index, (x1, y1) in enumerate(mm_points):
         x2, y2 = mm_points[(index + 1) % len(mm_points)]

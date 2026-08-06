@@ -62,9 +62,7 @@ def _make_dicom_bytes(
 class _DicomBackedClient(FakeDicomWebClient):
     """Fake client that returns properly-tagged DICOM bytes."""
 
-    def download_instance(
-        self, study_uid: str, series_uid: str, instance_uid: str
-    ) -> bytes:
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         return _make_dicom_bytes(study_uid, series_uid, instance_uid)
 
 
@@ -78,22 +76,12 @@ class _SignalCapture:
 
     def connect(self, worker: OrthancDownloadWorker) -> None:
         worker.signals.progress.connect(
-            lambda current, total, series_uid: self.progress.append(
-                (current, total, series_uid)
-            )
+            lambda current, total, series_uid: self.progress.append((current, total, series_uid))
         )
-        worker.signals.done.connect(
-            lambda session_id, study_uid: self.done.append((session_id, study_uid))
-        )
-        worker.signals.failed.connect(
-            lambda uid, message: self.failed.append((uid, message))
-        )
-        worker.signals.cancelled.connect(
-            lambda session_id: self.cancelled.append(session_id)
-        )
-        worker.signals.studies_ready.connect(
-            lambda studies: self.studies_ready.append(studies)
-        )
+        worker.signals.done.connect(lambda session_id, study_uid: self.done.append((session_id, study_uid)))
+        worker.signals.failed.connect(lambda uid, message: self.failed.append((uid, message)))
+        worker.signals.cancelled.connect(lambda session_id: self.cancelled.append(session_id))
+        worker.signals.studies_ready.connect(lambda studies: self.studies_ready.append(studies))
 
 
 def test_worker_emits_studies_ready_after_download(tmp_path: Path) -> None:
@@ -102,9 +90,7 @@ def test_worker_emits_studies_ready_after_download(tmp_path: Path) -> None:
     session_id = cache.create_session()
     capture = _SignalCapture()
 
-    worker = OrthancDownloadWorker(
-        client, cache, session_id, STUDY_UID, [SERIES_UID]
-    )
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
     capture.connect(worker)
     worker.run()
 
@@ -130,9 +116,7 @@ def test_worker_emits_studies_ready_even_when_no_instances(tmp_path: Path) -> No
     """Empty series still emits studies_ready (empty list)."""
 
     class _EmptyClient(FakeDicomWebClient):
-        def query_instances(
-            self, study_uid: str, series_uid: str
-        ) -> list[InstanceInfo]:
+        def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
             return []
 
     client = _EmptyClient(FIXTURES)
@@ -140,9 +124,7 @@ def test_worker_emits_studies_ready_even_when_no_instances(tmp_path: Path) -> No
     session_id = cache.create_session()
     capture = _SignalCapture()
 
-    worker = OrthancDownloadWorker(
-        client, cache, session_id, STUDY_UID, [SERIES_UID]
-    )
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
     capture.connect(worker)
     worker.run()
 
@@ -156,9 +138,7 @@ def test_metadata_groups_instances_by_series(tmp_path: Path) -> None:
     SERIES2 = "1.2.410.200001.1.1185.2062614048.1.20240404.1120546412.448.99"
 
     class _MultiSeriesClient(FakeDicomWebClient):
-        def query_instances(
-            self, study_uid: str, series_uid: str
-        ) -> list[InstanceInfo]:
+        def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
             if series_uid == SERIES_UID:
                 return [InstanceInfo(INSTANCE_UID, SERIES_UID, study_uid)]
             if series_uid == SERIES2:
@@ -171,9 +151,7 @@ def test_metadata_groups_instances_by_series(tmp_path: Path) -> None:
                 ]
             return []
 
-        def download_instance(
-            self, study_uid: str, series_uid: str, instance_uid: str
-        ) -> bytes:
+        def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
             return _make_dicom_bytes(
                 study_uid,
                 series_uid,
@@ -186,9 +164,7 @@ def test_metadata_groups_instances_by_series(tmp_path: Path) -> None:
     session_id = cache.create_session()
     capture = _SignalCapture()
 
-    worker = OrthancDownloadWorker(
-        client, cache, session_id, STUDY_UID, [SERIES_UID, SERIES2]
-    )
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID, SERIES2])
     capture.connect(worker)
     worker.run()
 

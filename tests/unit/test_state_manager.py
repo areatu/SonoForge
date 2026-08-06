@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.state_manager import StateManager
@@ -169,9 +171,7 @@ def test_set_doppler_measurement_updates_snapshot(qtbot) -> None:
     manager = StateManager()
     dto = DopplerMeasurementDTO(
         peaks=(DopplerPeakMarker(label="E", time_ms=120.0, velocity_cm_s=85.0),),
-        intervals=(
-            DopplerIntervalMarker(label="DT", start_time_ms=80.0, end_time_ms=260.0),
-        ),
+        intervals=(DopplerIntervalMarker(label="DT", start_time_ms=80.0, end_time_ms=260.0),),
         traces=(DopplerTrace(label="VTI", points=((0.0, 0.0), (10.0, 2.0))),),
     )
 

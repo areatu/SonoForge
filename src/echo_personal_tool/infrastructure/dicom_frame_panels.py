@@ -12,7 +12,7 @@ from echo_personal_tool.domain.services.frame_panel_parser import parse_panels_f
 
 def try_parse_from_path(path: Path) -> FramePanelLayout | None:
     try:
-        dataset = pydicom.dcmread(path, force=True)
+        dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
     except Exception:
         return None
     return parse_panels_from_dataset(dataset)

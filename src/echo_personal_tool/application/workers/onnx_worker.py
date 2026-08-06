@@ -6,11 +6,9 @@ import atexit
 import json
 import logging
 import multiprocessing
-import os
 import signal
 import threading
 import time
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 import numpy as np
@@ -98,7 +96,8 @@ def run_segment_in_subprocess(
     """Picklable entry point for multiprocessing.Pool subprocess inference."""
     frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape)
     engine = OnnxInferenceEngine(
-        models_dir=Path(models_dir_str), manifest_section=manifest_section,
+        models_dir=Path(models_dir_str),
+        manifest_section=manifest_section,
     )
     mask = engine.segment(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode)
     return np.ascontiguousarray(mask).tobytes()
@@ -130,9 +129,7 @@ class OnnxWorker(QRunnable):
         self._crop_mode = crop_mode
         self._models_dir = Path(models_dir) if models_dir is not None else _default_models_dir()
         self._manifest_section = manifest_section
-        self._timeout_sec = (
-            float(timeout_sec) if timeout_sec is not None else _load_timeout_sec(self._models_dir)
-        )
+        self._timeout_sec = float(timeout_sec) if timeout_sec is not None else _load_timeout_sec(self._models_dir)
         self.signals = OnnxWorkerSignals()
         self.setAutoDelete(True)
 

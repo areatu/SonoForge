@@ -63,10 +63,7 @@ class ImageStorage:
     def list_images(self) -> list[Path]:
         """List all image files in the directory."""
         exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg"}
-        return sorted(
-            p for p in self._dir.iterdir()
-            if p.is_file() and p.suffix.lower() in exts
-        )
+        return sorted(p for p in self._dir.iterdir() if p.is_file() and p.suffix.lower() in exts)
 
     def orphaned(self, referenced: set[str]) -> list[str]:
         """Find images in dir not referenced by any pathology."""

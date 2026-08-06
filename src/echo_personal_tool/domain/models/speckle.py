@@ -100,6 +100,9 @@ class SpeckleConfig:
         )
 
 
+from echo_personal_tool.domain.models.ecg import EcgWaveform, RPeakResult
+
+
 @dataclass(frozen=True)
 class StrainResult:
     """Computed strain results."""
@@ -139,3 +142,8 @@ class StrainResult:
     kernels_accepted_count: int = 0
     kernels_rejected_count: int = 0
     kernels_total_count: int = 0
+    # ECG fields
+    ecg_waveform: EcgWaveform | None = None
+    r_peak_result: RPeakResult | None = None
+    ed_es_source: str = "image"
+    ecg_trace_for_display: np.ndarray | None = None

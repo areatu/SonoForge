@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
@@ -42,8 +44,7 @@ def test_prefetch_starts_batch_worker(qapp, monkeypatch, tmp_path) -> None:
             started.append(worker)
 
     class _SpyLoader:
-        def __init__(self, path, frame_index=0, media_format="mp4", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
             self._batch_size = batch_size
             self._frame_index = frame_index
             self.signals = MagicMock()
@@ -124,8 +125,7 @@ def test_prefetch_batch_capped_by_radius(qapp, monkeypatch, tmp_path) -> None:
             started.append(worker)
 
     class _SpyLoader:
-        def __init__(self, path, frame_index=0, media_format="mp4", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
             self._batch_size = batch_size
             self._frame_index = frame_index
             self.signals = MagicMock()
@@ -144,6 +144,7 @@ def test_prefetch_batch_capped_by_radius(qapp, monkeypatch, tmp_path) -> None:
         scroll_debounce_ms=80,
         scroll_batch_size=3,
     )
+    controller._adaptive_batch_size = 8
     mp4 = tmp_path / "c.mp4"
     mp4.write_bytes(b"\x00")
     inst = _mp4_instance(mp4, frames=100)
@@ -249,8 +250,7 @@ def test_prefetch_cancelled_on_pause(qapp, monkeypatch, tmp_path) -> None:
     pool = _SpyPool()
 
     class _SpyLoader:
-        def __init__(self, path, frame_index=0, media_format="mp4", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
             self._batch_size = batch_size
             self._frame_index = frame_index
             self.signals = MagicMock()
@@ -353,8 +353,7 @@ def test_small_loop_prefetch_all_unloaded(qapp, monkeypatch, tmp_path) -> None:
             started.append(worker)
 
     class _SpyLoader:
-        def __init__(self, path, frame_index=0, media_format="mp4", parent=None,
-                     total_frames=0, batch_size=0):
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
             self._batch_size = batch_size
             self._frame_index = frame_index
             self.signals = MagicMock()

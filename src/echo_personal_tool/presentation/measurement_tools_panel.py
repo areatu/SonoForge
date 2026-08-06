@@ -32,6 +32,7 @@ class MeasurementToolsPanel(QWidget):
     la_diameter_requested = Signal()
     lav_4c_requested = Signal()
     lav_4c_auto_requested = Signal()
+    lav_4c_ai_plus_requested = Signal()
     lav_bi_requested = Signal()
     ra_diameter_requested = Signal()
     ra_area_requested = Signal()
@@ -39,6 +40,8 @@ class MeasurementToolsPanel(QWidget):
     rv_basal_requested = Signal()
     rv_tapse_requested = Signal()
     rv_s_prime_requested = Signal()
+    diameter_compare_requested = Signal()
+    area_compare_requested = Signal()
 
     _BLINK_STYLE = "background-color: #fff59d; font-weight: bold;"
     _NORMAL_STYLE = ""
@@ -67,6 +70,7 @@ class MeasurementToolsPanel(QWidget):
 
     def reload_text(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+
         for (view, phase), btn in self._manual_buttons.items():
             if phase == "ED":
                 btn.setText(tr(f"menu.{view.lower()}_ed"))
@@ -155,6 +159,14 @@ class MeasurementToolsPanel(QWidget):
         btn_reset.setToolTip(tr("tools.reset_tip"))
         btn_reset.clicked.connect(self.reset_measurements_requested.emit)
         row.addWidget(btn_reset)
+        btn_diam_compare = QPushButton(tr("tools.diameter_compare"))
+        btn_diam_compare.setToolTip(tr("tools.diameter_compare_tip"))
+        btn_diam_compare.clicked.connect(self.diameter_compare_requested.emit)
+        row.addWidget(btn_diam_compare)
+        btn_area_compare = QPushButton(tr("tools.area_compare"))
+        btn_area_compare.setToolTip(tr("tools.area_compare_tip"))
+        btn_area_compare.clicked.connect(self.area_compare_requested.emit)
+        row.addWidget(btn_area_compare)
         row.addStretch(1)
         return group
 
@@ -176,9 +188,7 @@ class MeasurementToolsPanel(QWidget):
         if self._blink_target is None:
             return
         self._blink_on = not self._blink_on
-        self._blink_target.setStyleSheet(
-            self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE
-        )
+        self._blink_target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
 
     def _build_lv2d_group(self) -> QGroupBox:
         group = QGroupBox(tr("tools.lv2d"))
@@ -208,6 +218,10 @@ class MeasurementToolsPanel(QWidget):
         btn_lav_4c_auto.setToolTip(tr("tools.lav_4c_auto_tip"))
         btn_lav_4c_auto.clicked.connect(self.lav_4c_auto_requested.emit)
         row.addWidget(btn_lav_4c_auto)
+        btn_lav_4c_ai_plus = QPushButton(tr("tools.lav_4c_ai_plus"))
+        btn_lav_4c_ai_plus.setToolTip(tr("tools.lav_4c_ai_plus_tip"))
+        btn_lav_4c_ai_plus.clicked.connect(self.lav_4c_ai_plus_requested.emit)
+        row.addWidget(btn_lav_4c_ai_plus)
         btn_lav_bi = QPushButton(tr("tools.lav_2c"))
         btn_lav_bi.setToolTip(tr("tools.lav_2c_tip"))
         btn_lav_bi.clicked.connect(self.lav_bi_requested.emit)

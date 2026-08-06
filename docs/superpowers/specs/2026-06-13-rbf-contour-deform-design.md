@@ -68,7 +68,7 @@ P_i' = P_i + Δ * w_i * K
 ```python
 x0, x1 = view.viewRange()[0]
 viewport_w = max(view.width(), 1)
-scale = (x1 - x0) / viewport_w          # image px per screen px
+scale = (x1 - x0) / viewport_w  # image px per screen px
 sigma_image = SIGMA_SCREEN_PX * scale
 ```
 
@@ -118,6 +118,7 @@ def gaussian_weights(
     pinned_indices: frozenset[int] = frozenset(),
 ) -> np.ndarray: ...
 
+
 def apply_gaussian_displacement(
     points: Sequence[tuple[float, float]],
     delta: tuple[float, float],
@@ -125,6 +126,7 @@ def apply_gaussian_displacement(
     *,
     sensitivity_k: float = SENSITIVITY_K,
 ) -> list[tuple[float, float]]: ...
+
 
 def sigma_from_view_range(
     view_range_width: float,

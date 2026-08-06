@@ -137,8 +137,7 @@ class PynetdimseClient:
         )
         if not assoc.is_established:
             raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} "
-                f"(called AE: {self._called_ae})"
+                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
             )
         return assoc
 
@@ -203,9 +202,7 @@ class PynetdimseClient:
         try:
             assoc = self._associate()
             try:
-                responses = assoc.send_c_find(
-                    query_ds, StudyRootQueryRetrieveInformationModelFind
-                )
+                responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)
                 for status, identifier in responses:
                     if status is None:
                         break
@@ -256,9 +253,11 @@ class PynetdimseClient:
             file_meta = getattr(event, "file_meta", None)
             if file_meta is None:
                 from pydicom.dataset import FileMetaDataset
+
                 file_meta = FileMetaDataset()
             if not file_meta.get("TransferSyntaxUID"):
                 from pydicom.uid import ExplicitVRLittleEndian
+
                 file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
             ds.file_meta = file_meta
             buf = BytesIO()
@@ -284,8 +283,7 @@ class PynetdimseClient:
         )
         if not assoc.is_established:
             raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} "
-                f"(called AE: {self._called_ae})"
+                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
             )
 
         try:
@@ -295,9 +293,7 @@ class PynetdimseClient:
             ds.SeriesInstanceUID = series_uid
             ds.SOPInstanceUID = instance_uid
 
-            for status, _identifier in assoc.send_c_get(
-                ds, StudyRootQueryRetrieveInformationModelGet
-            ):
+            for status, _identifier in assoc.send_c_get(ds, StudyRootQueryRetrieveInformationModelGet):
                 if is_cancelled and is_cancelled():
                     assoc.abort()
                     raise DimseAssociationError("C-GET cancelled")
@@ -308,16 +304,12 @@ class PynetdimseClient:
                 if status.Status in (0xFF00, 0xFF01):
                     continue
                 if status.Status >= 0xA000:
-                    raise DimseAssociationError(
-                        f"C-GET failed with status 0x{status.Status:04X}"
-                    )
+                    raise DimseAssociationError(f"C-GET failed with status 0x{status.Status:04X}")
         finally:
             assoc.release()
 
         if instance_uid not in received:
-            raise DimseAssociationError(
-                f"C-GET: instance {instance_uid} not received"
-            )
+            raise DimseAssociationError(f"C-GET: instance {instance_uid} not received")
         return received[instance_uid]
 
     def c_move_instances(
@@ -347,8 +339,7 @@ class PynetdimseClient:
         )
         if not assoc.is_established:
             raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} "
-                f"(called AE: {self._called_ae})"
+                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
             )
 
         try:
@@ -422,8 +413,7 @@ class PynetdimseClient:
         )
         if not assoc.is_established:
             raise DimseAssociationError(
-                f"Cannot associate with {self._host}:{self._port} "
-                f"(called AE: {self._called_ae})"
+                f"Cannot associate with {self._host}:{self._port} (called AE: {self._called_ae})"
             )
 
         try:

@@ -5,13 +5,13 @@ from __future__ import annotations
 import pytest
 
 from echo_personal_tool.domain.ports import QuerySource
-from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
+from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.server_client_factory import (
-    make_dimse_client,
     make_dicom_query_service,
     make_dicom_web_client,
+    make_dimse_client,
     make_upload_targets,
     parse_query_source,
 )
@@ -43,9 +43,7 @@ def test_make_dimse_client_disabled() -> None:
 
 
 def test_make_dicom_query_service_uses_settings_source() -> None:
-    svc = make_dicom_query_service(
-        ServerSettings(use_mock=True, query_source="dimse")
-    )
+    svc = make_dicom_query_service(ServerSettings(use_mock=True, query_source="dimse"))
     assert svc.source == QuerySource.DIMSE
     studies = svc.query_studies()
     assert len(studies) >= 1

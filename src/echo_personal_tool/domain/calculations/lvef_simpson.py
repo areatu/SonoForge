@@ -7,6 +7,7 @@ import math
 
 from echo_personal_tool.domain.models import Contour, LvefResult, LvViewMetrics
 from echo_personal_tool.domain.services.contour_geometry import long_axis_endpoints
+from echo_personal_tool.infrastructure.i18n import tr
 
 _VALID_PHASES = {"ed", "es"}
 _VALID_VIEWS = {"A4C", "A2C"}
@@ -53,21 +54,46 @@ def calculate(
     if a4c is None and a2c is None:
         return None
 
-    per_view_volumes: dict[str, tuple[float, float]] = {}
-    for view, metrics in (("A4C", a4c), ("A2C", a2c)):
-        if metrics is None:
-            continue
-        if metrics.edv_ml is not None and metrics.esv_ml is not None:
-            per_view_volumes[view] = (metrics.edv_ml, metrics.esv_ml)
-
     lvef_percent: float | None = None
     method: str | None = None
-    if per_view_volumes:
-        edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
-        esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
-        if edv_ml > 0.0:
-            lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
-            method = "simpson_biplan" if len(per_view_volumes) == 2 else "simpson_monoplan"
+
+    if (
+        a4c is not None
+        and a2c is not None
+        and "ed" in grouped_mm["A4C"]
+        and "es" in grouped_mm["A4C"]
+        and "ed" in grouped_mm["A2C"]
+        and "es" in grouped_mm["A2C"]
+    ):
+        a4c_ed_pts, a4c_ed_ann = grouped_mm["A4C"]["ed"]
+        a4c_es_pts, a4c_es_ann = grouped_mm["A4C"]["es"]
+        a2c_ed_pts, a2c_ed_ann = grouped_mm["A2C"]["ed"]
+        a2c_es_pts, a2c_es_ann = grouped_mm["A2C"]["es"]
+
+        if all(
+            ann is not None
+            for ann in (a4c_ed_ann, a4c_es_ann, a2c_ed_ann, a2c_es_ann)
+        ):
+            edv_ml = _biplane_volume_ml(a4c_ed_pts, a4c_ed_ann, a2c_ed_pts, a2c_ed_ann)
+            esv_ml = _biplane_volume_ml(a4c_es_pts, a4c_es_ann, a2c_es_pts, a2c_es_ann)
+            if edv_ml is not None and esv_ml is not None and edv_ml > 0.0 and esv_ml <= edv_ml:
+                lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
+                method = "simpson_biplan"
+
+    if lvef_percent is None:
+        per_view_volumes: dict[str, tuple[float, float]] = {}
+        for view, metrics in (("A4C", a4c), ("A2C", a2c)):
+            if metrics is None:
+                continue
+            if metrics.edv_ml is not None and metrics.esv_ml is not None:
+                per_view_volumes[view] = (metrics.edv_ml, metrics.esv_ml)
+
+        if per_view_volumes:
+            edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
+            esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
+            if edv_ml > 0.0 and esv_ml <= edv_ml:
+                lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
+                method = "simpson_monoplan"
 
     return LvefResult(a4c=a4c, a2c=a2c, lvef_percent=lvef_percent, method=method)
 
@@ -83,12 +109,9 @@ def format_contour_overlay(
     phase = contour.phase.upper()
     chamber = contour.chamber.upper()
     if contour.review_pending:
-        return (
-            f"{chamber} {view} {phase}: проверьте контур (ASE) · "
-            "R — уточнить · Enter — принять"
-        )
+        return tr("domain.lvef.check_contour", chamber=chamber, view=view, phase=phase)
     if pixel_spacing is None:
-        return f"{chamber} {view} {phase} · Длина: — · Объём: —"
+        return tr("domain.lvef.status_empty", chamber=chamber, view=view, phase=phase)
     length = _contour_length_mm(contour, pixel_spacing)
     volume = _contour_volume_ml(contour, pixel_spacing)
     if spacing_calibrated:
@@ -97,14 +120,39 @@ def format_contour_overlay(
     else:
         length_text = f"{length:.1f} px" if length is not None else "—"
         volume_text = f"{volume:.1f} px³" if volume is not None else "—"
-    return f"{chamber} {view} {phase} · Длина: {length_text} · Объём: {volume_text}"
+    return tr(
+        "domain.lvef.status_partial", chamber=chamber, view=view, phase=phase, length=length_text, volume=volume_text
+    )
 
 
 _MIN_LV_AUTO_ANNULUS_PX = 20.0
 _MIN_LV_AUTO_LONG_AXIS_PX = 15.0
 _MIN_LV_AUTO_ARC_SPAN_PX = 8.0
-_MIN_LV_AUTO_ANNULUS_MM = 3.0
+_MIN_LV_AUTO_ANNULUS_MM = 5.0
 _MIN_ARC_DEPTH_RATIO = 0.15
+
+
+def _contour_self_intersects(points: list[tuple[float, float]]) -> bool:
+    """Check if the open-arc contour self-intersects (excluding consecutive segments)."""
+    n = len(points)
+    if n < 4:
+        return False
+    segments = [(points[i], points[i + 1]) for i in range(n - 1)]
+    for i in range(len(segments)):
+        (ax, ay), (bx, by) = segments[i]
+        for j in range(i + 2, len(segments)):
+            # Skip adjacent segments (they share an endpoint)
+            if j == i + 1:
+                continue
+            (cx, cy), (dx, dy) = segments[j]
+            denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx)
+            if abs(denom) < 1e-10:
+                continue
+            t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / denom
+            u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / denom
+            if 0.0 < t < 1.0 and 0.0 < u < 1.0:
+                return True
+    return False
 
 
 def _contour_annulus_length_px(contour: Contour) -> float:
@@ -182,19 +230,16 @@ def explain_lv_auto_reject_reason(
     Quality gate v2 adds spacing-aware and geometry checks.
     """
     if contour.mitral_annulus is None or len(contour.points) < 3:
-        return "контур не построен"
+        return tr("domain.lvef.no_contour")
     annulus_px = _contour_annulus_length_px(contour)
     long_axis_px = _contour_long_axis_px(contour)
     arc_span_px = _contour_arc_span_px(contour)
     if arc_span_px < _MIN_LV_AUTO_ARC_SPAN_PX:
-        return (
-            "контур маски схлопнулся при построении "
-            "(маска есть, но граница не извлечена — сообщите разработчику)"
-        )
+        return tr("domain.lvef.mask_collapsed")
     if annulus_px < _MIN_LV_AUTO_ANNULUS_PX:
-        return "не найдено митральное кольцо (проверьте вид A4C и кадр ED/ES)"
+        return tr("domain.lvef.no_annulus")
     if long_axis_px < _MIN_LV_AUTO_LONG_AXIS_PX:
-        return "короткая ось ЛЖ слишком мала — выберите другой кадр"
+        return tr("domain.lvef.lv_axis_too_short")
 
     # v2: spacing-aware MA length check
     if pixel_spacing is not None:
@@ -202,18 +247,12 @@ def explain_lv_auto_reject_reason(
         if row_spacing > 0 and col_spacing > 0:
             annulus_mm = annulus_px * ((row_spacing + col_spacing) / 2.0)
             if annulus_mm < _MIN_LV_AUTO_ANNULUS_MM:
-                return (
-                    f"митральное кольцо слишком мало ({annulus_mm:.1f} мм < {_MIN_LV_AUTO_ANNULUS_MM} мм) — "
-                    "проверьте вид A4C и калибровку"
-                )
+                return tr("domain.lvef.annulus_too_small", annulus_mm=annulus_mm, min_mm=_MIN_LV_AUTO_ANNULUS_MM)
 
     # v2: arc depth ratio check
     arc_depth = _contour_arc_depth_px(contour)
     if annulus_px > 0 and arc_depth / annulus_px < _MIN_ARC_DEPTH_RATIO:
-        return (
-            f"контур слишком плоский (глубина {arc_depth:.0f}px / кольцо {annulus_px:.0f}px "
-            f"< {_MIN_ARC_DEPTH_RATIO:.0%}) — возможно ES или не тот view"
-        )
+        return tr("domain.lvef.contour_too_flat", depth=arc_depth, annulus=annulus_px, ratio=_MIN_ARC_DEPTH_RATIO)
 
     # v2: centroid outside ROI check
     if roi_xyxy is not None:
@@ -221,7 +260,11 @@ def explain_lv_auto_reject_reason(
         if centroid is not None:
             rx0, ry0, rx1, ry1 = roi_xyxy
             if not (rx0 <= centroid[0] <= rx1 and ry0 <= centroid[1] <= ry1):
-                return "центр контура вне ROI — проверьте выделение сектора"
+                return tr("domain.lvef.center_outside_roi")
+
+    # v3: self-intersection check
+    if _contour_self_intersects(contour.points):
+        return tr("domain.lvef.self_intersecting")
 
     return None
 
@@ -262,10 +305,7 @@ def simpson_volume_ml_from_closed_polygon(
     if len(contour.points) < 3:
         return None
     row_spacing, col_spacing = pixel_spacing
-    points_mm = tuple(
-        (float(col) * col_spacing, float(row) * row_spacing)
-        for col, row in contour.points
-    )
+    points_mm = tuple((float(col) * col_spacing, float(row) * row_spacing) for col, row in contour.points)
     volume = _simpson_volume_ml(points_mm, None)
     return volume if volume > 0.0 else None
 
@@ -328,10 +368,7 @@ def _contour_to_mm(
     """Convert contour points from pixels to millimeters."""
     row_spacing, col_spacing = pixel_spacing
     polygon_points = contour.closed_polygon_points()
-    points_mm = tuple(
-        (float(col) * col_spacing, float(row) * row_spacing)
-        for col, row in polygon_points
-    )
+    points_mm = tuple((float(col) * col_spacing, float(row) * row_spacing) for col, row in polygon_points)
     annulus_mm = None
     if contour.mitral_annulus is not None:
         annulus_mm = (
@@ -347,24 +384,23 @@ def _contour_to_mm(
     return points_mm, annulus_mm
 
 
-def _simpson_volume_ml(
+def _disk_diameters_mm(
     contour_points_mm: tuple[tuple[float, float], ...],
-    mitral_annulus_mm: tuple[tuple[float, float], tuple[float, float]] | None = None,
-) -> float:
-    """Approximate a contour volume using 20 Simpson disks."""
+    mitral_annulus_mm: tuple[tuple[float, float], tuple[float, float]] | None,
+) -> list[float]:
+    """Return 20 Simpson disk diameters in mm for a single view."""
     if len(contour_points_mm) < 3:
-        return 0.0
+        return []
 
     if mitral_annulus_mm is not None:
         base, tip = long_axis_endpoints(list(contour_points_mm), mitral_annulus_mm)
         long_axis_mm = math.hypot(tip[0] - base[0], tip[1] - base[1])
         if long_axis_mm <= 0.0:
-            return 0.0
+            return []
 
-        disk_height_mm = long_axis_mm / 20.0
         axis_dx = tip[0] - base[0]
         axis_dy = tip[1] - base[1]
-        disk_diameters_mm = []
+        disk_diameters_mm: list[float] = []
         for index in range(20):
             alpha = (index + 0.5) / 20.0
             center = (
@@ -379,31 +415,88 @@ def _simpson_volume_ml(
                     center,
                 )
             )
-        if not disk_diameters_mm or max(disk_diameters_mm) <= 0.0:
-            return 0.0
-
-        disk_volume_mm3 = 0.0
-        for index in range(20):
-            diameter_mm = disk_diameters_mm[index]
-            disk_volume_mm3 += (math.pi / 4.0) * diameter_mm * diameter_mm * disk_height_mm
-
-        return disk_volume_mm3 / 1000.0
+        return disk_diameters_mm
 
     y_values = [point[1] for point in contour_points_mm]
     min_y = min(y_values)
     max_y = max(y_values)
     long_axis_mm = max_y - min_y
     if long_axis_mm <= 0.0:
+        return []
+
+    disk_height_mm = long_axis_mm / 20.0
+    disk_diameters_mm = []
+    for index in range(20):
+        y_mid = min_y + (index + 0.5) * disk_height_mm
+        diameter_mm = _find_width_at_y(contour_points_mm, y_mid)
+        disk_diameters_mm.append(diameter_mm)
+    return disk_diameters_mm
+
+
+def _simpson_volume_ml(
+    contour_points_mm: tuple[tuple[float, float], ...],
+    mitral_annulus_mm: tuple[tuple[float, float], tuple[float, float]] | None = None,
+) -> float:
+    """Approximate a contour volume using 20 Simpson disks."""
+    disk_diameters_mm = _disk_diameters_mm(contour_points_mm, mitral_annulus_mm)
+    if not disk_diameters_mm or max(disk_diameters_mm) <= 0.0:
+        return 0.0
+
+    if mitral_annulus_mm is not None:
+        base, tip = long_axis_endpoints(list(contour_points_mm), mitral_annulus_mm)
+        long_axis_mm = math.hypot(tip[0] - base[0], tip[1] - base[1])
+    else:
+        y_values = [point[1] for point in contour_points_mm]
+        long_axis_mm = max(y_values) - min(y_values)
+
+    if long_axis_mm <= 0.0:
         return 0.0
 
     disk_height_mm = long_axis_mm / 20.0
     disk_volume_mm3 = 0.0
-    for index in range(20):
-        y_mid = min_y + (index + 0.5) * disk_height_mm
-        diameter_mm = _find_width_at_y(contour_points_mm, y_mid)
-        disk_volume_mm3 += (math.pi / 4.0) * disk_height_mm * diameter_mm * diameter_mm
+    for diameter_mm in disk_diameters_mm:
+        disk_volume_mm3 += (math.pi / 4.0) * diameter_mm * diameter_mm * disk_height_mm
 
     return disk_volume_mm3 / 1000.0
+
+
+def _long_axis_mm(
+    contour_points_mm: tuple[tuple[float, float], ...],
+    mitral_annulus_mm: tuple[tuple[float, float], tuple[float, float]] | None,
+) -> float:
+    if mitral_annulus_mm is not None:
+        base, tip = long_axis_endpoints(list(contour_points_mm), mitral_annulus_mm)
+        return math.hypot(tip[0] - base[0], tip[1] - base[1])
+    y_values = [point[1] for point in contour_points_mm]
+    return max(y_values) - min(y_values)
+
+
+def _biplane_volume_ml(
+    points_a: tuple[tuple[float, float], ...],
+    annulus_a: tuple[tuple[float, float], tuple[float, float]] | None,
+    points_b: tuple[tuple[float, float], ...],
+    annulus_b: tuple[tuple[float, float], tuple[float, float]] | None,
+) -> float | None:
+    diameters_a = _disk_diameters_mm(points_a, annulus_a)
+    diameters_b = _disk_diameters_mm(points_b, annulus_b)
+    if not diameters_a or not diameters_b:
+        return None
+    if len(diameters_a) != len(diameters_b):
+        return None
+
+    long_axis_a = _long_axis_mm(points_a, annulus_a)
+    long_axis_b = _long_axis_mm(points_b, annulus_b)
+    if long_axis_a <= 0.0 or long_axis_b <= 0.0:
+        return None
+
+    disk_height_mm = (long_axis_a + long_axis_b) / 40.0
+    volume_mm3 = 0.0
+    for d_a, d_b in zip(diameters_a, diameters_b):
+        if d_a <= 0.0 or d_b <= 0.0:
+            continue
+        volume_mm3 += (math.pi / 4.0) * d_a * d_b * disk_height_mm
+
+    return volume_mm3 / 1000.0
 
 
 def _find_width_at_y(contour_points_mm: tuple[tuple[float, float], ...], y_mm: float) -> float:
@@ -470,3 +563,52 @@ def _find_width_perpendicular_to_axis(
         return 0.0
 
     return max(intersections) - min(intersections)
+
+
+# ── Simpson visualization lines ────────────────────────────────────
+
+
+@dataclasses.dataclass(frozen=True)
+class SimpsonLines:
+    """Geometry for Simpson disc visualization overlay."""
+
+    central_line: tuple[tuple[float, float], tuple[float, float]]
+    disk_lines: list[tuple[tuple[float, float], tuple[float, float]]]
+
+
+def compute_simpson_lines(contour: Contour) -> SimpsonLines | None:
+    """Compute central axis + paired disk lines for a confirmed LV contour.
+
+    Each disk line connects a pair of symmetric contour points:
+    point[i] ↔ point[N-1-i].  Number of lines = N // 2.
+    Returns None when the contour lacks mitral_annulus or has too few points.
+    All coordinates are in **pixel** space (same as contour.points).
+    """
+    if contour.mitral_annulus is None or len(contour.points) < 4:
+        return None
+
+    points = list(contour.points)
+    n = len(points)
+    septal, lateral = contour.mitral_annulus
+    base = ((septal[0] + lateral[0]) / 2.0, (septal[1] + lateral[1]) / 2.0)
+
+    # Apex: point farthest from the MA chord line
+    def _point_line_distance(px: float, py: float) -> float:
+        dx = lateral[0] - septal[0]
+        dy = lateral[1] - septal[1]
+        chord_len = math.hypot(dx, dy)
+        if chord_len < 1e-6:
+            return 0.0
+        return abs(dy * px - dx * py + lateral[0] * septal[1] - lateral[1] * septal[0]) / chord_len
+
+    apex = max(points, key=lambda p: _point_line_distance(p[0], p[1]))
+
+    # Pair points symmetrically: point[i] ↔ point[N-1-i]
+    num_lines = n // 2
+    disk_lines: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for i in range(num_lines):
+        left = (float(points[i][0]), float(points[i][1]))
+        right = (float(points[n - 1 - i][0]), float(points[n - 1 - i][1]))
+        disk_lines.append((left, right))
+
+    return SimpsonLines(central_line=(base, apex), disk_lines=disk_lines)

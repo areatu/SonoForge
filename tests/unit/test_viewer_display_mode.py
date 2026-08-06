@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.gui
+
 from echo_personal_tool.domain.models import InstanceMetadata, ViewerState
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget

@@ -9,9 +9,7 @@ Run:  ECHO_BENCH=1 pytest tests/bench/test_playback_bench.py -v --benchmark-only
 from __future__ import annotations
 
 import os
-import time
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -32,6 +30,7 @@ def _make_frames(n: int, dtype: type = np.uint8) -> np.ndarray:
 
 
 # ── FPS simulation ──────────────────────────────────────────────────
+
 
 @_BENCH
 def test_bench_playback_fps_30_frame_loop(benchmark) -> None:
@@ -64,6 +63,7 @@ def test_bench_playback_fps_100_frame_loop(benchmark) -> None:
 
 
 # ── Prefetch batch ──────────────────────────────────────────────────
+
 
 @_BENCH
 def test_bench_prefetch_batch_load(benchmark, tmp_path: Path) -> None:
@@ -98,6 +98,7 @@ def test_bench_small_loop_full_prefetch(benchmark, tmp_path: Path) -> None:
 
 # ── Warmup gate ─────────────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_warmup_loaded_ahead_count(benchmark, tmp_path: Path) -> None:
     """Count loaded frames ahead — called every tick during warmup."""
@@ -114,6 +115,7 @@ def test_bench_warmup_loaded_ahead_count(benchmark, tmp_path: Path) -> None:
 
 
 # ── Double-next skip ────────────────────────────────────────────────
+
 
 @_BENCH
 def test_bench_double_next_skip_check(benchmark, tmp_path: Path) -> None:

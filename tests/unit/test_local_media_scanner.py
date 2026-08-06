@@ -47,11 +47,7 @@ def test_scan_mixed_dicom_mp4_jpeg_folder(tmp_path: Path) -> None:
 
     assert len(studies) == 1
     assert len(studies[0].series) == 3
-    formats = {
-        instance.media_format
-        for series in studies[0].series
-        for instance in series.instances
-    }
+    formats = {instance.media_format for series in studies[0].series for instance in series.instances}
     assert formats == {"dicom", "mp4", "jpeg"}
 
 

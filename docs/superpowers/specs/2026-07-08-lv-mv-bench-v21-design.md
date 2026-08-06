@@ -171,8 +171,11 @@ Summary block prints Gate A/C with PASS/FAIL (already stubbed in runner).
 
 ```python
 def _mask_boundary_points_in_band(
-    mask: np.ndarray, y_low: int, y_high: int,
+    mask: np.ndarray,
+    y_low: int,
+    y_high: int,
 ) -> tuple[np.ndarray, np.ndarray]: ...
+
 
 def _snap_annulus_to_mask_boundary(
     septal: tuple[float, float],
@@ -182,6 +185,7 @@ def _snap_annulus_to_mask_boundary(
     basal_y_range: tuple[int, int],
     search_radius_px: float = 12.0,
 ) -> tuple[tuple[float, float], tuple[float, float]]: ...
+
 
 def _blend_annulus_with_arc_tips(
     annulus: tuple[...],

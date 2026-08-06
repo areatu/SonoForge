@@ -12,7 +12,6 @@ Run:  ECHO_BENCH=1 pytest tests/bench/test_pipeline_bench.py -v --benchmark-only
 from __future__ import annotations
 
 import os
-import time as _time
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +32,7 @@ _FRAME_SIZES = [(64, 64), (256, 256), (512, 512)]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _write_synthetic_study(
     root: Path,
@@ -89,6 +89,7 @@ def _write_synthetic_study(
 
 # ── Scan pipeline ────────────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_scan_small_study(benchmark, tmp_path: Path) -> None:
     """Scan 3 series × 1 file (small 64×64)."""
@@ -132,6 +133,7 @@ def test_bench_scan_study_multiframe(benchmark, tmp_path: Path) -> None:
 
 
 # ── Full pipeline: disk → decode → FrameCache ────────────────────────
+
 
 @_BENCH
 def test_bench_pipeline_uncompressed_decode(benchmark, tmp_path: Path) -> None:
@@ -208,6 +210,7 @@ def test_bench_pipeline_jpeg2000_decode(benchmark, tmp_path: Path) -> None:
 
 # ── Thumbnail generation ─────────────────────────────────────────────
 
+
 @_BENCH
 def test_bench_thumbnail_decode_single(benchmark, tmp_path: Path) -> None:
     """Decode first frame and convert to QImage (thumbnail path)."""
@@ -228,6 +231,7 @@ def test_bench_thumbnail_decode_single(benchmark, tmp_path: Path) -> None:
 
 
 # ── First-frame latency (user-perceived) ─────────────────────────────
+
 
 @_BENCH
 def test_bench_first_frame_latency(benchmark, tmp_path: Path) -> None:
@@ -250,6 +254,7 @@ def test_bench_first_frame_latency(benchmark, tmp_path: Path) -> None:
 
 
 # ── ScanWorker end-to-end (QRunnable dispatch) ───────────────────────
+
 
 @_BENCH
 def test_bench_scanworker_dispatch(benchmark, tmp_path: Path) -> None:

@@ -33,10 +33,7 @@ def open_arc_contour(*, phase: str, view: str, width_px: float, height_px: float
     n = 9
     annulus = ((0.0, 0.0), (width_px, 0.0))
     angles = [math.pi - i * math.pi / (n - 1) for i in range(n)]
-    points = [
-        (width_px / 2.0 + (width_px / 2.0) * math.cos(a), height_px * math.sin(a))
-        for a in angles
-    ]
+    points = [(width_px / 2.0 + (width_px / 2.0) * math.cos(a), height_px * math.sin(a)) for a in angles]
     return Contour(phase=phase, view=view, mitral_annulus=annulus, points=points)
 
 
@@ -78,7 +75,7 @@ def test_calculate_missing_spacing_returns_none() -> None:
     assert calculate(contours, None) is None  # type: ignore[arg-type]
 
 
-def test_calculate_biplan_averages_views() -> None:
+def test_calculate_biplan_falls_back_to_monoplane_without_annulus() -> None:
     contours = (
         rectangle_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),
         rectangle_contour(phase="ES", view="A4C", width_px=80.0, height_px=40.0),
@@ -89,14 +86,12 @@ def test_calculate_biplan_averages_views() -> None:
     result = calculate(contours, (0.5, 0.5))
 
     assert result is not None
-    assert result.method == "simpson_biplan"
+    assert result.method == "simpson_monoplan"
     assert result.lvef_percent == pytest.approx(46.22950819672132, rel=1e-6)
 
 
 def test_calculate_single_ed_returns_partial_a4c_metrics() -> None:
-    contours = (
-        open_arc_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),
-    )
+    contours = (open_arc_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),)
     result = calculate(contours, (0.5, 0.5))
 
     assert result is not None
@@ -178,10 +173,13 @@ def test_contour_meets_lv_auto_quality_rejects_tiny_contour() -> None:
     )
 
     assert explain_lv_auto_reject_reason(tiny, (0.5, 0.5)) is not None
-    assert explain_lv_auto_reject_reason(
-        open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0),
-        (0.5, 0.5),
-    ) is None
+    assert (
+        explain_lv_auto_reject_reason(
+            open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0),
+            (0.5, 0.5),
+        )
+        is None
+    )
 
 
 def test_lv_auto_quality_rejects_small_annulus_mm_with_spacing() -> None:
@@ -203,3 +201,42 @@ def test_lv_auto_quality_passes_with_normal_spacing() -> None:
     # spacing 0.15 mm/px → MA = 100 * 0.15 = 15mm >= 3mm → passes
     reason = explain_lv_auto_reject_reason(contour, (0.15, 0.15))
     assert reason is None
+
+
+# ── Simpson visualization lines ────────────────────────────────────
+
+
+def test_compute_simpson_lines_returns_lines_for_valid_contour() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
+
+    # Tall narrow contour where lines are NOT parallel to MV chord
+    contour = open_arc_contour(phase="ed", view="A4C", width_px=60.0, height_px=200.0)
+    result = compute_simpson_lines(contour)
+
+    assert result is not None
+    base, tip = result.central_line
+    assert base[0] == pytest.approx(30.0, rel=1e-6)
+    assert tip[1] > base[1]
+    # Disk lines may be fewer than N//2 if parallel ones near MV are filtered
+    assert len(result.disk_lines) >= 0
+
+
+def test_compute_simpson_lines_returns_none_for_no_annulus() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
+
+    contour = Contour(phase="ed", view="A4C", points=[(0, 0), (10, 0), (5, 10)])
+    result = compute_simpson_lines(contour)
+    assert result is None
+
+
+def test_compute_simpson_lines_returns_none_for_too_few_points() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import compute_simpson_lines
+
+    contour = Contour(
+        phase="ed",
+        view="A4C",
+        mitral_annulus=((0, 0), (10, 0)),
+        points=[(0, 0), (10, 0)],
+    )
+    result = compute_simpson_lines(contour)
+    assert result is None

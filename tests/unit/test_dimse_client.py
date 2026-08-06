@@ -249,6 +249,7 @@ def test_tls_context_built_when_enabled() -> None:
     assert host == "127.0.0.1"
     # Verify mode should be CERT_REQUIRED when verify=True
     import ssl
+
     assert ssl_cx.verify_mode == ssl.CERT_REQUIRED
 
 
@@ -266,11 +267,13 @@ def test_tls_context_no_verify() -> None:
     assert result is not None
     ssl_cx, _ = result
     import ssl
+
     assert ssl_cx.verify_mode == ssl.CERT_NONE
 
 
 def test_from_settings_includes_tls() -> None:
     from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
     settings = ServerSettings(
         dimse_host="192.168.1.100",
         dimse_port=11111,

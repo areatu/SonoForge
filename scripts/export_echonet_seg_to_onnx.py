@@ -30,10 +30,7 @@ import torchvision
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = PROJECT_ROOT / "models"
 MANIFEST_PATH = MODELS_DIR / "model_manifest.json"
-DEFAULT_WEIGHTS_URL = (
-    "https://github.com/echonet/dynamic/releases/download/v1.0.0/"
-    "deeplabv3_resnet50_random.pt"
-)
+DEFAULT_WEIGHTS_URL = "https://github.com/echonet/dynamic/releases/download/v1.0.0/deeplabv3_resnet50_random.pt"
 INPUT_SIZE = 112
 MODEL_ID = "echonet_seg_resnet50"
 
@@ -52,13 +49,9 @@ class EchoNetSegmentationWrapper(nn.Module):
 def build_deeplabv3_resnet50() -> nn.Module:
     """Create DeepLabV3-ResNet50 with 1-class head (EchoNet segmentation setup)."""
     try:
-        model = torchvision.models.segmentation.deeplabv3_resnet50(
-            weights=None, aux_loss=False
-        )
+        model = torchvision.models.segmentation.deeplabv3_resnet50(weights=None, aux_loss=False)
     except TypeError:
-        model = torchvision.models.segmentation.deeplabv3_resnet50(
-            pretrained=False, aux_loss=False
-        )
+        model = torchvision.models.segmentation.deeplabv3_resnet50(pretrained=False, aux_loss=False)
 
     classifier = model.classifier[-1]
     model.classifier[-1] = nn.Conv2d(
@@ -83,8 +76,7 @@ def load_state_dict(weights_path: Path) -> dict[str, torch.Tensor]:
             state_dict = checkpoint
         else:
             raise ValueError(
-                f"Unrecognized checkpoint format in {weights_path}. "
-                "Expected key 'state_dict' or a flat state_dict."
+                f"Unrecognized checkpoint format in {weights_path}. Expected key 'state_dict' or a flat state_dict."
             )
     else:
         raise ValueError(f"Unsupported checkpoint type: {type(checkpoint)}")
@@ -145,10 +137,7 @@ def quantize_int8(onnx_path: Path, output_path: Path) -> None:
     try:
         from onnxruntime.quantization import QuantType, quantize_dynamic
     except ImportError as exc:
-        raise SystemExit(
-            "onnxruntime is required for --quantize-int8. "
-            "Install with: pip install onnxruntime"
-        ) from exc
+        raise SystemExit("onnxruntime is required for --quantize-int8. Install with: pip install onnxruntime") from exc
 
     quantize_dynamic(
         model_input=str(onnx_path),
@@ -164,13 +153,10 @@ def verify_onnx(onnx_path: Path, input_size: int = 112) -> None:
         import onnxruntime as ort
     except ImportError as exc:
         raise SystemExit(
-            "Verification requires onnxruntime and numpy. "
-            "Install with: pip install onnxruntime numpy"
+            "Verification requires onnxruntime and numpy. Install with: pip install onnxruntime numpy"
         ) from exc
 
-    session = ort.InferenceSession(
-        str(onnx_path), providers=["CPUExecutionProvider"]
-    )
+    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     sample = np.random.randn(1, 3, input_size, input_size).astype(np.float32)
     outputs = session.run(None, {"input": sample})
     logits = outputs[0]
@@ -214,9 +200,7 @@ def update_manifest_after_export(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Export EchoNet-Dynamic DeepLabV3-ResNet50 segmentation to ONNX."
-    )
+    parser = argparse.ArgumentParser(description="Export EchoNet-Dynamic DeepLabV3-ResNet50 segmentation to ONNX.")
     parser.add_argument(
         "--weights",
         type=Path,
@@ -293,9 +277,7 @@ def main() -> int:
 
     int8_path: Path | None = None
     if args.quantize_int8:
-        int8_path = args.output.with_name(
-            args.output.stem + "_int8" + args.output.suffix
-        )
+        int8_path = args.output.with_name(args.output.stem + "_int8" + args.output.suffix)
         quantize_int8(args.output, int8_path)
 
     if args.verify:
