@@ -45,3 +45,8 @@
 - **Тип:** refactor
 - **Файлы:** `src/echo_personal_tool/presentation/user_preferences_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
 - **Суть:** 1) Настройки "Отображение" перенесены в закладку "Интерфейс" в отдельный блок (QGroupBox с тонкой синей границей accent_tab). 2) "Разметка Gold", "DICOM" и "References" перенесены из отдельных закладок в закладку "Прочее", каждая в отдельном блоке. 3) Добавлены helper-функции `_group_box()` и `_scrollable_grouped()` для создания сгруппированных блоков с заголовками.
+
+## [2026-08-06 23:55] Исправления в диалоге Загрузить с сервера
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/presentation/dark_theme.py`
+- **Суть:** 1) Сортировка теперь работает по _SORT_ROLE (сырой дата), а не отображаемому тексту — исправлена проблема с обратным порядком дат. 2) Кастомный delegate удалён (он ломал клики), заменён CSS-стилями: выбранные исследования — крупный сплошной кружок ● (text_dim), невыбранные — пустые. 3) Исправлен __import__("datetime") на корректный импорт timedelta.

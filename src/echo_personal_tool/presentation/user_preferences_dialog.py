@@ -174,13 +174,6 @@ class UserPreferencesDialog(QDialog):
         interface_form.addRow(tr("preferences.results_overlay_font_size"), self._overlay_font_spin)
         interface_form.addRow(tr("preferences.results_overlay_opacity"), self._overlay_opacity_spin)
         interface_form.addRow(tr("preferences.caliper_width"), self._caliper_spin)
-        tabs.addTab(
-            _scrollable_grouped(
-                ("", interface_form),
-                (tr("preferences.block_display"), display_form),
-            ),
-            tr("preferences.tab_interface"),
-        )
 
         display_form = QFormLayout()
         self._playback_spin = QDoubleSpinBox()
@@ -219,6 +212,14 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
+
+        tabs.addTab(
+            _scrollable_grouped(
+                ("", interface_form),
+                (tr("preferences.block_display"), display_form),
+            ),
+            tr("preferences.tab_interface"),
+        )
 
         measure_form = QFormLayout()
         self._manual_contour_spin = QDoubleSpinBox()
