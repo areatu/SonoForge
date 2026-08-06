@@ -26,7 +26,7 @@ from echo_personal_tool.infrastructure.server_client_factory import (
     stow_upload_available,
 )
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
-from echo_personal_tool.presentation.styled_dialogs import theme_button_box_shortcuts
+from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
 
 
 def run_dicom_upload_dialog(
@@ -71,7 +71,7 @@ def run_dicom_upload_dialog(
     ok_btn.setText("&" + tr("dialog.dicom_upload.send"))
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
-    theme_button_box_shortcuts(buttons)
+    theme_button_box_icons(buttons)
     layout.addWidget(buttons)
 
     from echo_personal_tool.presentation.ui_animations import exec_animated

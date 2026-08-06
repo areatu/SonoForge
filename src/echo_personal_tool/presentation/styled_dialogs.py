@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QKeySequence
 from PySide6.QtWidgets import QDialogButtonBox, QFileDialog, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
@@ -231,50 +230,54 @@ def _style_dialog(dialog: QFileDialog) -> None:
     """)
 
 
-def theme_button_box_shortcuts(box: QDialogButtonBox) -> None:
-    """Color accelerator-key letters (e.g. the **O** in **&OK**) with a
-    theme-contrasting color — *text_dim* — so they stand out on both light
-    and dark themes.
+def theme_button_box_icons(box: QDialogButtonBox) -> None:
+    """Add theme-contrast icons to standard OK / Cancel buttons.
 
-    Qt normally underlines the letter following ``&`` in button text.  When
-    we switch to rich-text formatting to apply a custom color, the ``&``
-    accelerator stops working, so the shortcut key is re-registered
-    explicitly via :meth:`QPushButton.setShortcut`.
+    A green-tinted checkmark (✓) is added to the **OK** button and a
+    contrasting close / cross (✗) icon to **Cancel** / **Close**.
+    Icons use *text_dim* color — light on dark themes, dark on light themes —
+    so they are visible regardless of the active palette.
+
+    Mirrors the icon styling already present in the *Open folder…* dialog's
+    :func:`_style_dialog`, extending it to custom QDialogButtonBox buttons.
     """
 
+    from PySide6.QtGui import QIcon, QPixmap
+    from PySide6.QtSvg import QSvgRenderer
+    from PySide6.QtGui import QPainter
+
     p = get_theme_palette()
-    contrast_color = QColor(p["text_dim"])
+    icon_color = p["text_dim"]
 
-    _shortcut_keys: dict[QDialogButtonBox.StandardButton, Qt.Key] = {
-        QDialogButtonBox.StandardButton.Ok: Qt.Key.Key_O,
-        QDialogButtonBox.StandardButton.Cancel: Qt.Key.Key_C,
-        QDialogButtonBox.StandardButton.Save: Qt.Key.Key_S,
-        QDialogButtonBox.StandardButton.Discard: Qt.Key.Key_D,
-        QDialogButtonBox.StandardButton.Close: Qt.Key.Key_C,
-        QDialogButtonBox.StandardButton.Help: Qt.Key.Key_H,
-        QDialogButtonBox.StandardButton.Yes: Qt.Key.Key_Y,
-        QDialogButtonBox.StandardButton.No: Qt.Key.Key_N,
-        QDialogButtonBox.StandardButton.Abort: Qt.Key.Key_A,
-        QDialogButtonBox.StandardButton.Retry: Qt.Key.Key_R,
-        QDialogButtonBox.StandardButton.Ignore: Qt.Key.Key_I,
-    }
+    def _svg_icon(name: str) -> QIcon:
+        from echo_personal_tool.resources import icons
 
-    for std_button, key in _shortcut_keys.items():
-        btn = box.button(std_button)
-        if btn is None:
-            continue
-        raw_text = btn.text()
-        if not raw_text or "&" not in raw_text:
-            continue
-        match = re.search(r"&(\w)", raw_text)
-        if not match:
-            continue
-        shortcut_letter = match.group(1)
-        rest = raw_text.replace("&", "", 1)
-        rest = rest[len(shortcut_letter):]
-        btn.setTextFormat(Qt.TextFormat.RichText)
-        btn.setText(
-            f'<span style="color:{contrast_color.name()};font-weight:bold;">'
-            f'{shortcut_letter}</span>{rest}'
-        )
-        btn.setShortcut(QKeySequence("Alt+" + shortcut_letter.upper()))
+        svg_path = str(icons.__path__[0]) + f"/{name}.svg"
+        from pathlib import Path
+
+        svg_file = Path(svg_path)
+        if not svg_file.is_file():
+            return QIcon()
+        svg_text = svg_file.read_text(encoding="utf-8").replace("currentColor", icon_color)
+        renderer = QSvgRenderer(svg_text.encode("utf-8"))
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
+
+    ok_btn = box.button(QDialogButtonBox.StandardButton.Ok)
+    if ok_btn is not None and ok_btn.icon().isNull():
+        ok_btn.setIcon(_svg_icon("ok"))
+        ok_btn.setIconSize(Qt.QSize(16, 16))
+
+    cancel_btn = box.button(QDialogButtonBox.StandardButton.Cancel)
+    if cancel_btn is not None and cancel_btn.icon().isNull():
+        cancel_btn.setIcon(_svg_icon("close"))
+        cancel_btn.setIconSize(Qt.QSize(16, 16))
+
+    close_btn = box.button(QDialogButtonBox.StandardButton.Close)
+    if close_btn is not None and close_btn.icon().isNull():
+        close_btn.setIcon(_svg_icon("close"))
+        close_btn.setIconSize(Qt.QSize(16, 16))
