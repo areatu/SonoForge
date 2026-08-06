@@ -15,6 +15,7 @@ from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
 
 RING_BUFFER_SIZE = 50
 _KEYFRAME_SCAN_MAX_STEP = 120
+_max_readers = 10
 _thread_local = threading.local()
 _all_readers: list[VideoReader] = []
 _cleanup_registered = False
@@ -37,6 +38,13 @@ def get_thread_video_reader() -> VideoReader:
         reader = VideoReader()
         _thread_local.video_reader = reader
         _all_readers.append(reader)
+        # Prune oldest readers to prevent unbounded growth.
+        while len(_all_readers) > _max_readers:
+            old = _all_readers.pop(0)
+            try:
+                old.release()
+            except Exception:
+                pass
         if not _cleanup_registered:
             atexit.register(_cleanup_all_readers)
             _cleanup_registered = True

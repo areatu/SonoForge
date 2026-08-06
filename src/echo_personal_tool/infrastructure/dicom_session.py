@@ -52,6 +52,9 @@ _MAX_DECODE_WORKERS = 4
 _PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
 
 
+_max_sessions = 10
+
+
 def get_thread_dicom_session() -> DicomSession:
     global _cleanup_registered
     session = getattr(_thread_local, "dicom_session", None)
@@ -59,6 +62,13 @@ def get_thread_dicom_session() -> DicomSession:
         session = DicomSession()
         _thread_local.dicom_session = session
         _all_sessions.append(session)
+        # Prune oldest sessions to prevent unbounded growth.
+        while len(_all_sessions) > _max_sessions:
+            old = _all_sessions.pop(0)
+            try:
+                old.release()
+            except Exception:
+                pass
         if not _cleanup_registered:
             atexit.register(_cleanup_all_sessions)
             _cleanup_registered = True
@@ -590,6 +600,7 @@ class DicomSession:
         self._bot_offsets = None
         self._frames = None
         self._first_frame = None
+        self._metadata = None
 
 
 def stack_pixel_array(pixel_array: np.ndarray) -> np.ndarray:

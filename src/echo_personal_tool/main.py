@@ -7,7 +7,8 @@ import os
 import sys
 from pathlib import Path
 
-# ── Windows timer resolution: request 1ms granularity for PreciseTimer ──
+# Windows timer resolution: request 1ms granularity for PreciseTimer.
+# Cleaned up on app exit to allow OS idle states.
 if sys.platform == "win32":
     try:
         import ctypes
@@ -130,6 +131,17 @@ from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_exp
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
 
 
+def _cleanup_winmm() -> None:
+    """Restore Windows timer resolution to default on exit."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.winmm.timeEndPeriod(1)
+        except Exception:
+            pass
+
+
 def main() -> int:
     patch_pyqtgraph_export_dialog()
     app = QApplication(sys.argv)
@@ -174,6 +186,7 @@ def main() -> int:
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
     result = app.exec()
+    _cleanup_winmm()
     if is_enabled():
         print_summary()
     return result

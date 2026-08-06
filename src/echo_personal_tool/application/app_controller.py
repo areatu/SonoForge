@@ -156,7 +156,7 @@ class AppController(QObject):
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._last_frame_shown_at: float = 0.0
         self._playback_warmup_pending = False
-        self._playback_poll_interval_ms = 5
+        self._playback_poll_interval_ms = 16
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
         self._loaded_source_path: Path | None = None
