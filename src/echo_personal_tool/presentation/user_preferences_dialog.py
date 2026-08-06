@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -71,6 +72,24 @@ def show_user_preferences_dialog(
 def _scrollable_tab(form: QFormLayout) -> QWidget:
     host = QWidget()
     host.setLayout(form)
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(host)
+    return scroll
+
+
+def _group_box(title: str, form: QFormLayout) -> QGroupBox:
+    box = QGroupBox(title)
+    box.setLayout(form)
+    return box
+
+
+def _scrollable_grouped(*groups: tuple[str, QFormLayout]) -> QWidget:
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    layout.setContentsMargins(4, 8, 4, 8)
+    for title, form in groups:
+        layout.addWidget(_group_box(title, form))
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setWidget(host)
@@ -155,7 +174,13 @@ class UserPreferencesDialog(QDialog):
         interface_form.addRow(tr("preferences.results_overlay_font_size"), self._overlay_font_spin)
         interface_form.addRow(tr("preferences.results_overlay_opacity"), self._overlay_opacity_spin)
         interface_form.addRow(tr("preferences.caliper_width"), self._caliper_spin)
-        tabs.addTab(_scrollable_tab(interface_form), tr("preferences.tab_interface"))
+        tabs.addTab(
+            _scrollable_grouped(
+                ("", interface_form),
+                (tr("preferences.block_display"), display_form),
+            ),
+            tr("preferences.tab_interface"),
+        )
 
         display_form = QFormLayout()
         self._playback_spin = QDoubleSpinBox()
@@ -194,7 +219,6 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
-        tabs.addTab(_scrollable_tab(display_form), tr("preferences.tab_display"))
 
         measure_form = QFormLayout()
         self._manual_contour_spin = QDoubleSpinBox()
@@ -264,16 +288,7 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
-        dicom_form = QFormLayout()
-        self._show_dicom_inspector = QCheckBox()
-        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
-        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
-        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
-        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
-        dicom_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
-        dicom_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
-        tabs.addTab(_scrollable_tab(dicom_form), "DICOM")
-
+        # --- Gold annotation ---
         gold_form = QFormLayout()
         self._gold_enabled = QCheckBox()
         self._gold_enabled.setChecked(current.gold_annotation_enabled)
@@ -286,8 +301,18 @@ class UserPreferencesDialog(QDialog):
         gold_path_row.addWidget(self._gold_path_browse)
         gold_form.addRow(tr("preferences.gold_enabled"), self._gold_enabled)
         gold_form.addRow(tr("preferences.gold_path"), gold_path_row)
-        tabs.addTab(_scrollable_tab(gold_form), tr("preferences.tab_gold"))
 
+        # --- DICOM ---
+        dicom_form = QFormLayout()
+        self._show_dicom_inspector = QCheckBox()
+        self._show_dicom_inspector.setChecked(current.show_dicom_tag_inspector)
+        self._interesting_tags = QLineEdit(current.interesting_dicom_tags)
+        self._interesting_tags.setPlaceholderText("PatientName,StudyDate,HeartRate")
+        self._interesting_tags.setToolTip(tr("preferences.tags_tooltip"))
+        dicom_form.addRow(tr("preferences.inspector_tags"), self._show_dicom_inspector)
+        dicom_form.addRow(tr("preferences.tags_overlay"), self._interesting_tags)
+
+        # --- References ---
         refs_form = QFormLayout()
         self._refs_dir = QLineEdit(current.references_dir)
         self._refs_dir.setPlaceholderText(str(Path.home() / "ECHO2026-references"))
@@ -297,8 +322,8 @@ class UserPreferencesDialog(QDialog):
         refs_dir_row.addWidget(self._refs_dir)
         refs_dir_row.addWidget(self._refs_dir_browse)
         refs_form.addRow(tr("preferences.references_dir"), refs_dir_row)
-        tabs.addTab(_scrollable_tab(refs_form), tr("preferences.tab_references"))
 
+        # --- Other tab (consolidated with blocks) ---
         other_form = QFormLayout()
         self._confirm_reset = QCheckBox()
         self._confirm_reset.setChecked(current.confirm_reset)
@@ -314,7 +339,17 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
         other_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
-        tabs.addTab(_scrollable_tab(other_form), tr("preferences.tab_other"))
+
+        # --- Other tab: confirm/pfd/startup + Gold + DICOM + References ---
+        tabs.addTab(
+            _scrollable_grouped(
+                ("", other_form),
+                (tr("preferences.block_gold"), gold_form),
+                (tr("preferences.block_dicom"), dicom_form),
+                (tr("preferences.block_references"), refs_form),
+            ),
+            tr("preferences.tab_other"),
+        )
 
         # Experimental features tab
         exp_form = QFormLayout()
