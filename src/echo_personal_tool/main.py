@@ -69,6 +69,35 @@ for _logger_name in ("pylibjpeg", "pylibjpeg.utils", "pydicom"):
 if os.environ.get("ECHO_DEBUG"):
     logging.getLogger("echo_personal_tool").setLevel(logging.DEBUG)
 
+# ── Diagnostic file logging for the server download pipeline ──
+# Writes DEBUG-level logs from download/query modules to diag.log so partial
+# study loads (e.g. "15 of 85 instances") can be diagnosed without console capture.
+_DIAG_LOGGERS = (
+    "echo_personal_tool.application.workers.orthanc_download_worker",
+    "echo_personal_tool.application.services.dicom_retrieve_service",
+    "echo_personal_tool.application.dicom_query_service",
+    "echo_personal_tool.infrastructure.orthanc_client",
+    "echo_personal_tool.infrastructure.dimse_client",
+    "echo_personal_tool.infrastructure.embedded_storage_scp",
+    "echo_personal_tool.infrastructure.dicom_metadata_mapper",
+    "echo_personal_tool.presentation.orthanc_study_dialog",
+)
+_diag_log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+try:
+    _diag_log_dir.mkdir(parents=True, exist_ok=True)
+    _diag_handler = logging.FileHandler(
+        str(_diag_log_dir / "diag.log"), mode="w", encoding="utf-8"
+    )
+    _diag_handler.setLevel(logging.DEBUG)
+    _diag_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    for _logger_name in _DIAG_LOGGERS:
+        logging.getLogger(_logger_name).setLevel(logging.DEBUG)
+        logging.getLogger(_logger_name).addHandler(_diag_handler)
+except OSError:
+    pass
+
 # ── First-run environment check ──
 # When running outside PyInstaller and outside a venv, check if deps/models
 # are available.  The bash launcher (sonoforge) handles this for normal installs;

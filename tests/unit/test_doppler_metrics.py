@@ -13,6 +13,8 @@ from echo_personal_tool.domain.models.doppler import (
     DopplerTrace,
 )
 
+_np_trapezoid = getattr(np, "trapezoid", np.trapz)
+
 
 def test_compute_full_diastolic_scenario() -> None:
     dto = DopplerMeasurementDTO(
@@ -64,7 +66,7 @@ def test_compute_cw_scenario() -> None:
 
     result = compute(dto)
 
-    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vti = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
 
     assert result.vpeak_cm_s == 300.0
     assert result.vti_cm == expected_vti
@@ -87,8 +89,8 @@ def test_compute_vti_averaged_across_multiple_traces() -> None:
 
     result = compute(dto)
 
-    vti1 = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
-    vti2 = float(np.trapezoid([0.0, 100.0, 0.0], [300.0, 400.0, 500.0])) / 1000.0
+    vti1 = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    vti2 = float(_np_trapezoid([0.0, 100.0, 0.0], [300.0, 400.0, 500.0])) / 1000.0
     assert result.vti_cm == pytest.approx((vti1 + vti2) / 2.0)
 
 
@@ -113,7 +115,7 @@ def test_compute_vti_recognizes_valve_specific_labels(trace_label: str) -> None:
 
     result = compute(dto)
 
-    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vti = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
     assert result.vti_cm == pytest.approx(expected_vti)
 
 
@@ -216,7 +218,7 @@ def test_compute_vmean_from_trace_duration_when_no_et() -> None:
     dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
     result = compute(dto)
 
-    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vti = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
     expected_vmean = expected_vti / 0.2
     assert result.vmean_cm_s == pytest.approx(expected_vmean)
     assert result.pgmean_mmhg == pytest.approx(4.0 * (expected_vmean / 100.0) ** 2)
@@ -232,7 +234,7 @@ def test_compute_vmean_uses_et_over_trace_duration() -> None:
     dto = DopplerMeasurementDTO(peaks=(), intervals=(et,), traces=(trace,))
     result = compute(dto)
 
-    expected_vti = float(np.trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    expected_vti = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
     expected_vmean = expected_vti / 0.3
     assert result.vmean_cm_s == pytest.approx(expected_vmean)
 

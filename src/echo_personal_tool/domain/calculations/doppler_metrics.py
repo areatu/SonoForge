@@ -9,6 +9,9 @@ from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import DopplerResults
 
 
+_np_trapezoid = getattr(np, "trapezoid", np.trapz)
+
+
 def _normalize_label(label: str) -> str:
     return (
         label.strip()
@@ -56,7 +59,7 @@ def _find_vti_cm(dto: DopplerMeasurementDTO) -> float | None:
             continue
         times = [point[0] for point in trace.points]
         velocities = [point[1] for point in trace.points]
-        values.append(float(np.trapezoid(velocities, times)) / 1000.0)
+        values.append(float(_np_trapezoid(velocities, times)) / 1000.0)
     if not values:
         return None
     return sum(values) / len(values)

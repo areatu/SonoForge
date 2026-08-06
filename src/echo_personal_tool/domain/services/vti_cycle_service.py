@@ -10,6 +10,9 @@ import numpy as np
 from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
 
+_np_trapezoid = getattr(np, "trapezoid", np.trapz)
+
+
 @dataclass(frozen=True)
 class CycleVti:
     """VTI measured within a single cardiac cycle."""
@@ -43,7 +46,7 @@ def vti_from_points(points: Sequence[tuple[float, float]]) -> float:
     """
     times = np.asarray([p[0] for p in points], dtype=np.float64)
     velocities = np.asarray([p[1] for p in points], dtype=np.float64)
-    return float(np.trapezoid(velocities, times)) / 1000.0
+    return float(_np_trapezoid(velocities, times)) / 1000.0
 
 
 def vti_in_cycle(

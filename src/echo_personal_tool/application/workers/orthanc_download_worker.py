@@ -22,7 +22,7 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     map_instance_metadata,
     parse_study_datetime,
 )
-from echo_personal_tool.infrastructure.dicom_validator import InvalidDicomError, validate_dicom_header
+from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import (
@@ -375,10 +375,10 @@ class OrthancDownloadWorker(QRunnable):
                 try:
                     validate_dicom_header(dcm_path)
                     ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
-                except (InvalidDicomError, Exception):
-                    logger.warning("Failed to parse DICOM header: %s", dcm_path)
+                    instance = map_instance_metadata(ds, path=dcm_path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Skipping instance file %s: %s", dcm_path, exc)
                     continue
-                instance = map_instance_metadata(ds, path=dcm_path)
                 instances_by_series[instance.series_uid].append(instance)
                 if study_datetime is None:
                     try:
