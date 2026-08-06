@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
+from datetime import datetime
+
 from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -16,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QStyledItemDelegate,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -44,6 +48,57 @@ _SORT_ROLE = Qt.ItemDataRole.UserRole + 2
 _CANCEL_FORCE_CLOSE_MS = 30_000
 
 log = logging.getLogger(__name__)
+
+
+class _ThemedIndicatorDelegate(QStyledItemDelegate):
+    """Paint check-state indicators as a solid dot (●) or cross (✗)
+    with a theme-contrast color (*text_dim*) instead of the default
+    checkbox glyph."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        p = get_theme_palette()
+        self._color = QColor(p["text_dim"])
+
+    def paint(self, painter, option, index):
+        from PySide6.QtCore import QPoint, QRect
+        from PySide6.QtGui import QPainter
+        from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
+
+        check_state = index.data(Qt.ItemDataRole.CheckStateRole)
+        if check_state is None:
+            super().paint(painter, option, index)
+            return
+
+        # Paint text without the default checkbox, then draw our own indicator.
+        text_option = QStyleOptionViewItem()
+        text_option.__dict__.update(option.__dict__)
+        text_option.state = option.state & ~QStyle.State_On & ~QStyle.State_Off & ~QStyle.State_Enabled
+        super().paint(painter, text_option, index)
+
+        indicator_size = 18
+        x = option.rect.left() + 2
+        y = option.rect.center().y() - indicator_size // 2
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(self._color, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+
+        if check_state == Qt.CheckState.Checked:
+            painter.setPen(pen)
+            painter.setBrush(self._color)
+            r = indicator_size // 2 - 1
+            painter.drawEllipse(QPoint(x + indicator_size // 2, y + r + 1), r, r)
+        else:
+            offset = indicator_size // 3
+            cx = x + indicator_size // 2
+            cy = y + indicator_size // 2
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawLine(cx - offset, cy - offset, cx + offset, cy + offset)
+            painter.drawLine(cx - offset, cy + offset, cx + offset, cy - offset)
+        painter.restore()
 
 
 class OrthancStudyDialog(QDialog):
@@ -101,9 +156,18 @@ class OrthancStudyDialog(QDialog):
             self._source_combo.setCurrentIndex(max(source_idx, 0))
         self._source_combo.currentIndexChanged.connect(self._on_source_changed)
 
+        # Date filter
+        self._date_filter_combo = QComboBox()
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_all"), 0)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_7d"), 7)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_30d"), 30)
+        self._date_filter_combo.addItem(tr("orthanc.date_filter_90d"), 90)
+        self._date_filter_combo.currentIndexChanged.connect(self._on_date_filter_changed)
+
         search_row = QHBoxLayout()
         search_row.addWidget(self._search_edit, stretch=1)
         search_row.addWidget(self._source_combo)
+        search_row.addWidget(self._date_filter_combo)
         search_row.addWidget(self._find_btn)
 
         self._tree = QTreeWidget()
@@ -117,6 +181,7 @@ class OrthancStudyDialog(QDialog):
         self._tree.itemExpanded.connect(self._on_item_expanded)
         self._tree.itemChanged.connect(self._on_item_changed)
         self._tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._tree.setItemDelegateForColumn(0, _ThemedIndicatorDelegate(self._tree))
 
         self._status_label = QLabel()
         self._progress = QProgressBar()
@@ -291,16 +356,44 @@ class OrthancStudyDialog(QDialog):
         self._tree.clear()
         for study in studies:
             patient_name = study.patient_name or ""
-            study_date = study.study_date or ""
+            study_date_raw = study.study_date or ""
+            display_date = self._format_study_date(study_date_raw)
             desc = study.study_description or ""
-            item = QTreeWidgetItem([patient_name, study_date, desc])
+            item = QTreeWidgetItem([patient_name, display_date, desc])
             item.setData(0, _STUDY_UID_ROLE, study.study_uid)
             item.setData(0, _SORT_ROLE, patient_name)
-            item.setData(1, _SORT_ROLE, study_date)
+            item.setData(1, _SORT_ROLE, study_date_raw)
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
             self._tree.addTopLevelItem(item)
         self._tree.blockSignals(False)
         self._update_load_button()
+
+    def _format_study_date(self, raw_date: str) -> str:
+        """Convert DICOM date 'YYYYMMDD' to 'DD.MM.YYYY'."""
+        if len(raw_date) == 8 and raw_date.isdigit():
+            return f"{raw_date[6:8]}.{raw_date[4:6]}.{raw_date[:4]}"
+        return raw_date
+
+    def _filter_studies_by_date(self, days: int) -> None:
+        """Hide/show top-level study items based on the selected date filter."""
+        if days <= 0:
+            for i in range(self._tree.topLevelItemCount()):
+                self._tree.topLevelItem(i).setHidden(False)
+            return
+        cutoff = datetime.now() - __import__("datetime").timedelta(days=days)
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            raw_date = item.data(1, _SORT_ROLE) or ""
+            try:
+                item_date = datetime.strptime(raw_date, "%Y%m%d")
+            except ValueError:
+                item.setHidden(False)
+                continue
+            item.setHidden(item_date < cutoff)
+
+    def _on_date_filter_changed(self) -> None:
+        days = self._date_filter_combo.currentData()
+        self._filter_studies_by_date(days)
 
     def _series_label(self, series: SeriesInfo) -> str:
         parts = [series.modality, series.description]
