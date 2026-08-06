@@ -303,6 +303,7 @@
   "orthanc.preparing": "Подготовка загрузки…",
   "orthanc.querying_instances": "Запрос списка инстансов ({uid}…)",
   "orthanc.searching": "Поиск…",
+  "orthanc.ready": "Готово",
   "orthanc.series": "Серии",
   "orthanc.series_done": "Загрузка [{current}/{total}] завершена",
   "orthanc.series_error": "Ошибка [{current}/{total}]: {message}",

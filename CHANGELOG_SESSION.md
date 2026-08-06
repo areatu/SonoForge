@@ -65,3 +65,8 @@
 - **Тип:** fix
 - **Файлы:** `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`
 - **Суть:** 1) Фильтр дат изменен с Все/7дн/30дн/90дн на Все/1день/3дня/30дней. 2) UnboundLocalError в user_preferences_dialog.py — уже исправлен (display_form определяется перед использованием).
+
+## [2026-08-06 23:59] Исправление ошибок после review
+- **Тип:** fix
+- **Файлы:** `src/echo_personal_tool/presentation/styled_dialogs.py`, `src/echo_personal_tool/application/dicom_query_service.py`, `src/echo_personal_tool/presentation/orthanc_study_dialog.py`, `src/echo_personal_tool/infrastructure/locales/ru.json`, `src/echo_personal_tool/infrastructure/locales/en.json`, `tests/unit/test_presentation_user_preferences_dialog.py`
+- **Суть:** 1) DicomQueryService.query_series() теперь оборачивает вызовы в try/except с fallback на [], как query_studies — ошибка сервера не ломает диалог. 2) Исправлен шаблон ошибки: используется series_query_error вместо series_error (который имел незаполненные плейсхолдеры {current}/{total}). 3) Исправлен Qt.QSize → QSize в styled_dialogs.py:278 (багом ломался весь диалог настроек). 4) Тест test_creates_with_tabs: 7→5 вкладок после реструктуризации.

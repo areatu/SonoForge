@@ -303,6 +303,7 @@
   "orthanc.preparing": "Preparing download…",
   "orthanc.querying_instances": "Querying instances ({uid}…)",
   "orthanc.searching": "Searching…",
+  "orthanc.ready": "Ready",
   "orthanc.series": "Series",
   "orthanc.series_done": "Loading [{current}/{total}] complete",
   "orthanc.series_error": "Series query error: {message}",

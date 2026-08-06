@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import logging
 from dataclasses import replace
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -18,7 +20,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QStyledItemDelegate,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -57,6 +58,28 @@ class _StudyItem(QTreeWidgetItem):
         a = self.data(col, _SORT_ROLE)
         b = other.data(col, _SORT_ROLE)
         return str(a or "") < str(b or "")
+
+
+class _StudyQuerySignals(QObject):
+    finished = Signal(object)  # list[StudyInfo]
+
+
+class _StudyQueryWorker(QRunnable):
+    """Fetch studies from Orthanc in a background thread."""
+
+    def __init__(self, query_fn: Callable[[], list], signals: _StudyQuerySignals) -> None:
+        super().__init__()
+        self._query_fn = query_fn
+        self._signals = signals
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        try:
+            studies = self._query_fn()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[DLG] study query failed: %s", exc)
+            studies = []
+        self._signals.finished.emit(studies)
 
 
 class OrthancStudyDialog(QDialog):
@@ -193,10 +216,23 @@ class OrthancStudyDialog(QDialog):
 
     def _init_network(self) -> None:
         log.info("[DLG] _init_network called")
-        self._check_ping()
-        log.info("[DLG] _check_ping done, loading studies")
-        self._load_studies()
-        log.info("[DLG] _load_studies done, tree items=%d", self._tree.topLevelItemCount())
+        self._status_label.setText(tr("orthanc.searching"))
+        self._load_studies_async()
+
+    def _load_studies_async(self) -> None:
+        """Query studies in a background thread to avoid blocking the UI."""
+        text = self._search_edit.text().strip()
+        patient_name = text or None
+
+        def _query() -> list:
+            if self._query_service is not None:
+                return self._query_service.query_studies(patient_name=patient_name)
+            return self._client.query_studies(patient_name=patient_name)
+
+        signals = _StudyQuerySignals()
+        signals.finished.connect(self._on_studies_loaded)
+        worker = _StudyQueryWorker(_query, signals)
+        QThreadPool.globalInstance().start(worker)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
@@ -256,22 +292,6 @@ class OrthancStudyDialog(QDialog):
             self._client.close()
             self._client_closed = True
 
-    def _check_ping(self) -> None:
-        # Skip DICOMweb ping in DIMSE-only mode
-        if self._server_settings and self._server_settings.dimse_enabled:
-            if not self._server_settings.url or self._server_settings.use_mock:
-                self._status_label.setText(tr("orthanc.dimse_info_banner"))
-                return
-        if self._client.ping():
-            self._status_label.setText(tr("orthanc.server_available"))
-            return
-        self._status_label.setText(tr("orthanc.server_unavailable"))
-        QMessageBox.warning(
-            self,
-            tr("orthanc.connect_error.title"),
-            tr("orthanc.connect_error.body"),
-        )
-
     def _on_source_changed(self) -> None:
         source_val = self._source_combo.currentData()
         if self._query_service is not None and source_val:
@@ -293,24 +313,18 @@ class OrthancStudyDialog(QDialog):
         if self._server_settings is not None:
             self._server_settings = replace(self._server_settings, query_source=source_val)
 
-    def _load_studies(self) -> None:
-        text = self._search_edit.text().strip()
-        patient_name = text or None
-        try:
-            if self._query_service is not None:
-                studies = self._query_service.query_studies(patient_name=patient_name)
-            else:
-                studies = self._client.query_studies(patient_name=patient_name)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, tr("orthanc.find"), tr("orthanc.find_error", message=str(exc)))
-            return
+    def _on_studies_loaded(self, studies: list) -> None:
+        log.info("[DLG] _on_studies_loaded: count=%d", len(studies))
+        self._build_study_tree(studies)
+        self._filter_studies_by_date(self._date_filter_combo.currentData())
+        self._update_load_button()
 
+    def _build_study_tree(self, studies: list) -> None:
         studies = sorted(
             studies,
             key=lambda s: (s.study_date or "", s.patient_name or ""),
             reverse=True,
         )
-
         self._tree.blockSignals(True)
         self._tree.clear()
         for study in studies:
@@ -325,7 +339,11 @@ class OrthancStudyDialog(QDialog):
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
             self._tree.addTopLevelItem(item)
         self._tree.blockSignals(False)
-        self._update_load_button()
+        self._status_label.setText(tr("orthanc.ready"))
+
+    def _load_studies(self) -> None:
+        """Synchronous wrapper for _on_find button — uses async internally."""
+        self._load_studies_async()
 
     def _format_study_date(self, raw_date: str) -> str:
         """Convert DICOM date 'YYYYMMDD' to 'DD.MM.YYYY'."""
