@@ -82,6 +82,31 @@ class _StudyQueryWorker(QRunnable):
         self._signals.finished.emit(studies)
 
 
+class _SeriesQuerySignals(QObject):
+    finished = Signal(object)  # (study_uid, series_list, error_message)
+
+
+class _SeriesQueryWorker(QRunnable):
+    """Fetch series for a single study in a background thread."""
+
+    def __init__(self, study_uid: str, query_fn: Callable[[str], list], signals: _SeriesQuerySignals) -> None:
+        super().__init__()
+        self._study_uid = study_uid
+        self._query_fn = query_fn
+        self._signals = signals
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        try:
+            series = self._query_fn(self._study_uid)
+            error = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[DLG] series query failed for %s: %s", self._study_uid[:16], exc)
+            series = []
+            error = str(exc)
+        self._signals.finished.emit((self._study_uid, series, error))
+
+
 class OrthancStudyDialog(QDialog):
     def __init__(
         self,
@@ -113,11 +138,13 @@ class OrthancStudyDialog(QDialog):
         self._close_pending = False
         self._pending_downloads: list[tuple[str, list[str]]] = []
         self._completed_downloads = 0
+        self._failed_downloads = 0
         self._total_studies = 0
         self._downloaded_studies: list[StudyMetadata] = []
         self._force_close_timer = QTimer(self)
         self._force_close_timer.setSingleShot(True)
         self._force_close_timer.timeout.connect(self._force_close_if_still_downloading)
+        self._series_loading: set[str] = set()
 
         self.setWindowTitle(tr("dialog.orthanc.title"))
         self.resize(800, 520)
@@ -272,6 +299,7 @@ class OrthancStudyDialog(QDialog):
             self._close_pending = True
             self._on_cancel()
             return
+        self._series_loading.clear()
         self._release_client()
         super().reject()
 
@@ -394,22 +422,69 @@ class OrthancStudyDialog(QDialog):
         if not study_uid:
             return
 
-        try:
+        study_uid = str(study_uid)
+        if study_uid in self._series_loading:
+            return
+        self._series_loading.add(study_uid)
+
+        loading_item = QTreeWidgetItem(["", "", tr("orthanc.searching")])
+        loading_item.setFlags(
+            loading_item.flags()
+            & ~Qt.ItemFlag.ItemIsSelectable
+            & ~Qt.ItemFlag.ItemIsUserCheckable
+        )
+        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+        item.addChild(loading_item)
+
+        def _query(uid: str) -> list:
             if self._query_service is not None:
-                series_list = self._query_service.query_series(str(study_uid))
-            else:
-                series_list = self._client.query_series(str(study_uid))
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, tr("orthanc.series"), tr("orthanc.series_query_error", message=str(exc)))
+                return self._query_service.query_series(uid)
+            return self._client.query_series(uid)
+
+        signals = _SeriesQuerySignals()
+        signals.finished.connect(self._on_series_loaded)
+        worker = _SeriesQueryWorker(study_uid, _query, signals)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_series_loaded(self, result: object) -> None:
+        study_uid, series_list, error = result  # type: ignore[misc]
+        log.info(
+            "[DLG] _on_series_loaded: study_uid=%s count=%d error=%s",
+            study_uid[:16],
+            len(series_list),
+            error,
+        )
+        self._series_loading.discard(study_uid)
+
+        target_item: QTreeWidgetItem | None = None
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            if item.data(0, _STUDY_UID_ROLE) == study_uid:
+                target_item = item
+                break
+
+        if target_item is None:
             return
 
         self._tree.blockSignals(True)
-        for series in series_list:
-            child = QTreeWidgetItem(["", "", self._series_label(series)])
-            child.setData(0, _SERIES_UID_ROLE, series.series_uid)
-            child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            child.setCheckState(0, Qt.CheckState.Unchecked)
-            item.addChild(child)
+        target_item.takeChildren()
+        target_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
+
+        if error and not series_list:
+            error_item = QTreeWidgetItem(["", "", tr("orthanc.series_query_error", message=error[:200])])
+            error_item.setFlags(
+                error_item.flags()
+                & ~Qt.ItemFlag.ItemIsSelectable
+                & ~Qt.ItemFlag.ItemIsUserCheckable
+            )
+            target_item.addChild(error_item)
+        else:
+            for series in series_list:
+                child = QTreeWidgetItem(["", "", self._series_label(series)])
+                child.setData(0, _SERIES_UID_ROLE, series.series_uid)
+                child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                child.setCheckState(0, Qt.CheckState.Unchecked)
+                target_item.addChild(child)
         self._tree.blockSignals(False)
 
     def _on_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
@@ -472,6 +547,7 @@ class OrthancStudyDialog(QDialog):
 
         self._pending_downloads = list(all_series)
         self._completed_downloads = 0
+        self._failed_downloads = 0
         self._total_studies = len(all_series)
         self._start_next_download()
 
@@ -483,12 +559,11 @@ class OrthancStudyDialog(QDialog):
             self._total_studies,
         )
         if not self._pending_downloads:
-            all_ok = self._completed_downloads == self._total_studies
-            if all_ok and self._session_id is not None:
+            if self._failed_downloads > 0 and self._session_id is not None:
+                self._on_failed("", tr("orthanc.partial_failed"))
+            elif self._session_id is not None:
                 first_study = self._result[1] if self._result else ""
                 self._on_done(self._session_id, first_study)
-            elif self._session_id is not None:
-                self._on_failed("", tr("orthanc.partial_failed"))
             return
 
         study_uid, series_uids = self._pending_downloads.pop(0)
@@ -582,6 +657,7 @@ class OrthancStudyDialog(QDialog):
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         log.warning("[DLG] _on_single_study_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
         self._completed_downloads += 1
+        self._failed_downloads += 1
         self._status_label.setText(
             tr(
                 "orthanc.series_error_status",

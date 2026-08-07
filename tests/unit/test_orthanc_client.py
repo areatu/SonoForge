@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -172,6 +173,74 @@ class TestQueryInstancesWithRealFixtures:
         try:
             instances = client.query_instances(study_uid="1.2.3", series_uid="1.2.4")
             assert len(instances) == 3
+        finally:
+            client.close()
+
+
+class TestRetryBehavior:
+    def test_query_studies_retries_on_timeout(self) -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise httpx.ReadTimeout("timed out", request=request)
+            return httpx.Response(200, json=[])
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client.time.sleep"):
+                studies = client.query_studies()
+            assert studies == []
+            assert call_count == 3  # 2 retries + 1 success
+        finally:
+            client.close()
+
+    def test_query_series_retries_on_remote_protocol_error(self) -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise httpx.RemoteProtocolError("server disconnected")
+            return httpx.Response(200, json=[])
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client.time.sleep"):
+                series = client.query_series(study_uid="1.2.3")
+            assert series == []
+            assert call_count == 2
+        finally:
+            client.close()
+
+    def test_query_instances_retries_then_reraises_on_persistent_timeout(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        client = _client_with_transport(handler)
+        try:
+            with patch("echo_personal_tool.infrastructure.orthanc_client.time.sleep"):
+                with pytest.raises(httpx.ReadTimeout):
+                    client.query_instances(study_uid="1.2.3", series_uid="1.2.4")
+        finally:
+            client.close()
+
+    def test_4xx_error_not_retried(self) -> None:
+        call_count = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return httpx.Response(404)
+
+        client = _client_with_transport(handler)
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                client.query_studies()
+            assert call_count == 1  # 4xx should not be retried
         finally:
             client.close()
 

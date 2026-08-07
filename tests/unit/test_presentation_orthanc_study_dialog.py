@@ -254,6 +254,74 @@ class TestOnSingleStudyFailed:
         assert dialog._completed_downloads == 1
 
 
+class TestStartNextDownload:
+    def test_all_fail_shows_error_not_done(self, dialog):
+        """When all studies fail, _on_failed should be called (not _on_done)."""
+        dialog._session_id = "test-session"
+        dialog._total_studies = 2
+        dialog._completed_downloads = 2
+        dialog._failed_downloads = 2
+        dialog._pending_downloads = []
+
+        with (
+            patch.object(dialog, "_on_done") as mock_done,
+            patch.object(dialog, "_on_failed") as mock_failed,
+            patch.object(dialog, "_reset_after_download"),
+        ):
+            dialog._start_next_download()
+            mock_failed.assert_called_once()
+            mock_done.assert_not_called()
+
+    def test_partial_failure_shows_error(self, dialog):
+        """When some studies fail, _on_failed should show error dialog."""
+        dialog._session_id = "test-session"
+        dialog._total_studies = 2
+        dialog._completed_downloads = 2
+        dialog._failed_downloads = 1
+        dialog._pending_downloads = []
+
+        with (
+            patch.object(dialog, "_on_done") as mock_done,
+            patch.object(dialog, "_on_failed") as mock_failed,
+            patch.object(dialog, "_reset_after_download"),
+        ):
+            dialog._start_next_download()
+            mock_failed.assert_called_once()
+            mock_done.assert_not_called()
+
+    def test_all_success_shows_done(self, dialog):
+        """When all studies succeed, _on_done should be called."""
+        dialog._session_id = "test-session"
+        dialog._total_studies = 2
+        dialog._completed_downloads = 2
+        dialog._failed_downloads = 0
+        dialog._pending_downloads = []
+        dialog._result = None
+
+        with (
+            patch.object(dialog, "_on_done") as mock_done,
+            patch.object(dialog, "_on_failed") as mock_failed,
+        ):
+            dialog._start_next_download()
+            mock_done.assert_called_once()
+            mock_failed.assert_not_called()
+
+
+class TestOnSingleStudyFailedCount:
+    def test_increments_both_counts(self, dialog):
+        """_on_single_study_failed should increment both completed and failed counts."""
+        dialog._total_studies = 2
+        dialog._completed_downloads = 0
+        dialog._failed_downloads = 0
+        dialog._pending_downloads = []
+        dialog._session_id = "test-session"
+        # Prevent _start_next_download from calling accept/reject
+        with patch.object(dialog, "_start_next_download"):
+            dialog._on_single_study_failed("uid", "error msg")
+        assert dialog._completed_downloads == 1
+        assert dialog._failed_downloads == 1
+
+
 class TestOnDone:
     def test_sets_result(self, dialog):
         dialog._total_studies = 1
@@ -299,8 +367,143 @@ class TestResetAfterDownload:
         assert dialog._worker is None
 
 
+class TestSeriesLoadingState:
+    def test_initial_empty(self, dialog):
+        assert dialog._series_loading == set()
+
+
+class TestOnItemExpanded:
+    _STUDY_ROLE = 256  # Qt.ItemDataRole.UserRole
+
+    def _add_study_item(self, dialog, uid="study-uid"):
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        item = QTreeWidgetItem(["John", "20240101", "Echo"])
+        item.setData(0, self._STUDY_ROLE, uid)
+        dialog._tree.addTopLevelItem(item)
+        return item
+
+    def test_does_not_call_query_series_synchronously(self, dialog):
+        item = self._add_study_item(dialog)
+        with (
+            patch.object(dialog._client, "query_series") as mock_qs,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool,
+        ):
+            dialog._on_item_expanded(item)
+            mock_qs.assert_not_called()
+            mock_pool.globalInstance().start.assert_called_once()
+
+    def test_shows_loading_indicator(self, dialog):
+        item = self._add_study_item(dialog)
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool"):
+            dialog._on_item_expanded(item)
+            assert item.childCount() == 1
+
+    def test_tracks_in_flight_query(self, dialog):
+        item = self._add_study_item(dialog)
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool"):
+            dialog._on_item_expanded(item)
+            assert "study-uid" in dialog._series_loading
+
+    def test_prevents_duplicate_query(self, dialog):
+        item = self._add_study_item(dialog)
+        dialog._series_loading.add("study-uid")
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._on_item_expanded(item)
+            mock_pool.globalInstance().start.assert_not_called()
+
+    def test_ignores_child_items(self, dialog):
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        parent = self._add_study_item(dialog)
+        child = QTreeWidgetItem(["child", "", ""])
+        child.setData(0, self._STUDY_ROLE, "child-uid")
+        parent.addChild(child)
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._on_item_expanded(child)
+            mock_pool.globalInstance().start.assert_not_called()
+
+    def test_skips_already_has_children(self, dialog):
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        item = self._add_study_item(dialog)
+        item.addChild(QTreeWidgetItem(["", "", "existing"]))
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._on_item_expanded(item)
+            mock_pool.globalInstance().start.assert_not_called()
+
+
+class TestOnSeriesLoaded:
+    _STUDY_ROLE = 256
+    _SERIES_ROLE = 257
+
+    def _add_study_item(self, dialog, uid="study-uid"):
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        item = QTreeWidgetItem(["John", "20240101", "Echo"])
+        item.setData(0, self._STUDY_ROLE, uid)
+        dialog._tree.addTopLevelItem(item)
+        # Simulate loading placeholder child
+        loading = QTreeWidgetItem(["", "", "Loading..."])
+        item.addChild(loading)
+        return item
+
+    def test_populates_series_on_success(self, dialog):
+        item = self._add_study_item(dialog)
+        from echo_personal_tool.domain.models.orthanc import SeriesInfo
+
+        series_list = [
+            SeriesInfo(study_uid="study-uid", series_uid="series-1", modality="US", description="Echo", instance_count=10),
+            SeriesInfo(study_uid="study-uid", series_uid="series-2", modality="DC", description="Doppler", instance_count=5),
+        ]
+        dialog._on_series_loaded(("study-uid", series_list, None))
+        assert item.childCount() == 2
+        assert item.child(0).data(0, self._SERIES_ROLE) == "series-1"
+        assert item.child(1).data(0, self._SERIES_ROLE) == "series-2"
+        assert "study-uid" not in dialog._series_loading
+
+    def test_shows_error_on_failure(self, dialog):
+        item = self._add_study_item(dialog)
+        dialog._on_series_loaded(("study-uid", [], "Connection timeout"))
+        assert item.childCount() == 1
+        assert "study-uid" not in dialog._series_loading
+
+    def test_missing_target_item_no_crash(self, dialog):
+        dialog._on_series_loaded(("nonexistent-uid", [], None))
+        assert "nonexistent-uid" not in dialog._series_loading
+
+    def test_removes_loading_placeholder(self, dialog):
+        item = self._add_study_item(dialog)
+        assert item.childCount() == 1  # loading child
+        dialog._on_series_loaded(("study-uid", [], None))
+        assert item.childCount() == 0  # loading replaced with nothing
+
+    def test_empty_series_clears_children(self, dialog):
+        item = self._add_study_item(dialog)
+        dialog._on_series_loaded(("study-uid", [], None))
+        assert item.childCount() == 0
+
+    def test_finds_correct_item_among_multiple(self, dialog):
+        from echo_personal_tool.domain.models.orthanc import SeriesInfo
+
+        self._add_study_item(dialog, uid="study-1")
+        target = self._add_study_item(dialog, uid="study-2")
+        self._add_study_item(dialog, uid="study-3")
+
+        dialog._on_series_loaded(("study-2", [SeriesInfo(study_uid="study-2", series_uid="s2", modality="US", description="A", instance_count=1)], None))
+        assert target.childCount() == 1
+        assert target.child(0).data(0, self._SERIES_ROLE) == "s2"
+
+
 class TestReject:
     def test_reject_when_not_downloading(self, dialog):
         dialog._downloading = False
         with patch.object(dialog._force_close_timer, "stop"), patch("PySide6.QtWidgets.QDialog.reject"):
             dialog.reject()
+
+    def test_clears_series_loading_on_reject(self, dialog):
+        dialog._downloading = False
+        dialog._series_loading.add("study-uid")
+        with patch.object(dialog._force_close_timer, "stop"), patch("PySide6.QtWidgets.QDialog.reject"):
+            dialog.reject()
+        assert dialog._series_loading == set()

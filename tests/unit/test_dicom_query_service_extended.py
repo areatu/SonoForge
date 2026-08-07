@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.application.dicom_query_service import DicomQueryService
 from echo_personal_tool.domain.models.orthanc import StudyInfo
 from echo_personal_tool.domain.ports import QuerySource
@@ -163,3 +165,121 @@ def test_query_series_dimse_source_with_no_dimse_falls_back_to_web() -> None:
     svc = DicomQueryService(web=web, dimse=None, source=QuerySource.DIMSE)
     result = svc.query_series("1.2.3")
     assert isinstance(result, list)
+
+
+# ── Tests for query_series error handling and DIMSE fallback ──────────
+
+
+class _FailingWeb:
+    """Web client that raises on query_series."""
+
+    def query_series(self, study_uid: str) -> list:
+        raise ConnectionError("server disconnected")
+
+    def query_instances(self, study_uid: str, series_uid: str) -> list:
+        return []
+
+
+class _FailingDimse:
+    """DIMSE client that raises on c_find_series."""
+
+    def c_find_series(self, study_uid: str) -> list:
+        raise ConnectionError("dimse timeout")
+
+    def c_find_instances(self, study_uid: str, series_uid: str) -> list:
+        raise ConnectionError("dimse timeout")
+
+    def c_echo(self) -> bool:
+        return True
+
+    def c_store(self, data: bytes) -> bool:
+        return True
+
+    def c_get_instance(self, *args, **kwargs) -> bytes:
+        return b""
+
+    def c_move_instances(self, *args, **kwargs) -> None:
+        return None
+
+    def c_move_series(self, *args, **kwargs) -> None:
+        return None
+
+
+class _OkDimse:
+    """DIMSE client that returns data successfully."""
+
+    def c_find_series(self, study_uid: str) -> list:
+        return ["series-result"]
+
+    def c_find_instances(self, study_uid: str, series_uid: str) -> list:
+        return ["instance-result"]
+
+    def c_echo(self) -> bool:
+        return True
+
+    def c_store(self, data: bytes) -> bool:
+        return True
+
+    def c_get_instance(self, *args, **kwargs) -> bytes:
+        return b""
+
+    def c_move_instances(self, *args, **kwargs) -> None:
+        return None
+
+    def c_move_series(self, *args, **kwargs) -> None:
+        return None
+
+
+def test_query_series_auto_fallback_to_dimse_on_web_error() -> None:
+    """AUTO mode: web raises → falls back to DIMSE instead of returning []."""
+    svc = DicomQueryService(web=_FailingWeb(), dimse=_OkDimse(), source=QuerySource.AUTO)
+    result = svc.query_series("1.2.3")
+    assert result == ["series-result"]
+
+
+def test_query_series_raises_when_all_sources_fail() -> None:
+    """AUTO mode: both web and DIMSE fail → exception propagates for UI error display."""
+    svc = DicomQueryService(web=_FailingWeb(), dimse=_FailingDimse(), source=QuerySource.AUTO)
+    with pytest.raises(ConnectionError):
+        svc.query_series("1.2.3")
+
+
+def test_query_series_returns_empty_when_no_clients() -> None:
+    """No clients available → returns [], no exception."""
+    svc = DicomQueryService(web=None, dimse=None, source=QuerySource.AUTO)
+    assert svc.query_series("1.2.3") == []
+
+
+def test_query_instances_auto_fallback_to_dimse_on_web_error() -> None:
+    """AUTO mode: web error → DIMSE fallback instead of crashing entire study download."""
+    from httpx import RemoteProtocolError
+
+    class _FailingWebInstances:
+        def query_instances(self, study_uid: str, series_uid: str) -> list:
+            raise RemoteProtocolError("server disconnected")
+
+    svc = DicomQueryService(
+        web=_FailingWebInstances(), dimse=_OkDimse(), source=QuerySource.AUTO
+    )
+    result = svc.query_instances("1.2.3", "1.2.3.4")
+    assert result == ["instance-result"]
+
+
+def test_query_instances_raises_when_all_sources_fail() -> None:
+    """AUTO mode: both web and DIMSE fail → exception propagates."""
+    from httpx import RemoteProtocolError
+
+    class _FailingWebInstances:
+        def query_instances(self, study_uid: str, series_uid: str) -> list:
+            raise RemoteProtocolError("server disconnected")
+
+    svc = DicomQueryService(
+        web=_FailingWebInstances(), dimse=_FailingDimse(), source=QuerySource.AUTO
+    )
+    with pytest.raises(Exception):  # could be ConnectionError or RemoteProtocolError
+        svc.query_instances("1.2.3", "1.2.3.4")
+
+
+def test_query_instances_returns_empty_when_no_clients() -> None:
+    svc = DicomQueryService(web=None, dimse=None, source=QuerySource.AUTO)
+    assert svc.query_instances("1.2.3", "1.2.3.4") == []
