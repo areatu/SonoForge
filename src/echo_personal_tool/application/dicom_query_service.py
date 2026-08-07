@@ -60,32 +60,60 @@ class DicomQueryService:
 
     def query_series(self, study_uid: str) -> list[SeriesInfo]:
         if self._source == QuerySource.DIMSE and self._dimse is not None:
-            try:
-                return self._dimse.c_find_series(study_uid)
-            except Exception:  # noqa: BLE001
-                logger.debug("DIMSE c_find_series failed for %s", study_uid, exc_info=True)
-                return []
+            return self._dimse.c_find_series(study_uid)
+
+        errors: list[Exception] = []
+
         if self._web is not None:
             try:
                 return self._web.query_series(study_uid)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("DICOMweb query_series failed for %s", study_uid, exc_info=True)
-                return []
+                errors.append(exc)
+
         if self._dimse is not None:
             try:
                 return self._dimse.c_find_series(study_uid)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 logger.debug("DIMSE c_find_series fallback failed for %s", study_uid, exc_info=True)
-                return []
+                errors.append(exc)
+
+        if errors:
+            raise errors[-1]
         return []
 
     def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
         if self._source == QuerySource.DIMSE and self._dimse is not None:
             return self._dimse.c_find_instances(study_uid, series_uid)
+
+        errors: list[Exception] = []
+
         if self._web is not None:
-            return self._web.query_instances(study_uid, series_uid)
+            try:
+                return self._web.query_instances(study_uid, series_uid)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "DICOMweb query_instances failed for %s/%s",
+                    study_uid,
+                    series_uid,
+                    exc_info=True,
+                )
+                errors.append(exc)
+
         if self._dimse is not None:
-            return self._dimse.c_find_instances(study_uid, series_uid)
+            try:
+                return self._dimse.c_find_instances(study_uid, series_uid)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "DIMSE c_find_instances fallback failed for %s/%s",
+                    study_uid,
+                    series_uid,
+                    exc_info=True,
+                )
+                errors.append(exc)
+
+        if errors:
+            raise errors[-1]
         return []
 
     def _web_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
