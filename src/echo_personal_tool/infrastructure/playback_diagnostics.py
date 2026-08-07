@@ -85,6 +85,16 @@ class DecodeBatchRecord:
 
 
 @dataclass
+class InstanceSwitchRecord:
+    timestamp: float
+    rss_before_mb: float
+    rss_after_mb: float
+    elapsed_ms: float
+    prefetch_cancelled: bool
+    frame_cache_bytes: int
+
+
+@dataclass
 class PlaybackReport:
     fps_target: float
     frame_count: int
@@ -96,6 +106,8 @@ class PlaybackReport:
     rss_peak_mb: float
     numpy_snapshots: list[dict[str, object]]
     wall_clock_jitter_ms: list[float]
+    instance_switches: list[InstanceSwitchRecord] = field(default_factory=list)
+    prefetch_cancel_count: int = 0
 
     def summary(self) -> str:
         lines: list[str] = []
@@ -174,6 +186,23 @@ class PlaybackReport:
                 for dt, nbytes in sorted(by_dtype.items(), key=lambda x: -x[1]):
                     lines.append(f"      {dt}: {nbytes / 1e6:.1f} MB")
 
+        # Instance switches
+        if self.instance_switches:
+            lines.append("")
+            lines.append("  Instance switches:")
+            for rec in self.instance_switches:
+                lines.append(
+                    f"    {rec.timestamp:.3f}: {rec.elapsed_ms:.1f} ms  "
+                    f"rss {rec.rss_before_mb:.1f}→{rec.rss_after_mb:.1f} MB  "
+                    f"(delta {rec.rss_after_mb - rec.rss_before_mb:+.1f})  "
+                    f"prefetch_cancelled={rec.prefetch_cancelled}"
+                )
+
+        # Prefetch cancellations
+        if self.prefetch_cancel_count:
+            lines.append("")
+            lines.append(f"  Prefetch cancellations: {self.prefetch_cancel_count}")
+
         # Phase breakdown
         phases: dict[str, int] = {}
         for tick in self.frame_ticks:
@@ -204,6 +233,13 @@ class PlaybackDiagnostics:
         self._wall_jitter: list[float] = []
         self._last_tick_time: float = 0.0
         self._target_interval_ms: float = 33.3
+        # Instance switch tracking (file open/close)
+        self._instance_switches: list[InstanceSwitchRecord] = []
+        self._instance_switch_start: float = 0.0
+        self._instance_switch_rss_start: float = 0.0
+        self._instance_switch_prefetch_cancelled: bool = False
+        self._instance_switch_frame_cache_bytes: int = 0
+        self._prefetch_cancels: int = 0
 
     @property
     def enabled(self) -> bool:
@@ -283,6 +319,60 @@ class PlaybackDiagnostics:
             return
         self._numpy_snapshots.append(_numpy_memory_report())
 
+    def on_instance_switch_start(
+        self,
+        *,
+        prefetch_cancelled: bool = False,
+        frame_cache_bytes: int = 0,
+    ) -> None:
+        """Called at start of load_instance() -- before release_stale_sessions + open()."""
+        if not self.enabled:
+            return
+        self._instance_switch_start = time.perf_counter()
+        self._instance_switch_rss_start = _rss_mb()
+        self._instance_switch_prefetch_cancelled = prefetch_cancelled
+        self._instance_switch_frame_cache_bytes = frame_cache_bytes
+        _LOG.info(
+            "[PLAYBACK_DIAG] instance_switch START  rss=%.1f MB  prefetch_cancelled=%s",
+            self._instance_switch_rss_start,
+            prefetch_cancelled,
+        )
+
+    def on_instance_switch_end(self) -> InstanceSwitchRecord | None:
+        """Called after DicomSession.open() + decode_first_frame() completes."""
+        if not self.enabled or self._instance_switch_start == 0.0:
+            return None
+        elapsed = (time.perf_counter() - self._instance_switch_start) * 1000.0
+        record = InstanceSwitchRecord(
+            timestamp=time.time(),
+            rss_before_mb=self._instance_switch_rss_start,
+            rss_after_mb=_rss_mb(),
+            elapsed_ms=elapsed,
+            prefetch_cancelled=self._instance_switch_prefetch_cancelled,
+            frame_cache_bytes=self._instance_switch_frame_cache_bytes,
+        )
+        self._instance_switches.append(record)
+        self._rss_peak_mb = max(self._rss_peak_mb, record.rss_after_mb)
+        self._instance_switch_start = 0.0
+        _LOG.info(
+            "[PLAYBACK_DIAG] instance_switch END  elapsed=%.1f ms  rss_delta=%+.1f MB  cancels=%d",
+            elapsed,
+            record.rss_after_mb - record.rss_before_mb,
+            self._prefetch_cancels,
+        )
+        return record
+
+    def on_prefetch_cancel(self, *, reason: str = "file_switch") -> None:
+        """Called when FrameLoaderWorker prefetch is cancelled."""
+        if not self.enabled:
+            return
+        self._prefetch_cancels += 1
+        _LOG.info(
+            "[PLAYBACK_DIAG] prefetch_cancelled reason=%s count=%d",
+            reason,
+            self._prefetch_cancels,
+        )
+
     def stop(self) -> PlaybackReport:
         if not self._active:
             return PlaybackReport(
@@ -296,6 +386,8 @@ class PlaybackDiagnostics:
                 rss_peak_mb=0,
                 numpy_snapshots=[],
                 wall_clock_jitter_ms=[],
+                instance_switches=[],
+                prefetch_cancel_count=0,
             )
         self._rss_end_mb = _rss_mb()
         total_ms = sum(t.elapsed_ms for t in self._ticks) if self._ticks else 0.0
@@ -310,6 +402,8 @@ class PlaybackDiagnostics:
             rss_peak_mb=self._rss_peak_mb,
             numpy_snapshots=list(self._numpy_snapshots),
             wall_clock_jitter_ms=list(self._wall_jitter),
+            instance_switches=list(self._instance_switches),
+            prefetch_cancel_count=self._prefetch_cancels,
         )
         _LOG.info("\n%s", report.summary())
         self._active = False
