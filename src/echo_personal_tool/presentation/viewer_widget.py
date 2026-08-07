@@ -1737,7 +1737,6 @@ class ViewerWidget(QWidget):
             self._window_slider.value(),
             self._level_slider.value(),
         )
-        levels_changed = levels_key != self._cached_levels_key
         self._cached_levels_key = levels_key
 
         if self._is_color_frame:

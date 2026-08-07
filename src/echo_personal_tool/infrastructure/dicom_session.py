@@ -19,16 +19,18 @@ logger = logging.getLogger(__name__)
 
 _thread_local = threading.local()
 _all_sessions: list[DicomSession] = []
+_sessions_lock = threading.Lock()
 _cleanup_registered = False
 
 
 def _cleanup_all_sessions() -> None:
-    for session in _all_sessions:
-        try:
-            session.release()
-        except Exception:
-            pass
-    _all_sessions.clear()
+    with _sessions_lock:
+        for session in _all_sessions:
+            try:
+                session.release()
+            except Exception:
+                pass
+        _all_sessions.clear()
 
 
 _UNCOMPRESSED_SYNTAXES = frozenset(
@@ -61,14 +63,15 @@ def get_thread_dicom_session() -> DicomSession:
     if session is None:
         session = DicomSession()
         _thread_local.dicom_session = session
-        _all_sessions.append(session)
-        # Prune oldest sessions to prevent unbounded growth.
-        while len(_all_sessions) > _max_sessions:
-            old = _all_sessions.pop(0)
-            try:
-                old.release()
-            except Exception:
-                pass
+        with _sessions_lock:
+            _all_sessions.append(session)
+            # Prune oldest sessions to prevent unbounded growth.
+            while len(_all_sessions) > _max_sessions:
+                old = _all_sessions.pop(0)
+                try:
+                    old.release()
+                except Exception:
+                    pass
         if not _cleanup_registered:
             atexit.register(_cleanup_all_sessions)
             _cleanup_registered = True
@@ -91,13 +94,14 @@ def release_stale_sessions(exclude: DicomSession | None = None) -> None:
     buffers were NEVER freed → unbounded growth to 8+ GiB.
     """
     alive: list[DicomSession] = []
-    for s in _all_sessions:
-        if s is not exclude:
-            s.release_heavy()
-        else:
-            alive.append(s)
-    _all_sessions.clear()
-    _all_sessions.extend(alive)
+    with _sessions_lock:
+        for s in _all_sessions:
+            if s is not exclude:
+                s.release_heavy()
+            else:
+                alive.append(s)
+        _all_sessions.clear()
+        _all_sessions.extend(alive)
 
 
 def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
