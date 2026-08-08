@@ -993,8 +993,12 @@ class ViewerWidget(QWidget):
                     return
                 height = self._current_frame.shape[0]
                 raw_y = max(0.0, min(float(mapped.y()), float(height - 1)))
+                if self._calibration_kind == "doppler_velocity" and self._doppler_grid_line_positions:
+                    tick_positions = self._doppler_grid_line_positions
+                else:
+                    tick_positions = self._depth_tick_y_positions
                 snapped_y = snap_y_to_nearest_tick(
-                    raw_y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px
+                    raw_y, tick_positions, radius_px=self._calibration_tick_snap_radius_px
                 )
                 if self._calibration_start_y is not None:
                     self._update_calibration_preview(self._calibration_start_y, snapped_y)
@@ -3346,7 +3350,7 @@ class ViewerWidget(QWidget):
         self._calibration_kind = "doppler_velocity"
         self._calibration_active = True
         roi = self._doppler_pending_roi
-        if roi is not None:
+        if roi is not None and self._calibration_tick_snap_enabled:
             self._calibration_x = min(roi.x1 - 4.0, float(width - 5))
             grid_lines = detect_doppler_grid_lines(
                 self._current_frame,
