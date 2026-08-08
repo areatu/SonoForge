@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import numpy as np
 
 from echo_personal_tool.domain.models.doppler_roi import (
@@ -10,6 +11,7 @@ from echo_personal_tool.domain.services.doppler_grid_detector import (
 )
 from echo_personal_tool.domain.services.velocity_scale_detector import (
     detect_velocity_scale_ticks,
+    find_best_scale_column,
 )
 
 _SPECTRAL_SPANS = [50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0]
@@ -38,32 +40,55 @@ def infer_velocity_span(
 
     Returns the best-matching standard velocity span (cm/s) given tick geometry,
     or None if no good match.
+
+    Works with ticks on either or both sides of the baseline. The baseline
+    represents 0 cm/s; ticks above are positive, below are negative. For a
+    standard span S with N intervals between consecutive ticks, each interval
+    represents a velocity of S / N. We check that this matches a "nice" clinical
+    number and that the implied velocity-per-pixel is consistent with the ROI
+    height.
     """
-    above = sorted(t for t in tick_ys if t < baseline_y - 1.0)
-    below = sorted(t for t in tick_ys if t > baseline_y + 1.0)
-    n_above = len(above)
-    if n_above < 2 or len(below) < 2:
+    if len(tick_ys) < 3:
         return None
 
-    pixel_interval = (above[-1] - above[0]) / max(1, n_above - 1)
-    if pixel_interval <= 0:
+    sorted_ticks = sorted(tick_ys)
+    spacings = np.array(
+        [sorted_ticks[i + 1] - sorted_ticks[i] for i in range(len(sorted_ticks) - 1)]
+    )
+    pixel_spacing = float(np.median(spacings))
+    if pixel_spacing <= 0:
         return None
+
+    above = sorted(t for t in sorted_ticks if t < baseline_y - 1.0)
+    below = sorted(t for t in sorted_ticks if t > baseline_y + 1.0)
+    n_above = len(above)
+    n_below = len(below)
+
+    # Need at least 2 ticks on one side of the baseline (1 interval)
+    if n_above < 2 and n_below < 2:
+        return None
+
+    # Total velocity = span. Half-span = S/2 corresponds to the furthest
+    # tick from the baseline on either side.
+    n_furthest = max(n_above, n_below)
+    if n_furthest < 2:
+        n_furthest = 2
 
     candidate_spans = _SPECTRAL_SPANS if kind == DopplerKind.SPECTRAL else _TISSUE_SPANS
     best: float | None = None
     best_score = -1.0
+
     for S in candidate_spans:
-        per_interval = (S / 2.0) / n_above
+        per_interval = (S / 2.0) / n_furthest
         if not _round_velocity(per_interval):
             continue
-        expected_px = (S / 2.0) / per_interval * (roi.height / S)
-        implied_ppi = per_interval / pixel_interval
-        expected_ppi = S / roi.height
-        consistency = 1.0 - min(1.0, abs(implied_ppi - expected_ppi) / expected_ppi)
-        score = consistency
-        if score > best_score:
-            best_score = score
+        expected_vpp = S / roi.height
+        implied_vpp = per_interval / pixel_spacing
+        consistency = 1.0 - min(1.0, abs(implied_vpp - expected_vpp) / expected_vpp)
+        if consistency > best_score:
+            best_score = consistency
             best = S
+
     if best_score < 0.6:
         return None
     return best
@@ -74,7 +99,7 @@ class VelocityAutocalibrationResult:
     velocity_span_cm_s: float
     velocity_per_pixel_cm_s: float
     confidence: float
-    method: str  # "ocr" | "inferred"
+    method: str  # "inferred"
 
 
 def try_auto_doppler_velocity_calibration(
@@ -86,13 +111,17 @@ def try_auto_doppler_velocity_calibration(
 ) -> VelocityAutocalibrationResult | None:
     """Auto-calibrate Doppler velocity scale from detected ticks + baseline.
 
-    Detects velocity-scale tick positions, then resolves them via either
-    standard-value inference (fast, no deps) or OCR label reading (surya-ocr,
-    optional, slow at model load — tried only as a secondary path).
+    Detects velocity-scale tick positions, then resolves them via
+    standard-value inference (fast, no external dependencies).
 
-    Returns None if auto-detection is not possible (e.g., not enough ticks).
+    Returns None if auto-detection is not possible (e.g., not enough ticks
+    or non-standard scale layout).
     """
-    tick_ys = detect_velocity_scale_ticks(frame, roi=roi)
+    tick_ys = find_best_scale_column(
+        frame, roi=roi, search_width_px=120, baseline_y=baseline_y
+    )
+    if len(tick_ys) < 4:
+        tick_ys = detect_velocity_scale_ticks(frame, roi=roi, baseline_y=baseline_y)
     if len(tick_ys) < 4:
         tick_ys = detect_doppler_grid_lines(
             frame,
@@ -105,7 +134,6 @@ def try_auto_doppler_velocity_calibration(
     if len(tick_ys) < 4:
         return None
 
-    # Inference path — fast, no external dependencies
     span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=kind)
     if span is not None:
         vpp = span / roi.height
@@ -115,25 +143,5 @@ def try_auto_doppler_velocity_calibration(
             confidence=0.7,
             method="inferred",
         )
-
-    # OCR path — slow (surya model loading); only tried as secondary path
-    from echo_personal_tool.domain.services.velocity_scale_ocr import (
-        read_velocity_labels,
-    )
-
-    labels = read_velocity_labels(frame, roi=roi, tick_ys=tick_ys)
-    if labels and len(labels) >= 2:
-        paired = sorted(labels.items(), key=lambda kv: kv[0])
-        (y0, v0), (y1, v1) = paired[0], paired[-1]
-        dy = abs(y1 - y0)
-        if dy > 1.0 and v1 != v0:
-            vpp = abs(v1 - v0) / dy
-            span = vpp * roi.height
-            return VelocityAutocalibrationResult(
-                velocity_span_cm_s=span,
-                velocity_per_pixel_cm_s=vpp,
-                confidence=0.95,
-                method="ocr",
-            )
 
     return None

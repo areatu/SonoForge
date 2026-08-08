@@ -11,7 +11,7 @@ from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 class TestDopplerAxisMappingDefaults:
     def test_poc_default(self) -> None:
         m = DopplerAxisMapping.poc_default()
-        assert m.time_span_ms == 1000.0
+        assert m.time_span_ms == 0.0
         assert m.velocity_span_cm_s == 200.0
 
     def test_from_frame_size(self) -> None:
