@@ -81,6 +81,9 @@ from echo_personal_tool.domain.services.doppler_calibration import (
     calibration_from_roi_and_baseline,
     roi_from_corners,
 )
+from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
+    try_auto_doppler_velocity_calibration,
+)
 from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
 )
@@ -3288,6 +3291,29 @@ class ViewerWidget(QWidget):
             roi = self._doppler_pending_roi or DopplerSpectrogramRoi(
                 x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height))
             )
+            # Try one-click auto-calibration (analog of B-mode auto-cal)
+            auto = try_auto_doppler_velocity_calibration(
+                self._current_frame,
+                roi=roi,
+                baseline_y=y,
+                kind=self._doppler_cal_kind,
+            )
+            if auto is not None and auto.confidence >= 0.6:
+                state = calibration_from_roi_and_baseline(
+                    roi,
+                    y,
+                    velocity_span_cm_s=auto.velocity_span_cm_s,
+                    time_span_ms=0.0,
+                    kind=self._doppler_cal_kind,
+                )
+                self.apply_doppler_calibration_state(state)
+                self._doppler_pending_roi = None
+                self._doppler_pending_baseline_y = None
+                self._doppler_cal_step = None
+                self._measurement_label.setText(tr("viewer.doppler_calibration_auto_ok"))
+                self.spectral_calibration_completed.emit(auto.velocity_span_cm_s)
+                return True
+            # Fallback: existing 2-click + dialog flow
             partial = calibration_from_roi_and_baseline(
                 roi,
                 y,
