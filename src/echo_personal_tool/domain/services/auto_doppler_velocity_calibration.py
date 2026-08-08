@@ -5,6 +5,9 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerKind,
     DopplerSpectrogramRoi,
 )
+from echo_personal_tool.domain.services.doppler_grid_detector import (
+    detect_doppler_grid_lines,
+)
 from echo_personal_tool.domain.services.velocity_scale_detector import (
     detect_velocity_scale_ticks,
 )
@@ -84,19 +87,40 @@ def try_auto_doppler_velocity_calibration(
     """Auto-calibrate Doppler velocity scale from detected ticks + baseline.
 
     Detects velocity-scale tick positions, then resolves them via either
-    OCR label reading (if surya-ocr is available) or standard-value inference.
+    standard-value inference (fast, no deps) or OCR label reading (surya-ocr,
+    optional, slow at model load — tried only as a secondary path).
 
     Returns None if auto-detection is not possible (e.g., not enough ticks).
     """
+    tick_ys = detect_velocity_scale_ticks(frame, roi=roi)
+    if len(tick_ys) < 4:
+        tick_ys = detect_doppler_grid_lines(
+            frame,
+            x0=int(roi.x0),
+            y0=int(roi.y0),
+            width=int(roi.width),
+            height=int(roi.height),
+        )
+
+    if len(tick_ys) < 4:
+        return None
+
+    # Inference path — fast, no external dependencies
+    span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=kind)
+    if span is not None:
+        vpp = span / roi.height
+        return VelocityAutocalibrationResult(
+            velocity_span_cm_s=span,
+            velocity_per_pixel_cm_s=vpp,
+            confidence=0.7,
+            method="inferred",
+        )
+
+    # OCR path — slow (surya model loading); only tried as secondary path
     from echo_personal_tool.domain.services.velocity_scale_ocr import (
         read_velocity_labels,
     )
 
-    tick_ys = detect_velocity_scale_ticks(frame, roi=roi)
-    if len(tick_ys) < 4:
-        return None
-
-    # OCR path
     labels = read_velocity_labels(frame, roi=roi, tick_ys=tick_ys)
     if labels and len(labels) >= 2:
         paired = sorted(labels.items(), key=lambda kv: kv[0])
@@ -112,14 +136,4 @@ def try_auto_doppler_velocity_calibration(
                 method="ocr",
             )
 
-    # Inference path
-    span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=kind)
-    if span is None:
-        return None
-    vpp = span / roi.height
-    return VelocityAutocalibrationResult(
-        velocity_span_cm_s=span,
-        velocity_per_pixel_cm_s=vpp,
-        confidence=0.7,
-        method="inferred",
-    )
+    return None
