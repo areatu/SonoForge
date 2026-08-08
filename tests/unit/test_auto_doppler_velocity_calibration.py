@@ -38,15 +38,16 @@ def test_infer_span_none_for_degenerate() -> None:
 
 
 def test_orchestrator_uses_grid_lines_when_strip_fails() -> None:
-    """When detect_velocity_scale_ticks returns < 4 ticks, the orchestrator
-    falls back to detect_doppler_grid_lines for tick positions."""
+    """When find_best_scale_column and detect_velocity_scale_ticks return < 4
+    ticks, the orchestrator falls back to detect_doppler_grid_lines."""
     roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
     baseline_y = 200.0
     tick_ys = [40.0, 80.0, 120.0, 160.0, 200.0, 240.0, 280.0, 320.0, 360.0]
     frame = np.zeros((400, 640), dtype=np.uint8)
 
     mod = "echo_personal_tool.domain.services.auto_doppler_velocity_calibration"
-    with patch(mod + ".detect_velocity_scale_ticks", return_value=[]), \
+    with patch(mod + ".find_best_scale_column", return_value=[]), \
+         patch(mod + ".detect_velocity_scale_ticks", return_value=[]), \
          patch(mod + ".detect_doppler_grid_lines", return_value=tick_ys):
         result = try_auto_doppler_velocity_calibration(
             frame, roi=roi, baseline_y=baseline_y, kind=DopplerKind.SPECTRAL
@@ -59,15 +60,36 @@ def test_orchestrator_uses_grid_lines_when_strip_fails() -> None:
 
 
 def test_orchestrator_returns_none_when_no_ticks() -> None:
-    """When neither detector finds enough ticks, return None."""
+    """When no detector finds enough ticks, return None."""
     roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
     frame = np.zeros((400, 640), dtype=np.uint8)
 
     mod = "echo_personal_tool.domain.services.auto_doppler_velocity_calibration"
-    with patch(mod + ".detect_velocity_scale_ticks", return_value=[]), \
+    with patch(mod + ".find_best_scale_column", return_value=[]), \
+         patch(mod + ".detect_velocity_scale_ticks", return_value=[]), \
          patch(mod + ".detect_doppler_grid_lines", return_value=[]):
         result = try_auto_doppler_velocity_calibration(
             frame, roi=roi, baseline_y=200.0, kind=DopplerKind.SPECTRAL
         )
 
     assert result is None
+
+
+def test_infer_span_works_with_ticks_above_only() -> None:
+    """Inference should work when ticks exist on only one side of baseline."""
+    roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
+    baseline_y = 200.0
+    # Ticks only above baseline: 40, 80, 120, 160
+    tick_ys = [40.0, 80.0, 120.0, 160.0]
+    span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=DopplerKind.SPECTRAL)
+    assert span in _SPECTRAL_SPANS
+
+
+def test_infer_span_works_with_ticks_below_only() -> None:
+    """Inference should work when ticks exist on only one side of baseline."""
+    roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
+    baseline_y = 200.0
+    # Ticks only below baseline: 240, 280, 320, 360
+    tick_ys = [240.0, 280.0, 320.0, 360.0]
+    span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=DopplerKind.SPECTRAL)
+    assert span in _SPECTRAL_SPANS

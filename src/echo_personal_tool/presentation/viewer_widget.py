@@ -145,8 +145,6 @@ logger = logging.getLogger(__name__)
 CALIBRATION_PROMPT_OVERLAY_KEY = "viewer.calibration.calibration_prompt"
 CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
 
-_DOPPLER_CAL_ROI_STEP1_KEY = "viewer.doppler.cal_roi1"
-_DOPPLER_CAL_ROI_STEP2_KEY = "viewer.doppler.cal_roi2"
 _DOPPLER_CAL_BASELINE_KEY = "viewer.doppler.cal_baseline"
 _DOPPLER_CAL_VELOCITY_KEY = "viewer.doppler.cal_velocity"
 _CALIBRATION_OVERLAY_STYLE = (
@@ -707,7 +705,7 @@ class ViewerWidget(QWidget):
         self._mmode_pending_depth_mm_per_pixel: float | None = None
         self._crosshair_h_item: pg.PlotDataItem | None = None
         self._crosshair_v_item: pg.PlotDataItem | None = None
-        self._doppler_cal_step: Literal["roi", "baseline", "velocity", "time"] | None = None
+        self._doppler_cal_step: Literal["baseline"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
@@ -2592,8 +2590,9 @@ class ViewerWidget(QWidget):
                 velocity_span_cm_s=state.velocity_span_cm_s,
                 kind=state.kind,
                 from_dicom_tags=state.from_dicom_tags,
-                time_from_dicom_tags=getattr(state, "time_from_dicom_tags", False),
-                velocity_from_dicom_tags=getattr(state, "velocity_from_dicom_tags", False),
+                time_from_dicom_tags=getattr(state, 'time_from_dicom_tags', False),
+                velocity_from_dicom_tags=getattr(state, 'velocity_from_dicom_tags', False),
+                velocity_per_pixel_cm_s=getattr(state, 'velocity_per_pixel_cm_s', None),
             )
         self._doppler_calibration_state = state
         self._doppler_calibration_instance_uid = self._current_instance_uid()
@@ -3128,49 +3127,36 @@ class ViewerWidget(QWidget):
                     parsed.has_velocity_scale_from_dicom(),
                 )
                 if parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom():
-                    # Full auto-calibration: both scales from DICOM.
-                    # Validate with unified validator to filter B-mode false positives.
-                    # Samsung B-mode frames can have SF=1 with cm/s/time units.
-                    if not parsed.has_velocity_scale_from_dicom():
-                        # Time scale from DICOM but velocity not — need visual validation.
-                        scales = detect_samsung_doppler_scales(self._current_frame)
-                        has_time_ticks = (
-                            scales.time_scale.confidence >= 0.4 and len(scales.time_scale.tick_positions) >= 5
+                    # Full auto-calibration: both scales from DICOM
+                    self.apply_doppler_calibration_state(parsed, persist=True)
+                    return True
+                elif parsed.has_velocity_scale() or parsed.roi.width > 0:
+                    # Partial: ROI+baseline from DICOM, velocity scale needs detection
+                    self.apply_doppler_calibration_state(parsed, persist=True)
+                    self._doppler_pending_roi = parsed.roi
+                    self._doppler_pending_baseline_y = parsed.baseline_y_px
+                    # Try image-based auto-detection of velocity scale (same as mp4)
+                    auto = try_auto_doppler_velocity_calibration(
+                        self._current_frame,
+                        roi=parsed.roi,
+                        baseline_y=parsed.baseline_y_px,
+                        kind=parsed.kind,
+                    )
+                    if auto is not None and auto.confidence >= 0.6:
+                        state = calibration_from_roi_and_baseline(
+                            parsed.roi,
+                            parsed.baseline_y_px,
+                            velocity_span_cm_s=auto.velocity_span_cm_s,
+                            time_span_ms=parsed.time_span_ms,
+                            kind=parsed.kind,
                         )
-                        if not has_time_ticks:
-                            logger.debug(
-                                "[ROI-TRACE] auto_detect: REJECTED — time_ticks=%s for time-only fallback region",
-                                has_time_ticks,
-                            )
-                        else:
-                            # Time ticks OK — also validate ROI has grid lines.
-                            vresult = validate_doppler_roi(
-                                parsed.roi,
-                                self._current_frame,
-                            )
-                            if not vresult.valid:
-                                logger.debug(
-                                    "[ROI-TRACE] auto_detect: REJECTED — %s",
-                                    vresult.reason,
-                                )
-                            else:
-                                self.apply_doppler_calibration_state(parsed, persist=True)
-                                return True
-                    else:
-                        # Both scales from DICOM tags — this is the strongest
-                        # signal. The ROI comes from the ultrasound machine,
-                        # not from visual detection. Accept directly.
-                        self.apply_doppler_calibration_state(parsed, persist=True)
+                        self.apply_doppler_calibration_state(state, persist=True)
+                        self._doppler_pending_roi = None
+                        self._doppler_pending_baseline_y = None
                         return True
-                elif parsed.has_velocity_scale():
-                    # Partial: velocity scale from DICOM, time needs manual input
-                    # ROI width must be >= 90% of frame to be a real Doppler panel.
-                    if parsed.roi.width >= frame_width * 0.9:
-                        self.apply_doppler_calibration_state(parsed, persist=True)
-                        self._doppler_pending_roi = parsed.roi
-                        self._doppler_pending_baseline_y = parsed.baseline_y_px
-                        self._begin_doppler_velocity_calibration(start_y=parsed.baseline_y_px)
-                        return True
+                    # Fallback: manual 2-click + dialog flow
+                    self._begin_doppler_velocity_calibration()
+                    return True
         return False
 
     def _configure_doppler_axis_for_frame(self) -> None:
@@ -3368,7 +3354,7 @@ class ViewerWidget(QWidget):
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
             self._doppler_grid_line_positions = []
-        self._calibration_start_y = start_y
+        self._calibration_start_y = None
         self._measurement_label.setText(tr(_DOPPLER_CAL_VELOCITY_KEY))
 
     def _handle_doppler_mouse_click(self, ev) -> bool:
@@ -5735,13 +5721,17 @@ class ViewerWidget(QWidget):
 
     def _prompt_spectral_velocity_span(self, length_px: float) -> None:
         default_span = self._doppler_cal_kind.default_velocity_span_cm_s
+        if self._doppler_cal_kind == DopplerKind.TISSUE:
+            min_val, max_val = 1.0, 100.0
+        else:
+            min_val, max_val = 10.0, 1000.0
         span_cm_s, accepted = QInputDialog.getDouble(
             self,
             tr("viewer.calibration_spectral_title"),
             tr("viewer.calibration_spectral_prompt"),
             default_span,
-            1.0,
-            1000.0,
+            min_val,
+            max_val,
             0,
         )
         self._clear_calibration_caliper()
@@ -5749,7 +5739,6 @@ class ViewerWidget(QWidget):
             return
 
         height, width = self._current_frame.shape[:2]
-        # Use user-defined ROI if available; otherwise fall back to full frame.
         if self._doppler_pending_roi is not None:
             roi = self._doppler_pending_roi
         else:
@@ -5761,7 +5750,7 @@ class ViewerWidget(QWidget):
             else roi.y0 + roi.height / 2.0
         )
 
-        if length_px > 0.0:
+        if length_px > 1.0:
             velocity_span = span_cm_s * (roi.height / length_px)
         else:
             velocity_span = span_cm_s
@@ -5795,42 +5784,6 @@ class ViewerWidget(QWidget):
         if not self._syncing_state:
             self.spectral_calibration_completed.emit(velocity_span)
 
-    def _prompt_spectral_time_span(self) -> None:
-        """4th step of calibration wizard: ask for time span (ms)."""
-        span_ms, accepted = QInputDialog.getDouble(
-            self,
-            tr("viewer.calibration_spectral_time_title"),
-            tr("viewer.calibration_spectral_time_prompt"),
-            2000.0,  # default 2 seconds
-            100.0,
-            10000.0,
-            0,
-        )
-        if not accepted or self._current_frame is None:
-            self._doppler_pending_roi = None
-            self._doppler_pending_baseline_y = None
-            self._doppler_pending_velocity_span = None
-            return
-
-        if (
-            self._doppler_pending_roi is not None
-            and self._doppler_pending_baseline_y is not None
-            and self._doppler_pending_velocity_span is not None
-        ):
-            velocity_span = self._doppler_pending_velocity_span
-            state = calibration_from_roi_and_baseline(
-                self._doppler_pending_roi,
-                self._doppler_pending_baseline_y,
-                velocity_span_cm_s=velocity_span,
-                time_span_ms=span_ms,
-                kind=self._doppler_cal_kind,
-            )
-            self.apply_doppler_calibration_state(state)
-            self._doppler_pending_roi = None
-            self._doppler_pending_baseline_y = None
-            self._doppler_pending_velocity_span = None
-            self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
-            self.spectral_calibration_completed.emit(velocity_span)
 
     def _ensure_calibration_graphics(self) -> None:
         if self._calibration_line_item is None:

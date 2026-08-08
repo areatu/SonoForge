@@ -1110,7 +1110,9 @@ class DopplerOverlayTools(QWidget):
     def _trace_last_point_on_baseline(self) -> bool:
         if not self._active_partial_points:
             return False
-        return abs(self._active_partial_points[-1][1]) < 1.0
+        span = self._axis_mapping.velocity_span_cm_s
+        tolerance = max(1.0, span * 0.025)
+        return abs(self._active_partial_points[-1][1]) < tolerance
 
     def _handle_trace_click(self, time_ms: float, velocity_cm_s: float, *, y_px: float) -> bool:
         if not self._active_partial_points:
