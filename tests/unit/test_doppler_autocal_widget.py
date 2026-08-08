@@ -94,6 +94,8 @@ def test_baseline_click_no_ticks_falls_back(qtbot, monkeypatch):
 
     assert handled is True
     assert widget._doppler_calibration_state is None
+    # Fallback should set _doppler_pending_roi so grid-line snapping works
+    assert widget._doppler_pending_roi is not None
 
 
 def test_baseline_click_no_frame_returns_false(qtbot):
@@ -134,3 +136,32 @@ def test_baseline_click_high_confidence_applies_calibration(qtbot, monkeypatch):
     assert handled is True
     assert widget._doppler_calibration_state is not None
     assert widget._doppler_calibration_state.velocity_span_cm_s == 200.0
+
+
+def test_snapping_uses_doppler_grid_lines(qtbot):
+    """During Doppler velocity calibration, mouse-move snapping uses
+    _doppler_grid_line_positions (not depth tick positions)."""
+    widget = ViewerWidget()
+    qtbot.addWidget(widget)
+    frame = np.zeros((400, 640, 3), dtype=np.uint8)
+    widget._current_frame = frame
+    widget._calibration_active = True
+    widget._calibration_kind = "doppler_velocity"
+    widget._calibration_start_y = None
+    widget._doppler_grid_line_positions = [100.0, 200.0, 300.0]
+    widget._depth_tick_y_positions = []
+
+    snapped = []
+    widget._update_calibration_preview = lambda a, b: snapped.append(b)
+    widget._update_calibration_horizontal_guides = lambda y: None
+
+    widget._view = MagicMock()
+    widget._view.mapSceneToView = MagicMock(return_value=MagicMock(
+        y=lambda: 103.0, x=lambda: 0.0))
+    widget._update_measurement_crosshair = MagicMock()
+
+    from PySide6.QtCore import QPointF
+    widget._on_scene_mouse_moved(QPointF(0, 0))
+
+    assert len(snapped) == 1
+    assert snapped[0] == 100.0  # snapped to nearest grid line at y=100
