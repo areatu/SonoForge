@@ -3288,8 +3288,16 @@ class ViewerWidget(QWidget):
         if self._doppler_cal_step == "baseline":
             self._doppler_pending_baseline_y = y
             height, width = self._current_frame.shape[:2]
-            roi = self._doppler_pending_roi or DopplerSpectrogramRoi(
-                x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height))
+            roi = (
+                self._doppler_pending_roi
+                or (
+                    self._doppler_calibration_state.roi
+                    if self._doppler_calibration_state is not None
+                    else None
+                )
+                or DopplerSpectrogramRoi(
+                    x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height))
+                )
             )
             # Try one-click auto-calibration (analog of B-mode auto-cal)
             auto = try_auto_doppler_velocity_calibration(
