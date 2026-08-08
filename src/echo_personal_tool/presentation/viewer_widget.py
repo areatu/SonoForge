@@ -88,6 +88,9 @@ from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import
 from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
 )
+from echo_personal_tool.domain.services.velocity_scale_detector import (
+    detect_velocity_scale_ticks,
+)
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
@@ -3137,6 +3140,7 @@ class ViewerWidget(QWidget):
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
+            self._doppler_pending_roi = roi
             self._begin_doppler_velocity_calibration()
             return True
 
@@ -3152,14 +3156,19 @@ class ViewerWidget(QWidget):
         roi = self._doppler_pending_roi
         if roi is not None:
             self._calibration_x = min(roi.x1 - 4.0, float(width - 5))
-            # Detect grid lines in the spectrogram ROI for snap
-            self._doppler_grid_line_positions = detect_doppler_grid_lines(
+            grid_lines = detect_doppler_grid_lines(
                 self._current_frame,
                 x0=int(roi.x0),
                 y0=int(roi.y0),
                 width=int(roi.width),
                 height=int(roi.height),
             )
+            scale_ticks = detect_velocity_scale_ticks(
+                self._current_frame, roi=roi
+            )
+            combined = sorted(set(round(g, 1) for g in grid_lines)
+                              | set(round(t, 1) for t in scale_ticks))
+            self._doppler_grid_line_positions = combined
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
             self._doppler_grid_line_positions = []
