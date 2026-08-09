@@ -1524,21 +1524,15 @@ class MainWindow(QMainWindow):
                 doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
                 doppler_partial=doppler is not None and not doppler.is_complete(),
             )
-        except Exception:
-            snap = PropertiesSnapshot.default(
-                depth_ok=state.effective_pixel_spacing is not None,
-                mmode_calibrated=mmode.is_complete() if mmode else False,
-                mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
-                mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
-                mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
-                mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
-                mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
-                doppler_calibrated=doppler.is_complete() if doppler else False,
-                doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
-                doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
-                doppler_partial=doppler is not None and not doppler.is_complete(),
+            panel.update_from_snapshot(snap)
+        except (FileNotFoundError, PermissionError, OSError):
+            panel.update_instance_info(
+                modality=state.instance.modality,
+                series_desc=state.instance.series_description,
+                frame_time_ms=state.instance.frame_time_ms,
+                number_of_frames=state.instance.number_of_frames,
+                media_format=state.instance.media_format,
             )
-        panel.update_from_snapshot(snap)
 
         # Latest measurement
         if state.linear_measurements:
