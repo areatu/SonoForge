@@ -603,13 +603,23 @@ class TestVesselCycleCorrection:
         )
         viewer._doppler_calibration_state = state
         viewer._doppler.set_axis_mapping(build_axis_mapping(state))
-        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
-                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
-                    (900.0, 60.0), (1000.0, 70.0))
+        envelope = (
+            (100.0, 70.0),
+            (200.0, 40.0),
+            (300.0, 30.0),
+            (400.0, 55.0),
+            (500.0, 65.0),
+            (600.0, 35.0),
+            (700.0, 25.0),
+            (800.0, 50.0),
+            (900.0, 60.0),
+            (1000.0, 70.0),
+        )
         from unittest.mock import patch
 
-        with patch.object(viewer, "_extract_doppler_envelope", return_value=envelope), patch.object(
-            viewer, "_doppler_cardiac_cycles", return_value=self._cycles()
+        with (
+            patch.object(viewer, "_extract_doppler_envelope", return_value=envelope),
+            patch.object(viewer, "_doppler_cardiac_cycles", return_value=self._cycles()),
         ):
             assert viewer.average_vessel_cycles() is True
 

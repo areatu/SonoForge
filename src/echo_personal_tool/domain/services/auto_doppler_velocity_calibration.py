@@ -52,9 +52,7 @@ def infer_velocity_span(
         return None
 
     sorted_ticks = sorted(tick_ys)
-    spacings = np.array(
-        [sorted_ticks[i + 1] - sorted_ticks[i] for i in range(len(sorted_ticks) - 1)]
-    )
+    spacings = np.array([sorted_ticks[i + 1] - sorted_ticks[i] for i in range(len(sorted_ticks) - 1)])
     pixel_spacing = float(np.median(spacings))
     if pixel_spacing <= 0:
         return None
@@ -117,9 +115,7 @@ def try_auto_doppler_velocity_calibration(
     Returns None if auto-detection is not possible (e.g., not enough ticks
     or non-standard scale layout).
     """
-    tick_ys = find_best_scale_column(
-        frame, roi=roi, search_width_px=120, baseline_y=baseline_y
-    )
+    tick_ys = find_best_scale_column(frame, roi=roi, search_width_px=120, baseline_y=baseline_y)
     if len(tick_ys) < 4:
         tick_ys = detect_velocity_scale_ticks(frame, roi=roi, baseline_y=baseline_y)
     if len(tick_ys) < 4:

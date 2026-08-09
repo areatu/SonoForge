@@ -11,8 +11,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
-
 RING_BUFFER_SIZE = 50
 _KEYFRAME_SCAN_MAX_STEP = 120
 _max_readers = 10
@@ -210,10 +208,11 @@ class VideoReader:
             return False
 
         # DEFENSIVE PATH: After seek, backend may return non-contiguous or BGRA.
-        if bgr.ndim == 3 and bgr.shape[2] == 3 and bgr.dtype == np.uint8 and bgr.flags['C_CONTIGUOUS']:
+        if bgr.ndim == 3 and bgr.shape[2] == 3 and bgr.dtype == np.uint8 and bgr.flags["C_CONTIGUOUS"]:
             frame = bgr
         else:
             from echo_personal_tool.infrastructure.pixel_utils import to_bgr_uint8
+
             frame = to_bgr_uint8(bgr)  # Safety fallback
 
         self._store_in_buffer(index, frame)

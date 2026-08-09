@@ -33,7 +33,9 @@ class TestUserPreferencesDialogConstruction:
 
         dlg = UserPreferencesDialog()
         assert dlg._tabs is not None
-        assert dlg._tabs.count() >= 5  # interface(+display block), measurement, other(+gold/dicom/refs blocks), experimental, server
+        assert (
+            dlg._tabs.count() >= 5
+        )  # interface(+display block), measurement, other(+gold/dicom/refs blocks), experimental, server
 
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
     def test_theme_combo_populated(self, mock_load):

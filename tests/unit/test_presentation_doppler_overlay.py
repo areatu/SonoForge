@@ -331,7 +331,7 @@ class TestVesselMode:
         overlay.set_axis_mapping(_vessel_mapping())
         overlay.set_vessel_mode()
         # baseline at y=100, span 200 => pixels_per_cm_s = 200/200 = 1
-        overlay.handle_vessel_click(200.0, 50.0)   # PSV -> 50 cm/s
+        overlay.handle_vessel_click(200.0, 50.0)  # PSV -> 50 cm/s
         overlay.handle_vessel_click(300.0, 100.0)  # EDV -> 0 cm/s
         psv, edv = overlay.get_vessel_values()
         assert psv == pytest.approx(50.0)
@@ -391,9 +391,7 @@ class TestDerivePsvEdvIndices:
         from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
 
         # velocities cm/s: [10, 30, 60, 80, 90, 75, 50, 35, 22, 40] -> y = 100 - v
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         psv_idx, edv_idx = derive_psv_edv_indices(envelope)
         assert psv_idx == 4
         assert edv_idx == 8
@@ -402,9 +400,7 @@ class TestDerivePsvEdvIndices:
         from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
 
         # minimum in the window is only ~1 cm/s below the end -> unreliable
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 30, 45, 58, 70, 69])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 30, 45, 58, 70, 69]))
         psv_idx, edv_idx = derive_psv_edv_indices(envelope)
         assert psv_idx == 4
         assert edv_idx == 9
@@ -421,9 +417,7 @@ class TestDerivePsvEdvIndices:
         from echo_personal_tool.presentation.doppler_overlay import derive_psv_edv_indices
 
         # velocities cm/s: [20, 40, 60, 80, 70, 50, 30, 20, 15, 90] -> PSV at the last point
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([80, 60, 40, 20, 30, 50, 70, 80, 85, 10])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([80, 60, 40, 20, 30, 50, 70, 80, 85, 10]))
         psv_idx, edv_idx = derive_psv_edv_indices(envelope)
         assert psv_idx == 9
         assert edv_idx == 9
@@ -447,9 +441,7 @@ class TestAutoTrace:
 
     def test_apply_auto_trace_places_edv_at_diastolic_min(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping())
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         result = overlay.apply_auto_trace(envelope)
         assert result == pytest.approx((90.0, 22.0))
         assert overlay._vessel_psv_px == envelope[4]
@@ -492,9 +484,7 @@ class TestAutoTraceWithCycles:
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         cycle = CardiacCycle(
             start_ms=0.0,
             end_ms=2500.0,
@@ -512,9 +502,7 @@ class TestAutoTraceWithCycles:
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         cycle = CardiacCycle(
             start_ms=2500.0,
             end_ms=4000.0,
@@ -538,9 +526,7 @@ class TestAutoTraceWithCycles:
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         cycle = CardiacCycle(
             start_ms=0.0,
             end_ms=2500.0,
@@ -578,9 +564,7 @@ class TestAutoVtiTrace:
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         # cycle 900..1500 ms -> x 550..800 -> envelope points at x=600,700,800
         cycle = CardiacCycle(
             start_ms=900.0,
@@ -602,9 +586,7 @@ class TestAutoVtiTrace:
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = tuple(
-            (100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60])
-        )
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
         cycle = CardiacCycle(
             start_ms=5000.0,
             end_ms=6000.0,
@@ -673,9 +655,21 @@ class TestAveragedVesselMedian:
     def _artifact_envelope(self):
         # velocities = 100 - y; cycle2 PSV is an artifact spike (y=0 -> 100 cm/s)
         return (
-            (100.0, 50.0), (200.0, 50.0), (300.0, 10.0), (400.0, 50.0), (500.0, 90.0),
-            (600.0, 50.0), (700.0, 50.0), (800.0, 0.0), (900.0, 50.0), (1000.0, 90.0),
-            (1100.0, 50.0), (1200.0, 50.0), (1300.0, 10.0), (1400.0, 50.0), (1500.0, 90.0),
+            (100.0, 50.0),
+            (200.0, 50.0),
+            (300.0, 10.0),
+            (400.0, 50.0),
+            (500.0, 90.0),
+            (600.0, 50.0),
+            (700.0, 50.0),
+            (800.0, 0.0),
+            (900.0, 50.0),
+            (1000.0, 90.0),
+            (1100.0, 50.0),
+            (1200.0, 50.0),
+            (1300.0, 10.0),
+            (1400.0, 50.0),
+            (1500.0, 90.0),
         )
 
     def _three_cycles(self):
@@ -709,9 +703,18 @@ class TestAveragedVesselMedian:
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
-                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
-                    (900.0, 60.0), (1000.0, 70.0))
+        envelope = (
+            (100.0, 70.0),
+            (200.0, 40.0),
+            (300.0, 30.0),
+            (400.0, 55.0),
+            (500.0, 65.0),
+            (600.0, 35.0),
+            (700.0, 25.0),
+            (800.0, 50.0),
+            (900.0, 60.0),
+            (1000.0, 70.0),
+        )
         cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "envelope", 1.0)
         overlay.apply_averaged_vessel(envelope, cycles=(cycle,))
         assert overlay.vessel_cycle_source() == "envelope"
@@ -753,9 +756,18 @@ def _vessel_mapping():
 class TestVesselCycleCorrection:
     def _averaged(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping_with_time())
-        envelope = ((100.0, 70.0), (200.0, 40.0), (300.0, 30.0), (400.0, 55.0),
-                    (500.0, 65.0), (600.0, 35.0), (700.0, 25.0), (800.0, 50.0),
-                    (900.0, 60.0), (1000.0, 70.0))
+        envelope = (
+            (100.0, 70.0),
+            (200.0, 40.0),
+            (300.0, 30.0),
+            (400.0, 55.0),
+            (500.0, 65.0),
+            (600.0, 35.0),
+            (700.0, 25.0),
+            (800.0, 50.0),
+            (900.0, 60.0),
+            (1000.0, 70.0),
+        )
         from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
         cycles = (

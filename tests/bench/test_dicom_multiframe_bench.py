@@ -19,7 +19,6 @@ from __future__ import annotations
 import gc
 import os
 from pathlib import Path
-from time import perf_counter
 
 import numpy as np
 import psutil
@@ -54,9 +53,7 @@ _BENCH_PARAMS = pytest.mark.parametrize(
 )
 
 
-def _make_synthetic_dicom(
-    tmp_path: Path, rows: int, cols: int, frame_count: int, *, bits: int = 8
-) -> Path:
+def _make_synthetic_dicom(tmp_path: Path, rows: int, cols: int, frame_count: int, *, bits: int = 8) -> Path:
     """Create uncompressed multiframe DICOM for benchmarks."""
     from tests.fixtures.generate_synthetic_dicom import write_synthetic_multiframe_dicom
 
@@ -192,9 +189,7 @@ def test_bench_read_frame_hot_cache(benchmark, tmp_path: Path, rows: int, cols: 
 
 @_BENCH
 @_BENCH_PARAMS
-def test_bench_full_pipeline_with_cache(
-    benchmark, tmp_path: Path, rows: int, cols: int, frame_count: int
-) -> None:
+def test_bench_full_pipeline_with_cache(benchmark, tmp_path: Path, rows: int, cols: int, frame_count: int) -> None:
     """End-to-end: open DICOM → decode → put in cache → playback sweep with eviction."""
     dcm = _make_synthetic_dicom(tmp_path, rows, cols, frame_count)
 

@@ -158,11 +158,13 @@ class TestBuildStudyTree:
         assert dialog._tree.topLevelItemCount() == 1
 
     def test_sorts_by_date_desc(self, dialog):
-        dialog._build_study_tree([
-            self._study(date="20240101", uid="a"),
-            self._study(date="20240615", uid="b"),
-            self._study(date="20240310", uid="c"),
-        ])
+        dialog._build_study_tree(
+            [
+                self._study(date="20240101", uid="a"),
+                self._study(date="20240615", uid="b"),
+                self._study(date="20240310", uid="c"),
+            ]
+        )
         assert dialog._tree.topLevelItemCount() == 3
         # Newest first
         assert dialog._tree.topLevelItem(0).data(1, 258) == "20240615"  # _SORT_ROLE = UserRole+2 = 258
@@ -453,8 +455,12 @@ class TestOnSeriesLoaded:
         from echo_personal_tool.domain.models.orthanc import SeriesInfo
 
         series_list = [
-            SeriesInfo(study_uid="study-uid", series_uid="series-1", modality="US", description="Echo", instance_count=10),
-            SeriesInfo(study_uid="study-uid", series_uid="series-2", modality="DC", description="Doppler", instance_count=5),
+            SeriesInfo(
+                study_uid="study-uid", series_uid="series-1", modality="US", description="Echo", instance_count=10
+            ),
+            SeriesInfo(
+                study_uid="study-uid", series_uid="series-2", modality="DC", description="Doppler", instance_count=5
+            ),
         ]
         dialog._on_series_loaded(("study-uid", series_list, None))
         assert item.childCount() == 2
@@ -490,7 +496,13 @@ class TestOnSeriesLoaded:
         target = self._add_study_item(dialog, uid="study-2")
         self._add_study_item(dialog, uid="study-3")
 
-        dialog._on_series_loaded(("study-2", [SeriesInfo(study_uid="study-2", series_uid="s2", modality="US", description="A", instance_count=1)], None))
+        dialog._on_series_loaded(
+            (
+                "study-2",
+                [SeriesInfo(study_uid="study-2", series_uid="s2", modality="US", description="A", instance_count=1)],
+                None,
+            )
+        )
         assert target.childCount() == 1
         assert target.child(0).data(0, self._SERIES_ROLE) == "s2"
 

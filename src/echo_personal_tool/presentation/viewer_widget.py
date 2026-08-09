@@ -55,6 +55,9 @@ from echo_personal_tool.domain.models.linear_measurement import (
     pixel_to_mm_length,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
+    try_auto_doppler_velocity_calibration,
+)
 from echo_personal_tool.domain.services.contour_edge_snap import (
     EdgeMap,
     apply_soft_magnetic_snap,
@@ -76,20 +79,13 @@ from echo_personal_tool.domain.services.contour_geometry import (
 from echo_personal_tool.domain.services.depth_scale_detector import (
     find_scale_ticks,
 )
-from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
 from echo_personal_tool.domain.services.doppler_calibration import (
     build_axis_mapping,
     calibration_from_roi_and_baseline,
     roi_from_corners,
 )
-from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
-    try_auto_doppler_velocity_calibration,
-)
 from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
-)
-from echo_personal_tool.domain.services.velocity_scale_detector import (
-    detect_velocity_scale_ticks,
 )
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
 from echo_personal_tool.domain.services.mbs_lite_service import (
@@ -107,6 +103,9 @@ from echo_personal_tool.domain.services.pixel_spacing_resolver import (
 from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
 from echo_personal_tool.domain.services.spectrogram_detector import (
     detect_spectrogram_roi,
+)
+from echo_personal_tool.domain.services.velocity_scale_detector import (
+    detect_velocity_scale_ticks,
 )
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_path
 from echo_personal_tool.infrastructure.dicom_frame_panels import (
@@ -1547,10 +1546,14 @@ class ViewerWidget(QWidget):
         geo = self._graphics.geometry()
         cropped = full.copy(geo.x(), geo.y(), geo.width(), geo.height())
         if cropped.isNull():
-            QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path))
+            QMessageBox.warning(
+                self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
+            )
             return
         if not cropped.save(path):
-            QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path))
+            QMessageBox.warning(
+                self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
+            )
 
     def _resolve_display_mode(
         self,
@@ -2428,9 +2431,7 @@ class ViewerWidget(QWidget):
             return False
         psv, edv = result
         count = self._doppler.vessel_averaged_cycles()
-        self._measurement_label.setText(
-            tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count)
-        )
+        self._measurement_label.setText(tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count))
         self._measurement_label.show()
         if self._doppler.vessel_cycle_selection_active():
             self._update_vessel_cycle_selection_label()
@@ -2454,9 +2455,7 @@ class ViewerWidget(QWidget):
             return
         psv, edv = values
         count = self._doppler.vessel_averaged_cycles()
-        self._measurement_label.setText(
-            tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count)
-        )
+        self._measurement_label.setText(tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count))
         self._measurement_label.show()
 
     def accept_vessel_measurement(self) -> bool:
@@ -2514,23 +2513,23 @@ class ViewerWidget(QWidget):
                 velocity_span_cm_s=state.velocity_span_cm_s,
                 kind=state.kind,
                 from_dicom_tags=state.from_dicom_tags,
-                time_from_dicom_tags=getattr(state, 'time_from_dicom_tags', False),
-                velocity_from_dicom_tags=getattr(state, 'velocity_from_dicom_tags', False),
-                velocity_per_pixel_cm_s=getattr(state, 'velocity_per_pixel_cm_s', None),
+                time_from_dicom_tags=getattr(state, "time_from_dicom_tags", False),
+                velocity_from_dicom_tags=getattr(state, "velocity_from_dicom_tags", False),
+                velocity_per_pixel_cm_s=getattr(state, "velocity_per_pixel_cm_s", None),
             )
         self._doppler_calibration_state = state
         self._doppler_calibration_instance_uid = self._current_instance_uid()
         self._doppler_calibration_frame_index = self._current_frame_index()
         self._doppler.set_axis_mapping(build_axis_mapping(state))
         self._doppler_axis_calibrated = state.has_velocity_scale()
-        
+
         # Show ECG strip and load ECG data when Doppler is active
         if state is not None:
             self.show_ecg_strip()
             self._load_ecg_for_strip()
         else:
             self.hide_ecg_strip()
-        
+
         if persist and not self._syncing_state and self._doppler_calibration_matches_instance():
             self.doppler_calibration_changed.emit(state)
 
@@ -2703,15 +2702,14 @@ class ViewerWidget(QWidget):
         # --- M3: FrameTime fallback ---
         horizontal_ms = state.horizontal_ms_per_pixel
         if horizontal_ms is None and self._current_state is not None:
-            horizontal_ms = horizontal_ms_from_frame_time(
-                self._current_state.frame_time_ms, state.roi.width
-            )
+            horizontal_ms = horizontal_ms_from_frame_time(self._current_state.frame_time_ms, state.roi.width)
 
         # --- M7: Tick detection fallback ---
         if vertical_mm is None and self._current_frame is not None:
             from echo_personal_tool.domain.services.auto_depth_calibration import (
                 try_auto_depth_calibration_in_roi,
             )
+
             tick_result = try_auto_depth_calibration_in_roi(self._current_frame, state.roi)
             if tick_result is not None and tick_result.spacing[0] > 0.0:
                 vertical_mm = tick_result.spacing[0]
@@ -3124,14 +3122,8 @@ class ViewerWidget(QWidget):
             height, width = self._current_frame.shape[:2]
             roi = (
                 self._doppler_pending_roi
-                or (
-                    self._doppler_calibration_state.roi
-                    if self._doppler_calibration_state is not None
-                    else None
-                )
-                or DopplerSpectrogramRoi(
-                    x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height))
-                )
+                or (self._doppler_calibration_state.roi if self._doppler_calibration_state is not None else None)
+                or DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height)))
             )
             # Try one-click auto-calibration (analog of B-mode auto-cal)
             auto = try_auto_doppler_velocity_calibration(
@@ -3186,11 +3178,8 @@ class ViewerWidget(QWidget):
                 width=int(roi.width),
                 height=int(roi.height),
             )
-            scale_ticks = detect_velocity_scale_ticks(
-                self._current_frame, roi=roi
-            )
-            combined = sorted(set(round(g, 1) for g in grid_lines)
-                              | set(round(t, 1) for t in scale_ticks))
+            scale_ticks = detect_velocity_scale_ticks(self._current_frame, roi=roi)
+            combined = sorted(set(round(g, 1) for g in grid_lines) | set(round(t, 1) for t in scale_ticks))
             self._doppler_grid_line_positions = combined
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
@@ -5672,9 +5661,15 @@ class ViewerWidget(QWidget):
                 roi=pending_roi,
                 vertical_mm_per_pixel=pending_depth,
                 horizontal_ms_per_pixel=time_per_pixel_ms,
-                from_dicom_tags=self._mmode_calibration_state.from_dicom_tags if self._mmode_calibration_state is not None else False,
-                depth_from_dicom_tags=self._mmode_calibration_state.depth_from_dicom_tags if self._mmode_calibration_state is not None else False,
-                time_from_dicom_tags=self._mmode_calibration_state.time_from_dicom_tags if self._mmode_calibration_state is not None else False,
+                from_dicom_tags=self._mmode_calibration_state.from_dicom_tags
+                if self._mmode_calibration_state is not None
+                else False,
+                depth_from_dicom_tags=self._mmode_calibration_state.depth_from_dicom_tags
+                if self._mmode_calibration_state is not None
+                else False,
+                time_from_dicom_tags=self._mmode_calibration_state.time_from_dicom_tags
+                if self._mmode_calibration_state is not None
+                else False,
             )
             self._mmode_pending_roi = None
             self._mmode_pending_depth_mm_per_pixel = None

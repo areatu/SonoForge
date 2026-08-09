@@ -115,27 +115,23 @@ class PropertiesPanel(QWidget):
         if snapshot.software_versions:
             self._instance_form.addRow(tr("properties.software"), QLabel(snapshot.software_versions))
         if snapshot.image_type:
-            self._instance_form.addRow(
-                tr("properties.image_type"), QLabel("\\".join(snapshot.image_type))
-            )
+            self._instance_form.addRow(tr("properties.image_type"), QLabel("\\".join(snapshot.image_type)))
         self._instance_group.show()
 
         # Timing
         if snapshot.frame_time_ms is not None:
-            self._timing_form.addRow(
-                tr("properties.frame_time"), QLabel(f"{snapshot.frame_time_ms:.1f} ms")
-            )
+            self._timing_form.addRow(tr("properties.frame_time"), QLabel(f"{snapshot.frame_time_ms:.1f} ms"))
         if snapshot.cine_rate_fps is not None:
-            self._timing_form.addRow(
-                tr("properties.cine_rate"), QLabel(f"{snapshot.cine_rate_fps:.1f} fps")
-            )
+            self._timing_form.addRow(tr("properties.cine_rate"), QLabel(f"{snapshot.cine_rate_fps:.1f} fps"))
         if snapshot.heart_rate_bpm is not None:
-            self._timing_form.addRow(
-                tr("properties.heart_rate"), QLabel(f"{snapshot.heart_rate_bpm:.0f} bpm")
-            )
+            self._timing_form.addRow(tr("properties.heart_rate"), QLabel(f"{snapshot.heart_rate_bpm:.0f} bpm"))
         ftv = tr("properties.yes") if snapshot.frame_time_vector_present else tr("properties.no")
         self._timing_form.addRow(tr("properties.frame_time_vector"), QLabel(ftv))
-        if snapshot.frame_time_ms is not None or snapshot.cine_rate_fps is not None or snapshot.heart_rate_bpm is not None:
+        if (
+            snapshot.frame_time_ms is not None
+            or snapshot.cine_rate_fps is not None
+            or snapshot.heart_rate_bpm is not None
+        ):
             self._timing_group.show()
         else:
             self._timing_group.hide()
@@ -143,9 +139,7 @@ class PropertiesPanel(QWidget):
         # Spatial
         if snapshot.pixel_spacing_mm is not None:
             row, col = snapshot.pixel_spacing_mm
-            self._spatial_form.addRow(
-                tr("properties.spacing"), QLabel(f"{row:.3f}×{col:.3f} mm")
-            )
+            self._spatial_form.addRow(tr("properties.spacing"), QLabel(f"{row:.3f}×{col:.3f} mm"))
         if snapshot.pixel_spacing_source:
             self._spatial_form.addRow(tr("properties.source"), QLabel(snapshot.pixel_spacing_source))
         if snapshot.transducer_frequency_mhz is not None:
@@ -153,10 +147,7 @@ class PropertiesPanel(QWidget):
                 tr("properties.transducer_freq"),
                 QLabel(f"{snapshot.transducer_frequency_mhz:.1f} MHz"),
             )
-        if (
-            snapshot.pixel_spacing_mm is not None
-            or snapshot.transducer_frequency_mhz is not None
-        ):
+        if snapshot.pixel_spacing_mm is not None or snapshot.transducer_frequency_mhz is not None:
             self._spatial_group.show()
         else:
             self._spatial_group.hide()
@@ -177,13 +168,9 @@ class PropertiesPanel(QWidget):
 
         # Patient
         if snapshot.patient_height_m is not None and snapshot.patient_height_m > 0:
-            self._patient_form.addRow(
-                tr("properties.height"), QLabel(f"{snapshot.patient_height_m * 100:.0f} cm")
-            )
+            self._patient_form.addRow(tr("properties.height"), QLabel(f"{snapshot.patient_height_m * 100:.0f} cm"))
         if snapshot.patient_weight_kg is not None and snapshot.patient_weight_kg > 0:
-            self._patient_form.addRow(
-                tr("properties.weight"), QLabel(f"{snapshot.patient_weight_kg:.1f} kg")
-            )
+            self._patient_form.addRow(tr("properties.weight"), QLabel(f"{snapshot.patient_weight_kg:.1f} kg"))
         if (
             snapshot.patient_height_m is not None
             and snapshot.patient_height_m > 0
@@ -265,7 +252,9 @@ class PropertiesPanel(QWidget):
     def _add_doppler_calibration_row(self, snapshot: PropertiesSnapshot) -> None:
         """Add Doppler calibration status row."""
         if not snapshot.doppler_calibrated and not snapshot.doppler_partial:
-            self._calibration_form.addRow(tr("properties.calibration.doppler"), QLabel(tr("properties.calibration.doppler_na")))
+            self._calibration_form.addRow(
+                tr("properties.calibration.doppler"), QLabel(tr("properties.calibration.doppler_na"))
+            )
             return
         if snapshot.doppler_calibrated:
             status = tr("properties.calibration.doppler_complete")
@@ -343,7 +332,9 @@ class PropertiesPanel(QWidget):
         if patient_height_m and patient_weight_kg and patient_height_m > 0 and patient_weight_kg > 0:
             bmi = patient_weight_kg / (patient_height_m**2)
             self._patient_form.addRow(tr("properties.bmi"), QLabel(f"{bmi:.1f}"))
-        if (patient_height_m is not None and patient_height_m > 0) or (patient_weight_kg is not None and patient_weight_kg > 0):
+        if (patient_height_m is not None and patient_height_m > 0) or (
+            patient_weight_kg is not None and patient_weight_kg > 0
+        ):
             self._patient_group.show()
         else:
             self._patient_group.hide()

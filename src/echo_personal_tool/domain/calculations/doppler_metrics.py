@@ -8,18 +8,11 @@ from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_m
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import DopplerResults
 
-
 _np_trapezoid = getattr(np, "trapezoid", None) or np.trapz
 
 
 def _normalize_label(label: str) -> str:
-    return (
-        label.strip()
-        .lower()
-        .replace("'", "_prime")
-        .replace("′", "_prime")
-        .replace(" ", "_")
-    )
+    return label.strip().lower().replace("'", "_prime").replace("′", "_prime").replace(" ", "_")
 
 
 def _find_peak_velocity(dto: DopplerMeasurementDTO, *labels: str) -> float | None:

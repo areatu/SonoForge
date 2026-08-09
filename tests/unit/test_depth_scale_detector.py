@@ -61,7 +61,7 @@ def _make_frame_with_ticks(height=400, width=600, tick_positions=None, tick_widt
     if tick_positions is None:
         tick_positions = [50, 100, 150, 200, 250, 300, 350]
     for y in tick_positions:
-        frame[y, 100:100 + tick_width] = 200
+        frame[y, 100 : 100 + tick_width] = 200
     return frame
 
 

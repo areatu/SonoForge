@@ -258,9 +258,7 @@ def test_query_instances_auto_fallback_to_dimse_on_web_error() -> None:
         def query_instances(self, study_uid: str, series_uid: str) -> list:
             raise RemoteProtocolError("server disconnected")
 
-    svc = DicomQueryService(
-        web=_FailingWebInstances(), dimse=_OkDimse(), source=QuerySource.AUTO
-    )
+    svc = DicomQueryService(web=_FailingWebInstances(), dimse=_OkDimse(), source=QuerySource.AUTO)
     result = svc.query_instances("1.2.3", "1.2.3.4")
     assert result == ["instance-result"]
 
@@ -273,9 +271,7 @@ def test_query_instances_raises_when_all_sources_fail() -> None:
         def query_instances(self, study_uid: str, series_uid: str) -> list:
             raise RemoteProtocolError("server disconnected")
 
-    svc = DicomQueryService(
-        web=_FailingWebInstances(), dimse=_FailingDimse(), source=QuerySource.AUTO
-    )
+    svc = DicomQueryService(web=_FailingWebInstances(), dimse=_FailingDimse(), source=QuerySource.AUTO)
     with pytest.raises(Exception):  # could be ConnectionError or RemoteProtocolError
         svc.query_instances("1.2.3", "1.2.3.4")
 

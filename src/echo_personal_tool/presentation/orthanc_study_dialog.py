@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import logging
+from collections.abc import Callable
 from dataclasses import replace
-
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
@@ -428,11 +426,7 @@ class OrthancStudyDialog(QDialog):
         self._series_loading.add(study_uid)
 
         loading_item = QTreeWidgetItem(["", "", tr("orthanc.searching")])
-        loading_item.setFlags(
-            loading_item.flags()
-            & ~Qt.ItemFlag.ItemIsSelectable
-            & ~Qt.ItemFlag.ItemIsUserCheckable
-        )
+        loading_item.setFlags(loading_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
         item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
         item.addChild(loading_item)
 
@@ -472,11 +466,7 @@ class OrthancStudyDialog(QDialog):
 
         if error and not series_list:
             error_item = QTreeWidgetItem(["", "", tr("orthanc.series_query_error", message=error[:200])])
-            error_item.setFlags(
-                error_item.flags()
-                & ~Qt.ItemFlag.ItemIsSelectable
-                & ~Qt.ItemFlag.ItemIsUserCheckable
-            )
+            error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
             target_item.addChild(error_item)
         else:
             for series in series_list:

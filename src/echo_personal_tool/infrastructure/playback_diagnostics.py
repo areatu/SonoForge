@@ -31,7 +31,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Literal
 
 import psutil
 
@@ -49,9 +48,9 @@ def _rss_mb() -> float:
 def _numpy_memory_report() -> dict[str, object]:
     """Snapshot of numpy array memory: total allocated, count, dtype breakdown."""
     try:
-        import numpy as np
-
         import gc
+
+        import numpy as np
 
         gc.collect()
         arrs = [a for a in gc.get_objects() if isinstance(a, np.ndarray)]
@@ -139,7 +138,7 @@ class PlaybackReport:
                 lines.append(f"    min:  {min_ms:.2f} ms")
                 lines.append(f"    max:  {max_ms:.2f} ms")
                 lines.append(f"    target: {target_ms:.2f} ms")
-                lines.append(f"    overdue (>1.5x): {overdue}/{len(deltas)} ({100*overdue/len(deltas):.1f}%)")
+                lines.append(f"    overdue (>1.5x): {overdue}/{len(deltas)} ({100 * overdue / len(deltas):.1f}%)")
 
         # Wall-clock jitter
         if self.wall_clock_jitter_ms:
@@ -164,7 +163,11 @@ class PlaybackReport:
             lines.append(f"    total decode:  {total_decode_ms:.1f} ms")
             lines.append(f"    avg batch:     {avg_batch_ms:.1f} ms")
             lines.append(f"    avg per frame: {avg_per_frame:.2f} ms")
-            lines.append(f"    throughput:    {1000.0/avg_per_frame:.0f} frames/sec" if avg_per_frame > 0 else "    throughput:    inf")
+            lines.append(
+                f"    throughput:    {1000.0 / avg_per_frame:.0f} frames/sec"
+                if avg_per_frame > 0
+                else "    throughput:    inf"
+            )
 
         # Memory
         lines.append("")
@@ -181,7 +184,7 @@ class PlaybackReport:
             by_dtype = last_np.get("by_dtype", {})
             if by_dtype:
                 for dt, nbytes in sorted(by_dtype.items(), key=lambda x: -x[1]):
-                    lines.append(f"      {dt}: {nbytes/1e6:.1f} MB")
+                    lines.append(f"      {dt}: {nbytes / 1e6:.1f} MB")
 
         # Instance switches
         if self.instance_switches:
@@ -301,9 +304,7 @@ class PlaybackDiagnostics:
     def on_decode_batch(self, start_idx: int, count: int, elapsed_ms: float) -> None:
         if not self.enabled:
             return
-        self._decode_batches.append(
-            DecodeBatchRecord(start_idx=start_idx, count=count, elapsed_ms=elapsed_ms)
-        )
+        self._decode_batches.append(DecodeBatchRecord(start_idx=start_idx, count=count, elapsed_ms=elapsed_ms))
         _LOG.info(
             "[PLAYBACK_DIAG] decode_batch  start=%d  count=%d  elapsed=%.1f ms  throughput=%.0f fps",
             start_idx,
@@ -375,11 +376,18 @@ class PlaybackDiagnostics:
     def stop(self) -> PlaybackReport:
         if not self._active:
             return PlaybackReport(
-                fps_target=0, frame_count=0, total_elapsed_ms=0,
-                frame_ticks=[], decode_batches=[],
-                rss_start_mb=0, rss_end_mb=0, rss_peak_mb=0,
-                numpy_snapshots=[], wall_clock_jitter_ms=[],
-                instance_switches=[], prefetch_cancel_count=0,
+                fps_target=0,
+                frame_count=0,
+                total_elapsed_ms=0,
+                frame_ticks=[],
+                decode_batches=[],
+                rss_start_mb=0,
+                rss_end_mb=0,
+                rss_peak_mb=0,
+                numpy_snapshots=[],
+                wall_clock_jitter_ms=[],
+                instance_switches=[],
+                prefetch_cancel_count=0,
             )
         self._rss_end_mb = _rss_mb()
         total_ms = sum(t.elapsed_ms for t in self._ticks) if self._ticks else 0.0

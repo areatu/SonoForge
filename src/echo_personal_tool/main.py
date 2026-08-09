@@ -86,13 +86,9 @@ _DIAG_LOGGERS = (
 _diag_log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
 try:
     _diag_log_dir.mkdir(parents=True, exist_ok=True)
-    _diag_handler = logging.FileHandler(
-        str(_diag_log_dir / "diag.log"), mode="w", encoding="utf-8"
-    )
+    _diag_handler = logging.FileHandler(str(_diag_log_dir / "diag.log"), mode="w", encoding="utf-8")
     _diag_handler.setLevel(logging.DEBUG)
-    _diag_handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    )
+    _diag_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
     for _logger_name in _DIAG_LOGGERS:
         logging.getLogger(_logger_name).setLevel(logging.DEBUG)
         logging.getLogger(_logger_name).addHandler(_diag_handler)

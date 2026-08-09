@@ -121,8 +121,10 @@ class TestDopplerCalibrationState:
         """ROI ok + velocity present + no time → partial."""
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0,
-            velocity_span_cm_s=200.0, time_span_ms=0.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=200.0,
+            time_span_ms=0.0,
         )
         assert state.is_partial() is True
 
@@ -130,32 +132,40 @@ class TestDopplerCalibrationState:
         """ROI ok + time present + no velocity → partial."""
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0,
-            velocity_span_cm_s=0.0, time_span_ms=800.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
+            time_span_ms=800.0,
         )
         assert state.is_partial() is True
 
     def test_not_partial_when_complete(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0,
-            velocity_span_cm_s=200.0, time_span_ms=800.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=200.0,
+            time_span_ms=800.0,
         )
         assert state.is_partial() is False
 
     def test_not_partial_when_neither(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0,
-            velocity_span_cm_s=0.0, time_span_ms=0.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=0.0,
+            time_span_ms=0.0,
         )
         assert state.is_partial() is False
 
     def test_is_complete(self) -> None:
         roi = self._make_roi()
         state = DopplerCalibrationState(
-            roi=roi, baseline_y_px=50.0,
-            velocity_span_cm_s=200.0, time_span_ms=800.0,
+            roi=roi,
+            baseline_y_px=50.0,
+            velocity_span_cm_s=200.0,
+            time_span_ms=800.0,
         )
         assert state.is_complete() is True
 

@@ -28,7 +28,7 @@ def _make_frame_with_scale(
     bmode_h = int(roi.y0)
     frame[:bmode_h, :] = bmode_brightness
     # Spectrogram interior (dark) so the strip stands out
-    frame[int(roi.y0):int(roi.y0 + roi.height), int(roi.x0):int(roi.x1)] = 30
+    frame[int(roi.y0) : int(roi.y0 + roi.height), int(roi.x0) : int(roi.x1)] = 30
     for y in tick_ys:
         frame[y, scale_x : scale_x + 10] = 220
     return frame
@@ -56,8 +56,11 @@ def test_detects_ticks_with_full_frame_roi_and_baseline() -> None:
     h, w = 600, 640
     roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(w), height=float(h))
     frame = _make_frame_with_scale(
-        height=h, width=w, roi=roi,
-        tick_ys=(150, 250, 350, 450, 550), scale_x=600,
+        height=h,
+        width=w,
+        roi=roi,
+        tick_ys=(150, 250, 350, 450, 550),
+        scale_x=600,
     )
     baseline_y = 350.0
     ticks = detect_velocity_scale_ticks(frame, roi=roi, baseline_y=baseline_y)
@@ -91,8 +94,11 @@ def test_find_scale_strip_x_returns_strip_column() -> None:
     h, w = 600, 640
     roi = DopplerSpectrogramRoi(x0=40, y0=100, width=540, height=480)
     frame = _make_frame_with_scale(
-        height=h, width=w, roi=roi,
-        tick_ys=(150, 250, 350, 450, 550), scale_x=600,
+        height=h,
+        width=w,
+        roi=roi,
+        tick_ys=(150, 250, 350, 450, 550),
+        scale_x=600,
     )
     x = find_scale_strip_x(frame, roi=roi, baseline_y=350.0)
     assert 580 <= x <= 615

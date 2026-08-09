@@ -87,9 +87,7 @@ def find_scale_ticks(frame: np.ndarray) -> list[float]:
     return detect_depth_scale_ticks(frame, x_center=best_x)
 
 
-def find_scale_ticks_in_roi(
-    frame: np.ndarray, roi: DopplerSpectrogramRoi
-) -> list[float]:
+def find_scale_ticks_in_roi(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> list[float]:
     """Detect depth ticks within a specific ROI (e.g., M-mode strip)."""
     if roi.width <= 0:
         return []
@@ -113,9 +111,7 @@ def find_scale_ticks_in_roi(
     search_start = int(roi.width * 0.2)
     search_end = int(roi.width * 0.8)
     for x_center in range(search_start, search_end, 3):
-        ticks = detect_depth_scale_ticks(
-            sub_frame, x_center=x_center, search_half_width_px=10
-        )
+        ticks = detect_depth_scale_ticks(sub_frame, x_center=x_center, search_half_width_px=10)
         if len(ticks) > best_count:
             best_count = len(ticks)
             best_x_local = x_center
@@ -123,9 +119,7 @@ def find_scale_ticks_in_roi(
     if best_count == 0:
         return []
 
-    ticks_local = detect_depth_scale_ticks(
-        sub_frame, x_center=best_x_local, search_half_width_px=10
-    )
+    ticks_local = detect_depth_scale_ticks(sub_frame, x_center=best_x_local, search_half_width_px=10)
 
     # Convert back to frame coordinates
     return sorted(t + y0 for t in ticks_local)

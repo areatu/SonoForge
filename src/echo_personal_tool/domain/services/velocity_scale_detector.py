@@ -73,9 +73,7 @@ def _scan_columns_for_ticks(
     best_x = x_lo
     h, w = gray.shape
     for x_center in range(x_lo, min(x_hi, w), step_px):
-        ticks = _detect_ticks_at_x(
-            gray, x_center, search_half_width, y0, y1, min_tick_spacing_px
-        )
+        ticks = _detect_ticks_at_x(gray, x_center, search_half_width, y0, y1, min_tick_spacing_px)
         ticks = [float(t) for t in ticks]
         if len(ticks) > len(best_ticks):
             best_ticks = ticks
@@ -125,8 +123,14 @@ def find_best_scale_column(
     x_end = min(x_start + search_width_px, w)
 
     best_ticks, _ = _scan_columns_for_ticks(
-        gray, x_start, x_end, step_px, search_half_width,
-        y0, y1, min_tick_spacing_px,
+        gray,
+        x_start,
+        x_end,
+        step_px,
+        search_half_width,
+        y0,
+        y1,
+        min_tick_spacing_px,
     )
 
     # Fallback: search the right strip of the full frame (like B-mode),
@@ -137,8 +141,14 @@ def find_best_scale_column(
         fb_y0 = y0
         fb_y1 = y1
         fb_ticks, _ = _scan_columns_for_ticks(
-            gray, int(w * 0.80), int(w * 0.95), step_px, search_half_width,
-            fb_y0, fb_y1, min_tick_spacing_px,
+            gray,
+            int(w * 0.80),
+            int(w * 0.95),
+            step_px,
+            search_half_width,
+            fb_y0,
+            fb_y1,
+            min_tick_spacing_px,
         )
         if len(fb_ticks) > len(best_ticks):
             best_ticks = fb_ticks
@@ -203,15 +213,27 @@ def find_scale_strip_x(
     x_end = min(x_start + 120, w)
 
     _, best_x = _scan_columns_for_ticks(
-        gray, x_start, x_end, 5, search_half_width,
-        y0, y1, min_tick_spacing_px,
+        gray,
+        x_start,
+        x_end,
+        5,
+        search_half_width,
+        y0,
+        y1,
+        min_tick_spacing_px,
     )
 
     if best_x < x_start + 1:
         # Fallback: search full frame right strip
         ticks, best_x = _scan_columns_for_ticks(
-            gray, int(w * 0.80), int(w * 0.95), 5, search_half_width,
-            y0, y1, min_tick_spacing_px,
+            gray,
+            int(w * 0.80),
+            int(w * 0.95),
+            5,
+            search_half_width,
+            y0,
+            y1,
+            min_tick_spacing_px,
         )
         if len(ticks) >= 3:
             return best_x

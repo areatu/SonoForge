@@ -67,7 +67,7 @@ class TestDopplerRegression:
     def test_doppler_time_guard(self):
         """time_span_ms=0 → time_ms_from_x returns time_origin_ms."""
         from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
-        
+
         axis = DopplerAxisMapping(
             time_origin_ms=100.0,
             time_span_ms=0.0,

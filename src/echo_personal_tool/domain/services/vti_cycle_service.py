@@ -9,7 +9,6 @@ import numpy as np
 
 from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
 
-
 _np_trapezoid = getattr(np, "trapezoid", None) or np.trapz
 
 

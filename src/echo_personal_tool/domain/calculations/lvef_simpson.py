@@ -70,10 +70,7 @@ def calculate(
         a2c_ed_pts, a2c_ed_ann = grouped_mm["A2C"]["ed"]
         a2c_es_pts, a2c_es_ann = grouped_mm["A2C"]["es"]
 
-        if all(
-            ann is not None
-            for ann in (a4c_ed_ann, a4c_es_ann, a2c_ed_ann, a2c_es_ann)
-        ):
+        if all(ann is not None for ann in (a4c_ed_ann, a4c_es_ann, a2c_ed_ann, a2c_es_ann)):
             edv_ml = _biplane_volume_ml(a4c_ed_pts, a4c_ed_ann, a2c_ed_pts, a2c_ed_ann)
             esv_ml = _biplane_volume_ml(a4c_es_pts, a4c_es_ann, a2c_es_pts, a2c_es_ann)
             if edv_ml is not None and esv_ml is not None and edv_ml > 0.0 and esv_ml <= edv_ml:

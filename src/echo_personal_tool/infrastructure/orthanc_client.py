@@ -25,6 +25,7 @@ def _interruptible_sleep(seconds: float, cancel_event: threading.Event) -> None:
     while not cancel_event.is_set() and time.monotonic() < end:
         time.sleep(min(0.2, max(0, end - time.monotonic())))
 
+
 # Retry settings for QIDO-RS query operations
 _QUERY_RETRIES = 3
 _QUERY_RETRY_DELAY = 0.5  # linear backoff: 0.5s, 1.0s
