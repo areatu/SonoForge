@@ -334,6 +334,30 @@ class TestOnStateChange:
         main_window._on_state_changed("not a ViewerState")
 
 
+class TestUpdatePropertiesPanel:
+    def test_missing_dicom_file_does_not_crash(self, main_window):
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        instance = InstanceMetadata(
+            sop_instance_uid="1.2.3",
+            series_uid="1.2.4",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=33.3,
+            series_description="Test",
+            path=Path("/tmp/nonexistent_test.dcm"),
+        )
+        state = replace(
+            main_window._controller.state_manager.snapshot,
+            instance=instance,
+            total_frames=10,
+            frame_time_ms=33.3,
+        )
+        main_window._update_properties_panel(state)
+        assert main_window._tool_panel.properties_panel._instance_group.isHidden() is False
+
+
 class TestFormatSpecklePresetName:
     def test_known_presets(self):
         from echo_personal_tool.presentation.main_window import MainWindow
