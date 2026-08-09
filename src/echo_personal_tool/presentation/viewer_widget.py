@@ -972,6 +972,17 @@ class ViewerWidget(QWidget):
             self._doppler.update_interval_preview_position(float(mapped.x()))
         if self._calibration_active:
             if mapped is not None and self._current_frame is not None:
+                if self._calibration_kind == "mmode_time":
+                    width = self._current_frame.shape[1]
+                    current_x = max(0.0, min(float(mapped.x()), float(width - 1)))
+                    if self._mmode_time_start_x is None:
+                        y = max(0.0, min(float(mapped.y()), float(self._current_frame.shape[0] - 1)))
+                        self._update_mmode_time_preview(current_x, current_x, y)
+                    else:
+                        start_x = float(self._mmode_time_start_x)
+                        y = self._calibration_start_y if self._calibration_start_y is not None else float(mapped.y())
+                        self._update_mmode_time_preview(start_x, current_x, y)
+                    return
                 height = self._current_frame.shape[0]
                 raw_y = max(0.0, min(float(mapped.y()), float(height - 1)))
                 if self._calibration_kind == "doppler_velocity" and self._doppler_grid_line_positions:

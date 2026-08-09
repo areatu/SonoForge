@@ -543,6 +543,8 @@
   "status.calibration_reset": "Manual calibration reset",
   "status.caliper_deleted": "Caliper deleted",
   "status.mmode_caliper_tool": "M-mode caliper: click vertically on M-mode strip",
+  "status.mmode_time_ready": "Time/HR caliper: click and drag horizontally to measure time span",
+  "status.mmode_calibration_start": "Starting M-mode calibration — click to define ROI…",
   "status.contour_deleted": "Contour deleted",
   "status.decoding": "Decoding {name}… ({total} frames)",
   "status.decoding_video": "Decoding video {name}… ({total} frames)",

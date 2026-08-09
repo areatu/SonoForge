@@ -1937,10 +1937,18 @@ class MainWindow(QMainWindow):
             self._show_status("M-mode calibration required")
 
     def _on_mmode_time_hr_from_menu(self) -> None:
-        """Start horizontal time/HR measurement from Measures menu."""
-        self._ensure_mmode_active()
-        if self._mmode_widget is not None:
-            self._mmode_widget._start_horizontal_measurement()
+        """Start horizontal time/HR caliper in the current viewer window (no anatomical M-mode panel)."""
+        self._viewer.try_apply_mmode_from_dicom_or_heuristic()
+
+        if not self._viewer.is_mmode_calibrated():
+            self._viewer.start_mmode_panel_calibration()
+            self._show_status(tr("status.mmode_calibration_start"))
+            return
+
+        if self._viewer.start_mmode_time_calibration():
+            self._show_status(tr("status.mmode_time_ready"))
+        else:
+            self._show_status("M-mode calibration required")
 
     def _ensure_mmode_active(self) -> None:
         """Activate M-mode if not already active."""
