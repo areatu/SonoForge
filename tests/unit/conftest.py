@@ -55,6 +55,26 @@ def qapp(qapp_session):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Thread pool hygiene
+# ═══════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture(autouse=True)
+def _drain_global_thread_pool():
+    """Drain the global QThreadPool after every test.
+
+    Tests start QRunnables on QThreadPool.globalInstance(); if a pool
+    thread is still running when a test finishes, it can race with the
+    next test's Qt event loop (or interpreter shutdown) and SIGSEGV.
+    waitForDone() on an idle pool returns immediately.
+    """
+    yield
+    from PySide6.QtCore import QThreadPool
+
+    QThreadPool.globalInstance().waitForDone(5000)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Fake / Mock helpers
 # ═══════════════════════════════════════════════════════════════════
 
