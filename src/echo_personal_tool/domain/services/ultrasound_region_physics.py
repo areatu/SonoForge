@@ -54,15 +54,16 @@ def horizontal_ms_per_pixel(
     """M-mode / spectral sweep: milliseconds per pixel on the time axis."""
     if delta_x <= 0.0:
         return None
+    # SF=1 (2D/B-mode) regions are never time sweeps — reject them outright.
+    # Callers decide whether a mis-tagged SF=1 region is really Doppler; those
+    # that are (Samsung tissue/spectral) compute via the region-level filter.
+    if spatial_format is not None and spatial_format == SPATIAL_2D:
+        return None
     if units_x == PHYSICAL_UNIT_SEC:
         return delta_x * 1000.0
     # Vendor quirk: time increment mis-tagged as Hz while value is seconds/pixel.
     if units_x == PHYSICAL_UNIT_HZ and delta_x < 1.0:
         return delta_x * 1000.0
-    # Samsung mis-tags tissue Doppler regions as SF=1 (2D) when they are spectral.
-    # Trust time units even for B-mode regions if delta_x is plausible as ms/px.
-    if spatial_format is not None and spatial_format == SPATIAL_2D:
-        return None
     return None
 
 
