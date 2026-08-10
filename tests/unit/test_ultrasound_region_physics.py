@@ -67,9 +67,9 @@ def test_mmode_vendor_sec_tag_reads_as_depth_mm() -> None:
     assert vertical_mm_per_pixel(0.035, PHYSICAL_UNIT_SEC) == approx(0.35)
 
 
-def test_horizontal_ms_per_pixel_accepts_bmode_sf1_with_sec_units() -> None:
-    """Samsung tissue Doppler: SF=1 mis-tagged, but SEC units trusted when delta < 1."""
-    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=1) == 24.0
+def test_horizontal_ms_per_pixel_rejects_bmode_sf1_with_sec_units() -> None:
+    """SF=1 (B-mode) rejected outright — callers use is_maybe_doppler_from_units for Samsung mis-tag."""
+    assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=1) is None
 
 
 def test_horizontal_ms_per_pixel_rejects_bmode_sf1_with_cm_units() -> None:
