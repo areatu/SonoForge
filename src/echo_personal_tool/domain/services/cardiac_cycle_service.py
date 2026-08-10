@@ -228,9 +228,7 @@ def _snap_in_cycle(
 
     indices = np.nonzero(in_cycle)[0]
     psv_idx = int(indices[int(np.argmin(work[indices]))])
-    edv_idx, edv_value = _edv_idx_before_upstroke(
-        times, ys, cycle, psv_idx, below_baseline=below_baseline
-    )
+    edv_idx, edv_value = _edv_idx_before_upstroke(times, ys, cycle, psv_idx, below_baseline=below_baseline)
     return psv_idx, edv_idx, edv_value
 
 

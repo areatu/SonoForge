@@ -528,9 +528,7 @@ class DopplerOverlayTools(QWidget):
             cycle = next((c for c in cycles if c.start_ms <= peak_time <= c.end_ms), None)
             if cycle is not None:
                 clipped = tuple(
-                    p
-                    for p in envelope
-                    if cycle.start_ms <= self._axis_mapping.time_ms_from_x(p[0]) <= cycle.end_ms
+                    p for p in envelope if cycle.start_ms <= self._axis_mapping.time_ms_from_x(p[0]) <= cycle.end_ms
                 )
                 if len(clipped) < 3:
                     return False
@@ -594,9 +592,7 @@ class DopplerOverlayTools(QWidget):
             )
             for psv_idx, _, _, _ in per_cycle
         ]
-        edv_values = [
-            self._axis_mapping.velocity_cm_s_from_y(edv_value) for _, _, edv_value, _ in per_cycle
-        ]
+        edv_values = [self._axis_mapping.velocity_cm_s_from_y(edv_value) for _, _, edv_value, _ in per_cycle]
         psv_median = statistics.median(entry[1] for entry in psv_entries)
         edv_median = statistics.median(edv_values)
         psv_time = envelope[per_cycle[0][0]][0]

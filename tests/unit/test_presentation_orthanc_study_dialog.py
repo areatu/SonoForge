@@ -158,11 +158,13 @@ class TestBuildStudyTree:
         assert dialog._tree.topLevelItemCount() == 1
 
     def test_sorts_by_date_desc(self, dialog):
-        dialog._build_study_tree([
-            self._study(date="20240101", uid="a"),
-            self._study(date="20240615", uid="b"),
-            self._study(date="20240310", uid="c"),
-        ])
+        dialog._build_study_tree(
+            [
+                self._study(date="20240101", uid="a"),
+                self._study(date="20240615", uid="b"),
+                self._study(date="20240310", uid="c"),
+            ]
+        )
         assert dialog._tree.topLevelItemCount() == 3
         # Newest first
         assert dialog._tree.topLevelItem(0).data(1, 258) == "20240615"  # _SORT_ROLE = UserRole+2 = 258

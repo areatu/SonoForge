@@ -242,9 +242,8 @@ def theme_button_box_icons(box: QDialogButtonBox) -> None:
     :func:`_style_dialog`, extending it to custom QDialogButtonBox buttons.
     """
 
-    from PySide6.QtGui import QIcon, QPixmap
+    from PySide6.QtGui import QIcon, QPainter, QPixmap
     from PySide6.QtSvg import QSvgRenderer
-    from PySide6.QtGui import QPainter
 
     p = get_theme_palette()
     icon_color = p["text_dim"]

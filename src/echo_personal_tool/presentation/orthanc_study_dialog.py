@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import logging
+from collections.abc import Callable
 from dataclasses import replace
-
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal

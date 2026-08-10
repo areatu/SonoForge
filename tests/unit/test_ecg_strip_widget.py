@@ -174,4 +174,4 @@ def test_ecg_strip_cycle_clicked_signal(qtbot, sample_ecg_waveform, sample_cardi
     # Simulate click in the middle of first cycle
     # This is a basic test - actual mouse event simulation would require more setup
     # For now, just verify the signal is defined
-    assert hasattr(widget, 'cycle_clicked')
+    assert hasattr(widget, "cycle_clicked")

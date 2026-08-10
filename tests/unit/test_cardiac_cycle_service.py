@@ -226,12 +226,48 @@ class TestDerivePsvEdvIndicesWithCycles:
     def test_snaps_edv_to_selected_cycle_diastole(self) -> None:
         mapping = _time_mapping(4000.0)
         times = [
-            0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0, 1800.0,
-            2000.0, 2200.0, 2400.0, 2600.0, 2800.0, 3000.0, 3200.0, 3400.0, 3600.0, 3800.0,
+            0.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            1200.0,
+            1400.0,
+            1600.0,
+            1800.0,
+            2000.0,
+            2200.0,
+            2400.0,
+            2600.0,
+            2800.0,
+            3000.0,
+            3200.0,
+            3400.0,
+            3600.0,
+            3800.0,
         ]
         ys = [
-            70.0, 60.0, 45.0, 30.0, 18.0, 8.0, 30.0, 55.0, 68.0, 62.0,
-            50.0, 40.0, 55.0, 70.0, 80.0, 85.0, 90.0, 92.0, 95.0, 88.0,
+            70.0,
+            60.0,
+            45.0,
+            30.0,
+            18.0,
+            8.0,
+            30.0,
+            55.0,
+            68.0,
+            62.0,
+            50.0,
+            40.0,
+            55.0,
+            70.0,
+            80.0,
+            85.0,
+            90.0,
+            92.0,
+            95.0,
+            88.0,
         ]
         envelope = tuple((t / 4.0, y) for t, y in zip(times, ys))
         cycles = (_cycle(200.0, 1800.0), _cycle(2000.0, 3800.0))
@@ -269,12 +305,48 @@ class TestDerivePsvEdvIndicesPerCycle:
     def test_returns_snapped_indices_per_cycle(self) -> None:
         mapping = _time_mapping(4000.0)
         times = [
-            0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0, 1800.0,
-            2000.0, 2200.0, 2400.0, 2600.0, 2800.0, 3000.0, 3200.0, 3400.0, 3600.0, 3800.0,
+            0.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            1200.0,
+            1400.0,
+            1600.0,
+            1800.0,
+            2000.0,
+            2200.0,
+            2400.0,
+            2600.0,
+            2800.0,
+            3000.0,
+            3200.0,
+            3400.0,
+            3600.0,
+            3800.0,
         ]
         ys = [
-            70.0, 60.0, 45.0, 30.0, 18.0, 8.0, 30.0, 55.0, 68.0, 62.0,
-            50.0, 40.0, 55.0, 70.0, 80.0, 85.0, 90.0, 92.0, 95.0, 88.0,
+            70.0,
+            60.0,
+            45.0,
+            30.0,
+            18.0,
+            8.0,
+            30.0,
+            55.0,
+            68.0,
+            62.0,
+            50.0,
+            40.0,
+            55.0,
+            70.0,
+            80.0,
+            85.0,
+            90.0,
+            92.0,
+            95.0,
+            88.0,
         ]
         envelope = tuple((t / 4.0, y) for t, y in zip(times, ys))
         cycles = (_cycle(200.0, 1800.0), _cycle(2000.0, 3800.0))
@@ -309,9 +381,7 @@ class TestDerivePsvEdvIndicesPerCycle:
 class TestEdvWindow:
     def test_window_indices_truncated_at_min_time(self) -> None:
         times = np.arange(0.0, 2000.0)
-        window, midpoint_idx = _edv_window_indices(
-            times, 1200, min_time=1180.0, window_ms=100.0, max_window_points=100
-        )
+        window, midpoint_idx = _edv_window_indices(times, 1200, min_time=1180.0, window_ms=100.0, max_window_points=100)
         assert window[0] == 1180
         assert window[-1] == 1200
         assert midpoint_idx == 1190
@@ -358,9 +428,7 @@ class TestEdvWindow:
         ys[125:] = 70.0
         envelope = tuple((t * 0.5, y) for t, y in zip(times, ys))
         cycle = CardiacCycle(0.0, 2000.0, 0.0, 0.0, 2000.0, "ecg", 0.9)
-        psv_idx, edv_idx, edv_value = derive_psv_edv_indices_with_cycles(
-            envelope, (cycle,), mapping
-        )
+        psv_idx, edv_idx, edv_value = derive_psv_edv_indices_with_cycles(envelope, (cycle,), mapping)
         assert psv_idx == 50
         assert edv_idx != 150  # not the raw minimum (t=1500)
         assert edv_value == pytest.approx(70.0)

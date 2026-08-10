@@ -298,12 +298,10 @@ def test_uncompressed_readonly_pipeline(tmp_path: Path) -> None:
 
         # Check 3: Frame data unchanged after operations
         _ = frame.copy()  # Simulate some operation
-        assert frame.tobytes() == original_bytes, \
-            f"Frame {i} was mutated!"
+        assert frame.tobytes() == original_bytes, f"Frame {i} was mutated!"
 
         # Check 4: frame is still read-only
-        assert not frame.flags.writeable, \
-            f"Frame {i} became writable!"
+        assert not frame.flags.writeable, f"Frame {i} became writable!"
 
     session.release()
 
@@ -330,8 +328,9 @@ def test_readonly_materialization_on_release_heavy(tmp_path: Path) -> None:
 
     # The caller's reference must remain fully usable (view owns its buffer).
     assert frames.shape == (5, 32, 32), "Caller's frame array must stay valid"
-    assert [frames[i].tobytes() for i in range(frames.shape[0])] == original_bytes, \
+    assert [frames[i].tobytes() for i in range(frames.shape[0])] == original_bytes, (
         "Frame data must be intact after release_heavy"
+    )
 
     # decode_single_frame must still work after heavy buffers are freed (reload path).
     reframe = session.decode_single_frame(2)

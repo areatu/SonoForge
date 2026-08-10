@@ -207,7 +207,19 @@ class TestExtractDopplerEnvelope:
         for c in range(15, 145):
             top = int(50 + 30 * abs(c - 80) / 65)
             gray[top:95, c] = 200
-        for col, cw in ((2, 8), (6, 8), (10, 8), (14, 4), (18, 4), (22, 4), (26, 4), (30, 8), (34, 8), (38, 8), (42, 4)):
+        for col, cw in (
+            (2, 8),
+            (6, 8),
+            (10, 8),
+            (14, 4),
+            (18, 4),
+            (22, 4),
+            (26, 4),
+            (30, 8),
+            (34, 8),
+            (38, 8),
+            (42, 4),
+        ):
             gray[10:13, col : col + cw] = 230
         return gray
 
@@ -233,8 +245,8 @@ class TestExtractDopplerEnvelope:
         h, w = 100, 120
         gray = np.zeros((h, w), dtype=np.uint8)
         baseline = 80
-        gray[20:60, 10:110] = 200   # real flow, top edge at row 20
-        gray[79, 10:110] = 200      # speckle line exactly on the baseline row
+        gray[20:60, 10:110] = 200  # real flow, top edge at row 20
+        gray[79, 10:110] = 200  # speckle line exactly on the baseline row
         result = extract_doppler_envelope(gray, _roi(w=w, h=h), baseline_y_px=float(baseline))
         assert len(result) >= 2
         ys = [pt[1] for pt in result]

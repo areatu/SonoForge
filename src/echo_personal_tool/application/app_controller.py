@@ -1822,9 +1822,7 @@ class AppController(QObject):
                     self._adaptive_batch_size -= 1
             # ── Playback diagnostics: decode batch ──
             if _playback_diag is not None and batch_elapsed_ms > 0:
-                _playback_diag.on_decode_batch(
-                    frames[0][0] if frames else 0, len(frames), batch_elapsed_ms
-                )
+                _playback_diag.on_decode_batch(frames[0][0] if frames else 0, len(frames), batch_elapsed_ms)
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f ema=%.1fms batch_size=%d",

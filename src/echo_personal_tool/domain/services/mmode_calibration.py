@@ -33,9 +33,7 @@ def mmode_state_from_panel(
     )
 
 
-def horizontal_ms_from_frame_time(
-    frame_time_ms: float | None, roi_width_px: float
-) -> float | None:
+def horizontal_ms_from_frame_time(frame_time_ms: float | None, roi_width_px: float) -> float | None:
     """Fallback time scale from dataset-level FrameTime tag.
 
     For single-frame M-mode strips: entire width = sweep duration.

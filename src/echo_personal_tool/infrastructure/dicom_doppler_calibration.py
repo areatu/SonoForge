@@ -70,9 +70,7 @@ def _sorted_doppler_regions(regions: object) -> list[Dataset]:
         return sorted(strict, key=spectral_doppler_region_priority, reverse=True)
     # Samsung mis-tags tissue/spectral Doppler as SF=1. Fallback: trust units.
     # But skip SF=1 if there's an SF=2 (M-mode) region — that's B-mode strip.
-    has_mmode = any(
-        int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions
-    )
+    has_mmode = any(int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions)
     if has_mmode:
         return []
     fallback = [region for region in regions if is_maybe_doppler_from_units(region)]
@@ -96,7 +94,7 @@ def _detect_baseline_fallback(frame: np.ndarray, roi: DopplerSpectrogramRoi) -> 
     # Sum horizontally — baseline is bright horizontal line
     profile = np.mean(roi_gray, axis=1)
     kernel = np.ones(5) / 5
-    smoothed = np.convolve(profile, kernel, mode='same')
+    smoothed = np.convolve(profile, kernel, mode="same")
     baseline_rel = float(np.argmax(smoothed))
     return y0 + baseline_rel
 
