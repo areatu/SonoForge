@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from unittest.mock import patch
 
 import pytest
 
 pytestmark = pytest.mark.gui
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.domain.ports import QuerySource
@@ -31,6 +31,21 @@ def qapp():
 
 
 @pytest.fixture
+def make_dialog(qapp):
+    def _make(*args, **kwargs):
+        with (
+            patch.object(OrthancStudyDialog, "_init_network"),
+            patch.object(QTimer, "singleShot"),
+        ):
+            d = OrthancStudyDialog(*args, **kwargs)
+        d._force_close_timer.stop()
+        d._init_timer.stop()
+        return d
+
+    return _make
+
+
+@pytest.fixture
 def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     org = "sonoforge-test"
     app = "server-test-query-source"
@@ -45,12 +60,12 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def test_persist_query_source_updates_qsettings(
-    qapp,
+    make_dialog,
     isolated_settings: None,
     tmp_path,
 ) -> None:
     save_server_settings(ServerSettings(query_source="dicomweb"))
-    dialog = OrthancStudyDialog(
+    dialog = make_dialog(
         FakeDicomWebClient(),
         OrthancSessionCache(tmp_path),
         server_settings=load_server_settings(),
@@ -60,7 +75,7 @@ def test_persist_query_source_updates_qsettings(
 
 
 def test_source_combo_persists_on_change(
-    qapp,
+    make_dialog,
     isolated_settings: None,
     tmp_path,
 ) -> None:
@@ -73,7 +88,7 @@ def test_source_combo_persists_on_change(
         dimse=FakeDimseClient(),
         source=QuerySource.DICOMWEB,
     )
-    dialog = OrthancStudyDialog(
+    dialog = make_dialog(
         FakeDicomWebClient(),
         OrthancSessionCache(tmp_path),
         server_settings=load_server_settings(),
