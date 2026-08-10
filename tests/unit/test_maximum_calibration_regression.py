@@ -164,9 +164,13 @@ class TestMmodeRegression:
 
 
 class TestPhysicsGuardRegression:
-    def test_sf1_rejects_bmode(self):
-        """B-mode (SF=1) with SEC units → None."""
+    def test_sf1_rejects_bmode_with_sec_units(self):
+        """B-mode (SF=1) with SEC units → None (SF=1 guard rejects all)."""
         assert horizontal_ms_per_pixel(0.024, PHYSICAL_UNIT_SEC, spatial_format=1) is None
+
+    def test_sf1_rejects_bmode_with_cm_units(self):
+        """B-mode (SF=1) with spatial (CM) units → None."""
+        assert horizontal_ms_per_pixel(0.0375, 1, spatial_format=1) is None
 
     def test_sf2_accepts_mmode(self):
         """M-mode (SF=2) with SEC units → valid value."""

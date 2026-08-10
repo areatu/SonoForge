@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta
 
+import shiboken6
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -116,6 +117,15 @@ class OrthancStudyDialog(QDialog):
         self._force_close_timer = QTimer(self)
         self._force_close_timer.setSingleShot(True)
         self._force_close_timer.timeout.connect(self._force_close_if_still_downloading)
+        self._series_loading: set[str] = set()
+        self._closed = False
+        self._active_workers: list[tuple[QRunnable, QObject]] = []
+        self._init_timer = QTimer(self)
+        self._init_timer.setSingleShot(True)
+        self._init_timer.timeout.connect(self._init_network)
+        self._reject_timer = QTimer(self)
+        self._reject_timer.setSingleShot(True)
+        self._reject_timer.timeout.connect(self.reject)
 
         self.setWindowTitle(tr("dialog.orthanc.title"))
         self.resize(800, 520)
@@ -210,15 +220,19 @@ class OrthancStudyDialog(QDialog):
         layout.addWidget(self._progress)
         layout.addLayout(buttons_row)
 
-        QTimer.singleShot(0, self._init_network)
+        self._init_timer.start(0)
 
     def _init_network(self) -> None:
+        if not self._is_alive():
+            return
         log.info("[DLG] _init_network called")
         self._status_label.setText(tr("orthanc.searching"))
         self._load_studies_async()
 
     def _load_studies_async(self) -> None:
         """Query studies in a background thread to avoid blocking the UI."""
+        if not self._is_alive():
+            return
         text = self._search_edit.text().strip()
         patient_name = text or None
 
@@ -230,6 +244,7 @@ class OrthancStudyDialog(QDialog):
         signals = _StudyQuerySignals()
         signals.finished.connect(self._on_studies_loaded)
         worker = _StudyQueryWorker(_query, signals)
+        self._active_workers.append((worker, signals))
         QThreadPool.globalInstance().start(worker)
 
     def mousePressEvent(self, event) -> None:
@@ -261,7 +276,7 @@ class OrthancStudyDialog(QDialog):
             self._on_cancel()
             event.ignore()
             return
-        self._release_client()
+        self._shutdown()
         super().closeEvent(event)
 
     def reject(self) -> None:
@@ -270,7 +285,7 @@ class OrthancStudyDialog(QDialog):
             self._close_pending = True
             self._on_cancel()
             return
-        self._release_client()
+        self._shutdown()
         super().reject()
 
     def accept(self) -> None:
@@ -281,7 +296,26 @@ class OrthancStudyDialog(QDialog):
             self._release_client()
         except Exception:  # noqa: BLE001
             pass
+        self._shutdown()
         hide_dialog_animated(self, on_done=super().accept)
+
+    def _shutdown(self) -> None:
+        """Stop pending callbacks so background workers can never touch a closed dialog."""
+        if not self._is_alive():
+            return
+        self._closed = True
+        self._init_timer.stop()
+        self._reject_timer.stop()
+        self._force_close_timer.stop()
+        self._series_loading.clear()
+        for _worker, signals in self._active_workers:
+            signals.finished.disconnect()
+        self._active_workers.clear()
+        self._release_client()
+
+    def _is_alive(self) -> bool:
+        """True while the dialog can still safely handle callbacks."""
+        return not self._closed and shiboken6.isValid(self)
 
     def _release_client(self) -> None:
         if self._client_closed:
@@ -312,6 +346,8 @@ class OrthancStudyDialog(QDialog):
             self._server_settings = replace(self._server_settings, query_source=source_val)
 
     def _on_studies_loaded(self, studies: list) -> None:
+        if not self._is_alive():
+            return
         log.info("[DLG] _on_studies_loaded: count=%d", len(studies))
         self._build_study_tree(studies)
         self._filter_studies_by_date(self._date_filter_combo.currentData())
@@ -383,6 +419,8 @@ class OrthancStudyDialog(QDialog):
             self._load_studies()
 
     def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
+        if not self._is_alive():
+            return
         if item.parent() is not None:
             return
         if item.childCount() > 0:
@@ -526,6 +564,8 @@ class OrthancStudyDialog(QDialog):
         self.reject()
 
     def _force_close_if_still_downloading(self) -> None:
+        if not self._is_alive():
+            return
         if not self._downloading:
             return
         self._downloading = False
@@ -534,13 +574,15 @@ class OrthancStudyDialog(QDialog):
             self._cache.clear_session(self._session_id)
             self._session_id = None
         self._progress.hide()
-        self._release_client()
+        self._shutdown()
         super().reject()
 
     def _short_uid(self, series_uid: str) -> str:
         return series_uid[:12] + "…" if len(series_uid) > 12 else series_uid
 
     def _on_progress(self, current: int, total: int, series_uid: str) -> None:
+        if not self._is_alive():
+            return
         if total > 0:
             self._progress.setRange(0, total)
             self._progress.setValue(min(current, total))
@@ -548,13 +590,19 @@ class OrthancStudyDialog(QDialog):
         self._status_label.setText(tr("orthanc.loading_detail", current=current, total=total, uid=short_uid))
 
     def _on_status(self, message: str) -> None:
+        if not self._is_alive():
+            return
         self._status_label.setText(message)
 
     def _on_series_done(self, series_uid: str, status: str) -> None:
+        if not self._is_alive():
+            return
         if status == "failed":
             self._status_label.setText(tr("orthanc.series_error_status", uid=self._short_uid(series_uid)))
 
     def _on_studies_ready(self, studies: list[StudyMetadata]) -> None:
+        if not self._is_alive():
+            return
         log.info("[DLG] _on_studies_ready: %d studies", len(studies))
         for s in studies:
             total_inst = sum(len(sr.instances) for sr in s.series)
@@ -570,6 +618,8 @@ class OrthancStudyDialog(QDialog):
         set_button_loading(self._load_btn, False)
 
     def _on_single_study_done(self, session_id: str, study_uid: str) -> None:
+        if not self._is_alive():
+            return
         log.info("[DLG] _on_single_study_done: uid=%s", study_uid[:16])
         self._completed_downloads += 1
         self._status_label.setText(
@@ -578,6 +628,8 @@ class OrthancStudyDialog(QDialog):
         self._start_next_download()
 
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
+        if not self._is_alive():
+            return
         log.warning("[DLG] _on_single_study_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
         self._completed_downloads += 1
         self._status_label.setText(
@@ -591,6 +643,8 @@ class OrthancStudyDialog(QDialog):
         self._start_next_download()
 
     def _on_done(self, session_id: str, study_uid: str) -> None:
+        if not self._is_alive():
+            return
         log.info(
             "[DLG] _on_done: session=%s studies_downloaded=%d",
             session_id[:8] if session_id else "?",
@@ -604,6 +658,8 @@ class OrthancStudyDialog(QDialog):
         self.accept()
 
     def _on_failed(self, _uid: str, message: str) -> None:
+        if not self._is_alive():
+            return
         log.warning("[DLG] _on_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
         self._reset_after_download()
         if self._pending_downloads and self._session_id is not None:
@@ -623,6 +679,8 @@ class OrthancStudyDialog(QDialog):
         )
 
     def _on_cancelled(self, _session_id: str) -> None:
+        if not self._is_alive():
+            return
         self._reset_after_download()
         self._session_id = None
         self._progress.hide()
@@ -631,5 +689,5 @@ class OrthancStudyDialog(QDialog):
         self._cancel_btn.setText(tr("orthanc.cancel"))
         self._cancel_btn.setEnabled(True)
         self._update_load_button()
-        self._release_client()
-        QTimer.singleShot(0, self.reject)
+        self._shutdown()
+        self._reject_timer.start(0)

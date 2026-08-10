@@ -341,9 +341,9 @@ class TestPropertiesPanel:
             patient_height_m=1.80,
             patient_weight_kg=72.0,
         )
-        # Instance group should be visible with height/weight/BMI
+        # Instance group should be visible; height/weight/BMI go to patient group
         assert not panel._instance_group.isHidden()
-        assert panel._instance_form.rowCount() >= 3  # height, weight, BMI
+        assert panel._patient_form.rowCount() >= 3  # height, weight, BMI
 
     def test_update_instance_all_fields(self, qtbot) -> None:
         from echo_personal_tool.presentation.properties_panel import PropertiesPanel
@@ -363,8 +363,10 @@ class TestPropertiesPanel:
             frame_time_ms=33.3,
         )
         assert not panel._instance_group.isHidden()
-        # modality, format, series, frame_rate, frame_time, frames, spacing, height, weight, BMI = 10
-        assert panel._instance_form.rowCount() >= 8
+        # modality, format, series, frame_rate, frame_time, frames, spacing = 7
+        assert panel._instance_form.rowCount() >= 7
+        # height, weight, BMI go to patient group
+        assert panel._patient_form.rowCount() >= 3
 
     def test_update_instance_dicom_hides_format(self, qtbot) -> None:
         from echo_personal_tool.presentation.properties_panel import PropertiesPanel
