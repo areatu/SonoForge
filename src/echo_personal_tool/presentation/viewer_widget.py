@@ -5631,25 +5631,39 @@ class ViewerWidget(QWidget):
         self._calibration_marker_item.setData([x_start, x_end], [y, y])
 
     def _prompt_mmode_time_span(self, length_px: float) -> None:
-        span_ms, accepted = QInputDialog.getDouble(
-            self,
-            "M-mode time scale",
-            tr("viewer.mmode_cal_time_prompt"),
-            1000.0,
-            1.0,
-            10000.0,
-            0,
-        )
-        # Save pending values BEFORE _clear_calibration_caliper resets them
         pending_roi = self._mmode_pending_roi
         pending_depth = self._mmode_pending_depth_mm_per_pixel
+
+        # Auto-resolve: time scale already known (e.g. from DICOM tags).
+        existing = (
+            self._mmode_calibration_state.horizontal_ms_per_pixel
+            if self._mmode_calibration_state is not None
+            else None
+        )
+        if existing is not None and existing > 0.0:
+            time_per_pixel_ms = float(existing)
+            accepted = True
+        else:
+            span_ms, accepted = QInputDialog.getDouble(
+                self,
+                "M-mode time scale",
+                tr("viewer.mmode_cal_time_prompt"),
+                1000.0,
+                1.0,
+                10000.0,
+                0,
+            )
+            if accepted and length_px > 0.0:
+                time_per_pixel_ms = span_ms / length_px
+            else:
+                time_per_pixel_ms = None
+
         self._clear_calibration_caliper()
-        if not accepted or length_px <= 0.0:
+        if not accepted or time_per_pixel_ms is None or length_px <= 0.0:
             self._mmode_pending_roi = None
             self._mmode_pending_depth_mm_per_pixel = None
             return
-        time_per_pixel_ms = span_ms / length_px
-        # Build full calibration state if we have pending ROI + depth
+
         if pending_roi is not None and pending_depth is not None:
             state = MmodeCalibrationState(
                 roi=pending_roi,
@@ -5669,7 +5683,6 @@ class ViewerWidget(QWidget):
             self._mmode_pending_depth_mm_per_pixel = None
             self.apply_mmode_calibration_state(state)
         elif not self._syncing_state:
-            # Standalone time calibration (no pending ROI)
             self.mmode_time_calibration_completed.emit(float(time_per_pixel_ms))
 
     def _prompt_mmode_depth_calibration(self, length_px: float) -> None:

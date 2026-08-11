@@ -3862,3 +3862,59 @@ class TestApplyRBFDragStep:
         w._drag_session = (0, 10.0, 10.0, 0, 1)
         # Should not raise
         w._apply_rbf_drag_step(0, 15.0, 15.0, grab_index=0)
+
+
+class TestMmodeTimeAutoScale:
+    def _make_mmode_state(self):
+        from echo_personal_tool.domain.models.frame_panels import (
+            MmodeCalibrationState,
+        )
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+        return MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0),
+            vertical_mm_per_pixel=0.355,
+            horizontal_ms_per_pixel=4.167,
+            from_dicom_tags=True,
+            depth_from_dicom_tags=True,
+            time_from_dicom_tags=True,
+        )
+
+    def test_time_scale_skips_dialog_when_present(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        w.apply_mmode_calibration_state(self._make_mmode_state())
+        emitted = []
+
+        def fake_emit(value):
+            emitted.append(value)
+
+        w.mmode_time_calibration_completed.connect(fake_emit)
+
+        def fail_dialog(*args, **kwargs):
+            raise AssertionError("QInputDialog must not be called when scale exists")
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fail_dialog,
+        )
+        # Standalone time-only flow (no pending ROI/depth)
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert emitted == [4.167]
+
+    def test_time_scale_still_prompts_when_absent(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        w._calibration_start_y = 50.0
+        calls = []
+
+        def fake_dialog(parent, title, prompt, value, mn, mx, dec):
+            calls.append((value, mn, mx))
+            return 1000.0, True
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fake_dialog,
+        )
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert len(calls) == 1
