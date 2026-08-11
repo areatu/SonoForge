@@ -3051,6 +3051,45 @@ class TestBeginDopplerVelocityCalibration:
         assert result.time_span_ms == 5600.0
         assert result.has_time_scale()
 
+    def test_velocity_span_keeps_auto_time_scale_calibrated(self, qtbot) -> None:
+        """Manual velocity calibration must not drop the DICOM/tick time flag.
+
+        When the time scale came from auto-detection (DICOM tags or the tick
+        fallback) a manual baseline/velocity recalibration must keep the time
+        axis auto-calibrated, otherwise time-based tools and results overlay
+        are disabled (perceived as "time scale reset").
+        """
+        from unittest.mock import patch
+
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        prior = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(prior, persist=False)
+
+        with patch(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            return_value=(200.0, True),
+        ):
+            w._prompt_spectral_velocity_span(64.0)
+
+        result = w._doppler_calibration_state
+        assert result is not None
+        assert result.has_time_scale_from_dicom()
+        assert w.is_doppler_time_calibrated()
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Handle doppler mouse click

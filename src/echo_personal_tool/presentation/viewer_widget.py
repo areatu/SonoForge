@@ -5552,6 +5552,15 @@ class ViewerWidget(QWidget):
             time_span_ms=prior_time_span_ms,
             kind=self._doppler_cal_kind,
         )
+        # Keep the auto-derived time scale flagged as DICOM/tick-derived so
+        # manual baseline/velocity recalibration does not silently disable
+        # time-based tools (is_doppler_time_calibrated).
+        if prior is not None:
+            state = replace(
+                state,
+                time_origin_ms=prior.time_origin_ms,
+                time_from_dicom_tags=prior.time_from_dicom_tags,
+            )
         self.apply_doppler_calibration_state(state)
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
