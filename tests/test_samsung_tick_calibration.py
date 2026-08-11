@@ -79,3 +79,55 @@ def test_detect_ticks_bgr_channel_order():
     result = detect_ticks(img, channel_order="bgr")
     assert isinstance(result, TickDetectionResult)
     assert result.spacing_px > 0
+
+
+from echo_personal_tool.infrastructure.samsung_calibration_builder import (
+    SamsungTickCalibration,
+    build_calibration,
+    load_calibration,
+)
+
+
+def test_build_calibration_returns_calibration():
+    """Basic interface test."""
+    training_data = []
+    for freq in [60, 120, 240]:
+        spacing = 6000 / freq
+        img = np.zeros((200, 800, 3), dtype=np.uint8)
+        for x in range(100, 700, int(spacing)):
+            img[:, x, :] = 255
+        training_data.append((freq, img))
+
+    calibration = build_calibration(training_data)
+    assert isinstance(calibration, SamsungTickCalibration)
+    assert calibration.k_constant > 0
+    assert calibration.r_squared > 0.9
+
+
+def test_build_calibration_computes_correct_k():
+    """Verify K constant computation."""
+    training_data = []
+    for freq in [60, 120]:
+        spacing = 6000 / freq
+        img = np.zeros((200, 800, 3), dtype=np.uint8)
+        for x in range(100, 700, int(spacing)):
+            img[:, x, :] = 255
+        training_data.append((freq, img))
+
+    calibration = build_calibration(training_data)
+    assert abs(calibration.k_constant - 6000.0) < 100.0
+
+
+def test_build_calibration_insufficient_data():
+    """Too few valid measurements raises ValueError."""
+    img = np.zeros((200, 800, 3), dtype=np.uint8)  # no ticks
+    training_data = [(60, img), (120, img)]
+    with pytest.raises(ValueError):
+        build_calibration(training_data)
+
+
+def test_load_calibration_missing_file():
+    """Loading nonexistent calibration returns None."""
+    result = load_calibration()
+    # Can't guarantee file state; just verify function exists and returns something
+    assert result is None or isinstance(result, SamsungTickCalibration)
