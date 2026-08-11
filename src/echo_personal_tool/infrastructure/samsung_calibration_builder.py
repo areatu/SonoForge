@@ -27,7 +27,13 @@ class TickMeasurement:
 
 @dataclass
 class SamsungTickCalibration:
-    """Samsung device tick calibration."""
+    """Samsung device tick calibration.
+
+    Empirically the RS85 time-scale ruler spacing is LINEAR in sweep frequency:
+        spacing_px = frequency_hz / 5
+    So ``k_constant`` represents Hz per pixel (5.0) and the runtime relation is:
+        frequency_hz = k_constant * spacing_px
+    """
     device_model: str
     k_constant: float
     r_squared: float
@@ -40,6 +46,8 @@ def build_calibration(
     device_model: str = "RS85-RUS",
 ) -> SamsungTickCalibration:
     """Build calibration from training data.
+
+    Fits the linear-through-origin model ``frequency_hz = k_constant * spacing_px``.
 
     Args:
         training_data: List of (frequency_hz, pixel_array) tuples.
@@ -66,19 +74,22 @@ def build_calibration(
     if len(measurements) < 2:
         raise ValueError(f"Insufficient valid measurements: {len(measurements)}")
 
-    # Fit K = spacing * frequency for each point
-    k_values = [m.tick_spacing_px * m.frequency_hz for m in measurements]
-    k_constant = float(np.median(k_values))  # Median is robust to outliers
+    # Fit linear-through-origin model: frequency = k_constant * spacing_px
+    # (empirically k_constant == 5.0 on Samsung RS85).
+    spacings = np.array([m.tick_spacing_px for m in measurements])
+    freqs = np.array([m.frequency_hz for m in measurements])
+    weights = np.array([m.confidence for m in measurements])
+    weights = weights / weights.sum()
 
-    # Compute R² for fit quality
-    k_array = np.array(k_values)
-    k_mean = float(k_array.mean())
-    ss_res = float(((k_array - k_constant) ** 2).sum())
-    ss_tot = float(((k_array - k_mean) ** 2).sum())
+    k_constant = float(np.sum(weights * freqs * spacings) / np.sum(weights * spacings ** 2))
+
+    # Compute R² for the linear fit
+    predicted = k_constant * spacings
+    ss_res = float(np.sum(weights * (freqs - predicted) ** 2))
+    ss_tot = float(np.sum(weights * (freqs - np.sum(weights * freqs)) ** 2))
     if ss_tot > 0:
         r_squared = 1.0 - (ss_res / ss_tot)
     else:
-        # Zero variance: perfect fit if residual is also zero, otherwise undefined
         r_squared = 1.0 if ss_res == 0 else 0.0
 
     # Get reference image height from first measurement's array

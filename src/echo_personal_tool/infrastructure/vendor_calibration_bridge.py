@@ -145,7 +145,7 @@ def try_parse_with_vendor_profile(
     velocity_span = velocity_result.span_cm_s if velocity_result else None
 
     # 5. Compute time span using vendor profile
-    time_result = profile.compute_time_span(best_region, roi.width)
+    time_result = profile.compute_time_span(best_region, roi.width, frame)
     time_span_ms = time_result.span_ms if time_result else None
 
     # 6. Compute baseline using vendor profile

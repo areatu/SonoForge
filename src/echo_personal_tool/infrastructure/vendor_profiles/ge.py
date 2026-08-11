@@ -213,6 +213,7 @@ class GEProfile(VendorProfile):
         self,
         region: Dataset,
         region_width_px: float,
+        frame_pixels: object | None = None,
     ) -> TimeSpanResult | None:
         """Compute time span for GE Doppler or M-mode.
 

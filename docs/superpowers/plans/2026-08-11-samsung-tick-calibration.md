@@ -4,17 +4,33 @@
 
 **Goal:** Build Samsung RS85 sweep speed calibration by detecting tick marks on the time axis and computing a device-specific K constant.
 
-**Architecture:** Offline calibration builder measures tick spacing at known frequencies, computes K constant. Runtime detector measures ticks on unknown images and computes frequency = K / tick_spacing_px. Integrates into SamsungProfile for time calibration.
+**Architecture:** Offline calibration builder measures tick spacing at known frequencies, fits the LINEAR model `frequency_hz = k_constant * tick_spacing_px` (empirically `k_constant = 5.0` on RS85: `spacing_px = freq / 5`). Runtime detector measures ticks on unknown images and computes frequency = k_constant * tick_spacing_px. Integrates into SamsungProfile for time calibration (fallback when DICOM time tags are absent).
 
-**Tech Stack:** Python 3.11, OpenCV (cv2), NumPy, pydicom, pytest
+**Tech Stack:** Python 3.11, NumPy, pydicom, pytest
 
 ## Global Constraints
 
-- Python 3.11+, no new dependencies beyond opencv-python-headless
+- Python 3.11+, no new dependencies beyond opencv-python-headless (already present)
 - Follow existing code style in vendor_profiles/ package
 - All functions must have type hints and docstrings
 - Tests must pass before commit
-- K constant must be verified against M-mode DICOM tags
+- K constant verified against M-mode DICOM tags (ΔX = 1/frequency)
+
+## Empirical Model (validated 2026-08-11)
+
+On the RS85 training set (18 PW/CW files) the time-axis ruler at the bottom of
+the frame is **linear** in sweep frequency:
+
+| freq | 60 | 120 | 180 | 240 | 300 | 360 | 420 | 480 | 540 | 600 | 660 | 720 |
+|------|----|----|----|----|----|----|----|----|----|----|----|----|
+| spacing px | 12 | 24 | 36 | 48 | 60 | 72 | 84 | 96 | 108 | 120 | 132 | 144 |
+
+`spacing_px = freq / 5`, i.e. `k_constant = 5.0` (Hz per px). M-mode files
+(13-18) carry proper DICOM tags (`PhysicalDeltaX = 1/frequency`, units=seconds),
+so they do NOT need tick detection and are excluded from training. Ruler sits at
+a fixed offset from the bottom of the frame; detection scans the bottom 15%.
+Model, detector ROI and builder fit were changed from the plan's original
+`spacing = K / freq` assumption to this linear relation.
 
 ---
 
@@ -40,7 +56,7 @@
 - Consumes: numpy pixel array (RGB or grayscale)
 - Produces: `TickDetectionResult(tick_positions: list[float], spacing_px: float, confidence: float)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_samsung_tick_calibration.py
@@ -84,12 +100,12 @@ def test_detect_ticks_empty_image():
     assert result.confidence < 0.5
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_samsung_tick_calibration.py -v`
 Expected: FAIL with ImportError (module not found)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/echo_personal_tool/infrastructure/samsung_tick_detector.py
@@ -185,12 +201,12 @@ def detect_ticks(
     )
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_samsung_tick_calibration.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/echo_personal_tool/infrastructure/samsung_tick_detector.py tests/test_samsung_tick_calibration.py
@@ -209,7 +225,7 @@ git commit -m "feat(samsung): add tick mark detection for sweep speed calibratio
 - Consumes: list of (frequency_hz, pixel_array) tuples
 - Produces: `SamsungTickCalibration(k_constant, r_squared, measured_points)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # Append to tests/test_samsung_tick_calibration.py
@@ -252,12 +268,12 @@ def test_build_calibration_computes_correct_k():
     assert abs(calibration.k_constant - 6000.0) < 100.0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_samsung_tick_calibration.py::test_build_calibration_returns_calibration -v`
 Expected: FAIL with ImportError
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```python
 # src/echo_personal_tool/infrastructure/samsung_calibration_builder.py
@@ -384,12 +400,12 @@ def load_calibration() -> SamsungTickCalibration | None:
         return None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_samsung_tick_calibration.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/echo_personal_tool/infrastructure/samsung_calibration_builder.py tests/test_samsung_tick_calibration.py
@@ -407,7 +423,7 @@ git commit -m "feat(samsung): add calibration builder for K constant computation
 - Consumes: Samsung DICOM files from `/home/areatu/ECHO2026_src/New Folder2/`
 - Produces: K constant and measured points
 
-- [ ] **Step 1: Write training script**
+- [x] **Step 1: Write training script**
 
 ```python
 # src/echo_personal_tool/scripts/train_samsung_calibration.py
@@ -469,12 +485,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Run training script**
+- [x] **Step 2: Run training script**
 
 Run: `cd /home/areatu/ECHO2026 && source .venv/bin/activate && python -m echo_personal_tool.scripts.train_samsung_calibration`
 Expected: K constant computed, JSON file created
 
-- [ ] **Step 3: Verify K against M-mode DICOM tags**
+- [x] **Step 3: Verify K against M-mode DICOM tags**
 
 ```python
 # Verify: for M-mode at 60 Hz, DICOM says ΔX=0.01667s
@@ -483,7 +499,7 @@ Expected: K constant computed, JSON file created
 # This should match the visual tick interval
 ```
 
-- [ ] **Step 4: Commit calibration data**
+- [x] **Step 4: Commit calibration data**
 
 ```bash
 git add src/echo_personal_tool/infrastructure/samsung_tick_calibration.json src/echo_personal_tool/scripts/train_samsung_calibration.py
@@ -501,7 +517,7 @@ git commit -m "feat(samsung): train tick calibration on RS85 data"
 - Consumes: `SamsungTickCalibration` from Task 2
 - Produces: Updated `compute_time_span()` method
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # Append to tests/test_samsung_tick_calibration.py
@@ -524,12 +540,12 @@ def test_samsung_profile_uses_tick_calibration():
     assert result is None or result.confidence >= 0.0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_samsung_tick_calibration.py::test_samsung_profile_uses_tick_calibration -v`
 Expected: FAIL (method doesn't use tick calibration yet)
 
-- [ ] **Step 3: Update SamsungProfile**
+- [x] **Step 3: Update SamsungProfile**
 
 ```python
 # Add to src/echo_personal_tool/infrastructure/vendor_profiles/samsung.py
@@ -591,12 +607,12 @@ class SamsungProfile(VendorProfile):
         return None
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_samsung_tick_calibration.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/echo_personal_tool/infrastructure/vendor_profiles/samsung.py
@@ -614,7 +630,7 @@ git commit -m "feat(samsung): integrate tick calibration into SamsungProfile"
 - Consumes: Real Samsung DICOM files
 - Produces: Verified calibration accuracy
 
-- [ ] **Step 1: Write integration test**
+- [x] **Step 1: Write integration test**
 
 ```python
 # Append to tests/test_samsung_tick_calibration.py
@@ -657,12 +673,12 @@ def test_calibration_on_real_data():
             assert error_pct < 20.0, f"Frequency detection error too large: {error_pct:.1f}%"
 ```
 
-- [ ] **Step 2: Run integration test**
+- [x] **Step 2: Run integration test**
 
 Run: `pytest tests/test_samsung_tick_calibration.py::test_calibration_on_real_data -v`
 Expected: PASS with frequency detection within 20% tolerance
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_samsung_tick_calibration.py

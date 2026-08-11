@@ -160,12 +160,15 @@ class VendorProfile(abc.ABC):
         self,
         region: Dataset,
         region_width_px: float,
+        frame_pixels: object | None = None,
     ) -> TimeSpanResult | None:
         """Compute the full time span for a spectral Doppler or M-mode region.
 
         Args:
             region: The SequenceOfUltrasoundRegions item.
             region_width_px: Width of the region in pixels.
+            frame_pixels: Optional numpy array of the image pixels, enabling
+                visual (tick-scale) time calibration when DICOM tags are absent.
 
         Returns:
             TimeSpanResult or None if time calibration is not available.
