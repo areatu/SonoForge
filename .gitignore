@@ -80,6 +80,3 @@ server_TOKKD.md
 traceback.txtAGENTS.md
 
 CHANGELOG_SESSION.md
-
-# Samsung tick calibration (runtime artifact)
-src/echo_personal_tool/infrastructure/samsung_tick_calibration.json
