@@ -3920,10 +3920,10 @@ class TestApplyRBFDragStep:
 
 class TestMmodeTimeAutoScale:
     def _make_mmode_state(self):
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
         from echo_personal_tool.domain.models.frame_panels import (
             MmodeCalibrationState,
         )
-        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 
         return MmodeCalibrationState(
             roi=DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0),
