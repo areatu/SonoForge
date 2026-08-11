@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import shiboken6
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -120,6 +123,7 @@ class OrthancStudyDialog(QDialog):
         self._series_loading: set[str] = set()
         self._closed = False
         self._active_workers: list[tuple[QRunnable, QObject]] = []
+        self._save_to_disk_path: str = ""
         self._init_timer = QTimer(self)
         self._init_timer.setSingleShot(True)
         self._init_timer.timeout.connect(self._init_network)
@@ -181,12 +185,17 @@ class OrthancStudyDialog(QDialog):
         self._load_btn.setEnabled(False)
         self._load_btn.clicked.connect(self._on_load)
 
+        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
+        self._save_disk_btn.setEnabled(False)
+        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
+
         self._cancel_btn = QPushButton(tr("orthanc.cancel"))
         self._cancel_btn.clicked.connect(self._on_cancel)
 
         buttons_row = QHBoxLayout()
         buttons_row.addStretch()
         buttons_row.addWidget(self._load_btn)
+        buttons_row.addWidget(self._save_disk_btn)
         buttons_row.addWidget(self._cancel_btn)
 
         # Custom title bar for frameless dialog
@@ -464,7 +473,9 @@ class OrthancStudyDialog(QDialog):
     def _update_load_button(self) -> None:
         if self._downloading:
             return
-        self._load_btn.setEnabled(len(self._collect_all_checked_series()) > 0)
+        has_checked = len(self._collect_all_checked_series()) > 0
+        self._load_btn.setEnabled(has_checked)
+        self._save_disk_btn.setEnabled(has_checked)
 
     def _collect_all_checked_series(self) -> list[tuple[str, list[str]]]:
         """Collect all (study_uid, series_uids) pairs across all studies."""
@@ -511,6 +522,46 @@ class OrthancStudyDialog(QDialog):
         self._total_studies = len(all_series)
         self._start_next_download()
 
+    def _on_save_to_disk(self) -> None:
+        """Download selected series to a user-chosen directory on disk."""
+        from echo_personal_tool.presentation.ui_animations import set_button_loading
+
+        all_series = self._collect_all_checked_series()
+        log.info("[DLG] _on_save_to_disk: checked_series=%d", len(all_series))
+        if not all_series:
+            return
+
+        # Ask user for directory
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            tr("orthanc.select_directory"),
+            "",
+            QFileDialog.Option.ShowDirsOnly,
+        )
+        if not directory:
+            return
+
+        # Start download to disk
+        session_id = self._cache.create_session()
+        self._session_id = session_id
+        self._downloading = True
+        self._close_pending = False
+        self._save_to_disk_path = directory
+        set_button_loading(self._save_disk_btn, True, "…")
+        self._cancel_btn.setText(tr("orthanc.cancel_download"))
+        self._cancel_btn.setEnabled(True)
+        self._find_btn.setEnabled(False)
+        self._tree.setEnabled(False)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._progress.show()
+        self._status_label.setText(tr("orthanc.saving_to_disk", path=directory))
+
+        self._pending_downloads = list(all_series)
+        self._completed_downloads = 0
+        self._total_studies = len(all_series)
+        self._start_next_download_to_disk()
+
     def _start_next_download(self) -> None:
         log.info(
             "[DLG] _start_next_download: pending=%d completed=%d total=%d",
@@ -548,6 +599,49 @@ class OrthancStudyDialog(QDialog):
         worker.signals.progress.connect(self._on_progress)
         worker.signals.status.connect(self._on_status)
         worker.signals.done.connect(self._on_single_study_done)
+        worker.signals.failed.connect(self._on_single_study_failed)
+        worker.signals.cancelled.connect(self._on_cancelled)
+        worker.signals.series_done.connect(self._on_series_done)
+        worker.signals.studies_ready.connect(self._on_studies_ready)
+        QThreadPool.globalInstance().start(worker)
+
+    def _start_next_download_to_disk(self) -> None:
+        """Download next study to disk directory."""
+        log.info(
+            "[DLG] _start_next_download_to_disk: pending=%d completed=%d total=%d",
+            len(self._pending_downloads),
+            self._completed_downloads,
+            self._total_studies,
+        )
+        if not self._pending_downloads:
+            all_ok = self._completed_downloads == self._total_studies
+            if all_ok and self._session_id is not None:
+                self._on_disk_download_done()
+            elif self._session_id is not None:
+                self._on_failed("", tr("orthanc.partial_failed"))
+            return
+
+        study_uid, series_uids = self._pending_downloads.pop(0)
+        self._status_label.setText(
+            tr("orthanc.disk_download_progress", current=self._completed_downloads + 1, total=self._total_studies)
+        )
+        worker = OrthancDownloadWorker(
+            self._client,
+            self._cache,
+            self._session_id,
+            study_uid,
+            series_uids,
+            self,
+            server_settings=self._server_settings,
+            base_url=self._base_url,
+            username=self._username,
+            password=self._password,
+            retrieve_service=self._retrieve_service,
+        )
+        self._worker = worker
+        worker.signals.progress.connect(self._on_progress)
+        worker.signals.status.connect(self._on_status)
+        worker.signals.done.connect(self._on_single_study_done_to_disk)
         worker.signals.failed.connect(self._on_single_study_failed)
         worker.signals.cancelled.connect(self._on_cancelled)
         worker.signals.series_done.connect(self._on_series_done)
@@ -616,6 +710,7 @@ class OrthancStudyDialog(QDialog):
         self._worker = None
         self._force_close_timer.stop()
         set_button_loading(self._load_btn, False)
+        set_button_loading(self._save_disk_btn, False)
 
     def _on_single_study_done(self, session_id: str, study_uid: str) -> None:
         if not self._is_alive():
@@ -626,6 +721,55 @@ class OrthancStudyDialog(QDialog):
             tr("orthanc.series_done", current=self._completed_downloads, total=self._total_studies)
         )
         self._start_next_download()
+
+    def _on_single_study_done_to_disk(self, session_id: str, study_uid: str) -> None:
+        """Handle single study download completion when saving to disk."""
+        if not self._is_alive():
+            return
+        log.info("[DLG] _on_single_study_done_to_disk: uid=%s", study_uid[:16])
+        self._completed_downloads += 1
+        self._status_label.setText(
+            tr("orthanc.disk_download_progress", current=self._completed_downloads, total=self._total_studies)
+        )
+        self._start_next_download_to_disk()
+
+    def _on_disk_download_done(self) -> None:
+        """Handle completion of all downloads to disk — copy files from cache to target."""
+        if not self._is_alive():
+            return
+        log.info("[DLG] _on_disk_download_done: path=%s", self._save_to_disk_path)
+
+        # Copy files from cache to user-selected directory
+        copied_count = 0
+        if self._session_id is not None:
+            session_dir = self._cache.session_path(self._session_id)
+            if session_dir.is_dir():
+                target_dir = Path(self._save_to_disk_path)
+                for study_dir in session_dir.iterdir():
+                    if not study_dir.is_dir():
+                        continue
+                    study_target = target_dir / study_dir.name
+                    study_target.mkdir(parents=True, exist_ok=True)
+                    for series_dir in study_dir.iterdir():
+                        if not series_dir.is_dir():
+                            continue
+                        series_target = study_target / series_dir.name
+                        series_target.mkdir(parents=True, exist_ok=True)
+                        for dcm_file in series_dir.glob("*.dcm"):
+                            shutil.copy2(dcm_file, series_target / dcm_file.name)
+                            copied_count += 1
+                log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
+
+        self._reset_after_download()
+        self._session_id = None
+        self._progress.setValue(self._progress.maximum())
+        self._status_label.setText(tr("orthanc.disk_download_complete", path=self._save_to_disk_path))
+        QMessageBox.information(
+            self,
+            tr("orthanc.download_complete"),
+            tr("orthanc.disk_download_complete", path=self._save_to_disk_path),
+        )
+        self.accept()
 
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():

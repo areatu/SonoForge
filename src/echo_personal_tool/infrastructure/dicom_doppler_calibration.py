@@ -28,6 +28,10 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     velocity_span_cm_s_from_region,
 )
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
+    try_parse_with_vendor_profile,
+    get_vendor_info,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +142,35 @@ def try_parse_from_dataset(
     *,
     kind: DopplerKind = DopplerKind.SPECTRAL,
 ) -> DopplerCalibrationState | None:
-    """Build calibration from DICOM tags (time and/or velocity axis from region deltas)."""
+    """Build calibration from DICOM tags (time and/or velocity axis from region deltas).
+
+    Priority:
+    1. Vendor-specific profile (GE, Philips, Samsung) — handles quirks like
+       GE's inverted velocity formula and absolute coordinates.
+    2. Generic DICOM-based calibration — standard approach for unknown vendors.
+    """
     regions = dataset.get("SequenceOfUltrasoundRegions")
     if not regions:
         return None
 
+    # Try vendor-specific profile first
+    vendor_info = get_vendor_info(dataset)
+    if vendor_info["profile"] is not None:
+        try:
+            frame_arr = np.asarray(frame) if frame is not None else None
+            vendor_result = try_parse_with_vendor_profile(
+                dataset, frame_arr, kind=kind
+            )
+            if vendor_result is not None:
+                logger.debug(
+                    "Using vendor profile %s for calibration",
+                    vendor_info["profile"],
+                )
+                return vendor_result
+        except Exception as e:
+            logger.debug("Vendor profile failed, falling back to generic: %s", e)
+
+    # Fallback: generic DICOM-based calibration
     # Get frame height for ROI relocation
     frame_height = float(dataset.get("Rows", 0) or 0)
 
