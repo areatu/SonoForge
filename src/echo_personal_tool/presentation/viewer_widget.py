@@ -3113,12 +3113,12 @@ class ViewerWidget(QWidget):
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
-            self._begin_doppler_velocity_calibration()
+            self._begin_doppler_velocity_calibration(start_y=y)
             return True
 
         return False
 
-    def _begin_doppler_velocity_calibration(self) -> None:
+    def _begin_doppler_velocity_calibration(self, start_y: float | None = None) -> None:
         if self._current_frame is None:
             return
         width = self._current_frame.shape[1]
@@ -3139,7 +3139,7 @@ class ViewerWidget(QWidget):
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
             self._doppler_grid_line_positions = []
-        self._calibration_start_y = None
+        self._calibration_start_y = start_y
         self._measurement_label.setText(_DOPPLER_CAL_VELOCITY_KEY)
 
     def _handle_doppler_mouse_click(self, ev) -> bool:

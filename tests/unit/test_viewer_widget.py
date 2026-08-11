@@ -3202,6 +3202,60 @@ class TestDopplerCalibrationClick:
         assert w._doppler_cal_step == "baseline"
         assert w._doppler_pending_roi is None
 
+    def test_baseline_sets_velocity_segment_origin(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 200), dtype=np.uint8))
+        assert w.start_doppler_calibration()
+        assert w._doppler_cal_step == "baseline"
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(100, 80),
+            QPointF(100, 80),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_calibration_click(event)
+        assert result is True
+        assert w._doppler_cal_step is None
+        assert w._doppler_pending_baseline_y is not None
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
+
+    def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 200), dtype=np.uint8))
+        assert w.start_doppler_calibration()
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        def click(x, y):
+            return QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(x, y),
+                QPointF(x, y),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        w._handle_doppler_calibration_click(click(100, 80))
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
+        baseline = w._calibration_start_y
+        assert baseline is not None
+
+        promoted = []
+        monkeypatch.setattr(
+            w,
+            "_prompt_spectral_velocity_span",
+            lambda length_px: promoted.append(length_px),
+        )
+        result = w._handle_calibration_mouse_press(click(100, 30))
+        assert result is True
+        assert promoted == [abs(w._map_view_event(click(100, 30))[1] - baseline)]
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Linear caliper sequence
