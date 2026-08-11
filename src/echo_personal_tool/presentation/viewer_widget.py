@@ -3046,7 +3046,7 @@ class ViewerWidget(QWidget):
                     self.apply_doppler_calibration_state(parsed, persist=True)
                     self._doppler_pending_roi = parsed.roi
                     self._doppler_pending_baseline_y = parsed.baseline_y_px
-                    self._begin_doppler_velocity_calibration()
+                    self._begin_doppler_velocity_calibration(start_y=parsed.baseline_y_px)
                     return True
         return False
 
@@ -3113,7 +3113,10 @@ class ViewerWidget(QWidget):
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
-            self._begin_doppler_velocity_calibration(start_y=y)
+            snapped_y = snap_y_to_nearest_tick(
+                y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px
+            )
+            self._begin_doppler_velocity_calibration(start_y=snapped_y)
             return True
 
         return False
@@ -3140,7 +3143,7 @@ class ViewerWidget(QWidget):
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
             self._doppler_grid_line_positions = []
         self._calibration_start_y = start_y
-        self._measurement_label.setText(_DOPPLER_CAL_VELOCITY_KEY)
+        self._measurement_label.setText(tr(_DOPPLER_CAL_VELOCITY_KEY))
 
     def _handle_doppler_mouse_click(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:
@@ -5634,14 +5637,14 @@ class ViewerWidget(QWidget):
         pending_roi = self._mmode_pending_roi
         pending_depth = self._mmode_pending_depth_mm_per_pixel
 
-        # Auto-resolve: time scale already known (e.g. from DICOM tags).
-        existing = (
-            self._mmode_calibration_state.horizontal_ms_per_pixel
-            if self._mmode_calibration_state is not None
+        state = self._mmode_calibration_state
+        auto_time = (
+            state.horizontal_ms_per_pixel
+            if state is not None and state.time_from_dicom_tags
             else None
         )
-        if existing is not None and existing > 0.0:
-            time_per_pixel_ms = float(existing)
+        if auto_time is not None and auto_time > 0.0:
+            time_per_pixel_ms = float(auto_time)
             accepted = True
         else:
             span_ms, accepted = QInputDialog.getDouble(

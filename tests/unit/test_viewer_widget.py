@@ -3972,3 +3972,54 @@ class TestMmodeTimeAutoScale:
         )
         w._prompt_mmode_time_span(length_px=100.0)
         assert len(calls) == 1
+
+    def test_full_calibration_uses_dicom_time_when_trusted(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+        w._mmode_pending_roi = DopplerSpectrogramRoi(
+            x0=4.0, y0=341.0, width=1236.0, height=459.0
+        )
+        w._mmode_pending_depth_mm_per_pixel = 0.355
+        w.apply_mmode_calibration_state(self._make_mmode_state())
+
+        def fail_dialog(*args, **kwargs):
+            raise AssertionError("QInputDialog must not be called when DICOM time is trusted")
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fail_dialog,
+        )
+        applied = []
+        monkeypatch.setattr(
+            w,
+            "apply_mmode_calibration_state",
+            lambda state: applied.append(state),
+        )
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert len(applied) == 1
+        assert applied[0].horizontal_ms_per_pixel == 4.167
+
+    def test_time_scale_prompts_when_present_but_not_from_dicom(
+        self, qtbot, monkeypatch
+    ) -> None:
+        from dataclasses import replace
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        w.apply_mmode_calibration_state(
+            replace(self._make_mmode_state(), time_from_dicom_tags=False)
+        )
+        calls = []
+
+        def fake_dialog(parent, title, prompt, value, mn, mx, dec):
+            calls.append((value, mn, mx))
+            return 1000.0, True
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fake_dialog,
+        )
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert len(calls) == 1

@@ -72,6 +72,8 @@ def detect_spectrogram_roi(
         + float(np.percentile(row_mean_all, 50))
     ) / 2.0
     if dark_threshold <= 1.0:
+        if region_bounds is not None:
+            return tuple(float(v) for v in region_bounds)
         return None
 
     bands = _dark_bands(gray, dark_threshold, band_min_rows)

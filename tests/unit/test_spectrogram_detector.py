@@ -71,10 +71,12 @@ def test_detect_spectrogram_returns_frame_coords():
 
 def _make_two_band_frame(height: int = 884, width: int = 1180) -> np.ndarray:
     """Composite with bright B-mode on top and TWO dark bands (modal):
-    an upper strip (y~454-561) and a lower Doppler panel (y~704-843)."""
+    an upper strip (y~400-561, 162 rows) and a lower Doppler panel
+    (y~704-823, 120 rows). Upper band is TALLER than lower so the old
+    largest-band logic picks the wrong (upper) panel."""
     frame = np.full((height, width), 150, dtype=np.uint8)
-    frame[454:562, :] = 12
-    frame[704:844, :] = 12
+    frame[400:562, :] = 12
+    frame[704:824, :] = 12
     frame[720:740, width // 4 : 3 * width // 4] = 120
     return frame
 

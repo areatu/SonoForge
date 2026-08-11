@@ -771,7 +771,7 @@
   "viewer.doppler.cal_baseline": "Doppler калибровка: клик на линию нулевой скорости (baseline) (также 1-я точка шкалы скорости)",
   "viewer.doppler.cal_roi1": "Doppler калибровка 1/3: клик — первый угол окна спектра (не весь кадр)",
   "viewer.doppler.cal_roi2": "Doppler калибровка 1/3: клик — противоположный угол окна спектра",
-  "viewer.doppler.cal_velocity": "Doppler калибровка 2/2: клик верх и низ шкалы скорости на краю спектра",
+  "viewer.doppler.cal_velocity": "Doppler калибровка: клик ВЕРХ шкалы скорости на краю спектра (baseline уже задан)",
   "viewer.doppler_cal_baseline": "Doppler калибровка 1/2: клик на линию нулевой скорости (baseline)",
   "viewer.doppler_cal_roi1": "Doppler калибровка 1/3: клик — первый угол окна спектра (не весь кадр)",
   "viewer.doppler_cal_roi2": "Doppler калибровка 1/3: клик — противоположный угол окна спектра",
