@@ -67,3 +67,40 @@ def test_detect_spectrogram_returns_frame_coords():
     assert 0 <= y0 < 800
     assert x0 < x1 <= 1600
     assert y0 < y1 <= 800
+
+
+def _make_two_band_frame(height: int = 884, width: int = 1180) -> np.ndarray:
+    """Composite with bright B-mode on top and TWO dark bands (modal):
+    an upper strip (y~454-561) and a lower Doppler panel (y~704-843)."""
+    frame = np.full((height, width), 150, dtype=np.uint8)
+    frame[454:562, :] = 12
+    frame[704:844, :] = 12
+    frame[720:740, width // 4 : 3 * width // 4] = 120
+    return frame
+
+
+def test_detect_prefers_lowest_of_two_bands() -> None:
+    frame = _make_two_band_frame()
+    roi = detect_spectrogram_roi(frame)
+    assert roi is not None
+    x0, y0, x1, y1 = roi
+    # Prefer the lower (Doppler) panel, not the upper strip
+    assert y0 >= 650
+    assert y0 < y1
+    assert (y1 - y0) >= 100
+
+
+def test_detect_region_bounds_fallback() -> None:
+    # Uniform bright frame (no visible bands) -> falls back to region_bounds
+    frame = np.full((884, 1180), 200, dtype=np.uint8)
+    roi = detect_spectrogram_roi(frame, region_bounds=(0.0, 100.0, 1179.0, 473.0))
+    assert roi is not None
+    x0, y0, x1, y1 = roi
+    assert y0 == 100.0
+    assert y1 == 473.0
+
+
+def test_detect_no_band_no_region_returns_none() -> None:
+    frame = np.full((884, 1180), 200, dtype=np.uint8)
+    roi = detect_spectrogram_roi(frame)
+    assert roi is None

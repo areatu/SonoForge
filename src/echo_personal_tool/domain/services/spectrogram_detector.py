@@ -5,84 +5,99 @@ from __future__ import annotations
 import numpy as np
 
 
+def _dark_bands(
+    gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol: int = 8
+) -> list[tuple[int, int]]:
+    """Return [(y0, y1), ...] dark row bands, bridging gaps of <= gap_tol.
+
+    Bridges thin bright ruler/grid lines so a Doppler panel stays one band.
+    """
+    row_mean = np.mean(gray, axis=1)
+    dark = row_mean < dark_threshold
+    bands: list[tuple[int, int]] = []
+    start: int | None = None
+    in_band = False
+    gap = 0
+    for y, is_dark in enumerate(dark):
+        if is_dark and not in_band:
+            start = y
+            in_band = True
+            gap = 0
+        elif is_dark and in_band:
+            gap = 0
+        elif not is_dark and in_band:
+            gap += 1
+            if gap > gap_tol:
+                if y - gap_tol - start >= min_rows:
+                    bands.append((start, y - gap_tol))
+                in_band = False
+    if in_band and len(gray) - start >= min_rows:
+        bands.append((start, len(gray)))
+    return bands
+
+
 def detect_spectrogram_roi(
     frame: np.ndarray,
     *,
     search_top_fraction: float = 0.35,
     search_bottom_fraction: float = 0.95,
+    region_bounds: tuple[float, float, float, float] | None = None,
 ) -> tuple[float, float, float, float] | None:
-    """Detect the bounding box of the spectral Doppler spectrogram.
+    """Locate the spectral Doppler spectrogram bounding box.
 
-    Scans the bottom portion of the frame for a dark rectangular region
-    with horizontal grid lines (typical of Doppler spectrograms).
+    Scans the full frame height for contiguous dark bands and returns the
+    bounding box of the *lowest* band broad enough to be a Doppler panel
+    (Doppler panels sit at the bottom of composite echo frames). If no band is
+    found, falls back to ``region_bounds`` when supplied; otherwise ``None``.
 
-    Returns (x0, y0, x1, y1) in pixel coordinates, or None if not found.
+    Returns (x0, y0, x1, y1) in pixel coordinates.
     """
     if frame.ndim == 3:
-        gray = np.mean(frame, axis=2).astype(np.float32)
+        a = np.asarray(frame)
+        if a.shape[-1] in (1, 3, 4):
+            gray = np.mean(a, axis=2).astype(np.float32)
+        else:
+            gray = a[0].astype(np.float32)
     else:
         gray = frame.astype(np.float32)
 
     h, w = gray.shape
-    y_start = int(h * search_top_fraction)
-    y_end = int(h * search_bottom_fraction)
-
-    if y_end <= y_start + 20:
+    if h < 30 or w < 30:
         return None
 
-    region = gray[y_start:y_end, :]
-    if region.size == 0:
+    band_min_rows = max(10, int(h * 0.10))
+    row_mean_all = np.mean(gray, axis=1)
+    dark_threshold = (
+        float(np.percentile(row_mean_all, 10))
+        + float(np.percentile(row_mean_all, 50))
+    ) / 2.0
+    if dark_threshold <= 1.0:
         return None
 
-    # The spectrogram has a dark background with bright signal peaks.
-    # B-mode is bright tissue. Use the brightest rows as reference.
-    row_mean = np.mean(region, axis=1)
-
-    # Find the brightest 20% of rows (B-mode reference)
-    bright_ref = np.percentile(row_mean, 80)
-    # Spectrogram rows are significantly darker than B-mode
-    dark_threshold = bright_ref * 0.5
-    spectrogram_rows = np.where(row_mean < dark_threshold)[0]
-
-    if len(spectrogram_rows) < 10:
+    bands = _dark_bands(gray, dark_threshold, band_min_rows)
+    if not bands:
+        if region_bounds is not None:
+            return tuple(float(v) for v in region_bounds)
         return None
 
-    # The spectrogram is a contiguous block of dark rows
-    # Find the largest contiguous block
-    gaps = np.diff(spectrogram_rows)
-    split_points = np.where(gaps > 5)[0]
+    # Prefer the lowest band (Doppler panel at the bottom).
+    y0, y1 = bands[-1]
 
-    if len(split_points) == 0:
-        # Single contiguous block
-        sy0 = spectrogram_rows[0]
-        sy1 = spectrogram_rows[-1]
-    else:
-        # Find the largest block
-        blocks = np.split(spectrogram_rows, split_points + 1)
-        largest = max(blocks, key=len)
-        if len(largest) < 10:
-            return None
-        sy0 = largest[0]
-        sy1 = largest[-1]
-
-    # Convert back to frame coordinates
-    y0 = float(y_start + sy0)
-    y1 = float(y_start + sy1)
-
-    # Detect horizontal extent: find columns with significant content
-    spectrogram_region = gray[int(y0) : int(y1), :]
-    col_mean = np.mean(spectrogram_region, axis=0)
-
-    # Spectrogram spans most of the width (excluding B-mode overlay on sides)
+    # Detect horizontal extent within the chosen band.
+    band_region = gray[int(y0) : int(y1), :]
+    col_mean = np.mean(band_region, axis=0)
     bright_cols = np.where(col_mean > np.median(col_mean) * 0.3)[0]
     if len(bright_cols) < w * 0.3:
+        if region_bounds is not None:
+            return tuple(float(v) for v in region_bounds)
         return None
 
     x0 = float(bright_cols[0])
-    x1 = float(bright_cols[-1])
+    x1 = float(bright_cols[-1] + 1)
 
-    # Validate: spectrogram should be at least 20% of frame height
-    if (y1 - y0) < h * 0.15:
+    if (y1 - y0) < h * 0.10:
+        if region_bounds is not None:
+            return tuple(float(v) for v in region_bounds)
         return None
 
-    return (x0, y0, x1, y1)
+    return (x0, float(y0), x1, float(y1))
