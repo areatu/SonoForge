@@ -5537,11 +5537,16 @@ class ViewerWidget(QWidget):
         else:
             velocity_span = span_cm_s
 
+        # Preserve an existing (e.g. tick-derived) time scale so manual
+        # velocity calibration does not wipe the Doppler time axis.
+        prior = getattr(self, "_doppler_calibration_state", None)
+        prior_time_span_ms = float(getattr(prior, "time_span_ms", 0.0) or 0.0)
+
         state = calibration_from_roi_and_baseline(
             roi,
             baseline_y,
             velocity_span_cm_s=velocity_span,
-            time_span_ms=0.0,
+            time_span_ms=prior_time_span_ms,
             kind=self._doppler_cal_kind,
         )
         self.apply_doppler_calibration_state(state)

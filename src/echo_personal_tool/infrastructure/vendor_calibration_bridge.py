@@ -18,6 +18,9 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
+from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
+from echo_personal_tool.domain.services.spectrogram_detector import detect_spectrogram_roi
+from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     region_physical_deltas,
     is_spectral_doppler_region,
@@ -28,6 +31,7 @@ from echo_personal_tool.infrastructure.vendor_profiles.base import (
     Vendor,
     VendorProfile,
 )
+from echo_personal_tool.infrastructure.vendor_profiles.detector import detect_vendor
 from echo_personal_tool.infrastructure.vendor_profiles.registry import get_profile_for_dataset
 
 logger = logging.getLogger(__name__)
@@ -195,3 +199,93 @@ def get_vendor_info(dataset: Dataset) -> dict[str, str | Vendor]:
         "manufacturer": str(dataset.get("Manufacturer", "")),
         "model": str(dataset.get("ManufacturerModelName", "")),
     }
+
+
+def try_parse_samsung_tick_calibration(
+    dataset: Dataset,
+    frame: np.ndarray | None = None,
+    *,
+    kind: DopplerKind = DopplerKind.SPECTRAL,
+) -> DopplerCalibrationState | None:
+    """Samsung RS85 tick-based time calibration fallback.
+
+    Samsung RS85 mis-tags PW/CW Doppler regions as SF=1 with unusable
+    physical deltas, so no tagged time scale exists. When called with a
+    frame, the bottom-edge time ruler is detected visually and the sweep
+    frequency derived from the tick spacing via the trained linear
+    calibration (``frequency_hz = k_constant * spacing_px``).
+
+    Returns a state with ``time_from_dicom_tags=True`` (so the caller's
+    time-scale gates enable) using the *visible* ruler extent as the span.
+    """
+    if frame is None:
+        return None
+    if detect_vendor(dataset) is not Vendor.SAMSUNG:
+        return None
+
+    profile = get_profile_for_dataset(dataset)
+    tick_calibration = getattr(profile, "_tick_calibration", None)
+    if tick_calibration is None:
+        return None
+
+    arr = np.asarray(frame)
+    if arr.ndim not in (2, 3):
+        return None
+
+    tick_result = detect_ticks(arr)
+    if tick_result.confidence < 0.3 or tick_result.spacing_px <= 0.0:
+        return None
+    if len(tick_result.tick_positions) < 2:
+        return None
+
+    positions = tick_result.tick_positions
+    visible_width_px = float(positions[-1] - positions[0]) + tick_result.spacing_px
+    frequency_hz = tick_calibration.k_constant * tick_result.spacing_px
+    per_pixel_ms = 1000.0 / frequency_hz
+    time_span_ms = per_pixel_ms * visible_width_px
+
+    # ROI: prefer detected spectrogram panel, else full-frame fallback.
+    roi = None
+    detected = None
+    try:
+        detected = detect_spectrogram_roi(arr)
+    except Exception:
+        detected = None
+    if detected is not None:
+        x0, y0, x1, y1 = detected
+        roi = DopplerSpectrogramRoi(
+            x0=float(x0),
+            y0=float(y0),
+            width=max(1.0, float(x1 - x0)),
+            height=max(1.0, float(y1 - y0)),
+        )
+    if roi is None:
+        h, w = arr.shape[:2]
+        roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(w), height=float(h))
+
+    baseline_y = roi.y0 + roi.height / 2.0
+    try:
+        detected_baseline = detect_baseline_y(arr, roi)
+        if detected_baseline is not None:
+            baseline_y = float(detected_baseline)
+    except Exception:
+        logger.debug("Samsung tick fallback: baseline detection failed")
+
+    candidate = calibration_from_roi_and_baseline(
+        roi,
+        baseline_y,
+        velocity_span_cm_s=kind.default_velocity_span_cm_s,
+        time_span_ms=time_span_ms,
+        kind=kind,
+    )
+    return DopplerCalibrationState(
+        roi=candidate.roi,
+        baseline_y_px=candidate.baseline_y_px,
+        time_origin_ms=candidate.time_origin_ms,
+        time_span_ms=candidate.time_span_ms,
+        velocity_span_cm_s=candidate.velocity_span_cm_s,
+        kind=candidate.kind,
+        from_dicom_tags=True,
+        time_from_dicom_tags=True,
+        velocity_from_dicom_tags=False,
+    )

@@ -211,3 +211,84 @@ def test_calibration_on_real_data():
 
             print(f"{name}: detected={detected_freq:.1f} Hz, expected={expected_freq:.0f} Hz, error={error_pct:.1f}%")
             assert error_pct < 20.0, f"Frequency detection error too large: {error_pct:.1f}%"
+
+
+from pydicom.dataset import Dataset
+
+from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_dataset
+
+
+def _make_samsung_mis_tagged_dataset(frame_height: int = 884) -> Dataset:
+    """Dataset mirroring real RS85 SF=1 mis-tagged PW/CW captures."""
+    dataset = Dataset()
+    dataset.Manufacturer = "SAMSUNG MEDISON"
+    dataset.ManufacturerModelName = "RS85"
+    dataset.Rows = frame_height
+    region = Dataset()
+    region.RegionSpatialFormat = 1  # SF=1 (2D) mis-tagged Doppler
+    region.RegionDataType = 1
+    region.RegionLocationMinX0 = 0
+    region.RegionLocationMinY0 = 100
+    region.RegionLocationMaxX1 = 1179
+    region.RegionLocationMaxY1 = 473
+    region.PhysicalDeltaX = 0.0375
+    region.PhysicalDeltaY = 0.0375
+    region.PhysicalUnitsXDirection = 3
+    region.PhysicalUnitsYDirection = 3
+    dataset.SequenceOfUltrasoundRegions = [region]
+    return dataset
+
+
+def test_samsung_tick_fallback_enables_time_scale():
+    """Mis-tagged Samsung PW/CW frames get a tick-derived time scale via fallback."""
+    dataset = _make_samsung_mis_tagged_dataset()
+
+    # Synthetic RS85-like frame: dark spectrogram area + bottom ruler with
+    # ticks at spacing 24 px (=> 120 Hz, per_pixel ~8.33 ms via k=5.0).
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[475:873, :, :] = 40  # dark Doppler panel
+    for x in range(40, 700, 24):
+        frame[845:875, x, :] = 255  # ruler ticks
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.has_time_scale_from_dicom()
+    assert state.time_from_dicom_tags
+    assert state.time_span_ms > 0
+    # ticks at 40..688 px (24 px spacing): visible sweep width = last-first+spacing
+    # per_pixel_ms = 1000/(5*24) = 8.3333 => span ~ 8.3333 * 672
+    assert abs(state.time_span_ms - (672 * 1000.0 / 120.0)) < 100.0
+
+
+def test_samsung_tick_fallback_returns_none_without_frame():
+    """No frame pixels -> no tick fallback (parse stays None for mis-tagged)."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    assert try_parse_from_dataset(dataset, None) is None
+
+
+def test_samsung_tick_fallback_ignores_other_vendors():
+    """Tick fallback must not fire for non-Samsung datasets."""
+    dataset = Dataset()
+    dataset.Manufacturer = "GE Medical Systems"
+    dataset.ManufacturerModelName = "Vivid E95"
+    dataset.Rows = 884
+    region = Dataset()
+    region.RegionSpatialFormat = 1
+    region.RegionDataType = 1
+    region.RegionLocationMinX0 = 0
+    region.RegionLocationMinY0 = 100
+    region.RegionLocationMaxX1 = 1179
+    region.RegionLocationMaxY1 = 473
+    region.PhysicalDeltaX = 0.0375
+    region.PhysicalDeltaY = 0.0375
+    region.PhysicalUnitsXDirection = 3
+    region.PhysicalUnitsYDirection = 3
+    dataset.SequenceOfUltrasoundRegions = [region]
+
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[475:873, :, :] = 40
+    for x in range(40, 700, 24):
+        frame[845:875, x, :] = 255
+
+    assert try_parse_from_dataset(dataset, frame) is None

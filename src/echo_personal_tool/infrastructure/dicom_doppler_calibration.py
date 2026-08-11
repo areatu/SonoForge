@@ -29,6 +29,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
 )
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
+    try_parse_samsung_tick_calibration,
     try_parse_with_vendor_profile,
     get_vendor_info,
 )
@@ -269,6 +270,25 @@ def try_parse_from_dataset(
             return candidate
         if best is None:
             best = candidate
+
+    # Last resort: Samsung RS85 mis-tags PW/CW as SF=1 with unusable deltas,
+    # so neither vendor profile nor generic parse yields a time scale. Use the
+    # visible bottom-edge ruler ticks to derive the sweep frequency.
+    if best is None:
+        try:
+            frame_arr = np.asarray(frame) if frame is not None else None
+            tick_state = try_parse_samsung_tick_calibration(
+                dataset, frame_arr, kind=kind
+            )
+            if tick_state is not None:
+                logger.debug(
+                    "Using Samsung tick fallback for calibration "
+                    "(span=%.1f ms)",
+                    tick_state.time_span_ms,
+                )
+                return tick_state
+        except Exception as e:
+            logger.debug("Samsung tick fallback failed: %s", e)
 
     return best
 
