@@ -63,7 +63,7 @@ def _find_vti_cm(dto: DopplerMeasurementDTO) -> float | None:
         values.append(float(_np_trapezoid(velocities, times)) / 1000.0)
     if not values:
         return None
-    return sum(values) / len(values)
+    return abs(sum(values) / len(values))
 
 
 def _find_peak_velocity_from_trace(dto: DopplerMeasurementDTO) -> float | None:
