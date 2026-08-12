@@ -74,7 +74,7 @@ def test_compute_cw_scenario() -> None:
     assert result.at_ms == 300.0
     assert result.et_ms == 300.0
     assert result.vmean_cm_s == expected_vti / 0.3
-    assert result.pgmean_mmhg == 4.0 * (result.vmean_cm_s / 100.0) ** 2
+    assert result.pgmean_mmhg == pytest.approx(4.0 * (200.0 / 100.0) ** 2 / 3.0)
 
 
 def test_compute_vti_averaged_across_multiple_traces() -> None:
@@ -221,7 +221,7 @@ def test_compute_vmean_from_trace_duration_when_no_et() -> None:
     expected_vti = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
     expected_vmean = expected_vti / 0.2
     assert result.vmean_cm_s == pytest.approx(expected_vmean)
-    assert result.pgmean_mmhg == pytest.approx(4.0 * (expected_vmean / 100.0) ** 2)
+    assert result.pgmean_mmhg == pytest.approx(4.0 * (200.0 / 100.0) ** 2 / 3.0)
 
 
 def test_compute_vmean_uses_et_over_trace_duration() -> None:
@@ -237,6 +237,54 @@ def test_compute_vmean_uses_et_over_trace_duration() -> None:
     expected_vti = float(_np_trapezoid([0.0, 200.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
     expected_vmean = expected_vti / 0.3
     assert result.vmean_cm_s == pytest.approx(expected_vmean)
+
+
+def test_compute_pgmean_integrates_instantaneous_gradient_not_vmean_sq() -> None:
+    """PGmean is the time-average of 4·v(t)², not 4·Vmean² (Bernoulli is nonlinear).
+
+    A symmetric triangular envelope with peak 200 cm/s has mean v² = peak²/3,
+    so PGmean = 4 × (2 m/s)² / 3 = 16/3 mmHg, higher than 4·(VTI/ET)².
+    """
+    trace = DopplerTrace(label="vti", points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0)))
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    assert result.pgmean_mmhg == pytest.approx(16.0 / 3.0)
+
+
+def test_compute_pgmean_uses_et_window_when_fully_covered() -> None:
+    """ET bounds (when fully inside the trace span) limit the gradient average."""
+    trace = DopplerTrace(
+        label="vti",
+        points=((0.0, 0.0), (100.0, 0.0), (200.0, 200.0), (300.0, 0.0), (400.0, 0.0)),
+    )
+    et = DopplerIntervalMarker(label="ET", start_time_ms=100.0, end_time_ms=300.0)
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(et,), traces=(trace,))
+    result = compute(dto)
+
+    assert result.pgmean_mmhg == pytest.approx(16.0 / 3.0)
+
+
+def test_compute_pgmean_falls_back_to_full_trace_when_et_not_covered() -> None:
+    """ET that lies outside the trace span does not restrict the gradient average."""
+    trace = DopplerTrace(label="vti", points=((0.0, 0.0), (100.0, 200.0), (200.0, 0.0)))
+    et = DopplerIntervalMarker(label="ET", start_time_ms=400.0, end_time_ms=600.0)
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(et,), traces=(trace,))
+    result = compute(dto)
+
+    assert result.vmean_cm_s == pytest.approx(20.0 / 0.2)
+    assert result.pgmean_mmhg == pytest.approx(16.0 / 3.0)
+
+
+def test_compute_pgmean_from_negative_regurgitation_trace() -> None:
+    """v² makes the instantaneous gradient positive for regurgitation traces."""
+    trace = DopplerTrace(label="VTI TR", points=((0.0, 0.0), (100.0, -400.0), (200.0, 0.0)))
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
+    result = compute(dto)
+
+    expected_vti = float(_np_trapezoid([0.0, -400.0, 0.0], [0.0, 100.0, 200.0])) / 1000.0
+    assert result.vmean_cm_s == pytest.approx(abs(expected_vti) / 0.2)
+    assert result.pgmean_mmhg == pytest.approx(4.0 * (400.0 / 100.0) ** 2 / 3.0)
 
 
 def test_compute_vmean_none_when_trace_has_insufficient_points() -> None:

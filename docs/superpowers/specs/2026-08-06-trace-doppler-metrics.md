@@ -20,7 +20,7 @@
 | Vpeak | `max(v)` по точкам trace | новый |
 | Vmean | `VTI / duration_s` | новый |
 | PGpeak | `4 × (Vpeak / 100)²` | новый |
-| PGmean | `4 × (Vmean / 100)²` | новый |
+| PGmean | `(1/T)·∫ 4·(v(t)/100)² dt` — среднее мгновенных градиентов по окну ET/трейса | новый |
 
 ## 3. Область применения
 
@@ -73,7 +73,12 @@ def _find_mean_velocity_from_trace(dto: DopplerMeasurementDTO) -> float | None:
 
 ### 4.3. PGpeak и PGmean
 
-Уже вычисляются в `doppler_metrics.py` через `pressure_gradient_mmhg()`. Нужно только убедиться, что `vpeak_cm_s` и `vmean_cm_s` теперь берутся из trace, а не только из пиковых маркеров.
+PGpeak вычисляется в `doppler_metrics.py` через `pressure_gradient_mmhg()` от Vpeak.
+
+PGmean должен считаться как **усреднённый по времени мгновенный градиент** (ASE/EACVI):
+`PGmean = (1/T)·∫ 4·(v(t)/100)² dt`, где интегрирование идёт по окну ET (если ET целиком
+покрывается трейсом), иначе по всей длительности трейса. Применение Бернулли к Vmean
+(`4·(Vmean/100)²`) **занижает** истинный средний градиент из-за нелинейности формулы.
 
 ### 4.4. Приоритет источников Vpeak
 
@@ -82,9 +87,14 @@ def _find_mean_velocity_from_trace(dto: DopplerMeasurementDTO) -> float | None:
 3. Если нет ни маркера, ни trace — `None`.
 
 Аналогично для Vmean:
-1. Если есть интервал ET и VTI — использовать `VTI / ET_s` (текущая логика).
-2. Иначе если есть trace с точками — использовать `VTI / duration_s` trace.
+1. Если есть интервал ET и VTI — использовать `|VTI| / ET_s` (текущая логика).
+2. Иначе если есть trace с точками — использовать `|VTI| / duration_s` trace.
 3. Иначе — `None`.
+
+PGmean вычисляется всегда из trace (`_find_mean_pressure_gradient_from_trace`):
+1. Окно интегрирования `[start, end]` = интервал ET, если его границы целиком лежат внутри временного диапазона трейса; иначе — весь диапазон трейса.
+2. `PGmean = 4 · ∫v(t)²dt / (100² · (end − start))` по кусочно-линейной огибающей.
+3. Нет трейса с ≥2 точками или нулевая длительность/нулевой результат — `None`.
 
 ### 4.5. Изменения в `doppler_metrics.py`
 
@@ -157,7 +167,7 @@ if vti_cm is not None:
 - Vpeak: `max(velocity)` по точкам trace (без порога)
 - Vmean: `VTI / duration` (duration = время от первой до последней точки trace)
 - PGpeak: `4 × (Vpeak / 100)²`
-- PGmean: `4 × (Vmean / 100)²`
+- PGmean: `(4 × ∫v(t)²dt) / (100² · T)` — среднее мгновенных градиентов
 
 ## 7. Граничные случаи
 
@@ -180,7 +190,7 @@ if vti_cm is not None:
 3. Trace + ET интервал → Vmean = VTI / ET
 4. Нет trace, нет маркеров → все `None`
 5. Отрицательные скорости (регургитация) → Vpeak = max(|v|)
-6. PGpeak / PGmean соответствуют Bernoulli от Vpeak / Vmean
+6. PGpeak = Bernoulli от Vpeak; PGmean = усреднённый по времени мгновенный градиент по трейсу
 7. Существующие тесты для `compute()` не регрессируют
 
 ### Интеграционные тесты:

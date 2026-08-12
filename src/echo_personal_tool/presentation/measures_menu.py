@@ -196,12 +196,9 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     ),
 )
 
-# Map group keys to preference flags for experimental features
+# Map group keys to preference flags for experimental features (only LV strain)
 _EXPERIMENTAL_GROUPS: dict[str, str] = {
     "menu.strain_group": "show_strain",
-    "menu.diastolic_group": "show_diastolic_function",
-    "menu.mv_group": "show_doppler_mk_av",
-    "menu.tv_group": "show_doppler_tk_pv",
 }
 
 
@@ -220,11 +217,6 @@ def _filter_menu(
             show = getattr(preferences, pref_key, False)
             if not show:
                 continue
-
-        # Filter individual buttons within groups
-        if group_key == "menu.rv_group":
-            if not preferences.show_rv_s_prime:
-                buttons = tuple(b for b in buttons if b.action != MeasurementAction.RV_S_PRIME)
 
         filtered.append((group_key, buttons))
     return tuple(filtered)

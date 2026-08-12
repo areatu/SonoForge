@@ -12,7 +12,8 @@
 | VTI из trace (`_find_vti_cm`) | `domain/calculations/doppler_metrics.py` | Готово |
 | Vpeak из маркера (`_find_peak_velocity`) | `domain/calculations/doppler_metrics.py` | Готово |
 | Vmean = VTI / ET | `domain/calculations/doppler_metrics.py` | Готово |
-| PGpeak / PGmean через Bernoulli | `domain/calculations/bernoulli.py` | Готово |
+| PGpeak через Bernoulli | `domain/calculations/bernoulli.py` | Готово |
+| PGmean = среднее мгновенных градиентов `4·(v/100)²` | `domain/calculations/doppler_metrics.py` | Готово |
 | Авто-трейс огибающей (`apply_auto_vti_trace`) | `presentation/doppler_overlay.py` | Готово |
 | Ручной трейс (`finish_trace`) | `presentation/doppler_widget.py` | Готово |
 | Отображение VTI/Vpeak/Vmean/PGpeak/PGmean в панели | `presentation/measurement_panel.py` | Готово |
@@ -126,6 +127,6 @@
 2. При авто-трейсинге VTI MV аналогично
 3. Vpeak берётся из маркера, если он есть; иначе из trace
 4. Vmean берётся из ET-интервала, если он есть; иначе из trace duration
-5. PGpeak = 4 × (Vpeak/100)², PGmean = 4 × (Vmean/100)²
+5. PGpeak = 4 × (Vpeak/100)², PGmean = среднее мгновенных градиентов 4·(v/100)² по окну ET/трейса
 6. Все существующие тесты проходят
 7. Новые unit-тесты покрывают все граничные случаи
