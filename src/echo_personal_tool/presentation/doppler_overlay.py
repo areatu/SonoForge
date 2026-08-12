@@ -1134,12 +1134,20 @@ class DopplerOverlayTools(QWidget):
         return True
 
     def _handle_autovti_click(self, x_px: float, y_px: float) -> bool:
-        """Two-click region selection for Auto VTI: start/end time + direction."""
-        baseline_y = self._baseline_plot_y_px()
+        """Two-click region selection for Auto VTI: start/end time + direction.
+
+        The lateralization of the clicks (above/below baseline) determines the
+        auto-tracing direction. Direction is derived from
+        ``velocity_cm_s_from_y`` so it is consistent with the axis mapping's
+        coordinate convention (the same conversion used by trace and peak
+        modes), rather than a raw Y comparison that may be in a different
+        coordinate space.
+        """
         if self._autovti_start_ms is None:
             start_ms = self._axis_mapping.time_ms_from_x(x_px)
             self._autovti_start_ms = start_ms
-            self._autovti_direction = "up" if y_px < baseline_y else "down"
+            velocity = self._axis_mapping.velocity_cm_s_from_y(y_px)
+            self._autovti_direction = "up" if velocity >= 0 else "down"
             self._show_autovti_region_start(x_px)
             self._emit_autovti_prompt()
             return True

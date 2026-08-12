@@ -664,6 +664,22 @@ class TestAutovtiRegionSelection:
         assert overlay.handle_click(300.0, baseline_y + 50) is True
         assert overlay._autovti_direction == "down"
 
+    def test_direction_uses_velocity_not_raw_y(self, overlay, mock_plot):
+        """Direction must come from velocity_cm_s_from_y, not a raw Y comparison,
+        so it is correct regardless of ViewBox coordinate orientation."""
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        # _vessel_mapping_with_time: baseline_y=100, velocity_max=100, span=200, height=200
+        # velocity_cm_s_from_y(50) = 100 - (50/200)*200 = 50 → positive → "up"
+        # velocity_cm_s_from_y(150) = 100 - (150/200)*200 = -50 → negative → "down"
+        assert overlay.handle_click(300.0, 50.0) is True
+        assert overlay._autovti_direction == "up"
+        overlay._clear_autovti_region()
+        overlay.set_tool_mode("autovti_region")
+        assert overlay.handle_click(300.0, 150.0) is True
+        assert overlay._autovti_direction == "down"
+
     def test_second_click_emits_signal(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping_with_time())
         overlay.set_trace_label("VTI")
