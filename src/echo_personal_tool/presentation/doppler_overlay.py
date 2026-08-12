@@ -881,7 +881,7 @@ class DopplerOverlayTools(QWidget):
     def _ensure_interval_preview_item(self) -> pg.PlotDataItem:
         if self._interval_preview_item is None:
             self._interval_preview_item = pg.PlotDataItem(
-                pen=pg.mkPen("#00897b", width=2, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen("#00897b", width=3, style=Qt.PenStyle.DashLine),
                 symbol="t",
                 symbolSize=10,
                 symbolBrush=pg.mkBrush("#00897b"),
@@ -925,7 +925,7 @@ class DopplerOverlayTools(QWidget):
         x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)
         x_end = self._axis_mapping.x_from_time_ms(marker.end_time_ms)
         y_base = self._baseline_y_for_interval()
-        interval_pen = pg.mkPen("#00897b", width=2)
+        interval_pen = pg.mkPen("#00897b", width=3)
         interval_item = pg.PlotDataItem(
             [x_start, x_end],
             [y_base, y_base],

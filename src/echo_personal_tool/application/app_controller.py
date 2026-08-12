@@ -1049,7 +1049,7 @@ class AppController(QObject):
             raise TypeError("Expected numeric time_per_pixel_ms")
         study_uid = self._resolve_study_uid()
         self._measurement_session.set_mmode_time_per_pixel_ms(study_uid, float(time_per_pixel_ms))
-        self.status_message.emit(tr("status.mmode_time", time=f"{float(time_per_pixel_ms):.3f}"))
+        self.status_message.emit(tr("status.mmode_time", time=float(time_per_pixel_ms)))
 
     def on_mmode_calibration_changed(self, calibration: object) -> None:
         from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState

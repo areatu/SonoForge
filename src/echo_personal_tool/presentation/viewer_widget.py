@@ -708,6 +708,7 @@ class ViewerWidget(QWidget):
         self._mmode_line_click_step: Literal["start", "end"] | None = None
         self._mmode_vertical_lock: bool = False
         self._vertical_caliper_labels = frozenset({"TAPSE", "M-mode"})
+        self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
         self._current_instance_path: Path | None = None
@@ -5997,12 +5998,19 @@ class ViewerWidget(QWidget):
         end: tuple[float, float],
         label: str | None = None,
     ) -> tuple[float, float]:
-        if (label or self._current_caliper_label()) in self._vertical_caliper_labels:
+        effective_label = label or self._current_caliper_label()
+        if effective_label in self._vertical_caliper_labels:
             end_y = end[1]
             if self._mmode_calibration_state is not None:
                 roi = self._mmode_calibration_state.roi
                 end_y = max(roi.y0, min(end_y, roi.y1))
             return (start[0], end_y)
+        if effective_label in self._horizontal_time_caliper_labels:
+            end_x = end[0]
+            if self._mmode_calibration_state is not None:
+                roi = self._mmode_calibration_state.roi
+                end_x = max(roi.x0, min(end_x, roi.x1))
+            return (end_x, start[1])
         return end
 
     def _pixel_spacing_for_linear_label(
@@ -6146,12 +6154,20 @@ class ViewerWidget(QWidget):
         dy = end[1] - start[1]
         pixel_length = math.hypot(dx, dy)
         angle_degrees = math.degrees(math.atan2(dy, dx))
+        millimeter_length: float | None = None
+        time_ms: float | None = None
         if (
             label in self._vertical_caliper_labels
             and self._mmode_calibration_state is not None
             and self._mmode_calibration_state.vertical_mm_per_pixel is not None
         ):
             millimeter_length = abs(dy) * self._mmode_calibration_state.vertical_mm_per_pixel
+        elif (
+            label in self._horizontal_time_caliper_labels
+            and self._mmode_calibration_state is not None
+            and self._mmode_calibration_state.horizontal_ms_per_pixel is not None
+        ):
+            time_ms = abs(dx) * self._mmode_calibration_state.horizontal_ms_per_pixel
         else:
             pixel_spacing = self._pixel_spacing_for_linear_label(label, start, end)
             millimeter_length = (
@@ -6170,6 +6186,7 @@ class ViewerWidget(QWidget):
             start=start,
             end=end,
             sop_instance_uid=instance_uid,
+            time_ms=time_ms,
         )
 
     def _update_linear_caliper_label_preview(

@@ -39,7 +39,7 @@ def test_grade_insufficient_data_few_criteria() -> None:
         lav_index_ml_m2=40.0,
         tr_vmax_cm_s=None,
     )
-    assert result == "Insufficient data"
+    assert result is None
 
 
 def test_grade_none_when_no_data() -> None:

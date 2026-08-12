@@ -45,7 +45,7 @@ def grade_diastolic_function(
     total = len(criteria)
 
     if total < 3:
-        return "Insufficient data"
+        return None
     if positive / total > 0.5:
         return "Abnormal"
     if positive / total < 0.5:

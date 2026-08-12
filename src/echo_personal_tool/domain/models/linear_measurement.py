@@ -33,10 +33,14 @@ class LinearMeasurement:
     start: tuple[float, float] | None = None
     end: tuple[float, float] | None = None
     sop_instance_uid: str = ""
+    time_ms: float | None = None
 
     def display_text(self, *, length_unit: str = "mm") -> str:
         i18n_key = _LABEL_I18N_KEY.get(self.label)
         display_label = tr(i18n_key) if i18n_key else self.label
+        if self.time_ms is not None:
+            hr = 60000.0 / self.time_ms if self.time_ms > 0 else 0.0
+            return f"{display_label}: {self.time_ms:.1f} ms  {tr('mmode.label_hr')} {hr:.0f}"
         if self.millimeter_length is None:
             return f"{display_label}: {self.pixel_length:.1f} px"
         if self.label in ("%D", "%S"):

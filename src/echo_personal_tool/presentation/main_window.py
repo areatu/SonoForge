@@ -1941,7 +1941,7 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.mmode_calibration_start"))
             return
 
-        if self._viewer.start_mmode_time_calibration():
+        if self._viewer.start_linear_caliper_for("Time"):
             self._show_status(tr("status.mmode_time_ready"))
         else:
             self._show_status("M-mode calibration required")

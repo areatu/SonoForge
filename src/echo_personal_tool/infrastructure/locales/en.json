@@ -488,6 +488,7 @@
   "result.rvot": "RVOT",
   "result.rwt": "RWT",
   "result.tapse": "TAPSE",
+  "result.tr_vmax": "TRpeak",
   "result.tv_vmax": "TV Vmax",
   "result.vmean": "Vmean",
   "result.vpeak": "Vpeak",
