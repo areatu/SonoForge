@@ -26,7 +26,10 @@ from echo_personal_tool.domain.services.cardiac_cycle_service import (
     derive_psv_edv_indices_per_cycle,
     derive_psv_edv_indices_with_cycles,
 )
-from echo_personal_tool.domain.services.doppler_trace_points import finalize_vti_trace_points
+from echo_personal_tool.domain.services.doppler_trace_points import (
+    finalize_vti_trace_points,
+    filter_velocity_spikes,
+)
 
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
 _TRACE_MIN_SAMPLE_PX = 4.0
@@ -565,7 +568,8 @@ class DopplerOverlayTools(QWidget):
             )
             for point in clipped
         ]
-        finalized = finalize_vti_trace_points(mapped)
+        filtered = filter_velocity_spikes(mapped)
+        finalized = finalize_vti_trace_points(filtered)
         if len(finalized) < 3:
             return False
         self._append_trace(DopplerTrace(label=trace_label, points=finalized))

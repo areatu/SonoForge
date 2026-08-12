@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from echo_personal_tool.domain.services.doppler_trace_points import (
     finalize_vti_trace_points,
+    filter_velocity_spikes,
 )
 
 
@@ -75,3 +76,44 @@ class TestFinalizeVtiTracePoints:
         for t, v in result:
             assert isinstance(t, float)
             assert isinstance(v, float)
+
+
+class TestFilterVelocitySpikes:
+    """Remove sharp velocity spikes by smoothing to neighbors."""
+
+    def test_passthrough_when_no_spikes(self):
+        points = [(1.0, 10.0), (2.0, 50.0), (3.0, 80.0), (4.0, 40.0), (5.0, 10.0)]
+        result = filter_velocity_spikes(points)
+        assert len(result) == len(points)
+        assert result[2] == (3.0, 80.0)
+
+    def test_spike_replaced_by_neighbor_average(self):
+        # velocity jumps: 10 -> 100 -> 10 (spike of 90 > 100 threshold... use lower threshold)
+        points = [(1.0, 10.0), (2.0, 100.0), (3.0, 10.0)]
+        result = filter_velocity_spikes(points, spike_threshold_cm_s=50.0)
+        # (100.0 - 10.0 > 50 AND 100.0 - 10.0 > 50) => spike replaced by (10+10)/2 = 10.0
+        assert result[1] == (2.0, 10.0)
+
+    def test_no_spike_when_one_side_matches(self):
+        # 10 -> 100 -> 95: only one side > 50, no spike
+        points = [(1.0, 10.0), (2.0, 100.0), (3.0, 95.0)]
+        result = filter_velocity_spikes(points, spike_threshold_cm_s=50.0)
+        assert result[1] == (2.0, 100.0)
+
+    def test_clamps_extreme_velocity(self):
+        points = [(1.0, 50.0), (2.0, 500.0), (3.0, 50.0)]
+        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
+        # 500 → clamped to 400; both |400-50|>100 → spike
+        # replaced by (50+50)/2 = 50.0
+        assert result[1][1] == 50.0
+
+    def test_clamps_negative_velocity(self):
+        points = [(1.0, -50.0), (2.0, -500.0), (3.0, -50.0)]
+        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
+        # -500 → clamped to -400; both |-400-(-50)|>100 → spike
+        # replaced by (-50 + -50)/2 = -50.0
+        assert result[1][1] == -50.0
+
+    def test_short_input_passthrough(self):
+        result = filter_velocity_spikes([(1.0, 10.0)])
+        assert result == ((1.0, 10.0),)
