@@ -1898,7 +1898,7 @@ class MainWindow(QMainWindow):
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():
             return
-        self._viewer.set_doppler_tool_mode("peak", peak_label="s_sept")
+        self._viewer.set_doppler_tool_mode("peak", peak_label="s_prime_rv")
         self._show_status(tr("status.rv_s_prime_tool"))
 
     def _on_rv_fac(self) -> None:

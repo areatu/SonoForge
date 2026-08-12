@@ -31,7 +31,7 @@ from echo_personal_tool.domain.services.doppler_trace_points import finalize_vti
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
 _TRACE_MIN_SAMPLE_PX = 4.0
 
-_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "Vmax", "TR Vmax")
+_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "s_lat", "Vmax", "TR Vmax", "s_prime_rv")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
 _MITRAL_INFLOW_WORKFLOW: tuple[tuple[str, str], ...] = (
     ("peak", "E"),

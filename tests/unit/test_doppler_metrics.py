@@ -13,7 +13,7 @@ from echo_personal_tool.domain.models.doppler import (
     DopplerTrace,
 )
 
-_np_trapezoid = getattr(np, "trapezoid", np.trapz)
+_np_trapezoid = getattr(np, "trapezoid", None) or np.trapz
 
 
 def test_compute_full_diastolic_scenario() -> None:
@@ -168,6 +168,41 @@ def test_compute_empty_dto_returns_all_none() -> None:
     assert result.vmean_cm_s is None
     assert result.pgpeak_mmhg is None
     assert result.pgmean_mmhg is None
+    assert result.s_prime_sept_cm_s is None
+    assert result.s_prime_lat_cm_s is None
+    assert result.s_prime_rv_cm_s is None
+
+
+def test_compute_s_prime_rv_from_peak_marker() -> None:
+    """s' RV (ПЖ) is read from the s_prime_rv peak marker."""
+    dto = DopplerMeasurementDTO(
+        peaks=(
+            DopplerPeakMarker(label="s_prime_rv", time_ms=50.0, velocity_cm_s=12.0),
+        ),
+        intervals=(),
+        traces=(),
+    )
+
+    result = compute(dto)
+
+    assert result.s_prime_rv_cm_s == 12.0
+
+
+def test_compute_s_prime_sept_and_lat_from_peak_markers() -> None:
+    """s' septal and s' lateral are read from s_sept / s_lat peak markers."""
+    dto = DopplerMeasurementDTO(
+        peaks=(
+            DopplerPeakMarker(label="s_sept", time_ms=40.0, velocity_cm_s=8.0),
+            DopplerPeakMarker(label="s_lat", time_ms=45.0, velocity_cm_s=11.0),
+        ),
+        intervals=(),
+        traces=(),
+    )
+
+    result = compute(dto)
+
+    assert result.s_prime_sept_cm_s == 8.0
+    assert result.s_prime_lat_cm_s == 11.0
 
 
 def test_compute_vpeak_from_trace_when_no_marker() -> None:

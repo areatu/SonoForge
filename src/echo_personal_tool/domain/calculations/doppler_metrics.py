@@ -204,6 +204,10 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
 
     e_prime_over_a_prime = _ratio(e_prime_avg_cm_s, a_prime_avg)
 
+    s_prime_sept_cm_s = _find_peak_velocity(dto, "s_prime_sept", "s_sept", "ssept")
+    s_prime_lat_cm_s = _find_peak_velocity(dto, "s_prime_lat", "s_lat", "slat")
+    s_prime_rv_cm_s = _find_peak_velocity(dto, "s_prime_rv", "s_prime_rv", "rv_s_prime")
+
     dt_ms = _find_interval_duration_ms(dto, "dt")
     ivrt_ms = _find_interval_duration_ms(dto, "ivrt")
     at_ms = _find_interval_duration_ms(dto, "at")
@@ -242,6 +246,9 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
         e_prime_over_a_prime=e_prime_over_a_prime,
         a_prime_sept_cm_s=a_prime_sept_cm_s,
         a_prime_lat_cm_s=a_prime_lat_cm_s,
+        s_prime_sept_cm_s=s_prime_sept_cm_s,
+        s_prime_lat_cm_s=s_prime_lat_cm_s,
+        s_prime_rv_cm_s=s_prime_rv_cm_s,
         tr_vmax_cm_s=tr_vmax_cm_s,
         vti_cm=vti_cm,
         vpeak_cm_s=vpeak_cm_s,

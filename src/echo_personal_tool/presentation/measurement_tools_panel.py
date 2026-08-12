@@ -256,7 +256,7 @@ class MeasurementToolsPanel(QWidget):
         row.addWidget(btn_basal)
         btn_s_prime = QPushButton("s'")
         btn_s_prime.setToolTip(tr("tools.rv_s_prime_tip"))
-        btn_s_prime.setEnabled(False)
+        btn_s_prime.setEnabled(True)
         btn_s_prime.clicked.connect(self.rv_s_prime_requested.emit)
         row.addWidget(btn_s_prime)
         return group

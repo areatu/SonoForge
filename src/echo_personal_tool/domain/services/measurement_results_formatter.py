@@ -56,6 +56,9 @@ def format_results_overlay(
         _append(lines, tr("result.e_over_e_prime_sept"), dop.e_over_e_prime_sept, "")
         _append(lines, tr("result.e_over_e_prime_lat"), dop.e_over_e_prime_lat, "")
         _append(lines, tr("result.e_prime_over_a_prime"), dop.e_prime_over_a_prime, "")
+        _append(lines, tr("result.s_prime_sept"), dop.s_prime_sept_cm_s, "cm/s")
+        _append(lines, tr("result.s_prime_lat"), dop.s_prime_lat_cm_s, "cm/s")
+        _append(lines, tr("result.s_prime_rv"), dop.s_prime_rv_cm_s, "cm/s")
         _append(lines, tr("result.vpeak"), dop.vpeak_cm_s, "cm/s")
         _append(lines, tr("result.pgpeak"), dop.pgpeak_mmhg, "mmHg")
         _append(lines, tr("result.tr_vmax"), dop.tr_vmax_cm_s, "cm/s")
@@ -327,6 +330,9 @@ def format_results_overlay_html(
             param_id="e_e_prime_avg",
             sex_male=sex_male,
         )
+        _html_append(parts, tr("result.s_prime_sept"), dop.s_prime_sept_cm_s, "cm/s", param_id="s_prime_sept", sex_male=sex_male)
+        _html_append(parts, tr("result.s_prime_lat"), dop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat", sex_male=sex_male)
+        _html_append(parts, tr("result.s_prime_rv"), dop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male)
         _html_append(parts, tr("result.vpeak"), dop.vpeak_cm_s, "cm/s", sex_male=sex_male)
         _html_append(parts, tr("result.pgpeak"), dop.pgpeak_mmhg, "mmHg", sex_male=sex_male)
         _html_append(parts, tr("result.tr_vmax"), dop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)

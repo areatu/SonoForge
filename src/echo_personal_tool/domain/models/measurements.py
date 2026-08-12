@@ -28,6 +28,9 @@ class DopplerResults:
     e_prime_over_a_prime: float | None = None
     a_prime_sept_cm_s: float | None = None
     a_prime_lat_cm_s: float | None = None
+    s_prime_sept_cm_s: float | None = None
+    s_prime_lat_cm_s: float | None = None
+    s_prime_rv_cm_s: float | None = None
     tr_vmax_cm_s: float | None = None
     vti_cm: float | None = None
     vpeak_cm_s: float | None = None

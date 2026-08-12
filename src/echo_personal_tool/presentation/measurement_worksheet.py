@@ -104,6 +104,8 @@ _WORKSHEET_TREE: tuple[WorksheetRow, ...] = (
             WorksheetRow(None, "E/e' sept", "dop_ee_sept"),
             WorksheetRow(None, "E/e' lat", "dop_ee_lat"),
             WorksheetRow(None, "e'/a'", "dop_epa"),
+            WorksheetRow(None, "s' sept", "dop_sp_sept"),
+            WorksheetRow(None, "s' lat", "dop_sp_lat"),
             WorksheetRow(None, "DT", "dop_dt"),
             WorksheetRow(None, "IVRT", "dop_ivrt"),
             WorksheetRow(None, "Diastolic grade", "diast_grade"),
@@ -222,6 +224,9 @@ class MeasurementWorksheet(QWidget):
             self._set_value("dop_ee_sept", dop.e_over_e_prime_sept, "")
             self._set_value("dop_ee_lat", dop.e_over_e_prime_lat, "")
             self._set_value("dop_epa", dop.e_prime_over_a_prime, "")
+            self._set_value("dop_sp_sept", dop.s_prime_sept_cm_s, "cm/s")
+            self._set_value("dop_sp_lat", dop.s_prime_lat_cm_s, "cm/s")
+            self._set_value("rv_s_prime", dop.s_prime_rv_cm_s, "cm/s")
             self._set_value("dop_dt", dop.dt_ms, "ms")
             self._set_value("dop_ivrt", dop.ivrt_ms, "ms")
             self._set_value("dop_vmax", dop.tr_vmax_cm_s or dop.vpeak_cm_s, "cm/s")
