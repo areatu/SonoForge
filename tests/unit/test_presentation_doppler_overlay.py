@@ -599,6 +599,103 @@ class TestAutoVtiTrace:
         assert overlay.apply_auto_vti_trace(envelope, cycles=(cycle,)) is True
         assert len(overlay._traces[0].points) == 10
 
+    def test_clips_to_user_defined_time_range(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
+        assert overlay.apply_auto_vti_trace(
+            envelope, time_range_ms=(900.0, 1500.0)
+        ) is True
+        trace = overlay._traces[0]
+        times = [p[0] for p in trace.points]
+        assert min(times) >= 900.0
+        assert max(times) <= 1500.0
+
+    def test_time_range_priority_over_cycles(self, overlay, mock_plot):
+        from echo_personal_tool.domain.services.cardiac_cycle_service import CardiacCycle
+
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
+        cycle = CardiacCycle(
+            start_ms=5000.0,
+            end_ms=6000.0,
+            r_peak_ms=5000.0,
+            ed_ms=5000.0,
+            es_ms=6000.0,
+            source="ecg",
+            confidence=0.9,
+        )
+        assert overlay.apply_auto_vti_trace(
+            envelope, cycles=(cycle,), time_range_ms=(900.0, 1500.0)
+        ) is True
+        trace = overlay._traces[0]
+        times = [p[0] for p in trace.points]
+        assert min(times) >= 900.0
+        assert max(times) <= 1500.0
+
+    def test_time_range_too_short_returns_false(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
+        assert overlay.apply_auto_vti_trace(envelope, time_range_ms=(900.0, 901.0)) is False
+
+
+class TestAutovtiRegionSelection:
+    def test_sets_tool_mode(self, overlay):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        assert overlay._tool_mode == "autovti_region"
+        assert overlay._trace_label == "VTI"
+
+    def test_first_click_records_start_and_direction_up(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        baseline_y = overlay._baseline_plot_y_px()
+        assert overlay.handle_click(300.0, baseline_y - 50) is True
+        assert overlay._autovti_start_ms is not None
+        assert overlay._autovti_direction == "up"
+        assert overlay._autovti_region_item is not None
+
+    def test_first_click_direction_down(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        baseline_y = overlay._baseline_plot_y_px()
+        assert overlay.handle_click(300.0, baseline_y + 50) is True
+        assert overlay._autovti_direction == "down"
+
+    def test_second_click_emits_signal(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(300.0, baseline_y - 50)
+
+        received = []
+        overlay.autovti_region_selected.connect(
+            lambda s, e, d: received.append((s, e, d))
+        )
+        overlay.handle_click(700.0, baseline_y - 50)
+
+        assert len(received) == 1
+        start_ms, end_ms, direction = received[0]
+        assert start_ms < end_ms
+        assert direction == "up"
+        assert overlay._autovti_start_ms is None
+        assert overlay._autovti_region_item is None
+
+    def test_cancels_via_clear_partial_state(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(300.0, baseline_y - 50)
+        assert overlay._autovti_start_ms is not None
+        overlay.cancel_active_tool()
+        assert overlay._autovti_start_ms is None
+        assert overlay._autovti_region_item is None
+        assert overlay._tool_mode == "none"
+
 
 class TestAveragedVessel:
     def test_averages_psv_edv_across_cycles(self, overlay, mock_plot):

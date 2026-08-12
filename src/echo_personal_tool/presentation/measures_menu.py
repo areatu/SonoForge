@@ -151,7 +151,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.mv_group",
         (
-            _btn("menu.trace_auto", MeasurementAction.DOPPLER_TRACE_AUTO),
+            _btn("menu.trace_auto_region", MeasurementAction.DOPPLER_TRACE_AUTO_REGION, doppler_trace="VTI"),
             _btn("menu.trace_mv", doppler_trace="VTI MV"),
             _btn("menu.trace_mr", doppler_trace="VTI MR"),
             _btn("menu.vpeak_mv", doppler_peak="Vmax"),
@@ -166,6 +166,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         "menu.tv_group",
         (
             _btn("menu.trpeak", doppler_peak="TR Vmax"),
+            _btn("menu.trace_auto_region", MeasurementAction.DOPPLER_TRACE_AUTO_REGION, doppler_trace="VTI TR"),
             _btn("menu.trace_tr", doppler_trace="VTI TR"),
             _btn("menu.trace_pr", doppler_trace="VTI PR"),
         ),
@@ -433,6 +434,7 @@ class MeasuresMenuWidget(QWidget):
                 or spec.doppler_trace
                 or spec.action == MeasurementAction.DOPPLER_MITRAL_INFLOW
                 or spec.action == MeasurementAction.DOPPLER_TRACE
+                or spec.action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION
             )
             if not needs_time:
                 continue
@@ -519,6 +521,12 @@ class MeasuresMenuWidget(QWidget):
             elif spec.doppler_interval:
                 action = MeasurementAction.DOPPLER_INTERVAL
                 extra = spec.doppler_interval
+            elif (
+                spec.action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION
+                and spec.doppler_trace
+            ):
+                action = MeasurementAction.DOPPLER_TRACE_AUTO_REGION
+                extra = spec.doppler_trace
             elif spec.doppler_trace:
                 action = MeasurementAction.DOPPLER_TRACE
                 extra = spec.doppler_trace

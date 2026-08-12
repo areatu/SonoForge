@@ -1817,6 +1817,9 @@ class MainWindow(QMainWindow):
         if action == MeasurementAction.DOPPLER_TRACE_AUTO:
             self._on_doppler_trace_auto()
             return
+        if action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION:
+            self._on_doppler_trace_auto_region(extra or "VTI")
+            return
         if action == MeasurementAction.VESSEL_PSV_EDV:
             if self._viewer.start_vessel_psv():
                 self._show_status(tr("status.vessel_psv"))
@@ -1894,6 +1897,12 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.vti_auto_trace"))
         else:
             self._show_status(tr("status.load_first_frame_doppler"))
+
+    def _on_doppler_trace_auto_region(self, trace_label: str) -> None:
+        if not self._ensure_doppler_ready(require_time=True):
+            return
+        self._viewer.set_doppler_tool_mode("autovti_region", trace_label=trace_label)
+        self._show_status(tr("status.autovti_region_tool", trace_label=trace_label))
 
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():

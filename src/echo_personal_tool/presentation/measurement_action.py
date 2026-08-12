@@ -32,6 +32,7 @@ class MeasurementAction(StrEnum):
     DOPPLER_INTERVAL = "doppler_interval"
     DOPPLER_TRACE = "doppler_trace"
     DOPPLER_TRACE_AUTO = "doppler_trace_auto"
+    DOPPLER_TRACE_AUTO_REGION = "doppler_trace_auto_region"
     DOPPLER_MITRAL_INFLOW = "doppler_mitral_inflow"
     AUTO_SEGMENT = "auto_segment"
     LAV_4C_AUTO = "lav_4c_auto"

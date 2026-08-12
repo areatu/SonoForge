@@ -676,6 +676,7 @@ class ViewerWidget(QWidget):
         self._doppler.workflow_step_changed.connect(self._on_doppler_workflow_step_changed)
         self._doppler.workflow_completed.connect(self._on_doppler_workflow_completed)
         self._doppler.trace_prompt_changed.connect(self._on_doppler_trace_prompt_changed)
+        self._doppler.autovti_region_selected.connect(self._on_autovti_region_selected)
         from echo_personal_tool.presentation.speckle_overlay import SpeckleOverlay
 
         self._speckle_overlay = SpeckleOverlay(self._view, self)
@@ -2269,6 +2270,10 @@ class ViewerWidget(QWidget):
     def _on_doppler_trace_prompt_changed(self, prompt: str) -> None:
         self._measurement_label.setText(prompt)
 
+    def _on_autovti_region_selected(self, t_start_ms: float, t_end_ms: float, direction: str) -> None:
+        trace_label = self._doppler.trace_label()
+        self.start_vti_auto_trace_with_region(t_start_ms, t_end_ms, direction, trace_label=trace_label)
+
     def restore_doppler_measurements(self, dto: object) -> None:
         from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 
@@ -2379,7 +2384,12 @@ class ViewerWidget(QWidget):
             )
         )
 
-    def _extract_doppler_envelope(self, preset: str = "normal") -> tuple[tuple[float, float], ...]:
+    def _extract_doppler_envelope(
+        self,
+        preset: str = "normal",
+        *,
+        force_direction: str | None = None,
+    ) -> tuple[tuple[float, float], ...]:
         """Extract the spectral envelope from the current Doppler frame."""
         if self._current_frame is None:
             return ()
@@ -2395,6 +2405,7 @@ class ViewerWidget(QWidget):
             state.roi,
             state.baseline_y_px,
             preset=preset,
+            force_direction=force_direction,
         )
 
     def start_vti_auto_trace(self, trace_label: str = "VTI") -> bool:
@@ -2408,6 +2419,49 @@ class ViewerWidget(QWidget):
             return False
         cycles = self._doppler_cardiac_cycles(envelope)
         if not self._doppler.apply_auto_vti_trace(envelope, cycles=cycles, trace_label=trace_label):
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        metrics = self._last_committed_doppler_metrics()
+        parts = [f"{trace_label}: {metrics.vti_cm:.1f} cm"]
+        if metrics.vpeak_cm_s is not None:
+            parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
+        if metrics.vmean_cm_s is not None:
+            parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
+        if metrics.pgpeak_mmhg is not None:
+            parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
+        if metrics.pgmean_mmhg is not None:
+            parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
+        self._measurement_label.setText(" | ".join(parts))
+        self._measurement_label.show()
+        return True
+
+    def start_vti_auto_trace_with_region(
+        self,
+        t_start_ms: float,
+        t_end_ms: float,
+        direction: str,
+        trace_label: str = "VTI",
+    ) -> bool:
+        """Auto-extract VTI envelope within a user-defined time range.
+
+        The two clicks (start/end time + baseline direction) are handled by
+        DopplerOverlayTools; this method performs the envelope extraction and
+        trace commit.
+        """
+        if self._current_frame is None:
+            return False
+        envelope = self._extract_doppler_envelope(force_direction=direction)
+        if not envelope or len(envelope) < 2:
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        if not self._doppler.apply_auto_vti_trace(
+            envelope,
+            cycles=(),
+            trace_label=trace_label,
+            time_range_ms=(t_start_ms, t_end_ms),
+        ):
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
@@ -2643,6 +2697,9 @@ class ViewerWidget(QWidget):
             elif mode == "trace":
                 prompt = self._doppler.trace_prompt()
                 self._measurement_label.setText(prompt or tr("viewer.doppler_trace_prompt"))
+            elif mode == "autovti_region":
+                prompt = self._doppler.autovti_region_prompt()
+                self._measurement_label.setText(prompt or tr("viewer.doppler_mode_click", mode=mode))
             else:
                 self._measurement_label.setText(tr("viewer.doppler_mode_click", mode=mode))
             self._ensure_crosshair_graphics()
