@@ -117,6 +117,7 @@ class PlanimeterResult:
 @dataclass(frozen=True)
 class MeasurementSnapshot:
     doppler: DopplerResults | None = None
+    display_doppler: DopplerResults | None = None
     lvef: LvefResult | None = None
     teichholz: TeichholzResult | None = None
     la_volume: LaVolumeResult | None = None

@@ -42,30 +42,31 @@ def format_results_overlay(
 
     dop = snapshot.doppler
     if dop is not None:
-        _append(lines, tr("result.mv_e"), dop.e_cm_s, "cm/s")
-        _append(lines, tr("result.mv_a"), dop.a_cm_s, "cm/s")
+        ddop = snapshot.display_doppler or dop
+        _append(lines, tr("result.mv_e"), ddop.e_cm_s, "cm/s")
+        _append(lines, tr("result.mv_a"), ddop.a_cm_s, "cm/s")
         _append(lines, tr("result.mv_ea_ratio"), dop.e_a_ratio, "")
         if time_calibrated:
-            _append(lines, tr("result.mv_dt"), dop.dt_ms, "ms")
-            _append(lines, tr("result.ivrt"), dop.ivrt_ms, "ms")
-            _append(lines, tr("result.at"), dop.at_ms, "ms")
-        _append(lines, tr("result.e_prime_sept"), dop.e_prime_sept_cm_s, "cm/s")
-        _append(lines, tr("result.e_prime_lat"), dop.e_prime_lat_cm_s, "cm/s")
+            _append(lines, tr("result.mv_dt"), ddop.dt_ms, "ms")
+            _append(lines, tr("result.ivrt"), ddop.ivrt_ms, "ms")
+            _append(lines, tr("result.at"), ddop.at_ms, "ms")
+        _append(lines, tr("result.e_prime_sept"), ddop.e_prime_sept_cm_s, "cm/s")
+        _append(lines, tr("result.e_prime_lat"), ddop.e_prime_lat_cm_s, "cm/s")
         _append(lines, tr("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s")
         _append(lines, tr("result.e_over_e_prime"), dop.e_over_e_prime, "")
         _append(lines, tr("result.e_over_e_prime_sept"), dop.e_over_e_prime_sept, "")
         _append(lines, tr("result.e_over_e_prime_lat"), dop.e_over_e_prime_lat, "")
         _append(lines, tr("result.e_prime_over_a_prime"), dop.e_prime_over_a_prime, "")
-        _append(lines, tr("result.s_prime_sept"), dop.s_prime_sept_cm_s, "cm/s")
-        _append(lines, tr("result.s_prime_lat"), dop.s_prime_lat_cm_s, "cm/s")
-        _append(lines, tr("result.s_prime_rv"), dop.s_prime_rv_cm_s, "cm/s")
-        _append(lines, tr("result.vpeak"), dop.vpeak_cm_s, "cm/s")
-        _append(lines, tr("result.pgpeak"), dop.pgpeak_mmhg, "mmHg")
-        _append(lines, tr("result.tr_vmax"), dop.tr_vmax_cm_s, "cm/s")
+        _append(lines, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s")
+        _append(lines, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s")
+        _append(lines, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s")
+        _append(lines, tr("result.vpeak"), ddop.vpeak_cm_s, "cm/s")
+        _append(lines, tr("result.pgpeak"), ddop.pgpeak_mmhg, "mmHg")
+        _append(lines, tr("result.tr_vmax"), ddop.tr_vmax_cm_s, "cm/s")
         if time_calibrated:
-            _append(lines, tr("result.vti"), dop.vti_cm, "cm")
-            _append(lines, tr("result.vmean"), dop.vmean_cm_s, "cm/s")
-            _append(lines, tr("result.pgmean"), dop.pgmean_mmhg, "mmHg")
+            _append(lines, tr("result.vti"), ddop.vti_cm, "cm")
+            _append(lines, tr("result.vmean"), ddop.vmean_cm_s, "cm/s")
+            _append(lines, tr("result.pgmean"), ddop.pgmean_mmhg, "mmHg")
 
     volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
 
@@ -287,18 +288,19 @@ def format_results_overlay_html(
 
     dop = snapshot.doppler
     if dop is not None:
-        _html_append(parts, tr("result.mv_e"), dop.e_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
-        _html_append(parts, tr("result.mv_a"), dop.a_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
+        ddop = snapshot.display_doppler or dop
+        _html_append(parts, tr("result.mv_e"), ddop.e_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
+        _html_append(parts, tr("result.mv_a"), ddop.a_cm_s, "cm/s", param_id="ea_ratio", sex_male=sex_male)
         _html_append(parts, tr("result.mv_ea_ratio"), dop.e_a_ratio, "", param_id="ea_ratio", sex_male=sex_male)
         if time_calibrated:
-            _html_append(parts, tr("result.mv_dt"), dop.dt_ms, "ms", param_id="dt", sex_male=sex_male)
-            _html_append(parts, tr("result.ivrt"), dop.ivrt_ms, "ms", param_id="dt", sex_male=sex_male)
-            _html_append(parts, tr("result.at"), dop.at_ms, "ms", param_id="dt", sex_male=sex_male)
+            _html_append(parts, tr("result.mv_dt"), ddop.dt_ms, "ms", param_id="dt", sex_male=sex_male)
+            _html_append(parts, tr("result.ivrt"), ddop.ivrt_ms, "ms", param_id="dt", sex_male=sex_male)
+            _html_append(parts, tr("result.at"), ddop.at_ms, "ms", param_id="dt", sex_male=sex_male)
         _html_append(
-            parts, tr("result.e_prime_sept"), dop.e_prime_sept_cm_s, "cm/s", param_id="e_prime_sept", sex_male=sex_male
+            parts, tr("result.e_prime_sept"), ddop.e_prime_sept_cm_s, "cm/s", param_id="e_prime_sept", sex_male=sex_male
         )
         _html_append(
-            parts, tr("result.e_prime_lat"), dop.e_prime_lat_cm_s, "cm/s", param_id="e_prime_lat", sex_male=sex_male
+            parts, tr("result.e_prime_lat"), ddop.e_prime_lat_cm_s, "cm/s", param_id="e_prime_lat", sex_male=sex_male
         )
         _html_append(
             parts, tr("result.e_prime_avg"), dop.e_prime_avg_cm_s, "cm/s", param_id="e_e_prime_avg", sex_male=sex_male
@@ -330,16 +332,16 @@ def format_results_overlay_html(
             param_id="e_e_prime_avg",
             sex_male=sex_male,
         )
-        _html_append(parts, tr("result.s_prime_sept"), dop.s_prime_sept_cm_s, "cm/s", param_id="s_prime_sept", sex_male=sex_male)
-        _html_append(parts, tr("result.s_prime_lat"), dop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat", sex_male=sex_male)
-        _html_append(parts, tr("result.s_prime_rv"), dop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male)
-        _html_append(parts, tr("result.vpeak"), dop.vpeak_cm_s, "cm/s", sex_male=sex_male)
-        _html_append(parts, tr("result.pgpeak"), dop.pgpeak_mmhg, "mmHg", sex_male=sex_male)
-        _html_append(parts, tr("result.tr_vmax"), dop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)
+        _html_append(parts, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s", param_id="s_prime_sept", sex_male=sex_male)
+        _html_append(parts, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat", sex_male=sex_male)
+        _html_append(parts, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male)
+        _html_append(parts, tr("result.vpeak"), ddop.vpeak_cm_s, "cm/s", sex_male=sex_male)
+        _html_append(parts, tr("result.pgpeak"), ddop.pgpeak_mmhg, "mmHg", sex_male=sex_male)
+        _html_append(parts, tr("result.tr_vmax"), ddop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)
         if time_calibrated:
-            _html_append(parts, tr("result.vti"), dop.vti_cm, "cm", sex_male=sex_male)
-            _html_append(parts, tr("result.vmean"), dop.vmean_cm_s, "cm/s", sex_male=sex_male)
-            _html_append(parts, tr("result.pgmean"), dop.pgmean_mmhg, "mmHg", sex_male=sex_male)
+            _html_append(parts, tr("result.vti"), ddop.vti_cm, "cm", sex_male=sex_male)
+            _html_append(parts, tr("result.vmean"), ddop.vmean_cm_s, "cm/s", sex_male=sex_male)
+            _html_append(parts, tr("result.pgmean"), ddop.pgmean_mmhg, "mmHg", sex_male=sex_male)
 
     volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
 

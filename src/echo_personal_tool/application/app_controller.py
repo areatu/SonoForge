@@ -1298,21 +1298,22 @@ class AppController(QObject):
             len(session.linear_measurements),
         )
         frame_index = state.current_frame_index
-        doppler_dto = self._measurement_session.get_doppler_for_instance(
+        display_dto = self._measurement_session.get_doppler_for_instance(
             study_uid,
             instance.sop_instance_uid,
         )
-        if doppler_dto is None:
-            doppler_dto = self._measurement_session.get_doppler_for_instance_frame(
+        if display_dto is None:
+            display_dto = self._measurement_session.get_doppler_for_instance_frame(
                 study_uid,
                 instance.sop_instance_uid,
                 frame_index,
             )
-        if doppler_dto is None and instance.number_of_frames <= 1:
-            doppler_dto = self._measurement_session.get_doppler_for_instance(
+        if display_dto is None and instance.number_of_frames <= 1:
+            display_dto = self._measurement_session.get_doppler_for_instance(
                 study_uid,
                 instance.sop_instance_uid,
             )
+        study_dto = session.all_doppler_dto
         # Filter contours to current instance so volumes use the correct pixel spacing.
         # Fall back to study-wide contours when the current instance has none.
         instance_uid = instance.sop_instance_uid
@@ -1338,7 +1339,8 @@ class AppController(QObject):
         return self._build_measurement_snapshot(
             contours=contours,
             linear_measurements=instance_linear,
-            doppler_dto=doppler_dto,
+            doppler_dto=study_dto,
+            display_doppler_dto=display_dto,
             state=state,
             session=session,
             vessel_measurements=instance_vessel,
@@ -1348,7 +1350,8 @@ class AppController(QObject):
         state = self._state_manager.snapshot
         study_uid = self._resolve_study_uid()
         session = self._measurement_session.get(study_uid)
-        doppler_dto = self._current_doppler_dto(session)
+        display_doppler_dto = self._current_doppler_dto(session)
+        study_dto = session.all_doppler_dto
         # Filter linear measurements to current instance only
         instance_uid = state.instance.sop_instance_uid if state.instance else ""
         from echo_personal_tool.application.study_measurement_session import (
@@ -1373,7 +1376,8 @@ class AppController(QObject):
         snapshot = self._build_measurement_snapshot(
             contours=session.contours,
             linear_measurements=instance_linear,
-            doppler_dto=doppler_dto,
+            doppler_dto=study_dto,
+            display_doppler_dto=display_doppler_dto,
             state=state,
             session=session,
             vessel_measurements=instance_vessel,
@@ -1388,11 +1392,13 @@ class AppController(QObject):
         contours: tuple[Contour, ...],
         linear_measurements: tuple[LinearMeasurement, ...],
         doppler_dto: DopplerMeasurementDTO | None,
+        display_doppler_dto: DopplerMeasurementDTO | None = None,
         state: ViewerState,
         session: StudyMeasurementData,
         vessel_measurements: tuple[VesselMeasurement, ...] = (),
     ) -> MeasurementSnapshot:
         doppler = compute(doppler_dto) if doppler_dto is not None else None
+        display_doppler = compute(display_doppler_dto) if display_doppler_dto is not None else None
         pixel_spacing, spacing_calibrated = self._resolve_pixel_spacing(
             state,
             session.manual_pixel_spacing,
@@ -1450,6 +1456,7 @@ class AppController(QObject):
             )
         return MeasurementSnapshot(
             doppler=doppler,
+            display_doppler=display_doppler,
             lvef=lvef,
             teichholz=teichholz,
             la_volume=la_volume,

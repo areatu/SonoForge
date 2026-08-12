@@ -192,26 +192,28 @@ class MeasurementPanel(QWidget):
         if doppler is None:
             return []
 
+        ddop = snapshot.display_doppler or doppler
+
         field_lines = [
-            self._optional_line("E", doppler.e_cm_s, " cm/s"),
-            self._optional_line("A", doppler.a_cm_s, " cm/s"),
+            self._optional_line("E", ddop.e_cm_s, " cm/s"),
+            self._optional_line("A", ddop.a_cm_s, " cm/s"),
             self._optional_line("E/A", doppler.e_a_ratio, decimals=2),
-            self._optional_line("DT", doppler.dt_ms, " ms"),
-            self._optional_line("IVRT", doppler.ivrt_ms, " ms"),
-            self._optional_line("AT", doppler.at_ms, " ms"),
-            self._optional_line("e' sept", doppler.e_prime_sept_cm_s, " cm/s"),
-            self._optional_line("e' lat", doppler.e_prime_lat_cm_s, " cm/s"),
+            self._optional_line("DT", ddop.dt_ms, " ms"),
+            self._optional_line("IVRT", ddop.ivrt_ms, " ms"),
+            self._optional_line("AT", ddop.at_ms, " ms"),
+            self._optional_line("e' sept", ddop.e_prime_sept_cm_s, " cm/s"),
+            self._optional_line("e' lat", ddop.e_prime_lat_cm_s, " cm/s"),
             self._optional_line("e' avg", doppler.e_prime_avg_cm_s, " cm/s"),
             self._optional_line("E/e'", doppler.e_over_e_prime, decimals=2),
             self._optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
             self._optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
             self._optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
-            self._optional_line("TR Vmax", doppler.tr_vmax_cm_s, " cm/s"),
-            self._optional_line("VTI", doppler.vti_cm, " cm"),
-            self._optional_line("Vpeak", doppler.vpeak_cm_s, " cm/s"),
-            self._optional_line("Vmean", doppler.vmean_cm_s, " cm/s"),
-            self._optional_line(tr("panel.pgpeak"), doppler.pgpeak_mmhg, " mmHg"),
-            self._optional_line(tr("panel.pgmean"), doppler.pgmean_mmhg, " mmHg"),
+            self._optional_line("TR Vmax", ddop.tr_vmax_cm_s, " cm/s"),
+            self._optional_line("VTI", ddop.vti_cm, " cm"),
+            self._optional_line("Vpeak", ddop.vpeak_cm_s, " cm/s"),
+            self._optional_line("Vmean", ddop.vmean_cm_s, " cm/s"),
+            self._optional_line(tr("panel.pgpeak"), ddop.pgpeak_mmhg, " mmHg"),
+            self._optional_line(tr("panel.pgmean"), ddop.pgmean_mmhg, " mmHg"),
         ]
         lines = [line for line in field_lines if line is not None]
         if not lines:

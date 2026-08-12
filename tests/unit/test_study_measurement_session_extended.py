@@ -191,6 +191,55 @@ def test_doppler_measurement_property_empty() -> None:
     assert data.doppler_measurement is None
 
 
+def test_all_doppler_dto_empty() -> None:
+    data = StudyMeasurementData()
+    assert data.all_doppler_dto is None
+
+
+def test_all_doppler_dto_from_instance_only() -> None:
+    e_peak = DopplerPeakMarker(label="E", time_ms=100, velocity_cm_s=90)
+    dto_a = DopplerMeasurementDTO(peaks=(e_peak,), intervals=(), traces=())
+    data = StudyMeasurementData(doppler_by_instance=(("uid_a", dto_a),))
+    result = data.all_doppler_dto
+    assert result is not None
+    assert any(m.label == "E" for m in result.peaks)
+
+
+def test_all_doppler_dto_aggregates_across_instances() -> None:
+    e_peak = DopplerPeakMarker(label="E", time_ms=100, velocity_cm_s=90)
+    e_prime_sept = DopplerPeakMarker(label="e_sept", time_ms=100, velocity_cm_s=12)
+    e_prime_lat = DopplerPeakMarker(label="e_lat", time_ms=100, velocity_cm_s=14)
+    dto_a = DopplerMeasurementDTO(peaks=(e_peak,), intervals=(), traces=())
+    dto_b = DopplerMeasurementDTO(peaks=(e_prime_sept, e_prime_lat), intervals=(), traces=())
+    data = StudyMeasurementData(
+        doppler_by_instance=(),
+        doppler_by_instance_frame=(
+            ("uid_a", 0, dto_a),
+            ("uid_b", 0, dto_b),
+        ),
+    )
+    result = data.all_doppler_dto
+    assert result is not None
+    labels = {m.label for m in result.peaks}
+    assert "E" in labels
+    assert "e_sept" in labels
+    assert "e_lat" in labels
+
+
+def test_all_doppler_dto_merges_instance_and_frame() -> None:
+    e_peak = DopplerPeakMarker(label="E", time_ms=100, velocity_cm_s=90)
+    e_prime = DopplerPeakMarker(label="e_sept", time_ms=100, velocity_cm_s=12)
+    data = StudyMeasurementData(
+        doppler_by_instance=(("uid_a", DopplerMeasurementDTO(peaks=(e_peak,), intervals=(), traces=())),),
+        doppler_by_instance_frame=(("uid_b", 0, DopplerMeasurementDTO(peaks=(e_prime,), intervals=(), traces=())),),
+    )
+    result = data.all_doppler_dto
+    assert result is not None
+    labels = {m.label for m in result.peaks}
+    assert "E" in labels
+    assert "e_sept" in labels
+
+
 def test_merge_doppler_for_instance() -> None:
     store = StudyMeasurementSessionStore()
     dto = DopplerMeasurementDTO(

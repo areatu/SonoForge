@@ -215,24 +215,25 @@ class MeasurementWorksheet(QWidget):
 
         dop = snapshot.doppler
         if dop:
-            self._set_value("dop_e", dop.e_cm_s, "cm/s")
-            self._set_value("dop_a", dop.a_cm_s, "cm/s")
+            ddop = snapshot.display_doppler or dop
+            self._set_value("dop_e", ddop.e_cm_s, "cm/s")
+            self._set_value("dop_a", ddop.a_cm_s, "cm/s")
             self._set_value("dop_ea", dop.e_a_ratio, "")
-            self._set_value("dop_ep_sept", dop.e_prime_sept_cm_s, "cm/s")
-            self._set_value("dop_ep_lat", dop.e_prime_lat_cm_s, "cm/s")
+            self._set_value("dop_ep_sept", ddop.e_prime_sept_cm_s, "cm/s")
+            self._set_value("dop_ep_lat", ddop.e_prime_lat_cm_s, "cm/s")
             self._set_value("dop_ee", dop.e_over_e_prime, "")
             self._set_value("dop_ee_sept", dop.e_over_e_prime_sept, "")
             self._set_value("dop_ee_lat", dop.e_over_e_prime_lat, "")
             self._set_value("dop_epa", dop.e_prime_over_a_prime, "")
-            self._set_value("dop_sp_sept", dop.s_prime_sept_cm_s, "cm/s")
-            self._set_value("dop_sp_lat", dop.s_prime_lat_cm_s, "cm/s")
-            self._set_value("rv_s_prime", dop.s_prime_rv_cm_s, "cm/s")
-            self._set_value("dop_dt", dop.dt_ms, "ms")
-            self._set_value("dop_ivrt", dop.ivrt_ms, "ms")
-            self._set_value("dop_vmax", dop.tr_vmax_cm_s or dop.vpeak_cm_s, "cm/s")
-            self._set_value("dop_vti_val", dop.vti_cm, "cm")
-            self._set_value("dop_pgpeak", dop.pgpeak_mmhg, "mmHg")
-            self._set_value("dop_pgmean", dop.pgmean_mmhg, "mmHg")
+            self._set_value("dop_sp_sept", ddop.s_prime_sept_cm_s, "cm/s")
+            self._set_value("dop_sp_lat", ddop.s_prime_lat_cm_s, "cm/s")
+            self._set_value("rv_s_prime", ddop.s_prime_rv_cm_s, "cm/s")
+            self._set_value("dop_dt", ddop.dt_ms, "ms")
+            self._set_value("dop_ivrt", ddop.ivrt_ms, "ms")
+            self._set_value("dop_vmax", ddop.tr_vmax_cm_s or ddop.vpeak_cm_s, "cm/s")
+            self._set_value("dop_vti_val", ddop.vti_cm, "cm")
+            self._set_value("dop_pgpeak", ddop.pgpeak_mmhg, "mmHg")
+            self._set_value("dop_pgmean", ddop.pgmean_mmhg, "mmHg")
 
         if snapshot.lvef and snapshot.lvef.lvef_percent is not None:
             self._mark_done("lvef_bi")
