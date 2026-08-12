@@ -295,6 +295,7 @@ def extract_doppler_envelope(
     baseline_y_px: float,
     *,
     preset: str = "normal",
+    force_direction: str | None = None,
 ) -> tuple[tuple[float, float], ...]:
     """Extract the max-velocity envelope on the side with the strongest flow.
 
@@ -303,6 +304,10 @@ def extract_doppler_envelope(
     and venous/TR/PR flow below it are both handled automatically. Gaps are
     linearly interpolated and the result smoothed with a median filter and
     Savitzky-Golay. Returns plot coordinates (x_plot, y_plot).
+
+    When *force_direction* is ``"up"`` only the above-baseline side is
+    returned; when ``"down"`` only the below-baseline side is returned.
+    ``None`` (default) picks the side with the strongest signal.
     """
     if grayscale.ndim != 2:
         return ()
@@ -320,6 +325,13 @@ def extract_doppler_envelope(
 
     baseline_row = int(round(baseline_y_px - y0))
     baseline_row = max(0, min(baseline_row, patch.shape[0] - 1))
+
+    if force_direction == "up":
+        above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
+        return above[0] if above is not None else ()
+    if force_direction == "down":
+        below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)
+        return below[0] if below is not None else ()
 
     above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
     below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)

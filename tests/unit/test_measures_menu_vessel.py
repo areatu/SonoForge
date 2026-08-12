@@ -27,7 +27,8 @@ def menu():
 def test_vessel_section_has_buttons(menu):
     actions = {spec.action for _, spec in menu._tool_buttons}
     assert MeasurementAction.VESSEL_PSV_EDV in actions
-    assert MeasurementAction.VESSEL_AUTO_TRACE in actions
+    assert MeasurementAction.VESSEL_AUTO_TRACE_UP in actions
+    assert MeasurementAction.VESSEL_AUTO_TRACE_DOWN in actions
     assert MeasurementAction.VESSEL_ACCEPT in actions
     assert MeasurementAction.VESSEL_CLEAR in actions
     assert "vessel_edv" not in {str(a) for a in actions}
@@ -48,10 +49,10 @@ def test_vessel_preset_changes(menu):
 def test_vessel_auto_trace_disabled_without_calibration(menu):
     menu.set_doppler_tool_availability(time_ok=False, vessel_ok=False)
     for button, spec in menu._tool_buttons:
-        if spec.action == MeasurementAction.VESSEL_AUTO_TRACE:
+        if spec.action == MeasurementAction.VESSEL_AUTO_TRACE_UP:
             assert button.isEnabled() is False
             return
-    raise AssertionError("VESSEL_AUTO_TRACE button not found")
+    raise AssertionError("VESSEL_AUTO_TRACE_UP button not found")
 
 
 def test_vessel_buttons_disabled_without_calibration(menu):

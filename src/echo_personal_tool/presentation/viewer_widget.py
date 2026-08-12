@@ -2299,8 +2299,15 @@ class ViewerWidget(QWidget):
         self._measurement_label.show()
         return True
 
-    def start_vessel_auto_trace(self, preset: str = "normal") -> bool:
-        """Run the auto-trace envelope over the current Doppler frame."""
+    def start_vessel_auto_trace(
+        self, preset: str = "normal", direction: str | None = None
+    ) -> bool:
+        """Run the auto-trace envelope over the current Doppler frame.
+
+        When *direction* is ``"up"`` or ``"down"`` the envelope is forced
+        to the corresponding side of the baseline; ``None`` picks the
+        side with the strongest signal automatically.
+        """
         if not self.is_vessel_available():
             return False
         if self._current_frame is None:
@@ -2318,6 +2325,7 @@ class ViewerWidget(QWidget):
             state.roi,
             state.baseline_y_px,
             preset=preset,
+            force_direction=direction,
         )
         if not envelope:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
@@ -3076,15 +3084,30 @@ class ViewerWidget(QWidget):
                 width=max(1.0, x1 - x0),
                 height=max(1.0, y1 - y0),
             )
-            baseline_y = roi.y0 + roi.height / 2.0
-            state = calibration_from_roi_and_baseline(
-                roi,
-                baseline_y,
-                velocity_span_cm_s=200.0,
-                time_span_ms=0.0,
-                kind=DopplerKind.SPECTRAL,
+            # Check for horizontal grid lines (velocity scale) to verify this is
+            # actually a Doppler panel.  On Samsung B-mode frames the dark-band
+            # heuristic can pick up a B-mode strip that has no velocity grid.
+            grid_lines = detect_doppler_grid_lines(
+                self._current_frame,
+                x0=int(roi.x0),
+                y0=int(roi.y0),
+                width=int(roi.width),
+                height=int(roi.height),
             )
-            self.apply_doppler_calibration_state(state, persist=False)
+            if len(grid_lines) < 1:
+                # No horizontal scale found → treat as B-mode, not Doppler.
+                mapping = DopplerAxisMapping.from_frame_size(width, height)
+                self._doppler.set_axis_mapping(mapping)
+            else:
+                baseline_y = roi.y0 + roi.height / 2.0
+                state = calibration_from_roi_and_baseline(
+                    roi,
+                    baseline_y,
+                    velocity_span_cm_s=200.0,
+                    time_span_ms=0.0,
+                    kind=DopplerKind.SPECTRAL,
+                )
+                self.apply_doppler_calibration_state(state, persist=False)
         else:
             mapping = DopplerAxisMapping.from_frame_size(width, height)
             self._doppler.set_axis_mapping(mapping)

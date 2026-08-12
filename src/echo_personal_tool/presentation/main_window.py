@@ -1821,9 +1821,14 @@ class MainWindow(QMainWindow):
             if self._viewer.start_vessel_psv():
                 self._show_status(tr("status.vessel_psv"))
             return
-        if action == MeasurementAction.VESSEL_AUTO_TRACE:
+        if action == MeasurementAction.VESSEL_AUTO_TRACE_UP:
             preset = self._tool_panel.measure._menu.vessel_preset()
-            if self._viewer.start_vessel_auto_trace(preset):
+            if self._viewer.start_vessel_auto_trace(preset, direction="up"):
+                self._show_status(tr("status.vessel_auto_trace"))
+            return
+        if action == MeasurementAction.VESSEL_AUTO_TRACE_DOWN:
+            preset = self._tool_panel.measure._menu.vessel_preset()
+            if self._viewer.start_vessel_auto_trace(preset, direction="down"):
                 self._show_status(tr("status.vessel_auto_trace"))
             return
         if action == MeasurementAction.VESSEL_AVERAGE:

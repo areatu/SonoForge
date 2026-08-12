@@ -178,7 +178,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         "menu.vessels_group",
         (
             _btn("menu.vessel_psv_edv", MeasurementAction.VESSEL_PSV_EDV, vessel=True),
-            _btn("menu.vessel_auto_trace", MeasurementAction.VESSEL_AUTO_TRACE, vessel=True),
+            _btn("menu.vessel_auto_trace_up", MeasurementAction.VESSEL_AUTO_TRACE_UP, vessel=True),
+            _btn("menu.vessel_auto_trace_down", MeasurementAction.VESSEL_AUTO_TRACE_DOWN, vessel=True),
             _btn("menu.vessel_average", MeasurementAction.VESSEL_AVERAGE, vessel=True),
             _btn("menu.vessel_clear", MeasurementAction.VESSEL_CLEAR, vessel=True),
             _btn("menu.vessel_accept", MeasurementAction.VESSEL_ACCEPT, vessel=True),
