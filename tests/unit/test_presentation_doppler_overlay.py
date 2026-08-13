@@ -706,6 +706,29 @@ class TestAutovtiRegionSelection:
         assert overlay._autovti_region_item is None
         assert overlay._tool_mode == "none"
 
+    def test_second_click_creates_and_clears_band(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(300.0, baseline_y - 50)
+
+        added_items = []
+        original_add = mock_plot.addItem
+        def track_add(item):
+            added_items.append(item)
+            original_add(item)
+        mock_plot.addItem = track_add
+
+        received = []
+        overlay.autovti_region_selected.connect(lambda s, e, d: received.append((s, e, d)))
+        overlay.handle_click(700.0, baseline_y - 50)
+
+        assert len(received) == 1
+        assert overlay._autovti_start_ms is None
+        assert overlay._autovti_region_item is None
+        assert overlay._autovti_band_item is None
+
 
 class TestAveragedVessel:
     def test_averages_psv_edv_across_cycles(self, overlay, mock_plot):
@@ -965,3 +988,81 @@ class TestVesselCycleCorrection:
         assert overlay.vessel_cycle_selection_active() is False
         assert overlay.vessel_cycle_count() == 0
         assert overlay._vessel_cycle_band is None
+
+
+class TestAutovtiRegionEndToEnd:
+    """End-to-end test for the autovti_region two-click flow."""
+
+    def test_full_flow_completes_trace(self, overlay, mock_plot):
+        """Two clicks -> signal -> trace committed."""
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+
+        # First click
+        baseline_y = overlay._baseline_plot_y_px()
+        assert overlay.handle_click(300.0, baseline_y - 50) is True
+        assert overlay._autovti_start_ms is not None
+        assert overlay._autovti_direction == "up"
+
+        # Second click emits signal
+        received = []
+        overlay.autovti_region_selected.connect(lambda s, e, d: received.append((s, e, d)))
+        assert overlay.handle_click(700.0, baseline_y - 50) is True
+
+        assert len(received) == 1
+        start_ms, end_ms, direction = received[0]
+        assert start_ms < end_ms
+        assert direction == "up"
+        assert overlay._autovti_start_ms is None
+        assert overlay._tool_mode == "none"
+
+    def test_direction_determined_from_first_click(self, overlay, mock_plot):
+        """Direction comes from first click's velocity sign."""
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+
+        baseline_y = overlay._baseline_plot_y_px()
+        # Click below baseline -> velocity negative -> "down"
+        overlay.handle_click(300.0, baseline_y + 50)
+        assert overlay._autovti_direction == "down"
+
+        received = []
+        overlay.autovti_region_selected.connect(lambda s, e, d: received.append((s, e, d)))
+        overlay.handle_click(700.0, baseline_y + 50)
+        assert received[0][2] == "down"
+
+    def test_end_before_start_swapped(self, overlay, mock_plot):
+        """When second click is before first, start/end are swapped."""
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(700.0, baseline_y - 50)  # start at 700
+
+        received = []
+        overlay.autovti_region_selected.connect(lambda s, e, d: received.append((s, e, d)))
+        overlay.handle_click(300.0, baseline_y - 50)  # end at 300 < start
+
+        assert received[0][0] < received[0][1]  # swapped
+
+    def test_cancel_between_clicks_resets(self, overlay, mock_plot):
+        """Cancelling after first click resets state."""
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        overlay.set_trace_label("VTI")
+        overlay.set_tool_mode("autovti_region")
+
+        baseline_y = overlay._baseline_plot_y_px()
+        overlay.handle_click(300.0, baseline_y - 50)
+        assert overlay._autovti_start_ms is not None
+
+        overlay.cancel_active_tool()
+        assert overlay._autovti_start_ms is None
+        assert overlay._tool_mode == "none"
+
+        # Re-enter autovti_region mode and second click should start new region
+        overlay.set_tool_mode("autovti_region")
+        assert overlay.handle_click(700.0, baseline_y - 50) is True
+        assert overlay._autovti_start_ms is not None  # new start, not emission

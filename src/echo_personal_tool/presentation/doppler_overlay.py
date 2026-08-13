@@ -7,6 +7,7 @@ import statistics
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.domain.calculations.vessel_metrics import (
@@ -131,6 +132,7 @@ class DopplerOverlayTools(QWidget):
         self._autovti_start_ms: float | None = None
         self._autovti_direction: str | None = None
         self._autovti_region_item: pg.PlotCurveItem | None = None
+        self._autovti_band_item: pg.PlotDataItem | None = None
 
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
@@ -230,6 +232,7 @@ class DopplerOverlayTools(QWidget):
             or bool(self._active_partial_points)
             or self._active_interval_start is not None
             or self._autovti_start_ms is not None
+            or self._autovti_band_item is not None
         )
         self._tool_mode = "none"
         self._workflow = None
@@ -1153,6 +1156,9 @@ class DopplerOverlayTools(QWidget):
         if end_ms < start_ms:
             start_ms, end_ms = end_ms, start_ms
         direction = self._autovti_direction
+
+        self._show_autovti_region_band(start_ms, end_ms)
+
         self._clear_autovti_region()
         self._tool_mode = "none"
         self.autovti_region_selected.emit(start_ms, end_ms, direction)
@@ -1176,6 +1182,26 @@ class DopplerOverlayTools(QWidget):
         self._plot.addItem(item)
         self._autovti_region_item = item
 
+    def _show_autovti_region_band(self, start_ms: float, end_ms: float) -> None:
+        if self._autovti_band_item is not None:
+            try:
+                self._plot.removeItem(self._autovti_band_item)
+            except Exception:
+                pass
+        x_start = self._axis_mapping.x_from_time_ms(start_ms)
+        x_end = self._axis_mapping.x_from_time_ms(end_ms)
+        y_min = self._axis_mapping.plot_origin_y
+        y_max = y_min + self._axis_mapping.plot_height
+        item = pg.PlotDataItem(
+            [x_start, x_end, x_end, x_start, x_start],
+            [y_min, y_min, y_max, y_max, y_min],
+            pen=QPen(Qt.PenStyle.NoPen),
+            brush=pg.mkBrush(255, 170, 0, 40),
+        )
+        item.setZValue(21)
+        self._plot.addItem(item)
+        self._autovti_band_item = item
+
     def _clear_autovti_region(self) -> None:
         if self._autovti_region_item is not None:
             try:
@@ -1183,6 +1209,12 @@ class DopplerOverlayTools(QWidget):
             except Exception:
                 pass
             self._autovti_region_item = None
+        if self._autovti_band_item is not None:
+            try:
+                self._plot.removeItem(self._autovti_band_item)
+            except Exception:
+                pass
+            self._autovti_band_item = None
         self._autovti_start_ms = None
         self._autovti_direction = None
 
