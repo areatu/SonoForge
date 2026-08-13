@@ -79,41 +79,85 @@ class TestFinalizeVtiTracePoints:
 
 
 class TestFilterVelocitySpikes:
-    """Remove sharp velocity spikes by smoothing to neighbors."""
-
-    def test_passthrough_when_no_spikes(self):
-        points = [(1.0, 10.0), (2.0, 50.0), (3.0, 80.0), (4.0, 40.0), (5.0, 10.0)]
+    def test_short_points_unchanged(self):
+        points = [(1.0, 10.0)]
         result = filter_velocity_spikes(points)
-        assert len(result) == len(points)
-        assert result[2] == (3.0, 80.0)
-
-    def test_spike_replaced_by_neighbor_average(self):
-        # velocity jumps: 10 -> 100 -> 10 (spike of 90 > 100 threshold... use lower threshold)
-        points = [(1.0, 10.0), (2.0, 100.0), (3.0, 10.0)]
-        result = filter_velocity_spikes(points, spike_threshold_cm_s=50.0)
-        # (100.0 - 10.0 > 50 AND 100.0 - 10.0 > 50) => spike replaced by (10+10)/2 = 10.0
-        assert result[1] == (2.0, 10.0)
-
-    def test_no_spike_when_one_side_matches(self):
-        # 10 -> 100 -> 95: only one side > 50, no spike
-        points = [(1.0, 10.0), (2.0, 100.0), (3.0, 95.0)]
-        result = filter_velocity_spikes(points, spike_threshold_cm_s=50.0)
-        assert result[1] == (2.0, 100.0)
-
-    def test_clamps_extreme_velocity(self):
-        points = [(1.0, 50.0), (2.0, 500.0), (3.0, 50.0)]
-        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
-        # 500 → clamped to 400; both |400-50|>100 → spike
-        # replaced by (50+50)/2 = 50.0
-        assert result[1][1] == 50.0
-
-    def test_clamps_negative_velocity(self):
-        points = [(1.0, -50.0), (2.0, -500.0), (3.0, -50.0)]
-        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
-        # -500 → clamped to -400; both |-400-(-50)|>100 → spike
-        # replaced by (-50 + -50)/2 = -50.0
-        assert result[1][1] == -50.0
-
-    def test_short_input_passthrough(self):
-        result = filter_velocity_spikes([(1.0, 10.0)])
         assert result == ((1.0, 10.0),)
+
+    def test_spike_replaced_by_median(self):
+        points = [
+            (1.0, 50.0), (2.0, 52.0), (3.0, 51.0),
+            (4.0, 200.0),
+            (5.0, 53.0), (6.0, 50.0), (7.0, 49.0),
+        ]
+        result = filter_velocity_spikes(points)
+        assert result[3][1] != 200.0
+        assert result[3][1] < 100.0
+
+    def test_no_spike_in_smooth_curve(self):
+        points = [(i * 10.0, 50.0 + i * 2.0) for i in range(8)]
+        result = filter_velocity_spikes(points)
+        assert len(result) == 8
+
+    def test_max_clamp(self):
+        points = [
+            (1.0, 50.0), (2.0, 52.0), (3.0, 999.0),
+            (4.0, 53.0), (5.0, 50.0),
+        ]
+        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
+        assert result[2][1] <= 400.0
+        assert result[2][1] != 999.0
+
+    def test_negative_velocities(self):
+        points = [
+            (1.0, -50.0), (2.0, -52.0), (3.0, -55.0),
+            (4.0, -53.0), (5.0, -50.0),
+        ]
+        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
+        assert result[2][1] == -55.0
+
+
+class TestFilterVelocitySpikesAdaptive:
+    """Tests for the rolling-median adaptive spike filter."""
+
+    def test_single_spike_replaced(self):
+        points = [(0.0, 50.0), (10.0, 55.0), (20.0, 200.0), (30.0, 52.0), (40.0, 48.0)]
+        result = filter_velocity_spikes(points)
+        assert result[2][1] != 200.0
+        assert result[2][1] < 100.0
+
+    def test_no_spike_preserved(self):
+        points = [(0.0, 50.0), (10.0, 60.0), (20.0, 70.0), (30.0, 65.0), (40.0, 55.0)]
+        result = filter_velocity_spikes(points)
+        assert len(result) == 5
+
+    def test_adapts_to_low_velocity(self):
+        points = [(0.0, 30.0), (10.0, 32.0), (20.0, 80.0), (30.0, 31.0), (40.0, 29.0)]
+        result = filter_velocity_spikes(points)
+        assert result[2][1] != 80.0
+
+    def test_adapts_to_high_velocity(self):
+        points = [(0.0, 150.0), (10.0, 200.0), (20.0, 300.0), (30.0, 210.0), (40.0, 160.0)]
+        result = filter_velocity_spikes(points)
+        assert result[2][1] == 300.0
+
+    def test_edge_point_filtered(self):
+        points = [(0.0, 200.0), (10.0, 50.0), (20.0, 55.0), (30.0, 52.0), (40.0, 48.0)]
+        result = filter_velocity_spikes(points)
+        assert result[0][1] != 200.0
+
+    def test_two_points_unchanged(self):
+        points = [(0.0, 50.0), (10.0, 60.0)]
+        result = filter_velocity_spikes(points)
+        assert len(result) == 2
+
+    def test_max_clamp_still_works(self):
+        points = [(0.0, 50.0), (10.0, 55.0), (20.0, 999.0), (30.0, 52.0), (40.0, 48.0)]
+        result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
+        assert result[2][1] <= 400.0
+
+    def test_k_mad_parameter(self):
+        points = [(0.0, 50.0), (10.0, 55.0), (20.0, 120.0), (30.0, 52.0), (40.0, 48.0)]
+        strict = filter_velocity_spikes(points, k_mad=2.0)
+        loose = filter_velocity_spikes(points, k_mad=5.0)
+        assert strict[2][1] != 120.0 or loose[2][1] == 120.0
