@@ -85,6 +85,7 @@ from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
 )
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
+from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
     refine_open_arc_contour,
@@ -117,6 +118,7 @@ from echo_personal_tool.infrastructure.pixel_utils import (
     to_grayscale_array,
 )
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
+from echo_personal_tool.infrastructure.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.infrastructure.user_preferences import (
     DEFAULT_RESULTS_OVERLAY_Y_RATIO,
     RESULTS_OVERLAY_EDGE_MARGIN,
@@ -131,6 +133,8 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
+
+logger = logging.getLogger(__name__)
 
 CALIBRATION_PROMPT_OVERLAY_KEY = "viewer.calibration.calibration_prompt"
 CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
@@ -3101,17 +3105,61 @@ class ViewerWidget(QWidget):
                 frame=self._current_frame,
             )
             if parsed is not None:
+                _, frame_width = self._current_frame.shape[:2]
+                logger.debug(
+                    "[ROI-TRACE] auto_detect: parsed roi=(%.0f,%.0f,%.0f,%.0f) "
+                    "size=(%.0fx%.0f) time=%s vel=%s",
+                    parsed.roi.x0, parsed.roi.y0,
+                    parsed.roi.x0 + parsed.roi.width, parsed.roi.y0 + parsed.roi.height,
+                    parsed.roi.width, parsed.roi.height,
+                    parsed.has_time_scale_from_dicom(),
+                    parsed.has_velocity_scale_from_dicom(),
+                )
                 if parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom():
-                    # Full auto-calibration: both scales from DICOM
-                    self.apply_doppler_calibration_state(parsed, persist=True)
-                    return True
-                elif parsed.has_velocity_scale() or parsed.roi.width > 0:
-                    # Partial: ROI+baseline from DICOM, scales need manual input
-                    self.apply_doppler_calibration_state(parsed, persist=True)
-                    self._doppler_pending_roi = parsed.roi
-                    self._doppler_pending_baseline_y = parsed.baseline_y_px
-                    self._begin_doppler_velocity_calibration(start_y=parsed.baseline_y_px)
-                    return True
+                    # Full auto-calibration: both scales from DICOM.
+                    # Validate with unified validator to filter B-mode false positives.
+                    # Samsung B-mode frames can have SF=1 with cm/s/time units.
+                    if not parsed.has_velocity_scale_from_dicom():
+                        # Time scale from DICOM but velocity not — need visual validation.
+                        scales = detect_samsung_doppler_scales(self._current_frame)
+                        has_time_ticks = (
+                            scales.time_scale.confidence >= 0.4
+                            and len(scales.time_scale.tick_positions) >= 5
+                        )
+                        if not has_time_ticks:
+                            logger.debug(
+                                "[ROI-TRACE] auto_detect: REJECTED — "
+                                "time_ticks=%s for time-only fallback region",
+                                has_time_ticks,
+                            )
+                        else:
+                            # Time ticks OK — also validate ROI has grid lines.
+                            vresult = validate_doppler_roi(
+                                parsed.roi, self._current_frame,
+                            )
+                            if not vresult.valid:
+                                logger.debug(
+                                    "[ROI-TRACE] auto_detect: REJECTED — %s",
+                                    vresult.reason,
+                                )
+                            else:
+                                self.apply_doppler_calibration_state(parsed, persist=True)
+                                return True
+                    else:
+                        # Both scales from DICOM tags — this is the strongest
+                        # signal. The ROI comes from the ultrasound machine,
+                        # not from visual detection. Accept directly.
+                        self.apply_doppler_calibration_state(parsed, persist=True)
+                        return True
+                elif parsed.has_velocity_scale():
+                    # Partial: velocity scale from DICOM, time needs manual input
+                    # ROI width must be >= 90% of frame to be a real Doppler panel.
+                    if parsed.roi.width >= frame_width * 0.9:
+                        self.apply_doppler_calibration_state(parsed, persist=True)
+                        self._doppler_pending_roi = parsed.roi
+                        self._doppler_pending_baseline_y = parsed.baseline_y_px
+                        self._begin_doppler_velocity_calibration(start_y=parsed.baseline_y_px)
+                        return True
         return False
 
     def _configure_doppler_axis_for_frame(self) -> None:
@@ -3130,43 +3178,94 @@ class ViewerWidget(QWidget):
             return
 
         height, width = self._current_frame.shape[:2]
-        # Try to detect the spectrogram ROI automatically
-        spec_roi = detect_spectrogram_roi(self._current_frame)
-        if spec_roi is not None:
-            x0, y0, x1, y1 = spec_roi
+
+        # For frames without DICOM Doppler tags (e.g. Samsung multiframe),
+        # detect all scales (time + velocity) and use them to refine ROI.
+        scales = detect_samsung_doppler_scales(self._current_frame)
+
+        # Check if time scale exists - without it, no Doppler spectrum present.
+        # Require confidence >= 0.4 and >= 5 ticks for reliable detection.
+        if scales.time_scale.confidence < 0.4 or len(scales.time_scale.tick_positions) < 5:
+            mapping = DopplerAxisMapping.from_frame_size(width, height)
+            self._doppler.set_axis_mapping(mapping)
+            self._doppler_axis_calibrated = False
+            return
+
+        # If refined ROI was computed from velocity scales, verify it's real Doppler.
+        if scales.refined_roi is not None:
+            x0, y0, x1, y1 = scales.refined_roi
             roi = DopplerSpectrogramRoi(
                 x0=x0,
                 y0=y0,
                 width=max(1.0, x1 - x0),
                 height=max(1.0, y1 - y0),
             )
-            # Check for horizontal grid lines (velocity scale) to verify this is
-            # actually a Doppler panel.  On Samsung B-mode frames the dark-band
-            # heuristic can pick up a B-mode strip that has no velocity grid.
-            grid_lines = detect_doppler_grid_lines(
-                self._current_frame,
-                x0=int(roi.x0),
-                y0=int(roi.y0),
-                width=int(roi.width),
-                height=int(roi.height),
+            logger.debug(
+                "[ROI-TRACE] scales_refined: roi=(%.0f,%.0f,%.0f,%.0f) "
+                "size=(%.0fx%.0f) ticks=%d",
+                roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
+                roi.width, roi.height,
+                len(scales.time_scale.tick_positions),
             )
-            if len(grid_lines) < 1:
-                # No horizontal scale found → treat as B-mode, not Doppler.
+            # Unified validation: grid lines + geometry.
+            vresult = validate_doppler_roi(roi, self._current_frame)
+            if not vresult.valid:
+                logger.debug("[ROI-TRACE] scales_refined: REJECTED — %s", vresult.reason)
                 mapping = DopplerAxisMapping.from_frame_size(width, height)
                 self._doppler.set_axis_mapping(mapping)
-            else:
-                baseline_y = roi.y0 + roi.height / 2.0
-                state = calibration_from_roi_and_baseline(
-                    roi,
-                    baseline_y,
-                    velocity_span_cm_s=200.0,
-                    time_span_ms=0.0,
-                    kind=DopplerKind.SPECTRAL,
-                )
-                self.apply_doppler_calibration_state(state, persist=False)
+                self._doppler_axis_calibrated = False
+                return
+            baseline_y = roi.y0 + roi.height / 2.0
+            # Use time scale to compute time span from visible width
+            time_span_ms = 0.0
+            if scales.time_scale.spacing_px > 0:
+                # Compute per-pixel time from tick spacing
+                # Samsung calibration: frequency_hz = k_constant * spacing_px
+                # For now use default k_constant = 0.2
+                k_constant = 0.2
+                frequency_hz = k_constant * scales.time_scale.spacing_px
+                if frequency_hz > 0:
+                    per_pixel_ms = 1000.0 / frequency_hz
+                    time_span_ms = per_pixel_ms * roi.width
+
+            state = calibration_from_roi_and_baseline(
+                roi,
+                baseline_y,
+                velocity_span_cm_s=200.0,
+                time_span_ms=time_span_ms,
+                kind=DopplerKind.SPECTRAL,
+            )
+            self.apply_doppler_calibration_state(state, persist=False)
         else:
-            mapping = DopplerAxisMapping.from_frame_size(width, height)
-            self._doppler.set_axis_mapping(mapping)
+            # Fallback: try dark-band detection with unified validation.
+            spec_roi = detect_spectrogram_roi(self._current_frame)
+            if spec_roi is not None:
+                x0, y0, x1, y1 = spec_roi
+                roi = DopplerSpectrogramRoi(
+                    x0=x0,
+                    y0=y0,
+                    width=max(1.0, x1 - x0),
+                    height=max(1.0, y1 - y0),
+                )
+                vresult = validate_doppler_roi(roi, self._current_frame)
+                if not vresult.valid:
+                    logger.debug("[ROI-TRACE] dark_band: REJECTED — %s", vresult.reason)
+                    mapping = DopplerAxisMapping.from_frame_size(width, height)
+                    self._doppler.set_axis_mapping(mapping)
+                    self._doppler_axis_calibrated = False
+                else:
+                    baseline_y = roi.y0 + roi.height / 2.0
+                    state = calibration_from_roi_and_baseline(
+                        roi,
+                        baseline_y,
+                        velocity_span_cm_s=200.0,
+                        time_span_ms=0.0,
+                        kind=DopplerKind.SPECTRAL,
+                    )
+                    self.apply_doppler_calibration_state(state, persist=False)
+            else:
+                mapping = DopplerAxisMapping.from_frame_size(width, height)
+                self._doppler.set_axis_mapping(mapping)
         self._doppler_axis_calibrated = False
 
     def _handle_doppler_calibration_click(self, ev) -> bool:

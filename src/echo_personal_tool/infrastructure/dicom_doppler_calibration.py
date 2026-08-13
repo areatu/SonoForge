@@ -18,6 +18,7 @@ from echo_personal_tool.domain.services.doppler_baseline import (
     detect_baseline_line_y,
     detect_baseline_y,
 )
+from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_maybe_doppler_from_units,
@@ -186,11 +187,46 @@ def try_parse_from_dataset(
             width=max(1.0, x1 - x0),
             height=max(1.0, y1 - y0),
         )
+        logger.debug(
+            "[ROI-TRACE] generic_parse: roi=(%.0f,%.0f,%.0f,%.0f) "
+            "size=(%.0fx%.0f) sf=%d strict=%s",
+            roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
+            roi.width, roi.height,
+            int(region.get("RegionSpatialFormat", 0) or 0),
+            is_spectral_doppler_region(region),
+        )
 
         # Samsung RS85 mis-tags Doppler as SF=1 with B-mode region bounds.
         # Force ROI to bottom half for fallback (SF=1) regions.
         if not is_spectral_doppler_region(region) and frame_height > 0:
             roi = _force_roi_to_bottom_half(roi, frame_height)
+
+        # Validate fallback regions: non-strict spectral Doppler regions must
+        # have velocity grid lines to be accepted. Samsung B-mode frames can
+        # have SF=1 with cm/s units that pass is_maybe_doppler_from_units().
+        # Strict spectral Doppler (SF=3/SF=4, DT=3/DT=4) is always accepted.
+        if not is_spectral_doppler_region(region) and frame is not None:
+            arr = np.asarray(frame)
+            if arr.ndim >= 2:
+                grid_lines = detect_doppler_grid_lines(
+                    arr,
+                    x0=int(roi.x0),
+                    y0=int(roi.y0),
+                    width=int(roi.width),
+                    height=int(roi.height),
+                )
+                logger.debug(
+                    "[ROI-TRACE] generic_parse: grid_lines=%d, "
+                    "strict_spatial=%s",
+                    len(grid_lines),
+                    is_spectral_doppler_region(region),
+                )
+                if len(grid_lines) < 1:
+                    logger.debug(
+                        "[ROI-TRACE] generic_parse: SKIPPED — no velocity "
+                        "grid lines in fallback ROI"
+                    )
+                    continue
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
 

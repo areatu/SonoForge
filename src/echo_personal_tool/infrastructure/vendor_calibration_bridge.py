@@ -18,13 +18,19 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
+from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
+from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.spectrogram_detector import detect_spectrogram_roi
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_maybe_doppler_from_units,
+    is_mmode_region,
     is_spectral_doppler_region,
 )
-from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
+from echo_personal_tool.infrastructure.samsung_tick_detector import (
+    detect_samsung_doppler_scales,
+    detect_ticks,
+)
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
     Vendor,
     VendorProfile,
@@ -141,6 +147,49 @@ def try_parse_with_vendor_profile(
         width=max(1.0, x1 - x0),
         height=max(1.0, y1 - y0),
     )
+    logger.debug(
+        "[ROI-TRACE] vendor_profile: roi=(%.0f,%.0f,%.0f,%.0f) "
+        "size=(%.0fx%.0f) priority=%d sf=%d",
+        roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
+        roi.width, roi.height,
+        best_priority,
+        int(best_region.get("RegionSpatialFormat", 0) or 0),
+    )
+
+    # Validate: if region was matched via units fallback (not strict spectral
+    # Doppler), verify the frame actually has Doppler characteristics using
+    # visual tick detection (time ticks + velocity scale ticks). Samsung
+    # B-mode frames can have SF=1 with cm/s units that pass unit-based detection.
+    # Strict spectral Doppler (priority >= 3) is always accepted.
+    if best_priority <= 1 and frame is not None:
+        arr = np.asarray(frame)
+        if arr.ndim >= 2:
+            scales = detect_samsung_doppler_scales(arr)
+            has_time_ticks = (
+                scales.time_scale.confidence >= 0.4
+                and len(scales.time_scale.tick_positions) >= 5
+            )
+            has_velocity_scale = (
+                scales.left_velocity_scale is not None
+                and scales.left_velocity_scale.confidence >= 0.4
+                and len(scales.left_velocity_scale.tick_rows) >= 4
+            ) or (
+                scales.right_velocity_scale is not None
+                and scales.right_velocity_scale.confidence >= 0.4
+                and len(scales.right_velocity_scale.tick_rows) >= 4
+            )
+            if not has_time_ticks or not has_velocity_scale:
+                logger.debug(
+                    "[ROI-TRACE] vendor_profile: REJECTED — "
+                    "time_ticks=%s velocity_scale=%s",
+                    has_time_ticks, has_velocity_scale,
+                )
+                return None
+            logger.debug(
+                "[ROI-TRACE] vendor_profile: validated — "
+                "time_ticks=%s velocity_scale=%s",
+                has_time_ticks, has_velocity_scale,
+            )
 
     # 4. Compute velocity span using vendor profile
     velocity_result = profile.compute_velocity_span(best_region, roi.height)
@@ -219,6 +268,14 @@ def try_parse_samsung_tick_calibration(
     if detect_vendor(dataset) is not Vendor.SAMSUNG:
         return None
 
+    # Skip M-mode frames — their ROI is already defined by DICOM tags.
+    regions = dataset.get("SequenceOfUltrasoundRegions")
+    if regions:
+        for region in regions:
+            if is_mmode_region(region):
+                logger.debug("Samsung tick calibration: M-mode region detected, skipping")
+                return None
+
     profile = get_profile_for_dataset(dataset)
     tick_calibration = getattr(profile, "_tick_calibration", None)
     if tick_calibration is None:
@@ -229,9 +286,9 @@ def try_parse_samsung_tick_calibration(
         return None
 
     tick_result = detect_ticks(arr)
-    if tick_result.confidence < 0.3 or tick_result.spacing_px <= 0.0:
+    if tick_result.confidence < 0.4 or tick_result.spacing_px <= 0.0:
         return None
-    if len(tick_result.tick_positions) < 2:
+    if len(tick_result.tick_positions) < 5:
         return None
 
     positions = tick_result.tick_positions
@@ -240,24 +297,94 @@ def try_parse_samsung_tick_calibration(
     per_pixel_ms = 1000.0 / frequency_hz
     time_span_ms = per_pixel_ms * visible_width_px
 
-    # ROI: prefer detected spectrogram panel, else full-frame fallback.
+    # Detect all scales (time + velocity) for refined ROI boundaries.
+    scales = detect_samsung_doppler_scales(arr)
+
+    # ROI: prefer refined ROI from scale detection, else fallback.
     roi = None
-    detected = None
-    try:
-        detected = detect_spectrogram_roi(arr)
-    except Exception:
-        detected = None
-    if detected is not None:
-        x0, y0, x1, y1 = detected
-        roi = DopplerSpectrogramRoi(
+    if scales.refined_roi is not None:
+        x0, y0, x1, y1 = scales.refined_roi
+        candidate_roi = DopplerSpectrogramRoi(
             x0=float(x0),
             y0=float(y0),
             width=max(1.0, float(x1 - x0)),
             height=max(1.0, float(y1 - y0)),
         )
-    if roi is None:
+        # Verify this is actually a Doppler panel by checking for horizontal
+        # grid lines (velocity scale markings). B-mode frames can have false
+        # positive tick detection but will lack velocity grid lines.
+        grid_lines = detect_doppler_grid_lines(
+            arr,
+            x0=int(candidate_roi.x0),
+            y0=int(candidate_roi.y0),
+            width=int(candidate_roi.width),
+            height=int(candidate_roi.height),
+        )
+        if len(grid_lines) >= 1:
+            roi = candidate_roi
+        else:
+            logger.debug("Samsung tick: no velocity grid in refined ROI, trying fallback")
+    else:
+        # Fallback 1: try dark-band detection with geometry validation.
+        # Grid line check is skipped here because time ticks were already
+        # validated (confidence >= 0.4, >= 5 ticks), which is a strong
+        # Doppler signal. The dark-band detector just provides the ROI bounds.
+        detected = None
+        try:
+            detected = detect_spectrogram_roi(arr)
+        except Exception:
+            detected = None
+        if detected is not None:
+            x0, y0, x1, y1 = detected
+            candidate_roi = DopplerSpectrogramRoi(
+                x0=float(x0),
+                y0=float(y0),
+                width=max(1.0, float(x1 - x0)),
+                height=max(1.0, float(y1 - y0)),
+            )
+            vresult = validate_doppler_roi(
+                candidate_roi, arr, check_grid_lines=False,
+            )
+            if vresult.valid:
+                roi = candidate_roi
+            else:
+                logger.debug("Samsung tick dark-band: REJECTED — %s", vresult.reason)
+
+    if roi is None and tick_result.band_y > 0:
+        # Fallback 2: derive ROI from time scale tick positions.
+        # We know the ticks span the spectral band width, and band_y is the
+        # bottom. Estimate the band height as ~45% of frame height.
         h, w = arr.shape[:2]
-        roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(w), height=float(h))
+        tick_x0 = min(tick_result.tick_positions)
+        tick_x1 = max(tick_result.tick_positions)
+        margin_x = tick_result.spacing_px * 2
+        band_bottom = tick_result.band_y
+        estimated_height = h * 0.45
+        band_top = max(0.0, band_bottom - estimated_height)
+        candidate_roi = DopplerSpectrogramRoi(
+            x0=max(0.0, tick_x0 - margin_x),
+            y0=band_top,
+            width=min(float(w), tick_x1 + margin_x) - max(0.0, tick_x0 - margin_x),
+            height=band_bottom - band_top,
+        )
+        # Relaxed geometry: time ticks are already validated (strong Doppler
+        # signal), so we only need to prevent obviously invalid ROIs.
+        vresult = validate_doppler_roi(
+            candidate_roi, arr,
+            check_grid_lines=False,
+            min_width_fraction=0.3,
+            require_lower_half=False,
+        )
+        if vresult.valid:
+            roi = candidate_roi
+            logger.debug("Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f)",
+                         roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height)
+
+    if roi is None:
+        # All detection failed — return None instead of full-frame fallback.
+        # A full-frame ROI is never a valid Doppler spectrogram.
+        logger.debug("Samsung tick: no valid ROI detected, giving up")
+        return None
 
     baseline_y = roi.y0 + roi.height / 2.0
     try:
