@@ -14,7 +14,7 @@ from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 pytestmark = pytest.mark.gui
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -23,7 +23,7 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -42,13 +42,13 @@ def test_resolve_contour_phase_defaults_to_ed_without_markers(qtbot) -> None:
     assert viewer._resolve_contour_phase() == "ED"
 
 
-def test_contour_drag_updates_numeric_overlay_on_current_frame(qtbot) -> None:
+def test_contour_drag_updates_numeric_overlay_on_current_frame(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
     viewer.set_state(
         ViewerState(
-            instance=_sample_instance(),
+            instance=_sample_instance(synthetic_dicom_path),
             current_frame_index=0,
             total_frames=10,
             frame_time_ms=33.3,

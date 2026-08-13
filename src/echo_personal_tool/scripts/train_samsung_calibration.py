@@ -55,8 +55,7 @@ def main() -> None:
     print(f"  image_height_ref: {calibration.image_height_ref}")
     print(f"  Measurements: {len(calibration.measured_points)}")
     for m in calibration.measured_points:
-        print(f"    {m.frequency_hz:6.0f} Hz: {m.tick_spacing_px:6.2f} px "
-              f"(n={m.tick_count}, conf={m.confidence:.2f})")
+        print(f"    {m.frequency_hz:6.0f} Hz: {m.tick_spacing_px:6.2f} px (n={m.tick_count}, conf={m.confidence:.2f})")
 
     save_calibration(calibration)
     print("\nSaved to samsung_tick_calibration.json")

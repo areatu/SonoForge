@@ -15,7 +15,7 @@ from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.presentation.main_window import MainWindow
 
 
-def _sample_instance(*, pixel_spacing: tuple[float, float] | None) -> InstanceMetadata:
+def _sample_instance(dicom_path: Path, *, pixel_spacing: tuple[float, float] | None) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -24,7 +24,7 @@ def _sample_instance(*, pixel_spacing: tuple[float, float] | None) -> InstanceMe
         pixel_spacing=pixel_spacing,
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -35,10 +35,10 @@ def _complete_manual_ed(window: MainWindow) -> None:
     window._viewer.handle_contour_click((30.0, 10.0))
 
 
-def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot) -> None:
+def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(pixel_spacing=None),
+        _sample_instance(synthetic_dicom_path, pixel_spacing=None),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -58,10 +58,10 @@ def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot) -> None:
     assert "px" in overlay
 
 
-def test_mbs_ed_updates_after_node_drag(qtbot) -> None:
+def test_mbs_ed_updates_after_node_drag(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(pixel_spacing=(0.5, 0.5)),
+        _sample_instance(synthetic_dicom_path, pixel_spacing=(0.5, 0.5)),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -92,10 +92,10 @@ def test_mbs_ed_updates_after_node_drag(qtbot) -> None:
     assert "mL" in overlay
 
 
-def test_overlay_restored_after_frame_change(qtbot) -> None:
+def test_overlay_restored_after_frame_change(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(pixel_spacing=(0.5, 0.5)),
+        _sample_instance(synthetic_dicom_path, pixel_spacing=(0.5, 0.5)),
         total_frames=10,
         frame_time_ms=33.3,
     )

@@ -16,7 +16,7 @@ from echo_personal_tool.domain.services.mbs_lite_service import fit_contour_from
 from echo_personal_tool.presentation.main_window import MainWindow
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -25,14 +25,14 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def test_main_window_measurement_panel_updates_after_contour(qtbot) -> None:
+def test_main_window_measurement_panel_updates_after_contour(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -65,10 +65,10 @@ def test_main_window_measurement_panel_updates_after_contour(qtbot) -> None:
     assert "ФВ ЛЖ" in text
 
 
-def test_main_window_measurement_panel_updates_after_linear_caliper(qtbot) -> None:
+def test_main_window_measurement_panel_updates_after_linear_caliper(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )

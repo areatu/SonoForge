@@ -602,9 +602,7 @@ class TestAutoVtiTrace:
     def test_clips_to_user_defined_time_range(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping_with_time())
         envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50, 65, 78, 60]))
-        assert overlay.apply_auto_vti_trace(
-            envelope, time_range_ms=(900.0, 1500.0)
-        ) is True
+        assert overlay.apply_auto_vti_trace(envelope, time_range_ms=(900.0, 1500.0)) is True
         trace = overlay._traces[0]
         times = [p[0] for p in trace.points]
         assert min(times) >= 900.0
@@ -624,9 +622,7 @@ class TestAutoVtiTrace:
             source="ecg",
             confidence=0.9,
         )
-        assert overlay.apply_auto_vti_trace(
-            envelope, cycles=(cycle,), time_range_ms=(900.0, 1500.0)
-        ) is True
+        assert overlay.apply_auto_vti_trace(envelope, cycles=(cycle,), time_range_ms=(900.0, 1500.0)) is True
         trace = overlay._traces[0]
         times = [p[0] for p in trace.points]
         assert min(times) >= 900.0
@@ -688,9 +684,7 @@ class TestAutovtiRegionSelection:
         overlay.handle_click(300.0, baseline_y - 50)
 
         received = []
-        overlay.autovti_region_selected.connect(
-            lambda s, e, d: received.append((s, e, d))
-        )
+        overlay.autovti_region_selected.connect(lambda s, e, d: received.append((s, e, d)))
         overlay.handle_click(700.0, baseline_y - 50)
 
         assert len(received) == 1

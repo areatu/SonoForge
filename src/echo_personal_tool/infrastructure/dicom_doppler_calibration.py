@@ -29,9 +29,9 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
 )
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
+    get_vendor_info,
     try_parse_samsung_tick_calibration,
     try_parse_with_vendor_profile,
-    get_vendor_info,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,9 +159,7 @@ def try_parse_from_dataset(
     if vendor_info["profile"] is not None:
         try:
             frame_arr = np.asarray(frame) if frame is not None else None
-            vendor_result = try_parse_with_vendor_profile(
-                dataset, frame_arr, kind=kind
-            )
+            vendor_result = try_parse_with_vendor_profile(dataset, frame_arr, kind=kind)
             if vendor_result is not None:
                 logger.debug(
                     "Using vendor profile %s for calibration",
@@ -277,13 +275,10 @@ def try_parse_from_dataset(
     if best is None:
         try:
             frame_arr = np.asarray(frame) if frame is not None else None
-            tick_state = try_parse_samsung_tick_calibration(
-                dataset, frame_arr, kind=kind
-            )
+            tick_state = try_parse_samsung_tick_calibration(dataset, frame_arr, kind=kind)
             if tick_state is not None:
                 logger.debug(
-                    "Using Samsung tick fallback for calibration "
-                    "(span=%.1f ms)",
+                    "Using Samsung tick fallback for calibration (span=%.1f ms)",
                     tick_state.time_span_ms,
                 )
                 return tick_state

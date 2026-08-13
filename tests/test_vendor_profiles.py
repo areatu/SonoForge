@@ -6,12 +6,11 @@ from the analysis performed on 2026-08-11.
 
 from __future__ import annotations
 
-import pytest
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor
-from echo_personal_tool.infrastructure.vendor_profiles.ge import GEProfile
 from echo_personal_tool.infrastructure.vendor_profiles.detector import detect_vendor
+from echo_personal_tool.infrastructure.vendor_profiles.ge import GEProfile
 from echo_personal_tool.infrastructure.vendor_profiles.registry import get_profile
 
 

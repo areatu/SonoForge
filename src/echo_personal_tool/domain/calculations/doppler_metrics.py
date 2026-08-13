@@ -110,9 +110,7 @@ def _find_mean_velocity_from_trace(dto: DopplerMeasurementDTO) -> float | None:
     return None
 
 
-def _integral_velocity_sq_ms(
-    times: list[float], velocities: list[float], start_ms: float, end_ms: float
-) -> float:
+def _integral_velocity_sq_ms(times: list[float], velocities: list[float], start_ms: float, end_ms: float) -> float:
     """Exact ∫v(t)²dt over [start_ms, end_ms] for a piecewise-linear envelope.
 
     Velocities are in cm/s and times in ms, so the result has units

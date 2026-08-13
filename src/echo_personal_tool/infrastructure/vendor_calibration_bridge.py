@@ -17,17 +17,15 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerKind,
     DopplerSpectrogramRoi,
 )
-from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
+from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from echo_personal_tool.domain.services.spectrogram_detector import detect_spectrogram_roi
-from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
-    region_physical_deltas,
-    is_spectral_doppler_region,
     is_maybe_doppler_from_units,
+    is_spectral_doppler_region,
 )
+from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
-    BaselineResult,
     Vendor,
     VendorProfile,
 )
@@ -153,9 +151,7 @@ def try_parse_with_vendor_profile(
     time_span_ms = time_result.span_ms if time_result else None
 
     # 6. Compute baseline using vendor profile
-    baseline_y = _compute_baseline_with_profile(
-        profile, best_region, frame_height, frame, roi
-    )
+    baseline_y = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
 
     # 7. Build calibration state
     data_type = int(best_region.get("RegionDataType", 0) or 0)

@@ -25,7 +25,7 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.services.mbs_lite_service import fit_contour_from_landmarks
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -34,7 +34,7 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=40.0,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -78,9 +78,9 @@ def _sample_linear_measurements() -> tuple[LinearMeasurement, ...]:
     )
 
 
-def test_app_controller_recomputes_lvef_from_model_contours() -> None:
+def test_app_controller_recomputes_lvef_from_model_contours(synthetic_dicom_path) -> None:
     controller = AppController()
-    controller.state_manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
 
     ed = fit_contour_from_landmarks(
         septal=(10.0, 40.0),
@@ -106,9 +106,9 @@ def test_app_controller_recomputes_lvef_from_model_contours() -> None:
     assert snapshot.lvef.a4c.esv_ml > 0.0
 
 
-def test_app_controller_recomputes_measurements_from_current_state() -> None:
+def test_app_controller_recomputes_measurements_from_current_state(synthetic_dicom_path) -> None:
     controller = AppController()
-    controller.state_manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
 
     doppler = _sample_doppler()
     contours = _sample_contours()
@@ -121,7 +121,7 @@ def test_app_controller_recomputes_measurements_from_current_state() -> None:
     snapshot = controller.state_manager.snapshot.measurement_snapshot
     assert snapshot is not None
     assert snapshot.doppler == compute(doppler)
-    assert snapshot.lvef == calculate(contours, _sample_instance().pixel_spacing)
+    assert snapshot.lvef == calculate(contours, _sample_instance(synthetic_dicom_path).pixel_spacing)
     assert snapshot.teichholz == from_linear_measurements(linear_measurements)
     assert snapshot.linear_measurements == linear_measurements
 

@@ -1,10 +1,11 @@
-import numpy as np
-import pytest
 from pathlib import Path
 
+import numpy as np
+import pytest
+
 from echo_personal_tool.infrastructure.samsung_tick_detector import (
-    detect_ticks,
     TickDetectionResult,
+    detect_ticks,
 )
 
 
@@ -13,7 +14,7 @@ def test_detect_ticks_returns_result():
     img = np.zeros((200, 800, 3), dtype=np.uint8)
     for x in [100, 200, 300, 400, 500]:
         img[:, x, :] = 255
-    
+
     result = detect_ticks(img)
     assert isinstance(result, TickDetectionResult)
     assert len(result.tick_positions) >= 2
@@ -25,7 +26,7 @@ def test_detect_ticks_measures_correct_spacing():
     img = np.zeros((200, 800, 3), dtype=np.uint8)
     for x in range(100, 700, 50):
         img[:, x, :] = 255
-    
+
     result = detect_ticks(img)
     assert abs(result.spacing_px - 50.0) < 5.0
 
@@ -212,8 +213,6 @@ def test_calibration_on_real_data():
             print(f"{name}: detected={detected_freq:.1f} Hz, expected={expected_freq:.0f} Hz, error={error_pct:.1f}%")
             assert error_pct < 20.0, f"Frequency detection error too large: {error_pct:.1f}%"
 
-
-from pydicom.dataset import Dataset
 
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_dataset
 

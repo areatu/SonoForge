@@ -21,14 +21,14 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Detection parameters
-_BAND_HEIGHT = 7           # rows examined as a vertical tick window
-_MIN_VERTICAL_HITS = 2     # bright pixels a column must stack within the band
-_MAX_TICK_WIDTH_PX = 6     # reject wide structures (axis line, text glyphs)
-_CLUSTER_GAP_PX = 3        # merge columns closer than this into one tick
-_MIN_SPACING_PX = 4        # ticks spaced closer than this are treated as one
-_MIN_TICKS = 2             # fewer detected ticks => unreliable measurement
+_BAND_HEIGHT = 7  # rows examined as a vertical tick window
+_MIN_VERTICAL_HITS = 2  # bright pixels a column must stack within the band
+_MAX_TICK_WIDTH_PX = 6  # reject wide structures (axis line, text glyphs)
+_CLUSTER_GAP_PX = 3  # merge columns closer than this into one tick
+_MIN_SPACING_PX = 4  # ticks spaced closer than this are treated as one
+_MIN_TICKS = 2  # fewer detected ticks => unreliable measurement
 _BRIGHTNESS_THRESHOLD = 40  # grayscale level considered "on"
-_SCAN_STEP_PX = 2          # row stride while searching for the best band
+_SCAN_STEP_PX = 2  # row stride while searching for the best band
 _FULL_CONFIDENCE_TICK_COUNT = 20
 # Samsung places the time-scale ruler at a fixed height from the bottom of the
 # frame; detection is restricted to the bottom slice of the image.
@@ -38,6 +38,7 @@ _BOTTOM_SCAN_FRACTION = 0.15
 @dataclass
 class TickDetectionResult:
     """Result of tick mark detection."""
+
     tick_positions: list[float]
     spacing_px: float
     confidence: float

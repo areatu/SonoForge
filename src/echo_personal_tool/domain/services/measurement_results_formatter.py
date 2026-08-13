@@ -332,9 +332,15 @@ def format_results_overlay_html(
             param_id="e_e_prime_avg",
             sex_male=sex_male,
         )
-        _html_append(parts, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s", param_id="s_prime_sept", sex_male=sex_male)
-        _html_append(parts, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat", sex_male=sex_male)
-        _html_append(parts, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male)
+        _html_append(
+            parts, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s", param_id="s_prime_sept", sex_male=sex_male
+        )
+        _html_append(
+            parts, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s", param_id="s_prime_lat", sex_male=sex_male
+        )
+        _html_append(
+            parts, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male
+        )
         _html_append(parts, tr("result.vpeak"), ddop.vpeak_cm_s, "cm/s", sex_male=sex_male)
         _html_append(parts, tr("result.pgpeak"), ddop.pgpeak_mmhg, "mmHg", sex_male=sex_male)
         _html_append(parts, tr("result.tr_vmax"), ddop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)

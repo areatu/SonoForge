@@ -5,9 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 
-def _dark_bands(
-    gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol: int = 8
-) -> list[tuple[int, int]]:
+def _dark_bands(gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol: int = 8) -> list[tuple[int, int]]:
     """Return [(y0, y1), ...] dark row bands, bridging gaps of <= gap_tol.
 
     Bridges thin bright ruler/grid lines so a Doppler panel stays one band.
@@ -67,10 +65,7 @@ def detect_spectrogram_roi(
 
     band_min_rows = max(10, int(h * 0.10))
     row_mean_all = np.mean(gray, axis=1)
-    dark_threshold = (
-        float(np.percentile(row_mean_all, 10))
-        + float(np.percentile(row_mean_all, 50))
-    ) / 2.0
+    dark_threshold = (float(np.percentile(row_mean_all, 10)) + float(np.percentile(row_mean_all, 50))) / 2.0
     if dark_threshold <= 1.0:
         if region_bounds is not None:
             return tuple(float(v) for v in region_bounds)

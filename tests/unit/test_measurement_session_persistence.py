@@ -15,6 +15,7 @@ from echo_personal_tool.domain.services.mbs_lite_service import fit_contour_from
 
 
 def _sample_instance(
+    dicom_path: Path,
     *,
     sop_instance_uid: str = "1.2.3.4.5",
     series_uid: str = "1.2.3.4.6",
@@ -27,7 +28,7 @@ def _sample_instance(
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -43,10 +44,10 @@ def _load_instance(controller: AppController, instance: InstanceMetadata) -> Non
     controller._recompute_measurements()
 
 
-def test_linear_measurements_persist_after_instance_switch() -> None:
+def test_linear_measurements_persist_after_instance_switch(synthetic_dicom_path: Path) -> None:
     controller = AppController()
-    first = _sample_instance(sop_instance_uid="inst-a")
-    second = _sample_instance(sop_instance_uid="inst-a", series_uid="1.2.3.4.7")
+    first = _sample_instance(synthetic_dicom_path, sop_instance_uid="inst-a")
+    second = _sample_instance(synthetic_dicom_path, sop_instance_uid="inst-a", series_uid="1.2.3.4.7")
 
     _load_instance(controller, first)
     controller.on_linear_measurements_changed(
@@ -64,10 +65,10 @@ def test_linear_measurements_persist_after_instance_switch() -> None:
     assert snapshot_after.linear_measurements == snapshot_before.linear_measurements
 
 
-def test_simpson_results_persist_after_instance_switch() -> None:
+def test_simpson_results_persist_after_instance_switch(synthetic_dicom_path: Path) -> None:
     controller = AppController()
-    first = _sample_instance(sop_instance_uid="inst-a")
-    second = _sample_instance(sop_instance_uid="inst-b")
+    first = _sample_instance(synthetic_dicom_path, sop_instance_uid="inst-a")
+    second = _sample_instance(synthetic_dicom_path, sop_instance_uid="inst-b")
 
     _load_instance(controller, first)
     ed = fit_contour_from_landmarks(
@@ -98,9 +99,9 @@ def test_simpson_results_persist_after_instance_switch() -> None:
     assert snapshot_after.lvef == snapshot_before.lvef
 
 
-def test_open_folder_clears_session_store(monkeypatch, tmp_path: Path) -> None:
+def test_open_folder_clears_session_store(monkeypatch, tmp_path: Path, synthetic_dicom_path) -> None:
     controller = AppController()
-    instance = _sample_instance()
+    instance = _sample_instance(synthetic_dicom_path)
 
     _load_instance(controller, instance)
     controller.on_linear_measurements_changed(
@@ -115,10 +116,10 @@ def test_open_folder_clears_session_store(monkeypatch, tmp_path: Path) -> None:
     assert controller._measurement_session.get(study_uid).linear_measurements == ()
 
 
-def test_patient_metrics_persist_after_instance_switch() -> None:
+def test_patient_metrics_persist_after_instance_switch(synthetic_dicom_path: Path) -> None:
     controller = AppController()
-    first = _sample_instance(sop_instance_uid="inst-a")
-    second = _sample_instance(sop_instance_uid="inst-b")
+    first = _sample_instance(synthetic_dicom_path, sop_instance_uid="inst-a")
+    second = _sample_instance(synthetic_dicom_path, sop_instance_uid="inst-b")
 
     _load_instance(controller, first)
     controller.on_patient_metrics_changed(170.0, 70.0)

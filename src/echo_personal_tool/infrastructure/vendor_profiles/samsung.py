@@ -184,8 +184,7 @@ class SamsungProfile(VendorProfile):
         result = detect_ticks(np.asarray(frame_pixels))
         if result.confidence < 0.3 or result.spacing_px <= 0.0:
             logger.debug(
-                "Samsung: tick detection failed on frame "
-                "(conf=%.2f, spacing=%.2f)",
+                "Samsung: tick detection failed on frame (conf=%.2f, spacing=%.2f)",
                 result.confidence,
                 result.spacing_px,
             )
@@ -198,8 +197,7 @@ class SamsungProfile(VendorProfile):
         span = per_pixel_ms * region_width_px
 
         logger.info(
-            "Samsung: tick calibration, spacing=%.2f px, freq=%.1f Hz, "
-            "per_pixel=%.3f ms, span=%.1f ms",
+            "Samsung: tick calibration, spacing=%.2f px, freq=%.1f Hz, per_pixel=%.3f ms, span=%.1f ms",
             result.spacing_px,
             frequency_hz,
             per_pixel_ms,
@@ -209,8 +207,5 @@ class SamsungProfile(VendorProfile):
             span_ms=span,
             per_pixel_ms=per_pixel_ms,
             confidence=result.confidence,
-            source=(
-                f"Samsung: tick detection, K={self._tick_calibration.k_constant:.2f}, "
-                f"freq={frequency_hz:.1f} Hz"
-            ),
+            source=(f"Samsung: tick detection, K={self._tick_calibration.k_constant:.2f}, freq={frequency_hz:.1f} Hz"),
         )

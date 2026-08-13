@@ -95,7 +95,7 @@ Expected: new tests FAIL (old algorithm returns full-frame/None or wrong band / 
 
 - [ ] **Step 3: Rewrite `detect_spectrogram_roi`**
 
-Replace the entire body of `spectrogram_detector.py` (keep the module docstring and import):
+Replace the entire body of `spectrogram_detector.py` (keep the module docstring and import). This is the **validated** implementation — it passes all existing synthetic tests (`test_detect_spectrogram_basic`, `_no_spectrogram`, `_small_frame`, `_returns_frame_coords`) and detects the correct lower Doppler band on the real Samsung `17/18/19/61/62.dcm` files. The `(percentile10 + percentile50)/2` threshold plus a `gap_tol` that bridges thin bright ruler/grid lines is essential — without the gap tolerance the band fragments and returns `None` on real files:
 
 ```python
 """Detect the spectral Doppler spectrogram region in a composite echo frame."""
@@ -106,21 +106,32 @@ import numpy as np
 
 
 def _dark_bands(
-    gray: np.ndarray, dark_threshold: float, min_rows: int
+    gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol: int = 8
 ) -> list[tuple[int, int]]:
-    """Return [(y0, y1), ...] contiguous row bands whose mean < dark_threshold."""
+    """Return [(y0, y1), ...] dark row bands, bridging gaps of <= gap_tol.
+
+    Bridges thin bright ruler/grid lines so a Doppler panel stays one band.
+    """
     row_mean = np.mean(gray, axis=1)
     dark = row_mean < dark_threshold
     bands: list[tuple[int, int]] = []
     start: int | None = None
+    in_band = False
+    gap = 0
     for y, is_dark in enumerate(dark):
-        if is_dark and start is None:
+        if is_dark and not in_band:
             start = y
-        elif not is_dark and start is not None:
-            if y - start >= min_rows:
-                bands.append((start, y))
-            start = None
-    if start is not None and len(gray) - start >= min_rows:
+            in_band = True
+            gap = 0
+        elif is_dark and in_band:
+            gap = 0
+        elif not is_dark and in_band:
+            gap += 1
+            if gap > gap_tol:
+                if y - gap_tol - start >= min_rows:
+                    bands.append((start, y - gap_tol))
+                in_band = False
+    if in_band and len(gray) - start >= min_rows:
         bands.append((start, len(gray)))
     return bands
 
@@ -142,7 +153,11 @@ def detect_spectrogram_roi(
     Returns (x0, y0, x1, y1) in pixel coordinates.
     """
     if frame.ndim == 3:
-        gray = np.mean(frame, axis=2).astype(np.float32)
+        a = np.asarray(frame)
+        if a.shape[-1] in (1, 3, 4):
+            gray = np.mean(a, axis=2).astype(np.float32)
+        else:
+            gray = a[0].astype(np.float32)
     else:
         gray = frame.astype(np.float32)
 
@@ -151,9 +166,11 @@ def detect_spectrogram_roi(
         return None
 
     band_min_rows = max(10, int(h * 0.10))
-    # Dark threshold relative to the global row-mean distribution.
     row_mean_all = np.mean(gray, axis=1)
-    dark_threshold = float(np.percentile(row_mean_all, 40)) * 0.6
+    dark_threshold = (
+        float(np.percentile(row_mean_all, 10))
+        + float(np.percentile(row_mean_all, 50))
+    ) / 2.0
     if dark_threshold <= 1.0:
         return None
 
@@ -171,7 +188,6 @@ def detect_spectrogram_roi(
     col_mean = np.mean(band_region, axis=0)
     bright_cols = np.where(col_mean > np.median(col_mean) * 0.3)[0]
     if len(bright_cols) < w * 0.3:
-        # Band is not wide enough to be Doppler; try region_bounds or none.
         if region_bounds is not None:
             return tuple(float(v) for v in region_bounds)
         return None
@@ -400,6 +416,8 @@ Baseline step (`_handle_doppler_calibration_click`, 3103-3117) records the basel
 
 - [ ] **Step 1: Add failing GUI tests**
 
+NOTE (pre-flight validated): the view is auto-scaled to fit, so click view-coordinates are NOT identity-mapped to pixel coordinates (e.g. a click at (100,80) maps to ≈(-3,32)). The tests must therefore assert the *propagation invariant* (`_calibration_start_y == _doppler_pending_baseline_y`, and the prompted span equals the mapped difference), not hardcoded pixel values.
+
 Append to `tests/unit/test_viewer_widget.py` inside `class TestDopplerCalibrationClick`:
 
 ```python
@@ -422,14 +440,13 @@ Append to `tests/unit/test_viewer_widget.py` inside `class TestDopplerCalibratio
         result = w._handle_doppler_calibration_click(event)
         assert result is True
         assert w._doppler_cal_step is None
-        assert w._doppler_pending_baseline_y == 80.0
-        assert w._calibration_start_y == 80.0
+        assert w._doppler_pending_baseline_y is not None
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
 
     def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((200, 200), dtype=np.uint8))
         assert w.start_doppler_calibration()
-        # baseline click
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QMouseEvent
 
@@ -444,7 +461,9 @@ Append to `tests/unit/test_viewer_widget.py` inside `class TestDopplerCalibratio
             )
 
         w._handle_doppler_calibration_click(click(100, 80))
-        assert w._calibration_start_y == 80.0
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
+        baseline = w._calibration_start_y
+        assert baseline is not None
 
         promoted = []
         monkeypatch.setattr(
@@ -452,10 +471,9 @@ Append to `tests/unit/test_viewer_widget.py` inside `class TestDopplerCalibratio
             "_prompt_spectral_velocity_span",
             lambda length_px: promoted.append(length_px),
         )
-        # top-of-scale click
         result = w._handle_calibration_mouse_press(click(100, 30))
         assert result is True
-        assert promoted == [50.0]
+        assert promoted == [abs(w._map_view_event(click(100, 30))[1] - baseline)]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**

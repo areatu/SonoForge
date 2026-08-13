@@ -2305,9 +2305,7 @@ class ViewerWidget(QWidget):
         self._measurement_label.show()
         return True
 
-    def start_vessel_auto_trace(
-        self, preset: str = "normal", direction: str | None = None
-    ) -> bool:
+    def start_vessel_auto_trace(self, preset: str = "normal", direction: str | None = None) -> bool:
         """Run the auto-trace envelope over the current Doppler frame.
 
         When *direction* is ``"up"`` or ``"down"`` the envelope is forced
@@ -5728,11 +5726,7 @@ class ViewerWidget(QWidget):
         pending_depth = self._mmode_pending_depth_mm_per_pixel
 
         state = self._mmode_calibration_state
-        auto_time = (
-            state.horizontal_ms_per_pixel
-            if state is not None and state.time_from_dicom_tags
-            else None
-        )
+        auto_time = state.horizontal_ms_per_pixel if state is not None and state.time_from_dicom_tags else None
         if auto_time is not None and auto_time > 0.0:
             time_per_pixel_ms = float(auto_time)
             accepted = True

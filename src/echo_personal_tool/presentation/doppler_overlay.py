@@ -27,8 +27,8 @@ from echo_personal_tool.domain.services.cardiac_cycle_service import (
     derive_psv_edv_indices_with_cycles,
 )
 from echo_personal_tool.domain.services.doppler_trace_points import (
-    finalize_vti_trace_points,
     filter_velocity_spikes,
+    finalize_vti_trace_points,
 )
 
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
@@ -545,10 +545,7 @@ class DopplerOverlayTools(QWidget):
         clipped = envelope
         if time_range_ms is not None:
             t_start, t_end = time_range_ms
-            clipped = tuple(
-                p for p in envelope
-                if t_start <= self._axis_mapping.time_ms_from_x(p[0]) <= t_end
-            )
+            clipped = tuple(p for p in envelope if t_start <= self._axis_mapping.time_ms_from_x(p[0]) <= t_end)
             if len(clipped) < 3:
                 return False
         elif cycles:
@@ -1171,7 +1168,8 @@ class DopplerOverlayTools(QWidget):
         y_min = self._axis_mapping.plot_origin_y
         y_max = y_min + self._axis_mapping.plot_height
         item = pg.PlotCurveItem(
-            [x_plot, x_plot], [y_min, y_max],
+            [x_plot, x_plot],
+            [y_min, y_max],
             pen=pg.mkPen("#ffaa00", width=1, style=Qt.PenStyle.DotLine),
         )
         item.setZValue(22)

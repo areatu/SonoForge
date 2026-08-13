@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor

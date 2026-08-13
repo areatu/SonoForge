@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.services.doppler_trace_points import (
-    finalize_vti_trace_points,
     filter_velocity_spikes,
+    finalize_vti_trace_points,
 )
 
 

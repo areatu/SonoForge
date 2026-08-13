@@ -13,7 +13,7 @@ from echo_personal_tool.domain.models import InstanceMetadata
 pytestmark = pytest.mark.gui
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -22,13 +22,13 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=None,
         frame_time_ms=40.0,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def test_state_manager_steps_and_wraps_frames(qtbot) -> None:
+def test_state_manager_steps_and_wraps_frames(qtbot, synthetic_dicom_path) -> None:
     manager = StateManager()
-    manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+    manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
 
     manager.step_frame(1)
     assert manager.snapshot.current_frame_index == 1
@@ -40,7 +40,7 @@ def test_state_manager_steps_and_wraps_frames(qtbot) -> None:
     assert manager.snapshot.current_frame_index == 3
 
 
-def test_app_controller_steps_via_state_manager(qtbot) -> None:
+def test_app_controller_steps_via_state_manager(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
         InstanceMetadata(
@@ -51,7 +51,7 @@ def test_app_controller_steps_via_state_manager(qtbot) -> None:
             pixel_spacing=None,
             frame_time_ms=33.3,
             series_description="Test",
-            path=Path("/tmp/test.dcm"),
+            path=synthetic_dicom_path,
         ),
         total_frames=5,
         frame_time_ms=33.3,

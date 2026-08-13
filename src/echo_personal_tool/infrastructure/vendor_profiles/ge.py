@@ -29,17 +29,15 @@ Key findings from GE Vivid E95 analysis:
 from __future__ import annotations
 
 import logging
-import math
 
-import numpy as np
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.infrastructure.vendor_profiles.base import (
     BaselineResult,
     TimeSpanResult,
+    VelocitySpanResult,
     Vendor,
     VendorProfile,
-    VelocitySpanResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -148,7 +146,11 @@ class GEProfile(VendorProfile):
 
         logger.debug(
             "GE baseline: refy=%s, region=[%s,%s], physValY=%s, conf=%.2f",
-            ref_y_f, min_y, max_y, phys_val_y, confidence,
+            ref_y_f,
+            min_y,
+            max_y,
+            phys_val_y,
+            confidence,
         )
 
         return BaselineResult(

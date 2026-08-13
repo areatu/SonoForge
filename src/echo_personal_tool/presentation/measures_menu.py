@@ -521,10 +521,7 @@ class MeasuresMenuWidget(QWidget):
             elif spec.doppler_interval:
                 action = MeasurementAction.DOPPLER_INTERVAL
                 extra = spec.doppler_interval
-            elif (
-                spec.action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION
-                and spec.doppler_trace
-            ):
+            elif spec.action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION and spec.doppler_trace:
                 action = MeasurementAction.DOPPLER_TRACE_AUTO_REGION
                 extra = spec.doppler_trace
             elif spec.doppler_trace:

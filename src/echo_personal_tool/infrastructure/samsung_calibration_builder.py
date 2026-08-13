@@ -19,6 +19,7 @@ _CALIBRATION_FILE = Path(__file__).parent / "samsung_tick_calibration.json"
 @dataclass
 class TickMeasurement:
     """Single frequency measurement."""
+
     frequency_hz: float
     tick_spacing_px: float
     tick_count: int
@@ -34,6 +35,7 @@ class SamsungTickCalibration:
     So ``k_constant`` represents Hz per pixel (5.0) and the runtime relation is:
         frequency_hz = k_constant * spacing_px
     """
+
     device_model: str
     k_constant: float
     r_squared: float
@@ -64,12 +66,14 @@ def build_calibration(
     for freq, pixel_array in training_data:
         result = detect_ticks(pixel_array)
         if result.confidence > 0.3 and result.spacing_px > 0:
-            measurements.append(TickMeasurement(
-                frequency_hz=freq,
-                tick_spacing_px=result.spacing_px,
-                tick_count=len(result.tick_positions),
-                confidence=result.confidence,
-            ))
+            measurements.append(
+                TickMeasurement(
+                    frequency_hz=freq,
+                    tick_spacing_px=result.spacing_px,
+                    tick_count=len(result.tick_positions),
+                    confidence=result.confidence,
+                )
+            )
 
     if len(measurements) < 2:
         raise ValueError(f"Insufficient valid measurements: {len(measurements)}")
@@ -81,7 +85,7 @@ def build_calibration(
     weights = np.array([m.confidence for m in measurements])
     weights = weights / weights.sum()
 
-    k_constant = float(np.sum(weights * freqs * spacings) / np.sum(weights * spacings ** 2))
+    k_constant = float(np.sum(weights * freqs * spacings) / np.sum(weights * spacings**2))
 
     # Compute R² for the linear fit
     predicted = k_constant * spacings

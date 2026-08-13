@@ -61,17 +61,15 @@ def filter_velocity_spikes(
     if len(points) < 3:
         return tuple((float(t), float(v)) for t, v in points)
 
-    clamped = [
-        (float(t), max(-max_velocity_cm_s, min(max_velocity_cm_s, float(v))))
-        for t, v in points
-    ]
+    clamped = [(float(t), max(-max_velocity_cm_s, min(max_velocity_cm_s, float(v)))) for t, v in points]
     velocities = np.array([v for _, v in clamped], dtype=np.float64)
     n = len(velocities)
     mask = np.zeros(n, dtype=bool)
     for i in range(1, n - 1):
-        if abs(velocities[i] - velocities[i - 1]) > spike_threshold_cm_s and abs(
-            velocities[i] - velocities[i + 1]
-        ) > spike_threshold_cm_s:
+        if (
+            abs(velocities[i] - velocities[i - 1]) > spike_threshold_cm_s
+            and abs(velocities[i] - velocities[i + 1]) > spike_threshold_cm_s
+        ):
             mask[i] = True
     for i in range(n):
         if mask[i]:

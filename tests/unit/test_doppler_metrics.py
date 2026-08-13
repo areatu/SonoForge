@@ -176,9 +176,7 @@ def test_compute_empty_dto_returns_all_none() -> None:
 def test_compute_s_prime_rv_from_peak_marker() -> None:
     """s' RV (ПЖ) is read from the s_prime_rv peak marker."""
     dto = DopplerMeasurementDTO(
-        peaks=(
-            DopplerPeakMarker(label="s_prime_rv", time_ms=50.0, velocity_cm_s=12.0),
-        ),
+        peaks=(DopplerPeakMarker(label="s_prime_rv", time_ms=50.0, velocity_cm_s=12.0),),
         intervals=(),
         traces=(),
     )

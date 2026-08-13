@@ -112,6 +112,7 @@ from echo_personal_tool.infrastructure.vendor_profiles.base import (
     BaselineResult,
 )
 
+
 class PhilipsProfile(VendorProfile):
     @property
     def vendor(self) -> Vendor:
