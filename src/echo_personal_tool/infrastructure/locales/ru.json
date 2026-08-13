@@ -156,6 +156,7 @@
   "layout.multiview_mode": "Два независимых окна просмотра",
   "layout.research_use_only": "⚠ Research use only",
   "layout.status_bar": "Status Bar",
+  "layout.status_bar_mode": "Показать строку состояния",
   "layout.swap_places": "Менять местами Gallery и Tools",
   "measurement_results.export_pdf": "Экспорт в PDF",
   "measurement_results.pdf_error.title": "Экспорт PDF",
