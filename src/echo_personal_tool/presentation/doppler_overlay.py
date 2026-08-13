@@ -6,7 +6,7 @@ import statistics
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
@@ -1159,7 +1159,7 @@ class DopplerOverlayTools(QWidget):
 
         self._show_autovti_region_band(start_ms, end_ms)
 
-        self._clear_autovti_region()
+        QTimer.singleShot(0, self._clear_autovti_region)
         self._tool_mode = "none"
         self.autovti_region_selected.emit(start_ms, end_ms, direction)
         return True

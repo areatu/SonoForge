@@ -691,6 +691,9 @@ class TestAutovtiRegionSelection:
         start_ms, end_ms, direction = received[0]
         assert start_ms < end_ms
         assert direction == "up"
+        # Clear is deferred via QTimer.singleShot — process events first
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().processEvents()
         assert overlay._autovti_start_ms is None
         assert overlay._autovti_region_item is None
 
@@ -725,6 +728,9 @@ class TestAutovtiRegionSelection:
         overlay.handle_click(700.0, baseline_y - 50)
 
         assert len(received) == 1
+        # Clear is deferred via QTimer.singleShot — process events first
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().processEvents()
         assert overlay._autovti_start_ms is None
         assert overlay._autovti_region_item is None
         assert overlay._autovti_band_item is None
@@ -1014,6 +1020,9 @@ class TestAutovtiRegionEndToEnd:
         start_ms, end_ms, direction = received[0]
         assert start_ms < end_ms
         assert direction == "up"
+        # Clear is deferred via QTimer.singleShot — process events first
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().processEvents()
         assert overlay._autovti_start_ms is None
         assert overlay._tool_mode == "none"
 

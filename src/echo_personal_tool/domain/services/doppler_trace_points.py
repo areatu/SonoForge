@@ -77,4 +77,4 @@ def filter_velocity_spikes(
         if abs(velocities[i] - med) > k_mad * mad:
             result[i] = med
 
-    return [(clamped[i][0], float(result[i])) for i in range(n)]
+    return tuple((clamped[i][0], float(result[i])) for i in range(n))
