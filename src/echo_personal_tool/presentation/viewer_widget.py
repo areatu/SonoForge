@@ -6935,7 +6935,7 @@ class ViewerWidget(QWidget):
             return
         contour = self._contours[contour_index]
         if contour.is_open_arc:
-            snap_cfg = magnetic_edge_snap_config_for_source(contour.source)
+            snap_cfg = magnetic_edge_snap_config_for_source(contour.source, chamber=contour.chamber)
             pinned = self._pinned_indices_for_contour(contour)
             snapped = apply_soft_magnetic_snap(
                 list(contour.points),

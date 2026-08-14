@@ -37,6 +37,7 @@ class _MenuButton:
     doppler_trace: str = ""
     vessel: bool = False
     enabled: bool = True
+    experimental: bool = False
 
     @property
     def label(self) -> str:
@@ -55,6 +56,7 @@ def _btn(
     doppler_trace: str = "",
     vessel: bool = False,
     enabled: bool = True,
+    experimental: bool = False,
 ) -> _MenuButton:
     return _MenuButton(
         label_key=label_key,
@@ -67,6 +69,7 @@ def _btn(
         doppler_trace=doppler_trace,
         vessel=vessel,
         enabled=enabled,
+        experimental=experimental,
     )
 
 
@@ -115,6 +118,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
             _btn("menu.la_lavir", MeasurementAction.LA_DIAMETER),
             _btn("menu.lav_4c", MeasurementAction.LAV_4C),
             _btn("menu.lav_4c_ai_plus", MeasurementAction.LAV_4C_AI_PLUS),
+            _btn("menu.lav_4c_auto", MeasurementAction.LAV_4C_AUTO, experimental=True),
             _btn("menu.lav_bi", MeasurementAction.LAV_BI),
         ),
     ),
@@ -203,6 +207,11 @@ _EXPERIMENTAL_GROUPS: dict[str, str] = {
     "menu.strain_group": "show_strain",
 }
 
+# Map action values to preference flags for experimental buttons
+_EXPERIMENTAL_BUTTONS: dict[str, str] = {
+    "lav_4c_auto": "show_la_auto",
+}
+
 
 def _filter_menu(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
@@ -220,7 +229,16 @@ def _filter_menu(
             if not show:
                 continue
 
-        filtered.append((group_key, buttons))
+        visible_buttons = []
+        for btn in buttons:
+            if btn.experimental:
+                btn_pref = _EXPERIMENTAL_BUTTONS.get(str(btn.action), "")
+                if btn_pref and not getattr(preferences, btn_pref, False):
+                    continue
+            visible_buttons.append(btn)
+
+        if visible_buttons:
+            filtered.append((group_key, tuple(visible_buttons)))
     return tuple(filtered)
 
 

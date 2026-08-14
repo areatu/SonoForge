@@ -352,11 +352,14 @@ class UserPreferencesDialog(QDialog):
             tr("preferences.tab_other"),
         )
 
-        # Experimental features tab (only LV strain)
+        # Experimental features tab
         exp_form = QFormLayout()
         self._show_strain = QCheckBox()
         self._show_strain.setChecked(current.show_strain)
         exp_form.addRow(tr("prefs.show_strain"), self._show_strain)
+        self._show_la_auto = QCheckBox()
+        self._show_la_auto.setChecked(current.show_la_auto)
+        exp_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
         tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()
@@ -467,6 +470,7 @@ class UserPreferencesDialog(QDialog):
             gold_dataset_path=self._gold_path.text().strip(),
             references_dir=self._refs_dir.text().strip(),
             show_strain=self._show_strain.isChecked(),
+            show_la_auto=self._show_la_auto.isChecked(),
         )
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())
