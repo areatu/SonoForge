@@ -3107,11 +3107,13 @@ class ViewerWidget(QWidget):
             if parsed is not None:
                 _, frame_width = self._current_frame.shape[:2]
                 logger.debug(
-                    "[ROI-TRACE] auto_detect: parsed roi=(%.0f,%.0f,%.0f,%.0f) "
-                    "size=(%.0fx%.0f) time=%s vel=%s",
-                    parsed.roi.x0, parsed.roi.y0,
-                    parsed.roi.x0 + parsed.roi.width, parsed.roi.y0 + parsed.roi.height,
-                    parsed.roi.width, parsed.roi.height,
+                    "[ROI-TRACE] auto_detect: parsed roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) time=%s vel=%s",
+                    parsed.roi.x0,
+                    parsed.roi.y0,
+                    parsed.roi.x0 + parsed.roi.width,
+                    parsed.roi.y0 + parsed.roi.height,
+                    parsed.roi.width,
+                    parsed.roi.height,
                     parsed.has_time_scale_from_dicom(),
                     parsed.has_velocity_scale_from_dicom(),
                 )
@@ -3123,19 +3125,18 @@ class ViewerWidget(QWidget):
                         # Time scale from DICOM but velocity not — need visual validation.
                         scales = detect_samsung_doppler_scales(self._current_frame)
                         has_time_ticks = (
-                            scales.time_scale.confidence >= 0.4
-                            and len(scales.time_scale.tick_positions) >= 5
+                            scales.time_scale.confidence >= 0.4 and len(scales.time_scale.tick_positions) >= 5
                         )
                         if not has_time_ticks:
                             logger.debug(
-                                "[ROI-TRACE] auto_detect: REJECTED — "
-                                "time_ticks=%s for time-only fallback region",
+                                "[ROI-TRACE] auto_detect: REJECTED — time_ticks=%s for time-only fallback region",
                                 has_time_ticks,
                             )
                         else:
                             # Time ticks OK — also validate ROI has grid lines.
                             vresult = validate_doppler_roi(
-                                parsed.roi, self._current_frame,
+                                parsed.roi,
+                                self._current_frame,
                             )
                             if not vresult.valid:
                                 logger.debug(
@@ -3201,10 +3202,13 @@ class ViewerWidget(QWidget):
                 height=max(1.0, y1 - y0),
             )
             logger.debug(
-                "[ROI-TRACE] scales_refined: roi=(%.0f,%.0f,%.0f,%.0f) "
-                "size=(%.0fx%.0f) ticks=%d",
-                roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
-                roi.width, roi.height,
+                "[ROI-TRACE] scales_refined: roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) ticks=%d",
+                roi.x0,
+                roi.y0,
+                roi.x0 + roi.width,
+                roi.y0 + roi.height,
+                roi.width,
+                roi.height,
                 len(scales.time_scale.tick_positions),
             )
             # Unified validation: grid lines + geometry.

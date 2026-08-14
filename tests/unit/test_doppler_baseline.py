@@ -43,7 +43,8 @@ class TestDetectBaselineY:
 
     def test_dark_band_selected_as_baseline(self):
         """A dark band (baseline) should be selected even among noisy signal."""
-        gray = np.random.randint(50, 200, size=(50, 100), dtype=np.uint8)
+        rng = np.random.RandomState(42)
+        gray = rng.randint(50, 200, size=(50, 100), dtype=np.uint8)
         # Inject a dark band at rows 14..16
         gray[14:17, :] = 20
         roi = _roi(x0=0, y0=0, w=100, h=50)

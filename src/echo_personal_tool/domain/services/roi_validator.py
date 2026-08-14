@@ -59,19 +59,19 @@ def validate_doppler_roi(
     if roi.width < w * min_width_fraction:
         return RoiValidationResult(
             valid=False,
-            reason=f"width {roi.width:.0f}px < {min_width_fraction*100:.0f}% of {w}px",
+            reason=f"width {roi.width:.0f}px < {min_width_fraction * 100:.0f}% of {w}px",
         )
 
     # 2. Height check — spectrogram band is typically 30-70% of frame.
     if roi.height < h * min_height_fraction:
         return RoiValidationResult(
             valid=False,
-            reason=f"height {roi.height:.0f}px < {min_height_fraction*100:.0f}% of {h}px",
+            reason=f"height {roi.height:.0f}px < {min_height_fraction * 100:.0f}% of {h}px",
         )
     if roi.height > h * max_height_fraction:
         return RoiValidationResult(
             valid=False,
-            reason=f"height {roi.height:.0f}px > {max_height_fraction*100:.0f}% of {h}px",
+            reason=f"height {roi.height:.0f}px > {max_height_fraction * 100:.0f}% of {h}px",
         )
 
     # 3. Position check — Doppler is always in the lower portion of the frame.

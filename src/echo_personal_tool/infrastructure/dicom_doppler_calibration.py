@@ -188,10 +188,13 @@ def try_parse_from_dataset(
             height=max(1.0, y1 - y0),
         )
         logger.debug(
-            "[ROI-TRACE] generic_parse: roi=(%.0f,%.0f,%.0f,%.0f) "
-            "size=(%.0fx%.0f) sf=%d strict=%s",
-            roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
-            roi.width, roi.height,
+            "[ROI-TRACE] generic_parse: roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) sf=%d strict=%s",
+            roi.x0,
+            roi.y0,
+            roi.x0 + roi.width,
+            roi.y0 + roi.height,
+            roi.width,
+            roi.height,
             int(region.get("RegionSpatialFormat", 0) or 0),
             is_spectral_doppler_region(region),
         )
@@ -216,16 +219,12 @@ def try_parse_from_dataset(
                     height=int(roi.height),
                 )
                 logger.debug(
-                    "[ROI-TRACE] generic_parse: grid_lines=%d, "
-                    "strict_spatial=%s",
+                    "[ROI-TRACE] generic_parse: grid_lines=%d, strict_spatial=%s",
                     len(grid_lines),
                     is_spectral_doppler_region(region),
                 )
                 if len(grid_lines) < 1:
-                    logger.debug(
-                        "[ROI-TRACE] generic_parse: SKIPPED — no velocity "
-                        "grid lines in fallback ROI"
-                    )
+                    logger.debug("[ROI-TRACE] generic_parse: SKIPPED — no velocity grid lines in fallback ROI")
                     continue
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)

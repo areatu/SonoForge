@@ -148,10 +148,13 @@ def try_parse_with_vendor_profile(
         height=max(1.0, y1 - y0),
     )
     logger.debug(
-        "[ROI-TRACE] vendor_profile: roi=(%.0f,%.0f,%.0f,%.0f) "
-        "size=(%.0fx%.0f) priority=%d sf=%d",
-        roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
-        roi.width, roi.height,
+        "[ROI-TRACE] vendor_profile: roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) priority=%d sf=%d",
+        roi.x0,
+        roi.y0,
+        roi.x0 + roi.width,
+        roi.y0 + roi.height,
+        roi.width,
+        roi.height,
         best_priority,
         int(best_region.get("RegionSpatialFormat", 0) or 0),
     )
@@ -165,10 +168,7 @@ def try_parse_with_vendor_profile(
         arr = np.asarray(frame)
         if arr.ndim >= 2:
             scales = detect_samsung_doppler_scales(arr)
-            has_time_ticks = (
-                scales.time_scale.confidence >= 0.4
-                and len(scales.time_scale.tick_positions) >= 5
-            )
+            has_time_ticks = scales.time_scale.confidence >= 0.4 and len(scales.time_scale.tick_positions) >= 5
             has_velocity_scale = (
                 scales.left_velocity_scale is not None
                 and scales.left_velocity_scale.confidence >= 0.4
@@ -180,15 +180,15 @@ def try_parse_with_vendor_profile(
             )
             if not has_time_ticks or not has_velocity_scale:
                 logger.debug(
-                    "[ROI-TRACE] vendor_profile: REJECTED — "
-                    "time_ticks=%s velocity_scale=%s",
-                    has_time_ticks, has_velocity_scale,
+                    "[ROI-TRACE] vendor_profile: REJECTED — time_ticks=%s velocity_scale=%s",
+                    has_time_ticks,
+                    has_velocity_scale,
                 )
                 return None
             logger.debug(
-                "[ROI-TRACE] vendor_profile: validated — "
-                "time_ticks=%s velocity_scale=%s",
-                has_time_ticks, has_velocity_scale,
+                "[ROI-TRACE] vendor_profile: validated — time_ticks=%s velocity_scale=%s",
+                has_time_ticks,
+                has_velocity_scale,
             )
 
     # 4. Compute velocity span using vendor profile
@@ -343,7 +343,9 @@ def try_parse_samsung_tick_calibration(
                 height=max(1.0, float(y1 - y0)),
             )
             vresult = validate_doppler_roi(
-                candidate_roi, arr, check_grid_lines=False,
+                candidate_roi,
+                arr,
+                check_grid_lines=False,
             )
             if vresult.valid:
                 roi = candidate_roi
@@ -370,15 +372,21 @@ def try_parse_samsung_tick_calibration(
         # Relaxed geometry: time ticks are already validated (strong Doppler
         # signal), so we only need to prevent obviously invalid ROIs.
         vresult = validate_doppler_roi(
-            candidate_roi, arr,
+            candidate_roi,
+            arr,
             check_grid_lines=False,
             min_width_fraction=0.3,
             require_lower_half=False,
         )
         if vresult.valid:
             roi = candidate_roi
-            logger.debug("Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f)",
-                         roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height)
+            logger.debug(
+                "Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f)",
+                roi.x0,
+                roi.y0,
+                roi.x0 + roi.width,
+                roi.y0 + roi.height,
+            )
 
     if roi is None:
         # All detection failed — return None instead of full-frame fallback.

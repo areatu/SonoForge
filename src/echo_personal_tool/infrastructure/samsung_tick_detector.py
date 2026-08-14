@@ -147,7 +147,10 @@ def detect_ticks(
     band_y = float(best_y0) + _BAND_HEIGHT / 2.0
     logger.debug(
         "Best tick ruler at y=%d (band_y=%.1f): spacing=%.2f, ticks=%d",
-        best_y0, band_y, spacing, len(centers),
+        best_y0,
+        band_y,
+        spacing,
+        len(centers),
     )
     return TickDetectionResult(
         tick_positions=centers,
@@ -215,7 +218,7 @@ def _detect_vertical_scale_at_x(
         y0, y1 = 0, h - 1
         search_h = h
 
-    strip = gray[y0:y1 + 1, x0:x1]
+    strip = gray[y0 : y1 + 1, x0:x1]
 
     if strip.size == 0:
         return None
@@ -290,10 +293,7 @@ def _detect_vertical_scale_at_x(
     # Get center of each cluster
     tick_centers = [float(sum(c) / len(c)) for c in clusters]
     # Filter out ticks that are too thick
-    tick_centers = [
-        tc for tc, c in zip(tick_centers, clusters)
-        if len(c) <= _VELOCITY_TICK_MAX_HEIGHT
-    ]
+    tick_centers = [tc for tc, c in zip(tick_centers, clusters) if len(c) <= _VELOCITY_TICK_MAX_HEIGHT]
 
     if len(tick_centers) < _VELOCITY_MIN_TICKS:
         return None
@@ -438,20 +438,9 @@ def detect_samsung_doppler_scales(
     # Without velocity scales, it's likely B-mode, not spectral Doppler.
     # Time scale must have >= 5 ticks (real Doppler has 10-30+).
     # Velocity scale must have >= 4 ticks with high uniformity.
-    has_time_scale = (
-        time_scale.confidence >= 0.4
-        and len(time_scale.tick_positions) >= 5
-    )
-    has_left_scale = (
-        left_scale is not None
-        and left_scale.confidence >= 0.4
-        and len(left_scale.tick_rows) >= 4
-    )
-    has_right_scale = (
-        right_scale is not None
-        and right_scale.confidence >= 0.4
-        and len(right_scale.tick_rows) >= 4
-    )
+    has_time_scale = time_scale.confidence >= 0.4 and len(time_scale.tick_positions) >= 5
+    has_left_scale = left_scale is not None and left_scale.confidence >= 0.4 and len(left_scale.tick_rows) >= 4
+    has_right_scale = right_scale is not None and right_scale.confidence >= 0.4 and len(right_scale.tick_rows) >= 4
 
     if has_time_scale and (has_left_scale or has_right_scale):
         h, w = pixel_array.shape[:2] if pixel_array.ndim == 2 else pixel_array.shape[:2]
@@ -523,7 +512,10 @@ def detect_samsung_doppler_scales(
             refined_roi = (left_x, top_y, right_x, bottom_y)
             logger.debug(
                 "Refined ROI from scales: (%.1f, %.1f, %.1f, %.1f)",
-                left_x, top_y, right_x, bottom_y,
+                left_x,
+                top_y,
+                right_x,
+                bottom_y,
             )
 
     return SamsungDopplerScales(
