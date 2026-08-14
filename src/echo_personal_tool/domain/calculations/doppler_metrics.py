@@ -31,6 +31,14 @@ def _find_interval_duration_ms(dto: DopplerMeasurementDTO, label: str) -> float 
     return None
 
 
+def _find_interval_bounds_ms(dto: DopplerMeasurementDTO, label: str) -> tuple[float, float] | None:
+    wanted = _normalize_label(label)
+    for interval in dto.intervals:
+        if _normalize_label(interval.label) == wanted:
+            return interval.start_time_ms, interval.end_time_ms
+    return None
+
+
 def _find_vti_cm(dto: DopplerMeasurementDTO) -> float | None:
     """Average the trapezoidal VTI over all VTI traces.
 
@@ -55,7 +63,7 @@ def _find_vti_cm(dto: DopplerMeasurementDTO) -> float | None:
         values.append(float(_np_trapezoid(velocities, times)) / 1000.0)
     if not values:
         return None
-    return sum(values) / len(values)
+    return abs(sum(values) / len(values))
 
 
 def _find_peak_velocity_from_trace(dto: DopplerMeasurementDTO) -> float | None:
@@ -102,6 +110,70 @@ def _find_mean_velocity_from_trace(dto: DopplerMeasurementDTO) -> float | None:
     return None
 
 
+def _integral_velocity_sq_ms(times: list[float], velocities: list[float], start_ms: float, end_ms: float) -> float:
+    """Exact ∫v(t)²dt over [start_ms, end_ms] for a piecewise-linear envelope.
+
+    Velocities are in cm/s and times in ms, so the result has units
+    (cm/s)²·ms. Only the portion of each linear segment that falls inside
+    the window contributes, so baseline samples outside the flow period are
+    correctly excluded.
+    """
+    points = sorted(zip(times, velocities))
+    total = 0.0
+    for i in range(len(points) - 1):
+        (ta, va), (tb, vb) = points[i], points[i + 1]
+        if tb <= start_ms or ta >= end_ms or tb == ta:
+            continue
+        a = max(ta, start_ms)
+        b = min(tb, end_ms)
+        if a >= b:
+            continue
+        va_a = va + (vb - va) * (a - ta) / (tb - ta)
+        va_b = va + (vb - va) * (b - ta) / (tb - ta)
+        width = b - a
+        total += width * (va_a * va_a + va_a * va_b + va_b * va_b) / 3.0
+    return total
+
+
+def _find_mean_pressure_gradient_from_trace(dto: DopplerMeasurementDTO) -> float | None:
+    """ASE/EACVI PGmean = (1/T)·∫4·v(t)²dt, averaged over the VTI traces.
+
+    The instantaneous Bernoulli gradient is 4·(v/100)² with v in cm/s; this
+    is averaged (not derived from Vmean) because Bernoulli is nonlinear:
+    4·Vmean² underestimates the true mean gradient.
+
+    The integration window is the ET interval when it is fully covered by a
+    trace (consistent with Vmean = VTI / ET), otherwise the full trace span.
+    """
+    et_bounds = _find_interval_bounds_ms(dto, "et")
+    values: list[float] = []
+    for trace in dto.traces:
+        if not _normalize_label(trace.label).startswith("vti"):
+            continue
+        if len(trace.points) < 2:
+            continue
+        times = [point[0] for point in trace.points]
+        velocities = [point[1] for point in trace.points]
+        t_min = min(times)
+        t_max = max(times)
+        start_ms, end_ms = t_min, t_max
+        if et_bounds is not None:
+            es, ee = et_bounds
+            if ee > es and es >= t_min and ee <= t_max:
+                start_ms, end_ms = es, ee
+        duration_ms = end_ms - start_ms
+        if duration_ms <= 0:
+            continue
+        area_sq_ms = _integral_velocity_sq_ms(times, velocities, start_ms, end_ms)
+        pgmean = 4.0 * area_sq_ms / (100.0 * 100.0 * duration_ms)
+        if pgmean <= 0:
+            continue
+        values.append(pgmean)
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
 def _ratio(numerator: float | None, denominator: float | None) -> float | None:
     if numerator is None or denominator in (None, 0):
         return None
@@ -130,6 +202,10 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
 
     e_prime_over_a_prime = _ratio(e_prime_avg_cm_s, a_prime_avg)
 
+    s_prime_sept_cm_s = _find_peak_velocity(dto, "s_prime_sept", "s_sept", "ssept")
+    s_prime_lat_cm_s = _find_peak_velocity(dto, "s_prime_lat", "s_lat", "slat")
+    s_prime_rv_cm_s = _find_peak_velocity(dto, "s_prime_rv", "s_prime_rv", "rv_s_prime")
+
     dt_ms = _find_interval_duration_ms(dto, "dt")
     ivrt_ms = _find_interval_duration_ms(dto, "ivrt")
     at_ms = _find_interval_duration_ms(dto, "at")
@@ -144,12 +220,12 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
     vmean_cm_s = None
     if vti_cm is not None:
         if et_ms is not None and et_ms > 0:
-            vmean_cm_s = vti_cm / (et_ms / 1000.0)
+            vmean_cm_s = abs(vti_cm) / (et_ms / 1000.0)
         else:
             vmean_cm_s = _find_mean_velocity_from_trace(dto)
 
     pgpeak_mmhg = pressure_gradient_mmhg(vpeak_cm_s) if vpeak_cm_s is not None else None
-    pgmean_mmhg = pressure_gradient_mmhg(vmean_cm_s) if vmean_cm_s is not None else None
+    pgmean_mmhg = _find_mean_pressure_gradient_from_trace(dto)
 
     return DopplerResults(
         e_cm_s=e_cm_s,
@@ -168,6 +244,9 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
         e_prime_over_a_prime=e_prime_over_a_prime,
         a_prime_sept_cm_s=a_prime_sept_cm_s,
         a_prime_lat_cm_s=a_prime_lat_cm_s,
+        s_prime_sept_cm_s=s_prime_sept_cm_s,
+        s_prime_lat_cm_s=s_prime_lat_cm_s,
+        s_prime_rv_cm_s=s_prime_rv_cm_s,
         tr_vmax_cm_s=tr_vmax_cm_s,
         vti_cm=vti_cm,
         vpeak_cm_s=vpeak_cm_s,

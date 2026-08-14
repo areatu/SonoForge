@@ -85,7 +85,7 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         _optional_line("e' sept", doppler.e_prime_sept_cm_s, " cm/s"),
         _optional_line("e' lat", doppler.e_prime_lat_cm_s, " cm/s"),
         _optional_line("e' mean", doppler.e_prime_avg_cm_s, " cm/s"),
-        _optional_line("E/e'", doppler.e_over_e_prime, decimals=2),
+        _optional_line("E/e'mean", doppler.e_over_e_prime, decimals=2),
         _optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
         _optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
         _optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
@@ -137,6 +137,13 @@ def _format_lvef_section(
         kso = _optional_line(tr("domain.report.kso_lv", view=view_label), metrics.esv_ml, volume_suffix)
         if kso:
             lines.append(kso)
+
+    bp_kdo = _optional_line(tr("domain.report.kdo_lv", view="BP"), lvef.edv_bi_ml, volume_suffix)
+    if bp_kdo:
+        lines.append(bp_kdo)
+    bp_kso = _optional_line(tr("domain.report.kso_lv", view="BP"), lvef.esv_bi_ml, volume_suffix)
+    if bp_kso:
+        lines.append(bp_kso)
 
     lvef_line = _optional_line(tr("domain.report.lvef"), lvef.lvef_percent, " %")
     if lvef_line:

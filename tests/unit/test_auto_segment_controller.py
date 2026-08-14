@@ -75,7 +75,7 @@ def qapp() -> QApplication:
     return app
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -84,7 +84,7 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=40.0,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -103,6 +103,7 @@ def _circle_mask(
 
 def _prepared_controller(
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
     *,
     available: bool = True,
 ) -> tuple[AppController, _RecordingThreadPool, _FakeSegmenter, InstanceMetadata, np.ndarray]:
@@ -113,7 +114,7 @@ def _prepared_controller(
     thread_pool = _RecordingThreadPool()
     segmenter = _FakeSegmenter(available=available)
     controller = AppController(thread_pool=thread_pool, segmenter=segmenter)
-    instance = _sample_instance()
+    instance = _sample_instance(synthetic_dicom_path)
     controller.state_manager.set_instance(instance, total_frames=4, frame_time_ms=40.0)
     controller._current_instance = instance
 
@@ -126,8 +127,9 @@ def _prepared_controller(
 def test_request_auto_segment_requires_active_simpson_workflow(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
-    controller, thread_pool, segmenter, _, _ = _prepared_controller(monkeypatch)
+    controller, thread_pool, segmenter, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     messages: list[str] = []
     controller.status_message.connect(messages.append)
 
@@ -141,9 +143,11 @@ def test_request_auto_segment_requires_active_simpson_workflow(
 def test_request_auto_segment_rejects_when_segmenter_unavailable(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
     controller, thread_pool, segmenter, _, _ = _prepared_controller(
         monkeypatch,
+        synthetic_dicom_path,
         available=False,
     )
     messages: list[str] = []
@@ -159,6 +163,7 @@ def test_request_auto_segment_rejects_when_segmenter_unavailable(
 def test_request_auto_segment_rejects_when_frame_is_not_marked(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
     monkeypatch.setattr(
         "echo_personal_tool.application.app_controller.OnnxWorker",
@@ -168,7 +173,7 @@ def test_request_auto_segment_rejects_when_frame_is_not_marked(
         thread_pool=_RecordingThreadPool(),
         segmenter=_FakeSegmenter(),
     )
-    instance = _sample_instance()
+    instance = _sample_instance(synthetic_dicom_path)
     controller.state_manager.set_instance(instance, total_frames=4, frame_time_ms=40.0)
     controller._current_instance = instance
     controller._pending_load_id = 1
@@ -185,8 +190,9 @@ def test_request_auto_segment_rejects_when_frame_is_not_marked(
 def test_request_auto_segment_rejects_when_playing(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
-    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch)
+    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     controller.state_manager.set_playing(True)
     messages: list[str] = []
     controller.status_message.connect(messages.append)
@@ -200,8 +206,9 @@ def test_request_auto_segment_rejects_when_playing(
 def test_request_auto_segment_emits_timeout_message(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
-    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch)
+    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     messages: list[str] = []
     controller.status_message.connect(messages.append)
 
@@ -215,8 +222,9 @@ def test_request_auto_segment_emits_timeout_message(
 def test_request_auto_segment_starts_worker_when_phase_set(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
-    controller, thread_pool, segmenter, _, _ = _prepared_controller(monkeypatch)
+    controller, thread_pool, segmenter, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     controller.set_simpson_workflow_context(phase="ED", view="A4C", chamber="LV")
 
     controller.request_auto_segment()
@@ -229,8 +237,9 @@ def test_request_auto_segment_starts_worker_when_phase_set(
 def test_request_auto_segment_blocks_concurrent_requests(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
-    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch)
+    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     messages: list[str] = []
     controller.status_message.connect(messages.append)
 
@@ -244,6 +253,7 @@ def test_request_auto_segment_blocks_concurrent_requests(
 def test_on_auto_segment_finished_sets_review_pending(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
     monkeypatch.setattr(
         AppController,
@@ -259,7 +269,7 @@ def test_on_auto_segment_finished_sets_review_pending(
         "echo_personal_tool.application.app_controller.explain_lv_auto_reject_reason",
         lambda contour, pixel_spacing: None,
     )
-    controller, _, _, instance, _ = _prepared_controller(monkeypatch)
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     controller.set_simpson_workflow_context(phase="ED", view="A4C")
     messages: list[str] = []
     controller.status_message.connect(messages.append)
@@ -293,6 +303,7 @@ def test_on_auto_segment_finished_sets_review_pending(
 def test_accept_ai_contour_review_clears_pending(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
     monkeypatch.setattr(
         AppController,
@@ -308,7 +319,7 @@ def test_accept_ai_contour_review_clears_pending(
         "echo_personal_tool.application.app_controller.explain_lv_auto_reject_reason",
         lambda contour, pixel_spacing: None,
     )
-    controller, _, _, instance, _ = _prepared_controller(monkeypatch)
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     controller.set_simpson_workflow_context(phase="ED", view="A4C")
     messages: list[str] = []
     controller.status_message.connect(messages.append)
@@ -342,10 +353,11 @@ def test_accept_ai_contour_review_clears_pending(
 def test_on_auto_segment_finished_auto_refines_when_enabled(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
     from echo_personal_tool.domain.models import Contour
 
-    controller, _, _, instance, pixels = _prepared_controller(monkeypatch)
+    controller, _, _, instance, pixels = _prepared_controller(monkeypatch, synthetic_dicom_path)
     controller.set_simpson_workflow_context(phase="ED", view="A4C")
     refine_calls: list[tuple[np.ndarray, Contour]] = []
 
@@ -400,8 +412,9 @@ def test_on_auto_segment_finished_auto_refines_when_enabled(
 def test_request_auto_segment_requires_a4c_view(
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
 ) -> None:
-    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch)
+    controller, thread_pool, _, _, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
     controller.set_simpson_workflow_context(phase="ED", view="A2C")
     messages: list[str] = []
     controller.status_message.connect(messages.append)

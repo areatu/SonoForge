@@ -19,6 +19,7 @@ from echo_personal_tool.domain.services.doppler_baseline import (
     detect_baseline_y,
 )
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
+from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_maybe_doppler_from_units,
     is_spectral_doppler_region,
@@ -28,6 +29,11 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     velocity_span_cm_s_from_region,
 )
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
+    get_vendor_info,
+    try_parse_samsung_tick_calibration,
+    try_parse_with_vendor_profile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +144,33 @@ def try_parse_from_dataset(
     *,
     kind: DopplerKind = DopplerKind.SPECTRAL,
 ) -> DopplerCalibrationState | None:
-    """Build calibration from DICOM tags (time and/or velocity axis from region deltas)."""
+    """Build calibration from DICOM tags (time and/or velocity axis from region deltas).
+
+    Priority:
+    1. Vendor-specific profile (GE, Philips, Samsung) — handles quirks like
+       GE's inverted velocity formula and absolute coordinates.
+    2. Generic DICOM-based calibration — standard approach for unknown vendors.
+    """
     regions = dataset.get("SequenceOfUltrasoundRegions")
     if not regions:
         return None
 
+    # Try vendor-specific profile first
+    vendor_info = get_vendor_info(dataset)
+    if vendor_info["profile"] is not None:
+        try:
+            frame_arr = np.asarray(frame) if frame is not None else None
+            vendor_result = try_parse_with_vendor_profile(dataset, frame_arr, kind=kind)
+            if vendor_result is not None:
+                logger.debug(
+                    "Using vendor profile %s for calibration",
+                    vendor_info["profile"],
+                )
+                return vendor_result
+        except Exception as e:
+            logger.debug("Vendor profile failed, falling back to generic: %s", e)
+
+    # Fallback: generic DICOM-based calibration
     # Get frame height for ROI relocation
     frame_height = float(dataset.get("Rows", 0) or 0)
 
@@ -159,11 +187,45 @@ def try_parse_from_dataset(
             width=max(1.0, x1 - x0),
             height=max(1.0, y1 - y0),
         )
+        logger.debug(
+            "[ROI-TRACE] generic_parse: roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) sf=%d strict=%s",
+            roi.x0,
+            roi.y0,
+            roi.x0 + roi.width,
+            roi.y0 + roi.height,
+            roi.width,
+            roi.height,
+            int(region.get("RegionSpatialFormat", 0) or 0),
+            is_spectral_doppler_region(region),
+        )
 
         # Samsung RS85 mis-tags Doppler as SF=1 with B-mode region bounds.
         # Force ROI to bottom half for fallback (SF=1) regions.
         if not is_spectral_doppler_region(region) and frame_height > 0:
             roi = _force_roi_to_bottom_half(roi, frame_height)
+
+        # Validate fallback regions: non-strict spectral Doppler regions must
+        # have velocity grid lines to be accepted. Samsung B-mode frames can
+        # have SF=1 with cm/s units that pass is_maybe_doppler_from_units().
+        # Strict spectral Doppler (SF=3/SF=4, DT=3/DT=4) is always accepted.
+        if not is_spectral_doppler_region(region) and frame is not None:
+            arr = np.asarray(frame)
+            if arr.ndim >= 2:
+                grid_lines = detect_doppler_grid_lines(
+                    arr,
+                    x0=int(roi.x0),
+                    y0=int(roi.y0),
+                    width=int(roi.width),
+                    height=int(roi.height),
+                )
+                logger.debug(
+                    "[ROI-TRACE] generic_parse: grid_lines=%d, strict_spatial=%s",
+                    len(grid_lines),
+                    is_spectral_doppler_region(region),
+                )
+                if len(grid_lines) < 1:
+                    logger.debug("[ROI-TRACE] generic_parse: SKIPPED — no velocity grid lines in fallback ROI")
+                    continue
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
 
@@ -241,6 +303,22 @@ def try_parse_from_dataset(
             return candidate
         if best is None:
             best = candidate
+
+    # Last resort: Samsung RS85 mis-tags PW/CW as SF=1 with unusable deltas,
+    # so neither vendor profile nor generic parse yields a time scale. Use the
+    # visible bottom-edge ruler ticks to derive the sweep frequency.
+    if best is None:
+        try:
+            frame_arr = np.asarray(frame) if frame is not None else None
+            tick_state = try_parse_samsung_tick_calibration(dataset, frame_arr, kind=kind)
+            if tick_state is not None:
+                logger.debug(
+                    "Using Samsung tick fallback for calibration (span=%.1f ms)",
+                    tick_state.time_span_ms,
+                )
+                return tick_state
+        except Exception as e:
+            logger.debug("Samsung tick fallback failed: %s", e)
 
     return best
 

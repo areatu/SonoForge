@@ -98,6 +98,7 @@ from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     spacing_from_known_distance,
 )
 from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
+from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.spectrogram_detector import (
     detect_spectrogram_roi,
 )
@@ -117,6 +118,7 @@ from echo_personal_tool.infrastructure.pixel_utils import (
     to_grayscale_array,
 )
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
+from echo_personal_tool.infrastructure.samsung_tick_detector import detect_samsung_doppler_scales
 from echo_personal_tool.infrastructure.user_preferences import (
     DEFAULT_RESULTS_OVERLAY_Y_RATIO,
     RESULTS_OVERLAY_EDGE_MARGIN,
@@ -131,6 +133,8 @@ from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
+
+logger = logging.getLogger(__name__)
 
 CALIBRATION_PROMPT_OVERLAY_KEY = "viewer.calibration.calibration_prompt"
 CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
@@ -676,6 +680,7 @@ class ViewerWidget(QWidget):
         self._doppler.workflow_step_changed.connect(self._on_doppler_workflow_step_changed)
         self._doppler.workflow_completed.connect(self._on_doppler_workflow_completed)
         self._doppler.trace_prompt_changed.connect(self._on_doppler_trace_prompt_changed)
+        self._doppler.autovti_region_selected.connect(self._on_autovti_region_selected)
         from echo_personal_tool.presentation.speckle_overlay import SpeckleOverlay
 
         self._speckle_overlay = SpeckleOverlay(self._view, self)
@@ -708,6 +713,7 @@ class ViewerWidget(QWidget):
         self._mmode_line_click_step: Literal["start", "end"] | None = None
         self._mmode_vertical_lock: bool = False
         self._vertical_caliper_labels = frozenset({"TAPSE", "M-mode"})
+        self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
         self._current_instance_path: Path | None = None
@@ -2268,6 +2274,10 @@ class ViewerWidget(QWidget):
     def _on_doppler_trace_prompt_changed(self, prompt: str) -> None:
         self._measurement_label.setText(prompt)
 
+    def _on_autovti_region_selected(self, t_start_ms: float, t_end_ms: float, direction: str) -> None:
+        trace_label = self._doppler.trace_label()
+        self.start_vti_auto_trace_with_region(t_start_ms, t_end_ms, direction, trace_label=trace_label)
+
     def restore_doppler_measurements(self, dto: object) -> None:
         from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 
@@ -2299,8 +2309,13 @@ class ViewerWidget(QWidget):
         self._measurement_label.show()
         return True
 
-    def start_vessel_auto_trace(self, preset: str = "normal") -> bool:
-        """Run the auto-trace envelope over the current Doppler frame."""
+    def start_vessel_auto_trace(self, preset: str = "normal", direction: str | None = None) -> bool:
+        """Run the auto-trace envelope over the current Doppler frame.
+
+        When *direction* is ``"up"`` or ``"down"`` the envelope is forced
+        to the corresponding side of the baseline; ``None`` picks the
+        side with the strongest signal automatically.
+        """
         if not self.is_vessel_available():
             return False
         if self._current_frame is None:
@@ -2318,6 +2333,7 @@ class ViewerWidget(QWidget):
             state.roi,
             state.baseline_y_px,
             preset=preset,
+            force_direction=direction,
         )
         if not envelope:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
@@ -2370,7 +2386,12 @@ class ViewerWidget(QWidget):
             )
         )
 
-    def _extract_doppler_envelope(self, preset: str = "normal") -> tuple[tuple[float, float], ...]:
+    def _extract_doppler_envelope(
+        self,
+        preset: str = "normal",
+        *,
+        force_direction: str | None = None,
+    ) -> tuple[tuple[float, float], ...]:
         """Extract the spectral envelope from the current Doppler frame."""
         if self._current_frame is None:
             return ()
@@ -2386,6 +2407,7 @@ class ViewerWidget(QWidget):
             state.roi,
             state.baseline_y_px,
             preset=preset,
+            force_direction=force_direction,
         )
 
     def start_vti_auto_trace(self, trace_label: str = "VTI") -> bool:
@@ -2399,6 +2421,49 @@ class ViewerWidget(QWidget):
             return False
         cycles = self._doppler_cardiac_cycles(envelope)
         if not self._doppler.apply_auto_vti_trace(envelope, cycles=cycles, trace_label=trace_label):
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        metrics = self._last_committed_doppler_metrics()
+        parts = [f"{trace_label}: {metrics.vti_cm:.1f} cm"]
+        if metrics.vpeak_cm_s is not None:
+            parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
+        if metrics.vmean_cm_s is not None:
+            parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
+        if metrics.pgpeak_mmhg is not None:
+            parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
+        if metrics.pgmean_mmhg is not None:
+            parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
+        self._measurement_label.setText(" | ".join(parts))
+        self._measurement_label.show()
+        return True
+
+    def start_vti_auto_trace_with_region(
+        self,
+        t_start_ms: float,
+        t_end_ms: float,
+        direction: str,
+        trace_label: str = "VTI",
+    ) -> bool:
+        """Auto-extract VTI envelope within a user-defined time range.
+
+        The two clicks (start/end time + baseline direction) are handled by
+        DopplerOverlayTools; this method performs the envelope extraction and
+        trace commit.
+        """
+        if self._current_frame is None:
+            return False
+        envelope = self._extract_doppler_envelope(force_direction=direction)
+        if not envelope or len(envelope) < 2:
+            self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
+            self._measurement_label.show()
+            return False
+        if not self._doppler.apply_auto_vti_trace(
+            envelope,
+            cycles=(),
+            trace_label=trace_label,
+            time_range_ms=(t_start_ms, t_end_ms),
+        ):
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
             return False
@@ -2634,6 +2699,9 @@ class ViewerWidget(QWidget):
             elif mode == "trace":
                 prompt = self._doppler.trace_prompt()
                 self._measurement_label.setText(prompt or tr("viewer.doppler_trace_prompt"))
+            elif mode == "autovti_region":
+                prompt = self._doppler.autovti_region_prompt()
+                self._measurement_label.setText(prompt or tr("viewer.doppler_mode_click", mode=mode))
             else:
                 self._measurement_label.setText(tr("viewer.doppler_mode_click", mode=mode))
             self._ensure_crosshair_graphics()
@@ -3037,17 +3105,62 @@ class ViewerWidget(QWidget):
                 frame=self._current_frame,
             )
             if parsed is not None:
+                _, frame_width = self._current_frame.shape[:2]
+                logger.debug(
+                    "[ROI-TRACE] auto_detect: parsed roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) time=%s vel=%s",
+                    parsed.roi.x0,
+                    parsed.roi.y0,
+                    parsed.roi.x0 + parsed.roi.width,
+                    parsed.roi.y0 + parsed.roi.height,
+                    parsed.roi.width,
+                    parsed.roi.height,
+                    parsed.has_time_scale_from_dicom(),
+                    parsed.has_velocity_scale_from_dicom(),
+                )
                 if parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom():
-                    # Full auto-calibration: both scales from DICOM
-                    self.apply_doppler_calibration_state(parsed, persist=True)
-                    return True
-                elif parsed.has_velocity_scale() or parsed.roi.width > 0:
-                    # Partial: ROI+baseline from DICOM, scales need manual input
-                    self.apply_doppler_calibration_state(parsed, persist=True)
-                    self._doppler_pending_roi = parsed.roi
-                    self._doppler_pending_baseline_y = parsed.baseline_y_px
-                    self._begin_doppler_velocity_calibration()
-                    return True
+                    # Full auto-calibration: both scales from DICOM.
+                    # Validate with unified validator to filter B-mode false positives.
+                    # Samsung B-mode frames can have SF=1 with cm/s/time units.
+                    if not parsed.has_velocity_scale_from_dicom():
+                        # Time scale from DICOM but velocity not — need visual validation.
+                        scales = detect_samsung_doppler_scales(self._current_frame)
+                        has_time_ticks = (
+                            scales.time_scale.confidence >= 0.4 and len(scales.time_scale.tick_positions) >= 5
+                        )
+                        if not has_time_ticks:
+                            logger.debug(
+                                "[ROI-TRACE] auto_detect: REJECTED — time_ticks=%s for time-only fallback region",
+                                has_time_ticks,
+                            )
+                        else:
+                            # Time ticks OK — also validate ROI has grid lines.
+                            vresult = validate_doppler_roi(
+                                parsed.roi,
+                                self._current_frame,
+                            )
+                            if not vresult.valid:
+                                logger.debug(
+                                    "[ROI-TRACE] auto_detect: REJECTED — %s",
+                                    vresult.reason,
+                                )
+                            else:
+                                self.apply_doppler_calibration_state(parsed, persist=True)
+                                return True
+                    else:
+                        # Both scales from DICOM tags — this is the strongest
+                        # signal. The ROI comes from the ultrasound machine,
+                        # not from visual detection. Accept directly.
+                        self.apply_doppler_calibration_state(parsed, persist=True)
+                        return True
+                elif parsed.has_velocity_scale():
+                    # Partial: velocity scale from DICOM, time needs manual input
+                    # ROI width must be >= 90% of frame to be a real Doppler panel.
+                    if parsed.roi.width >= frame_width * 0.9:
+                        self.apply_doppler_calibration_state(parsed, persist=True)
+                        self._doppler_pending_roi = parsed.roi
+                        self._doppler_pending_baseline_y = parsed.baseline_y_px
+                        self._begin_doppler_velocity_calibration(start_y=parsed.baseline_y_px)
+                        return True
         return False
 
     def _configure_doppler_axis_for_frame(self) -> None:
@@ -3066,28 +3179,97 @@ class ViewerWidget(QWidget):
             return
 
         height, width = self._current_frame.shape[:2]
-        # Try to detect the spectrogram ROI automatically
-        spec_roi = detect_spectrogram_roi(self._current_frame)
-        if spec_roi is not None:
-            x0, y0, x1, y1 = spec_roi
+
+        # For frames without DICOM Doppler tags (e.g. Samsung multiframe),
+        # detect all scales (time + velocity) and use them to refine ROI.
+        scales = detect_samsung_doppler_scales(self._current_frame)
+
+        # Check if time scale exists - without it, no Doppler spectrum present.
+        # Require confidence >= 0.4 and >= 5 ticks for reliable detection.
+        if scales.time_scale.confidence < 0.4 or len(scales.time_scale.tick_positions) < 5:
+            mapping = DopplerAxisMapping.from_frame_size(width, height)
+            self._doppler.set_axis_mapping(mapping)
+            self._doppler_axis_calibrated = False
+            return
+
+        # If refined ROI was computed from velocity scales, verify it's real Doppler.
+        if scales.refined_roi is not None:
+            x0, y0, x1, y1 = scales.refined_roi
             roi = DopplerSpectrogramRoi(
                 x0=x0,
                 y0=y0,
                 width=max(1.0, x1 - x0),
                 height=max(1.0, y1 - y0),
             )
+            logger.debug(
+                "[ROI-TRACE] scales_refined: roi=(%.0f,%.0f,%.0f,%.0f) size=(%.0fx%.0f) ticks=%d",
+                roi.x0,
+                roi.y0,
+                roi.x0 + roi.width,
+                roi.y0 + roi.height,
+                roi.width,
+                roi.height,
+                len(scales.time_scale.tick_positions),
+            )
+            # Unified validation: grid lines + geometry.
+            vresult = validate_doppler_roi(roi, self._current_frame)
+            if not vresult.valid:
+                logger.debug("[ROI-TRACE] scales_refined: REJECTED — %s", vresult.reason)
+                mapping = DopplerAxisMapping.from_frame_size(width, height)
+                self._doppler.set_axis_mapping(mapping)
+                self._doppler_axis_calibrated = False
+                return
             baseline_y = roi.y0 + roi.height / 2.0
+            # Use time scale to compute time span from visible width
+            time_span_ms = 0.0
+            if scales.time_scale.spacing_px > 0:
+                # Compute per-pixel time from tick spacing
+                # Samsung calibration: frequency_hz = k_constant * spacing_px
+                # For now use default k_constant = 0.2
+                k_constant = 0.2
+                frequency_hz = k_constant * scales.time_scale.spacing_px
+                if frequency_hz > 0:
+                    per_pixel_ms = 1000.0 / frequency_hz
+                    time_span_ms = per_pixel_ms * roi.width
+
             state = calibration_from_roi_and_baseline(
                 roi,
                 baseline_y,
                 velocity_span_cm_s=200.0,
-                time_span_ms=0.0,
+                time_span_ms=time_span_ms,
                 kind=DopplerKind.SPECTRAL,
             )
             self.apply_doppler_calibration_state(state, persist=False)
         else:
-            mapping = DopplerAxisMapping.from_frame_size(width, height)
-            self._doppler.set_axis_mapping(mapping)
+            # Fallback: try dark-band detection with unified validation.
+            spec_roi = detect_spectrogram_roi(self._current_frame)
+            if spec_roi is not None:
+                x0, y0, x1, y1 = spec_roi
+                roi = DopplerSpectrogramRoi(
+                    x0=x0,
+                    y0=y0,
+                    width=max(1.0, x1 - x0),
+                    height=max(1.0, y1 - y0),
+                )
+                vresult = validate_doppler_roi(roi, self._current_frame)
+                if not vresult.valid:
+                    logger.debug("[ROI-TRACE] dark_band: REJECTED — %s", vresult.reason)
+                    mapping = DopplerAxisMapping.from_frame_size(width, height)
+                    self._doppler.set_axis_mapping(mapping)
+                    self._doppler_axis_calibrated = False
+                else:
+                    baseline_y = roi.y0 + roi.height / 2.0
+                    state = calibration_from_roi_and_baseline(
+                        roi,
+                        baseline_y,
+                        velocity_span_cm_s=200.0,
+                        time_span_ms=0.0,
+                        kind=DopplerKind.SPECTRAL,
+                    )
+                    self.apply_doppler_calibration_state(state, persist=False)
+            else:
+                mapping = DopplerAxisMapping.from_frame_size(width, height)
+                self._doppler.set_axis_mapping(mapping)
         self._doppler_axis_calibrated = False
 
     def _handle_doppler_calibration_click(self, ev) -> bool:
@@ -3113,12 +3295,15 @@ class ViewerWidget(QWidget):
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
-            self._begin_doppler_velocity_calibration()
+            snapped_y = snap_y_to_nearest_tick(
+                y, self._depth_tick_y_positions, radius_px=self._calibration_tick_snap_radius_px
+            )
+            self._begin_doppler_velocity_calibration(start_y=snapped_y)
             return True
 
         return False
 
-    def _begin_doppler_velocity_calibration(self) -> None:
+    def _begin_doppler_velocity_calibration(self, start_y: float | None = None) -> None:
         if self._current_frame is None:
             return
         width = self._current_frame.shape[1]
@@ -3139,8 +3324,8 @@ class ViewerWidget(QWidget):
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
             self._doppler_grid_line_positions = []
-        self._calibration_start_y = None
-        self._measurement_label.setText(_DOPPLER_CAL_VELOCITY_KEY)
+        self._calibration_start_y = start_y
+        self._measurement_label.setText(tr(_DOPPLER_CAL_VELOCITY_KEY))
 
     def _handle_doppler_mouse_click(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:
@@ -5537,13 +5722,27 @@ class ViewerWidget(QWidget):
         else:
             velocity_span = span_cm_s
 
+        # Preserve an existing (e.g. tick-derived) time scale so manual
+        # velocity calibration does not wipe the Doppler time axis.
+        prior = getattr(self, "_doppler_calibration_state", None)
+        prior_time_span_ms = float(getattr(prior, "time_span_ms", 0.0) or 0.0)
+
         state = calibration_from_roi_and_baseline(
             roi,
             baseline_y,
             velocity_span_cm_s=velocity_span,
-            time_span_ms=0.0,
+            time_span_ms=prior_time_span_ms,
             kind=self._doppler_cal_kind,
         )
+        # Keep the auto-derived time scale flagged as DICOM/tick-derived so
+        # manual baseline/velocity recalibration does not silently disable
+        # time-based tools (is_doppler_time_calibrated).
+        if prior is not None:
+            state = replace(
+                state,
+                time_origin_ms=prior.time_origin_ms,
+                time_from_dicom_tags=prior.time_from_dicom_tags,
+            )
         self.apply_doppler_calibration_state(state)
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
@@ -5626,25 +5825,35 @@ class ViewerWidget(QWidget):
         self._calibration_marker_item.setData([x_start, x_end], [y, y])
 
     def _prompt_mmode_time_span(self, length_px: float) -> None:
-        span_ms, accepted = QInputDialog.getDouble(
-            self,
-            "M-mode time scale",
-            tr("viewer.mmode_cal_time_prompt"),
-            1000.0,
-            1.0,
-            10000.0,
-            0,
-        )
-        # Save pending values BEFORE _clear_calibration_caliper resets them
         pending_roi = self._mmode_pending_roi
         pending_depth = self._mmode_pending_depth_mm_per_pixel
+
+        state = self._mmode_calibration_state
+        auto_time = state.horizontal_ms_per_pixel if state is not None and state.time_from_dicom_tags else None
+        if auto_time is not None and auto_time > 0.0:
+            time_per_pixel_ms = float(auto_time)
+            accepted = True
+        else:
+            span_ms, accepted = QInputDialog.getDouble(
+                self,
+                "M-mode time scale",
+                tr("viewer.mmode_cal_time_prompt"),
+                1000.0,
+                1.0,
+                10000.0,
+                0,
+            )
+            if accepted and length_px > 0.0:
+                time_per_pixel_ms = span_ms / length_px
+            else:
+                time_per_pixel_ms = None
+
         self._clear_calibration_caliper()
-        if not accepted or length_px <= 0.0:
+        if not accepted or time_per_pixel_ms is None or length_px <= 0.0:
             self._mmode_pending_roi = None
             self._mmode_pending_depth_mm_per_pixel = None
             return
-        time_per_pixel_ms = span_ms / length_px
-        # Build full calibration state if we have pending ROI + depth
+
         if pending_roi is not None and pending_depth is not None:
             state = MmodeCalibrationState(
                 roi=pending_roi,
@@ -5664,7 +5873,6 @@ class ViewerWidget(QWidget):
             self._mmode_pending_depth_mm_per_pixel = None
             self.apply_mmode_calibration_state(state)
         elif not self._syncing_state:
-            # Standalone time calibration (no pending ROI)
             self.mmode_time_calibration_completed.emit(float(time_per_pixel_ms))
 
     def _prompt_mmode_depth_calibration(self, length_px: float) -> None:
@@ -5944,12 +6152,19 @@ class ViewerWidget(QWidget):
         end: tuple[float, float],
         label: str | None = None,
     ) -> tuple[float, float]:
-        if (label or self._current_caliper_label()) in self._vertical_caliper_labels:
+        effective_label = label or self._current_caliper_label()
+        if effective_label in self._vertical_caliper_labels:
             end_y = end[1]
             if self._mmode_calibration_state is not None:
                 roi = self._mmode_calibration_state.roi
                 end_y = max(roi.y0, min(end_y, roi.y1))
             return (start[0], end_y)
+        if effective_label in self._horizontal_time_caliper_labels:
+            end_x = end[0]
+            if self._mmode_calibration_state is not None:
+                roi = self._mmode_calibration_state.roi
+                end_x = max(roi.x0, min(end_x, roi.x1))
+            return (end_x, start[1])
         return end
 
     def _pixel_spacing_for_linear_label(
@@ -6093,12 +6308,20 @@ class ViewerWidget(QWidget):
         dy = end[1] - start[1]
         pixel_length = math.hypot(dx, dy)
         angle_degrees = math.degrees(math.atan2(dy, dx))
+        millimeter_length: float | None = None
+        time_ms: float | None = None
         if (
             label in self._vertical_caliper_labels
             and self._mmode_calibration_state is not None
             and self._mmode_calibration_state.vertical_mm_per_pixel is not None
         ):
             millimeter_length = abs(dy) * self._mmode_calibration_state.vertical_mm_per_pixel
+        elif (
+            label in self._horizontal_time_caliper_labels
+            and self._mmode_calibration_state is not None
+            and self._mmode_calibration_state.horizontal_ms_per_pixel is not None
+        ):
+            time_ms = abs(dx) * self._mmode_calibration_state.horizontal_ms_per_pixel
         else:
             pixel_spacing = self._pixel_spacing_for_linear_label(label, start, end)
             millimeter_length = (
@@ -6117,6 +6340,7 @@ class ViewerWidget(QWidget):
             start=start,
             end=end,
             sop_instance_uid=instance_uid,
+            time_ms=time_ms,
         )
 
     def _update_linear_caliper_label_preview(

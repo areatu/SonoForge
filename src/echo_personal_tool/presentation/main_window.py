@@ -1499,6 +1499,9 @@ class MainWindow(QMainWindow):
             panel.clear_all()
             return
 
+        from echo_personal_tool.domain.models.properties_snapshot import (
+            PropertiesSnapshot,
+        )
         from echo_personal_tool.infrastructure.properties_extractor import (
             extract_properties_snapshot,
         )
@@ -1506,20 +1509,35 @@ class MainWindow(QMainWindow):
         mmode = self._viewer.get_mmode_calibration_state()
         doppler = self._viewer.get_doppler_calibration_state()
 
-        snap = extract_properties_snapshot(
-            state.instance.path,
-            depth_ok=state.effective_pixel_spacing is not None,
-            mmode_calibrated=mmode.is_complete() if mmode else False,
-            mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
-            mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
-            mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
-            mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
-            mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
-            doppler_calibrated=doppler.is_complete() if doppler else False,
-            doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
-            doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
-            doppler_partial=doppler is not None and not doppler.is_complete(),
-        )
+        try:
+            snap = extract_properties_snapshot(
+                state.instance.path,
+                depth_ok=state.effective_pixel_spacing is not None,
+                mmode_calibrated=mmode.is_complete() if mmode else False,
+                mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
+                mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
+                mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
+                mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
+                mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
+                doppler_calibrated=doppler.is_complete() if doppler else False,
+                doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+                doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+                doppler_partial=doppler is not None and not doppler.is_complete(),
+            )
+        except Exception:
+            snap = PropertiesSnapshot.default(
+                depth_ok=state.effective_pixel_spacing is not None,
+                mmode_calibrated=mmode.is_complete() if mmode else False,
+                mmode_has_time_scale=mmode.has_time_scale() if mmode else False,
+                mmode_vertical_mm_per_pixel=mmode.vertical_mm_per_pixel if mmode else None,
+                mmode_horizontal_ms_per_pixel=mmode.horizontal_ms_per_pixel if mmode else None,
+                mmode_has_depth_from_dicom=mmode.has_depth_from_dicom() if mmode else False,
+                mmode_has_time_from_dicom=mmode.has_time_from_dicom() if mmode else False,
+                doppler_calibrated=doppler.is_complete() if doppler else False,
+                doppler_has_time_from_dicom=doppler.has_time_scale_from_dicom() if doppler else False,
+                doppler_has_velocity_from_dicom=doppler.has_velocity_scale_from_dicom() if doppler else False,
+                doppler_partial=doppler is not None and not doppler.is_complete(),
+            )
         panel.update_from_snapshot(snap)
 
         # Latest measurement
@@ -1817,13 +1835,21 @@ class MainWindow(QMainWindow):
         if action == MeasurementAction.DOPPLER_TRACE_AUTO:
             self._on_doppler_trace_auto()
             return
+        if action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION:
+            self._on_doppler_trace_auto_region(extra or "VTI")
+            return
         if action == MeasurementAction.VESSEL_PSV_EDV:
             if self._viewer.start_vessel_psv():
                 self._show_status(tr("status.vessel_psv"))
             return
-        if action == MeasurementAction.VESSEL_AUTO_TRACE:
+        if action == MeasurementAction.VESSEL_AUTO_TRACE_UP:
             preset = self._tool_panel.measure._menu.vessel_preset()
-            if self._viewer.start_vessel_auto_trace(preset):
+            if self._viewer.start_vessel_auto_trace(preset, direction="up"):
+                self._show_status(tr("status.vessel_auto_trace"))
+            return
+        if action == MeasurementAction.VESSEL_AUTO_TRACE_DOWN:
+            preset = self._tool_panel.measure._menu.vessel_preset()
+            if self._viewer.start_vessel_auto_trace(preset, direction="down"):
                 self._show_status(tr("status.vessel_auto_trace"))
             return
         if action == MeasurementAction.VESSEL_AVERAGE:
@@ -1890,10 +1916,16 @@ class MainWindow(QMainWindow):
         else:
             self._show_status(tr("status.load_first_frame_doppler"))
 
+    def _on_doppler_trace_auto_region(self, trace_label: str) -> None:
+        if not self._ensure_doppler_ready(require_time=True):
+            return
+        self._viewer.set_doppler_tool_mode("autovti_region", trace_label=trace_label)
+        self._show_status(tr("status.autovti_region_tool", trace_label=trace_label))
+
     def _on_rv_s_prime(self) -> None:
         if not self._ensure_doppler_ready():
             return
-        self._viewer.set_doppler_tool_mode("peak", peak_label="s_sept")
+        self._viewer.set_doppler_tool_mode("peak", peak_label="s_prime_rv")
         self._show_status(tr("status.rv_s_prime_tool"))
 
     def _on_rv_fac(self) -> None:
@@ -1936,7 +1968,7 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.mmode_calibration_start"))
             return
 
-        if self._viewer.start_mmode_time_calibration():
+        if self._viewer.start_linear_caliper_for("Time"):
             self._show_status(tr("status.mmode_time_ready"))
         else:
             self._show_status("M-mode calibration required")

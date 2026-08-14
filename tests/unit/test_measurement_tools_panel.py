@@ -58,10 +58,10 @@ def test_calibration_button_emits_signal(qtbot) -> None:
     assert received == [True]
 
 
-def test_lav_4c_starts_manual_contour(qtbot) -> None:
+def test_lav_4c_starts_manual_contour(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -80,10 +80,10 @@ def test_lav_4c_starts_manual_contour(qtbot) -> None:
     assert window._viewer._active_contour_phase == "ES"
 
 
-def test_rav_4c_starts_manual_contour(qtbot) -> None:
+def test_rav_4c_starts_manual_contour(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -102,10 +102,10 @@ def test_rav_4c_starts_manual_contour(qtbot) -> None:
     assert window._viewer._active_contour_phase == "ES"
 
 
-def test_reset_measurements_clears_controller_state(qtbot) -> None:
+def test_reset_measurements_clears_controller_state(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -128,10 +128,10 @@ def test_reset_measurements_clears_controller_state(qtbot) -> None:
     assert snapshot.measurement_snapshot.la_simpson is None
 
 
-def test_calibration_button_starts_caliper(qtbot) -> None:
+def test_calibration_button_starts_caliper(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -173,7 +173,7 @@ def test_es_prompt_blinks_target_button(qtbot) -> None:
     assert not panel._blink_timer.isActive()
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -182,14 +182,14 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def test_manual_diastole_starts_manual_contour(qtbot) -> None:
+def test_manual_diastole_starts_manual_contour(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -208,10 +208,10 @@ def test_manual_diastole_starts_manual_contour(qtbot) -> None:
     assert window._viewer._active_contour_chamber == "LV"
 
 
-def test_mbs_edv_auto_starts_model_contour(qtbot) -> None:
+def test_mbs_edv_auto_starts_model_contour(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -231,10 +231,10 @@ def test_mbs_edv_auto_starts_model_contour(qtbot) -> None:
     assert not window._viewer.is_contour_mode_active
 
 
-def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch) -> None:
+def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -252,7 +252,7 @@ def test_ed_contour_completion_starts_es_prompt(qtbot, monkeypatch) -> None:
     assert window._tool_panel.measure._menu._blink_timer.isActive()
 
 
-def test_frame_overlay_clears_on_frame_change(qtbot) -> None:
+def test_frame_overlay_clears_on_frame_change(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show()
@@ -264,7 +264,7 @@ def test_frame_overlay_clears_on_frame_change(qtbot) -> None:
 
     viewer.set_state(
         ViewerState(
-            instance=_sample_instance(),
+            instance=_sample_instance(synthetic_dicom_path),
             current_frame_index=1,
             total_frames=10,
             frame_time_ms=33.3,

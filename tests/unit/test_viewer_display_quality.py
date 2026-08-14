@@ -15,7 +15,7 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -24,13 +24,13 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def _sample_state() -> ViewerState:
+def _sample_state(dicom_path: Path) -> ViewerState:
     return ViewerState(
-        instance=_sample_instance(),
+        instance=_sample_instance(dicom_path),
         current_frame_index=0,
         total_frames=10,
         frame_time_ms=33.3,
@@ -38,12 +38,12 @@ def _sample_state() -> ViewerState:
     )
 
 
-def test_debug_overlay_toggle(qtbot) -> None:
+def test_debug_overlay_toggle(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show()
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     assert not viewer._debug_overlay_visible
     assert viewer._debug_overlay_label.isHidden()
@@ -61,20 +61,20 @@ def test_debug_overlay_toggle(qtbot) -> None:
     assert viewer._debug_overlay_label.isHidden()
 
 
-def test_zoom_mode_default_fit(qtbot) -> None:
+def test_zoom_mode_default_fit(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     assert viewer.zoom_mode == "fit"
 
 
-def test_cycle_zoom_mode(qtbot) -> None:
+def test_cycle_zoom_mode(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     assert viewer.zoom_mode == "fit"
 
@@ -88,11 +88,11 @@ def test_cycle_zoom_mode(qtbot) -> None:
     assert viewer.zoom_mode == "fit"
 
 
-def test_set_zoom_mode(qtbot) -> None:
+def test_set_zoom_mode(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     viewer.set_zoom_mode("100%")
     assert viewer.zoom_mode == "100%"
@@ -114,12 +114,12 @@ def test_graphics_view_smooth_hint(qtbot) -> None:
     assert bool(hints & QPainter.RenderHint.SmoothPixmapTransform)
 
 
-def test_native_resolution_preserved(qtbot) -> None:
+def test_native_resolution_preserved(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     pixels = np.zeros((480, 640), dtype=np.uint8)
     viewer.show_frame(pixels)
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     assert viewer._current_frame is not None
     h, w = viewer._current_frame.shape[:2]

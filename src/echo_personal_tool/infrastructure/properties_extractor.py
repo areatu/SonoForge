@@ -117,6 +117,36 @@ def _bsa_du_bois(height_m: float | None, weight_kg: float | None) -> float | Non
     return 0.007184 * (height_m * 100) ** 0.725 * weight_kg**0.425
 
 
+def _empty_snapshot(
+    *,
+    depth_ok: bool = False,
+    mmode_calibrated: bool = False,
+    mmode_has_time_scale: bool = False,
+    mmode_vertical_mm_per_pixel: float | None = None,
+    mmode_horizontal_ms_per_pixel: float | None = None,
+    mmode_has_depth_from_dicom: bool = False,
+    mmode_has_time_from_dicom: bool = False,
+    doppler_calibrated: bool = False,
+    doppler_has_time_from_dicom: bool = False,
+    doppler_has_velocity_from_dicom: bool = False,
+    doppler_partial: bool = False,
+) -> PropertiesSnapshot:
+    """Build a default snapshot when the DICOM file is missing or unreadable."""
+    return PropertiesSnapshot.default(
+        depth_ok=depth_ok,
+        mmode_calibrated=mmode_calibrated,
+        mmode_has_time_scale=mmode_has_time_scale,
+        mmode_vertical_mm_per_pixel=mmode_vertical_mm_per_pixel,
+        mmode_horizontal_ms_per_pixel=mmode_horizontal_ms_per_pixel,
+        mmode_has_depth_from_dicom=mmode_has_depth_from_dicom,
+        mmode_has_time_from_dicom=mmode_has_time_from_dicom,
+        doppler_calibrated=doppler_calibrated,
+        doppler_has_time_from_dicom=doppler_has_time_from_dicom,
+        doppler_has_velocity_from_dicom=doppler_has_velocity_from_dicom,
+        doppler_partial=doppler_partial,
+    )
+
+
 def extract_properties_snapshot(
     path: Path,
     *,
@@ -133,7 +163,22 @@ def extract_properties_snapshot(
     doppler_partial: bool = False,
 ) -> PropertiesSnapshot:
     """Extract clinical summary from DICOM header."""
-    dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+    try:
+        dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+    except (OSError, EOFError, pydicom.errors.InvalidDicomError):
+        return _empty_snapshot(
+            depth_ok=depth_ok,
+            mmode_calibrated=mmode_calibrated,
+            mmode_has_time_scale=mmode_has_time_scale,
+            mmode_vertical_mm_per_pixel=mmode_vertical_mm_per_pixel,
+            mmode_horizontal_ms_per_pixel=mmode_horizontal_ms_per_pixel,
+            mmode_has_depth_from_dicom=mmode_has_depth_from_dicom,
+            mmode_has_time_from_dicom=mmode_has_time_from_dicom,
+            doppler_calibrated=doppler_calibrated,
+            doppler_has_time_from_dicom=doppler_has_time_from_dicom,
+            doppler_has_velocity_from_dicom=doppler_has_velocity_from_dicom,
+            doppler_partial=doppler_partial,
+        )
 
     # Identity
     modality = str(dataset.get("Modality", "OT") or "OT")

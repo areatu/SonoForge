@@ -170,6 +170,14 @@ class StudyMeasurementData:
     def doppler_measurement(self) -> DopplerMeasurementDTO | None:
         return aggregate_doppler_by_instance(dict(self.doppler_by_instance))
 
+    @property
+    def all_doppler_dto(self) -> DopplerMeasurementDTO | None:
+        """Aggregate doppler data across all instances and frames in the study."""
+        aggregated = aggregate_doppler_by_instance(dict(self.doppler_by_instance))
+        for _uid, _frame, dto in self.doppler_by_instance_frame:
+            aggregated = merge_doppler_dtos(aggregated, dto)
+        return aggregated
+
 
 class StudyMeasurementSessionStore:
     """Accumulates raw measurement inputs per study until the app session ends."""

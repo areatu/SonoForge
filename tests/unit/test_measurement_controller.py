@@ -25,7 +25,7 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.services.mbs_lite_service import fit_contour_from_landmarks
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -34,7 +34,7 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=40.0,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -78,9 +78,9 @@ def _sample_linear_measurements() -> tuple[LinearMeasurement, ...]:
     )
 
 
-def test_app_controller_recomputes_lvef_from_model_contours() -> None:
+def test_app_controller_recomputes_lvef_from_model_contours(synthetic_dicom_path) -> None:
     controller = AppController()
-    controller.state_manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
 
     ed = fit_contour_from_landmarks(
         septal=(10.0, 40.0),
@@ -106,9 +106,9 @@ def test_app_controller_recomputes_lvef_from_model_contours() -> None:
     assert snapshot.lvef.a4c.esv_ml > 0.0
 
 
-def test_app_controller_recomputes_measurements_from_current_state() -> None:
+def test_app_controller_recomputes_measurements_from_current_state(synthetic_dicom_path) -> None:
     controller = AppController()
-    controller.state_manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
 
     doppler = _sample_doppler()
     contours = _sample_contours()
@@ -121,9 +121,61 @@ def test_app_controller_recomputes_measurements_from_current_state() -> None:
     snapshot = controller.state_manager.snapshot.measurement_snapshot
     assert snapshot is not None
     assert snapshot.doppler == compute(doppler)
-    assert snapshot.lvef == calculate(contours, _sample_instance().pixel_spacing)
+    assert snapshot.lvef == calculate(contours, _sample_instance(synthetic_dicom_path).pixel_spacing)
     assert snapshot.teichholz == from_linear_measurements(linear_measurements)
     assert snapshot.linear_measurements == linear_measurements
+
+
+def test_app_controller_overlay_augments_single_view_with_study_biplane(synthetic_dicom_path) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
+
+    ed4c = fit_contour_from_landmarks(
+        septal=(10.0, 40.0),
+        lateral=(50.0, 40.0),
+        apex=(30.0, 10.0),
+        phase="ED",
+        view="A4C",
+    )
+    es4c = fit_contour_from_landmarks(
+        septal=(12.0, 40.0),
+        lateral=(48.0, 40.0),
+        apex=(30.0, 15.0),
+        phase="ES",
+        view="A4C",
+    )
+    ed2c = fit_contour_from_landmarks(
+        septal=(10.0, 40.0),
+        lateral=(50.0, 40.0),
+        apex=(30.0, 10.0),
+        phase="ED",
+        view="A2C",
+    )
+    es2c = fit_contour_from_landmarks(
+        septal=(12.0, 40.0),
+        lateral=(48.0, 40.0),
+        apex=(30.0, 15.0),
+        phase="ES",
+        view="A2C",
+    )
+    from dataclasses import replace
+
+    ed2c = replace(ed2c, sop_instance_uid="1.2.3.4.6")
+    es2c = replace(es2c, sop_instance_uid="1.2.3.4.6")
+    controller.on_contours_changed([ed4c, es4c])
+    study_uid = controller._resolve_study_uid()
+    controller._measurement_session.merge_contours(study_uid, (ed2c, es2c))
+
+    state = controller.state_manager.snapshot
+    snapshot = controller.compute_overlay_snapshot(state)
+    assert snapshot is not None
+    assert snapshot.lvef is not None
+    assert snapshot.lvef.a4c is not None
+    assert snapshot.lvef.a2c is None  # 2C lives on another instance
+    assert snapshot.lvef.edv_bi_ml is not None
+    assert snapshot.lvef.edv_bi_ml > 0.0
+    assert snapshot.lvef.esv_bi_ml is not None
+    assert snapshot.lvef.esv_bi_ml > 0.0
 
 
 @pytest.fixture(scope="session", autouse=True)

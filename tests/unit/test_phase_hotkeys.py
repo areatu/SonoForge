@@ -17,7 +17,7 @@ from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.presentation.main_window import MainWindow
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -26,11 +26,11 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=None,
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
+def test_main_window_l_and_escape_toggle_linear_caliper(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     instance = InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
@@ -40,7 +40,7 @@ def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=synthetic_dicom_path,
     )
     controller.state_manager.set_instance(
         instance,
@@ -68,10 +68,10 @@ def test_main_window_l_and_escape_toggle_linear_caliper(qtbot) -> None:
     assert window._viewer._measurement_label.text() == "LVEDD: —"
 
 
-def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
+def test_main_window_c_enter_and_escape_control_contours(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -106,10 +106,10 @@ def test_main_window_c_enter_and_escape_control_contours(qtbot) -> None:
     assert len(window._viewer.contours()) == 1
 
 
-def test_main_window_m_hotkey_works_when_viewer_has_focus(qtbot) -> None:
+def test_main_window_m_hotkey_works_when_viewer_has_focus(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -142,10 +142,10 @@ def test_main_window_i_hotkey_requires_lv_auto_session(qtbot) -> None:
     controller.request_auto_segment.assert_not_called()
 
 
-def test_main_window_i_hotkey_requests_auto_segment_in_2d_mode(qtbot) -> None:
+def test_main_window_i_hotkey_requests_auto_segment_in_2d_mode(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -161,10 +161,10 @@ def test_main_window_i_hotkey_requests_auto_segment_in_2d_mode(qtbot) -> None:
     controller.request_auto_segment.assert_called_once()
 
 
-def test_main_window_i_hotkey_blocked_during_playback(qtbot) -> None:
+def test_main_window_i_hotkey_blocked_during_playback(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -180,10 +180,10 @@ def test_main_window_i_hotkey_blocked_during_playback(qtbot) -> None:
     controller.request_auto_segment.assert_not_called()
 
 
-def test_main_window_i_hotkey_ignored_in_doppler_mode(qtbot) -> None:
+def test_main_window_i_hotkey_ignored_in_doppler_mode(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )

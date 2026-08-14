@@ -6,7 +6,8 @@ import statistics
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.domain.calculations.vessel_metrics import (
@@ -26,12 +27,15 @@ from echo_personal_tool.domain.services.cardiac_cycle_service import (
     derive_psv_edv_indices_per_cycle,
     derive_psv_edv_indices_with_cycles,
 )
-from echo_personal_tool.domain.services.doppler_trace_points import finalize_vti_trace_points
+from echo_personal_tool.domain.services.doppler_trace_points import (
+    filter_velocity_spikes,
+    finalize_vti_trace_points,
+)
 
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
 _TRACE_MIN_SAMPLE_PX = 4.0
 
-_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "Vmax", "TR Vmax")
+_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "s_lat", "Vmax", "TR Vmax", "s_prime_rv")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
 _MITRAL_INFLOW_WORKFLOW: tuple[tuple[str, str], ...] = (
     ("peak", "E"),
@@ -57,6 +61,7 @@ class DopplerOverlayTools(QWidget):
     workflow_completed = Signal()
     trace_prompt_changed = Signal(str)
     vessel_changed = Signal(object)
+    autovti_region_selected = Signal(float, float, str)
 
     def __init__(self, plot: pg.PlotWidget, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -124,6 +129,11 @@ class DopplerOverlayTools(QWidget):
         self._vessel_cycle_band: pg.PlotDataItem | None = None
         self._vessel_cycle_text: pg.TextItem | None = None
 
+        self._autovti_start_ms: float | None = None
+        self._autovti_direction: str | None = None
+        self._autovti_region_item: pg.PlotCurveItem | None = None
+        self._autovti_band_item: pg.PlotDataItem | None = None
+
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
         self._refresh_calibration_graphics()
@@ -137,13 +147,15 @@ class DopplerOverlayTools(QWidget):
 
     def set_tool_mode(self, mode: str) -> None:
         mode_name = mode.strip().lower()
-        if mode_name not in {"none", "peak", "interval", "trace"}:
+        if mode_name not in {"none", "peak", "interval", "trace", "autovti_region"}:
             raise ValueError(f"Unsupported Doppler tool mode: {mode}")
         if mode_name != self._tool_mode:
             self._clear_partial_state()
         self._tool_mode = mode_name
         if mode_name == "trace":
             self._emit_trace_prompt()
+        elif mode_name == "autovti_region":
+            self._emit_autovti_prompt()
 
     def has_trace_onset(self) -> bool:
         return bool(self._active_partial_points)
@@ -211,9 +223,16 @@ class DopplerOverlayTools(QWidget):
             return self._trace_label
         return self._traces[-1].label
 
+    def trace_label(self) -> str:
+        return self._trace_label
+
     def cancel_active_tool(self) -> bool:
         had_active_state = (
-            self._tool_mode != "none" or bool(self._active_partial_points) or self._active_interval_start is not None
+            self._tool_mode != "none"
+            or bool(self._active_partial_points)
+            or self._active_interval_start is not None
+            or self._autovti_start_ms is not None
+            or self._autovti_band_item is not None
         )
         self._tool_mode = "none"
         self._workflow = None
@@ -361,6 +380,8 @@ class DopplerOverlayTools(QWidget):
             time_ms = self._axis_mapping.time_ms_from_x(x_px)
             velocity_cm_s = self._axis_mapping.velocity_cm_s_from_y(y_px)
             return self._handle_trace_click(time_ms, velocity_cm_s, y_px=y_px)
+        if self._tool_mode == "autovti_region":
+            return self._handle_autovti_click(x_px, y_px)
 
         time_ms = self._axis_mapping.time_ms_from_x(x_px)
         velocity_cm_s = self._axis_mapping.velocity_cm_s_from_y(y_px)
@@ -504,13 +525,15 @@ class DopplerOverlayTools(QWidget):
         *,
         cycles: tuple[CardiacCycle, ...] = (),
         trace_label: str = "VTI",
+        time_range_ms: tuple[float, float] | None = None,
     ) -> bool:
-        """Commit a cycle-clipped auto-envelope as an editable VTI trace.
+        """Commit a clipped auto-envelope as an editable VTI trace.
 
-        When ECG *cycles* are provided, the envelope is clipped to the cycle
-        containing the highest-velocity sample so the committed ``DopplerTrace``
-        measures VTI within one reproducible cardiac cycle; otherwise the whole
-        envelope is used. Returns ``True`` when a trace was committed.
+        When *time_range_ms* is given, the envelope is clipped to the user-
+        selected time span. When ECG *cycles* are given (and no time range),
+        the envelope is clipped to the cycle containing the highest-velocity
+        sample. Otherwise the whole envelope is used. Returns ``True`` when a
+        trace was committed.
         """
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2:
@@ -523,7 +546,12 @@ class DopplerOverlayTools(QWidget):
         self._auto_envelope_item = item
 
         clipped = envelope
-        if cycles:
+        if time_range_ms is not None:
+            t_start, t_end = time_range_ms
+            clipped = tuple(p for p in envelope if t_start <= self._axis_mapping.time_ms_from_x(p[0]) <= t_end)
+            if len(clipped) < 3:
+                return False
+        elif cycles:
             peak_time = self._axis_mapping.time_ms_from_x(envelope[int(np.argmin(ys))][0])
             cycle = next((c for c in cycles if c.start_ms <= peak_time <= c.end_ms), None)
             if cycle is not None:
@@ -540,7 +568,8 @@ class DopplerOverlayTools(QWidget):
             )
             for point in clipped
         ]
-        finalized = finalize_vti_trace_points(mapped)
+        filtered = filter_velocity_spikes(mapped)
+        finalized = finalize_vti_trace_points(filtered)
         if len(finalized) < 3:
             return False
         self._append_trace(DopplerTrace(label=trace_label, points=finalized))
@@ -774,6 +803,7 @@ class DopplerOverlayTools(QWidget):
         self._trace_last_plot_xy = None
         self._trace_item.setData([], [])
         self._clear_interval_preview()
+        self._clear_autovti_region()
 
     def _clear_interval_preview(self) -> None:
         if self._interval_preview_item is not None:
@@ -881,7 +911,7 @@ class DopplerOverlayTools(QWidget):
     def _ensure_interval_preview_item(self) -> pg.PlotDataItem:
         if self._interval_preview_item is None:
             self._interval_preview_item = pg.PlotDataItem(
-                pen=pg.mkPen("#00897b", width=2, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen("#00897b", width=3, style=Qt.PenStyle.DashLine),
                 symbol="t",
                 symbolSize=10,
                 symbolBrush=pg.mkBrush("#00897b"),
@@ -925,7 +955,7 @@ class DopplerOverlayTools(QWidget):
         x_start = self._axis_mapping.x_from_time_ms(marker.start_time_ms)
         x_end = self._axis_mapping.x_from_time_ms(marker.end_time_ms)
         y_base = self._baseline_y_for_interval()
-        interval_pen = pg.mkPen("#00897b", width=2)
+        interval_pen = pg.mkPen("#00897b", width=3)
         interval_item = pg.PlotDataItem(
             [x_start, x_end],
             [y_base, y_base],
@@ -1043,6 +1073,21 @@ class DopplerOverlayTools(QWidget):
         if prompt:
             self.trace_prompt_changed.emit(prompt)
 
+    def autovti_region_prompt(self) -> str | None:
+        if self._tool_mode != "autovti_region":
+            return None
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        label = self._trace_label
+        if self._autovti_start_ms is None:
+            return f"{label}: {tr('doppler.autovti_click_start')}"
+        return f"{label}: {tr('doppler.autovti_click_end')}"
+
+    def _emit_autovti_prompt(self) -> None:
+        prompt = self.autovti_region_prompt()
+        if prompt:
+            self.trace_prompt_changed.emit(prompt)
+
     def _baseline_plot_y_px(self) -> float:
         baseline = self._axis_mapping.baseline_plot_y()
         if baseline is not None:
@@ -1087,6 +1132,91 @@ class DopplerOverlayTools(QWidget):
         )
         self._emit_trace_prompt()
         return True
+
+    def _handle_autovti_click(self, x_px: float, y_px: float) -> bool:
+        """Two-click region selection for Auto VTI: start/end time + direction.
+
+        The lateralization of the clicks (above/below baseline) determines the
+        auto-tracing direction. Direction is derived from
+        ``velocity_cm_s_from_y`` so it is consistent with the axis mapping's
+        coordinate convention (the same conversion used by trace and peak
+        modes), rather than a raw Y comparison that may be in a different
+        coordinate space.
+        """
+        if self._autovti_start_ms is None:
+            start_ms = self._axis_mapping.time_ms_from_x(x_px)
+            self._autovti_start_ms = start_ms
+            velocity = self._axis_mapping.velocity_cm_s_from_y(y_px)
+            self._autovti_direction = "up" if velocity >= 0 else "down"
+            self._show_autovti_region_start(x_px)
+            self._emit_autovti_prompt()
+            return True
+        start_ms = self._autovti_start_ms
+        end_ms = self._axis_mapping.time_ms_from_x(x_px)
+        if end_ms < start_ms:
+            start_ms, end_ms = end_ms, start_ms
+        direction = self._autovti_direction
+
+        self._show_autovti_region_band(start_ms, end_ms)
+
+        QTimer.singleShot(0, self._clear_autovti_region)
+        self._tool_mode = "none"
+        self.autovti_region_selected.emit(start_ms, end_ms, direction)
+        return True
+
+    def _show_autovti_region_start(self, x_px: float) -> None:
+        if self._autovti_region_item is not None:
+            try:
+                self._plot.removeItem(self._autovti_region_item)
+            except Exception:
+                pass
+        x_plot = float(x_px)
+        y_min = self._axis_mapping.plot_origin_y
+        y_max = y_min + self._axis_mapping.plot_height
+        item = pg.PlotCurveItem(
+            [x_plot, x_plot],
+            [y_min, y_max],
+            pen=pg.mkPen("#ffaa00", width=1, style=Qt.PenStyle.DotLine),
+        )
+        item.setZValue(22)
+        self._plot.addItem(item)
+        self._autovti_region_item = item
+
+    def _show_autovti_region_band(self, start_ms: float, end_ms: float) -> None:
+        if self._autovti_band_item is not None:
+            try:
+                self._plot.removeItem(self._autovti_band_item)
+            except Exception:
+                pass
+        x_start = self._axis_mapping.x_from_time_ms(start_ms)
+        x_end = self._axis_mapping.x_from_time_ms(end_ms)
+        y_min = self._axis_mapping.plot_origin_y
+        y_max = y_min + self._axis_mapping.plot_height
+        item = pg.PlotDataItem(
+            [x_start, x_end, x_end, x_start, x_start],
+            [y_min, y_min, y_max, y_max, y_min],
+            pen=QPen(Qt.PenStyle.NoPen),
+            brush=pg.mkBrush(255, 170, 0, 40),
+        )
+        item.setZValue(21)
+        self._plot.addItem(item)
+        self._autovti_band_item = item
+
+    def _clear_autovti_region(self) -> None:
+        if self._autovti_region_item is not None:
+            try:
+                self._plot.removeItem(self._autovti_region_item)
+            except Exception:
+                pass
+            self._autovti_region_item = None
+        if self._autovti_band_item is not None:
+            try:
+                self._plot.removeItem(self._autovti_band_item)
+            except Exception:
+                pass
+            self._autovti_band_item = None
+        self._autovti_start_ms = None
+        self._autovti_direction = None
 
     def _handle_mapped_click(
         self,

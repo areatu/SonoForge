@@ -94,8 +94,6 @@ class TestPreferencesWorkflow:
         assert prefs.magnetic_snap_enabled is True
 
     def test_experimental_feature_flags(self) -> None:
-        """Experimental feature flags default to off."""
+        """Only LV strain is an experimental feature (off by default)."""
         prefs = default_user_preferences()
         assert prefs.show_strain is False
-        assert prefs.show_diastolic_function is False
-        assert prefs.show_doppler_mk_av is False

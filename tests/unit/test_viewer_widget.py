@@ -3018,6 +3018,78 @@ class TestBeginDopplerVelocityCalibration:
         assert w._calibration_kind == "doppler_velocity"
         assert w._calibration_active is True
 
+    def test_velocity_span_preserves_prior_time_scale(self, qtbot) -> None:
+        """Manual velocity calibration keeps an auto-detected time span."""
+        from unittest.mock import patch
+
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        prior = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(prior, persist=False)
+
+        with patch(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            return_value=(200.0, True),
+        ):
+            w._prompt_spectral_velocity_span(64.0)
+
+        result = w._doppler_calibration_state
+        assert result is not None
+        assert result.time_span_ms == 5600.0
+        assert result.has_time_scale()
+
+    def test_velocity_span_keeps_auto_time_scale_calibrated(self, qtbot) -> None:
+        """Manual velocity calibration must not drop the DICOM/tick time flag.
+
+        When the time scale came from auto-detection (DICOM tags or the tick
+        fallback) a manual baseline/velocity recalibration must keep the time
+        axis auto-calibrated, otherwise time-based tools and results overlay
+        are disabled (perceived as "time scale reset").
+        """
+        from unittest.mock import patch
+
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        prior = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(prior, persist=False)
+
+        with patch(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            return_value=(200.0, True),
+        ):
+            w._prompt_spectral_velocity_span(64.0)
+
+        result = w._doppler_calibration_state
+        assert result is not None
+        assert result.has_time_scale_from_dicom()
+        assert w.is_doppler_time_calibrated()
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Handle doppler mouse click
@@ -3168,6 +3240,60 @@ class TestDopplerCalibrationClick:
         assert w.start_doppler_calibration()
         assert w._doppler_cal_step == "baseline"
         assert w._doppler_pending_roi is None
+
+    def test_baseline_sets_velocity_segment_origin(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 200), dtype=np.uint8))
+        assert w.start_doppler_calibration()
+        assert w._doppler_cal_step == "baseline"
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(100, 80),
+            QPointF(100, 80),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        result = w._handle_doppler_calibration_click(event)
+        assert result is True
+        assert w._doppler_cal_step is None
+        assert w._doppler_pending_baseline_y is not None
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
+
+    def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 200), dtype=np.uint8))
+        assert w.start_doppler_calibration()
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QMouseEvent
+
+        def click(x, y):
+            return QMouseEvent(
+                QEvent.Type.MouseButtonPress,
+                QPointF(x, y),
+                QPointF(x, y),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        w._handle_doppler_calibration_click(click(100, 80))
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
+        baseline = w._calibration_start_y
+        assert baseline is not None
+
+        promoted = []
+        monkeypatch.setattr(
+            w,
+            "_prompt_spectral_velocity_span",
+            lambda length_px: promoted.append(length_px),
+        )
+        result = w._handle_calibration_mouse_press(click(100, 30))
+        assert result is True
+        assert promoted == [abs(w._map_view_event(click(100, 30))[1] - baseline)]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -3829,3 +3955,104 @@ class TestApplyRBFDragStep:
         w._drag_session = (0, 10.0, 10.0, 0, 1)
         # Should not raise
         w._apply_rbf_drag_step(0, 15.0, 15.0, grab_index=0)
+
+
+class TestMmodeTimeAutoScale:
+    def _make_mmode_state(self):
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        from echo_personal_tool.domain.models.frame_panels import (
+            MmodeCalibrationState,
+        )
+
+        return MmodeCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0),
+            vertical_mm_per_pixel=0.355,
+            horizontal_ms_per_pixel=4.167,
+            from_dicom_tags=True,
+            depth_from_dicom_tags=True,
+            time_from_dicom_tags=True,
+        )
+
+    def test_time_scale_skips_dialog_when_present(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        w.apply_mmode_calibration_state(self._make_mmode_state())
+        emitted = []
+
+        def fake_emit(value):
+            emitted.append(value)
+
+        w.mmode_time_calibration_completed.connect(fake_emit)
+
+        def fail_dialog(*args, **kwargs):
+            raise AssertionError("QInputDialog must not be called when scale exists")
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fail_dialog,
+        )
+        # Standalone time-only flow (no pending ROI/depth)
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert emitted == [4.167]
+
+    def test_time_scale_still_prompts_when_absent(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        w._calibration_start_y = 50.0
+        calls = []
+
+        def fake_dialog(parent, title, prompt, value, mn, mx, dec):
+            calls.append((value, mn, mx))
+            return 1000.0, True
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fake_dialog,
+        )
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert len(calls) == 1
+
+    def test_full_calibration_uses_dicom_time_when_trusted(self, qtbot, monkeypatch) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+        w._mmode_pending_roi = DopplerSpectrogramRoi(x0=4.0, y0=341.0, width=1236.0, height=459.0)
+        w._mmode_pending_depth_mm_per_pixel = 0.355
+        w.apply_mmode_calibration_state(self._make_mmode_state())
+
+        def fail_dialog(*args, **kwargs):
+            raise AssertionError("QInputDialog must not be called when DICOM time is trusted")
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fail_dialog,
+        )
+        applied = []
+        monkeypatch.setattr(
+            w,
+            "apply_mmode_calibration_state",
+            lambda state: applied.append(state),
+        )
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert len(applied) == 1
+        assert applied[0].horizontal_ms_per_pixel == 4.167
+
+    def test_time_scale_prompts_when_present_but_not_from_dicom(self, qtbot, monkeypatch) -> None:
+        from dataclasses import replace
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((800, 1240), dtype=np.uint8))
+        w.apply_mmode_calibration_state(replace(self._make_mmode_state(), time_from_dicom_tags=False))
+        calls = []
+
+        def fake_dialog(parent, title, prompt, value, mn, mx, dec):
+            calls.append((value, mn, mx))
+            return 1000.0, True
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            fake_dialog,
+        )
+        w._prompt_mmode_time_span(length_px=100.0)
+        assert len(calls) == 1

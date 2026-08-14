@@ -56,6 +56,8 @@ def calculate(
 
     lvef_percent: float | None = None
     method: str | None = None
+    edv_bi_ml: float | None = None
+    esv_bi_ml: float | None = None
 
     if (
         a4c is not None
@@ -76,6 +78,8 @@ def calculate(
             if edv_ml is not None and esv_ml is not None and edv_ml > 0.0 and esv_ml <= edv_ml:
                 lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
                 method = "simpson_biplan"
+                edv_bi_ml = edv_ml
+                esv_bi_ml = esv_ml
 
     if lvef_percent is None:
         per_view_volumes: dict[str, tuple[float, float]] = {}
@@ -92,7 +96,14 @@ def calculate(
                 lvef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
                 method = "simpson_monoplan"
 
-    return LvefResult(a4c=a4c, a2c=a2c, lvef_percent=lvef_percent, method=method)
+    return LvefResult(
+        a4c=a4c,
+        a2c=a2c,
+        lvef_percent=lvef_percent,
+        method=method,
+        edv_bi_ml=edv_bi_ml,
+        esv_bi_ml=esv_bi_ml,
+    )
 
 
 def format_contour_overlay(

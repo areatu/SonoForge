@@ -17,7 +17,7 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -26,13 +26,13 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def _sample_state() -> ViewerState:
+def _sample_state(dicom_path: Path) -> ViewerState:
     return ViewerState(
-        instance=_sample_instance(),
+        instance=_sample_instance(dicom_path),
         current_frame_index=0,
         total_frames=10,
         frame_time_ms=33.3,
@@ -70,11 +70,11 @@ def _find_node_for_endpoint(viewer: ViewerWidget, caliper_key: tuple[str, int], 
     return None
 
 
-def test_drag_endpoint_0_moves_start(qtbot) -> None:
+def test_drag_endpoint_0_moves_start(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     viewer.start_linear_caliper_for("LVEDD")
     _place_caliper(viewer, 10.0, 50.0)
@@ -113,11 +113,11 @@ def test_drag_endpoint_0_moves_start(qtbot) -> None:
     assert not viewer._caliper_drag_active
 
 
-def test_drag_endpoint_1_moves_end(qtbot) -> None:
+def test_drag_endpoint_1_moves_end(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     viewer.start_linear_caliper_for("LVEDD")
     _place_caliper(viewer, 10.0, 50.0)
@@ -149,11 +149,11 @@ def test_drag_endpoint_1_moves_end(qtbot) -> None:
     node.mouseReleaseEvent(ev_release)
 
 
-def test_drag_first_caliper_second_remains_visible(qtbot) -> None:
+def test_drag_first_caliper_second_remains_visible(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     viewer.start_linear_caliper_sequence(("IVSd", "LVEDD"))
     _place_caliper(viewer, 5.0, 15.0)
@@ -190,11 +190,11 @@ def test_drag_first_caliper_second_remains_visible(qtbot) -> None:
         assert line_item.isVisible()
 
 
-def test_esc_cancels_drag(qtbot) -> None:
+def test_esc_cancels_drag(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     viewer.start_linear_caliper_for("LVEDD")
     _place_caliper(viewer, 10.0, 50.0)

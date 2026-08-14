@@ -20,7 +20,7 @@ from echo_personal_tool.domain.models import (
 )
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -29,7 +29,7 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=None,
         frame_time_ms=40.0,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
@@ -50,9 +50,9 @@ def test_state_manager_stores_doppler_measurement() -> None:
     assert manager.snapshot.doppler_measurement == dto
 
 
-def test_app_controller_handles_doppler_marker_changes(qtbot) -> None:
+def test_app_controller_handles_doppler_marker_changes(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
-    controller.state_manager.set_instance(_sample_instance(), total_frames=4, frame_time_ms=40.0)
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
 
     messages: list[str] = []
     controller.status_message.connect(messages.append)

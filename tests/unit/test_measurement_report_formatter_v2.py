@@ -69,6 +69,21 @@ class TestFormatMeasurementReport:
         assert "58.3" in result
         assert "simpson_biplan" in result
 
+    def test_with_lvef_biplane_volumes(self) -> None:
+        lvef = LvefResult(
+            a4c=LvViewMetrics(edv_ml=120.0, esv_ml=50.0),
+            lvef_percent=58.3,
+            method="simpson_biplan",
+            edv_bi_ml=125.5,
+            esv_bi_ml=52.0,
+        )
+        snap = _snap(lvef=lvef, spacing_calibrated=True)
+        result = format_measurement_report(snap)
+        assert "КДО ЛЖ BP" in result
+        assert "125.5" in result
+        assert "КСО ЛЖ BP" in result
+        assert "52.0" in result
+
     def test_with_teichholz(self) -> None:
         snap = _snap(teichholz=TeichholzResult(edv_ml=130.0, esv_ml=55.0, lvef_percent=57.7))
         result = format_measurement_report(snap)

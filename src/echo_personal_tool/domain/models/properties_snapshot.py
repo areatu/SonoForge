@@ -67,3 +67,52 @@ class PropertiesSnapshot:
     mmode_horizontal_ms_per_pixel: float | None = None
     mmode_has_depth_from_dicom: bool = False
     mmode_has_time_from_dicom: bool = False
+
+    @classmethod
+    def default(
+        cls,
+        *,
+        depth_ok: bool = False,
+        mmode_calibrated: bool = False,
+        mmode_has_time_scale: bool = False,
+        mmode_vertical_mm_per_pixel: float | None = None,
+        mmode_horizontal_ms_per_pixel: float | None = None,
+        mmode_has_depth_from_dicom: bool = False,
+        mmode_has_time_from_dicom: bool = False,
+        doppler_calibrated: bool = False,
+        doppler_has_time_from_dicom: bool = False,
+        doppler_has_velocity_from_dicom: bool = False,
+        doppler_partial: bool = False,
+    ) -> PropertiesSnapshot:
+        return cls(
+            modality="OT",
+            series_description="",
+            manufacturer=None,
+            manufacturer_model=None,
+            software_versions=None,
+            image_type=None,
+            number_of_frames=1,
+            media_format="dicom",
+            frame_time_ms=None,
+            cine_rate_fps=None,
+            frame_time_vector_present=False,
+            heart_rate_bpm=None,
+            pixel_spacing_mm=None,
+            pixel_spacing_source=None,
+            transducer_frequency_mhz=None,
+            regions=(),
+            depth_calibrated=depth_ok,
+            mmode_calibrated=mmode_calibrated,
+            mmode_has_time_scale=mmode_has_time_scale,
+            mmode_vertical_mm_per_pixel=mmode_vertical_mm_per_pixel,
+            mmode_horizontal_ms_per_pixel=mmode_horizontal_ms_per_pixel,
+            mmode_has_depth_from_dicom=mmode_has_depth_from_dicom,
+            mmode_has_time_from_dicom=mmode_has_time_from_dicom,
+            doppler_calibrated=doppler_calibrated,
+            doppler_has_time_from_dicom=doppler_has_time_from_dicom,
+            doppler_has_velocity_from_dicom=doppler_has_velocity_from_dicom,
+            doppler_partial=doppler_partial,
+            patient_height_m=None,
+            patient_weight_kg=None,
+            bsa_m2=None,
+        )

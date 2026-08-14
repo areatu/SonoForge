@@ -151,7 +151,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.mv_group",
         (
-            _btn("menu.trace_auto", MeasurementAction.DOPPLER_TRACE_AUTO),
+            _btn("menu.trace_auto_region", MeasurementAction.DOPPLER_TRACE_AUTO_REGION, doppler_trace="VTI"),
             _btn("menu.trace_mv", doppler_trace="VTI MV"),
             _btn("menu.trace_mr", doppler_trace="VTI MR"),
             _btn("menu.vpeak_mv", doppler_peak="Vmax"),
@@ -166,6 +166,7 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         "menu.tv_group",
         (
             _btn("menu.trpeak", doppler_peak="TR Vmax"),
+            _btn("menu.trace_auto_region", MeasurementAction.DOPPLER_TRACE_AUTO_REGION, doppler_trace="VTI TR"),
             _btn("menu.trace_tr", doppler_trace="VTI TR"),
             _btn("menu.trace_pr", doppler_trace="VTI PR"),
         ),
@@ -178,7 +179,8 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
         "menu.vessels_group",
         (
             _btn("menu.vessel_psv_edv", MeasurementAction.VESSEL_PSV_EDV, vessel=True),
-            _btn("menu.vessel_auto_trace", MeasurementAction.VESSEL_AUTO_TRACE, vessel=True),
+            _btn("menu.vessel_auto_trace_up", MeasurementAction.VESSEL_AUTO_TRACE_UP, vessel=True),
+            _btn("menu.vessel_auto_trace_down", MeasurementAction.VESSEL_AUTO_TRACE_DOWN, vessel=True),
             _btn("menu.vessel_average", MeasurementAction.VESSEL_AVERAGE, vessel=True),
             _btn("menu.vessel_clear", MeasurementAction.VESSEL_CLEAR, vessel=True),
             _btn("menu.vessel_accept", MeasurementAction.VESSEL_ACCEPT, vessel=True),
@@ -196,12 +198,9 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     ),
 )
 
-# Map group keys to preference flags for experimental features
+# Map group keys to preference flags for experimental features (only LV strain)
 _EXPERIMENTAL_GROUPS: dict[str, str] = {
     "menu.strain_group": "show_strain",
-    "menu.diastolic_group": "show_diastolic_function",
-    "menu.mv_group": "show_doppler_mk_av",
-    "menu.tv_group": "show_doppler_tk_pv",
 }
 
 
@@ -220,11 +219,6 @@ def _filter_menu(
             show = getattr(preferences, pref_key, False)
             if not show:
                 continue
-
-        # Filter individual buttons within groups
-        if group_key == "menu.rv_group":
-            if not preferences.show_rv_s_prime:
-                buttons = tuple(b for b in buttons if b.action != MeasurementAction.RV_S_PRIME)
 
         filtered.append((group_key, buttons))
     return tuple(filtered)
@@ -440,6 +434,7 @@ class MeasuresMenuWidget(QWidget):
                 or spec.doppler_trace
                 or spec.action == MeasurementAction.DOPPLER_MITRAL_INFLOW
                 or spec.action == MeasurementAction.DOPPLER_TRACE
+                or spec.action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION
             )
             if not needs_time:
                 continue
@@ -526,6 +521,9 @@ class MeasuresMenuWidget(QWidget):
             elif spec.doppler_interval:
                 action = MeasurementAction.DOPPLER_INTERVAL
                 extra = spec.doppler_interval
+            elif spec.action == MeasurementAction.DOPPLER_TRACE_AUTO_REGION and spec.doppler_trace:
+                action = MeasurementAction.DOPPLER_TRACE_AUTO_REGION
+                extra = spec.doppler_trace
             elif spec.doppler_trace:
                 action = MeasurementAction.DOPPLER_TRACE
                 extra = spec.doppler_trace

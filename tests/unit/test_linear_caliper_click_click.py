@@ -19,7 +19,7 @@ from echo_personal_tool.presentation.main_window import MainWindow
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 
-def _sample_instance() -> InstanceMetadata:
+def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
         series_uid="1.2.3.4.6",
@@ -28,13 +28,13 @@ def _sample_instance() -> InstanceMetadata:
         pixel_spacing=(0.5, 0.5),
         frame_time_ms=33.3,
         series_description="Test",
-        path=Path("/tmp/test.dcm"),
+        path=dicom_path,
     )
 
 
-def _sample_state() -> ViewerState:
+def _sample_state(dicom_path: Path) -> ViewerState:
     return ViewerState(
-        instance=_sample_instance(),
+        instance=_sample_instance(dicom_path),
         current_frame_index=0,
         total_frames=10,
         frame_time_ms=33.3,
@@ -55,11 +55,11 @@ def _place_caliper(viewer: ViewerWidget, x_start: float, x_end: float, y: float 
     _simulate_view_press(viewer, x_end, y)
 
 
-def test_linear_caliper_two_clicks_commit_measurement(qtbot) -> None:
+def test_linear_caliper_two_clicks_commit_measurement(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     emitted: list[list] = []
     viewer.linear_measurements_changed.connect(emitted.append)
@@ -87,11 +87,11 @@ def test_linear_caliper_two_clicks_commit_measurement(qtbot) -> None:
     assert measurement.pixel_length == pytest.approx(40.0)
 
 
-def test_all_diastole_sequence_auto_advances_without_enter(qtbot) -> None:
+def test_all_diastole_sequence_auto_advances_without_enter(qtbot, synthetic_dicom_path) -> None:
     viewer = ViewerWidget()
     qtbot.addWidget(viewer)
     viewer.show_frame(np.zeros((64, 64), dtype=np.uint8))
-    viewer.set_state(_sample_state())
+    viewer.set_state(_sample_state(synthetic_dicom_path))
 
     emitted: list[list] = []
     viewer.linear_measurements_changed.connect(emitted.append)
@@ -108,10 +108,10 @@ def test_all_diastole_sequence_auto_advances_without_enter(qtbot) -> None:
     assert len(emitted[-1]) == 3
 
 
-def test_caliper_button_starts_click_click_mode(qtbot) -> None:
+def test_caliper_button_starts_click_click_mode(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )
@@ -127,10 +127,10 @@ def test_caliper_button_starts_click_click_mode(qtbot) -> None:
     assert "1-й клик" in window._viewer._measurement_label.text()
 
 
-def test_main_window_panel_updates_after_click_click_caliper(qtbot) -> None:
+def test_main_window_panel_updates_after_click_click_caliper(qtbot, synthetic_dicom_path) -> None:
     controller = AppController()
     controller.state_manager.set_instance(
-        _sample_instance(),
+        _sample_instance(synthetic_dicom_path),
         total_frames=10,
         frame_time_ms=33.3,
     )

@@ -119,6 +119,34 @@ def test_calculate_biplan_populates_both_views() -> None:
     assert result.method == "simpson_biplan"
 
 
+def test_calculate_biplan_populates_biplane_volumes() -> None:
+    contours = (
+        open_arc_contour(phase="ED", view="A4C", width_px=100.0, height_px=50.0),
+        open_arc_contour(phase="ES", view="A4C", width_px=80.0, height_px=40.0),
+        open_arc_contour(phase="ED", view="A2C", width_px=120.0, height_px=50.0),
+        open_arc_contour(phase="ES", view="A2C", width_px=100.0, height_px=40.0),
+    )
+    result = calculate(contours, (0.5, 0.5))
+    assert result is not None
+    assert result.method == "simpson_biplan"
+    assert result.edv_bi_ml is not None
+    assert result.esv_bi_ml is not None
+    assert result.edv_bi_ml > 0.0
+    assert 0.0 < result.esv_bi_ml <= result.edv_bi_ml
+
+
+def test_calculate_monoplan_leaves_biplane_volumes_unset() -> None:
+    contours = (
+        open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0),
+        open_arc_contour(phase="es", view="A4C", width_px=80.0, height_px=40.0),
+    )
+    result = calculate(contours, (0.5, 0.5))
+    assert result is not None
+    assert result.method == "simpson_monoplan"
+    assert result.edv_bi_ml is None
+    assert result.esv_bi_ml is None
+
+
 def test_calculate_open_arc_monoplan() -> None:
     contours = (
         open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0),
