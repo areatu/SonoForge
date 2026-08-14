@@ -86,9 +86,13 @@ class TestFilterVelocitySpikes:
 
     def test_spike_replaced_by_median(self):
         points = [
-            (1.0, 50.0), (2.0, 52.0), (3.0, 51.0),
+            (1.0, 50.0),
+            (2.0, 52.0),
+            (3.0, 51.0),
             (4.0, 200.0),
-            (5.0, 53.0), (6.0, 50.0), (7.0, 49.0),
+            (5.0, 53.0),
+            (6.0, 50.0),
+            (7.0, 49.0),
         ]
         result = filter_velocity_spikes(points)
         assert result[3][1] != 200.0
@@ -101,8 +105,11 @@ class TestFilterVelocitySpikes:
 
     def test_max_clamp(self):
         points = [
-            (1.0, 50.0), (2.0, 52.0), (3.0, 999.0),
-            (4.0, 53.0), (5.0, 50.0),
+            (1.0, 50.0),
+            (2.0, 52.0),
+            (3.0, 999.0),
+            (4.0, 53.0),
+            (5.0, 50.0),
         ]
         result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
         assert result[2][1] <= 400.0
@@ -110,8 +117,11 @@ class TestFilterVelocitySpikes:
 
     def test_negative_velocities(self):
         points = [
-            (1.0, -50.0), (2.0, -52.0), (3.0, -55.0),
-            (4.0, -53.0), (5.0, -50.0),
+            (1.0, -50.0),
+            (2.0, -52.0),
+            (3.0, -55.0),
+            (4.0, -53.0),
+            (5.0, -50.0),
         ]
         result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
         assert result[2][1] == -55.0

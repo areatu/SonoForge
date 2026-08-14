@@ -693,6 +693,7 @@ class TestAutovtiRegionSelection:
         assert direction == "up"
         # Clear is deferred via QTimer.singleShot — process events first
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance().processEvents()
         assert overlay._autovti_start_ms is None
         assert overlay._autovti_region_item is None
@@ -718,9 +719,11 @@ class TestAutovtiRegionSelection:
 
         added_items = []
         original_add = mock_plot.addItem
+
         def track_add(item):
             added_items.append(item)
             original_add(item)
+
         mock_plot.addItem = track_add
 
         received = []
@@ -730,6 +733,7 @@ class TestAutovtiRegionSelection:
         assert len(received) == 1
         # Clear is deferred via QTimer.singleShot — process events first
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance().processEvents()
         assert overlay._autovti_start_ms is None
         assert overlay._autovti_region_item is None
@@ -1022,6 +1026,7 @@ class TestAutovtiRegionEndToEnd:
         assert direction == "up"
         # Clear is deferred via QTimer.singleShot — process events first
         from PySide6.QtWidgets import QApplication
+
         QApplication.instance().processEvents()
         assert overlay._autovti_start_ms is None
         assert overlay._tool_mode == "none"
