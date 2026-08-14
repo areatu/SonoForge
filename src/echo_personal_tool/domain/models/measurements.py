@@ -53,6 +53,8 @@ class LvefResult:
     a2c: LvViewMetrics | None = None
     lvef_percent: float | None = None
     method: str | None = None  # simpson_monoplan / simpson_biplan
+    edv_bi_ml: float | None = None
+    esv_bi_ml: float | None = None
 
 
 @dataclass(frozen=True)

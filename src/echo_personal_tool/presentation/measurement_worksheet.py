@@ -100,7 +100,7 @@ _WORKSHEET_TREE: tuple[WorksheetRow, ...] = (
             WorksheetRow(None, "E/A", "dop_ea"),
             WorksheetRow(None, "e' sept", "dop_ep_sept"),
             WorksheetRow(None, "e' lat", "dop_ep_lat"),
-            WorksheetRow(None, "E/e' avg", "dop_ee"),
+            WorksheetRow(None, "E/e'mean", "dop_ee"),
             WorksheetRow(None, "E/e' sept", "dop_ee_sept"),
             WorksheetRow(None, "E/e' lat", "dop_ee_lat"),
             WorksheetRow(None, "e'/a'", "dop_epa"),

@@ -1404,6 +1404,18 @@ class AppController(QObject):
             session.manual_pixel_spacing,
         )
         lvef = calculate(contours, pixel_spacing)
+        if lvef is not None and lvef.method != "simpson_biplan":
+            # Simpson Biplane combines LV 4C (one file) with LV 2C (another file).
+            # Contours from the whole study let BP volumes appear on the overlay even
+            # when the current instance holds only a single view.
+            lv_study_contours = tuple(c for c in session.contours if c.chamber.upper() == "LV")
+            study_lvef = calculate(lv_study_contours, pixel_spacing)
+            if study_lvef is not None and study_lvef.method == "simpson_biplan":
+                lvef = dataclasses.replace(
+                    lvef,
+                    edv_bi_ml=study_lvef.edv_bi_ml,
+                    esv_bi_ml=study_lvef.esv_bi_ml,
+                )
         teichholz = from_linear_measurements(linear_measurements)
         la_simpson = calculate_chamber(contours, "LA", pixel_spacing)
         ra_simpson = calculate_chamber(contours, "RA", pixel_spacing)

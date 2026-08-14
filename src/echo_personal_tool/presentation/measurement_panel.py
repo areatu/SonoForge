@@ -204,7 +204,7 @@ class MeasurementPanel(QWidget):
             self._optional_line("e' sept", ddop.e_prime_sept_cm_s, " cm/s"),
             self._optional_line("e' lat", ddop.e_prime_lat_cm_s, " cm/s"),
             self._optional_line("e' avg", doppler.e_prime_avg_cm_s, " cm/s"),
-            self._optional_line("E/e'", doppler.e_over_e_prime, decimals=2),
+            self._optional_line("E/e'mean", doppler.e_over_e_prime, decimals=2),
             self._optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
             self._optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
             self._optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
@@ -247,6 +247,15 @@ class MeasurementPanel(QWidget):
 
         append_view("4C", lvef.a4c)
         append_view("2C", lvef.a2c)
+
+        if lvef.edv_bi_ml is not None or lvef.esv_bi_ml is not None:
+            volume_suffix = " mL" if snapshot is None or snapshot.spacing_calibrated else " px³"
+            bp_kdo = self._optional_line(tr("panel.kdo_lv_bp"), lvef.edv_bi_ml, volume_suffix)
+            if bp_kdo:
+                lines.append(bp_kdo)
+            bp_kso = self._optional_line(tr("panel.kso_lv_bp"), lvef.esv_bi_ml, volume_suffix)
+            if bp_kso:
+                lines.append(bp_kso)
 
         if lvef.lvef_percent is not None:
             lines.append(self._line(tr("panel.lvef"), lvef.lvef_percent, " %"))

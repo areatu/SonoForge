@@ -126,6 +126,58 @@ def test_app_controller_recomputes_measurements_from_current_state(synthetic_dic
     assert snapshot.linear_measurements == linear_measurements
 
 
+def test_app_controller_overlay_augments_single_view_with_study_biplane(synthetic_dicom_path) -> None:
+    controller = AppController()
+    controller.state_manager.set_instance(_sample_instance(synthetic_dicom_path), total_frames=4, frame_time_ms=40.0)
+
+    ed4c = fit_contour_from_landmarks(
+        septal=(10.0, 40.0),
+        lateral=(50.0, 40.0),
+        apex=(30.0, 10.0),
+        phase="ED",
+        view="A4C",
+    )
+    es4c = fit_contour_from_landmarks(
+        septal=(12.0, 40.0),
+        lateral=(48.0, 40.0),
+        apex=(30.0, 15.0),
+        phase="ES",
+        view="A4C",
+    )
+    ed2c = fit_contour_from_landmarks(
+        septal=(10.0, 40.0),
+        lateral=(50.0, 40.0),
+        apex=(30.0, 10.0),
+        phase="ED",
+        view="A2C",
+    )
+    es2c = fit_contour_from_landmarks(
+        septal=(12.0, 40.0),
+        lateral=(48.0, 40.0),
+        apex=(30.0, 15.0),
+        phase="ES",
+        view="A2C",
+    )
+    from dataclasses import replace
+
+    ed2c = replace(ed2c, sop_instance_uid="1.2.3.4.6")
+    es2c = replace(es2c, sop_instance_uid="1.2.3.4.6")
+    controller.on_contours_changed([ed4c, es4c])
+    study_uid = controller._resolve_study_uid()
+    controller._measurement_session.merge_contours(study_uid, (ed2c, es2c))
+
+    state = controller.state_manager.snapshot
+    snapshot = controller.compute_overlay_snapshot(state)
+    assert snapshot is not None
+    assert snapshot.lvef is not None
+    assert snapshot.lvef.a4c is not None
+    assert snapshot.lvef.a2c is None  # 2C lives on another instance
+    assert snapshot.lvef.edv_bi_ml is not None
+    assert snapshot.lvef.edv_bi_ml > 0.0
+    assert snapshot.lvef.esv_bi_ml is not None
+    assert snapshot.lvef.esv_bi_ml > 0.0
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _qapp() -> QApplication:
     app = QApplication.instance()

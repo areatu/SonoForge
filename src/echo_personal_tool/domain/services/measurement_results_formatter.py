@@ -80,6 +80,10 @@ def format_results_overlay(
             _append(lines, tr("panel.kdo_lv", view="2C"), lvef.a2c.edv_ml, volume_unit)
         if lvef.a2c and lvef.a2c.esv_ml is not None:
             _append(lines, tr("panel.kso_lv", view="2C"), lvef.a2c.esv_ml, volume_unit)
+        if lvef.edv_bi_ml is not None:
+            _append(lines, tr("panel.kdo_lv_bp"), lvef.edv_bi_ml, volume_unit)
+        if lvef.esv_bi_ml is not None:
+            _append(lines, tr("panel.kso_lv_bp"), lvef.esv_bi_ml, volume_unit)
         _append(lines, tr("panel.lvef"), lvef.lvef_percent, "%")
 
     teich = snapshot.teichholz
@@ -368,6 +372,24 @@ def format_results_overlay_html(
         if lvef.a2c and lvef.a2c.esv_ml is not None:
             _html_append(
                 parts, tr("panel.kso_lv", view="2C"), lvef.a2c.esv_ml, volume_unit, param_id="lvesvi", sex_male=sex_male
+            )
+        if lvef.edv_bi_ml is not None:
+            _html_append(
+                parts,
+                tr("panel.kdo_lv_bp"),
+                lvef.edv_bi_ml,
+                volume_unit,
+                param_id="lvedvi",
+                sex_male=sex_male,
+            )
+        if lvef.esv_bi_ml is not None:
+            _html_append(
+                parts,
+                tr("panel.kso_lv_bp"),
+                lvef.esv_bi_ml,
+                volume_unit,
+                param_id="lvesvi",
+                sex_male=sex_male,
             )
         _html_append(parts, tr("panel.lvef"), lvef.lvef_percent, "%", param_id="lvef", sex_male=sex_male)
 

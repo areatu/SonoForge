@@ -6,10 +6,12 @@ from echo_personal_tool.domain.models import LvViewMetrics
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
     DopplerResults,
+    LvefResult,
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay,
+    format_results_overlay_html,
 )
 
 
@@ -95,3 +97,29 @@ def test_overlay_falls_back_to_study_wide_when_display_doppler_none() -> None:
     assert "e' септ: 10.0" in text
     assert "7.5" not in text  # wrong value
     assert "9.0" in text
+
+
+def test_overlay_includes_biplane_volumes() -> None:
+    from echo_personal_tool.infrastructure.i18n import set_language
+
+    lvef = LvefResult(
+        a4c=LvViewMetrics(edv_ml=31.5, esv_ml=16.1),
+        lvef_percent=48.8,
+        method="simpson_biplan",
+        edv_bi_ml=37.8,
+        esv_bi_ml=20.2,
+    )
+    snapshot = MeasurementSnapshot(lvef=lvef, spacing_calibrated=True)
+    text = format_results_overlay(snapshot)
+    assert "КДО ЛЖ BP: 37.8 mL" in text
+    assert "КСО ЛЖ BP: 20.2 mL" in text
+
+    set_language("en")
+    try:
+        html = format_results_overlay_html(snapshot)
+        assert "EDV LV BP" in html
+        assert "ESV LV BP" in html
+        assert "37.8" in html
+        assert "20.2" in html
+    finally:
+        set_language("ru")
