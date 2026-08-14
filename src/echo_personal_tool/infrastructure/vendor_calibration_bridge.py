@@ -18,8 +18,8 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
-from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
+from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.spectrogram_detector import detect_spectrogram_roi
 from echo_personal_tool.domain.services.ultrasound_region_physics import (

@@ -18,8 +18,8 @@ from echo_personal_tool.domain.services.doppler_baseline import (
     detect_baseline_line_y,
     detect_baseline_y,
 )
-from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
+from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_maybe_doppler_from_units,
     is_spectral_doppler_region,

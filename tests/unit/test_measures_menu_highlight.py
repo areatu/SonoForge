@@ -38,7 +38,11 @@ def test_highlight_fac_after_ed_contour() -> None:
 def test_highlight_manual_esv_after_edv() -> None:
     menu = MeasuresMenuWidget()
     menu.highlight_action(MeasurementAction.MANUAL_SIMPSON, view="A4C", phase="ES")
-    esv_button = next(btn for btn in menu.findChildren(QPushButton) if btn.text() == "Simpson ES")
+    esv_button = next(
+        btn
+        for btn in menu.findChildren(QPushButton)
+        if btn.text() in ("Simpson ES", "Simpson 4C КСО", "Simpson 4C ESV")
+    )
     assert menu._blink_target is esv_button
 
 

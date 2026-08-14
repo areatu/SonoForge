@@ -85,7 +85,6 @@ from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
 )
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
-from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
     refine_open_arc_contour,
@@ -99,6 +98,7 @@ from echo_personal_tool.domain.services.pixel_spacing_resolver import (
     spacing_from_known_distance,
 )
 from echo_personal_tool.domain.services.planimeter_formatter import format_planimeter_overlay_line
+from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.spectrogram_detector import (
     detect_spectrogram_roi,
 )
