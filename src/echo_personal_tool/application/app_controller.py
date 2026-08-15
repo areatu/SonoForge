@@ -31,7 +31,6 @@ from echo_personal_tool.application.workers.frame_loader_worker import FrameLoad
 from echo_personal_tool.application.workers.onnx_worker import OnnxWorker
 from echo_personal_tool.application.workers.scan_worker import ScanWorker
 from echo_personal_tool.application.workers.thumbnail_loader_worker import ThumbnailLoaderWorker
-from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.application.workers.video_decode_worker import VideoDecodeWorker
 from echo_personal_tool.domain.calculations.body_surface import compute_indexed_measurements
 from echo_personal_tool.domain.calculations.chamber_simpson import calculate_chamber
@@ -96,6 +95,7 @@ from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
 )
+from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 # ── Logging setup (after all imports) ────────────────────────────────
