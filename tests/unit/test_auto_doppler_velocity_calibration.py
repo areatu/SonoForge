@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import numpy as np
+
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerKind,
     DopplerSpectrogramRoi,
@@ -46,12 +47,12 @@ def test_orchestrator_uses_grid_lines_when_strip_fails() -> None:
     frame = np.zeros((400, 640), dtype=np.uint8)
 
     mod = "echo_personal_tool.domain.services.auto_doppler_velocity_calibration"
-    with patch(mod + ".find_best_scale_column", return_value=[]), \
-         patch(mod + ".detect_velocity_scale_ticks", return_value=[]), \
-         patch(mod + ".detect_doppler_grid_lines", return_value=tick_ys):
-        result = try_auto_doppler_velocity_calibration(
-            frame, roi=roi, baseline_y=baseline_y, kind=DopplerKind.SPECTRAL
-        )
+    with (
+        patch(mod + ".find_best_scale_column", return_value=[]),
+        patch(mod + ".detect_velocity_scale_ticks", return_value=[]),
+        patch(mod + ".detect_doppler_grid_lines", return_value=tick_ys),
+    ):
+        result = try_auto_doppler_velocity_calibration(frame, roi=roi, baseline_y=baseline_y, kind=DopplerKind.SPECTRAL)
 
     assert result is not None
     assert result.method == "inferred"
@@ -65,12 +66,12 @@ def test_orchestrator_returns_none_when_no_ticks() -> None:
     frame = np.zeros((400, 640), dtype=np.uint8)
 
     mod = "echo_personal_tool.domain.services.auto_doppler_velocity_calibration"
-    with patch(mod + ".find_best_scale_column", return_value=[]), \
-         patch(mod + ".detect_velocity_scale_ticks", return_value=[]), \
-         patch(mod + ".detect_doppler_grid_lines", return_value=[]):
-        result = try_auto_doppler_velocity_calibration(
-            frame, roi=roi, baseline_y=200.0, kind=DopplerKind.SPECTRAL
-        )
+    with (
+        patch(mod + ".find_best_scale_column", return_value=[]),
+        patch(mod + ".detect_velocity_scale_ticks", return_value=[]),
+        patch(mod + ".detect_doppler_grid_lines", return_value=[]),
+    ):
+        result = try_auto_doppler_velocity_calibration(frame, roi=roi, baseline_y=200.0, kind=DopplerKind.SPECTRAL)
 
     assert result is None
 

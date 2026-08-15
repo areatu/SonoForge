@@ -55,6 +55,9 @@ from echo_personal_tool.domain.models.linear_measurement import (
     pixel_to_mm_length,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
+    try_auto_doppler_velocity_calibration,
+)
 from echo_personal_tool.domain.services.contour_edge_snap import (
     EdgeMap,
     apply_soft_magnetic_snap,
@@ -81,14 +84,8 @@ from echo_personal_tool.domain.services.doppler_calibration import (
     calibration_from_roi_and_baseline,
     roi_from_corners,
 )
-from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
-    try_auto_doppler_velocity_calibration,
-)
 from echo_personal_tool.domain.services.doppler_grid_detector import (
     detect_doppler_grid_lines,
-)
-from echo_personal_tool.domain.services.velocity_scale_detector import (
-    detect_velocity_scale_ticks,
 )
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
 from echo_personal_tool.domain.services.mbs_lite_service import (
@@ -107,6 +104,9 @@ from echo_personal_tool.domain.services.planimeter_formatter import format_plani
 from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
 from echo_personal_tool.domain.services.spectrogram_detector import (
     detect_spectrogram_roi,
+)
+from echo_personal_tool.domain.services.velocity_scale_detector import (
+    detect_velocity_scale_ticks,
 )
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_path
 from echo_personal_tool.infrastructure.dicom_frame_panels import (
@@ -2590,9 +2590,9 @@ class ViewerWidget(QWidget):
                 velocity_span_cm_s=state.velocity_span_cm_s,
                 kind=state.kind,
                 from_dicom_tags=state.from_dicom_tags,
-                time_from_dicom_tags=getattr(state, 'time_from_dicom_tags', False),
-                velocity_from_dicom_tags=getattr(state, 'velocity_from_dicom_tags', False),
-                velocity_per_pixel_cm_s=getattr(state, 'velocity_per_pixel_cm_s', None),
+                time_from_dicom_tags=getattr(state, "time_from_dicom_tags", False),
+                velocity_from_dicom_tags=getattr(state, "velocity_from_dicom_tags", False),
+                velocity_per_pixel_cm_s=getattr(state, "velocity_per_pixel_cm_s", None),
             )
         self._doppler_calibration_state = state
         self._doppler_calibration_instance_uid = self._current_instance_uid()
@@ -3283,14 +3283,8 @@ class ViewerWidget(QWidget):
             height, width = self._current_frame.shape[:2]
             roi = (
                 self._doppler_pending_roi
-                or (
-                    self._doppler_calibration_state.roi
-                    if self._doppler_calibration_state is not None
-                    else None
-                )
-                or DopplerSpectrogramRoi(
-                    x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height))
-                )
+                or (self._doppler_calibration_state.roi if self._doppler_calibration_state is not None else None)
+                or DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height)))
             )
             # Try one-click auto-calibration (analog of B-mode auto-cal)
             auto = try_auto_doppler_velocity_calibration(
@@ -3345,11 +3339,8 @@ class ViewerWidget(QWidget):
                 width=int(roi.width),
                 height=int(roi.height),
             )
-            scale_ticks = detect_velocity_scale_ticks(
-                self._current_frame, roi=roi
-            )
-            combined = sorted(set(round(g, 1) for g in grid_lines)
-                              | set(round(t, 1) for t in scale_ticks))
+            scale_ticks = detect_velocity_scale_ticks(self._current_frame, roi=roi)
+            combined = sorted(set(round(g, 1) for g in grid_lines) | set(round(t, 1) for t in scale_ticks))
             self._doppler_grid_line_positions = combined
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
@@ -5783,7 +5774,6 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
         if not self._syncing_state:
             self.spectral_calibration_completed.emit(velocity_span)
-
 
     def _ensure_calibration_graphics(self) -> None:
         if self._calibration_line_item is None:

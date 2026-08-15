@@ -1,15 +1,17 @@
-import numpy as np
-import pytest
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
+
 pytestmark = pytest.mark.gui
+
+from PySide6.QtCore import Qt
 
 from echo_personal_tool.domain.models.doppler_roi import (
     DopplerKind,
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
-from PySide6.QtCore import Qt
 
 
 class _MockMouseEvent:
@@ -31,7 +33,7 @@ class _MockMouseEvent:
 def _frame_with_ticks(height=400, width=640):
     frame = np.zeros((height, width), dtype=np.uint8)
     roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=height)
-    frame[int(roi.y0):int(roi.y0 + roi.height), int(roi.x0):int(roi.x1)] = 30
+    frame[int(roi.y0) : int(roi.y0 + roi.height), int(roi.x0) : int(roi.x1)] = 30
     for ty in (80, 160, 240, 320):
         frame[ty, 600:610] = 220
     return frame, roi
@@ -156,11 +158,11 @@ def test_snapping_uses_doppler_grid_lines(qtbot):
     widget._update_calibration_horizontal_guides = lambda y: None
 
     widget._view = MagicMock()
-    widget._view.mapSceneToView = MagicMock(return_value=MagicMock(
-        y=lambda: 103.0, x=lambda: 0.0))
+    widget._view.mapSceneToView = MagicMock(return_value=MagicMock(y=lambda: 103.0, x=lambda: 0.0))
     widget._update_measurement_crosshair = MagicMock()
 
     from PySide6.QtCore import QPointF
+
     widget._on_scene_mouse_moved(QPointF(0, 0))
 
     assert len(snapped) == 1
