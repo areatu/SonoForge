@@ -439,13 +439,47 @@ class OrthancStudyDialog(QDialog):
         if not study_uid:
             return
 
-        try:
+        study_uid = str(study_uid)
+        if study_uid in self._series_loading:
+            return
+        self._series_loading.add(study_uid)
+
+        loading_item = QTreeWidgetItem(["", "", tr("orthanc.searching")])
+        loading_item.setFlags(loading_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
+        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+        item.addChild(loading_item)
+
+        def _query(uid: str) -> list:
             if self._query_service is not None:
-                series_list = self._query_service.query_series(str(study_uid))
-            else:
-                series_list = self._client.query_series(str(study_uid))
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.warning(self, tr("orthanc.series"), tr("orthanc.series_query_error", message=str(exc)))
+                return self._query_service.query_series(uid)
+            return self._client.query_series(uid)
+
+        signals = _SeriesQuerySignals()
+        signals.finished.connect(self._on_series_loaded)
+        worker = _SeriesQueryWorker(study_uid, _query, signals)
+        self._active_workers.append((worker, signals))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_series_loaded(self, result: object) -> None:
+        if not self._is_alive():
+            return
+        study_uid, series_list, error = result  # type: ignore[misc]
+        log.info(
+            "[DLG] _on_series_loaded: study_uid=%s count=%d error=%s",
+            study_uid[:16],
+            len(series_list),
+            error,
+        )
+        self._series_loading.discard(study_uid)
+
+        target_item: QTreeWidgetItem | None = None
+        for i in range(self._tree.topLevelItemCount()):
+            item = self._tree.topLevelItem(i)
+            if item.data(0, _STUDY_UID_ROLE) == study_uid:
+                target_item = item
+                break
+
+        if target_item is None:
             return
 
         self._tree.blockSignals(True)
