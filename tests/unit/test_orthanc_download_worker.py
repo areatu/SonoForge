@@ -120,7 +120,11 @@ class TestDownloadClientReuse:
         cache = OrthancSessionCache(tmp_path)
         session_id = cache.create_session()
         worker = OrthancDownloadWorker(
-            client, cache, session_id, STUDY_UID, [SERIES_UID],
+            client,
+            cache,
+            session_id,
+            STUDY_UID,
+            [SERIES_UID],
             base_url="http://localhost:8042",
         )
 
@@ -154,7 +158,11 @@ class TestDownloadClientReuse:
         cache = OrthancSessionCache(tmp_path)
         session_id = cache.create_session()
         worker = OrthancDownloadWorker(
-            client, cache, session_id, STUDY_UID, [SERIES_UID],
+            client,
+            cache,
+            session_id,
+            STUDY_UID,
+            [SERIES_UID],
             base_url="http://localhost:8042",
         )
 
@@ -223,10 +231,16 @@ class TestRetryBackoff:
         cache = OrthancSessionCache(tmp_path)
         session_id = cache.create_session()
         worker = OrthancDownloadWorker(
-            FakeDicomWebClient(FIXTURES), cache, session_id, STUDY_UID, [SERIES_UID],
+            FakeDicomWebClient(FIXTURES),
+            cache,
+            session_id,
+            STUDY_UID,
+            [SERIES_UID],
             base_url="http://localhost:8042",
         )
-        with patch("echo_personal_tool.application.workers.orthanc_download_worker.OrthancDicomWebClient") as mock_client_cls:
+        with patch(
+            "echo_personal_tool.application.workers.orthanc_download_worker.OrthancDicomWebClient"
+        ) as mock_client_cls:
             mock_client_cls.return_value = MagicMock()
             worker._make_thread_client()
             args, kwargs = mock_client_cls.call_args
@@ -244,7 +258,11 @@ class TestRetryBackoff:
         cache = OrthancSessionCache(tmp_path)
         session_id = cache.create_session()
         worker = OrthancDownloadWorker(
-            FakeDicomWebClient(FIXTURES), cache, session_id, STUDY_UID, [SERIES_UID],
+            FakeDicomWebClient(FIXTURES),
+            cache,
+            session_id,
+            STUDY_UID,
+            [SERIES_UID],
             server_settings=settings,
         )
         client = worker._make_thread_client()

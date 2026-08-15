@@ -455,8 +455,12 @@ class TestOnSeriesLoaded:
         from echo_personal_tool.domain.models.orthanc import SeriesInfo
 
         series_list = [
-            SeriesInfo(study_uid="study-uid", series_uid="series-1", modality="US", description="Echo", instance_count=10),
-            SeriesInfo(study_uid="study-uid", series_uid="series-2", modality="DC", description="Doppler", instance_count=5),
+            SeriesInfo(
+                study_uid="study-uid", series_uid="series-1", modality="US", description="Echo", instance_count=10
+            ),
+            SeriesInfo(
+                study_uid="study-uid", series_uid="series-2", modality="DC", description="Doppler", instance_count=5
+            ),
         ]
         dialog._on_series_loaded(("study-uid", series_list, None))
         assert item.childCount() == 2
@@ -492,7 +496,13 @@ class TestOnSeriesLoaded:
         target = self._add_study_item(dialog, uid="study-2")
         self._add_study_item(dialog, uid="study-3")
 
-        dialog._on_series_loaded(("study-2", [SeriesInfo(study_uid="study-2", series_uid="s2", modality="US", description="A", instance_count=1)], None))
+        dialog._on_series_loaded(
+            (
+                "study-2",
+                [SeriesInfo(study_uid="study-2", series_uid="s2", modality="US", description="A", instance_count=1)],
+                None,
+            )
+        )
         assert target.childCount() == 1
         assert target.child(0).data(0, self._SERIES_ROLE) == "s2"
 

@@ -514,11 +514,7 @@ class OrthancStudyDialog(QDialog):
 
         if error and not series_list:
             error_item = QTreeWidgetItem(["", "", tr("orthanc.series_query_error", message=error[:200])])
-            error_item.setFlags(
-                error_item.flags()
-                & ~Qt.ItemFlag.ItemIsSelectable
-                & ~Qt.ItemFlag.ItemIsUserCheckable
-            )
+            error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
             target_item.addChild(error_item)
         else:
             for series in series_list:
