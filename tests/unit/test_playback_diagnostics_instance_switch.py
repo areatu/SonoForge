@@ -16,18 +16,14 @@ from echo_personal_tool.infrastructure.playback_diagnostics import (
 def diag_enabled():
     """Create a PlaybackDiagnostics instance with monitoring enabled."""
     diag = PlaybackDiagnostics()
-    with patch(
-        "echo_personal_tool.infrastructure.playback_diagnostics._ENABLED", True
-    ):
+    with patch("echo_personal_tool.infrastructure.playback_diagnostics._ENABLED", True):
         diag.start(fps_target=30, frame_count=60)
         yield diag
 
 
 def test_on_instance_switch_start_records_timestamp(diag_enabled) -> None:
     assert diag_enabled._instance_switch_start == 0.0
-    diag_enabled.on_instance_switch_start(
-        prefetch_cancelled=True, frame_cache_bytes=4096
-    )
+    diag_enabled.on_instance_switch_start(prefetch_cancelled=True, frame_cache_bytes=4096)
     assert diag_enabled._instance_switch_start > 0.0
     assert diag_enabled._instance_switch_rss_start > 0.0
     assert diag_enabled._instance_switch_prefetch_cancelled is True
