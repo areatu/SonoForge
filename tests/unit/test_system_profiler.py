@@ -38,7 +38,7 @@ def test_detect_playback_config_low_end(monkeypatch: pytest.MonkeyPatch):
     cfg = detect_playback_config()
     assert cfg.prefetch_radius == 5
     assert cfg.batch_size == 5
-    assert cfg.evict_window == 30
+    assert cfg.evict_window == 12
     assert cfg.scroll_debounce_ms == 80
     assert cfg.scroll_batch_size == 3
 
@@ -59,7 +59,7 @@ def test_detect_playback_config_high_end(monkeypatch: pytest.MonkeyPatch):
     cfg = detect_playback_config()
     assert cfg.prefetch_radius == 10
     assert cfg.batch_size == 8
-    assert cfg.evict_window == 40
+    assert cfg.evict_window == 20
     assert cfg.scroll_debounce_ms == 50
     assert cfg.scroll_batch_size == 8
 

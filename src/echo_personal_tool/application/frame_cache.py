@@ -9,23 +9,40 @@ speckle tracking).
 from __future__ import annotations
 
 import bisect
+import logging
 from pathlib import Path
 
 import numpy as np
 
 from echo_personal_tool.domain.exceptions import IncompleteCineError
 
+_logger = logging.getLogger(__name__)
+
 _DEFAULT_EVICT_WINDOW = 40
 _MAX_CACHE_MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB cap
+_MIN_FRAME_SIZE_BYTES = 640 * 480 * 2  # ~600 KB — at least one VGA uint8 frame
 
 
 class FrameCache:
-    def __init__(self, *, evict_window: int = _DEFAULT_EVICT_WINDOW) -> None:
+    def __init__(
+        self,
+        *,
+        evict_window: int = _DEFAULT_EVICT_WINDOW,
+        max_cache_bytes: int = _MAX_CACHE_MEMORY_BYTES,
+    ) -> None:
+        effective = max(max_cache_bytes, _MIN_FRAME_SIZE_BYTES)
+        if effective != max_cache_bytes:
+            _logger.warning(
+                "FrameCache max_cache_bytes=%d below minimum %d; raising to minimum",
+                max_cache_bytes,
+                _MIN_FRAME_SIZE_BYTES,
+            )
         self.source_path: Path | None = None
         self._frame_store: dict[int, np.ndarray] = {}
         self._total_frames: int = 0
         self._current_index: int = 0
         self._evict_window: int = evict_window
+        self._max_cache_bytes: int = effective
         self._pinned: set[int] = set()
         self._sorted_keys: list[int] = []
         self._cached_frames: np.ndarray | None = None
@@ -95,14 +112,14 @@ class FrameCache:
         if len(self._sorted_keys) > self._evict_window * 2:
             self._evict()
         # Enforce memory cap: evict oldest frames if over limit.
-        if self._memory_bytes > _MAX_CACHE_MEMORY_BYTES:
+        if self._memory_bytes > self._max_cache_bytes:
             self._evict_to_memory_limit()
 
     def _evict_to_memory_limit(self) -> None:
         """Evict oldest frames until memory is under the cap."""
         keys = list(self._sorted_keys)
         for k in keys:
-            if self._memory_bytes <= _MAX_CACHE_MEMORY_BYTES // 2:
+            if self._memory_bytes <= self._max_cache_bytes // 2:
                 break
             if k not in self._pinned:
                 frame = self._frame_store.pop(k, None)

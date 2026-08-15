@@ -11,6 +11,7 @@ from pathlib import Path
 from time import perf_counter
 
 import numpy as np
+import psutil
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
@@ -94,6 +95,7 @@ from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
 )
+from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 # ── Logging setup (after all imports) ────────────────────────────────
@@ -148,7 +150,25 @@ class AppController(QObject):
         self._current_study_uid: str | None = None
         self._segmenter = segmenter or OnnxInferenceEngine()
         self._playback_config: PlaybackConfig = detect_playback_config()
-        self._frame_cache = FrameCache(evict_window=self._playback_config.evict_window)
+        # Adaptive memory budget: cap at UserPreferences.playback_max_cache_mb
+        # (default 64 MB; high-end systems can raise to 128 MB via preferences),
+        # but never use more than 8% of available physical RAM.
+        # On a weak PC with 8 GB total RAM and ~2 GB available, 8% = 160 MB,
+        # so the binding cap is playback_max_cache_mb (64 MB).
+        try:
+            _available = psutil.virtual_memory().available
+            _adaptive_bytes = int(_available * 0.08)
+        except Exception:
+            _adaptive_bytes = 2 * 1024 * 1024 * 1024  # fallback: 2 GB
+        _prefs = load_user_preferences()
+        _max_cache_bytes = min(
+            _prefs.playback_max_cache_mb * 1024 * 1024,
+            _adaptive_bytes,
+        )
+        self._frame_cache = FrameCache(
+            evict_window=self._playback_config.evict_window,
+            max_cache_bytes=_max_cache_bytes,
+        )
         self._timer = QTimer(self)
         self._timer.setSingleShot(False)
         self._timer.timeout.connect(self._advance_playback)
@@ -332,8 +352,15 @@ class AppController(QObject):
             return
         # Stop playback and clear stale state before switching
         self._state_manager.set_playing(False)
+        prefetch_was_active = self._prefetch_load_id != 0
         self._invalidate_prefetch()
         self._playback_warmup_pending = False
+
+        if _playback_diag is not None:
+            _playback_diag.on_instance_switch_start(
+                prefetch_cancelled=prefetch_was_active,
+                frame_cache_bytes=self._frame_cache.memory_bytes(),
+            )
         self._current_instance = instance
         self._clear_fusion_state()
         if instance.patient_height_m is not None and instance.patient_weight_kg is not None:
@@ -356,11 +383,11 @@ class AppController(QObject):
                 return
 
         self._frame_cache.clear()
-        # Free heavy DICOM buffers (pixel data, encapsulated frames) from
-        # all thread-local sessions when switching instances.
-        from echo_personal_tool.infrastructure.dicom_session import release_stale_sessions
-
-        release_stale_sessions()
+        # Old sessions are released by DicomSession.open() (called inside
+        # DicomDecodeWorker.run()) via release_stale_sessions(exclude=self)
+        # on the worker thread — no main-thread blocking, no race condition
+        # (the old async QRunnable approach could call release_heavy() on an
+        # in-use session during ThreadPoolExecutor frame decode).
         self._last_pinned_frame = None
         self._loaded_source_path = None
         self._loaded_frame_index = None
@@ -1730,6 +1757,9 @@ class AppController(QObject):
     def _invalidate_prefetch(self) -> None:
         self._prefetch_request_id += 1
         self._prefetch_load_id = 0
+        if self._prefetch_request_id > 1:
+            if _playback_diag is not None:
+                _playback_diag.on_prefetch_cancel(reason="file_switch_or_seek")
 
     _PREFETCH_TIMEOUT_SEC = 1.0
 
@@ -2175,6 +2205,8 @@ class AppController(QObject):
         self.frame_loaded.emit(first_frame)
         self.status_message.emit(tr("status.first_frame_ready"))
         self.decode_finished.emit()
+        if _playback_diag is not None:
+            _playback_diag.on_instance_switch_end()
 
     def _on_dicom_decoded(self, request_id: int, path: Path, frames: object) -> None:
         if request_id != self._pending_decode_id:

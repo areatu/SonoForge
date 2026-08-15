@@ -73,6 +73,7 @@ class UserPreferences:
     contour_pen_simpson_width: float = DEFAULT_CONTOUR_LINE_WIDTH
     magnetic_snap_enabled: bool = True
     playback_speed_multiplier: float = DEFAULT_PLAYBACK_SPEED
+    playback_max_cache_mb: int = 64
     wl_preset: str = "last_used"
     wl_window: int = DEFAULT_WL_WINDOW
     wl_level: int = DEFAULT_WL_LEVEL
@@ -222,6 +223,12 @@ def load_user_preferences() -> UserPreferences:
             DEFAULT_PLAYBACK_SPEED,
             MIN_PLAYBACK_SPEED,
             MAX_PLAYBACK_SPEED,
+        ),
+        playback_max_cache_mb=_clamp_int(
+            store.value("playback_max_cache_mb"),
+            64,
+            8,
+            512,
         ),
         wl_preset=_read_choice(
             store.value("wl_preset"),

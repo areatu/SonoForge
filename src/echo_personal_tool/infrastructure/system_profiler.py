@@ -29,7 +29,7 @@ _LOW_END = PlaybackConfig(
     min_buffer=3,
     batch_size=5,
     max_lag_frames=2,
-    evict_window=30,
+    evict_window=12,
     scroll_debounce_ms=80,
     scroll_batch_size=3,
 )
@@ -39,7 +39,7 @@ _HIGH_END = PlaybackConfig(
     min_buffer=5,
     batch_size=8,
     max_lag_frames=4,
-    evict_window=40,
+    evict_window=20,
     scroll_debounce_ms=50,
     scroll_batch_size=8,
 )
