@@ -2531,12 +2531,14 @@ class AppController(QObject):
         frame_index: int,
         _message: str,
     ) -> None:
+        print(f"[LA-APP] _on_auto_segment_failed: {_message}", flush=True)
         self._segment_in_progress = False
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
         self.status_message.emit(tr("app.segmentation_unavailable"))
 
     def _on_auto_segment_timed_out(self, instance_path: Path | None, frame_index: int) -> None:
+        print("[LA-APP] _on_auto_segment_timed_out", flush=True)
         self._segment_in_progress = False
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
@@ -2546,6 +2548,7 @@ class AppController(QObject):
 
     def request_la_auto_segment(self) -> None:
         """Request LA auto-segmentation on the current A4C ES frame."""
+        print("[LA-APP] request_la_auto_segment called", flush=True)
 
         if self._segment_in_progress:
             self.status_message.emit(tr("status.segmentation_in_progress"))
@@ -2588,6 +2591,7 @@ class AppController(QObject):
             frame = np.stack([gray, gray, gray], axis=-1)
 
         self._segment_in_progress = True
+        print("[LA-APP] OnnxWorker starting with manifest_section=la_inference", flush=True)
         worker = OnnxWorker(
             frame,
             roi_xyxy=roi_xyxy,
@@ -2649,8 +2653,17 @@ class AppController(QObject):
         mask: object,
     ) -> None:
         """Post-inference: LA mask → contour → refine → reject gate → review."""
+        print(f"[LA-APP] _on_la_auto_segment_finished called: phase={phase}, chamber={chamber}, "
+              f"mask_type={type(mask).__name__}, frame={frame_index}", flush=True)
+        try:
+            with open("/tmp/la_boundary_debug.log", "a") as _dbg:
+                _dbg.write(f"_on_la_auto_segment_finished: phase={phase}, chamber={chamber}, "
+                           f"mask_type={type(mask).__name__}, frame={frame_index}\n")
+        except Exception:
+            pass
         from echo_personal_tool.domain.services.la_segmentation_service import (
             explain_la_auto_reject_reason,
+            la_mask_boundary_to_open_arc,
             la_mask_to_contour,
         )
 
@@ -2671,7 +2684,7 @@ class AppController(QObject):
             self.status_message.emit(tr("app.segmentation_no_contour"))
             return
 
-        # Optional auto-refine (LA-specific elliptical template)
+        # Optional auto-refine (LA-specific active contour with mask prior)
         if self._current_frame_pixels is not None and self._should_auto_refine_after_segment(
             manifest_section="la_inference",
         ):
@@ -2690,10 +2703,12 @@ class AppController(QObject):
                 frame_index=frame_index,
                 sop_instance_uid=instance_uid,
             )
+            mask_boundary = la_mask_boundary_to_open_arc(mask, annulus[0], annulus[1], apex, num_nodes=32)
             refined, _ = refine_open_arc_contour(
                 self._current_frame_pixels,
                 draft,
                 cine=False,
+                mask_prior=mask_boundary,
             )
             open_points = list(refined.points)
             if refined.mitral_annulus is not None:
@@ -2739,6 +2754,18 @@ class AppController(QObject):
         contours.append(contour)
         self.status_message.emit(review_status)
         self.on_contours_changed(contours)
+
+        # Temporal fusion: after showing center contour, queue neighbors
+        self._maybe_start_temporal_fusion(
+            phase=phase,
+            view=view,
+            chamber=chamber,
+            instance_path=instance_path,
+            frame_index=frame_index,
+            original_shape=original_shape,
+            mask=mask,
+            center_contour=contour,
+        )
 
     # ── LA Assist for Manual Contour ────────────────────────────────────
 
@@ -2826,6 +2853,7 @@ class AppController(QObject):
         try:
             from echo_personal_tool.domain.services.la_segmentation_service import (
                 la_landmarks_from_mask_or_user,
+                la_mask_boundary_to_open_arc,
             )
             from echo_personal_tool.domain.services.mbs_lite_service import (
                 fit_contour_from_landmarks,
@@ -2840,21 +2868,42 @@ class AppController(QObject):
                 blend_factor=0.7,
             )
 
-            # Build contour from blended landmarks
-            contour = fit_contour_from_landmarks(
-                septal=blended_septal,
-                lateral=blended_lateral,
-                apex=blended_apex,
-                phase="ES",
-                view="A4C",
-                chamber="LA",
+            # Try boundary extraction from mask first
+            boundary_pts = la_mask_boundary_to_open_arc(
+                mask, blended_septal, blended_lateral, blended_apex, num_nodes=32,
             )
-            contour = dataclasses.replace(
-                contour,
-                source="manual",
-                frame_index=frame_index,
-                review_pending=False,
-            )
+            if boundary_pts is not None:
+                from echo_personal_tool.domain.models import Contour as ContourModel
+                contour = ContourModel(
+                    phase="ES",
+                    view="A4C",
+                    chamber="LA",
+                    mitral_annulus=(blended_septal, blended_lateral),
+                    apex_landmark=blended_apex,
+                    points=boundary_pts,
+                    source="manual",
+                    num_nodes=32,
+                    frame_index=frame_index,
+                    review_pending=False,
+                )
+                print(f"[LA-ASSIST] boundary extraction OK: {len(boundary_pts)} pts", flush=True)
+            else:
+                # Fallback: geometric contour from landmarks
+                contour = fit_contour_from_landmarks(
+                    septal=blended_septal,
+                    lateral=blended_lateral,
+                    apex=blended_apex,
+                    phase="ES",
+                    view="A4C",
+                    chamber="LA",
+                )
+                contour = dataclasses.replace(
+                    contour,
+                    source="manual",
+                    frame_index=frame_index,
+                    review_pending=False,
+                )
+                print("[LA-ASSIST] boundary FAILED → superellipse fallback", flush=True)
 
             # Emit for viewer to pick up
             self.la_assist_contour_ready.emit(contour)
@@ -3022,22 +3071,32 @@ class AppController(QObject):
             self._on_neighbor_segment_failed(neighbor_idx)
             return
 
-        cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
-        if int(np.count_nonzero(cleaned_mask)) < 80:
-            self._on_neighbor_segment_failed(neighbor_idx)
-            return
+        is_la = chamber.upper() == "LA"
+        if is_la:
+            from echo_personal_tool.domain.services.la_segmentation_service import la_mask_to_contour
 
-        try:
-            open_points, annulus, apex = self._open_arc_from_cleaned_mask(
-                cleaned_mask,
-                original_shape=original_shape,
-                view=view,
-            )
-        except ValueError:
-            self._on_neighbor_segment_failed(neighbor_idx)
-            return
+            try:
+                open_points, annulus, apex = la_mask_to_contour(mask, num_nodes=32)
+            except ValueError:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
+            refined_points = open_points
+        else:
+            cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
+            if int(np.count_nonzero(cleaned_mask)) < 80:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
 
-        refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
+            try:
+                open_points, annulus, apex = self._open_arc_from_cleaned_mask(
+                    cleaned_mask,
+                    original_shape=original_shape,
+                    view=view,
+                )
+            except ValueError:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
+            refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
 
         instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
         contour = Contour(
@@ -3135,14 +3194,20 @@ class AppController(QObject):
 
         # Replace pending contour with fused contour
         # Quality gate: reject fused contour if it fails geometry checks
-        from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
-
+        is_la = (self._fusion_chamber or "").upper() == "LA"
         pixel_spacing = None
         if self._current_instance is not None:
             ps = getattr(self._current_instance, "pixel_spacing", None)
             if ps is not None:
                 pixel_spacing = (ps[0], ps[1]) if len(ps) >= 2 else None
-        reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
+        if is_la:
+            from echo_personal_tool.domain.services.la_segmentation_service import explain_la_auto_reject_reason
+
+            reject_reason = explain_la_auto_reject_reason(fused_contour, pixel_spacing)
+        else:
+            from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
+
+            reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
         if reject_reason is not None:
             logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
             fused_contour = center_contour

@@ -1076,6 +1076,7 @@
   "ref_table.col_norm_female": "Norm F",
   "ref_table.image_label": "Image: {path}",
   "prefs.show_strain": "Show Strain",
+  "prefs.show_la_auto": "Show LA Auto (experimental)",
   "prefs.tab_experimental": "Experimental",
   "domain.lvef.check_contour": "{chamber} {view} {phase}: review contour (ASE) · R — refine · Enter — accept",
   "domain.lvef.status_empty": "{chamber} {view} {phase} · Length: — · Volume: —",

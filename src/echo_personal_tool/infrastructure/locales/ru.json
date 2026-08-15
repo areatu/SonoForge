@@ -1076,6 +1076,7 @@
   "ref_table.col_norm_female": "Норм Ж",
   "ref_table.image_label": "Изображение: {path}",
   "prefs.show_strain": "Показать Стрейн",
+  "prefs.show_la_auto": "Показать ОЛП 4C ИИ (экспериментально)",
   "prefs.tab_experimental": "Экспериментальные",
   "domain.lvef.check_contour": "{chamber} {view} {phase}: проверьте контур (ASE) · R — уточнить · Enter — принять",
   "domain.lvef.status_empty": "{chamber} {view} {phase} · Длина: — · Объём: —",

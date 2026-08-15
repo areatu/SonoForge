@@ -42,6 +42,18 @@ _TEMPLATE_POINT_COUNT = 81
 # Long diameter = MA midpoint → apex; short axis is perpendicular to that line.
 _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO = 0.85
 
+# Active contour config for atrial chambers (LA/RA) — softer internal force,
+# stronger edge force so the mask boundary acts as a loose shape prior.
+_ATRIAL_CONTOUR_CONFIG = ActiveContourConfig(
+    search_radius_px=10.0,
+    k_int=0.15,
+    k_ext=1.2,
+    k_smooth=0.4,
+    step_size=0.4,
+    max_iterations=60,
+    gradient_samples=21,
+)
+
 
 def _adaptive_superellipse_n(aspect_ratio: float) -> float:
     """Compute superellipse exponent from short/long axis ratio.
@@ -299,15 +311,98 @@ def refine_open_arc_contour(
     *,
     display_levels: tuple[float, float] | None = None,
     cine: bool = False,
+    mask_prior: Sequence[tuple[float, float]] | None = None,
 ) -> tuple[Contour, str]:
-    """Refine open-arc: directed edge snap for ai/manual; active contour for model."""
+    """Refine open-arc: directed edge snap for ai/manual; active contour for model.
+
+    For LA/RA contours from AI, uses active contour with mask boundary as
+    shape prior (low k_int) instead of stepped refine.
+    """
     if contour.mitral_annulus is None or len(contour.points) < 3:
         return contour, "geometry"
 
     septal, lateral = contour.mitral_annulus
     apex = contour.apex_landmark or infer_apex_from_open_arc(contour.points, septal, lateral)
     original_points = list(contour.points)
+    chamber = contour.chamber.upper() if contour.chamber else "LV"
 
+    print(f"[LA-REFINE] chamber={chamber}, source={contour.source}, "
+          f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}", flush=True)
+    try:
+        with open("/tmp/la_boundary_debug.log", "a") as _dbg:
+            _dbg.write(f"refine: chamber={chamber}, source={contour.source}, "
+                       f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}\n")
+    except Exception:
+        pass
+
+    # ── PATH A: LA/RA from AI → active contour with mask prior ──
+    if frame is not None and frame.size > 0 and contour.source == "ai" and chamber in {"LA", "RA"}:
+        template = list(mask_prior) if mask_prior else list(original_points)
+        try:
+            refined_points = refine_open_arc(
+                frame,
+                original_points,
+                contour.mitral_annulus,
+                template_points=template,
+                config=_ATRIAL_CONTOUR_CONFIG,
+                display_levels=display_levels,
+            )
+            if _refined_is_sane(original_points, refined_points, septal, lateral, source=contour.source):
+                new_apex = apex if contour.apex_landmark is None else contour.apex_landmark
+                print("[LA-REFINE] active contour SANE → gradient", flush=True)
+                contour = replace(
+                    contour,
+                    points=resample_open_arc_landmarks(
+                        refined_points,
+                        septal=septal,
+                        lateral=lateral,
+                        apex=apex,
+                        num_nodes=contour.num_nodes or len(contour.points),
+                    ),
+                    mitral_annulus=(septal, lateral),
+                    apex_landmark=new_apex,
+                )
+                return contour, "gradient"
+        except (ValueError, FloatingPointError):
+            print("[LA-REFINE] active contour EXCEPTION", flush=True)
+            pass
+        # Fallback: stepped refine with bidirectional search
+        print("[LA-REFINE] active contour failed → stepped fallback", flush=True)
+        next_step = next_refine_step(contour.refine_step, source=contour.source)
+        locked = frozenset(contour.refine_locked_indices)
+        result = run_stepped_refine_pass(
+            frame,
+            original_points,
+            annulus=(septal, lateral),
+            locked_indices=locked,
+            step=next_step,
+            display_levels=display_levels,
+            cine=cine,
+            bidirectional=True,
+        )
+        interior_count = max(0, len(original_points) - 2)
+        status = format_stepped_refine_status(
+            step=result.step,
+            locked_count=len(result.locked_indices),
+            interior_count=interior_count,
+            newly_locked=result.newly_locked,
+        )
+        if _refined_is_sane(original_points, result.points, septal, lateral, source=contour.source):
+            new_apex = apex if contour.apex_landmark is None else contour.apex_landmark
+            print(f"[LA-REFINE] stepped refine SANE → status={status}", flush=True)
+            contour = replace(
+                contour,
+                points=result.points,
+                refine_step=result.step,
+                refine_locked_indices=tuple(sorted(result.locked_indices)),
+                mitral_annulus=(septal, lateral),
+                apex_landmark=new_apex,
+            )
+            return contour, status
+        print(f"[LA-REFINE] stepped refine REJECTED → {status}", flush=True)
+        return contour, f"{status} (rejected)"
+
+    # ── PATH B: LV ai / manual → stepped border refine ──
     if frame is not None and frame.size > 0 and contour.source in {"ai", "manual"}:
         next_step = next_refine_step(contour.refine_step, source=contour.source)
         locked = frozenset(contour.refine_locked_indices)
@@ -383,6 +478,7 @@ def refine_open_arc_contour(
     except (ValueError, FloatingPointError):
         pass
 
+    print("[LA-REFINE] no path matched → geometry smooth", flush=True)
     return _smooth_contour_points(contour), "geometry"
 
 
