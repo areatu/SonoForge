@@ -1499,9 +1499,6 @@ class MainWindow(QMainWindow):
             panel.clear_all()
             return
 
-        from echo_personal_tool.domain.models.properties_snapshot import (
-            PropertiesSnapshot,
-        )
         from echo_personal_tool.infrastructure.properties_extractor import (
             extract_properties_snapshot,
         )

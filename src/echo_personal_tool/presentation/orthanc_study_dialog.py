@@ -439,9 +439,18 @@ class OrthancStudyDialog(QDialog):
         if not study_uid:
             return
 
-        try:
+        study_uid = str(study_uid)
+        if study_uid in self._series_loading:
+            return
+        self._series_loading.add(study_uid)
+
+        loading_item = QTreeWidgetItem(["", "", tr("orthanc.searching")])
+        loading_item.setFlags(loading_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
+        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+        item.addChild(loading_item)
+
+        def _query(uid: str) -> list:
             if self._query_service is not None:
-        if self._query_service is not None:
                 return self._query_service.query_series(uid)
             return self._client.query_series(uid)
 
