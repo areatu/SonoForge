@@ -3261,7 +3261,7 @@ class TestDopplerCalibrationClick:
         assert result is True
         assert w._doppler_cal_step is None
         assert w._doppler_pending_baseline_y is not None
-        assert w._calibration_start_y == w._doppler_pending_baseline_y
+        assert w._calibration_start_y is None
 
     def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
@@ -3281,9 +3281,9 @@ class TestDopplerCalibrationClick:
             )
 
         w._handle_doppler_calibration_click(click(100, 80))
-        assert w._calibration_start_y == w._doppler_pending_baseline_y
-        baseline = w._calibration_start_y
-        assert baseline is not None
+        assert w._calibration_start_y is None
+        assert w._doppler_pending_baseline_y is not None
+        baseline = w._doppler_pending_baseline_y
 
         promoted = []
         monkeypatch.setattr(
@@ -3291,9 +3291,15 @@ class TestDopplerCalibrationClick:
             "_prompt_spectral_velocity_span",
             lambda length_px: promoted.append(length_px),
         )
-        result = w._handle_calibration_mouse_press(click(100, 30))
-        assert result is True
-        assert promoted == [abs(w._map_view_event(click(100, 30))[1] - baseline)]
+        # First click sets _calibration_start_y (was None after _begin_doppler_velocity_calibration)
+        result1 = w._handle_calibration_mouse_press(click(100, 30))
+        assert result1 is True
+        assert w._calibration_start_y is not None
+        assert promoted == []
+        # Second click triggers the velocity span prompt
+        result2 = w._handle_calibration_mouse_press(click(100, 60))
+        assert result2 is True
+        assert len(promoted) == 1
 
 
 # ═══════════════════════════════════════════════════════════════════
