@@ -4,11 +4,31 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import uuid
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_ERRORS = (
+    httpx.TimeoutException,
+    httpx.RemoteProtocolError,
+    httpx.ConnectError,
+    httpx.NetworkError,
+)
+
+
+def _interruptible_sleep(seconds: float, cancel_event: threading.Event) -> None:
+    """Sleep in small increments so cancellation is responsive."""
+    end = time.monotonic() + seconds
+    while not cancel_event.is_set() and time.monotonic() < end:
+        time.sleep(min(0.2, max(0, end - time.monotonic())))
+
+
+# Retry settings for QIDO-RS query operations
+_QUERY_RETRIES = 3
+_QUERY_RETRY_DELAY = 0.5  # linear backoff: 0.5s, 1.0s
 
 from echo_personal_tool.domain.models.orthanc import (
     InstanceInfo,
@@ -119,6 +139,43 @@ class OrthancDicomWebClient:
     def _build_client(self) -> httpx.Client:
         return self._client
 
+    def _get_with_retry(
+        self,
+        url: str,
+        *,
+        params: list[tuple[str, str]] | None = None,
+        headers: dict[str, str] | None = None,
+        attempts: int = _QUERY_RETRIES,
+        delay: float = _QUERY_RETRY_DELAY,
+    ) -> httpx.Response:
+        """GET with retry on transient errors (timeouts, connection resets, 5xx)."""
+        last_exc: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                r = self._client.get(url, params=params, headers=headers)
+                if r.status_code < 500 or attempt >= attempts - 1:
+                    return r
+                last_exc = httpx.HTTPStatusError(
+                    f"Server error {r.status_code} for {url}",
+                    response=r,
+                    request=r.request,
+                )
+            except _RETRYABLE_ERRORS as exc:
+                last_exc = exc
+            if attempt < attempts - 1:
+                wait = delay * (attempt + 1)
+                logger.debug(
+                    "Retrying GET %s (attempt %d/%d) after %.1fs: %s",
+                    url,
+                    attempt + 2,
+                    attempts,
+                    wait,
+                    last_exc,
+                )
+                _interruptible_sleep(wait, self._cancel_event)
+        if last_exc is not None:
+            raise last_exc
+
     def _check_cancelled(self) -> None:
         if self._cancel_event.is_set():
             raise DownloadCancelled("download cancelled")
@@ -154,7 +211,7 @@ class OrthancDicomWebClient:
             params.append(("PatientID", f"*{patient_id}*"))
         if study_date:
             params.append(("StudyDate", study_date))
-        r = self._client.get(
+        r = self._get_with_retry(
             "studies",
             params=params,
             headers={"Accept": "application/dicom+json"},
@@ -163,7 +220,7 @@ class OrthancDicomWebClient:
         return parse_studies(r.json())
 
     def query_series(self, study_uid: str) -> list[SeriesInfo]:
-        r = self._client.get(
+        r = self._get_with_retry(
             f"studies/{study_uid}/series",
             params=_include_params(_SERIES_INCLUDE_FIELDS),
             headers={"Accept": "application/dicom+json"},
@@ -172,7 +229,7 @@ class OrthancDicomWebClient:
         return parse_series(r.json(), study_uid)
 
     def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
-        r = self._client.get(
+        r = self._get_with_retry(
             f"studies/{study_uid}/series/{series_uid}/instances",
             params=_include_params(_INSTANCE_INCLUDE_FIELDS),
             headers={"Accept": "application/dicom+json"},

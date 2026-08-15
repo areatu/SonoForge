@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from threading import Event, Lock
+from threading import Event, Lock, local
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
@@ -81,6 +81,8 @@ class OrthancDownloadWorker(QRunnable):
         self._cancelled = Event()
         self._thread_client: OrthancDicomWebClient | None = None
         self._lock = Lock()
+        self._thread_local = local()
+        self._thread_local_clients: list[OrthancDicomWebClient] = []
         self.signals = OrthancDownloadSignals()
         self.setAutoDelete(True)
 
@@ -89,6 +91,13 @@ class OrthancDownloadWorker(QRunnable):
         thread_client = self._thread_client
         if thread_client is not None:
             thread_client.cancel_inflight()
+        with self._lock:
+            clients = list(self._thread_local_clients)
+        for c in clients:
+            try:
+                c.cancel_inflight()
+            except Exception:  # noqa: BLE001
+                pass
 
     @Slot()
     def run(self) -> None:
@@ -259,17 +268,40 @@ class OrthancDownloadWorker(QRunnable):
             if self._thread_client is not None:
                 self._thread_client.close()
                 self._thread_client = None
+            with self._lock:
+                clients = list(self._thread_local_clients)
+                self._thread_local_clients.clear()
+            for c in clients:
+                try:
+                    c.close()
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _make_thread_client(self) -> OrthancDicomWebClient:
         if self._server_settings is not None:
-            download_timeout = max(self._server_settings.network_timeout * 10, 300.0)
+            download_timeout = max(self._server_settings.network_timeout * 2, 60.0)
             return OrthancDicomWebClient.from_settings(self._server_settings, timeout=download_timeout)
         return OrthancDicomWebClient(
             self._base_url or "",
             self._username or "",
             self._password or "",
-            timeout=300.0,
+            timeout=60.0,
         )
+
+    def _get_or_create_download_client(self) -> OrthancDicomWebClient:
+        """Get or create a thread-local client for WADO-RS downloads.
+
+        Each ThreadPoolExecutor thread gets its own client with a persistent
+        connection pool, avoiding both connection churn (one client per
+        download) and thread-safety issues (shared client across threads).
+        """
+        client = getattr(self._thread_local, "client", None)
+        if client is None:
+            client = self._make_thread_client()
+            self._thread_local.client = client
+            with self._lock:
+                self._thread_local_clients.append(client)
+        return client
 
     def _download_one(
         self,
@@ -290,13 +322,20 @@ class OrthancDownloadWorker(QRunnable):
                 return data
             if attempt < max_attempts:
                 logger.warning(
-                    "[DIAG] download retry %d/3 instance=%s",
+                    "[DIAG] download retry %d/%d instance=%s",
                     attempt,
+                    max_attempts,
                     instance_uid[:16],
                 )
-                time.sleep(1.0)
+                self._interruptible_sleep(2 ** (attempt - 1))
 
         return None
+
+    def _interruptible_sleep(self, seconds: int) -> None:
+        """Sleep in 0.2s increments so cancellation is responsive."""
+        end = time.monotonic() + seconds
+        while not self._cancelled.is_set() and time.monotonic() < end:
+            time.sleep(min(0.2, end - time.monotonic()))
 
     def _attempt_download(
         self,
@@ -332,9 +371,11 @@ class OrthancDownloadWorker(QRunnable):
                 )
                 return None
 
-        # Fallback to legacy client
+        # Use thread-local client for downloads to avoid both connection churn
+        # and thread-safety issues with shared httpx.Client across threads.
+        # _thread_client is only for query_instances (single-threaded in run()).
         if self._server_settings is not None or self._base_url:
-            client = self._make_thread_client()
+            client = self._get_or_create_download_client()
         else:
             client = self._client
         try:
@@ -358,9 +399,6 @@ class OrthancDownloadWorker(QRunnable):
                 exc,
             )
             return None
-        finally:
-            if self._server_settings is not None or self._base_url:
-                client.close()
 
     def _finish_cancelled(self) -> None:
         self._cache.clear_session(self._session_id)
