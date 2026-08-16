@@ -253,9 +253,14 @@ def la_mask_boundary_to_open_arc(
         return None
 
     logger.warning(
-        "[LA-boundary] OK: boundary=%d pts, arc=%d pts, s_idx=%d, l_idx=%d, "
-        "septal=%s, lateral=%s, apex=%s",
-        n, len(arc_pts), s_idx, l_idx, septal, lateral, apex,
+        "[LA-boundary] OK: boundary=%d pts, arc=%d pts, s_idx=%d, l_idx=%d, septal=%s, lateral=%s, apex=%s",
+        n,
+        len(arc_pts),
+        s_idx,
+        l_idx,
+        septal,
+        lateral,
+        apex,
     )
 
     resampled = resample_open_arc_landmarks(
@@ -310,15 +315,24 @@ def la_mask_to_contour(
     septal, lateral, apex = _la_landmarks_from_mask(component)
 
     # Try mask boundary extraction first (follows actual LA shape)
-    logger.warning("[LA-mask2contour] calling boundary extraction, mask dtype=%s, shape=%s, pixels=%d",
-                   component.dtype, component.shape, int(component.sum()))
-    print(f"[LA-DEBUG] la_mask_to_contour called: mask_pixels={int(component.sum())}, "
-          f"septal={septal}, lateral={lateral}, apex={apex}", flush=True)
+    logger.warning(
+        "[LA-mask2contour] calling boundary extraction, mask dtype=%s, shape=%s, pixels=%d",
+        component.dtype,
+        component.shape,
+        int(component.sum()),
+    )
+    print(
+        f"[LA-DEBUG] la_mask_to_contour called: mask_pixels={int(component.sum())}, "
+        f"septal={septal}, lateral={lateral}, apex={apex}",
+        flush=True,
+    )
     # Write to /tmp for debugging even if stdout is hidden
     try:
         with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-            _dbg.write(f"la_mask_to_contour called: pixels={int(component.sum())}, "
-                       f"septal={septal}, lateral={lateral}, apex={apex}\n")
+            _dbg.write(
+                f"la_mask_to_contour called: pixels={int(component.sum())}, "
+                f"septal={septal}, lateral={lateral}, apex={apex}\n"
+            )
     except Exception:
         pass
     boundary_result = la_mask_boundary_to_open_arc(

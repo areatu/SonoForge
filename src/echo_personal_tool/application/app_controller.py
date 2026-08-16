@@ -2653,12 +2653,17 @@ class AppController(QObject):
         mask: object,
     ) -> None:
         """Post-inference: LA mask → contour → refine → reject gate → review."""
-        print(f"[LA-APP] _on_la_auto_segment_finished called: phase={phase}, chamber={chamber}, "
-              f"mask_type={type(mask).__name__}, frame={frame_index}", flush=True)
+        print(
+            f"[LA-APP] _on_la_auto_segment_finished called: phase={phase}, chamber={chamber}, "
+            f"mask_type={type(mask).__name__}, frame={frame_index}",
+            flush=True,
+        )
         try:
             with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-                _dbg.write(f"_on_la_auto_segment_finished: phase={phase}, chamber={chamber}, "
-                           f"mask_type={type(mask).__name__}, frame={frame_index}\n")
+                _dbg.write(
+                    f"_on_la_auto_segment_finished: phase={phase}, chamber={chamber}, "
+                    f"mask_type={type(mask).__name__}, frame={frame_index}\n"
+                )
         except Exception:
             pass
         from echo_personal_tool.domain.services.la_segmentation_service import (
@@ -2870,10 +2875,15 @@ class AppController(QObject):
 
             # Try boundary extraction from mask first
             boundary_pts = la_mask_boundary_to_open_arc(
-                mask, blended_septal, blended_lateral, blended_apex, num_nodes=32,
+                mask,
+                blended_septal,
+                blended_lateral,
+                blended_apex,
+                num_nodes=32,
             )
             if boundary_pts is not None:
                 from echo_personal_tool.domain.models import Contour as ContourModel
+
                 contour = ContourModel(
                     phase="ES",
                     view="A4C",
