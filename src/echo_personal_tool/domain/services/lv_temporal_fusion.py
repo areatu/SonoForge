@@ -376,34 +376,61 @@ def temporal_fuse(
     fused_mask = mask_vote_fusion(aligned_masks, threshold=threshold)
 
     # --- 3. Papillary cleanup + open arc ---
-    fused_mask = papillary_mask_cleanup(fused_mask, phase=phase)
-    if int(np.count_nonzero(fused_mask)) < 80:
-        return TemporalFusionResult(
-            anchor_frame_index=anchor_frame_index,
-            fused_contour=center_contour,
-            center_contour=center_contour,
-            neighbor_contours={i: neighbor_contours[i] for i in valid_neighbor_ids},
-            frames_used=1,
-            frames_requested=len(neighbor_masks) + 1,
-            config=config,
-        )
+    is_la = (center_contour.chamber or "").upper() == "LA"
+    if is_la:
+        from echo_personal_tool.domain.services.la_segmentation_service import la_mask_to_contour
 
-    try:
-        open_points, annulus, apex = open_arc_from_cavity_mask(
-            fused_mask,
-            original_shape=original_shape,
-            num_nodes=32,
-        )
-    except ValueError:
-        return TemporalFusionResult(
-            anchor_frame_index=anchor_frame_index,
-            fused_contour=center_contour,
-            center_contour=center_contour,
-            neighbor_contours={i: neighbor_contours[i] for i in valid_neighbor_ids},
-            frames_used=1,
-            frames_requested=len(neighbor_masks) + 1,
-            config=config,
-        )
+        if int(np.count_nonzero(fused_mask)) < 80:
+            return TemporalFusionResult(
+                anchor_frame_index=anchor_frame_index,
+                fused_contour=center_contour,
+                center_contour=center_contour,
+                neighbor_contours={i: neighbor_contours[i] for i in valid_neighbor_ids},
+                frames_used=1,
+                frames_requested=len(neighbor_masks) + 1,
+                config=config,
+            )
+        try:
+            open_points, annulus, apex = la_mask_to_contour(fused_mask, num_nodes=32)
+        except ValueError:
+            return TemporalFusionResult(
+                anchor_frame_index=anchor_frame_index,
+                fused_contour=center_contour,
+                center_contour=center_contour,
+                neighbor_contours={i: neighbor_contours[i] for i in valid_neighbor_ids},
+                frames_used=1,
+                frames_requested=len(neighbor_masks) + 1,
+                config=config,
+            )
+    else:
+        fused_mask = papillary_mask_cleanup(fused_mask, phase=phase)
+        if int(np.count_nonzero(fused_mask)) < 80:
+            return TemporalFusionResult(
+                anchor_frame_index=anchor_frame_index,
+                fused_contour=center_contour,
+                center_contour=center_contour,
+                neighbor_contours={i: neighbor_contours[i] for i in valid_neighbor_ids},
+                frames_used=1,
+                frames_requested=len(neighbor_masks) + 1,
+                config=config,
+            )
+
+        try:
+            open_points, annulus, apex = open_arc_from_cavity_mask(
+                fused_mask,
+                original_shape=original_shape,
+                num_nodes=32,
+            )
+        except ValueError:
+            return TemporalFusionResult(
+                anchor_frame_index=anchor_frame_index,
+                fused_contour=center_contour,
+                center_contour=center_contour,
+                neighbor_contours={i: neighbor_contours[i] for i in valid_neighbor_ids},
+                frames_used=1,
+                frames_requested=len(neighbor_masks) + 1,
+                config=config,
+            )
 
     # --- 4. Node clamp ---
     ma_len = _ma_length(annulus)
@@ -472,13 +499,16 @@ def temporal_fuse(
         fused_apex = apex
 
     # --- 7. Concavity exclusion + smooth ---
-    refined = exclude_papillary_concavities(
-        fused_nodes,
-        fused_annulus,
-        fused_apex,
-        phase=phase,
-    )
-    smoothed = smooth_open_arc(refined, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
+    if is_la:
+        smoothed = smooth_open_arc(fused_nodes, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
+    else:
+        refined = exclude_papillary_concavities(
+            fused_nodes,
+            fused_annulus,
+            fused_apex,
+            phase=phase,
+        )
+        smoothed = smooth_open_arc(refined, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
 
     fused_contour = Contour(
         phase=center_contour.phase,

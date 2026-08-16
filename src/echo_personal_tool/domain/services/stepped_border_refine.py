@@ -87,8 +87,14 @@ def run_stepped_refine_pass(
     smooth_blend: float | None = None,
     smooth_iterations: int | None = None,
     cine: bool = False,
+    bidirectional: bool = False,
 ) -> SteppedRefineResult:
-    """One R pass: ±step px edge search, then Laplacian smooth (locked nodes pinned)."""
+    """One R pass: ±step px edge search, then Laplacian smooth (locked nodes pinned).
+
+    When *bidirectional* is True (for LA/RA), directed_edge_score uses
+    abs(directional) instead of signed directional, allowing edge detection
+    in both inward and outward directions.
+    """
     if len(points) < 3:
         return SteppedRefineResult(list(points), locked_indices, step, 0)
 
@@ -116,7 +122,7 @@ def run_stepped_refine_pass(
         for offset in search_offsets:
             sample_x = px + float(offset) * nx
             sample_y = py + float(offset) * ny
-            score = directed_edge_score(edge_map, sample_x, sample_y, normal)
+            score = directed_edge_score(edge_map, sample_x, sample_y, normal, inward_only=not bidirectional)
             if score > best_score:
                 best_score = score
                 best_pos = (sample_x, sample_y)

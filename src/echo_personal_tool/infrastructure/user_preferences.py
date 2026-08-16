@@ -107,6 +107,7 @@ class UserPreferences:
     references_dir: str = ""
     # Experimental features visibility (only LV strain is gated)
     show_strain: bool = False
+    show_la_auto: bool = False
     despeckle_enabled: bool = False
 
 
@@ -304,6 +305,7 @@ def load_user_preferences() -> UserPreferences:
         gold_dataset_path=str(store.value("gold_dataset_path", "")),
         references_dir=str(store.value("references_dir", "")),
         show_strain=_read_bool(store.value("show_strain"), False),
+        show_la_auto=_read_bool(store.value("show_la_auto"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
     )

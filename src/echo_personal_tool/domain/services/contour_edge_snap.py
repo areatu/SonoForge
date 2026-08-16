@@ -32,8 +32,9 @@ class EdgeMap:
     intensity: np.ndarray | None = None
 
 
-def edge_snap_config_for_source(source: str, *, cine: bool = False) -> EdgeSnapConfig:
+def edge_snap_config_for_source(source: str, *, cine: bool = False, chamber: str = "LV") -> EdgeSnapConfig:
     normalized = source.strip().lower()
+    la = chamber.upper() == "LA"
     if normalized == "ai":
         if cine:
             return EdgeSnapConfig(
@@ -42,15 +43,37 @@ def edge_snap_config_for_source(source: str, *, cine: bool = False) -> EdgeSnapC
                 blur_sigma=1.0,
                 inward_only=False,
             )
+        if la:
+            return EdgeSnapConfig(
+                search_radius_px=12.0,
+                min_edge_strength=0.0,
+                inward_only=False,
+            )
         return EdgeSnapConfig(search_radius_px=16.0, min_edge_strength=0.05)
     if normalized == "manual":
+        if la:
+            return EdgeSnapConfig(
+                search_radius_px=10.0,
+                min_edge_strength=0.0,
+                inward_only=False,
+            )
         return EdgeSnapConfig(search_radius_px=10.0, min_edge_strength=0.08)
     return EdgeSnapConfig(search_radius_px=12.0, min_edge_strength=0.06)
 
 
-def magnetic_edge_snap_config_for_source(source: str) -> EdgeSnapConfig:
+def magnetic_edge_snap_config_for_source(source: str, *, chamber: str = "LV") -> EdgeSnapConfig:
     """Bidirectional edge search along outward normal (magnetic uses soft blend)."""
-    base = edge_snap_config_for_source(source)
+    base = edge_snap_config_for_source(source, chamber=chamber)
+    if chamber.upper() == "LA":
+        return EdgeSnapConfig(
+            search_radius_px=16.0,
+            profile_samples=33,
+            blur_sigma=base.blur_sigma,
+            min_edge_strength=0.0,
+            inward_only=False,
+            outward_only=False,
+            intensity_fallback=True,
+        )
     return EdgeSnapConfig(
         search_radius_px=max(base.search_radius_px + 4.0, 14.0),
         profile_samples=33,

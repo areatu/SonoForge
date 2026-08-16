@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
 from scipy import ndimage
+
+logger = logging.getLogger(__name__)
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.bench_metrics import mask_iou
 from echo_personal_tool.domain.services.contour_geometry import (
     DEFAULT_NODE_COUNT,
     resample_open_arc_landmarks,
+    smooth_open_arc,
 )
 from echo_personal_tool.domain.services.mbs_lite_service import (
     _ATRIAL_ELLIPSE_SHORT_AXIS_RATIO,
@@ -161,6 +165,123 @@ def la_landmarks_from_mask_or_user(
 
 
 # ---------------------------------------------------------------------------
+# Mask boundary → open-arc contour
+# ---------------------------------------------------------------------------
+
+
+def la_mask_boundary_to_open_arc(
+    mask: np.ndarray,
+    septal: tuple[float, float],
+    lateral: tuple[float, float],
+    apex: tuple[float, float],
+    *,
+    num_nodes: int = DEFAULT_NODE_COUNT,
+) -> list[tuple[float, float]] | None:
+    """Extract open-arc contour from LA mask boundary.
+
+    Uses the natural contour order from cv2.findContours (walks the perimeter).
+    Splits the closed contour at the two points nearest septal/lateral,
+    picks the arc whose midpoint is closest to apex (superior arc).
+    Returns None if boundary extraction fails.
+    """
+    import cv2
+
+    binary = np.asarray(mask, dtype=np.uint8)
+    if binary.max() == 0:
+        logger.warning("[LA-boundary] mask is empty (all zeros)")
+        return None
+
+    component = _largest_component(binary > 0).astype(np.uint8)
+    pixel_count = int(component.sum())
+    if pixel_count < _MIN_LA_MASK_AREA_PX:
+        logger.warning("[LA-boundary] mask too small: %d < %d", pixel_count, _MIN_LA_MASK_AREA_PX)
+        return None
+
+    contours_cv, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours_cv:
+        logger.warning("[LA-boundary] cv2.findContours returned empty")
+        return None
+
+    boundary = max(contours_cv, key=cv2.contourArea)
+    pts = [(float(p[0][0]), float(p[0][1])) for p in boundary]
+    if len(pts) < 4:
+        logger.warning("[LA-boundary] boundary too short: %d pts", len(pts))
+        return None
+
+    # Find the two indices on the perimeter closest to septal and lateral
+    def _nearest_idx(target: tuple[float, float]) -> int:
+        best, best_d = 0, float("inf")
+        for i, p in enumerate(pts):
+            d = (p[0] - target[0]) ** 2 + (p[1] - target[1]) ** 2
+            if d < best_d:
+                best, best_d = i, d
+        return best
+
+    s_idx = _nearest_idx(septal)
+    l_idx = _nearest_idx(lateral)
+    if s_idx == l_idx:
+        logger.warning("[LA-boundary] s_idx == l_idx (%d)", s_idx)
+        return None
+
+    n = len(pts)
+
+    # The perimeter walk goes s_idx → s_idx+1 → ... → l_idx (forward arc)
+    # and l_idx → l_idx+1 → ... → s_idx (backward arc).
+    # Pick the arc whose midpoint is nearest to the apex (superior).
+    def _arc_mid(a: int, b: int) -> tuple[float, float]:
+        """Midpoint of the arc walking from a to b along the perimeter."""
+        if a < b:
+            arc = pts[a : b + 1]
+        else:
+            arc = pts[a:] + pts[: b + 1]
+        mx = sum(p[0] for p in arc) / len(arc)
+        my = sum(p[1] for p in arc) / len(arc)
+        return mx, my
+
+    fwd_mid = _arc_mid(s_idx, l_idx)
+    fwd_dist = (fwd_mid[0] - apex[0]) ** 2 + (fwd_mid[1] - apex[1]) ** 2
+    bwd_mid = _arc_mid(l_idx, s_idx)
+    bwd_dist = (bwd_mid[0] - apex[0]) ** 2 + (bwd_mid[1] - apex[1]) ** 2
+
+    if fwd_dist <= bwd_dist:
+        arc_pts = pts[s_idx : l_idx + 1] if s_idx < l_idx else pts[s_idx:] + pts[: l_idx + 1]
+    else:
+        arc_pts = pts[l_idx : s_idx + 1] if l_idx < s_idx else pts[l_idx:] + pts[: s_idx + 1]
+
+    if len(arc_pts) < 3:
+        logger.warning("[LA-boundary] arc too short: %d pts", len(arc_pts))
+        return None
+
+    logger.warning(
+        "[LA-boundary] OK: boundary=%d pts, arc=%d pts, s_idx=%d, l_idx=%d, "
+        "septal=%s, lateral=%s, apex=%s",
+        n, len(arc_pts), s_idx, l_idx, septal, lateral, apex,
+    )
+
+    resampled = resample_open_arc_landmarks(
+        arc_pts,
+        septal=septal,
+        lateral=lateral,
+        apex=apex,
+        num_nodes=num_nodes,
+    )
+    resampled[0] = septal
+    resampled[-1] = lateral
+
+    smoothed = smooth_open_arc(
+        resampled,
+        (septal, lateral),
+        apex=apex,
+        iterations=3,
+        blend=0.45,
+        taubin=True,
+    )
+    smoothed[0] = septal
+    smoothed[-1] = lateral
+    return smoothed
+
+
+# ---------------------------------------------------------------------------
 # la_mask_to_contour — main public API
 # ---------------------------------------------------------------------------
 
@@ -188,7 +309,43 @@ def la_mask_to_contour(
     component = _largest_component(binary)
     septal, lateral, apex = _la_landmarks_from_mask(component)
 
-    # Fit superellipse open arc (LA-specific template, adaptive shape)
+    # Try mask boundary extraction first (follows actual LA shape)
+    logger.warning("[LA-mask2contour] calling boundary extraction, mask dtype=%s, shape=%s, pixels=%d",
+                   component.dtype, component.shape, int(component.sum()))
+    print(f"[LA-DEBUG] la_mask_to_contour called: mask_pixels={int(component.sum())}, "
+          f"septal={septal}, lateral={lateral}, apex={apex}", flush=True)
+    # Write to /tmp for debugging even if stdout is hidden
+    try:
+        with open("/tmp/la_boundary_debug.log", "a") as _dbg:
+            _dbg.write(f"la_mask_to_contour called: pixels={int(component.sum())}, "
+                       f"septal={septal}, lateral={lateral}, apex={apex}\n")
+    except Exception:
+        pass
+    boundary_result = la_mask_boundary_to_open_arc(
+        component,
+        septal,
+        lateral,
+        apex,
+        num_nodes=num_nodes,
+    )
+    if boundary_result is not None:
+        logger.warning("[LA-mask2contour] boundary extraction SUCCEEDED, %d pts", len(boundary_result))
+        print(f"[LA-DEBUG] boundary extraction SUCCEEDED: {len(boundary_result)} pts", flush=True)
+        try:
+            with open("/tmp/la_boundary_debug.log", "a") as _dbg:
+                _dbg.write(f"boundary extraction SUCCEEDED: {len(boundary_result)} pts\n")
+        except Exception:
+            pass
+        return boundary_result, (septal, lateral), apex
+    logger.warning("[LA-mask2contour] boundary extraction FAILED → superellipse fallback")
+    print("[LA-DEBUG] boundary extraction FAILED → superellipse fallback", flush=True)
+    try:
+        with open("/tmp/la_boundary_debug.log", "a") as _dbg:
+            _dbg.write("boundary extraction FAILED → superellipse fallback\n")
+    except Exception:
+        pass
+
+    # Fallback: superellipse template (geometric approximation)
     template = _warp_superellipse_open_arc(
         septal,
         lateral,
