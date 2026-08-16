@@ -81,9 +81,9 @@ class ReferencePreviewWindow(QDialog):
             for g in p.gradations:
                 items = []
                 if g.range_male:
-                    items.append(f"М: {self._fmt_range(g.range_male)}")
+                    items.append(f"{tr('constructor.meta.sex_male')}: {self._format_norm(g.range_male)}")
                 if g.range_female:
-                    items.append(f"Ж: {self._fmt_range(g.range_female)}")
+                    items.append(f"{tr('constructor.meta.sex_female')}: {self._format_norm(g.range_female)}")
                 parts.append(f'<td>{" / ".join(items) if items else "—"}</td>')
             parts.append("</tr></table></td>")
             return "".join(parts)
@@ -126,10 +126,6 @@ class ReferencePreviewWindow(QDialog):
         if norm.high is not None:
             parts.append(f"<={norm.high}")
         return " — ".join(parts) if parts else "—"
-
-    def _fmt_range(self, norm) -> str:
-        return self._format_norm(norm)
-
 
 _CSS = """
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; padding: 20px; line-height: 1.5; }  # noqa: E501
