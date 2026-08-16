@@ -11,11 +11,11 @@ from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QListWidget,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -95,6 +95,75 @@ def _gradation_color(name: str) -> tuple[str, str] | None:
         if keyword in lower:
             return colors
     return None
+
+
+class _PathologyPanel(QWidget):
+    """Two-column pathology list: items flow left→right, max 4 rows per column."""
+
+    currentRowChanged = Signal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._items: list[str] = []
+        self._buttons: list[QPushButton] = []
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self._selected_index: int = -1
+        self._blocked: bool = False
+
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(2)
+
+    def addItems(self, items: list[str]) -> None:
+        self.clear()
+        self._items = list(items)
+        p = get_theme_palette()
+        for i, text in enumerate(items):
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(
+                f"QPushButton {{ text-align: left; padding: 4px 8px; border: none; "
+                f"background: transparent; color: {p['text']}; font-size: 13px; "
+                f"border-radius: 3px; }}"
+                f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
+                f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+            )
+            btn.clicked.connect(lambda _checked, idx=i: self._on_clicked(idx))
+            self._group.addButton(btn, i)
+            self._buttons.append(btn)
+            col = i % 2
+            row = i // 2
+            self._layout.addWidget(btn, row, col)
+        # Fill remaining cells in the grid so columns align
+        if len(items) % 2 == 1:
+            spacer = QWidget()
+            spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            self._layout.addWidget(spacer, len(items) // 2, 1)
+
+    def clear(self) -> None:
+        for btn in self._buttons:
+            self._group.removeButton(btn)
+            btn.setParent(None)
+            btn.deleteLater()
+        self._buttons.clear()
+        self._items.clear()
+        self._selected_index = -1
+
+    def setCurrentRow(self, row: int) -> None:
+        if 0 <= row < len(self._buttons):
+            self._buttons[row].setChecked(True)
+            self._selected_index = row
+
+    def _on_clicked(self, index: int) -> None:
+        if self._blocked:
+            return
+        self._selected_index = index
+        self.currentRowChanged.emit(index)
+
+    def count(self) -> int:
+        return len(self._buttons)
 
 
 class _ImageContainer(QWidget):
@@ -459,16 +528,14 @@ class StructuredReferenceWidget(QWidget):
         right_layout.setContentsMargins(8, 8, 8, 8)
         right_layout.setSpacing(8)
 
-        # Pathology list (~6 rows)
-        self._pathology_list = QListWidget()
-        self._pathology_list.setFixedHeight(100)
-        self._pathology_list.setStyleSheet(
-            f"QListWidget {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 13px; }}"
-            f"QListWidget::item {{ padding: 4px 8px; }}"
-            f"QListWidget::item:selected {{ background: {p['accent_tab']}; }}"
+        # Pathology panel (two-column grid)
+        self._pathology_panel = _PathologyPanel()
+        self._pathology_panel.setFixedHeight(80)
+        self._pathology_panel.setStyleSheet(
+            f"_PathologyPanel {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; }}"
         )
-        self._pathology_list.currentRowChanged.connect(self._on_pathology_row_changed)
-        right_layout.addWidget(self._pathology_list)
+        self._pathology_panel.currentRowChanged.connect(self._on_pathology_row_changed)
+        right_layout.addWidget(self._pathology_panel)
 
         # Middle: cards (left) + image (right)
         content_row = QHBoxLayout()
@@ -483,6 +550,7 @@ class StructuredReferenceWidget(QWidget):
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
         self._cards_layout.setSpacing(6)
+        self._cards_layout.addStretch(1)  # pushes table to bottom, fills upward
         self._cards_scroll.setWidget(self._cards_container)
         self._param_cards: list[_ParameterCard] = []
         content_row.addWidget(self._cards_scroll, stretch=1)
@@ -546,7 +614,7 @@ class StructuredReferenceWidget(QWidget):
         self._open_default_section()
 
     def _show_placeholder(self) -> None:
-        self._pathology_list.clear()
+        self._pathology_panel.clear()
         self._clear_cards()
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
@@ -569,7 +637,7 @@ class StructuredReferenceWidget(QWidget):
             (i for i, p in enumerate(topic.pathologies) if p.slug == self._DEFAULT_PATHOLOGY_SLUG),
             0,
         )
-        self._pathology_list.setCurrentRow(patho_idx)
+        self._pathology_panel.setCurrentRow(patho_idx)
 
     def _clear_cards(self) -> None:
         """Remove all parameter cards and tables from the container."""
@@ -578,7 +646,7 @@ class StructuredReferenceWidget(QWidget):
             card.deleteLater()
         self._param_cards.clear()
         # Also remove any tables that were added
-        while self._cards_layout.count() > 0:
+        while self._cards_layout.count() > 1:  # Keep stretch
             item = self._cards_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
@@ -716,7 +784,7 @@ class StructuredReferenceWidget(QWidget):
             norm = self._format_norm(param)
             card = _ParameterCard(param, norm)
             card.setToolTip(f"{patho.name}" + (f" ({grad.name})" if grad else ""))
-            self._cards_layout.insertWidget(self._cards_layout.count(), card)
+            self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
             self._param_cards.append(card)
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
@@ -725,11 +793,10 @@ class StructuredReferenceWidget(QWidget):
         self._current_topic = topic
         self._current_pathology = None
         self._current_gradation = None
-        self._pathology_list.blockSignals(True)
-        self._pathology_list.clear()
-        for patho in topic.pathologies:
-            self._pathology_list.addItem(patho.name)
-        self._pathology_list.blockSignals(False)
+        self._pathology_panel._blocked = True
+        self._pathology_panel.clear()
+        self._pathology_panel.addItems([p.name for p in topic.pathologies])
+        self._pathology_panel._blocked = False
         self._clear_cards()
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
@@ -893,21 +960,17 @@ class StructuredReferenceWidget(QWidget):
                 table.setItem(r, col, item)
 
         # Insert table into cards layout (inside scroll area)
-        self._cards_layout.insertWidget(self._cards_layout.count(), table)
+        self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
         # Restore saved column widths and connect resize signal
         QTimer.singleShot(0, lambda: self._restore_column_widths(table))
         header.sectionResized.connect(lambda _idx, _old, _new: self._save_column_widths(table))
         QTimer.singleShot(0, lambda: self._adjust_table_row_height(table, n_rows))
 
     def _adjust_table_row_height(self, table: QTableWidget, n_rows: int) -> None:
-        """Adjust row heights so table fills available space without scroll."""
+        """Set row height to a reasonable size; cap at 32px so rows don't stretch."""
         if n_rows == 0:
             return
-        available = table.viewport().height()
-        if available < 10:
-            return
-        row_height = max(24, available // n_rows)
-        table.verticalHeader().setDefaultSectionSize(row_height)
+        table.verticalHeader().setDefaultSectionSize(32)
 
     def _save_column_widths(self, table: QTableWidget) -> None:
         """Persist column widths for current pathology via QSettings."""
@@ -1062,7 +1125,7 @@ class StructuredReferenceWidget(QWidget):
         patho_idx = next((i for i, p in enumerate(topic.pathologies) if p.slug == patho.slug), -1)
         if patho_idx < 0:
             return
-        self._pathology_list.setCurrentRow(patho_idx)
+        self._pathology_panel.setCurrentRow(patho_idx)
 
     def set_maximized_mode(self, maximized: bool) -> None:
         """Update button labels and sizes for maximized/restored mode."""

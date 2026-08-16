@@ -564,6 +564,7 @@ class AseReferenceDialog(QDialog):
         # Reload reference data after constructor closes
         if self._structured_widget is not None:
             self._structured_widget.reload()
+            self._structured_widget.set_maximized_mode(self._is_maximized)
         # Restore focus to this dialog
         self.activateWindow()
         self.setFocus()
