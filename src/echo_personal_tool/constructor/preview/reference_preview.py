@@ -84,7 +84,7 @@ class ReferencePreviewWindow(QDialog):
                     items.append(f"{tr('constructor.meta.sex_male')}: {self._format_norm(g.range_male)}")
                 if g.range_female:
                     items.append(f"{tr('constructor.meta.sex_female')}: {self._format_norm(g.range_female)}")
-                parts.append(f'<td>{" / ".join(items) if items else "—"}</td>')
+                parts.append(f"<td>{' / '.join(items) if items else '—'}</td>")
             parts.append("</tr></table></td>")
             return "".join(parts)
         norm_m = self._format_norm(p.norm_male)
@@ -126,6 +126,7 @@ class ReferencePreviewWindow(QDialog):
         if norm.high is not None:
             parts.append(f"<={norm.high}")
         return " — ".join(parts) if parts else "—"
+
 
 _CSS = """
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; padding: 20px; line-height: 1.5; }  # noqa: E501
