@@ -884,10 +884,9 @@ class StructuredReferenceWidget(QWidget):
         table.setAlternatingRowColors(True)
 
         header = table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for c in range(1, n_cols):
+        for c in range(n_cols):
             header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
-            header.resizeSection(c, 100)
+            header.resizeSection(c, 120 if c == 0 else 100)
 
         headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
         headers.extend(grad_names)
