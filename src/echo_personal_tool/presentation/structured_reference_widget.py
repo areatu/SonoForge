@@ -7,8 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
@@ -78,6 +78,23 @@ _TOPIC_FULL_NAMES: dict[str, str] = {
     "prosthetic_valves": tr("ref_topic.full_prosthetic_valves"),
     "other": tr("ref_topic.full_other"),
 }
+
+
+_GRADATION_COLORS: dict[str, tuple[str, str]] = {
+    "норм": ("rgba(34, 197, 94, 0.12)", "#22c55e"),
+    "лёгк": ("rgba(234, 179, 8, 0.12)", "#eab308"),
+    "умерен": ("rgba(249, 115, 22, 0.12)", "#f97316"),
+    "тяжёл": ("rgba(239, 68, 68, 0.12)", "#ef4444"),
+}
+
+
+def _gradation_color(name: str) -> tuple[str, str] | None:
+    """Return (bg, text) colors for a gradation name, or None."""
+    lower = name.lower()
+    for keyword, colors in _GRADATION_COLORS.items():
+        if keyword in lower:
+            return colors
+    return None
 
 
 class _ImageContainer(QWidget):
@@ -763,136 +780,130 @@ class StructuredReferenceWidget(QWidget):
         self._clear_cards()
         if self._current_pathology is None:
             return
+        self._render_parameter_table()
 
-        # When pathology has gradations → render a single summary table
-        if self._current_pathology.gradations:
-            self._render_gradation_table()
+    def _render_parameter_table(self) -> None:
+        """Unified table: Показатель | Норм М | Норм Ж | [Градации...]."""
+        if self._current_pathology is None:
             return
 
-        # Otherwise → render flat parameter table (matching constructor style)
-        self._render_flat_table()
-
-    def _render_flat_table(self) -> None:
-        """Render parameters as a table: Показатель, Норм М, Норм Ж (units combined)."""
-        params = self._get_current_parameters()
+        params = self._current_pathology.parameters or []
         if not params:
-            return
+            if self._current_pathology.gradations:
+                params = self._flatten_gradation_parameters(self._current_pathology)
+            if not params:
+                return
 
-        p = get_theme_palette()
-        columns = [
-            ("name", tr("ref_table.col_param")),
-            ("norm_male", tr("ref_table.col_norm_male")),
-            ("norm_female", tr("ref_table.col_norm_female")),
-        ]
+        has_gradations = any(p.gradations for p in params)
+        grad_names: list[str] = []
+        if has_gradations:
+            seen: set[str] = set()
+            for p in params:
+                for g in p.gradations:
+                    if g.name not in seen:
+                        grad_names.append(g.name)
+                        seen.add(g.name)
 
-        table = QTableWidget(len(params), len(columns))
-        table.verticalHeader().hide()
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-
-        headers = [label for _, label in columns]
-        table.setHorizontalHeaderLabels(headers)
-
-        header_style = (
-            f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
-        )
-        table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
-        table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
-            f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
-            f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
-        )
-
-        for r, param in enumerate(params):
-            # Combine name with unit (e.g., "Длина ЛП (ПЗК) мм")
-            name_text = param.name
-            if param.unit:
-                name_text += f" ({param.unit})"
-
-            norm_m = self._format_norm_range(param.norm_male)
-            norm_f = self._format_norm_range(param.norm_female)
-
-            values = [name_text, norm_m, norm_f]
-            for c, val in enumerate(values):
-                item = QTableWidgetItem(val)
-                item.setForeground(QColor(p["text"]))
-                # Color-code norms and empty cells
-                if c in (1, 2) and val:
-                    item.setForeground(QColor(p["accent_tab"]))
-                elif not val:
-                    item.setForeground(QColor(p["text_dim"]))
-                table.setItem(r, c, item)
-
-        self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
-
-    def _render_gradation_table(self) -> None:
-        """Render a single matrix table: rows = parameters, columns = gradations."""
-        grads = self._current_pathology.gradations
-        grad_names = [g.name for g in grads]
-
-        # Collect unique parameters preserving order
-        seen: dict[str, object] = {}
-        for grad in grads:
-            for param in grad.parameters:
-                if param.id not in seen:
-                    seen[param.id] = param
-        ordered_params = list(seen.values())
-
-        p = get_theme_palette()
-        n_rows = len(ordered_params)
-        n_cols = 1 + len(grad_names)  # param name + gradation columns
+        pal = get_theme_palette()
+        n_cols = 3 + len(grad_names)
+        n_rows = len(params)
 
         table = QTableWidget(n_rows, n_cols)
         table.verticalHeader().hide()
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        table.setAlternatingRowColors(True)
 
-        # Headers
-        headers = [tr("ref_table.col_param")] + grad_names
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for c in range(1, n_cols):
+            header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
+            header.resizeSection(c, 100)
+
+        headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
+        headers.extend(grad_names)
         table.setHorizontalHeaderLabels(headers)
+
         header_style = (
-            f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
+            f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
+            f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
         )
-        table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
+        header.setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
+
         table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
-            f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
+            f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
+            f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
+            f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
             f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
         )
 
-        # Fill rows
-        for r, param in enumerate(ordered_params):
-            # Column 0: parameter name + unit
+        mono_font = table.font()
+        mono_font.setStyleHint(QFont.StyleHint.Monospace)
+
+        for r, param in enumerate(params):
             name_text = param.name
             if param.unit:
                 name_text += f" ({param.unit})"
             name_item = QTableWidgetItem(name_text)
-            name_item.setForeground(QColor(p["text"]))
+            name_item.setForeground(QColor(pal["text"]))
             font = name_item.font()
             font.setBold(True)
             name_item.setFont(font)
             table.setItem(r, 0, name_item)
 
-            # Gradation columns
-            for g_idx, grad in enumerate(grads):
-                value = ""
-                for gp in grad.parameters:
-                    if gp.id == param.id:
-                        value = gp.pathology_desc or ""
-                        break
-                val_item = QTableWidgetItem(value)
-                val_item.setForeground(QColor(p["text"]))
-                table.setItem(r, 1 + g_idx, val_item)
+            norm_m = self._format_norm_range(param.norm_male)
+            norm_m_item = QTableWidgetItem(norm_m)
+            norm_m_item.setFont(mono_font)
+            norm_m_item.setForeground(QColor(pal["accent_tab"]))
+            table.setItem(r, 1, norm_m_item)
+
+            norm_f = self._format_norm_range(param.norm_female)
+            norm_f_item = QTableWidgetItem(norm_f)
+            norm_f_item.setFont(mono_font)
+            norm_f_item.setForeground(QColor(pal["accent_tab"]))
+            table.setItem(r, 2, norm_f_item)
+
+            grad_map = {g.name: g for g in param.gradations}
+            for g_idx, g_name in enumerate(grad_names):
+                col = 3 + g_idx
+                grad = grad_map.get(g_name)
+                if grad:
+                    parts = []
+                    if grad.range_male:
+                        parts.append(self._format_norm_range(grad.range_male))
+                    if grad.range_female:
+                        parts.append(self._format_norm_range(grad.range_female))
+                    value = " / ".join(parts) if parts else "—"
+                else:
+                    value = "—"
+
+                item = QTableWidgetItem(value)
+                item.setFont(mono_font)
+
+                colors = _gradation_color(g_name)
+                if colors and value != "—":
+                    bg, text = colors
+                    item.setBackground(QColor(bg))
+                    item.setForeground(QColor(text))
+                else:
+                    item.setForeground(QColor(pal["text_dim"]))
+
+                table.setItem(r, col, item)
 
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
+        QTimer.singleShot(0, lambda: self._adjust_table_row_height(table, n_rows))
+
+    def _adjust_table_row_height(self, table: QTableWidget, n_rows: int) -> None:
+        """Adjust row heights so table fills available space without scroll."""
+        if n_rows == 0:
+            return
+        available = table.viewport().height()
+        if available < 10:
+            return
+        row_height = max(24, available // n_rows)
+        table.verticalHeader().setDefaultSectionSize(row_height)
 
     def _get_current_parameters(self) -> list:
         if self._current_pathology is None:
