@@ -7,17 +7,16 @@ import re
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QListWidget,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -67,18 +66,105 @@ _TOPIC_LABELS: dict[str, str] = {
 }
 
 _TOPIC_FULL_NAMES: dict[str, str] = {
-    "left_ventricle": tr("ref_topic.left_ventricle_full"),
-    "left_atrium": tr("ref_topic.left_atrium_full"),
-    "right_ventricle": tr("ref_topic.right_ventricle_full"),
-    "right_atrium": tr("ref_topic.right_atrium_full"),
-    "mitral_valve": tr("ref_topic.mitral_valve_full"),
-    "aortic_valve": tr("ref_topic.aortic_valve_full"),
-    "tricuspid_valve": tr("ref_topic.tricuspid_valve_full"),
-    "pulmonary_valve": tr("ref_topic.pulmonary_valve_full"),
-    "aorta": tr("ref_topic.aorta_full"),
-    "prosthetic_valves": tr("ref_topic.prosthetic_valves_full"),
-    "other": tr("ref_topic.other_full"),
+    "left_ventricle": tr("ref_topic.full_left_ventricle"),
+    "left_atrium": tr("ref_topic.full_left_atrium"),
+    "right_ventricle": tr("ref_topic.full_right_ventricle"),
+    "right_atrium": tr("ref_topic.full_right_atrium"),
+    "mitral_valve": tr("ref_topic.full_mitral_valve"),
+    "aortic_valve": tr("ref_topic.full_aortic_valve"),
+    "tricuspid_valve": tr("ref_topic.full_tricuspid_valve"),
+    "pulmonary_valve": tr("ref_topic.full_pulmonary_valve"),
+    "aorta": tr("ref_topic.full_aorta"),
+    "prosthetic_valves": tr("ref_topic.full_prosthetic_valves"),
+    "other": tr("ref_topic.full_other"),
 }
+
+
+_GRADATION_COLORS: dict[str, tuple[str, str]] = {
+    "норм": ("rgba(34, 197, 94, 0.12)", "#22c55e"),
+    "лёгк": ("rgba(234, 179, 8, 0.12)", "#eab308"),
+    "умерен": ("rgba(249, 115, 22, 0.12)", "#f97316"),
+    "тяжёл": ("rgba(239, 68, 68, 0.12)", "#ef4444"),
+}
+
+
+def _gradation_color(name: str) -> tuple[str, str] | None:
+    """Return (bg, text) colors for a gradation name, or None."""
+    lower = name.lower()
+    for keyword, colors in _GRADATION_COLORS.items():
+        if keyword in lower:
+            return colors
+    return None
+
+
+class _PathologyPanel(QWidget):
+    """Two-column pathology list: items flow left→right, max 4 rows per column."""
+
+    currentRowChanged = Signal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._items: list[str] = []
+        self._buttons: list[QPushButton] = []
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        self._selected_index: int = -1
+        self._blocked: bool = False
+
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(2)
+
+    def addItems(self, items: list[str]) -> None:
+        self.clear()
+        self._items = list(items)
+        p = get_theme_palette()
+        for i, text in enumerate(items):
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(
+                f"QPushButton {{ text-align: left; padding: 4px 8px; border: none; "
+                f"background: transparent; color: {p['text']}; font-size: 13px; "
+                f"border-radius: 3px; }}"
+                f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
+                f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+            )
+            btn.clicked.connect(lambda _checked, idx=i: self._on_clicked(idx))
+            self._group.addButton(btn, i)
+            self._buttons.append(btn)
+            col = i % 2
+            row = i // 2
+            self._layout.addWidget(btn, row, col)
+        # Fill remaining cells in the grid so columns align
+        if len(items) % 2 == 1:
+            spacer = QWidget()
+            spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            self._layout.addWidget(spacer, len(items) // 2, 1)
+
+    def clear(self) -> None:
+        for btn in self._buttons:
+            self._group.removeButton(btn)
+            btn.setParent(None)
+            btn.deleteLater()
+        self._buttons.clear()
+        self._items.clear()
+        self._selected_index = -1
+
+    def setCurrentRow(self, row: int) -> None:
+        if 0 <= row < len(self._buttons):
+            self._buttons[row].setChecked(True)
+            self._selected_index = row
+            self.currentRowChanged.emit(row)
+
+    def _on_clicked(self, index: int) -> None:
+        if self._blocked:
+            return
+        self._selected_index = index
+        self.currentRowChanged.emit(index)
+
+    def count(self) -> int:
+        return len(self._buttons)
 
 
 class _ImageContainer(QWidget):
@@ -265,7 +351,7 @@ class _ParameterCard(QWidget):
 
 
 class StructuredReferenceWidget(QWidget):
-    """Topic → pathology → gradation → parameter cards with sex toggle and images."""
+    """Topic → pathology → gradation → parameter cards with images."""
 
     param_clicked = Signal(str)  # future: overlay link
 
@@ -280,7 +366,6 @@ class StructuredReferenceWidget(QWidget):
         self._current_topic: TopicRef | None = None
         self._current_pathology: PathologyRef | None = None
         self._current_gradation: GradationRef | None = None
-        self._sex_male: bool = True
         self._age: int | None = None
         self._original_pixmap: QPixmap | None = None
         self._image_paths: list[str] = []
@@ -416,27 +501,6 @@ class StructuredReferenceWidget(QWidget):
         separator.setStyleSheet(f"background: {p['border']};")
         left_layout.addWidget(separator)
 
-        # Sex toggle
-        sex_widget = QWidget()
-        sex_layout = QHBoxLayout(sex_widget)
-        sex_layout.setContentsMargins(4, 4, 4, 4)
-        sex_layout.setSpacing(4)
-
-        sex_group = QButtonGroup(self)
-        self._male_radio = QRadioButton(tr("ref_table.sex_male"))
-        self._female_radio = QRadioButton(tr("ref_table.sex_female"))
-        self._male_radio.setChecked(True)
-        sex_group.addButton(self._male_radio, 0)
-        sex_group.addButton(self._female_radio, 1)
-        sex_group.idClicked.connect(self._on_sex_changed)
-
-        sex_label = QLabel(tr("ref_table.sex_label"))
-        sex_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
-        sex_layout.addWidget(sex_label)
-        sex_layout.addWidget(self._male_radio)
-        sex_layout.addWidget(self._female_radio)
-        left_layout.addWidget(sex_widget)
-
         # Age field
         age_widget = QWidget()
         age_layout = QHBoxLayout(age_widget)
@@ -465,16 +529,14 @@ class StructuredReferenceWidget(QWidget):
         right_layout.setContentsMargins(8, 8, 8, 8)
         right_layout.setSpacing(8)
 
-        # Pathology list (~6 rows)
-        self._pathology_list = QListWidget()
-        self._pathology_list.setFixedHeight(150)
-        self._pathology_list.setStyleSheet(
-            f"QListWidget {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 13px; }}"
-            f"QListWidget::item {{ padding: 4px 8px; }}"
-            f"QListWidget::item:selected {{ background: {p['accent_tab']}; }}"
+        # Pathology panel (two-column grid)
+        self._pathology_panel = _PathologyPanel()
+        self._pathology_panel.setFixedHeight(80)
+        self._pathology_panel.setStyleSheet(
+            f"_PathologyPanel {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; }}"
         )
-        self._pathology_list.currentRowChanged.connect(self._on_pathology_row_changed)
-        right_layout.addWidget(self._pathology_list)
+        self._pathology_panel.currentRowChanged.connect(self._on_pathology_row_changed)
+        right_layout.addWidget(self._pathology_panel)
 
         # Middle: cards (left) + image (right)
         content_row = QHBoxLayout()
@@ -485,10 +547,11 @@ class StructuredReferenceWidget(QWidget):
         self._cards_scroll.setWidgetResizable(True)
         self._cards_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self._cards_container = QWidget()
+        self._cards_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
         self._cards_layout.setSpacing(6)
-        self._cards_layout.addStretch(1)
+        self._cards_layout.addStretch(1)  # pushes table to bottom, fills upward
         self._cards_scroll.setWidget(self._cards_container)
         self._param_cards: list[_ParameterCard] = []
         content_row.addWidget(self._cards_scroll, stretch=1)
@@ -552,7 +615,7 @@ class StructuredReferenceWidget(QWidget):
         self._open_default_section()
 
     def _show_placeholder(self) -> None:
-        self._pathology_list.clear()
+        self._pathology_panel.clear()
         self._clear_cards()
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
@@ -575,7 +638,7 @@ class StructuredReferenceWidget(QWidget):
             (i for i, p in enumerate(topic.pathologies) if p.slug == self._DEFAULT_PATHOLOGY_SLUG),
             0,
         )
-        self._pathology_list.setCurrentRow(patho_idx)
+        self._pathology_panel.setCurrentRow(patho_idx)
 
     def _clear_cards(self) -> None:
         """Remove all parameter cards and tables from the container."""
@@ -689,10 +752,6 @@ class StructuredReferenceWidget(QWidget):
         super().resizeEvent(event)
         self._scale_image()
 
-    def _on_sex_changed(self, button_id: int) -> None:
-        self._sex_male = button_id == 0
-        self._refresh_table()
-
     def _on_age_changed(self, text: str) -> None:
         # Age is stored for future use (e.g., diastolic function norms)
         try:
@@ -735,11 +794,10 @@ class StructuredReferenceWidget(QWidget):
         self._current_topic = topic
         self._current_pathology = None
         self._current_gradation = None
-        self._pathology_list.blockSignals(True)
-        self._pathology_list.clear()
-        for patho in topic.pathologies:
-            self._pathology_list.addItem(patho.name)
-        self._pathology_list.blockSignals(False)
+        self._pathology_panel._blocked = True
+        self._pathology_panel.clear()
+        self._pathology_panel.addItems([p.name for p in topic.pathologies])
+        self._pathology_panel._blocked = False
         self._clear_cards()
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
@@ -790,136 +848,159 @@ class StructuredReferenceWidget(QWidget):
         self._clear_cards()
         if self._current_pathology is None:
             return
+        self._render_parameter_table()
 
-        # When pathology has gradations → render a single summary table
-        if self._current_pathology.gradations:
-            self._render_gradation_table()
+    def _render_parameter_table(self) -> None:
+        """Unified table: Показатель | Норм М | Норм Ж | [Градации...]."""
+        if self._current_pathology is None:
             return
 
-        # Otherwise → render flat parameter table (matching constructor style)
-        self._render_flat_table()
-
-    def _render_flat_table(self) -> None:
-        """Render parameters as a table: Показатель, Норм М, Норм Ж (units combined)."""
-        params = self._get_current_parameters()
+        params = self._current_pathology.parameters or []
         if not params:
-            return
+            if self._current_pathology.gradations:
+                params = self._flatten_gradation_parameters(self._current_pathology)
+            if not params:
+                return
 
-        p = get_theme_palette()
-        columns = [
-            ("name", tr("ref_table.col_param")),
-            ("norm_male", tr("ref_table.col_norm_male")),
-            ("norm_female", tr("ref_table.col_norm_female")),
-        ]
+        has_gradations = any(p.gradations for p in params)
+        grad_names: list[str] = []
+        if has_gradations:
+            seen: set[str] = set()
+            for p in params:
+                for g in p.gradations:
+                    if g.name not in seen:
+                        grad_names.append(g.name)
+                        seen.add(g.name)
 
-        table = QTableWidget(len(params), len(columns))
-        table.verticalHeader().hide()
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-
-        headers = [label for _, label in columns]
-        table.setHorizontalHeaderLabels(headers)
-
-        header_style = (
-            f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
-        )
-        table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
-        table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
-            f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
-            f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
-        )
-
-        for r, param in enumerate(params):
-            # Combine name with unit (e.g., "Длина ЛП (ПЗК) мм")
-            name_text = param.name
-            if param.unit:
-                name_text += f" ({param.unit})"
-
-            norm_m = self._format_norm_range(param.norm_male)
-            norm_f = self._format_norm_range(param.norm_female)
-
-            values = [name_text, norm_m, norm_f]
-            for c, val in enumerate(values):
-                item = QTableWidgetItem(val)
-                item.setForeground(QColor(p["text"]))
-                # Color-code norms and empty cells
-                if c in (1, 2) and val:
-                    item.setForeground(QColor(p["accent_tab"]))
-                elif not val:
-                    item.setForeground(QColor(p["text_dim"]))
-                table.setItem(r, c, item)
-
-        self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
-
-    def _render_gradation_table(self) -> None:
-        """Render a single matrix table: rows = parameters, columns = gradations."""
-        grads = self._current_pathology.gradations
-        grad_names = [g.name for g in grads]
-
-        # Collect unique parameters preserving order
-        seen: dict[str, object] = {}
-        for grad in grads:
-            for param in grad.parameters:
-                if param.id not in seen:
-                    seen[param.id] = param
-        ordered_params = list(seen.values())
-
-        p = get_theme_palette()
-        n_rows = len(ordered_params)
-        n_cols = 1 + len(grad_names)  # param name + gradation columns
+        pal = get_theme_palette()
+        n_cols = 3 + len(grad_names)
+        n_rows = len(params)
 
         table = QTableWidget(n_rows, n_cols)
         table.verticalHeader().hide()
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        table.setAlternatingRowColors(True)
 
-        # Headers
-        headers = [tr("ref_table.col_param")] + grad_names
+        header = table.horizontalHeader()
+        for c in range(n_cols):
+            header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
+            header.resizeSection(c, 120 if c == 0 else 100)
+
+        headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
+        headers.extend(grad_names)
         table.setHorizontalHeaderLabels(headers)
+
         header_style = (
-            f"background: {p['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {p['text']}; border-bottom: 2px solid {p['accent_tab']};"
+            f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
+            f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
         )
-        table.horizontalHeader().setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
+        header.setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
+
         table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {p['border']}; gridline-color: {p['border']}; "
-            f"font-size: 13px; background: {p['bg_panel']}; color: {p['text']}; }}"
+            f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
+            f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
+            f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
             f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
         )
 
-        # Fill rows
-        for r, param in enumerate(ordered_params):
-            # Column 0: parameter name + unit
+        mono_font = table.font()
+        mono_font.setStyleHint(QFont.StyleHint.Monospace)
+
+        for r, param in enumerate(params):
             name_text = param.name
             if param.unit:
                 name_text += f" ({param.unit})"
             name_item = QTableWidgetItem(name_text)
-            name_item.setForeground(QColor(p["text"]))
+            name_item.setForeground(QColor(pal["text"]))
             font = name_item.font()
             font.setBold(True)
             name_item.setFont(font)
             table.setItem(r, 0, name_item)
 
-            # Gradation columns
-            for g_idx, grad in enumerate(grads):
-                value = ""
-                for gp in grad.parameters:
-                    if gp.id == param.id:
-                        value = gp.pathology_desc or ""
-                        break
-                val_item = QTableWidgetItem(value)
-                val_item.setForeground(QColor(p["text"]))
-                table.setItem(r, 1 + g_idx, val_item)
+            norm_m = self._format_norm_range(param.norm_male)
+            norm_m_item = QTableWidgetItem(norm_m)
+            norm_m_item.setFont(mono_font)
+            norm_m_item.setForeground(QColor(pal["accent_tab"]))
+            table.setItem(r, 1, norm_m_item)
 
+            norm_f = self._format_norm_range(param.norm_female)
+            norm_f_item = QTableWidgetItem(norm_f)
+            norm_f_item.setFont(mono_font)
+            norm_f_item.setForeground(QColor(pal["accent_tab"]))
+            table.setItem(r, 2, norm_f_item)
+
+            grad_map = {g.name: g for g in param.gradations}
+            for g_idx, g_name in enumerate(grad_names):
+                col = 3 + g_idx
+                grad = grad_map.get(g_name)
+                if grad:
+                    parts = []
+                    if grad.range_male:
+                        parts.append(self._format_norm_range(grad.range_male))
+                    if grad.range_female:
+                        parts.append(self._format_norm_range(grad.range_female))
+                    value = " / ".join(parts) if parts else "—"
+                else:
+                    value = "—"
+
+                item = QTableWidgetItem(value)
+                item.setFont(mono_font)
+
+                colors = _gradation_color(g_name)
+                if colors and value != "—":
+                    bg, text = colors
+                    item.setBackground(QColor(bg))
+                    item.setForeground(QColor(text))
+                else:
+                    item.setForeground(QColor(pal["text_dim"]))
+
+                table.setItem(r, col, item)
+
+        # Insert table into cards layout (inside scroll area)
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
+        # Restore saved column widths and connect resize signal
+        QTimer.singleShot(0, lambda: self._restore_column_widths(table))
+        header.sectionResized.connect(lambda _idx, _old, _new: self._save_column_widths(table))
+        QTimer.singleShot(0, lambda: self._adjust_table_row_height(table, n_rows))
+
+    def _adjust_table_row_height(self, table: QTableWidget, n_rows: int) -> None:
+        """Set row height to a reasonable size; cap at 32px so rows don't stretch."""
+        if n_rows == 0:
+            return
+        table.verticalHeader().setDefaultSectionSize(32)
+
+    def _save_column_widths(self, table: QTableWidget) -> None:
+        """Persist column widths for current pathology via QSettings."""
+        if self._current_pathology is None:
+            return
+        settings = QSettings()
+        key = f"reference/col_widths/{self._current_pathology.slug}"
+        widths = [table.columnWidth(c) for c in range(table.columnCount())]
+        settings.setValue(key, widths)
+
+    def _restore_column_widths(self, table: QTableWidget) -> None:
+        """Restore saved column widths for current pathology."""
+        if self._current_pathology is None:
+            return
+        settings = QSettings()
+        key = f"reference/col_widths/{self._current_pathology.slug}"
+        widths = settings.value(key)
+        if widths and isinstance(widths, list):
+            for c, w in enumerate(widths):
+                if c < table.columnCount():
+                    table.setColumnWidth(c, int(w))
+
+    def save_settings(self) -> None:
+        """Public API: save all current settings (column widths etc.)."""
+        # Find the table widget in cards layout
+        for i in range(self._cards_layout.count()):
+            item = self._cards_layout.itemAt(i)
+            if item and item.widget() and isinstance(item.widget(), QTableWidget):
+                self._save_column_widths(item.widget())
+                break
 
     def _get_current_parameters(self) -> list:
         if self._current_pathology is None:
@@ -932,18 +1013,12 @@ class StructuredReferenceWidget(QWidget):
         return params
 
     def _format_norm(self, param) -> str:
-        norm = param.norm_female if not self._sex_male else param.norm_male
-        if norm is None:
-            norm = param.norm_male or param.norm_female
-        if norm is None:
-            return ""
-        if norm.low is not None and norm.high is not None:
-            return f"{norm.low}\u2013{norm.high}"
-        if norm.low is not None:
-            return f"\u2265{norm.low}"
-        if norm.high is not None:
-            return f"\u2264{norm.high}"
-        return ""
+        parts = []
+        if param.norm_male:
+            parts.append(f"М: {self._format_norm_range(param.norm_male)}")
+        if param.norm_female:
+            parts.append(f"Ж: {self._format_norm_range(param.norm_female)}")
+        return " / ".join(parts) if parts else ""
 
     def _format_norm_range(self, norm) -> str:
         """Format a NormRange directly (for table view)."""
@@ -1050,7 +1125,7 @@ class StructuredReferenceWidget(QWidget):
         patho_idx = next((i for i, p in enumerate(topic.pathologies) if p.slug == patho.slug), -1)
         if patho_idx < 0:
             return
-        self._pathology_list.setCurrentRow(patho_idx)
+        self._pathology_panel.setCurrentRow(patho_idx)
 
     def set_maximized_mode(self, maximized: bool) -> None:
         """Update button labels and sizes for maximized/restored mode."""

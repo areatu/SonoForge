@@ -7,9 +7,11 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -100,19 +102,24 @@ class ParameterTableEditor(BaseEditor):
 
         # Buttons
         btn_row = QHBoxLayout()
+        btn_style = (
+            f"QPushButton {{ border: 1px solid {p['border']}; border-radius: 3px; "
+            f"padding: 2px 8px; color: {p['text']}; background: {p['bg_panel']}; font-size: 11px; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
+        )
         for text, slot in [
             (tr("constructor.param.add_param"), self._add_parameter),
             (tr("constructor.param.add_column"), self._add_column),
             (tr("constructor.param.delete_column"), self._delete_column),
+            (tr("constructor.param.insert_row_above"), self._insert_row_above),
+            (tr("constructor.param.insert_row_below"), self._insert_row_below),
+            (tr("constructor.param.insert_col_left"), self._insert_col_left),
+            (tr("constructor.param.insert_col_right"), self._insert_col_right),
         ]:
             btn = QPushButton(text)
             btn.setFixedHeight(26)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                f"QPushButton {{ border: 1px solid {p['border']}; border-radius: 3px; "
-                f"padding: 2px 8px; color: {p['text']}; background: {p['bg_panel']}; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
-            )
+            btn.setStyleSheet(btn_style)
             btn.clicked.connect(slot)
             btn_row.addWidget(btn)
         btn_row.addStretch()
@@ -126,7 +133,6 @@ class ParameterTableEditor(BaseEditor):
 
         self._col_visibility: dict[str, bool] = {c[0]: True for c in self._columns}
         self._col_checkboxes: dict[str, QCheckBox] = {}
-        from PySide6.QtWidgets import QCheckBox
 
         for field, label in self._columns:
             cb = QCheckBox(label)
@@ -333,8 +339,6 @@ class ParameterTableEditor(BaseEditor):
         self.parameters_changed.emit()
 
     def _add_column(self) -> None:
-        from PySide6.QtWidgets import QInputDialog
-
         name, ok = QInputDialog.getText(
             self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
         )
@@ -394,6 +398,85 @@ class ParameterTableEditor(BaseEditor):
         self._font_size = size
         self._table.setStyleSheet(self._table_style())
 
+    # ── Insert / Merge / Split ──
+
+    def _insert_row_above(self) -> None:
+        row = self._table.currentRow()
+        if row < 0:
+            row = 0
+        new_param = ParameterModel(id=f"param_{len(self._parameters) + 1}", name=tr("constructor.param.new_param"))
+        self._parameters.insert(row, new_param)
+        self._all_params.append(new_param)
+        self._refresh_table()
+        self.parameters_changed.emit()
+
+    def _insert_row_below(self) -> None:
+        row = self._table.currentRow()
+        if row < 0:
+            row = len(self._parameters) - 1
+        new_param = ParameterModel(id=f"param_{len(self._parameters) + 1}", name=tr("constructor.param.new_param"))
+        self._parameters.insert(row + 1, new_param)
+        self._all_params.append(new_param)
+        self._refresh_table()
+        self.parameters_changed.emit()
+
+    def _insert_col_left(self) -> None:
+        col = self._table.currentColumn()
+        if col < 0:
+            col = 0
+        name, ok = QInputDialog.getText(
+            self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
+        )
+        if ok and name:
+            slug = name.lower().replace(" ", "_")
+            self._columns.insert(col, (slug, name))
+            self._refresh_table()
+            self.parameters_changed.emit()
+
+    def _insert_col_right(self) -> None:
+        col = self._table.currentColumn()
+        if col < 0:
+            col = len(self._columns) - 1
+        name, ok = QInputDialog.getText(
+            self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
+        )
+        if ok and name:
+            slug = name.lower().replace(" ", "_")
+            self._columns.insert(col + 1, (slug, name))
+            self._refresh_table()
+            self.parameters_changed.emit()
+
+    def _merge_cells(self) -> None:
+        indexes = self._table.selectedIndexes()
+        if len(indexes) < 2:
+            return
+        rows = sorted(set(idx.row() for idx in indexes))
+        cols = sorted(set(idx.column() for idx in indexes))
+        if len(rows) == 1 and len(cols) == 1:
+            return
+        top, left = rows[0], cols[0]
+        row_span = rows[-1] - top + 1
+        col_span = cols[-1] - left + 1
+        self._table.setSpan(top, left, row_span, col_span)
+        texts = []
+        for r in rows:
+            for c in cols:
+                item = self._table.item(r, c)
+                if item and item.text():
+                    texts.append(item.text())
+        merged_item = self._table.item(top, left)
+        if merged_item:
+            merged_item.setText(" | ".join(texts))
+        self.parameters_changed.emit()
+
+    def _split_cells(self) -> None:
+        row = self._table.currentRow()
+        col = self._table.currentColumn()
+        if row < 0 or col < 0:
+            return
+        self._table.setSpan(row, col, 1, 1)
+        self.parameters_changed.emit()
+
     # ── Context menu ──
 
     def _context_menu(self, pos: Any) -> None:
@@ -405,11 +488,26 @@ class ParameterTableEditor(BaseEditor):
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
-        menu.addAction(tr("constructor.param.add_param"), self._add_parameter)
-        menu.addAction(tr("constructor.param.add_column"), self._add_column)
+
+        menu.addAction(tr("constructor.param.insert_row_above"), self._insert_row_above)
+        menu.addAction(tr("constructor.param.insert_row_below"), self._insert_row_below)
+        menu.addSeparator()
+
+        menu.addAction(tr("constructor.param.insert_col_left"), self._insert_col_left)
+        menu.addAction(tr("constructor.param.insert_col_right"), self._insert_col_right)
+        menu.addSeparator()
+
+        menu.addAction(tr("constructor.param.delete_selected"), self.delete_selected)
         menu.addAction(tr("constructor.param.delete_column"), self._delete_column)
         menu.addSeparator()
-        menu.addAction(tr("constructor.param.delete_selected"), self.delete_selected)
+
+        menu.addAction(tr("constructor.param.merge_cells"), self._merge_cells)
+        menu.addAction(tr("constructor.param.split_cells"), self._split_cells)
+        menu.addSeparator()
+
+        menu.addAction(tr("constructor.param.add_param"), self._add_parameter)
+        menu.addAction(tr("constructor.param.add_column"), self._add_column)
+
         menu.exec(self._table.mapToGlobal(pos))
 
 

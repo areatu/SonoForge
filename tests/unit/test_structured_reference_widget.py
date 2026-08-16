@@ -93,7 +93,7 @@ def _find_tables(w) -> list[QTableWidget]:
 
 def test_topic_selection_shows_pathologies(widget):
     widget._on_topic_clicked(widget._topics[0])
-    assert widget._pathology_list.count() >= 1
+    assert widget._pathology_panel.count() >= 1
 
 
 def test_pathology_selection_shows_parameters(widget):

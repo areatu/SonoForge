@@ -58,19 +58,38 @@ class ReferencePreviewWindow(QDialog):
             return ""
         rows = []
         for p in params:
-            norm_m = self._format_norm(p.norm_male)
-            norm_f = self._format_norm(p.norm_female)
+            norm_cell = self._render_norm_cell(p)
             rows.append(
                 f"<tr><td>{p.id}</td><td>{p.name}</td><td>{p.unit}</td>"
-                f"<td class='norm'>{norm_m}</td><td class='norm'>{norm_f}</td>"
+                f"{norm_cell}"
                 f"<td>{p.pathology_desc or ''}</td><td>{p.source or ''}</td></tr>"
             )
         return (
             '<table class="data"><thead><tr>'
             f"<th>ID</th><th>{tr('constructor.preview.col_name')}</th><th>{tr('constructor.preview.col_unit')}</th>"
-            f"<th>{tr('constructor.preview.col_norm_male')}</th><th>{tr('constructor.preview.col_norm_female')}</th><th>{tr('constructor.preview.col_desc')}</th><th>{tr('constructor.preview.col_source')}</th>"
+            f"<th>{tr('constructor.preview.col_norm')}</th>"
+            f"<th>{tr('constructor.preview.col_desc')}</th><th>{tr('constructor.preview.col_source')}</th>"
             f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
         )
+
+    def _render_norm_cell(self, p) -> str:
+        if p.gradations:
+            parts = ['<td class="norm"><table class="gradations"><tr>']
+            for g in p.gradations:
+                parts.append(f"<th>{g.name}</th>")
+            parts.append("</tr><tr>")
+            for g in p.gradations:
+                items = []
+                if g.range_male:
+                    items.append(f"{tr('constructor.meta.sex_male')}: {self._format_norm(g.range_male)}")
+                if g.range_female:
+                    items.append(f"{tr('constructor.meta.sex_female')}: {self._format_norm(g.range_female)}")
+                parts.append(f"<td>{' / '.join(items) if items else '—'}</td>")
+            parts.append("</tr></table></td>")
+            return "".join(parts)
+        norm_m = self._format_norm(p.norm_male)
+        norm_f = self._format_norm(p.norm_female)
+        return f"<td class='norm'>{norm_m} / {norm_f}</td>"
 
     def _render_gradation_table(self, patho) -> str:
         grads = patho.gradations
@@ -120,6 +139,9 @@ table.data td { padding: 6px 10px; border: 1px solid #d1d5db; }
 table.data tr:hover { background: #f9fafb; }
 .norm { color: #2563eb; }
 .patho { color: #dc2626; }
+table.gradations { border-collapse: collapse; width: 100%; }
+table.gradations th { background: #e5e7eb; font-weight: bold; padding: 3px 6px; border: 1px solid #d1d5db; font-size: 12px; }
+table.gradations td { padding: 3px 6px; border: 1px solid #d1d5db; font-size: 12px; }
 .images { margin-top: 8px; }
 .img { display: inline-block; padding: 4px 8px; margin: 2px; border: 1px dashed #d1d5db; border-radius: 4px; color: #9ca3af; font-size: 12px; }  # noqa: E501
 """

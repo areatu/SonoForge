@@ -23,6 +23,29 @@ class NormRangeModel:
 
 
 @dataclass
+class ParameterGradationModel:
+    name: str = ""
+    range_male: NormRangeModel | None = None
+    range_female: NormRangeModel | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"name": self.name}
+        if self.range_male:
+            d["range_male"] = self.range_male.to_dict()
+        if self.range_female:
+            d["range_female"] = self.range_female.to_dict()
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ParameterGradationModel:
+        return cls(
+            name=d.get("name", ""),
+            range_male=NormRangeModel.from_dict(d.get("range_male")),
+            range_female=NormRangeModel.from_dict(d.get("range_female")),
+        )
+
+
+@dataclass
 class ParameterModel:
     id: str = ""
     name: str = ""
@@ -31,6 +54,7 @@ class ParameterModel:
     norm_female: NormRangeModel | None = None
     pathology_desc: str | None = None
     source: str | None = None
+    gradations: list[ParameterGradationModel] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -46,6 +70,8 @@ class ParameterModel:
             d["pathology_desc"] = self.pathology_desc
         if self.source:
             d["source"] = self.source
+        if self.gradations:
+            d["gradations"] = [g.to_dict() for g in self.gradations]
         return d
 
     @classmethod
@@ -58,6 +84,7 @@ class ParameterModel:
             norm_female=NormRangeModel.from_dict(d.get("norm_female")),
             pathology_desc=d.get("pathology_desc"),
             source=d.get("source"),
+            gradations=[ParameterGradationModel.from_dict(g) for g in d.get("gradations", [])],
         )
 
 

@@ -326,12 +326,17 @@ def refine_open_arc_contour(
     original_points = list(contour.points)
     chamber = contour.chamber.upper() if contour.chamber else "LV"
 
-    print(f"[LA-REFINE] chamber={chamber}, source={contour.source}, "
-          f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}", flush=True)
+    print(
+        f"[LA-REFINE] chamber={chamber}, source={contour.source}, "
+        f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}",
+        flush=True,
+    )
     try:
         with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-            _dbg.write(f"refine: chamber={chamber}, source={contour.source}, "
-                       f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}\n")
+            _dbg.write(
+                f"refine: chamber={chamber}, source={contour.source}, "
+                f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}\n"
+            )
     except Exception:
         pass
 

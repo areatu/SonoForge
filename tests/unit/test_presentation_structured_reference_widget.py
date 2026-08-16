@@ -116,19 +116,11 @@ class TestStructuredReferenceWidget:
         assert len(widget._topics) > 0
         # Default topic is auto-selected in _build_ui
         assert widget._current_topic is not None
-        assert widget._sex_male is True
 
     def test_on_topic_clicked(self, widget):
         if widget._topics:
             widget._on_topic_clicked(widget._topics[0])
             assert widget._current_topic is not None
-
-    def test_toggle_sex(self, widget):
-        widget._sex_male = True
-        widget._on_sex_changed(0)
-        assert widget._sex_male is True
-        widget._on_sex_changed(1)
-        assert widget._sex_male is False
 
     def test_reload(self, widget):
         widget.reload()
