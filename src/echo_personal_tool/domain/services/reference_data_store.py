@@ -16,6 +16,13 @@ class NormRange:
 
 
 @dataclass
+class ParameterGradationRef:
+    name: str = ""
+    range_male: NormRange | None = None
+    range_female: NormRange | None = None
+
+
+@dataclass
 class ParameterRef:
     id: str = ""
     name: str = ""
@@ -24,6 +31,7 @@ class ParameterRef:
     norm_female: NormRange | None = None
     pathology_desc: str | None = None
     source: str | None = None
+    gradations: list[ParameterGradationRef] = field(default_factory=list)
 
 
 @dataclass
@@ -60,6 +68,19 @@ def _parse_norm_range(val: Any) -> NormRange | None:
     return NormRange(low=val.get("low"), high=val.get("high"))
 
 
+def _parse_parameter_gradations(raw: list[dict] | None) -> list[ParameterGradationRef]:
+    if not raw:
+        return []
+    return [
+        ParameterGradationRef(
+            name=g["name"],
+            range_male=_parse_norm_range(g.get("range_male")),
+            range_female=_parse_norm_range(g.get("range_female")),
+        )
+        for g in raw
+    ]
+
+
 def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
     return [
         ParameterRef(
@@ -70,6 +91,7 @@ def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
             norm_female=_parse_norm_range(p.get("norm_female")),
             pathology_desc=p.get("pathology_desc"),
             source=p.get("source"),
+            gradations=_parse_parameter_gradations(p.get("gradations")),
         )
         for p in raw
     ]

@@ -158,3 +158,55 @@ def test_norm_range_none():
     nr = NormRange(low=None, high=35.0)
     assert nr.low is None
     assert nr.high == 35.0
+
+
+_SAMPLE_YAML_PARAM_GRADATIONS = """
+topics:
+  - name: Левый желудочек
+    slug: left_ventricle
+    pathologies:
+      - name: Масса миокарда ЛЖ
+        slug: lv_mass
+        parameters:
+          - id: lvm
+            name: Масса миокарда ЛЖ (LVM)
+            unit: г
+            norm_male: {low: 88, high: 224}
+            norm_female: {low: 66, high: 150}
+            gradations:
+              - name: Норма
+                range_male: {low: 88, high: 224}
+                range_female: {low: 66, high: 150}
+              - name: Лёгкое увеличение
+                range_male: {low: 225, high: 258}
+                range_female: {low: 151, high: 171}
+              - name: Умеренное увеличение
+                range_male: {low: 259, high: 292}
+                range_female: {low: 172, high: 193}
+              - name: Тяжёлое увеличение
+                range_male: {low: 293}
+                range_female: {low: 194}
+            source: "ASE 2015"
+"""
+
+
+@pytest.fixture
+def store_with_param_gradations(tmp_path):
+    path = tmp_path / "test_param_grads.yaml"
+    path.write_text(_SAMPLE_YAML_PARAM_GRADATIONS, encoding="utf-8")
+    return ReferenceDataStore(str(path)).load()
+
+
+def test_parameter_gradations_loaded(store_with_param_gradations):
+    patho = store_with_param_gradations.get_pathology("left_ventricle", "lv_mass")
+    assert patho is not None
+    param = patho.parameters[0]
+    assert param.id == "lvm"
+    assert len(param.gradations) == 4
+    assert param.gradations[0].name == "Норма"
+    assert param.gradations[0].range_male.low == 88
+    assert param.gradations[0].range_male.high == 224
+    assert param.gradations[1].name == "Лёгкое увеличение"
+    assert param.gradations[1].range_male.low == 225
+    assert param.gradations[2].range_male.low == 259
+    assert param.gradations[3].range_male.low == 293
