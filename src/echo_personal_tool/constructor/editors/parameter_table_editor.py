@@ -7,9 +7,11 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -100,22 +102,15 @@ class ParameterTableEditor(BaseEditor):
 
         # Buttons
         btn_row = QHBoxLayout()
+        btn_style = (
+            f"QPushButton {{ border: 1px solid {p['border']}; border-radius: 3px; "
+            f"padding: 2px 8px; color: {p['text']}; background: {p['bg_panel']}; font-size: 11px; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
+        )
         for text, slot in [
             (tr("constructor.param.add_param"), self._add_parameter),
             (tr("constructor.param.add_column"), self._add_column),
             (tr("constructor.param.delete_column"), self._delete_column),
-        ]:
-            btn = QPushButton(text)
-            btn.setFixedHeight(26)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                f"QPushButton {{ border: 1px solid {p['border']}; border-radius: 3px; "
-                f"padding: 2px 8px; color: {p['text']}; background: {p['bg_panel']}; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
-            )
-            btn.clicked.connect(slot)
-            btn_row.addWidget(btn)
-        for text, slot in [
             (tr("constructor.param.insert_row_above"), self._insert_row_above),
             (tr("constructor.param.insert_row_below"), self._insert_row_below),
             (tr("constructor.param.insert_col_left"), self._insert_col_left),
@@ -124,11 +119,7 @@ class ParameterTableEditor(BaseEditor):
             btn = QPushButton(text)
             btn.setFixedHeight(26)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                f"QPushButton {{ border: 1px solid {p['border']}; border-radius: 3px; "
-                f"padding: 2px 8px; color: {p['text']}; background: {p['bg_panel']}; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
-            )
+            btn.setStyleSheet(btn_style)
             btn.clicked.connect(slot)
             btn_row.addWidget(btn)
         btn_row.addStretch()
@@ -142,7 +133,6 @@ class ParameterTableEditor(BaseEditor):
 
         self._col_visibility: dict[str, bool] = {c[0]: True for c in self._columns}
         self._col_checkboxes: dict[str, QCheckBox] = {}
-        from PySide6.QtWidgets import QCheckBox
 
         for field, label in self._columns:
             cb = QCheckBox(label)
@@ -349,8 +339,6 @@ class ParameterTableEditor(BaseEditor):
         self.parameters_changed.emit()
 
     def _add_column(self) -> None:
-        from PySide6.QtWidgets import QInputDialog
-
         name, ok = QInputDialog.getText(
             self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
         )
@@ -436,8 +424,6 @@ class ParameterTableEditor(BaseEditor):
         col = self._table.currentColumn()
         if col < 0:
             col = 0
-        from PySide6.QtWidgets import QInputDialog
-
         name, ok = QInputDialog.getText(
             self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
         )
@@ -451,8 +437,6 @@ class ParameterTableEditor(BaseEditor):
         col = self._table.currentColumn()
         if col < 0:
             col = len(self._columns) - 1
-        from PySide6.QtWidgets import QInputDialog
-
         name, ok = QInputDialog.getText(
             self, tr("constructor.param.new_column_title"), tr("constructor.param.new_column_label")
         )

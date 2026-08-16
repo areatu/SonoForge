@@ -409,7 +409,6 @@
   "preferences.reset_confirm": "Вернуть все параметры к значениям по умолчанию?",
   "preferences.reset_defaults": "По умолчанию",
   "preferences.reset_title": "Сбросить настройки",
-  "preferences.save_settings": "Сохранить настройки",
   "preferences.results_overlay_custom_position": "Фиксировать позицию оверлея",
   "preferences.results_overlay_font_size": "Шрифт оверлея результатов:",
   "preferences.results_overlay_opacity": "Прозрачность оверлея:",

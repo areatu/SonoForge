@@ -409,7 +409,6 @@
   "preferences.reset_confirm": "Reset all parameters to defaults?",
   "preferences.reset_defaults": "Defaults",
   "preferences.reset_title": "Reset Settings",
-  "preferences.save_settings": "Save Settings",
   "preferences.results_overlay_custom_position": "Pin results overlay position",
   "preferences.results_overlay_font_size": "Results overlay font size:",
   "preferences.results_overlay_opacity": "Results overlay opacity:",
