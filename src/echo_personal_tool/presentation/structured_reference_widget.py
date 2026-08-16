@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -67,17 +66,17 @@ _TOPIC_LABELS: dict[str, str] = {
 }
 
 _TOPIC_FULL_NAMES: dict[str, str] = {
-    "left_ventricle": tr("ref_topic.left_ventricle_full"),
-    "left_atrium": tr("ref_topic.left_atrium_full"),
-    "right_ventricle": tr("ref_topic.right_ventricle_full"),
-    "right_atrium": tr("ref_topic.right_atrium_full"),
-    "mitral_valve": tr("ref_topic.mitral_valve_full"),
-    "aortic_valve": tr("ref_topic.aortic_valve_full"),
-    "tricuspid_valve": tr("ref_topic.tricuspid_valve_full"),
-    "pulmonary_valve": tr("ref_topic.pulmonary_valve_full"),
-    "aorta": tr("ref_topic.aorta_full"),
-    "prosthetic_valves": tr("ref_topic.prosthetic_valves_full"),
-    "other": tr("ref_topic.other_full"),
+    "left_ventricle": tr("ref_topic.full_left_ventricle"),
+    "left_atrium": tr("ref_topic.full_left_atrium"),
+    "right_ventricle": tr("ref_topic.full_right_ventricle"),
+    "right_atrium": tr("ref_topic.full_right_atrium"),
+    "mitral_valve": tr("ref_topic.full_mitral_valve"),
+    "aortic_valve": tr("ref_topic.full_aortic_valve"),
+    "tricuspid_valve": tr("ref_topic.full_tricuspid_valve"),
+    "pulmonary_valve": tr("ref_topic.full_pulmonary_valve"),
+    "aorta": tr("ref_topic.full_aorta"),
+    "prosthetic_valves": tr("ref_topic.full_prosthetic_valves"),
+    "other": tr("ref_topic.full_other"),
 }
 
 
@@ -265,7 +264,7 @@ class _ParameterCard(QWidget):
 
 
 class StructuredReferenceWidget(QWidget):
-    """Topic → pathology → gradation → parameter cards with sex toggle and images."""
+    """Topic → pathology → gradation → parameter cards with images."""
 
     param_clicked = Signal(str)  # future: overlay link
 
@@ -280,7 +279,6 @@ class StructuredReferenceWidget(QWidget):
         self._current_topic: TopicRef | None = None
         self._current_pathology: PathologyRef | None = None
         self._current_gradation: GradationRef | None = None
-        self._sex_male: bool = True
         self._age: int | None = None
         self._original_pixmap: QPixmap | None = None
         self._image_paths: list[str] = []
@@ -415,27 +413,6 @@ class StructuredReferenceWidget(QWidget):
         separator.setFixedHeight(1)
         separator.setStyleSheet(f"background: {p['border']};")
         left_layout.addWidget(separator)
-
-        # Sex toggle
-        sex_widget = QWidget()
-        sex_layout = QHBoxLayout(sex_widget)
-        sex_layout.setContentsMargins(4, 4, 4, 4)
-        sex_layout.setSpacing(4)
-
-        sex_group = QButtonGroup(self)
-        self._male_radio = QRadioButton(tr("ref_table.sex_male"))
-        self._female_radio = QRadioButton(tr("ref_table.sex_female"))
-        self._male_radio.setChecked(True)
-        sex_group.addButton(self._male_radio, 0)
-        sex_group.addButton(self._female_radio, 1)
-        sex_group.idClicked.connect(self._on_sex_changed)
-
-        sex_label = QLabel(tr("ref_table.sex_label"))
-        sex_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
-        sex_layout.addWidget(sex_label)
-        sex_layout.addWidget(self._male_radio)
-        sex_layout.addWidget(self._female_radio)
-        left_layout.addWidget(sex_widget)
 
         # Age field
         age_widget = QWidget()
@@ -689,10 +666,6 @@ class StructuredReferenceWidget(QWidget):
         super().resizeEvent(event)
         self._scale_image()
 
-    def _on_sex_changed(self, button_id: int) -> None:
-        self._sex_male = button_id == 0
-        self._refresh_table()
-
     def _on_age_changed(self, text: str) -> None:
         # Age is stored for future use (e.g., diastolic function norms)
         try:
@@ -932,18 +905,12 @@ class StructuredReferenceWidget(QWidget):
         return params
 
     def _format_norm(self, param) -> str:
-        norm = param.norm_female if not self._sex_male else param.norm_male
-        if norm is None:
-            norm = param.norm_male or param.norm_female
-        if norm is None:
-            return ""
-        if norm.low is not None and norm.high is not None:
-            return f"{norm.low}\u2013{norm.high}"
-        if norm.low is not None:
-            return f"\u2265{norm.low}"
-        if norm.high is not None:
-            return f"\u2264{norm.high}"
-        return ""
+        parts = []
+        if param.norm_male:
+            parts.append(f"М: {self._format_norm_range(param.norm_male)}")
+        if param.norm_female:
+            parts.append(f"Ж: {self._format_norm_range(param.norm_female)}")
+        return " / ".join(parts) if parts else ""
 
     def _format_norm_range(self, norm) -> str:
         """Format a NormRange directly (for table view)."""
