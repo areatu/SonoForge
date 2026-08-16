@@ -177,13 +177,13 @@ topics:
               - name: Норма
                 range_male: {low: 88, high: 224}
                 range_female: {low: 66, high: 150}
-              - name: Лёгкое увеличение
+              - name: Лёгкое
                 range_male: {low: 225, high: 258}
                 range_female: {low: 151, high: 171}
-              - name: Умеренное увеличение
+              - name: Умеренное
                 range_male: {low: 259, high: 292}
                 range_female: {low: 172, high: 193}
-              - name: Тяжёлое увеличение
+              - name: Тяжёлое
                 range_male: {low: 293}
                 range_female: {low: 194}
             source: "ASE 2015"
@@ -206,7 +206,7 @@ def test_parameter_gradations_loaded(store_with_param_gradations):
     assert param.gradations[0].name == "Норма"
     assert param.gradations[0].range_male.low == 88
     assert param.gradations[0].range_male.high == 224
-    assert param.gradations[1].name == "Лёгкое увеличение"
+    assert param.gradations[1].name == "Лёгкое"
     assert param.gradations[1].range_male.low == 225
     assert param.gradations[2].range_male.low == 259
     assert param.gradations[3].range_male.low == 293

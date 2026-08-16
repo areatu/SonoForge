@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -461,7 +461,7 @@ class StructuredReferenceWidget(QWidget):
 
         # Pathology list (~6 rows)
         self._pathology_list = QListWidget()
-        self._pathology_list.setFixedHeight(150)
+        self._pathology_list.setFixedHeight(100)
         self._pathology_list.setStyleSheet(
             f"QListWidget {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; font-size: 13px; }}"
             f"QListWidget::item {{ padding: 4px 8px; }}"
@@ -479,10 +479,10 @@ class StructuredReferenceWidget(QWidget):
         self._cards_scroll.setWidgetResizable(True)
         self._cards_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         self._cards_container = QWidget()
+        self._cards_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._cards_layout = QVBoxLayout(self._cards_container)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
         self._cards_layout.setSpacing(6)
-        self._cards_layout.addStretch(1)
         self._cards_scroll.setWidget(self._cards_container)
         self._param_cards: list[_ParameterCard] = []
         content_row.addWidget(self._cards_scroll, stretch=1)
@@ -578,7 +578,7 @@ class StructuredReferenceWidget(QWidget):
             card.deleteLater()
         self._param_cards.clear()
         # Also remove any tables that were added
-        while self._cards_layout.count() > 1:  # Keep stretch
+        while self._cards_layout.count() > 0:
             item = self._cards_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
@@ -716,7 +716,7 @@ class StructuredReferenceWidget(QWidget):
             norm = self._format_norm(param)
             card = _ParameterCard(param, norm)
             card.setToolTip(f"{patho.name}" + (f" ({grad.name})" if grad else ""))
-            self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+            self._cards_layout.insertWidget(self._cards_layout.count(), card)
             self._param_cards.append(card)
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
@@ -892,7 +892,11 @@ class StructuredReferenceWidget(QWidget):
 
                 table.setItem(r, col, item)
 
-        self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
+        # Insert table into cards layout (inside scroll area)
+        self._cards_layout.insertWidget(self._cards_layout.count(), table)
+        # Restore saved column widths and connect resize signal
+        QTimer.singleShot(0, lambda: self._restore_column_widths(table))
+        header.sectionResized.connect(lambda _idx, _old, _new: self._save_column_widths(table))
         QTimer.singleShot(0, lambda: self._adjust_table_row_height(table, n_rows))
 
     def _adjust_table_row_height(self, table: QTableWidget, n_rows: int) -> None:
@@ -904,6 +908,36 @@ class StructuredReferenceWidget(QWidget):
             return
         row_height = max(24, available // n_rows)
         table.verticalHeader().setDefaultSectionSize(row_height)
+
+    def _save_column_widths(self, table: QTableWidget) -> None:
+        """Persist column widths for current pathology via QSettings."""
+        if self._current_pathology is None:
+            return
+        settings = QSettings()
+        key = f"reference/col_widths/{self._current_pathology.slug}"
+        widths = [table.columnWidth(c) for c in range(table.columnCount())]
+        settings.setValue(key, widths)
+
+    def _restore_column_widths(self, table: QTableWidget) -> None:
+        """Restore saved column widths for current pathology."""
+        if self._current_pathology is None:
+            return
+        settings = QSettings()
+        key = f"reference/col_widths/{self._current_pathology.slug}"
+        widths = settings.value(key)
+        if widths and isinstance(widths, list):
+            for c, w in enumerate(widths):
+                if c < table.columnCount():
+                    table.setColumnWidth(c, int(w))
+
+    def save_settings(self) -> None:
+        """Public API: save all current settings (column widths etc.)."""
+        # Find the table widget in cards layout
+        for i in range(self._cards_layout.count()):
+            item = self._cards_layout.itemAt(i)
+            if item and item.widget() and isinstance(item.widget(), QTableWidget):
+                self._save_column_widths(item.widget())
+                break
 
     def _get_current_parameters(self) -> list:
         if self._current_pathology is None:

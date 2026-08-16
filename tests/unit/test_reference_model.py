@@ -21,7 +21,7 @@ def test_parameter_gradation_model_roundtrip():
                 range_female=NormRangeModel(low=66, high=150),
             ),
             ParameterGradationModel(
-                name="Лёгкое увеличение",
+                name="Лёгкое",
                 range_male=NormRangeModel(low=225, high=258),
                 range_female=NormRangeModel(low=151, high=171),
             ),

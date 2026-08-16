@@ -18,13 +18,13 @@ topics:
       - name: Норма
         range_male: {low: 88, high: 224}
         range_female: {low: 66, high: 150}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 225, high: 258}
         range_female: {low: 151, high: 171}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 259, high: 292}
         range_female: {low: 172, high: 193}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 293}
         range_female: {low: 194}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -41,13 +41,13 @@ topics:
       - name: Норма
         range_male: {low: 49, high: 115}
         range_female: {low: 43, high: 95}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 116, high: 131}
         range_female: {low: 96, high: 108}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 132, high: 148}
         range_female: {low: 109, high: 121}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 149}
         range_female: {low: 122}
       source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
@@ -80,13 +80,13 @@ topics:
       - name: Норма
         range_male: {low: 42, high: 59}
         range_female: {low: 36, high: 51}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 60, high: 63}
         range_female: {low: 52, high: 56}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 64, high: 68}
         range_female: {low: 57, high: 61}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 69}
         range_female: {low: 62}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -103,13 +103,13 @@ topics:
       - name: Норма
         range_male: {low: 25, high: 40}
         range_female: {low: 20, high: 35}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 41, high: 45}
         range_female: {low: 36, high: 40}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 46, high: 51}
         range_female: {low: 41, high: 45}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 52}
         range_female: {low: 46}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -126,13 +126,13 @@ topics:
       - name: Норма
         range_male: {low: 37, high: 97}
         range_female: {low: 32, high: 87}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 98, high: 110}
         range_female: {low: 88, high: 99}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 111, high: 124}
         range_female: {low: 100, high: 112}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 125}
         range_female: {low: 113}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -149,13 +149,13 @@ topics:
       - name: Норма
         range_male: {low: 12, high: 38}
         range_female: {low: 9, high: 32}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 39, high: 43}
         range_female: {low: 33, high: 37}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 44, high: 49}
         range_female: {low: 38, high: 42}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 50}
         range_female: {low: 43}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -172,13 +172,13 @@ topics:
       - name: Норма
         range_male: {low: 6, high: 11}
         range_female: {low: 6, high: 10}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 12, high: 13}
         range_female: {low: 11, high: 12}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 14, high: 15}
         range_female: {low: 13, high: 14}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 16}
         range_female: {low: 15}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -195,13 +195,13 @@ topics:
       - name: Норма
         range_male: {low: 6, high: 11}
         range_female: {low: 6, high: 10}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 12, high: 13}
         range_female: {low: 11, high: 12}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 14, high: 15}
         range_female: {low: 13, high: 14}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 16}
         range_female: {low: 15}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -271,13 +271,13 @@ topics:
       - name: Норма
         range_male: {low: 52, high: 72}
         range_female: {low: 54, high: 74}
-      - name: Лёгкое снижение
+      - name: Лёгкое
         range_male: {low: 41, high: 51}
         range_female: {low: 41, high: 51}
-      - name: Умеренное снижение
+      - name: Умеренное
         range_male: {low: 30, high: 40}
         range_female: {low: 30, high: 40}
-      - name: Тяжёлое снижение
+      - name: Тяжёлое
         range_male: {high: 29}
         range_female: {high: 29}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -306,13 +306,13 @@ topics:
       - name: Норма
         range_male: {low: 35}
         range_female: {low: 35}
-      - name: Лёгкое снижение
+      - name: Лёгкое
         range_male: {low: 25, high: 34}
         range_female: {low: 25, high: 34}
-      - name: Умеренное снижение
+      - name: Умеренное
         range_male: {low: 18, high: 24}
         range_female: {low: 18, high: 24}
-      - name: Тяжёлое снижение
+      - name: Тяжёлое
         range_male: {high: 17}
         range_female: {high: 17}
       source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
@@ -477,13 +477,13 @@ topics:
       - name: Норма
         range_male: {high: 75}
         range_female: {high: 66}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 76, high: 91}
         range_female: {low: 67, high: 80}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 92, high: 108}
         range_female: {low: 81, high: 95}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 109}
         range_female: {low: 96}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -501,13 +501,13 @@ topics:
       - name: Норма
         range_male: {high: 34}
         range_female: {high: 34}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 35, high: 41}
         range_female: {low: 35, high: 41}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 42, high: 48}
         range_female: {low: 42, high: 48}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 49}
         range_female: {low: 49}
       source: 2015, ASE, Guidelines for the Standardization in Echocardiography
@@ -646,13 +646,13 @@ topics:
       - name: Норма
         range_male: {low: 17}
         range_female: {low: 17}
-      - name: Лёгкое снижение
+      - name: Лёгкое
         range_male: {low: 15, high: 16}
         range_female: {low: 15, high: 16}
-      - name: Умеренное снижение
+      - name: Умеренное
         range_male: {low: 10, high: 14}
         range_female: {low: 10, high: 14}
-      - name: Тяжёлое снижение
+      - name: Тяжёлое
         range_male: {high: 9}
         range_female: {high: 9}
       source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
@@ -670,13 +670,13 @@ topics:
       - name: Норма
         range_male: {low: 35}
         range_female: {low: 35}
-      - name: Лёгкое снижение
+      - name: Лёгкое
         range_male: {low: 25, high: 34}
         range_female: {low: 25, high: 34}
-      - name: Умеренное снижение
+      - name: Умеренное
         range_male: {low: 18, high: 24}
         range_female: {low: 18, high: 24}
-      - name: Тяжёлое снижение
+      - name: Тяжёлое
         range_male: {high: 17}
         range_female: {high: 17}
       source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
@@ -694,13 +694,13 @@ topics:
       - name: Норма
         range_male: {low: 9.5}
         range_female: {low: 9.5}
-      - name: Лёгкое снижение
+      - name: Лёгкое
         range_male: {low: 8.0, high: 9.4}
         range_female: {low: 8.0, high: 9.4}
-      - name: Умеренное снижение
+      - name: Умеренное
         range_male: {low: 6.0, high: 7.9}
         range_female: {low: 6.0, high: 7.9}
-      - name: Тяжёлое снижение
+      - name: Тяжёлое
         range_male: {high: 5.9}
         range_female: {high: 5.9}
       source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
@@ -835,13 +835,13 @@ topics:
       - name: Норма
         range_male: {high: 18}
         range_female: {high: 18}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 19, high: 22}
         range_female: {low: 19, high: 22}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 23, high: 27}
         range_female: {low: 23, high: 27}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 28}
         range_female: {low: 28}
       source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults
@@ -859,13 +859,13 @@ topics:
       - name: Норма
         range_male: {high: 39}
         range_female: {high: 33}
-      - name: Лёгкое увеличение
+      - name: Лёгкое
         range_male: {low: 40, high: 47}
         range_female: {low: 34, high: 40}
-      - name: Умеренное увеличение
+      - name: Умеренное
         range_male: {low: 48, high: 56}
         range_female: {low: 41, high: 48}
-      - name: Тяжёлое увеличение
+      - name: Тяжёлое
         range_male: {low: 57}
         range_female: {low: 49}
       source: 2010, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults

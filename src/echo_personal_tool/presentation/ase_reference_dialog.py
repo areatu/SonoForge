@@ -547,6 +547,7 @@ class AseReferenceDialog(QDialog):
         file_menu.addSeparator()
         file_menu.addAction(tr("ase_ref.constructor_menu"), self._open_constructor)
         file_menu.addSeparator()
+        file_menu.addAction(tr("ase_refs.save_settings"), self._save_settings)
         file_menu.addAction(tr("ase_refs.reload"), self._reload_active_document)
         menu_bar.addMenu(file_menu)
 
@@ -566,6 +567,10 @@ class AseReferenceDialog(QDialog):
         # Restore focus to this dialog
         self.activateWindow()
         self.setFocus()
+
+    def _save_settings(self) -> None:
+        if self._structured_widget is not None:
+            self._structured_widget.save_settings()
 
     # ── Documents ─────────────────────────────────────────────────
 

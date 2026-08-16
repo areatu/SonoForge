@@ -66,6 +66,7 @@
   "ase_refs.read_error.title": "References",
   "ase_refs.reload": "Reload",
   "ase_refs.reload_tip": "Re-read References ASE+.md from disk",
+  "ase_refs.save_settings": "Save settings",
   "ase_refs.restore": "Restore",
   "ase_refs.settings_menu": "Settings",
   "ase_refs.supported_files": "Supported files (*.md *.pdf)",

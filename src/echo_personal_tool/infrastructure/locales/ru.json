@@ -66,6 +66,7 @@
   "ase_refs.read_error.title": "Нормативы",
   "ase_refs.reload": "Обновить",
   "ase_refs.reload_tip": "Перечитать References ASE+.md с диска",
+  "ase_refs.save_settings": "Сохранить настройки",
   "ase_refs.restore": "Восстановить",
   "ase_refs.settings_menu": "Настройки",
   "ase_refs.supported_files": "Поддерживаемые файлы (*.md *.pdf)",
