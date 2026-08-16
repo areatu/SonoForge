@@ -155,6 +155,7 @@ class _PathologyPanel(QWidget):
         if 0 <= row < len(self._buttons):
             self._buttons[row].setChecked(True)
             self._selected_index = row
+            self.currentRowChanged.emit(row)
 
     def _on_clicked(self, index: int) -> None:
         if self._blocked:
