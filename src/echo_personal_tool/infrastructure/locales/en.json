@@ -1010,6 +1010,7 @@
   "constructor.preview.title": "Preview — Reference",
   "constructor.preview.col_name": "Name",
   "constructor.preview.col_unit": "Unit",
+  "constructor.preview.col_norm": "Norm",
   "constructor.preview.col_norm_male": "Norm M",
   "constructor.preview.col_norm_female": "Norm F",
   "constructor.preview.col_desc": "Description",

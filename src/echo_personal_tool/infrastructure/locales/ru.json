@@ -1010,6 +1010,7 @@
   "constructor.preview.title": "Preview — Справочник",
   "constructor.preview.col_name": "Название",
   "constructor.preview.col_unit": "Ед.",
+  "constructor.preview.col_norm": "Норма",
   "constructor.preview.col_norm_male": "Норм М",
   "constructor.preview.col_norm_female": "Норм Ж",
   "constructor.preview.col_desc": "Описание",
