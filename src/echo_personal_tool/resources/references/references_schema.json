@@ -73,7 +73,20 @@
         "norm_male": { "$ref": "#/$defs/NormRange" },
         "norm_female": { "$ref": "#/$defs/NormRange" },
         "pathology_desc": { "type": "string" },
-        "source": { "type": "string" }
+        "source": { "type": "string" },
+        "gradations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "range_male": { "$ref": "#/$defs/NormRange" },
+              "range_female": { "$ref": "#/$defs/NormRange" }
+            },
+            "additionalProperties": false
+          }
+        }
       },
       "additionalProperties": false
     },
