@@ -12,13 +12,19 @@ window.bridge = {
             return Promise.resolve();
         }
         return new Promise(function (resolve) {
-            new QWebChannel(qt.webChannelTransport, function (channel) {
-                window.bridge._backend = channel.objects.backend;
+            try {
+                new QWebChannel(qt.webChannelTransport, function (channel) {
+                    window.bridge._backend = channel.objects.backend;
+                    window.bridge._ready = true;
+                    window.bridge._readyCallbacks.forEach(function (cb) { cb(); });
+                    window.bridge._readyCallbacks = [];
+                    resolve();
+                });
+            } catch (e) {
+                console.error("QWebChannel init failed:", e);
                 window.bridge._ready = true;
-                window.bridge._readyCallbacks.forEach(function (cb) { cb(); });
-                window.bridge._readyCallbacks = [];
                 resolve();
-            });
+            }
         });
     },
 
@@ -37,9 +43,13 @@ window.bridge = {
                     try { resolve(JSON.parse(raw)); }
                     catch (e) { resolve({ error: "Invalid JSON" }); }
                 };
-                if (args.length === 0) self._backend[method](cb);
-                else if (args.length === 1) self._backend[method](args[0], cb);
-                else if (args.length === 2) self._backend[method](args[0], args[1], cb);
+                try {
+                    if (args.length === 0) self._backend[method](cb);
+                    else if (args.length === 1) self._backend[method](args[0], cb);
+                    else if (args.length === 2) self._backend[method](args[0], args[1], cb);
+                } catch (e) {
+                    resolve({ error: "Call failed: " + e.message });
+                }
             });
         });
     },
@@ -50,8 +60,18 @@ window.bridge = {
     search: function (q) { return this._call("search", q); },
 };
 
+// Wait for qt to be available, then initialize
+function tryInit() {
+    if (typeof qt !== "undefined" && typeof QWebChannel !== "undefined") {
+        window.bridge.init();
+    } else if (typeof QWebChannel !== "undefined") {
+        // QWebChannel available but qt not yet — retry
+        setTimeout(tryInit, 50);
+    }
+}
+
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () { window.bridge.init(); });
+    document.addEventListener("DOMContentLoaded", function () { setTimeout(tryInit, 0); });
 } else {
-    window.bridge.init();
+    setTimeout(tryInit, 0);
 }
