@@ -10,6 +10,7 @@ from typing import Any
 from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QButtonGroup,
     QGridLayout,
     QHBoxLayout,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -95,6 +97,39 @@ def _gradation_color(name: str) -> tuple[str, str] | None:
         if keyword in lower:
             return colors
     return None
+
+
+_DASH_RE = re.compile(r"[\u2013\u2014\u2212\-]")
+
+
+def _parse_norm_range_str(text: str) -> dict | None:
+    """Parse user-edited text like '38–52', '≥5', '≤100' into {low, high} dict."""
+    text = text.strip()
+    if not text or text == "\u2014":
+        return None
+    text = text.replace(",", ".")
+    if text.startswith("\u2265") or text.startswith(">="):
+        try:
+            return {"low": float(text.lstrip("\u2265>="))}
+        except ValueError:
+            return None
+    if text.startswith("\u2264") or text.startswith("<="):
+        try:
+            return {"high": float(text.lstrip("\u2264<="))}
+        except ValueError:
+            return None
+    parts = _DASH_RE.split(text, maxsplit=1)
+    if len(parts) == 2:
+        try:
+            lo = float(parts[0].strip()) if parts[0].strip() else None
+            hi = float(parts[1].strip()) if parts[1].strip() else None
+            return {"low": lo, "high": hi}
+        except ValueError:
+            return None
+    try:
+        return {"low": float(text), "high": float(text)}
+    except ValueError:
+        return None
 
 
 class _PathologyPanel(QWidget):
@@ -175,6 +210,30 @@ class _ImageContainer(QWidget):
 
     def minimumSizeHint(self):
         return QSize(100, 100)
+
+
+class _EditDelegate(QStyledItemDelegate):
+    """Delegate that installs an event filter on the cell editor for Enter/Escape."""
+
+    def createEditor(self, parent, option, index):
+        editor = QLineEdit(parent)
+        editor.installEventFilter(self)
+        return editor
+
+    def eventFilter(self, editor, event):
+        if event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.commitData.emit(editor)
+                self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.SubmitModelAdapter)
+                return True
+            if event.key() == Qt.Key.Key_Escape:
+                self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.RevertModelCache)
+                return True
+        if event.type() == QEvent.Type.FocusOut:
+            self.commitData.emit(editor)
+            self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.SubmitModelAdapter)
+            return False
+        return super().eventFilter(editor, event)
 
 
 class _ParameterCard(QWidget):
@@ -886,6 +945,12 @@ class StructuredReferenceWidget(QWidget):
         table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         table.setAlternatingRowColors(True)
 
+        edit_delegate = _EditDelegate(table)
+        table.setItemDelegate(edit_delegate)
+        table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        table.itemChanged.connect(self._on_item_changed)
+        self._edit_table = table
+
         header = table.horizontalHeader()
         for c in range(n_cols):
             header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
@@ -916,6 +981,8 @@ class StructuredReferenceWidget(QWidget):
             if param.unit:
                 name_text += f" ({param.unit})"
             name_item = QTableWidgetItem(name_text)
+            name_item.setData(Qt.ItemDataRole.UserRole, (param.id, "name"))
+            name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsEditable)
             name_item.setForeground(QColor(pal["text"]))
             font = name_item.font()
             font.setBold(True)
@@ -924,12 +991,16 @@ class StructuredReferenceWidget(QWidget):
 
             norm_m = self._format_norm_range(param.norm_male)
             norm_m_item = QTableWidgetItem(norm_m)
+            norm_m_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
+            norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
             norm_m_item.setFont(mono_font)
             norm_m_item.setForeground(QColor(pal["accent_tab"]))
             table.setItem(r, 1, norm_m_item)
 
             norm_f = self._format_norm_range(param.norm_female)
             norm_f_item = QTableWidgetItem(norm_f)
+            norm_f_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_female"))
+            norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
             norm_f_item.setFont(mono_font)
             norm_f_item.setForeground(QColor(pal["accent_tab"]))
             table.setItem(r, 2, norm_f_item)
@@ -949,6 +1020,9 @@ class StructuredReferenceWidget(QWidget):
                     value = "—"
 
                 item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, (param.id, "grad", g_name))
+                if grad:
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 item.setFont(mono_font)
 
                 colors = _gradation_color(g_name)
@@ -1003,6 +1077,46 @@ class StructuredReferenceWidget(QWidget):
             if item and item.widget() and isinstance(item.widget(), QTableWidget):
                 self._save_column_widths(item.widget())
                 break
+
+    # ── Inline editing ────────────────────────────────────────────
+
+    def _on_cell_double_clicked(self, row: int, col: int) -> None:
+        table = getattr(self, "_edit_table", None)
+        if table is None:
+            return
+        item = table.item(row, col)
+        if item is None:
+            return
+        flags = item.flags()
+        if not (flags & Qt.ItemFlag.ItemIsEditable):
+            return
+        table.editItem(item)
+
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        new_text = item.text().strip()
+        if not new_text:
+            return
+
+        if len(data) == 2:
+            param_id, field = data
+            if field == "name":
+                self._store.update_param(param_id, "name", new_text)
+            else:
+                parsed = _parse_norm_range_str(new_text)
+                if parsed is None:
+                    return
+                self._store.update_param(param_id, field, parsed)
+        elif len(data) == 3:
+            param_id, _field_flag, grad_name = data
+            parts = [p.strip() for p in new_text.split("/", maxsplit=1)]
+            male_range = _parse_norm_range_str(parts[0]) if parts else None
+            female_range = _parse_norm_range_str(parts[1]) if len(parts) > 1 else None
+            if male_range is None and female_range is None:
+                return
+            self._store.update_gradation(param_id, grad_name, male_range, female_range)
 
     def _get_current_parameters(self) -> list:
         if self._current_pathology is None:

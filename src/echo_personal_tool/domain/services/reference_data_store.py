@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -132,6 +135,59 @@ def _parse_pathologies(raw: list[dict]) -> list[PathologyRef]:
     return result
 
 
+def _norm_from_dict(d: dict) -> NormRange:
+    """Create NormRange from a {low, high} dict."""
+    return NormRange(low=d.get("low"), high=d.get("high"))
+
+
+def _norm_to_dict(norm: NormRange | None) -> dict | None:
+    """Serialize NormRange to a {low, high} dict, omitting None values."""
+    if norm is None:
+        return None
+    d: dict[str, float] = {}
+    if norm.low is not None:
+        d["low"] = norm.low
+    if norm.high is not None:
+        d["high"] = norm.high
+    return d if d else None
+
+
+def _param_to_dict(param: ParameterRef) -> dict:
+    """Serialize a ParameterRef to a YAML-compatible dict."""
+    d: dict[str, Any] = {"id": param.id, "name": param.name}
+    if param.unit:
+        d["unit"] = param.unit
+    nm = _norm_to_dict(param.norm_male)
+    if nm:
+        d["norm_male"] = nm
+    nf = _norm_to_dict(param.norm_female)
+    if nf:
+        d["norm_female"] = nf
+    if param.pathology_desc:
+        d["pathology_desc"] = param.pathology_desc
+    if param.source:
+        d["source"] = param.source
+    if param.gradations:
+        d["gradations"] = []
+        for g in param.gradations:
+            gd: dict[str, Any] = {"name": g.name}
+            rm = _norm_to_dict(g.range_male)
+            if rm:
+                gd["range_male"] = rm
+            rf = _norm_to_dict(g.range_female)
+            if rf:
+                gd["range_female"] = rf
+            d["gradations"].append(gd)
+    return d
+
+
+def _flow_dict_representer(dumper, data):
+    """Use flow style for small dicts (NormRange, gradation ranges)."""
+    if all(isinstance(k, str) and k in ("low", "high", "name") for k in data):
+        return dumper.represent_mapping("tag:yaml.org,2002:map", data.items(), flow_style=True)
+    return dumper.represent_mapping("tag:yaml.org,2002:map", data.items())
+
+
 class ReferenceDataStore:
     """Loads and provides access to structured reference data."""
 
@@ -203,3 +259,89 @@ class ReferenceDataStore:
                         if q in param.name.casefold() or q in param.id.casefold():
                             results.append((topic, patho, None, param))
         return results
+
+    def update_param(self, param_id: str, field_name: str, value: Any) -> None:
+        """Update a parameter field in-memory and persist to YAML."""
+        for topic in self._topics:
+            for patho in topic.pathologies:
+                params = list(patho.parameters or [])
+                if patho.gradations:
+                    for grad in patho.gradations:
+                        params.extend(grad.parameters)
+                for param in params:
+                    if param.id == param_id:
+                        if field_name == "name":
+                            param.name = value
+                        elif field_name == "unit":
+                            param.unit = value
+                        elif field_name == "norm_male":
+                            param.norm_male = _norm_from_dict(value) if isinstance(value, dict) else value
+                        elif field_name == "norm_female":
+                            param.norm_female = _norm_from_dict(value) if isinstance(value, dict) else value
+                        self._save_to_yaml()
+                        return
+
+    def update_gradation(
+        self,
+        param_id: str,
+        grad_name: str,
+        male_range: dict | None,
+        female_range: dict | None,
+    ) -> None:
+        """Update a gradation's range in-memory and persist to YAML."""
+        for topic in self._topics:
+            for patho in topic.pathologies:
+                params = list(patho.parameters or [])
+                if patho.gradations:
+                    for grad in patho.gradations:
+                        params.extend(grad.parameters)
+                for param in params:
+                    if param.id == param_id:
+                        for g in param.gradations:
+                            if g.name == grad_name:
+                                if male_range is not None:
+                                    g.range_male = _norm_from_dict(male_range)
+                                if female_range is not None:
+                                    g.range_female = _norm_from_dict(female_range)
+                                self._save_to_yaml()
+                                return
+
+    def _save_to_yaml(self) -> None:
+        """Serialize the current data model back to the YAML file."""
+        data = {"topics": []}
+        for topic in self._topics:
+            t: dict[str, Any] = {"name": topic.name, "slug": topic.slug, "pathologies": []}
+            for patho in topic.pathologies:
+                p: dict[str, Any] = {"name": patho.name, "slug": patho.slug}
+                if patho.description:
+                    p["description"] = patho.description
+                if patho.image_paths:
+                    p["image_paths"] = patho.image_paths
+                if patho.gradations:
+                    p["gradations"] = []
+                    for grad in patho.gradations:
+                        g: dict[str, Any] = {"name": grad.name, "parameters": []}
+                        for param in grad.parameters:
+                            g["parameters"].append(_param_to_dict(param))
+                        p["gradations"].append(g)
+                if patho.parameters:
+                    p["parameters"] = [_param_to_dict(param) for param in patho.parameters]
+                t["pathologies"].append(p)
+            data["topics"].append(t)
+
+        dumper = yaml.Dumper
+        dumper.add_representer(dict, _flow_dict_representer)
+
+        try:
+            with open(self._yaml_path, "w", encoding="utf-8") as f:
+                yaml.dump(
+                    data,
+                    f,
+                    Dumper=dumper,
+                    allow_unicode=True,
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+            log.info("Saved reference data to %s", self._yaml_path)
+        except Exception:
+            log.exception("Failed to save reference data")

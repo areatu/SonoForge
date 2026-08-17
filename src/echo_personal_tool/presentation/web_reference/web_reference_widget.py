@@ -59,8 +59,8 @@ class WebReferenceWidget(QWidget):
         if html_path.exists():
             file_url = QUrl.fromLocalFile(str(html_path))
             log.info("Loading web reference: %s", file_url.toString())
-            self._web_view.setUrl(file_url)
             self._web_view.loadFinished.connect(self._on_load_finished)
+            self._web_view.setUrl(file_url)
         else:
             log.error("HTML not found: %s", html_path)
             self._status_label.setText(f"Файл не найден: {html_path}")
@@ -113,6 +113,7 @@ class WebReferenceWidget(QWidget):
     def _on_fallback(self) -> None:
         if not self._bridge_ready:
             log.warning("Web fallback triggered")
+            self._init_attempts = 999  # stop retry loop
             self._status_label.setText("Веб-недоступен — Qt-вид")
             self._web_failed.emit()
 

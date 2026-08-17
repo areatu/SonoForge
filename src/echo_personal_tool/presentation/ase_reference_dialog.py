@@ -934,6 +934,8 @@ class AseReferenceDialog(QDialog):
                 self._structured_widget.hide()
             if self._web_ref_widget is not None:
                 self._web_ref_widget.show()
+                if not self._web_ref_widget._bridge_ready:
+                    self._web_ref_widget.reload()
             self._toggle_ref_action.setText("Qt-вид справочника")
         else:
             if self._web_ref_widget is not None:
