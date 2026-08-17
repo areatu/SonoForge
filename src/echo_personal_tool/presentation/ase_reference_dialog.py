@@ -405,6 +405,8 @@ class AseReferenceDialog(QDialog):
         if self._web_ref_widget is not None:
             root.addWidget(self._web_ref_widget, stretch=1)
             self._web_ref_active = True
+            # Auto-fallback to Qt if web fails to initialize
+            self._web_ref_widget.web_failed.connect(self._on_web_failed)
         else:
             self._web_ref_active = False
 
@@ -934,6 +936,16 @@ class AseReferenceDialog(QDialog):
                 self._web_ref_widget.show()
             self._toggle_ref_action.setText("Qt-вид справочника")
         else:
+            if self._web_ref_widget is not None:
+                self._web_ref_widget.hide()
+            if self._structured_widget is not None:
+                self._structured_widget.show()
+            self._toggle_ref_action.setText("Веб-вид справочника")
+
+    def _on_web_failed(self) -> None:
+        """Auto-switch to Qt when web fails to initialize."""
+        if self._web_ref_active:
+            self._web_ref_active = False
             if self._web_ref_widget is not None:
                 self._web_ref_widget.hide()
             if self._structured_widget is not None:
