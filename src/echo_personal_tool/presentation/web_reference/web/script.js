@@ -6,29 +6,31 @@ var state = {
     selectedPathology: null,
     currentImages: [],
     currentImageIndex: 0,
+    currentParams: [],
 };
 
 var $ = function (s) { return document.querySelector(s); };
+var $$ = function (s) { return document.querySelectorAll(s); };
 
 /* ===== Topics ===== */
 function renderTopics(topics) {
     state.topics = topics;
     var c = $("#topicsList");
     c.innerHTML = "";
-    var topicIcons = {
-        left_ventricle: "🫀", left_atrium: "🫀", right_ventricle: "🫀",
-        right_atrium: "🫀", mitral_valve: "❤️", aortic_valve: "❤️",
-        tricuspid_valve: "❤️", pulmonary_valve: "❤️", aorta: "🩸",
-        prosthetic_valve: "⚙️", other: "📁",
-    };
     topics.forEach(function (topic) {
         var btn = document.createElement("button");
         btn.className = "topic-btn" + (state.selectedTopic === topic.slug ? " active" : "");
-        var icon = topicIcons[topic.slug] || "📁";
-        btn.innerHTML = '<span class="topic-icon">' + icon + '</span>' + escapeHtml(topic.name);
+        btn.innerHTML =
+            '<span class="topic-icon">' + escapeHtml(topic.label || topic.name.substring(0, 4)) + '</span>' +
+            '<span>' + escapeHtml(topic.name) + '</span>' +
+            '<span class="topic-badge">' + topic.n_params + '</span>';
         btn.addEventListener("click", function () { selectTopic(topic.slug); });
         c.appendChild(btn);
     });
+    // Stats
+    var totalParams = topics.reduce(function (s, t) { return s + t.n_params; }, 0);
+    var totalImages = topics.reduce(function (s, t) { return s + t.n_images; }, 0);
+    $("#statsText").textContent = topics.length + " тем · " + totalParams + " параметров · " + totalImages + " изображений";
 }
 
 async function selectTopic(slug) {
@@ -45,15 +47,19 @@ async function selectTopic(slug) {
 function renderPathologies(pathologies, topicName) {
     var bar = $("#pathologyBar");
     bar.innerHTML = "";
-    $("#pathologyTitle").textContent = topicName || "Патологии";
     if (!pathologies || !pathologies.length) {
-        bar.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">Нет патологий</span>';
+        bar.innerHTML = '<span class="empty-hint">Нет патологий</span>';
         return;
     }
     pathologies.forEach(function (patho) {
         var btn = document.createElement("button");
         btn.className = "patho-btn" + (state.selectedPathology === patho.slug ? " active" : "");
-        btn.textContent = patho.name + " (" + patho.param_count + ")";
+        var label = escapeHtml(patho.name);
+        if (patho.image_count > 0) {
+            label += ' <span class="patho-badge">🖼' + patho.image_count + '</span>';
+        }
+        btn.innerHTML = label;
+        btn.title = patho.description || patho.name;
         btn.addEventListener("click", function () { selectPathology(patho.slug); });
         bar.appendChild(btn);
     });
@@ -61,14 +67,33 @@ function renderPathologies(pathologies, topicName) {
 
 async function selectPathology(slug) {
     state.selectedPathology = slug;
-    // Re-render pathologies to update active state
     var topicData = await bridge.getTopicDetail(state.selectedTopic);
     if (!topicData.error) renderPathologies(topicData.pathologies || [], topicData.name);
 
     var data = await bridge.getPathology(state.selectedTopic, slug);
     if (data.error) return;
+
+    // Description panel
+    renderDescription(data.description);
+
+    // Parameters
+    state.currentParams = data.parameters || [];
     renderParams(data);
+
+    // Images
     renderImages(data.images || []);
+}
+
+/* ===== Description ===== */
+function renderDescription(desc) {
+    var panel = $("#descPanel");
+    var text = $("#descText");
+    if (!desc) {
+        panel.hidden = true;
+        return;
+    }
+    text.textContent = desc;
+    panel.hidden = false;
 }
 
 /* ===== Parameters ===== */
@@ -83,15 +108,15 @@ function renderParams(data) {
     if (!data.parameters || !data.parameters.length) {
         empty.hidden = false;
         area.hidden = true;
+        source.hidden = true;
         return;
     }
     empty.hidden = true;
     area.hidden = false;
 
     // Gradation legend
+    legend.innerHTML = "";
     if (data.grad_names && data.grad_names.length) {
-        legend.hidden = false;
-        legend.innerHTML = "";
         var classes = ["grad-normal", "grad-mild", "grad-moderate", "grad-severe"];
         data.grad_names.forEach(function (gn, i) {
             var tag = document.createElement("span");
@@ -99,12 +124,9 @@ function renderParams(data) {
             tag.textContent = gn;
             legend.appendChild(tag);
         });
-    } else {
-        legend.hidden = true;
     }
 
     // Table header
-    var nCols = 3 + (data.grad_names ? data.grad_names.length : 0);
     head.innerHTML = "";
     var hr = document.createElement("tr");
     ["Показатель", "Норм М", "Норм Ж"].forEach(function (h) {
@@ -126,23 +148,27 @@ function renderParams(data) {
     data.parameters.forEach(function (param) {
         var tr = document.createElement("tr");
 
-        // Name cell
+        // Name cell with unit and pathology desc
         var tdName = document.createElement("td");
         tdName.className = "param-name";
-        tdName.textContent = param.name + (param.unit ? " (" + param.unit + ")" : "");
-        tdName.title = param.pathology_desc || "";
+        var nameHtml = escapeHtml(param.name);
+        if (param.unit) nameHtml += ' <span style="color:var(--text-muted);font-weight:normal;">(' + escapeHtml(param.unit) + ')</span>';
+        tdName.innerHTML = nameHtml;
+        if (param.pathology_desc) {
+            tdName.title = param.pathology_desc;
+        }
         tr.appendChild(tdName);
 
         // Norm male
         var tdM = document.createElement("td");
         tdM.className = "norm-value";
-        tdM.textContent = param.norm_male || "—";
+        tdM.textContent = param.norm_male || "\u2014";
         tr.appendChild(tdM);
 
         // Norm female
         var tdF = document.createElement("td");
         tdF.className = "norm-value";
-        tdF.textContent = param.norm_female || "—";
+        tdF.textContent = param.norm_female || "\u2014";
         tr.appendChild(tdF);
 
         // Gradation cells
@@ -150,8 +176,8 @@ function renderParams(data) {
             param.gradations.forEach(function (gv) {
                 var td = document.createElement("td");
                 td.className = "grad-cell";
-                td.textContent = gv || "—";
-                if (gv && gv !== "—") {
+                td.textContent = gv || "\u2014";
+                if (gv && gv !== "\u2014") {
                     var cls = gradCellClass(gv);
                     if (cls) td.classList.add(cls);
                 }
@@ -159,51 +185,77 @@ function renderParams(data) {
             });
         }
 
-        tr.addEventListener("click", function () {
-            $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
-            tr.classList.add("selected");
-            if (param.source) {
-                source.textContent = "Источник: " + param.source;
-                source.hidden = false;
-            } else {
-                source.hidden = true;
-            }
-        });
+        // Pathology description row (below the main row)
+        if (param.pathology_desc) {
+            tr.addEventListener("click", function () {
+                $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
+                tr.classList.add("selected");
+                showSource(param.source);
+            });
+        } else {
+            tr.addEventListener("click", function () {
+                $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
+                tr.classList.add("selected");
+                showSource(param.source);
+            });
+        }
 
         body.appendChild(tr);
+
+        // Pathology description sub-row
+        if (param.pathology_desc) {
+            var descTr = document.createElement("tr");
+            descTr.className = "desc-row";
+            var descTd = document.createElement("td");
+            descTd.className = "patho-desc";
+            descTd.colSpan = 3 + (data.grad_names ? data.grad_names.length : 0);
+            descTd.textContent = param.pathology_desc;
+            descTr.appendChild(descTd);
+            body.appendChild(descTr);
+        }
     });
 
     // Source from first param with source
     var firstWithSource = data.parameters.find(function (p) { return p.source; });
     if (firstWithSource) {
-        source.textContent = "Источник: " + firstWithSource.source;
-        source.hidden = false;
+        showSource(firstWithSource.source);
     } else {
         source.hidden = true;
+    }
+}
+
+function showSource(source) {
+    var bar = $("#sourceBar");
+    if (source) {
+        bar.textContent = "\u{1F4D6} " + source;
+        bar.hidden = false;
+    } else {
+        bar.hidden = true;
     }
 }
 
 function clearContent() {
     $("#emptyState").hidden = false;
     $("#paramsArea").hidden = true;
+    $("#descPanel").hidden = true;
     $("#sourceBar").hidden = true;
     clearImages();
 }
 
 function gradCellClass(value) {
     var lower = value.toLowerCase();
-    if (lower.indexOf("норм") >= 0) return "grad-normal-cell";
-    if (lower.indexOf("лёгк") >= 0 || lower.indexOf("легк") >= 0) return "grad-mild-cell";
-    if (lower.indexOf("умерен") >= 0) return "grad-moderate-cell";
-    if (lower.indexOf("тяжёл") >= 0 || lower.indexOf("тяжел") >= 0) return "grad-severe-cell";
+    if (lower.indexOf("\u043d\u043e\u0440\u043c") >= 0) return "grad-normal-cell";
+    if (lower.indexOf("\u043b\u0451\u0433\u043a") >= 0 || lower.indexOf("\u043b\u0435\u0433\u043a") >= 0) return "grad-mild-cell";
+    if (lower.indexOf("\u0443\u043c\u0435\u0440\u0435\u043d") >= 0) return "grad-moderate-cell";
+    if (lower.indexOf("\u0442\u044f\u0436\u0451\u043b") >= 0 || lower.indexOf("\u0442\u044f\u0436\u0435\u043b") >= 0) return "grad-severe-cell";
     return "";
 }
 
 /* ===== Images ===== */
 function renderImages(images) {
-    var area = $("#imageArea");
     var empty = $("#imageEmpty");
-    var img = $("#mainImage");
+    var mainArea = $("#imageMain");
+    var thumbs = $("#imageThumbs");
     var nav = $("#imageNav");
 
     state.currentImages = images.filter(function (i) { return i.exists; });
@@ -211,13 +263,33 @@ function renderImages(images) {
 
     if (!state.currentImages.length) {
         empty.hidden = false;
-        img.hidden = true;
+        mainArea.hidden = true;
+        thumbs.hidden = true;
         nav.hidden = true;
         return;
     }
     empty.hidden = true;
-    img.hidden = false;
+    mainArea.hidden = false;
     nav.hidden = false;
+
+    // Render thumbnails
+    thumbs.innerHTML = "";
+    thumbs.hidden = state.currentImages.length <= 1;
+    state.currentImages.forEach(function (img, idx) {
+        var thumb = document.createElement("div");
+        thumb.className = "image-thumb" + (idx === 0 ? " active" : "");
+        var imgEl = document.createElement("img");
+        imgEl.src = img.url;
+        imgEl.alt = img.name;
+        imgEl.loading = "lazy";
+        thumb.appendChild(imgEl);
+        thumb.addEventListener("click", function () {
+            state.currentImageIndex = idx;
+            showCurrentImage();
+        });
+        thumbs.appendChild(thumb);
+    });
+
     showCurrentImage();
 }
 
@@ -226,6 +298,7 @@ function showCurrentImage() {
     var counter = $("#imageCounter");
     var prev = $("#btnImgPrev");
     var next = $("#btnImgNext");
+    var thumbs = $$(".image-thumb");
     var images = state.currentImages;
     var idx = state.currentImageIndex;
 
@@ -235,11 +308,17 @@ function showCurrentImage() {
     counter.textContent = (idx + 1) + " / " + images.length;
     prev.disabled = idx === 0;
     next.disabled = idx === images.length - 1;
+
+    // Update thumbnail active state
+    thumbs.forEach(function (t, i) {
+        t.classList.toggle("active", i === idx);
+    });
 }
 
 function clearImages() {
     $("#imageEmpty").hidden = false;
-    $("#mainImage").hidden = true;
+    $("#imageMain").hidden = true;
+    $("#imageThumbs").hidden = true;
     $("#imageNav").hidden = true;
     state.currentImages = [];
     state.currentImageIndex = 0;
@@ -275,11 +354,16 @@ function setupSearch() {
                 return;
             }
             res.innerHTML = "";
-            var labels = { topic: "Тема", pathology: "Патология", parameter: "Параметр" };
+            var labels = { topic: "\u{1F4CB} Тема", pathology: "\u{1F4C4} Патология", parameter: "\u{1F4CA} Параметр" };
             hits.forEach(function (h) {
                 var el = document.createElement("div");
                 el.className = "search-result-item";
-                el.innerHTML = '<div class="search-result-type">' + (labels[h.type] || h.type) + '</div><div class="search-result-name">' + escapeHtml(h.name) + '</div>';
+                var html = '<div class="search-result-type">' + (labels[h.type] || h.type) + '</div>';
+                html += '<div class="search-result-name">' + escapeHtml(h.name) + '</div>';
+                if (h.parent) {
+                    html += '<div class="search-result-parent">' + escapeHtml(h.parent) + '</div>';
+                }
+                el.innerHTML = html;
                 el.addEventListener("click", function () {
                     res.hidden = true;
                     inp.value = "";
@@ -293,9 +377,19 @@ function setupSearch() {
                 res.appendChild(el);
             });
             res.hidden = false;
-        }, 250);
+        }, 200);
     });
     inp.addEventListener("blur", function () { setTimeout(function () { res.hidden = true; }, 200); });
+}
+
+/* ===== Age Filter ===== */
+function setupAgeFilter() {
+    var inp = $("#ageInput");
+    inp.addEventListener("input", function () {
+        var age = inp.value.trim();
+        // Age filter is visual-only for now — could be used to highlight age-specific norms
+        // For future: filter parameters by age range if data supports it
+    });
 }
 
 function escapeHtml(s) {
@@ -305,12 +399,44 @@ function escapeHtml(s) {
     return d.innerHTML;
 }
 
+/* ===== Keyboard Shortcuts ===== */
+function setupKeyboard() {
+    document.addEventListener("keydown", function (e) {
+        // Focus search on Ctrl+F
+        if (e.ctrlKey && e.key === "f") {
+            e.preventDefault();
+            $("#searchInput").focus();
+        }
+        // Escape: clear search
+        if (e.key === "Escape") {
+            $("#searchInput").value = "";
+            $("#searchResults").hidden = true;
+            $("#searchInput").blur();
+        }
+        // Arrow keys for image navigation
+        if (e.key === "ArrowLeft" && state.currentImages.length > 0) {
+            if (state.currentImageIndex > 0) {
+                state.currentImageIndex--;
+                showCurrentImage();
+            }
+        }
+        if (e.key === "ArrowRight" && state.currentImages.length > 0) {
+            if (state.currentImageIndex < state.currentImages.length - 1) {
+                state.currentImageIndex++;
+                showCurrentImage();
+            }
+        }
+    });
+}
+
 /* ===== Init ===== */
 async function init() {
     await bridge.whenReady();
     var topics = await bridge.getTopics();
     renderTopics(topics);
     setupSearch();
+    setupAgeFilter();
+    setupKeyboard();
 
     // Auto-select first topic
     if (topics.length > 0) {
