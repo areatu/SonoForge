@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Справочник</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <span class="app-icon">📋</span>
+            <h1>Справочник</h1>
+        </div>
+        <div class="header-right">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="Поиск по справочнику..." autocomplete="off">
+                <div class="search-results" id="searchResults" hidden></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <section class="panel panel-left" id="panelTopics">
+            <div class="panel-header">
+                <h2>Темы</h2>
+            </div>
+            <div class="panel-body" id="topicsList"></div>
+        </section>
+
+        <div class="resize-handle"></div>
+
+        <section class="panel panel-right" id="panelContent">
+            <div class="panel-header">
+                <h2 id="pathologyTitle">Выберите тему</h2>
+            </div>
+            <div class="pathology-bar" id="pathologyBar"></div>
+
+            <div class="content-split">
+                <div class="content-left">
+                    <div class="empty-state" id="emptyState">
+                        <span class="empty-icon">🫀</span>
+                        <p>Выберите тему и патологию для просмотра параметров</p>
+                    </div>
+                    <div class="params-area" id="paramsArea" hidden>
+                        <div class="gradation-legend" id="gradationLegend" hidden></div>
+                        <table class="param-table" id="paramTable">
+                            <thead id="paramHead"></thead>
+                            <tbody id="paramBody"></tbody>
+                        </table>
+                        <div class="source-bar" id="sourceBar" hidden></div>
+                    </div>
+                </div>
+
+                <div class="content-right">
+                    <div class="image-area" id="imageArea">
+                        <div class="empty-state" id="imageEmpty">
+                            <span class="empty-icon">🖼</span>
+                            <p>Нет изображения</p>
+                        </div>
+                        <img id="mainImage" hidden alt="">
+                        <div class="image-nav" id="imageNav" hidden>
+                            <button class="nav-btn" id="btnImgPrev">◀</button>
+                            <span class="image-counter" id="imageCounter">0 / 0</span>
+                            <button class="nav-btn" id="btnImgNext">▶</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="bridge.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
