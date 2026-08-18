@@ -245,6 +245,33 @@ class TestFinishClosedContourSnap:
                 mock_snap.assert_called_once()
 
 
+class TestAreaCompareContourPersistence:
+    def test_area_compare_contour_is_persisted(self, qtbot) -> None:
+        """Completed contour in area-comparison mode must stay stored (visible/editable)."""
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w._magnetic_snap_enabled = False
+
+        assert w.start_area_compare() is True
+        assert w._comparison_state.kind == "area"
+
+        w._active_arc_points = [
+            (10.0, 10.0),
+            (50.0, 10.0),
+            (50.0, 50.0),
+            (10.0, 50.0),
+        ]
+
+        completed: list = []
+        w.contour_completed.connect(completed.append)
+
+        assert w._finish_closed_contour() is True
+        assert len(completed) == 1
+        assert len(w._stored_contours) == 1
+        assert w._stored_contours[0].chamber.upper() == "AREA"
+        assert len(w._stored_contours[0].points) >= 4
+
+
 # ── Step 10: per-click snap in handle_contour_click polygon branch ───
 
 

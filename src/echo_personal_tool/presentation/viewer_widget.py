@@ -3749,8 +3749,7 @@ class ViewerWidget(QWidget):
                 frame_index=self._contour_frame_index(),
             )
         self._clear_active_contour_drawing()
-        if self._comparison_state.kind != "area":
-            self.set_contour_from_domain(contour)
+        self.set_contour_from_domain(contour)
         if contour.is_open_arc:
             self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
@@ -3894,8 +3893,7 @@ class ViewerWidget(QWidget):
             frame_index=self._contour_frame_index(),
         )
         self._clear_active_contour_drawing()
-        if self._comparison_state.kind != "area":
-            self.set_contour_from_domain(contour)
+        self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -3930,8 +3928,7 @@ class ViewerWidget(QWidget):
             measurement_label=measurement_label,
         )
         self._clear_active_contour_drawing()
-        if self._comparison_state.kind != "area":
-            self.set_contour_from_domain(contour)
+        self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -3980,8 +3977,7 @@ class ViewerWidget(QWidget):
         self._freehand_recording = False
         self._freehand_points = []
         self._clear_active_contour_drawing()
-        if self._comparison_state.kind != "area":
-            self.set_contour_from_domain(contour)
+        self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -5402,6 +5398,8 @@ class ViewerWidget(QWidget):
                     continue
                 chamber = contour.chamber.upper()
                 if chamber in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
+                    if self._comparison_state.kind == "area":
+                        continue
                     line = format_planimeter_overlay_line(
                         contour,
                         spacing,
