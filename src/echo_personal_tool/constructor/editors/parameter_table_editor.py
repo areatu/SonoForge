@@ -489,6 +489,11 @@ class ParameterTableEditor(BaseEditor):
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
 
+        current = self._table.currentItem()
+        if current:
+            menu.addAction(tr("constructor.param.context_edit"), lambda: self._table.editItem(current))
+            menu.addSeparator()
+
         menu.addAction(tr("constructor.param.insert_row_above"), self._insert_row_above)
         menu.addAction(tr("constructor.param.insert_row_below"), self._insert_row_below)
         menu.addSeparator()
@@ -497,7 +502,7 @@ class ParameterTableEditor(BaseEditor):
         menu.addAction(tr("constructor.param.insert_col_right"), self._insert_col_right)
         menu.addSeparator()
 
-        menu.addAction(tr("constructor.param.delete_selected"), self.delete_selected)
+        menu.addAction(tr("constructor.param.context_delete_selected"), self.delete_selected)
         menu.addAction(tr("constructor.param.delete_column"), self._delete_column)
         menu.addSeparator()
 

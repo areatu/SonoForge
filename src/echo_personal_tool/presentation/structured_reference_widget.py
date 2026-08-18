@@ -401,6 +401,8 @@ class StructuredReferenceWidget(QWidget):
             btn.setParent(None)
             btn.deleteLater()
         self._topic_buttons.clear()
+        # Insert position: before stretch + separator + age widget (last 3 items)
+        insert_pos = max(0, self._left_layout.count() - 3)
         # Create new buttons
         for i, topic in enumerate(self._topics):
             label = _TOPIC_LABELS.get(topic.slug, topic.name[:8])
@@ -426,7 +428,7 @@ class StructuredReferenceWidget(QWidget):
             btn.clicked.connect(lambda _checked, t=topic: self._on_topic_clicked(t))
             self._topic_group.addButton(btn, i)
             self._topic_buttons.append(btn)
-            self._left_layout.insertWidget(self._left_layout.count() - 2, btn)
+            self._left_layout.insertWidget(insert_pos + i, btn)
 
     # Default section to open on first show
     _DEFAULT_TOPIC_SLUG = "left_ventricle"

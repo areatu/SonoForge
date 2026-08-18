@@ -452,9 +452,6 @@ def format_results_overlay_html(
     # Indexed results with param links for norm checking
     indexed = snapshot.indexed
     if indexed is not None:
-        bsa = indexed.bsa_m2
-        if bsa is not None:
-            _html_append(parts, tr("indexed.bsa"), bsa, "m²", decimals=2, param_id="lavi", sex_male=sex_male)
         lav_index = _best_lav_index(indexed)
         if lav_index is not None:
             _html_append(parts, tr("indexed.lav_line"), lav_index, "mL/m²", param_id="lavi", sex_male=sex_male)

@@ -540,9 +540,18 @@ class AseReferenceDialog(QDialog):
     def _build_menu(self) -> QMenuBar:
         from PySide6.QtWidgets import QMenu
 
+        p = get_theme_palette()
         menu_bar = QMenuBar(self)
+        menu_bar.setStyleSheet(
+            f"QMenuBar {{ background: {p['bg_panel']}; color: {p['text']}; }}"
+            f"QMenuBar::item:selected {{ background: {p['bg_button_hover']}; }}"
+        )
 
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
+        file_menu.setStyleSheet(
+            f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
+            f"QMenu::item:selected {{ background: {p['accent']}; }}"
+        )
         file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
         file_menu.addSeparator()
         file_menu.addAction(tr("ase_ref.constructor_menu"), self._open_constructor)
@@ -552,6 +561,10 @@ class AseReferenceDialog(QDialog):
         menu_bar.addMenu(file_menu)
 
         settings_menu = QMenu(tr("ase_refs.settings_menu"), menu_bar)
+        settings_menu.setStyleSheet(
+            f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
+            f"QMenu::item:selected {{ background: {p['accent']}; }}"
+        )
         settings_menu.addAction(tr("ase_refs.font_action"), self._show_font_settings)
         menu_bar.addMenu(settings_menu)
 
@@ -565,6 +578,10 @@ class AseReferenceDialog(QDialog):
         if self._structured_widget is not None:
             self._structured_widget.reload()
             self._structured_widget.set_maximized_mode(self._is_maximized)
+            # Force layout update so topic buttons stay in place
+            self._structured_widget.updateGeometry()
+            if self._structured_widget.layout():
+                self._structured_widget.layout().activate()
         # Restore focus to this dialog
         self.activateWindow()
         self.setFocus()

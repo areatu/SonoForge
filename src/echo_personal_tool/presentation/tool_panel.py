@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -133,6 +133,12 @@ class MeasureTab(QWidget):
 
         from echo_personal_tool.infrastructure.i18n import tr
 
+        self._bsa_label = QLabel()
+        self._bsa_label.setStyleSheet("font-size: 14px; font-weight: 600;")
+        self._bsa_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._bsa_label.setVisible(False)
+        self._patient_metrics.metrics_changed.connect(self._update_bsa)
+
         self._auto_play_check = QCheckBox(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._auto_play_check.toggled.connect(self.auto_play_changed.emit)
@@ -154,6 +160,7 @@ class MeasureTab(QWidget):
         self._layout.setSpacing(0)
         self._layout.addWidget(self._menu, stretch=1)
         self._layout.addWidget(self._patient_metrics, stretch=0)
+        self._layout.addWidget(self._bsa_label, stretch=0)
         self._layout.addWidget(self._auto_play_check, stretch=0)
         self._layout.addWidget(self._metrics_results_gap, stretch=0)
         self._layout.addWidget(results_wrap, stretch=0)
@@ -174,6 +181,19 @@ class MeasureTab(QWidget):
 
     def set_patient_metrics(self, height_cm: float | None, weight_kg: float | None) -> None:
         self._patient_metrics.set_metrics(height_cm, weight_kg)
+        self._update_bsa(height_cm, weight_kg)
+
+    def _update_bsa(self, height_cm: float | None, weight_kg: float | None) -> None:
+        from echo_personal_tool.domain.calculations.body_surface import bsa_du_bois_m2
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        if height_cm and weight_kg and height_cm > 0 and weight_kg > 0:
+            bsa = bsa_du_bois_m2(height_cm, weight_kg)
+            if bsa is not None:
+                self._bsa_label.setText(f"{tr('panel.bsa')}: {bsa:.2f} m²")
+                self._bsa_label.setVisible(True)
+                return
+        self._bsa_label.setVisible(False)
 
     def set_auto_play(self, enabled: bool) -> None:
         self._auto_play_check.blockSignals(True)

@@ -40,7 +40,6 @@ def append_indexed_for_overlay(
     if not always_lines and not abnormal_lines:
         return
 
-    _append_line(lines, tr("indexed.bsa"), indexed.bsa_m2, "m²", decimals=2)
     lines.extend(always_lines)
     lines.extend(abnormal_lines)
 
@@ -59,7 +58,6 @@ def append_indexed_when_abnormal(
     if not abnormal_lines:
         return
 
-    _append_line(lines, tr("indexed.bsa"), indexed.bsa_m2, "m²", decimals=2)
     lines.extend(abnormal_lines)
 
 

@@ -110,6 +110,12 @@ class TopicEditor(BaseEditor):
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
+        item = self._list.currentItem()
+        if item:
+            slug = item.data(Qt.ItemDataRole.UserRole)
+            if slug:
+                menu.addAction(tr("constructor.topic.edit"), lambda: self._rename_topic(item, slug))
+                menu.addSeparator()
         menu.addAction(tr("constructor.topic.add"), self._add_topic)
         menu.addAction(tr("constructor.topic.delete"), self._delete_selected)
         menu.addAction(tr("constructor.topic.duplicate"), self._duplicate_topic)

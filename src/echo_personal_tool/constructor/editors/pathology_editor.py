@@ -128,6 +128,12 @@ class PathologyEditor(BaseEditor):
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
+        item = self._list.currentItem()
+        if item:
+            slug = item.data(Qt.ItemDataRole.UserRole)
+            if slug:
+                menu.addAction(tr("constructor.pathology.edit"), lambda: self._rename_pathology(item, slug))
+                menu.addSeparator()
         menu.addAction(tr("constructor.pathology.add"), self._add_pathology)
         menu.addAction(tr("constructor.pathology.delete"), self.delete_selected)
         menu.addAction(tr("constructor.pathology.duplicate"), self._duplicate_pathology)
