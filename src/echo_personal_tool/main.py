@@ -142,6 +142,12 @@ def main() -> int:
     patch_pyqtgraph_export_dialog()
     app = QApplication(sys.argv)
     app.setApplicationName("SonoForge")
+    # Reduce Qt's double-click detection timeout: with the default (~400 ms),
+    # rapid consecutive clicks while placing contour points are merged into a
+    # double-click and the next point is never placed. A shorter window makes
+    # fast clicks register as individual point placements; a deliberate,
+    # quick double-click still finishes the contour.
+    QApplication.setDoubleClickInterval(150)
 
     # Enable OpenGL hardware acceleration for pyqtgraph texture uploads.
     # On Windows with ANGLE this ensures GPU texture upload instead of software rendering.
