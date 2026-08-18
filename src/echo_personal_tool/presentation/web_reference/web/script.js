@@ -39,8 +39,13 @@ async function selectTopic(slug) {
     renderTopics(state.topics);
     var data = await bridge.getTopicDetail(slug);
     if (data.error) return;
-    renderPathologies(data.pathologies || [], data.name);
-    clearContent();
+    var pathos = data.pathologies || [];
+    renderPathologies(pathos, data.name);
+    if (pathos.length > 0) {
+        await selectPathology(pathos[0].slug);
+    } else {
+        clearContent();
+    }
 }
 
 /* ===== Pathologies ===== */
@@ -98,33 +103,12 @@ function renderDescription(desc) {
 
 /* ===== Parameters ===== */
 function renderParams(data) {
-    var empty = $("#emptyState");
     var area = $("#paramsArea");
     var head = $("#paramHead");
     var body = $("#paramBody");
-    var legend = $("#gradationLegend");
     var source = $("#sourceBar");
 
-    if (!data.parameters || !data.parameters.length) {
-        empty.hidden = false;
-        area.hidden = true;
-        source.hidden = true;
-        return;
-    }
-    empty.hidden = true;
     area.hidden = false;
-
-    // Gradation legend
-    legend.innerHTML = "";
-    if (data.grad_names && data.grad_names.length) {
-        var classes = ["grad-normal", "grad-mild", "grad-moderate", "grad-severe"];
-        data.grad_names.forEach(function (gn, i) {
-            var tag = document.createElement("span");
-            tag.className = "grad-tag " + (classes[i % classes.length]);
-            tag.textContent = gn;
-            legend.appendChild(tag);
-        });
-    }
 
     // Table header
     head.innerHTML = "";
@@ -145,6 +129,18 @@ function renderParams(data) {
 
     // Table body
     body.innerHTML = "";
+    if (!data.parameters || !data.parameters.length) {
+        var emptyTr = document.createElement("tr");
+        var emptyTd = document.createElement("td");
+        emptyTd.colSpan = 3 + (data.grad_names ? data.grad_names.length : 0);
+        emptyTd.textContent = "Нет параметров для этой патологии";
+        emptyTd.className = "patho-desc";
+        emptyTd.style.textAlign = "center";
+        emptyTr.appendChild(emptyTd);
+        body.appendChild(emptyTr);
+        source.hidden = true;
+        return;
+    }
     data.parameters.forEach(function (param) {
         var tr = document.createElement("tr");
 
@@ -154,9 +150,8 @@ function renderParams(data) {
         var nameHtml = escapeHtml(param.name);
         if (param.unit) nameHtml += ' <span style="color:var(--text-muted);font-weight:normal;">(' + escapeHtml(param.unit) + ')</span>';
         tdName.innerHTML = nameHtml;
-        if (param.pathology_desc) {
-            tdName.title = param.pathology_desc;
-        }
+        tdName.setAttribute("data-full", param.name);
+        if (param.unit) tdName.setAttribute("data-unit", param.unit);
         tr.appendChild(tdName);
 
         // Norm male
@@ -173,12 +168,13 @@ function renderParams(data) {
 
         // Gradation cells
         if (param.gradations) {
-            param.gradations.forEach(function (gv) {
+            param.gradations.forEach(function (gv, gi) {
                 var td = document.createElement("td");
                 td.className = "grad-cell";
                 td.textContent = gv || "\u2014";
                 if (gv && gv !== "\u2014") {
-                    var cls = gradCellClass(gv);
+                    var name = data.grad_names && data.grad_names[gi];
+                    var cls = gradClassForName(name);
                     if (cls) td.classList.add(cls);
                 }
                 tr.appendChild(td);
@@ -235,15 +231,15 @@ function showSource(source) {
 }
 
 function clearContent() {
-    $("#emptyState").hidden = false;
     $("#paramsArea").hidden = true;
     $("#descPanel").hidden = true;
     $("#sourceBar").hidden = true;
     clearImages();
 }
 
-function gradCellClass(value) {
-    var lower = value.toLowerCase();
+function gradClassForName(name) {
+    if (!name) return "";
+    var lower = name.toLowerCase();
     if (lower.indexOf("\u043d\u043e\u0440\u043c") >= 0) return "grad-normal-cell";
     if (lower.indexOf("\u043b\u0451\u0433\u043a") >= 0 || lower.indexOf("\u043b\u0435\u0433\u043a") >= 0) return "grad-mild-cell";
     if (lower.indexOf("\u0443\u043c\u0435\u0440\u0435\u043d") >= 0) return "grad-moderate-cell";
@@ -324,6 +320,49 @@ function clearImages() {
     state.currentImageIndex = 0;
 }
 
+/* ===== Image Lightbox ===== */
+function openModal(index) {
+    if (!state.currentImages.length) return;
+    state.currentImageIndex = index;
+    renderModalImage();
+    $("#imageModal").hidden = false;
+}
+
+function closeModal() {
+    $("#imageModal").hidden = true;
+}
+
+function renderModalImage() {
+    var images = state.currentImages;
+    var idx = state.currentImageIndex;
+    if (!images.length) return;
+    $("#modalImage").src = images[idx].url;
+    $("#modalImage").alt = images[idx].name;
+    $("#modalCounter").textContent = (idx + 1) + " / " + images.length;
+    $("#modalPrev").disabled = idx === 0;
+    $("#modalNext").disabled = idx === images.length - 1;
+}
+
+$("#modalPrev").addEventListener("click", function () {
+    if (state.currentImageIndex > 0) {
+        state.currentImageIndex--;
+        renderModalImage();
+    }
+});
+$("#modalNext").addEventListener("click", function () {
+    if (state.currentImageIndex < state.currentImages.length - 1) {
+        state.currentImageIndex++;
+        renderModalImage();
+    }
+});
+$("#modalClose").addEventListener("click", closeModal);
+$("#imageModal").addEventListener("click", function (e) {
+    if (e.target === this || e.target === $("#modalImage")) closeModal();
+});
+$("#mainImage").addEventListener("click", function () {
+    openModal(state.currentImageIndex);
+});
+
 $("#btnImgPrev").addEventListener("click", function () {
     if (state.currentImageIndex > 0) {
         state.currentImageIndex--;
@@ -334,6 +373,57 @@ $("#btnImgNext").addEventListener("click", function () {
     if (state.currentImageIndex < state.currentImages.length - 1) {
         state.currentImageIndex++;
         showCurrentImage();
+    }
+});
+
+/* ===== Tooltip ===== */
+var tooltipTimer = null;
+var tooltipCell = null;
+
+function positionTooltip(x, y) {
+    var tip = $("#tooltip");
+    var pad = 12;
+    var left = x + pad;
+    var top = y + pad;
+    if (left + tip.offsetWidth > innerWidth - pad) left = x - tip.offsetWidth - pad;
+    if (top + tip.offsetHeight > innerHeight - pad) top = y - tip.offsetHeight - pad;
+    tip.style.left = Math.max(pad, left) + "px";
+    tip.style.top = Math.max(pad, top) + "px";
+}
+
+function hideTooltip() {
+    clearTimeout(tooltipTimer);
+    tooltipTimer = null;
+    tooltipCell = null;
+    $("#tooltip").hidden = true;
+}
+
+document.addEventListener("mouseover", function (e) {
+    var cell = e.target.closest ? e.target.closest(".param-name") : null;
+    if (!cell || cell === tooltipCell) return;
+    tooltipCell = cell;
+    var full = cell.getAttribute("data-full") || cell.textContent;
+    var unit = cell.getAttribute("data-unit");
+    if (unit) full += " (" + unit + ")";
+    clearTimeout(tooltipTimer);
+    tooltipTimer = setTimeout(function () {
+        var tip = $("#tooltip");
+        tip.textContent = full;
+        tip.hidden = false;
+        positionTooltip(e.clientX, e.clientY);
+    }, 1500);
+});
+
+document.addEventListener("mouseout", function (e) {
+    if (e.target.closest && e.target.closest(".param-name")) {
+        hideTooltip();
+    }
+});
+
+document.addEventListener("mousemove", function (e) {
+    var tip = $("#tooltip");
+    if (!tip.hidden && e.target.closest && e.target.closest(".param-name")) {
+        positionTooltip(e.clientX, e.clientY);
     }
 });
 
@@ -402,6 +492,12 @@ function escapeHtml(s) {
 /* ===== Keyboard Shortcuts ===== */
 function setupKeyboard() {
     document.addEventListener("keydown", function (e) {
+        // Modal navigation
+        if (!$("#imageModal").hidden) {
+            if (e.key === "Escape") { closeModal(); return; }
+            if (e.key === "ArrowLeft") { e.preventDefault(); $("#modalPrev").click(); return; }
+            if (e.key === "ArrowRight") { e.preventDefault(); $("#modalNext").click(); return; }
+        }
         // Focus search on Ctrl+F
         if (e.ctrlKey && e.key === "f") {
             e.preventDefault();

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl, Signal
@@ -44,7 +45,9 @@ class WebReferenceWidget(QWidget):
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.DeveloperExtrasEnabled, True)
+        dev_extras = getattr(QWebEngineSettings.WebAttribute, "DeveloperExtrasEnabled", None)
+        if dev_extras is not None:
+            settings.setAttribute(dev_extras, True)
 
         self._channel = QWebChannel(self)
         self._channel.registerObject("backend", self._bridge)
@@ -125,6 +128,22 @@ class WebReferenceWidget(QWidget):
         else:
             self._init_attempts = 0
             self._try_init_bridge()
+
+    def reload_page(self) -> None:
+        """Full page reload from disk (picks up HTML/CSS/JS edits)."""
+        self._store.load()
+        self._bridge.configure(self._store)
+        self._bridge_ready = False
+        self._init_attempts = 0
+        self._status_label.setText("Перезагрузка...")
+        self._status_label.show()
+        self._web_view.hide()
+        self._fallback_timer.stop()
+        self._fallback_timer.start(5000)
+        url = QUrl.fromLocalFile(str(_WEB_DIR / "index.html"))
+        url.setQuery(f"v={int(time.time())}")
+        log.info("Reloading web reference: %s", url.toString())
+        self._web_view.setUrl(url)
 
     def set_maximized_mode(self, maximized: bool) -> None:
         pass

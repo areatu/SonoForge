@@ -391,7 +391,8 @@ class AseReferenceDialog(QDialog):
         # ── Structured reference widget (Qt fallback) ──
         try:
             self._structured_widget = StructuredReferenceWidget(ReferenceDataStore().load())
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("StructuredReferenceWidget failed to init: %s", exc)
             self._structured_widget = None
         if self._structured_widget is not None:
             self._structured_widget.hide()
@@ -400,7 +401,8 @@ class AseReferenceDialog(QDialog):
         # ── Web reference widget (default) ──
         try:
             self._web_ref_widget = WebReferenceWidget(ReferenceDataStore().load())
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("WebReferenceWidget failed to init: %s", exc)
             self._web_ref_widget = None
         if self._web_ref_widget is not None:
             root.addWidget(self._web_ref_widget, stretch=1)
@@ -523,6 +525,10 @@ class AseReferenceDialog(QDialog):
         super().changeEvent(event)
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key.Key_F5 and self._web_ref_active and self._web_ref_widget is not None:
+            self._web_ref_widget.reload_page()
+            event.accept()
+            return
         if self._active_doc_index >= 0:
             _, _, kind = self._documents[self._active_doc_index]
             if kind == "pdf":
@@ -934,8 +940,7 @@ class AseReferenceDialog(QDialog):
                 self._structured_widget.hide()
             if self._web_ref_widget is not None:
                 self._web_ref_widget.show()
-                if not self._web_ref_widget._bridge_ready:
-                    self._web_ref_widget.reload()
+                self._web_ref_widget.reload_page()
             self._toggle_ref_action.setText("Qt-вид справочника")
         else:
             if self._web_ref_widget is not None:

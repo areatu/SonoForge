@@ -57,14 +57,7 @@
             <div class="content-split">
                 <!-- Left: Parameters table -->
                 <div class="content-params">
-                    <div class="empty-state" id="emptyState">
-                        <span class="empty-icon">📊</span>
-                        <p>Выберите патологию для просмотра параметров</p>
-                    </div>
                     <div class="params-area" id="paramsArea" hidden>
-                        <div class="params-toolbar">
-                            <div class="gradation-legend" id="gradationLegend"></div>
-                        </div>
                         <div class="table-scroll">
                             <table class="param-table" id="paramTable">
                                 <thead id="paramHead"></thead>
@@ -96,6 +89,20 @@
             </div>
         </section>
     </main>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip" hidden></div>
+
+    <!-- Image lightbox modal -->
+    <div class="image-modal" id="imageModal" hidden>
+        <div class="modal-toolbar">
+            <button class="nav-btn" id="modalPrev" title="Предыдущее">◀</button>
+            <span class="image-counter" id="modalCounter"></span>
+            <button class="nav-btn" id="modalNext" title="Следующее">▶</button>
+            <button class="modal-close" id="modalClose" title="Закрыть (Esc)">✕</button>
+        </div>
+        <img id="modalImage" alt="">
+    </div>
 
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script src="bridge.js"></script>
