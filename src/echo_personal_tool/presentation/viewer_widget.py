@@ -711,6 +711,7 @@ class ViewerWidget(QWidget):
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
         self._doppler_pending_baseline_y: float | None = None
         self._doppler_pending_velocity_span: float | None = None
+        self._doppler_pending_auto_velocity_span: float | None = None
         self._mmode_time_start_x: float | None = None
         self._mmode_line_active = False
         self._mmode_line_item: MModeScanLineItem | None = None
@@ -2211,6 +2212,7 @@ class ViewerWidget(QWidget):
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
         self._doppler_pending_velocity_span = None
+        self._doppler_pending_auto_velocity_span = None
         self._measurement_label.setText(tr(_DOPPLER_CAL_BASELINE_KEY))
         self._measurement_label.show()
         return True
@@ -3285,29 +3287,17 @@ class ViewerWidget(QWidget):
                 or (self._doppler_calibration_state.roi if self._doppler_calibration_state is not None else None)
                 or DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height)))
             )
-            # Try one-click auto-calibration (analog of B-mode auto-cal)
+            # Try auto-calibration, but only as a suggested default for the
+            # manual span dialog — manual calibration always takes priority
+            # and is never silently overridden by the auto-detected value.
             auto = try_auto_doppler_velocity_calibration(
                 self._current_frame,
                 roi=roi,
                 baseline_y=y,
                 kind=self._doppler_cal_kind,
             )
-            if auto is not None and auto.confidence >= 0.6:
-                state = calibration_from_roi_and_baseline(
-                    roi,
-                    y,
-                    velocity_span_cm_s=auto.velocity_span_cm_s,
-                    time_span_ms=0.0,
-                    kind=self._doppler_cal_kind,
-                )
-                self.apply_doppler_calibration_state(state)
-                self._doppler_pending_roi = None
-                self._doppler_pending_baseline_y = None
-                self._doppler_cal_step = None
-                self._measurement_label.setText(tr("viewer.doppler_calibration_auto_ok"))
-                self.spectral_calibration_completed.emit(auto.velocity_span_cm_s)
-                return True
-            # Fallback: existing 2-click + dialog flow
+            self._doppler_pending_auto_velocity_span = auto.velocity_span_cm_s if auto is not None else None
+            # 2-click + dialog flow
             partial = calibration_from_roi_and_baseline(
                 roi,
                 y,
@@ -5711,6 +5701,11 @@ class ViewerWidget(QWidget):
 
     def _prompt_spectral_velocity_span(self, length_px: float) -> None:
         default_span = self._doppler_cal_kind.default_velocity_span_cm_s
+        pending_auto = self._doppler_pending_auto_velocity_span
+        if pending_auto is not None:
+            default_span = pending_auto
+        elif self._doppler_calibration_state is not None and self._doppler_calibration_state.has_velocity_scale():
+            default_span = self._doppler_calibration_state.velocity_span_cm_s
         if self._doppler_cal_kind == DopplerKind.TISSUE:
             min_val, max_val = 1.0, 100.0
         else:
@@ -5770,6 +5765,7 @@ class ViewerWidget(QWidget):
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
         self._doppler_pending_velocity_span = None
+        self._doppler_pending_auto_velocity_span = None
         self._measurement_label.setText(tr("viewer.doppler_calibration_complete"))
         if not self._syncing_state:
             self.spectral_calibration_completed.emit(velocity_span)

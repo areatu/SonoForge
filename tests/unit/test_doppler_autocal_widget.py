@@ -39,8 +39,12 @@ def _frame_with_ticks(height=400, width=640):
     return frame, roi
 
 
-def test_baseline_click_autocalibrates(qtbot, monkeypatch):
-    """Auto-calibration after baseline click produces a calibrated state."""
+def test_baseline_click_auto_suggests_span_not_applied(qtbot, monkeypatch):
+    """Auto-calibration after a baseline click is only a suggestion.
+
+    Manual calibration takes priority: the detected span must NOT be applied
+    silently; the manual 2-click flow starts and the span becomes the dialog
+    default."""
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     frame, roi = _frame_with_ticks()
@@ -66,8 +70,12 @@ def test_baseline_click_autocalibrates(qtbot, monkeypatch):
         handled = widget._handle_doppler_calibration_click(ev)
 
     assert handled is True
-    assert widget._doppler_calibration_state is not None
-    assert widget._doppler_calibration_state.has_velocity_scale()
+    # Calibration state is NOT auto-applied...
+    assert widget._doppler_calibration_state is None
+    assert widget._doppler_pending_auto_velocity_span == 200.0
+    # ...the manual 2-click flow is active and will prompt for the span.
+    assert widget._doppler_cal_step is None
+    assert widget._calibration_active is True
 
 
 def test_baseline_click_no_ticks_falls_back(qtbot, monkeypatch):
@@ -109,8 +117,8 @@ def test_baseline_click_no_frame_returns_false(qtbot):
     assert handled is False
 
 
-def test_baseline_click_high_confidence_applies_calibration(qtbot, monkeypatch):
-    """When auto-calibration returns high confidence, it is applied directly."""
+def test_baseline_click_suggestion_becomes_dialog_default(qtbot, monkeypatch):
+    """The auto-detected span pre-fills the manual span dialog."""
     widget = ViewerWidget()
     qtbot.addWidget(widget)
     frame, roi = _frame_with_ticks()
@@ -136,8 +144,23 @@ def test_baseline_click_high_confidence_applies_calibration(qtbot, monkeypatch):
         handled = widget._handle_doppler_calibration_click(ev)
 
     assert handled is True
+    assert widget._doppler_pending_auto_velocity_span == 200.0
+
+    captured: dict[str, float] = {}
+
+    def fake_getdouble(parent, title, label, value, min_val, max_val, decimals):
+        captured["value"] = value
+        return (200.0, True)
+
+    with patch(
+        "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+        side_effect=fake_getdouble,
+    ):
+        widget._prompt_spectral_velocity_span(64.0)
+
+    assert captured["value"] == 200.0
     assert widget._doppler_calibration_state is not None
-    assert widget._doppler_calibration_state.velocity_span_cm_s == 200.0
+    assert widget._doppler_calibration_state.has_velocity_scale()
 
 
 def test_snapping_uses_doppler_grid_lines(qtbot):

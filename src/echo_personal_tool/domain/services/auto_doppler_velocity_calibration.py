@@ -73,8 +73,7 @@ def infer_velocity_span(
         n_furthest = 2
 
     candidate_spans = _SPECTRAL_SPANS if kind == DopplerKind.SPECTRAL else _TISSUE_SPANS
-    best: float | None = None
-    best_score = -1.0
+    consistent: list[float] = []
 
     for S in candidate_spans:
         per_interval = (S / 2.0) / n_furthest
@@ -83,13 +82,15 @@ def infer_velocity_span(
         expected_vpp = S / roi.height
         implied_vpp = per_interval / pixel_spacing
         consistency = 1.0 - min(1.0, abs(implied_vpp - expected_vpp) / expected_vpp)
-        if consistency > best_score:
-            best_score = consistency
-            best = S
+        if consistency >= 0.6:
+            consistent.append(S)
 
-    if best_score < 0.6:
+    # Tick geometry alone cannot distinguish equally consistent standard
+    # spans (the consistency score is invariant to S), so only return a
+    # value when exactly one standard span is plausible.
+    if len(consistent) != 1:
         return None
-    return best
+    return consistent[0]
 
 
 @dataclass(frozen=True)
