@@ -1,9 +1,6 @@
 """Application entry point."""
 
 import multiprocessing
-import sys
-
-print(f"[LA-APP-MAIN] Python: {sys.executable}, argv: {sys.argv}", flush=True)
 
 multiprocessing.freeze_support()
 

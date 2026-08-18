@@ -106,7 +106,7 @@ class LocalMediaDirectoryScanner:
         if len(study_uids_seen) > 1:
             from echo_personal_tool.infrastructure.log_sanitizer import sanitize_uid
 
-            logger.warning(
+            logger.debug(
                 "Multiple StudyInstanceUID values in %s: %s",
                 study_folder,
                 ", ".join(sanitize_uid(u) for u in sorted(study_uids_seen)),
