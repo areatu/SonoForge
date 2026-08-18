@@ -35,7 +35,7 @@ def test_get_negative_index_raises() -> None:
 
 def test_put_evicts_when_exceeding_double_window() -> None:
     """put() triggers eviction when sorted_keys > evict_window * 2."""
-    cache = FrameCache(evict_window=3)
+    cache = FrameCache(evict_window=3, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=50)
     # Manually put more than 6 frames
     for i in range(8):
@@ -45,25 +45,25 @@ def test_put_evicts_when_exceeding_double_window() -> None:
 
 
 def test_pin_prevents_eviction() -> None:
-    cache = FrameCache(evict_window=5)
+    cache = FrameCache(evict_window=5, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=30)
     for i in range(15):
         cache.put(i, np.ones((2, 2), dtype=np.uint8) * i)
     # Pin frame 0 and set current far away
     cache.pin(0)
-    cache.set_current(25)
+    cache.set_current(10)
     # Frame 0 should still be loaded because it's pinned
     assert cache.is_loaded(0)
 
 
 def test_unpin_allows_eviction() -> None:
-    cache = FrameCache(evict_window=5)
+    cache = FrameCache(evict_window=5, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=30)
     for i in range(15):
         cache.put(i, np.ones((2, 2), dtype=np.uint8) * i)
     cache.pin(0)
     cache.unpin(0)
-    cache.set_current(25)
+    cache.set_current(10)
     assert not cache.is_loaded(0)
 
 
@@ -191,7 +191,7 @@ def test_clear_resets_all_state() -> None:
 
 
 def test_memory_bytes_after_eviction() -> None:
-    cache = FrameCache(evict_window=3)
+    cache = FrameCache(evict_window=3, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=20)
     for i in range(20):
         cache.put(i, np.ones((8, 8), dtype=np.uint8))

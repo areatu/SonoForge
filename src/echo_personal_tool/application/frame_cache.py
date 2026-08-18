@@ -115,20 +115,43 @@ class FrameCache:
         if self._memory_bytes > self._max_cache_bytes:
             self._evict_to_memory_limit()
 
+    def _forward_arc(self, length: int) -> set[int]:
+        """Indexes of the next `length` frames from the current playhead,
+        wrapping at the end of the cine so loop playback never hits a gap."""
+        total = self._total_frames
+        if total <= 0 or length <= 0:
+            return set()
+        base = self._current_index % total
+        n = min(length, total)
+        return {(base + i) % total for i in range(n)}
+
     def _evict_to_memory_limit(self) -> None:
-        """Evict oldest frames until memory is under the cap."""
-        keys = list(self._sorted_keys)
-        for k in keys:
-            if self._memory_bytes <= self._max_cache_bytes // 2:
+        """Evict frames until memory is under the cap.
+
+        Keeps a contiguous forward arc from the current playback index (the
+        frames the decoder is producing and the playhead is about to show).
+        Any other eviction order leaves a gap right in front of the playhead
+        for large cines (e.g. an RGB clip that exceeds the cap), which makes
+        the skip-ahead logic jump to the loaded tail (gold7/gold11/gold12).
+        """
+        if not self._sorted_keys:
+            return
+        target = self._max_cache_bytes // 2
+        avg = self._memory_bytes / len(self._sorted_keys)
+        capacity = max(2, int(target // avg) + 1) if avg > 0 else 2
+        keep = self._forward_arc(capacity)
+        for k in list(self._sorted_keys):
+            if self._memory_bytes <= target:
                 break
-            if k not in self._pinned:
-                frame = self._frame_store.pop(k, None)
-                if frame is not None:
-                    self._memory_bytes -= frame.nbytes
-                try:
-                    self._sorted_keys.remove(k)
-                except ValueError:
-                    pass
+            if k in keep or k in self._pinned:
+                continue
+            frame = self._frame_store.pop(k, None)
+            if frame is not None:
+                self._memory_bytes -= frame.nbytes
+            try:
+                self._sorted_keys.remove(k)
+            except ValueError:
+                pass
         self._cached_frames = None
 
     def clear(self) -> None:
@@ -230,12 +253,24 @@ class FrameCache:
         return result
 
     def loaded_ahead(self, center: int) -> int:
-        """Count loaded frames strictly after center (no wrap)."""
-        if self._total_frames == 0:
+        """Count loaded frames forming a contiguous run starting right after
+        ``center`` (wrapping at the end of the cine).
+
+        Frames cached further ahead but with a gap in between (e.g. the loop
+        tail kept by eviction) are deliberately not counted: a prefetch that
+        adds ``start = center + 1 + ahead`` would otherwise skip over the gap
+        and leave the playhead with holes (gold7/gold11/gold12 skip bug).
+        """
+        total = self._total_frames
+        if total == 0:
             return 0
-        keys = self._sorted_keys
-        idx = bisect.bisect_right(keys, center)
-        return len(keys) - idx
+        store = self._frame_store
+        count = 0
+        idx = (center + 1) % total
+        while idx in store and count < total:
+            count += 1
+            idx = (idx + 1) % total
+        return count
 
     def loaded_before(self, center: int) -> int:
         """Count loaded frames strictly before center (no wrap)."""
@@ -267,8 +302,17 @@ class FrameCache:
         keys = self._sorted_keys
         if not keys:
             return
-        # Frames outside [lo, hi] are evicted
-        left_drop = keys[: bisect.bisect_left(keys, lo)]
+        # Keep the whole cine when it could fit under the memory cap even at
+        # the minimum frame size. Window-based eviction would otherwise drop
+        # frames needed for loop wrap-around (e.g. a 55-frame clip with a
+        # 20-frame window evicts the tail on the first step and the head near
+        # the end), stalling playback at ~3/4 and at the end without looping.
+        if self._total_frames * _MIN_FRAME_SIZE_BYTES <= self._max_cache_bytes:
+            return
+        # Frames outside [lo, hi] are evicted, except the wrap-around head
+        # frames (0..wrap_head) that playback needs when looping past the end.
+        wrap_head = hi - self._total_frames + 1 if hi >= self._total_frames else -1
+        left_drop = [k for k in keys[: bisect.bisect_left(keys, lo)] if k > wrap_head]
         right_drop = keys[bisect.bisect_right(keys, hi) :]
         to_drop = [k for k in left_drop + right_drop if k not in self._pinned]
         if not to_drop:

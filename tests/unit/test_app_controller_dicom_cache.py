@@ -96,6 +96,8 @@ def test_load_instance_starts_dicom_decode_worker(
     worker = thread_pool.started[0]
     assert isinstance(worker, _FakeDecodeWorker)
     assert worker.path.resolve() == path.resolve()
+    # First-frame-only lazy decode: playback and prefetch fill the cache
+    # incrementally so opening a cine never blocks on a full decode.
     assert worker.first_frame_only is True
     assert controller._frame_cache.frame_count() == 4
 
@@ -230,6 +232,12 @@ def test_lazy_frame_load_falls_back_to_frame_loader(
         "echo_personal_tool.application.app_controller.DicomDecodeWorker",
         _FakeDecodeWorker,
     )
+    thread_pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=thread_pool)
+    path = tmp_path / "study.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=10, rows=16, cols=16)
+    instance = _sample_dicom_instance(path, frame_count=10)
+
     frame_loader_calls: list[Path] = []
     original_worker = __import__(
         "echo_personal_tool.application.workers.frame_loader_worker",
@@ -245,11 +253,6 @@ def test_lazy_frame_load_falls_back_to_frame_loader(
         "echo_personal_tool.application.app_controller.FrameLoaderWorker",
         _SpyFrameLoader,
     )
-    thread_pool = _RecordingThreadPool()
-    controller = AppController(thread_pool=thread_pool)
-    path = tmp_path / "study.dcm"
-    write_synthetic_multiframe_dicom(path, frame_count=10, rows=16, cols=16)
-    instance = _sample_dicom_instance(path, frame_count=10)
 
     frame_events: list[np.ndarray] = []
     controller.frame_loaded.connect(frame_events.append)

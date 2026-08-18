@@ -1800,21 +1800,13 @@ class AppController(QObject):
         if total <= 0:
             return
 
-        # Small-loop optimization: if cine is <= 60 frames, prefetch all unloaded
-        if total <= 60:
-            unloaded = [i for i in range(total) if not self._frame_cache.is_loaded(i)]
-            if not unloaded:
-                return
-            batch = len(unloaded)
-            start = unloaded[0]
-        else:
-            start = (center + 1 + ahead) % total
-            if start == center:
-                return
-            slots_remaining = cfg.prefetch_radius - ahead
-            batch = min(self._adaptive_batch_size, slots_remaining, total)
-            if batch <= 0:
-                return
+        start = (center + 1 + ahead) % total
+        if start == center:
+            return
+        slots_remaining = cfg.prefetch_radius - ahead
+        batch = min(self._adaptive_batch_size, slots_remaining, total)
+        if batch <= 0:
+            return
 
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id

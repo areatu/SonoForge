@@ -91,7 +91,7 @@ def test_frame_cache_evicts_distant_frames(tmp_path: Path) -> None:
     path = tmp_path / "clip.dcm"
     n = 60
     frames = np.arange(n * 4 * 4, dtype=np.uint16).reshape(n, 4, 4)
-    cache = FrameCache(evict_window=20)
+    cache = FrameCache(evict_window=20, max_cache_bytes=1_000_000)
     cache.load(path, frames)
     assert cache.frame_count() == n
 
@@ -111,11 +111,27 @@ def test_frame_cache_evicts_distant_frames(tmp_path: Path) -> None:
     assert all(10 <= i <= 50 for i in remaining)
 
 
+def test_frame_cache_small_cine_keeps_all_frames_for_loop(tmp_path: Path) -> None:
+    """Small cines that fit inside the keep window must not be evicted,
+    otherwise looping playback stalls at the tail (e.g. a 55-frame clip)."""
+    path = tmp_path / "clip.dcm"
+    n = 55
+    frames = np.arange(n * 4 * 4, dtype=np.uint16).reshape(n, 4, 4)
+    cache = FrameCache(evict_window=40)
+    cache.load(path, frames)
+
+    for index in (0, 1, 41, 54):
+        cache.set_current(index)
+
+    # Every frame stays cached, including the head and tail needed for wrap-around
+    assert all(cache.is_loaded(i) for i in range(n))
+
+
 def test_frame_cache_eviction_reduces_memory(tmp_path: Path) -> None:
     path = tmp_path / "clip.dcm"
     n = 100
     frames = np.ones((n, 64, 64), dtype=np.uint8)
-    cache = FrameCache(evict_window=20)
+    cache = FrameCache(evict_window=20, max_cache_bytes=1_000_000)
     cache.load(path, frames)
 
     full_mem = cache.memory_bytes()
@@ -131,7 +147,7 @@ def test_frame_cache_frames_property_reconstructs_array(tmp_path: Path) -> None:
     path = tmp_path / "clip.dcm"
     n = 60
     frames = np.arange(n * 3 * 3, dtype=np.uint16).reshape(n, 3, 3)
-    cache = FrameCache(evict_window=20)
+    cache = FrameCache(evict_window=20, max_cache_bytes=1_000_000)
     cache.load(path, frames)
 
     cache.set_current(30)
@@ -149,7 +165,7 @@ def test_frame_cache_prefetch(tmp_path: Path) -> None:
     path = tmp_path / "clip.dcm"
     n = 60
     frames = np.arange(n * 2 * 2, dtype=np.uint16).reshape(n, 2, 2)
-    cache = FrameCache(evict_window=20)
+    cache = FrameCache(evict_window=20, max_cache_bytes=1_000_000)
     cache.load(path, frames)
 
     cache.set_current(30)
@@ -162,7 +178,7 @@ def test_frame_cache_prefetch(tmp_path: Path) -> None:
 
 
 def test_require_full_cine_raises_on_partial():
-    cache = FrameCache(evict_window=2)
+    cache = FrameCache(evict_window=2, max_cache_bytes=1_000_000)
     frames = np.zeros((10, 32, 32), dtype=np.uint8)
     cache.load(Path("fake.dcm"), frames)
     cache.set_current(5)

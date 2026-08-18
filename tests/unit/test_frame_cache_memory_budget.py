@@ -7,6 +7,7 @@ evicts via _evict_to_memory_limit when exceeded, plus the minimum-size floor.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -36,6 +37,28 @@ def test_evict_to_memory_limit_triggers_on_exceed() -> None:
 
     # 10 frames × 250_000 = 2_500_000 > 1_000_000 cap → eviction triggered
     assert cache._memory_bytes < 2_500_000
+
+
+def test_evict_to_memory_limit_keeps_playback_window() -> None:
+    """Memory-cap eviction must keep frames near the current playback index,
+    not evict lowest-index frames (which would leave a gap in front of the
+    playhead and make skip-ahead jump to the loaded tail)."""
+    cache = FrameCache(max_cache_bytes=30_000_000, evict_window=100)
+    cache.set_total_frames(Path("clip.dcm"), total=79)
+    # Large frames (like an RGB 800x1276 cine) so the full cine far exceeds cap.
+    frame = np.zeros((800, 1276, 3), dtype=np.uint8)  # ~3 MB
+    cache.set_current(40)
+    for i in range(79):
+        cache.put(i, frame)
+
+    assert cache.memory_bytes() <= 30_000_000
+    # Frames around the playhead (needed for smooth playback) survive;
+    # the old lowest-index eviction would have dropped these and kept only
+    # the tail, creating a gap in front of the playhead.
+    assert cache.is_loaded(40)
+    assert cache.is_loaded(41)
+    assert cache.is_loaded(42)
+    assert not cache.is_loaded(0)
 
 
 def test_low_memory_cache_evicts_aggressively() -> None:
