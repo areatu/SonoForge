@@ -29,6 +29,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     velocity_span_cm_s_from_region,
 )
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
+from echo_personal_tool.infrastructure.samsung_tick_detector import spectral_band_is_dark
 from echo_personal_tool.infrastructure.vendor_calibration_bridge import (
     get_vendor_info,
     try_parse_samsung_tick_calibration,
@@ -226,6 +227,19 @@ def try_parse_from_dataset(
                 if len(grid_lines) < 1:
                     logger.debug("[ROI-TRACE] generic_parse: SKIPPED — no velocity grid lines in fallback ROI")
                     continue
+
+                # A Doppler spectral band is DARK; bright B-mode tissue inside
+                # the fallback ROI means the frame is B-mode mis-tagged as
+                # Doppler (Samsung RS85), so it must not be saved.
+                try:
+                    arr_gray = np.asarray(frame, dtype=np.float32)
+                    if arr_gray.ndim == 3:
+                        arr_gray = 0.299 * arr_gray[..., 0] + 0.587 * arr_gray[..., 1] + 0.114 * arr_gray[..., 2]
+                    if not spectral_band_is_dark(arr_gray, roi.y0 + roi.height):
+                        logger.debug("[ROI-TRACE] generic_parse: SKIPPED — fallback ROI is bright (B-mode-like)")
+                        continue
+                except Exception as e:
+                    logger.debug("spectral_band_is_dark failed: %s", e)
 
         delta_x, delta_y, units_x, units_y = region_physical_deltas(region)
 

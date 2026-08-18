@@ -5,6 +5,7 @@ import pytest
 
 from echo_personal_tool.infrastructure.samsung_tick_detector import (
     TickDetectionResult,
+    detect_samsung_doppler_scales,
     detect_ticks,
 )
 
@@ -291,3 +292,75 @@ def test_samsung_tick_fallback_ignores_other_vendors():
         frame[845:875, x, :] = 255
 
     assert try_parse_from_dataset(dataset, frame) is None
+
+
+# ---------------------------------------------------------------------------
+# B-mode rejection: a Doppler time ruler always sits above a DARK spectral
+# band.  Bright regions (B-mode tissue, banners, labels) are false positives
+# and must not produce a time scale or a saved Doppler ROI.
+# ---------------------------------------------------------------------------
+
+
+def _bmode_frame_with_fake_ruler() -> np.ndarray:
+    """Bright B-mode-like frame with a fake tick ruler at the bottom."""
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[:] = 120  # bright tissue across the whole frame
+    for x in range(40, 700, 24):
+        frame[850:875, x, :] = 255  # false vertical ticks at the bottom
+    return frame
+
+
+def _dark_doppler_frame_with_ruler() -> np.ndarray:
+    """Realistic Doppler frame: dark spectral band + time ruler at the bottom."""
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[475:873, :, :] = 40  # dark spectral band
+    for x in range(40, 700, 24):
+        frame[845:875, x, :] = 255  # ruler ticks
+    return frame
+
+
+def test_detect_ticks_rejects_bright_bmode_frame():
+    """A ruler over a bright B-mode region is a false positive."""
+    result = detect_ticks(_bmode_frame_with_fake_ruler())
+    assert result.confidence == 0.0
+    assert len(result.tick_positions) == 0
+
+
+def test_detect_ticks_accepts_dark_doppler_frame():
+    """A ruler over a dark spectral band is a real Doppler time scale."""
+    result = detect_ticks(_dark_doppler_frame_with_ruler())
+    assert result.confidence >= 0.4
+    assert len(result.tick_positions) >= 5
+
+
+def test_detect_samsung_doppler_scales_rejects_bmode_frame():
+    """B-mode frame with bottom 'ticks' and side axes yields no Doppler ROI."""
+    img = _bmode_frame_with_fake_ruler()
+    # fake vertical velocity-scale axes on both sides
+    img[200:850, 60, :] = 255
+    img[200:850, 1110, :] = 255
+
+    scales = detect_samsung_doppler_scales(img)
+    assert scales.time_scale.confidence == 0.0
+    assert scales.refined_roi is None
+
+
+def test_detect_samsung_doppler_scales_accepts_doppler_frame():
+    """Dark Doppler frame with a time ruler + velocity scale yields an ROI."""
+    img = _dark_doppler_frame_with_ruler()
+    # left velocity scale: vertical axis + periodic horizontal ticks
+    img[400:850, 30, :] = 255
+    for y in range(480, 820, 24):
+        img[y : y + 2, 22:38, :] = 255
+
+    scales = detect_samsung_doppler_scales(img)
+    assert scales.time_scale.confidence >= 0.4
+    assert scales.left_velocity_scale is not None
+    assert scales.refined_roi is not None
+
+
+def test_samsung_tick_fallback_rejects_bmode_frame():
+    """Mis-tagged Samsung SF=1 region over a BRIGHT B-mode frame must not be
+    saved as Doppler (the tick fallback must not fire on a bright bottom)."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    assert try_parse_from_dataset(dataset, _bmode_frame_with_fake_ruler()) is None
