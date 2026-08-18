@@ -144,11 +144,13 @@ function renderParams(data) {
     data.parameters.forEach(function (param) {
         var tr = document.createElement("tr");
 
-        // Name cell with unit and pathology desc
+        // Name cell with unit
         var tdName = document.createElement("td");
         tdName.className = "param-name";
-        var nameHtml = escapeHtml(param.name);
-        if (param.unit) nameHtml += ' <span style="color:var(--text-muted);font-weight:normal;">(' + escapeHtml(param.unit) + ')</span>';
+        var nameHtml = '<span class="param-title" data-field="name" data-param="' + escapeHtml(param.id) + '">' + escapeHtml(param.name) + '</span>';
+        if (param.unit) {
+            nameHtml += ' <span class="param-unit" data-field="unit" data-param="' + escapeHtml(param.id) + '">(' + escapeHtml(param.unit) + ')</span>';
+        }
         tdName.innerHTML = nameHtml;
         tdName.setAttribute("data-full", param.name);
         if (param.unit) tdName.setAttribute("data-unit", param.unit);
@@ -158,12 +160,16 @@ function renderParams(data) {
         var tdM = document.createElement("td");
         tdM.className = "norm-value";
         tdM.textContent = param.norm_male || "\u2014";
+        tdM.setAttribute("data-field", "norm_male");
+        tdM.setAttribute("data-param", param.id);
         tr.appendChild(tdM);
 
         // Norm female
         var tdF = document.createElement("td");
         tdF.className = "norm-value";
         tdF.textContent = param.norm_female || "\u2014";
+        tdF.setAttribute("data-field", "norm_female");
+        tdF.setAttribute("data-param", param.id);
         tr.appendChild(tdF);
 
         // Gradation cells
@@ -172,6 +178,9 @@ function renderParams(data) {
                 var td = document.createElement("td");
                 td.className = "grad-cell";
                 td.textContent = gv || "\u2014";
+                td.setAttribute("data-field", "gradation");
+                td.setAttribute("data-param", param.id);
+                if (data.grad_names) td.setAttribute("data-grad", data.grad_names[gi]);
                 if (gv && gv !== "\u2014") {
                     var name = data.grad_names && data.grad_names[gi];
                     var cls = gradClassForName(name);
@@ -425,6 +434,93 @@ document.addEventListener("mousemove", function (e) {
     if (!tip.hidden && e.target.closest && e.target.closest(".param-name")) {
         positionTooltip(e.clientX, e.clientY);
     }
+});
+
+/* ===== Edit Mode ===== */
+var editMode = false;
+
+function enterEditMode() {
+    editMode = true;
+    $("#editToggle").classList.add("active");
+    $("#editActions").hidden = false;
+    $("#editStatus").textContent = "";
+    var editable = document.querySelectorAll(
+        '#paramBody .param-title, #paramBody .param-unit, #paramBody td.norm-value, #paramBody td.grad-cell'
+    );
+    editable.forEach(function (el) {
+        el.setAttribute("contenteditable", "true");
+    });
+}
+
+function exitEditMode() {
+    editMode = false;
+    $("#editToggle").classList.remove("active");
+    $("#editActions").hidden = true;
+    document.querySelectorAll('#paramBody [contenteditable="true"]').forEach(function (el) {
+        el.removeAttribute("contenteditable");
+        el.classList.remove("dirty");
+    });
+}
+
+function refreshPathology() {
+    if (!state.selectedTopic || !state.selectedPathology) return Promise.resolve();
+    return bridge.getPathology(state.selectedTopic, state.selectedPathology).then(function (data) {
+        if (data.error) return;
+        renderDescription(data.description);
+        state.currentParams = data.parameters || [];
+        renderParams(data);
+        renderImages(data.images || []);
+    });
+}
+
+async function saveDirtyCells() {
+    var dirty = Array.from(document.querySelectorAll('#paramBody [contenteditable="true"].dirty'));
+    if (!dirty.length) {
+        exitEditMode();
+        return;
+    }
+    var results = [];
+    for (var i = 0; i < dirty.length; i++) {
+        var el = dirty[i];
+        var paramId = el.getAttribute("data-param");
+        var field = el.getAttribute("data-field");
+        var text = el.textContent.trim();
+        if (field === "name") {
+            results.push(await bridge.updateParam(state.selectedTopic, state.selectedPathology, paramId, "name", text));
+        } else if (field === "unit") {
+            var unit = text.replace(/^\(/, "").replace(/\)$/, "").trim();
+            results.push(await bridge.updateParam(state.selectedTopic, state.selectedPathology, paramId, "unit", unit));
+        } else if (field === "norm_male" || field === "norm_female") {
+            results.push(await bridge.updateParam(state.selectedTopic, state.selectedPathology, paramId, field, text || "\u2014"));
+        } else if (field === "gradation") {
+            var parts = text.split(" / ");
+            results.push(await bridge.updateGradation(
+                state.selectedTopic, state.selectedPathology, paramId,
+                el.getAttribute("data-grad") || "", parts[0] || "", parts[1] || ""
+            ));
+        }
+    }
+    var errors = results.filter(function (r) { return r && r.error; });
+    if (errors.length) {
+        $("#editStatus").textContent = errors[0].error;
+        return;
+    }
+    exitEditMode();
+    await refreshPathology();
+}
+
+$("#editToggle").addEventListener("click", function () {
+    if (editMode) { exitEditMode(); } else { enterEditMode(); }
+});
+$("#saveBtn").addEventListener("click", saveDirtyCells);
+$("#cancelBtn").addEventListener("click", function () {
+    exitEditMode();
+    refreshPathology();
+});
+document.querySelector("#paramBody").addEventListener("input", function (e) {
+    if (!editMode) return;
+    var el = e.target.closest ? e.target.closest("[contenteditable]") : null;
+    if (el) el.classList.add("dirty");
 });
 
 /* ===== Search ===== */

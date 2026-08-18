@@ -44,9 +44,8 @@ window.bridge = {
                     catch (e) { resolve({ error: "Invalid JSON" }); }
                 };
                 try {
-                    if (args.length === 0) self._backend[method](cb);
-                    else if (args.length === 1) self._backend[method](args[0], cb);
-                    else if (args.length === 2) self._backend[method](args[0], args[1], cb);
+                    var callArgs = args.concat([cb]);
+                    self._backend[method].apply(self._backend, callArgs);
                 } catch (e) {
                     resolve({ error: "Call failed: " + e.message });
                 }
@@ -58,6 +57,8 @@ window.bridge = {
     getTopicDetail: function (slug) { return this._call("get_topic_detail", slug); },
     getPathology: function (t, p) { return this._call("get_pathology", t, p); },
     search: function (q) { return this._call("search", q); },
+    updateParam: function (t, p, id, field, value) { return this._call("update_param", t, p, id, field, value); },
+    updateGradation: function (t, p, id, grad, male, female) { return this._call("update_gradation", t, p, id, grad, male, female); },
 };
 
 // Wait for qt to be available, then initialize

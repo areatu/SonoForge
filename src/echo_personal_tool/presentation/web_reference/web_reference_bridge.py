@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Slot
@@ -44,6 +45,49 @@ _TOPIC_ICONS: dict[str, str] = {
     "prosthetic_valves": "MV01",
     "other": "LV01",
 }
+
+
+_DASH_RE = re.compile(r"[\u2013\u2014\u2212\-]")
+
+
+def _as_num(text: str) -> int | float:
+    """Convert numeric text to int when integral, else float."""
+    text = (text or "").strip()
+    f = float(text)
+    if f.is_integer():
+        return int(f)
+    return f
+
+
+def _parse_range_str(text: str) -> dict | None:
+    """Parse '38–52', '≥5', '≤100', '' into a {low, high} dict."""
+    text = (text or "").strip()
+    if not text or text == "\u2014":
+        return None
+    text = text.replace(",", ".")
+    if text.startswith("\u2265") or text.startswith(">="):
+        try:
+            return {"low": _as_num(text.lstrip("\u2265>="))}
+        except ValueError:
+            return None
+    if text.startswith("\u2264") or text.startswith("<="):
+        try:
+            return {"high": _as_num(text.lstrip("\u2264<="))}
+        except ValueError:
+            return None
+    parts = _DASH_RE.split(text, maxsplit=1)
+    if len(parts) == 2:
+        try:
+            lo = _as_num(parts[0].strip()) if parts[0].strip() else None
+            hi = _as_num(parts[1].strip()) if parts[1].strip() else None
+            return {"low": lo, "high": hi}
+        except ValueError:
+            return None
+    try:
+        v = _as_num(text)
+        return {"low": v, "high": v}
+    except ValueError:
+        return None
 
 
 class WebReferenceBridge(QObject):
@@ -237,6 +281,62 @@ class WebReferenceBridge(QObject):
                                 }
                             )
         return json.dumps(results[:50], ensure_ascii=False)
+
+    @Slot(str, str, str, str, str, result=str)
+    def update_param(
+        self, topic_slug: str, patho_slug: str, param_id: str, field: str, value: str
+    ) -> str:
+        """Update a parameter field (name|unit|norm_male|norm_female) and persist to YAML."""
+        if self._store is None:
+            return json.dumps({"error": "Not configured"})
+        if self._store.get_pathology(topic_slug, patho_slug) is None:
+            return json.dumps({"error": "Pathology not found"})
+        try:
+            if field in ("norm_male", "norm_female"):
+                raw = value.strip()
+                if raw and raw != "\u2014":
+                    parsed = _parse_range_str(raw)
+                    if parsed is None:
+                        return json.dumps({"error": f"Некорректный диапазон: {value!r}"})
+                else:
+                    parsed = None
+                self._store.update_param(param_id, field, parsed)
+            elif field in ("name", "unit"):
+                self._store.update_param(param_id, field, value.strip())
+            else:
+                return json.dumps({"error": f"Unknown field '{field}'"})
+        except Exception as exc:  # noqa: BLE001
+            log.exception("update_param failed")
+            return json.dumps({"error": str(exc)})
+        return json.dumps({"ok": True})
+
+    @Slot(str, str, str, str, str, str, result=str)
+    def update_gradation(
+        self,
+        topic_slug: str,
+        patho_slug: str,
+        param_id: str,
+        grad_name: str,
+        male_str: str,
+        female_str: str,
+    ) -> str:
+        """Update a gradation range (male/female) and persist to YAML."""
+        if self._store is None:
+            return json.dumps({"error": "Not configured"})
+        if self._store.get_pathology(topic_slug, patho_slug) is None:
+            return json.dumps({"error": "Pathology not found"})
+        try:
+            male = _parse_range_str(male_str)
+            female = _parse_range_str(female_str)
+            if (male_str.strip() and male_str.strip() != "\u2014" and male is None) or (
+                female_str.strip() and female_str.strip() != "\u2014" and female is None
+            ):
+                return json.dumps({"error": "Некорректный диапазон градации"})
+            self._store.update_gradation(param_id, grad_name, male, female)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("update_gradation failed")
+            return json.dumps({"error": str(exc)})
+        return json.dumps({"ok": True})
 
     @staticmethod
     def _fmt_range(r) -> str:

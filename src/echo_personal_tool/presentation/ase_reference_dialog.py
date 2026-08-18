@@ -246,10 +246,9 @@ class AseReferenceDialog(QDialog):
         self._pdf_zoom: float = 1.0
         self._pdf_view_mode: str = "single"  # "single" | "double" | "continuous"
 
-        # Web/Qt reference view toggle state
+        # Web/Qt reference view state (web is primary, Qt is auto-fallback)
         self._web_ref_active: bool = True
         self._web_ref_widget = None
-        self._toggle_ref_action = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -591,10 +590,6 @@ class AseReferenceDialog(QDialog):
             f"QMenu::item:selected {{ background: {p['accent']}; }}"
         )
         settings_menu.addAction(tr("ase_refs.font_action"), self._show_font_settings)
-        self._toggle_ref_action = settings_menu.addAction(
-            "Qt-вид справочника" if self._web_ref_active else "Веб-вид справочника",
-            self._toggle_reference_view,
-        )
         menu_bar.addMenu(settings_menu)
 
         return menu_bar
@@ -930,25 +925,6 @@ class AseReferenceDialog(QDialog):
         self._btn_structured_tab.setChecked(True)
         self._active_doc_index = -1
 
-    def _toggle_reference_view(self) -> None:
-        """Toggle between web and Qt reference views."""
-        if self._web_ref_widget is None and self._structured_widget is None:
-            return
-        self._web_ref_active = not self._web_ref_active
-        if self._web_ref_active:
-            if self._structured_widget is not None:
-                self._structured_widget.hide()
-            if self._web_ref_widget is not None:
-                self._web_ref_widget.show()
-                self._web_ref_widget.reload_page()
-            self._toggle_ref_action.setText("Qt-вид справочника")
-        else:
-            if self._web_ref_widget is not None:
-                self._web_ref_widget.hide()
-            if self._structured_widget is not None:
-                self._structured_widget.show()
-            self._toggle_ref_action.setText("Веб-вид справочника")
-
     def _on_web_failed(self) -> None:
         """Auto-switch to Qt when web fails to initialize."""
         if self._web_ref_active:
@@ -957,7 +933,6 @@ class AseReferenceDialog(QDialog):
                 self._web_ref_widget.hide()
             if self._structured_widget is not None:
                 self._structured_widget.show()
-            self._toggle_ref_action.setText("Веб-вид справочника")
 
     def navigate_to_param(self, param_id: str) -> None:
         """Switch to structured view and select the given parameter."""
