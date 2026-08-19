@@ -74,16 +74,29 @@ def _load_icon(name: str) -> QPixmap:
     return QPixmap()
 
 
+_CACHED_REFERENCE_DIALOG: AseReferenceDialog | None = None
+
+
 def show_ase_reference_dialog(parent: QWidget | None = None, param_id: str | None = None) -> None:
-    try:
-        dialog = AseReferenceDialog(parent)
-    except Exception as exc:  # noqa: BLE001 — show load errors in UI
-        QMessageBox.critical(
-            parent,
-            tr("ase_refs.load_error.title"),
-            tr("ase_refs.load_error.body", exc=str(exc)),
-        )
-        return
+    global _CACHED_REFERENCE_DIALOG
+    if _CACHED_REFERENCE_DIALOG is None:
+        try:
+            dialog = AseReferenceDialog(parent)
+        except Exception as exc:  # noqa: BLE001 — show load errors in UI
+            QMessageBox.critical(
+                parent,
+                tr("ase_refs.load_error.title"),
+                tr("ase_refs.load_error.body", exc=str(exc)),
+            )
+            return
+        # Cache only real dialogs. Reusing the cached dialog keeps its live
+        # QWebEngineView alive so it is never torn down mid-session (destroying
+        # it corrupts the app's OpenGL rendering and leaves artifacts in the
+        # main viewer). Test mocks must never be cached.
+        if isinstance(dialog, _REFERENCE_DIALOG_CLASS):
+            _CACHED_REFERENCE_DIALOG = dialog
+    else:
+        dialog = _CACHED_REFERENCE_DIALOG
     if param_id:
         dialog.navigate_to_param(param_id)
     dialog.exec()
@@ -988,6 +1001,8 @@ class AseReferenceDialog(QDialog):
         self._browser.setFont(font)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        # Keep the cached QWebEngineView alive (dialog is reused, not destroyed),
+        # otherwise its teardown corrupts the app's OpenGL rendering.
         for doc in self._pdf_docs.values():
             try:
                 doc.close()
@@ -995,6 +1010,9 @@ class AseReferenceDialog(QDialog):
                 pass
         self._pdf_docs.clear()
         super().closeEvent(event)
+
+
+_REFERENCE_DIALOG_CLASS = AseReferenceDialog
 
 
 class ReferenceFontSettingsDialog(QDialog):

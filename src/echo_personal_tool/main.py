@@ -117,7 +117,7 @@ if not _is_frozen:
     except ImportError:
         pass
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.infrastructure.profiler import is_enabled, print_summary
@@ -140,14 +140,14 @@ def _cleanup_winmm() -> None:
 
 def main() -> int:
     patch_pyqtgraph_export_dialog()
+    # QtWebEngine (web reference viewer) and the pyqtgraph QOpenGLWidget must
+    # share OpenGL contexts. Without this, on Windows the web view's context
+    # (ANGLE/D3D) and the viewer's desktop-GL context fight over the default
+    # framebuffer and the viewer ends up showing a live, horizontally-mirrored,
+    # color-inverted copy of the main window. Must be set before QApplication.
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName("SonoForge")
-    # Reduce Qt's double-click detection timeout: with the default (~400 ms),
-    # rapid consecutive clicks while placing contour points are merged into a
-    # double-click and the next point is never placed. A shorter window makes
-    # fast clicks register as individual point placements; a deliberate,
-    # quick double-click still finishes the contour.
-    QApplication.setDoubleClickInterval(150)
 
     # Enable OpenGL hardware acceleration for pyqtgraph texture uploads.
     # On Windows with ANGLE this ensures GPU texture upload instead of software rendering.

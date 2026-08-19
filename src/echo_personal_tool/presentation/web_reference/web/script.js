@@ -622,7 +622,10 @@ function setupKeyboard() {
 }
 
 /* ===== Init ===== */
+let _pageInitialized = false;
 async function init() {
+    if (_pageInitialized) return;
+    _pageInitialized = true;
     await bridge.whenReady();
     var topics = await bridge.getTopics();
     renderTopics(topics);

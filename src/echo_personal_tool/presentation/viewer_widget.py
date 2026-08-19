@@ -193,6 +193,7 @@ _MAGNETIC_SNAP_WEIGHT_THRESHOLD = 0.15
 _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
 _WL_DR_CACHE_MAX = 200
+_CONTOUR_DOUBLE_CLICK_INTERVAL_MS = 150
 
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
@@ -759,6 +760,7 @@ class ViewerWidget(QWidget):
         self._caliper_label_index = 0
         self._dist_serial = 1
         self._contour_mode_active = False
+        self._default_double_click_interval: int | None = None
         self._contour_mode_kind: Literal["manual", "model", "closed"] | None = None
         self._active_contour_chamber: str = "LV"
         self._contour_stage: Literal["ma_septal", "ma_lateral", "arc", "apex", "polygon"] | None = None
@@ -3536,6 +3538,9 @@ class ViewerWidget(QWidget):
             self._freehand_recording = True
             self._freehand_points = []
             self._measurement_label.setText(tr("viewer.area_freehand_prompt"))
+            # Freehand traces don't place single-click points, so keep the default
+            # double-click window for a comfortable finish double-click.
+            self._restore_default_double_click_interval()
         else:
             self._measurement_label.setText(tr("viewer.area_contour_prompt"))
         return True
@@ -3572,6 +3577,7 @@ class ViewerWidget(QWidget):
         self._active_contour_phase = phase or self._resolve_contour_phase()
         self._active_contour_chamber = chamber
         self._contour_mode_active = True
+        self._enable_fast_contour_click_mode()
         self._contour_mode_kind = mode_kind
         self._contour_stage = "polygon" if mode_kind == "closed" else "ma_septal"
         self._active_mitral_septal = None
@@ -4622,7 +4628,27 @@ class ViewerWidget(QWidget):
         self._contour_stage = None
         self._contour_mode_kind = None
         self._contour_mode_active = False
+        self._restore_default_double_click_interval()
         self._set_contour_nodes_pickable(True)
+
+    def _enable_fast_contour_click_mode(self) -> None:
+        """Shorten Qt's double-click window while placing contour points so rapid
+        consecutive clicks register as separate point placements instead of merging
+        into a double-click that prematurely finishes the contour."""
+        app = QApplication.instance()
+        if app is None:
+            return
+        if self._default_double_click_interval is None:
+            self._default_double_click_interval = app.doubleClickInterval()
+        app.setDoubleClickInterval(_CONTOUR_DOUBLE_CLICK_INTERVAL_MS)
+
+    def _restore_default_double_click_interval(self) -> None:
+        """Restore Qt's original double-click interval once contour mode ends so
+        system dialogs (e.g. folder open) keep the platform default behavior."""
+        app = QApplication.instance()
+        if app is None or self._default_double_click_interval is None:
+            return
+        app.setDoubleClickInterval(self._default_double_click_interval)
 
     def _set_contour_nodes_pickable(self, enabled: bool) -> None:
         buttons = Qt.MouseButton.LeftButton if enabled else Qt.MouseButton.NoButton

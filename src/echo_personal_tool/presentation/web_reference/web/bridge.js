@@ -4,14 +4,17 @@ window.bridge = {
     _backend: null,
     _ready: false,
     _readyCallbacks: [],
+    _initPromise: null,
 
     init() {
+        if (this._initPromise) return this._initPromise;
         if (typeof QWebChannel === "undefined") {
             console.warn("QWebChannel not available");
             this._ready = true;
-            return Promise.resolve();
+            this._initPromise = Promise.resolve();
+            return this._initPromise;
         }
-        return new Promise(function (resolve) {
+        this._initPromise = new Promise(function (resolve) {
             try {
                 new QWebChannel(qt.webChannelTransport, function (channel) {
                     window.bridge._backend = channel.objects.backend;
@@ -26,6 +29,7 @@ window.bridge = {
                 resolve();
             }
         });
+        return this._initPromise;
     },
 
     whenReady() {

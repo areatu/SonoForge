@@ -81,8 +81,9 @@ class WebReferenceWidget(QWidget):
 
     def _on_load_finished(self, ok: bool) -> None:
         if not ok:
+            self._fallback_timer.stop()
             self._status_label.setText("Ошибка загрузки")
-            self._web_failed.emit()
+            self.web_failed.emit()
             return
         log.info("Page loaded, checking bridge")
         self._init_attempts = 0
@@ -93,7 +94,7 @@ class WebReferenceWidget(QWidget):
         if self._init_attempts > 30:
             log.warning("Bridge init timed out")
             self._status_label.setText("Веб-интерфейс не загрузился")
-            self._web_failed.emit()
+            self.web_failed.emit()
             return
         self._web_view.page().runJavaScript(
             "typeof bridge !== 'undefined' ? 'ok' : 'wait'",
@@ -118,7 +119,7 @@ class WebReferenceWidget(QWidget):
             log.warning("Web fallback triggered")
             self._init_attempts = 999  # stop retry loop
             self._status_label.setText("Веб-недоступен — Qt-вид")
-            self._web_failed.emit()
+            self.web_failed.emit()
 
     def reload(self) -> None:
         self._store.load()
