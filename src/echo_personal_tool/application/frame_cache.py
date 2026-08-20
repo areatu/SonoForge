@@ -170,6 +170,21 @@ class FrameCache:
     def memory_bytes(self) -> int:
         return sum(f.nbytes for f in self._frame_store.values())
 
+    def can_fit_full_cine(self) -> bool:
+        """True if the whole cine at the observed (or minimum) frame size fits
+        under the memory cap, so a full-cine prefetch won't trigger eviction.
+
+        Uses the average size of already-loaded frames; falls back to
+        ``_MIN_FRAME_SIZE_BYTES`` when nothing is loaded yet.
+        """
+        if self._total_frames <= 0:
+            return False
+        if self._frame_store:
+            avg = self._memory_bytes / len(self._frame_store)
+        else:
+            avg = _MIN_FRAME_SIZE_BYTES
+        return self._total_frames * avg <= self._max_cache_bytes
+
     def is_loaded(self, index: int) -> bool:
         return index in self._frame_store
 

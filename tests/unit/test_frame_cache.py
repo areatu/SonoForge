@@ -262,6 +262,22 @@ def test_nearest_loaded_ahead_none_when_empty_ahead():
     assert cache.nearest_loaded_ahead(3) is None
 
 
+def test_can_fit_full_cine_true_for_small_cine(tmp_path: Path) -> None:
+    path = tmp_path / "clip.dcm"
+    cache = FrameCache()
+    cache.set_total_frames(path, 50)
+    cache.put(0, np.zeros((8, 8), dtype=np.uint8))
+    assert cache.can_fit_full_cine()
+
+
+def test_can_fit_full_cine_false_when_over_cap(tmp_path: Path) -> None:
+    path = tmp_path / "clip.dcm"
+    cache = FrameCache(max_cache_bytes=5 * 1024 * 1024)
+    cache.set_total_frames(path, 45)
+    cache.put(0, np.zeros((400, 400), dtype=np.uint8))
+    assert not cache.can_fit_full_cine()
+
+
 def test_loaded_before_counts_backward_frames() -> None:
     cache = FrameCache(evict_window=100)
     cache.set_total_frames(Path("cine.mp4"), total=10)

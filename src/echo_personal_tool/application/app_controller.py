@@ -109,6 +109,11 @@ logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_f
 
 _FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
 
+# Cines with at most this many frames are considered "short": prefetched in
+# full (when they fit in the frame cache) so loop wrap-around, rewind, and
+# start-from-first-frame never hit an un-cached frame.
+_SMALL_CINE_MAX_FRAMES = 60
+
 # ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag")
@@ -1792,21 +1797,31 @@ class AppController(QObject):
             self._prefetch_load_id = 0
 
         cfg = self._playback_config
-        ahead = self._frame_cache.loaded_ahead(center)
-        if ahead >= cfg.prefetch_radius:
-            return
-
         total = self._frame_cache.frame_count()
         if total <= 0:
             return
 
-        start = (center + 1 + ahead) % total
-        if start == center:
-            return
-        slots_remaining = cfg.prefetch_radius - ahead
-        batch = min(self._adaptive_batch_size, slots_remaining, total)
-        if batch <= 0:
-            return
+        # Small-cine optimization: short clips that fit under the memory cap
+        # are prefetched in full. This keeps every frame cached so loop
+        # wrap-around and backward scrubbing never hit an un-cached frame
+        # (which would force a slow keyframe seek and stall playback).
+        if total <= _SMALL_CINE_MAX_FRAMES and self._frame_cache.can_fit_full_cine():
+            unloaded = [i for i in range(total) if not self._frame_cache.is_loaded(i)]
+            if not unloaded:
+                return
+            start = unloaded[0]
+            batch = len(unloaded)
+        else:
+            ahead = self._frame_cache.loaded_ahead(center)
+            if ahead >= cfg.prefetch_radius:
+                return
+            start = (center + 1 + ahead) % total
+            if start == center:
+                return
+            slots_remaining = cfg.prefetch_radius - ahead
+            batch = min(self._adaptive_batch_size, slots_remaining, total)
+            if batch <= 0:
+                return
 
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id

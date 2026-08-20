@@ -161,6 +161,96 @@ def test_prefetch_batch_capped_by_radius(qapp, monkeypatch, tmp_path) -> None:
     assert started[0]._batch_size == 4
 
 
+def test_prefetch_small_cine_loads_full_batch(qapp, monkeypatch, tmp_path) -> None:
+    started: list[object] = []
+
+    class _SpyPool:
+        def start(self, worker):
+            started.append(worker)
+
+    class _SpyLoader:
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
+            self._batch_size = batch_size
+            self._frame_index = frame_index
+            self.signals = MagicMock()
+
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.FrameLoaderWorker",
+        _SpyLoader,
+    )
+    controller = AppController(thread_pool=_SpyPool())
+    controller._playback_config = PlaybackConfig(
+        prefetch_radius=5,
+        min_buffer=2,
+        batch_size=3,
+        max_lag_frames=2,
+        evict_window=30,
+        scroll_debounce_ms=80,
+        scroll_batch_size=3,
+    )
+    mp4 = tmp_path / "c.mp4"
+    mp4.write_bytes(b"\x00")
+    inst = _mp4_instance(mp4, frames=45)
+    controller._current_instance = inst
+    controller._frame_cache.set_total_frames(mp4, 45)
+    controller._frame_cache.put(0, np.zeros((8, 8), dtype=np.uint8))
+    controller._state_manager.set_instance(inst, total_frames=45, frame_time_ms=33.3)
+    controller._state_manager.set_playing(True)
+
+    controller._prefetch_playback_buffer(0)
+
+    assert len(started) == 1
+    assert started[0]._batch_size == 44
+    assert started[0]._frame_index == 1
+
+
+def test_prefetch_small_cine_too_big_falls_back_to_radius(qapp, monkeypatch, tmp_path) -> None:
+    started: list[object] = []
+
+    class _SpyPool:
+        def start(self, worker):
+            started.append(worker)
+
+    class _SpyLoader:
+        def __init__(self, path, frame_index=0, media_format="mp4", parent=None, total_frames=0, batch_size=0):
+            self._batch_size = batch_size
+            self._frame_index = frame_index
+            self.signals = MagicMock()
+
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.FrameLoaderWorker",
+        _SpyLoader,
+    )
+    controller = AppController(thread_pool=_SpyPool())
+    controller._playback_config = PlaybackConfig(
+        prefetch_radius=5,
+        min_buffer=2,
+        batch_size=8,
+        max_lag_frames=2,
+        evict_window=30,
+        scroll_debounce_ms=80,
+        scroll_batch_size=3,
+    )
+    controller._adaptive_batch_size = 8
+    mp4 = tmp_path / "c.mp4"
+    mp4.write_bytes(b"\x00")
+    inst = _mp4_instance(mp4, frames=45)
+    controller._current_instance = inst
+    # Large frames so the whole cine doesn't fit under a small cap; prefetch
+    # must fall back to the radius-limited path instead of one giant batch.
+    controller._frame_cache._max_cache_bytes = 5 * 1024 * 1024
+    controller._frame_cache.set_total_frames(mp4, 45)
+    controller._frame_cache.put(0, np.zeros((400, 400), dtype=np.uint8))
+    controller._state_manager.set_instance(inst, total_frames=45, frame_time_ms=33.3)
+    controller._state_manager.set_playing(True)
+
+    controller._prefetch_playback_buffer(0)
+
+    assert len(started) == 1
+    assert started[0]._batch_size == 5
+    assert started[0]._frame_index == 1
+
+
 def test_advance_playback_skips_on_lag(qapp, tmp_path) -> None:
     controller = AppController()
     controller._playback_config = PlaybackConfig(
