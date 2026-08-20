@@ -2244,7 +2244,22 @@ class ViewerWidget(QWidget):
             return False
         return frame_index == self._doppler_calibration_frame_index
 
-    def clear_doppler_calibration_display(self) -> None:
+    def clear_doppler_calibration_display(self, keep_time_scale: bool = False) -> None:
+        """Clear Doppler calibration, optionally preserving the time scale.
+
+        The time scale comes from DICOM tags or the tick detector and cannot
+        be set manually, so ``keep_time_scale=True`` (used by the reset flow)
+        re-installs a time-only calibration state that subsequent manual
+        velocity calibration reuses.
+        """
+        prior = self._doppler_calibration_state
+        time_span_ms = 0.0
+        time_origin_ms = 0.0
+        time_from_dicom = False
+        if keep_time_scale and prior is not None and prior.has_time_scale():
+            time_span_ms = float(prior.time_span_ms or 0.0)
+            time_origin_ms = float(prior.time_origin_ms or 0.0)
+            time_from_dicom = bool(getattr(prior, "time_from_dicom_tags", False))
         self._doppler_calibration_state = None
         self._doppler_calibration_instance_uid = None
         self._doppler_calibration_frame_index = None
@@ -2253,7 +2268,23 @@ class ViewerWidget(QWidget):
         if self._current_frame is None:
             return
         height, width = self._current_frame.shape[:2]
-        self._doppler.set_axis_mapping(DopplerAxisMapping.from_frame_size(width, height, time_span_ms=0.0))
+        if keep_time_scale and time_span_ms > 0.0:
+            roi = DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=float(width), height=max(1.0, float(height)))
+            state = calibration_from_roi_and_baseline(
+                roi,
+                height / 2.0,
+                velocity_span_cm_s=0.0,
+                time_span_ms=time_span_ms,
+                time_origin_ms=time_origin_ms,
+                kind=self._doppler_cal_kind,
+            )
+            state = replace(state, time_from_dicom_tags=time_from_dicom)
+            self._doppler_calibration_state = state
+            self._doppler_calibration_instance_uid = self._current_instance_uid()
+            self._doppler_calibration_frame_index = self._current_frame_index()
+            self._doppler.set_axis_mapping(build_axis_mapping(state))
+        else:
+            self._doppler.set_axis_mapping(DopplerAxisMapping.from_frame_size(width, height, time_span_ms=0.0))
 
     def is_doppler_axis_calibrated(self) -> bool:
         return self.is_doppler_velocity_calibrated() and self.is_doppler_time_calibrated()
@@ -3157,8 +3188,9 @@ class ViewerWidget(QWidget):
                         self._doppler_pending_roi = None
                         self._doppler_pending_baseline_y = None
                         return True
-                    # Fallback: manual 2-click + dialog flow
-                    self._begin_doppler_velocity_calibration()
+                    # Fallback: manual 2-click + dialog flow (baseline already
+                    # known from DICOM, so it doubles as the first velocity point)
+                    self._begin_doppler_velocity_calibration(start_y=self._doppler_pending_baseline_y)
                     return True
         return False
 
@@ -3292,23 +3324,33 @@ class ViewerWidget(QWidget):
             # Try auto-calibration, but only as a suggested default for the
             # manual span dialog — manual calibration always takes priority
             # and is never silently overridden by the auto-detected value.
-            auto = try_auto_doppler_velocity_calibration(
-                self._current_frame,
-                roi=roi,
-                baseline_y=y,
-                kind=self._doppler_cal_kind,
-            )
+            # Never let a detector failure block the manual wizard.
+            auto = None
+            try:
+                auto = try_auto_doppler_velocity_calibration(
+                    self._current_frame,
+                    roi=roi,
+                    baseline_y=y,
+                    kind=self._doppler_cal_kind,
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("auto velocity calibration failed", exc_info=True)
             self._doppler_pending_auto_velocity_span = auto.velocity_span_cm_s if auto is not None else None
-            # 2-click + dialog flow
+            # 2-click + dialog flow: the baseline doubles as the first
+            # velocity point, so a single further click opens the span dialog.
+            # Preserve the existing (tick-derived) time scale so it is not
+            # wiped from the display while the wizard runs.
+            prior_state = self._doppler_calibration_state
             partial = calibration_from_roi_and_baseline(
                 roi,
                 y,
-                time_span_ms=0.0,
+                time_span_ms=float(getattr(prior_state, "time_span_ms", 0.0) or 0.0),
+                time_origin_ms=float(getattr(prior_state, "time_origin_ms", 0.0) or 0.0),
                 kind=self._doppler_cal_kind,
             )
             self._doppler.set_axis_mapping(build_axis_mapping(partial))
             self._doppler_pending_roi = roi
-            self._begin_doppler_velocity_calibration()
+            self._begin_doppler_velocity_calibration(start_y=y)
             return True
 
         return False
@@ -3323,20 +3365,28 @@ class ViewerWidget(QWidget):
         roi = self._doppler_pending_roi
         if roi is not None and self._calibration_tick_snap_enabled:
             self._calibration_x = min(roi.x1 - 4.0, float(width - 5))
-            grid_lines = detect_doppler_grid_lines(
-                self._current_frame,
-                x0=int(roi.x0),
-                y0=int(roi.y0),
-                width=int(roi.width),
-                height=int(roi.height),
-            )
-            scale_ticks = detect_velocity_scale_ticks(self._current_frame, roi=roi)
-            combined = sorted(set(round(g, 1) for g in grid_lines) | set(round(t, 1) for t in scale_ticks))
+            try:
+                grid_lines = detect_doppler_grid_lines(
+                    self._current_frame,
+                    x0=int(roi.x0),
+                    y0=int(roi.y0),
+                    width=int(roi.width),
+                    height=int(roi.height),
+                )
+                scale_ticks = detect_velocity_scale_ticks(self._current_frame, roi=roi)
+                combined = sorted(set(round(g, 1) for g in grid_lines) | set(round(t, 1) for t in scale_ticks))
+            except Exception:  # noqa: BLE001
+                logger.debug("velocity grid detection failed", exc_info=True)
+                combined = []
             self._doppler_grid_line_positions = combined
         else:
             self._calibration_x = min(float(width) * 0.96, float(width - 5))
             self._doppler_grid_line_positions = []
-        self._calibration_start_y = None
+        if start_y is not None and self._doppler_grid_line_positions:
+            start_y = snap_y_to_nearest_tick(
+                start_y, self._doppler_grid_line_positions, radius_px=self._calibration_tick_snap_radius_px
+            )
+        self._calibration_start_y = start_y
         self._measurement_label.setText(tr(_DOPPLER_CAL_VELOCITY_KEY))
 
     def _handle_doppler_mouse_click(self, ev) -> bool:

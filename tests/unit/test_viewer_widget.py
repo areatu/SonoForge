@@ -3090,6 +3090,69 @@ class TestBeginDopplerVelocityCalibration:
         assert result.has_time_scale_from_dicom()
         assert w.is_doppler_time_calibrated()
 
+    def test_clear_doppler_calibration_keeps_time_scale(self, qtbot) -> None:
+        """Reset flow must not wipe the auto-detected time scale."""
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        prior = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(prior, persist=False)
+
+        w.clear_doppler_calibration_display(keep_time_scale=True)
+
+        assert w._doppler_calibration_state is not None
+        assert w._doppler_calibration_state.time_span_ms == 5600.0
+        assert w.is_doppler_time_calibrated()
+        assert not w.is_doppler_velocity_calibrated()
+        assert not w._doppler_axis_calibrated
+
+    def test_manual_velocity_after_time_preserving_reset_keeps_time(self, qtbot) -> None:
+        """Manual velocity calibration after a time-preserving reset keeps time."""
+        from unittest.mock import patch
+
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+
+        roi = DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64)
+        prior = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=32.0,
+            time_span_ms=5600.0,
+            time_from_dicom_tags=True,
+            from_dicom_tags=True,
+        )
+        w.apply_doppler_calibration_state(prior, persist=False)
+        w.clear_doppler_calibration_display(keep_time_scale=True)
+
+        with patch(
+            "echo_personal_tool.presentation.viewer_widget.QInputDialog.getDouble",
+            return_value=(200.0, True),
+        ):
+            w._prompt_spectral_velocity_span(64.0)
+
+        result = w._doppler_calibration_state
+        assert result is not None
+        assert result.time_span_ms == 5600.0
+        assert result.has_time_scale_from_dicom()
+        assert w.is_doppler_time_calibrated()
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Handle doppler mouse click
@@ -3261,7 +3324,7 @@ class TestDopplerCalibrationClick:
         assert result is True
         assert w._doppler_cal_step is None
         assert w._doppler_pending_baseline_y is not None
-        assert w._calibration_start_y is None
+        assert w._calibration_start_y == w._doppler_pending_baseline_y
 
     def test_velocity_click_after_baseline_prompts_span(self, qtbot, monkeypatch) -> None:
         w = _make_viewer(qtbot)
@@ -3281,9 +3344,12 @@ class TestDopplerCalibrationClick:
             )
 
         w._handle_doppler_calibration_click(click(100, 80))
-        assert w._calibration_start_y is None
+        assert w._doppler_cal_step is None
         assert w._doppler_pending_baseline_y is not None
         baseline = w._doppler_pending_baseline_y
+        # The baseline doubles as the first velocity point, so a single
+        # further click must open the velocity span dialog.
+        assert w._calibration_start_y == baseline
 
         promoted = []
         monkeypatch.setattr(
@@ -3291,15 +3357,10 @@ class TestDopplerCalibrationClick:
             "_prompt_spectral_velocity_span",
             lambda length_px: promoted.append(length_px),
         )
-        # First click sets _calibration_start_y (was None after _begin_doppler_velocity_calibration)
-        result1 = w._handle_calibration_mouse_press(click(100, 30))
-        assert result1 is True
-        assert w._calibration_start_y is not None
-        assert promoted == []
-        # Second click triggers the velocity span prompt
-        result2 = w._handle_calibration_mouse_press(click(100, 60))
-        assert result2 is True
-        assert len(promoted) == 1
+        result = w._handle_calibration_mouse_press(click(100, 30))
+        assert result is True
+        mapped_y = w._map_view_event(click(100, 30))[1]
+        assert promoted == [abs(mapped_y - baseline)]
 
 
 # ═══════════════════════════════════════════════════════════════════

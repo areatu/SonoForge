@@ -2014,7 +2014,7 @@ class MainWindow(QMainWindow):
         self._instance_overlay_cache.clear()
         self._viewer.cancel_active_tool()
         self._viewer.set_results_overlay("")
-        self._viewer.clear_doppler_calibration_display()
+        self._viewer.clear_doppler_calibration_display(keep_time_scale=True)
         self._viewer.clear_doppler_measurements()
         self._viewer.clear_speckle_overlay()
         if self._ste_dialog is not None:
