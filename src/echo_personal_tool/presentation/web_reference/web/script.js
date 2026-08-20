@@ -20,8 +20,9 @@ function renderTopics(topics) {
     topics.forEach(function (topic) {
         var btn = document.createElement("button");
         btn.className = "topic-btn" + (state.selectedTopic === topic.slug ? " active" : "");
+        var label = topic.label || "";
         btn.innerHTML =
-            '<span class="topic-icon">' + escapeHtml(topic.label || topic.name.substring(0, 4)) + '</span>' +
+            (label ? '<span class="topic-icon">' + escapeHtml(label) + '</span>' : '') +
             '<span>' + escapeHtml(topic.name) + '</span>' +
             '<span class="topic-badge">' + topic.n_params + '</span>';
         btn.addEventListener("click", function () { selectTopic(topic.slug); });
@@ -113,12 +114,16 @@ function renderParams(data) {
     // Table header
     head.innerHTML = "";
     var hr = document.createElement("tr");
-    ["Показатель", "Норм М", "Норм Ж"].forEach(function (h) {
+    var hasGrads = data.grad_names && data.grad_names.length > 0;
+    // When the pathology has gradations (which include "Норма"), the
+    // "Норм М" / "Норм Ж" columns duplicate the "Норма" gradation — omit them.
+    var headers = hasGrads ? ["Показатель"] : ["Показатель", "Норм М", "Норм Ж"];
+    headers.forEach(function (h) {
         var th = document.createElement("th");
         th.textContent = h;
         hr.appendChild(th);
     });
-    if (data.grad_names) {
+    if (hasGrads) {
         data.grad_names.forEach(function (gn) {
             var th = document.createElement("th");
             th.textContent = gn;
@@ -132,7 +137,7 @@ function renderParams(data) {
     if (!data.parameters || !data.parameters.length) {
         var emptyTr = document.createElement("tr");
         var emptyTd = document.createElement("td");
-        emptyTd.colSpan = 3 + (data.grad_names ? data.grad_names.length : 0);
+        emptyTd.colSpan = hasGrads ? 1 + data.grad_names.length : 3;
         emptyTd.textContent = "Нет параметров для этой патологии";
         emptyTd.className = "patho-desc";
         emptyTd.style.textAlign = "center";
@@ -152,25 +157,26 @@ function renderParams(data) {
             nameHtml += ' <span class="param-unit" data-field="unit" data-param="' + escapeHtml(param.id) + '">(' + escapeHtml(param.unit) + ')</span>';
         }
         tdName.innerHTML = nameHtml;
-        tdName.setAttribute("data-full", param.name);
+        tdName.setAttribute("data-full", param.full_name || param.name);
         if (param.unit) tdName.setAttribute("data-unit", param.unit);
         tr.appendChild(tdName);
 
-        // Norm male
-        var tdM = document.createElement("td");
-        tdM.className = "norm-value";
-        tdM.textContent = param.norm_male || "\u2014";
-        tdM.setAttribute("data-field", "norm_male");
-        tdM.setAttribute("data-param", param.id);
-        tr.appendChild(tdM);
+        // Norm male / female — only when the pathology has no gradations
+        if (!hasGrads) {
+            var tdM = document.createElement("td");
+            tdM.className = "norm-value";
+            tdM.textContent = param.norm_male || "\u2014";
+            tdM.setAttribute("data-field", "norm_male");
+            tdM.setAttribute("data-param", param.id);
+            tr.appendChild(tdM);
 
-        // Norm female
-        var tdF = document.createElement("td");
-        tdF.className = "norm-value";
-        tdF.textContent = param.norm_female || "\u2014";
-        tdF.setAttribute("data-field", "norm_female");
-        tdF.setAttribute("data-param", param.id);
-        tr.appendChild(tdF);
+            var tdF = document.createElement("td");
+            tdF.className = "norm-value";
+            tdF.textContent = param.norm_female || "\u2014";
+            tdF.setAttribute("data-field", "norm_female");
+            tdF.setAttribute("data-param", param.id);
+            tr.appendChild(tdF);
+        }
 
         // Gradation cells
         if (param.gradations) {

@@ -71,6 +71,7 @@ class TestParameterCard:
 
         param = MagicMock(spec=ParameterRef)
         param.name = "LVIDd"
+        param.full_name = ""
         param.unit = "мм"
         param.pathology_desc = None
         card = _ParameterCard(param, "45-55")
@@ -83,6 +84,7 @@ class TestParameterCard:
 
         param = MagicMock(spec=ParameterRef)
         param.name = "IVSd"
+        param.full_name = ""
         param.unit = "мм"
         param.pathology_desc = None
         card = _ParameterCard(param, "")

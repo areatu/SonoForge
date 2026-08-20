@@ -29,12 +29,18 @@ class ParameterGradationRef:
 class ParameterRef:
     id: str = ""
     name: str = ""
+    full_name: str = ""
     unit: str = ""
     norm_male: NormRange | None = None
     norm_female: NormRange | None = None
     pathology_desc: str | None = None
     source: str | None = None
     gradations: list[ParameterGradationRef] = field(default_factory=list)
+
+    @property
+    def tooltip(self) -> str:
+        """Full descriptive name for hover tooltips (falls back to short name)."""
+        return self.full_name or self.name
 
 
 @dataclass
@@ -89,6 +95,7 @@ def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
         ParameterRef(
             id=p["id"],
             name=p["name"],
+            full_name=p.get("full_name", ""),
             unit=p.get("unit", ""),
             norm_male=_parse_norm_range(p.get("norm_male")),
             norm_female=_parse_norm_range(p.get("norm_female")),
@@ -155,6 +162,8 @@ def _norm_to_dict(norm: NormRange | None) -> dict | None:
 def _param_to_dict(param: ParameterRef) -> dict:
     """Serialize a ParameterRef to a YAML-compatible dict."""
     d: dict[str, Any] = {"id": param.id, "name": param.name}
+    if param.full_name:
+        d["full_name"] = param.full_name
     if param.unit:
         d["unit"] = param.unit
     nm = _norm_to_dict(param.norm_male)
@@ -271,6 +280,10 @@ class ReferenceDataStore:
                 for param in params:
                     if param.id == param_id:
                         if field_name == "name":
+                            # Preserve the previous full name for hover tooltips when
+                            # the display name is shortened (captured only once).
+                            if value != param.name and not param.full_name:
+                                param.full_name = param.name
                             param.name = value
                         elif field_name == "unit":
                             param.unit = value

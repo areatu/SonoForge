@@ -49,6 +49,7 @@ class ParameterGradationModel:
 class ParameterModel:
     id: str = ""
     name: str = ""
+    full_name: str = ""
     unit: str = ""
     norm_male: NormRangeModel | None = None
     norm_female: NormRangeModel | None = None
@@ -56,12 +57,19 @@ class ParameterModel:
     source: str | None = None
     gradations: list[ParameterGradationModel] = field(default_factory=list)
 
+    @property
+    def tooltip(self) -> str:
+        """Full descriptive name for hover tooltips (falls back to short name)."""
+        return self.full_name or self.name
+
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "unit": self.unit,
         }
+        if self.full_name:
+            d["full_name"] = self.full_name
         if self.norm_male:
             d["norm_male"] = self.norm_male.to_dict()
         if self.norm_female:
@@ -79,6 +87,7 @@ class ParameterModel:
         return cls(
             id=d.get("id", ""),
             name=d.get("name", ""),
+            full_name=d.get("full_name", ""),
             unit=d.get("unit", ""),
             norm_male=NormRangeModel.from_dict(d.get("norm_male")),
             norm_female=NormRangeModel.from_dict(d.get("norm_female")),

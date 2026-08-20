@@ -220,6 +220,20 @@ class TestSetField:
         editor._set_field(p, "name", "new")
         assert p.name == "new"
 
+    def test_set_name_captures_full_name(self, editor) -> None:
+        p = ParameterModel(name="Конечно-диастолический диаметр (LVEDD)")
+        editor._set_field(p, "name", "КДР (LVEDD)")
+        assert p.name == "КДР (LVEDD)"
+        assert p.full_name == "Конечно-диастолический диаметр (LVEDD)"
+        assert p.tooltip == "Конечно-диастолический диаметр (LVEDD)"
+
+    def test_set_name_keeps_original_full_name(self, editor) -> None:
+        p = ParameterModel(name="Конечно-диастолический диаметр (LVEDD)")
+        editor._set_field(p, "name", "КДР (LVEDD)")
+        editor._set_field(p, "name", "ЛЖ КДР (LVEDD)")
+        assert p.name == "ЛЖ КДР (LVEDD)"
+        assert p.full_name == "Конечно-диастолический диаметр (LVEDD)"
+
     def test_set_unit(self, editor) -> None:
         p = ParameterModel(unit="kg")
         editor._set_field(p, "unit", "ml")

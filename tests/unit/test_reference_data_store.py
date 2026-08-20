@@ -154,6 +154,39 @@ def test_search_empty(store):
     assert store.search("zzznotfound") == []
 
 
+def test_update_param_captures_full_name(store):
+    store.update_param("lvef", "name", "ФВ (LVEF)")
+    topic, patho, grad = store.lookup("lvef")
+    assert topic is not None
+    param = patho.parameters[0]
+    assert param.name == "ФВ (LVEF)"
+    assert param.full_name == "Фракция выброса (LVEF)"
+    assert param.tooltip == "Фракция выброса (LVEF)"
+
+
+def test_update_param_keeps_original_full_name(store):
+    store.update_param("lvef", "name", "ФВ (LVEF)")
+    store.update_param("lvef", "name", "ФВ ЛЖ (LVEF)")
+    topic, patho, grad = store.lookup("lvef")
+    param = patho.parameters[0]
+    assert param.name == "ФВ ЛЖ (LVEF)"
+    assert param.full_name == "Фракция выброса (LVEF)"
+
+
+def test_full_name_parsed_and_persisted(tmp_path):
+    path = tmp_path / "test_refs.yaml"
+    path.write_text(_SAMPLE_YAML, encoding="utf-8")
+    store = ReferenceDataStore(str(path)).load()
+    store.update_param("lvef", "name", "ФВ (LVEF)")
+    store._save_to_yaml()
+
+    reloaded = ReferenceDataStore(str(path)).load()
+    topic, patho, grad = reloaded.lookup("lvef")
+    param = patho.parameters[0]
+    assert param.name == "ФВ (LVEF)"
+    assert param.full_name == "Фракция выброса (LVEF)"
+
+
 def test_norm_range_none():
     nr = NormRange(low=None, high=35.0)
     assert nr.low is None

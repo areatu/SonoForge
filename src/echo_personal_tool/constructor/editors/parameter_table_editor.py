@@ -227,6 +227,9 @@ class ParameterTableEditor(BaseEditor):
                 value = self._get_field(param, field)
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, param.id)
+                if field == "name":
+                    # Full descriptive name in tooltip when the display name is short.
+                    item.setToolTip(param.tooltip)
                 self._table.setItem(row, col, item)
 
         self._table.blockSignals(False)
@@ -257,6 +260,10 @@ class ParameterTableEditor(BaseEditor):
         if field == "id":
             param.id = value
         elif field == "name":
+            # Preserve the previous full name for hover tooltips when the
+            # display name is shortened (captured only once).
+            if value != param.name and not param.full_name:
+                param.full_name = param.name
             param.name = value
         elif field == "unit":
             param.unit = value

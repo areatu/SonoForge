@@ -99,7 +99,31 @@ def show_ase_reference_dialog(parent: QWidget | None = None, param_id: str | Non
         dialog = _CACHED_REFERENCE_DIALOG
     if param_id:
         dialog.navigate_to_param(param_id)
+    # A preloaded dialog is created hidden; make sure it is shown maximized
+    # before the modal loop (harmless for dialogs already maximized in __init__).
+    if not dialog.isVisible():
+        dialog.showMaximized()
     dialog.exec()
+
+
+def preload_reference_dialog(parent: QWidget | None = None) -> None:
+    """Create and cache the reference dialog hidden during app idle time.
+
+    The web reference viewer (QtWebEngine) takes a few seconds to spin up, so we
+    warm it up while the application is otherwise idle. The first time the user
+    opens the reference, the cached dialog is already loaded and appears
+    instantly.
+    """
+    global _CACHED_REFERENCE_DIALOG
+    if _CACHED_REFERENCE_DIALOG is not None:
+        return
+    try:
+        dialog = AseReferenceDialog(parent, _preload=True)
+    except Exception as exc:  # noqa: BLE001 — preload must never break startup
+        logger.warning("Reference dialog preload failed: %s", exc)
+        return
+    if isinstance(dialog, _REFERENCE_DIALOG_CLASS):
+        _CACHED_REFERENCE_DIALOG = dialog
 
 
 # ── Document tab widget ───────────────────────────────────────────
@@ -231,7 +255,12 @@ class _PdfContinuousWidget(QWidget):
 
 
 class AseReferenceDialog(QDialog):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        _preload: bool = False,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("ase_refs.title"))
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -426,10 +455,13 @@ class AseReferenceDialog(QDialog):
 
         self._apply_font()
         self._load_default_documents()
-        self.showMaximized()
-        self._is_maximized = True
-        if self._structured_widget is not None:
-            self._structured_widget.set_maximized_mode(True)
+        if not _preload:
+            # Deferred to show time for preloaded dialogs so the window stays
+            # hidden while the web reference viewer warms up in the background.
+            self.showMaximized()
+            self._is_maximized = True
+            if self._structured_widget is not None:
+                self._structured_widget.set_maximized_mode(True)
 
     # ── Title bar ─────────────────────────────────────────────────
 

@@ -69,6 +69,7 @@
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "name": { "type": "string", "minLength": 1 },
+        "full_name": { "type": "string" },
         "unit": { "type": "string" },
         "norm_male": { "$ref": "#/$defs/NormRange" },
         "norm_female": { "$ref": "#/$defs/NormRange" },

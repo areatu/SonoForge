@@ -138,6 +138,29 @@ def _cleanup_winmm() -> None:
             pass
 
 
+def _schedule_reference_preload(window: MainWindow) -> None:
+    """Warm up the web reference dialog during application idle time.
+
+    QtWebEngine takes a few seconds to load, which delays the first open of the
+    reference. We preload the dialog hidden once the event loop is idle so the
+    cached dialog appears instantly when the user opens it.
+    """
+
+    def _preload_when_idle(attempt: int = 0) -> None:
+        app = QApplication.instance()
+        if app is not None and app.hasPendingEvents() and attempt < 120:
+            # The app is busy (e.g. still handling startup or playback) — retry.
+            QTimer.singleShot(1000, lambda: _preload_when_idle(attempt + 1))
+            return
+        from echo_personal_tool.presentation.ase_reference_dialog import (
+            preload_reference_dialog,
+        )
+
+        preload_reference_dialog(window)
+
+    QTimer.singleShot(1500, _preload_when_idle)
+
+
 def main() -> int:
     if "--version" in sys.argv or "-V" in sys.argv:
         from echo_personal_tool import __version__
@@ -193,6 +216,7 @@ def main() -> int:
             QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
+    _schedule_reference_preload(window)
     result = app.exec()
     _cleanup_winmm()
     if is_enabled():

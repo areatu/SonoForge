@@ -260,6 +260,8 @@ class _ParameterCard(QWidget):
         # Parameter name header
         name_label = QLabel(f"<b>{param.name}</b>")
         name_label.setStyleSheet(f"font-size: 13px; color: {p['text']}; border: none;")
+        full_name = getattr(param, "full_name", "") or param.name
+        name_label.setToolTip(full_name)
         layout.addWidget(name_label)
 
         # Norm mini-table (2 columns: Показатель | Значение)
@@ -270,6 +272,7 @@ class _ParameterCard(QWidget):
                 rows=[[param.name, norm_value]],
                 header_bg=p["bg_control"],
                 value_color=p["accent_tab"],
+                first_col_tooltip=full_name,
             )
             layout.addWidget(norm_table)
 
@@ -286,6 +289,7 @@ class _ParameterCard(QWidget):
         rows: list[list[str]],
         header_bg: str = "",
         value_color: str = "",
+        first_col_tooltip: str = "",
     ) -> QTableWidget:
         """Create a small 2-column table."""
         p = get_theme_palette()
@@ -311,6 +315,8 @@ class _ParameterCard(QWidget):
                 item = QTableWidgetItem(text)
                 if c == 1 and value_color:
                     item.setForeground(QColor(value_color))
+                if c == 0 and first_col_tooltip:
+                    item.setToolTip(first_col_tooltip)
                 table.setItem(r, c, item)
 
         table.resizeColumnsToContents()
@@ -934,7 +940,10 @@ class StructuredReferenceWidget(QWidget):
                         seen.add(g.name)
 
         pal = get_theme_palette()
-        n_cols = 3 + len(grad_names)
+        # When the pathology has gradations (which include "Норма"), the
+        # "Норм М" / "Норм Ж" columns duplicate the "Норма" gradation — omit them.
+        show_norm_columns = not has_gradations
+        n_cols = (1 if not show_norm_columns else 3) + len(grad_names)
         n_rows = len(params)
 
         table = QTableWidget(n_rows, n_cols)
@@ -956,7 +965,10 @@ class StructuredReferenceWidget(QWidget):
             header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
             header.resizeSection(c, 120 if c == 0 else 100)
 
-        headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
+        if show_norm_columns:
+            headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
+        else:
+            headers = [tr("ref_table.col_param")]
         headers.extend(grad_names)
         table.setHorizontalHeaderLabels(headers)
 
@@ -984,30 +996,35 @@ class StructuredReferenceWidget(QWidget):
             name_item.setData(Qt.ItemDataRole.UserRole, (param.id, "name"))
             name_item.setFlags(name_item.flags() | Qt.ItemFlag.ItemIsEditable)
             name_item.setForeground(QColor(pal["text"]))
+            # Full descriptive name in tooltip when the display name is short.
+            name_item.setToolTip(getattr(param, "full_name", "") or param.name)
             font = name_item.font()
             font.setBold(True)
             name_item.setFont(font)
             table.setItem(r, 0, name_item)
 
-            norm_m = self._format_norm_range(param.norm_male)
-            norm_m_item = QTableWidgetItem(norm_m)
-            norm_m_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
-            norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            norm_m_item.setFont(mono_font)
-            norm_m_item.setForeground(QColor(pal["accent_tab"]))
-            table.setItem(r, 1, norm_m_item)
+            grad_base = 3 if show_norm_columns else 1
 
-            norm_f = self._format_norm_range(param.norm_female)
-            norm_f_item = QTableWidgetItem(norm_f)
-            norm_f_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_female"))
-            norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
-            norm_f_item.setFont(mono_font)
-            norm_f_item.setForeground(QColor(pal["accent_tab"]))
-            table.setItem(r, 2, norm_f_item)
+            if show_norm_columns:
+                norm_m = self._format_norm_range(param.norm_male)
+                norm_m_item = QTableWidgetItem(norm_m)
+                norm_m_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
+                norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                norm_m_item.setFont(mono_font)
+                norm_m_item.setForeground(QColor(pal["accent_tab"]))
+                table.setItem(r, 1, norm_m_item)
+
+                norm_f = self._format_norm_range(param.norm_female)
+                norm_f_item = QTableWidgetItem(norm_f)
+                norm_f_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_female"))
+                norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                norm_f_item.setFont(mono_font)
+                norm_f_item.setForeground(QColor(pal["accent_tab"]))
+                table.setItem(r, 2, norm_f_item)
 
             grad_map = {g.name: g for g in param.gradations}
             for g_idx, g_name in enumerate(grad_names):
-                col = 3 + g_idx
+                col = grad_base + g_idx
                 grad = grad_map.get(g_name)
                 if grad:
                     parts = []

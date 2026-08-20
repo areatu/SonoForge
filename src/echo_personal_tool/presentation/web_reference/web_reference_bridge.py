@@ -27,9 +27,11 @@ _TOPIC_LABELS: dict[str, str] = {
     "aortic_valve": "АК",
     "tricuspid_valve": "ТК",
     "pulmonary_valve": "ЛК",
-    "aorta": "Аорта",
-    "prosthetic_valves": "Протезы",
-    "other": "Прочее",
+    "aorta": "",
+    # These three are not abbreviations of their full names, so no short label
+    # is shown (it would otherwise duplicate/overlap the full name).
+    "prosthetic_valves": "",
+    "other": "",
 }
 
 _TOPIC_ICONS: dict[str, str] = {
@@ -192,6 +194,7 @@ class WebReferenceBridge(QObject):
                 {
                     "id": param.id,
                     "name": param.name,
+                    "full_name": param.tooltip,
                     "unit": param.unit or "",
                     "norm_male": self._fmt_range(param.norm_male) if param.norm_male else "",
                     "norm_female": self._fmt_range(param.norm_female) if param.norm_female else "",
