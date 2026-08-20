@@ -139,6 +139,12 @@ def _cleanup_winmm() -> None:
 
 
 def main() -> int:
+    if "--version" in sys.argv or "-V" in sys.argv:
+        from echo_personal_tool import __version__
+
+        print(f"SonoForge {__version__}")
+        return 0
+
     patch_pyqtgraph_export_dialog()
     # QtWebEngine (web reference viewer) and the pyqtgraph QOpenGLWidget must
     # share OpenGL contexts. Without this, on Windows the web view's context

@@ -264,6 +264,13 @@ class MainWindow(QMainWindow):
         self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
         status.addPermanentWidget(self._research_warning)
 
+        # Permanent release version label, shown left of the research warning
+        from echo_personal_tool import __version__
+
+        self._version_label = QLabel(f"SonoForge {__version__}")
+        self._version_label.setStyleSheet("color: #999; padding-right: 10px;")
+        status.addPermanentWidget(self._version_label)
+
         self._install_shortcuts()
         self._rebuild_layout()
 

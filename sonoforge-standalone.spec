@@ -79,7 +79,7 @@ if is_macos:
         icon='src/echo_personal_tool/resources/logo.icns',
         bundle_identifier='com.echocardiography.sonoforge',
         info_plist={
-            'CFBundleShortVersionString': '0.2.3',
+            'CFBundleShortVersionString': '0.2.4',
             'NSHighResolutionCapable': True,
             'NSRequiresAquaSystemAppearance': False,
         },
