@@ -131,6 +131,12 @@ class MeasureTab(QWidget):
         self._patient_metrics = _PatientMetricsRow()
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
+        self._bsa_label = QLabel()
+        self._bsa_label.setStyleSheet("font-size: 14px; font-weight: 600;")
+        self._bsa_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._bsa_label.setVisible(False)
+        self._patient_metrics.metrics_changed.connect(self._update_bsa)
+
         from echo_personal_tool.infrastructure.i18n import tr
 
         self._bsa_label = QLabel()

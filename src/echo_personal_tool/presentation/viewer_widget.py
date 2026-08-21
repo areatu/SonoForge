@@ -691,6 +691,11 @@ class ViewerWidget(QWidget):
         self._speckle_overlay = SpeckleOverlay(self._view, self)
         self._speckle_overlay.hide()
         self._speckle_result = None
+
+        from echo_personal_tool.presentation.ste_sensitivity_overlay import SteSensitivityOverlay
+
+        self._ste_sensitivity = SteSensitivityOverlay(self)
+        self._ste_sensitivity.smoothness_changed.connect(self._on_ste_smoothness_changed)
         self._calibration_kind: Literal["depth", "spectral", "doppler_velocity", "mmode_time", "mmode_depth"] | None = (
             None
         )
@@ -1114,6 +1119,9 @@ class ViewerWidget(QWidget):
 
         if self._dicom_tags_overlay_label.isVisible():
             self._position_dicom_tags_overlay(geo)
+
+        if self._ste_sensitivity.isVisible():
+            self._position_ste_overlay()
 
     def _position_dicom_tags_overlay(self, geo) -> None:
         self._dicom_tags_overlay_label.adjustSize()
@@ -4088,6 +4096,101 @@ class ViewerWidget(QWidget):
         self._refresh_speckle_overlay_for_current_frame()
         self._speckle_overlay.show()
 
+        if result.raw_tracked_positions is not None:
+            self._ste_sensitivity.set_smoothness(1.0)
+            self._ste_sensitivity.show()
+            self._position_ste_overlay()
+        else:
+            self._ste_sensitivity.hide()
+
+    def _position_ste_overlay(self) -> None:
+        """Position the STE sensitivity overlay at bottom-left of viewer."""
+        vw = self.width()
+        vh = self.height()
+        ow = self._ste_sensitivity.sizeHint().width()
+        oh = self._ste_sensitivity.sizeHint().height()
+        self._ste_sensitivity.move(10, vh - oh - 10)
+
+    def _on_ste_smoothness_changed(self, smoothness: float) -> None:
+        """Re-smooth trajectories with new smoothness factor and refresh overlay."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        result = self._speckle_result
+        if not isinstance(result, StrainResult):
+            return
+        if result.raw_tracked_positions is None:
+            return
+
+        from echo_personal_tool.domain.services.strain_computation import (
+            apply_drift_compensation,
+            compute_gls,
+            compute_weighted_longitudinal_strain_gl,
+            compute_weighted_radial_strain_gl,
+        )
+        from echo_personal_tool.domain.services.tracking_smoothing import (
+            apply_motion_model,
+            re_smooth_trajectories,
+        )
+
+        raw = result.raw_tracked_positions
+        ncc = result.ncc_all_frames
+        if raw is None or ncc is None:
+            return
+
+        smoothed = re_smooth_trajectories(raw, ncc, result.kernels, smoothness)
+        smoothed = apply_motion_model(
+            smoothed, ncc, result.kernels,
+            result.ed_index - result.tracking_window_start,
+            result.ncc_threshold,
+        )
+
+        n_frames = raw.shape[0]
+        tracked = np.full_like(raw, np.nan)
+        tracked[:] = smoothed
+        result.tracked_positions_all = tracked
+
+        ps = self._current_state.pixel_spacing if self._current_state else (1.0, 1.0)
+        endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
+        epi_indices = [i for i, k in enumerate(result.kernels) if k.layer == "epi"]
+        local_ed = result.ed_index - result.tracking_window_start
+        local_es = result.es_index - result.tracking_window_start
+        ed_ncc = ncc[local_ed].copy() if local_ed < n_frames else np.ones(ncc.shape[1])
+
+        window_long = compute_weighted_longitudinal_strain_gl(
+            smoothed, local_ed, ps, endo_indices, ed_ncc
+        )
+        if result.drift_compensation_applied:
+            window_long = apply_drift_compensation(window_long, local_ed, local_es)
+        from echo_personal_tool.application.workers.speckle_worker import _embed_window_curve
+        longitudinal = _embed_window_curve(
+            window_long, n_frames,
+            result.tracking_window_start, result.tracking_window_end,
+        )
+
+        n_pairs = min(len(endo_indices), len(epi_indices))
+        if n_pairs > 0:
+            window_radial = compute_weighted_radial_strain_gl(
+                smoothed, local_ed, ps,
+                endo_indices[:n_pairs], epi_indices[:n_pairs], ed_ncc,
+            )
+            radial = _embed_window_curve(
+                window_radial, n_frames,
+                result.tracking_window_start, result.tracking_window_end,
+            )
+        else:
+            radial = np.full(n_frames, np.nan)
+
+        self._speckle_result = replace(
+            result,
+            longitudinal=longitudinal,
+            radial=radial,
+            gls=compute_gls(window_long, local_ed, local_es),
+            tracked_es_positions=smoothed[local_es].copy() if local_es < smoothed.shape[0] else result.tracked_es_positions,
+            tracked_ed_positions=smoothed[local_ed].copy() if local_ed < smoothed.shape[0] else result.tracked_ed_positions,
+        )
+
+        self._refresh_speckle_overlay_for_current_frame()
+
     def _refresh_speckle_overlay_for_current_frame(self) -> None:
         """Update kernel markers for the currently displayed frame."""
         from echo_personal_tool.domain.models.speckle import StrainResult
@@ -4177,6 +4280,7 @@ class ViewerWidget(QWidget):
         self._speckle_result = None
         self._speckle_overlay.clear()
         self._speckle_overlay.hide()
+        self._ste_sensitivity.hide()
 
     def pending_ai_review_contour(self) -> Contour | None:
         frame_index = self._contour_frame_index()

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.models import ReferenceModel
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
 class ReferencePreviewWindow(QDialog):
@@ -29,7 +30,7 @@ class ReferencePreviewWindow(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
-        self._browser.document().setDefaultStyleSheet(_CSS)
+        self._browser.document().setDefaultStyleSheet(_build_css())
         layout.addWidget(self._browser)
 
     def _render(self) -> None:
@@ -128,20 +129,27 @@ class ReferencePreviewWindow(QDialog):
         return " — ".join(parts) if parts else "—"
 
 
-_CSS = """
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; padding: 20px; line-height: 1.5; }  # noqa: E501
-h1 { font-size: 20px; color: #1a1a1a; margin: 24px 0 12px; border-bottom: 2px solid #3b82f6; padding-bottom: 6px; }
-h2 { font-size: 16px; color: #374151; margin: 20px 0 8px; }
-.desc { color: #6b7280; font-style: italic; margin: 4px 0 8px; }
-table.data { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
-table.data th { background: #f3f4f6; font-weight: bold; padding: 6px 10px; border: 1px solid #d1d5db; text-align: left; }  # noqa: E501
-table.data td { padding: 6px 10px; border: 1px solid #d1d5db; }
-table.data tr:hover { background: #f9fafb; }
-.norm { color: #2563eb; }
-.patho { color: #dc2626; }
-table.gradations { border-collapse: collapse; width: 100%; }
-table.gradations th { background: #e5e7eb; font-weight: bold; padding: 3px 6px; border: 1px solid #d1d5db; font-size: 12px; }
-table.gradations td { padding: 3px 6px; border: 1px solid #d1d5db; font-size: 12px; }
-.images { margin-top: 8px; }
-.img { display: inline-block; padding: 4px 8px; margin: 2px; border: 1px dashed #d1d5db; border-radius: 4px; color: #9ca3af; font-size: 12px; }  # noqa: E501
-"""
+def _build_css() -> str:
+    p = get_theme_palette()
+    return (
+        f"body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; "
+        f"background: {p['bg_panel']}; color: {p['text']}; padding: 20px; line-height: 1.5; }}"
+        f"h1 {{ font-size: 20px; color: {p['text']}; margin: 24px 0 12px; "
+        f"border-bottom: 2px solid {p['accent_tab']}; padding-bottom: 6px; }}"
+        f"h2 {{ font-size: 16px; color: {p['text_dim']}; margin: 20px 0 8px; }}"
+        f".desc {{ color: {p['text_dim']}; font-style: italic; margin: 4px 0 8px; }}"
+        f"table.data {{ border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }}"
+        f"table.data th {{ background: {p['bg_control']}; font-weight: bold; padding: 6px 10px; "
+        f"border: 1px solid {p['border']}; text-align: left; }}"
+        f"table.data td {{ padding: 6px 10px; border: 1px solid {p['border']}; }}"
+        f"table.data tr:hover {{ background: {p['bg_control']}; }}"
+        f".norm {{ color: {p['accent_tab']}; }}"
+        f".patho {{ color: {p['error']}; }}"
+        f"table.gradations {{ border-collapse: collapse; width: 100%; }}"
+        f"table.gradations th {{ background: {p['bg_button']}; font-weight: bold; padding: 3px 6px; "
+        f"border: 1px solid {p['border']}; font-size: 12px; }}"
+        f"table.gradations td {{ padding: 3px 6px; border: 1px solid {p['border']}; font-size: 12px; }}"
+        f".images {{ margin-top: 8px; }}"
+        f".img {{ display: inline-block; padding: 4px 8px; margin: 2px; "
+        f"border: 1px dashed {p['border']}; border-radius: 4px; color: {p['text_dim']}; font-size: 12px; }}"
+    )

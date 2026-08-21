@@ -244,3 +244,31 @@ def extract_trajectories(
             last_valid = positions[t]
 
     return positions, ncc_matrix
+
+
+def re_smooth_trajectories(
+    raw_positions: np.ndarray,
+    ncc_scores: np.ndarray,
+    kernels: list[TrackingKernel],
+    smoothness: float,
+    *,
+    quality_weighted: bool = True,
+) -> np.ndarray:
+    """Re-smooth pre-interpolated positions with a new smoothness factor.
+
+    Args:
+        raw_positions: (n_frames, n_kernels, 2) positions after interpolation.
+        ncc_scores: (n_frames, n_kernels) NCC quality scores.
+        kernels: tracking kernels with layer info.
+        smoothness: 0.0 = no smoothing, 1.0 = standard, 2.0 = heavy.
+        quality_weighted: use NCC-weighted spline fitting.
+
+    Returns:
+        (n_frames, n_kernels, 2) re-smoothed positions.
+    """
+    cfg = SpeckleConfig(
+        spatial_smoothing=smoothness,
+        temporal_smoothing=smoothness,
+        quality_weighted_smoothing=quality_weighted,
+    )
+    return smooth_trajectories(raw_positions, ncc_scores, kernels, cfg)

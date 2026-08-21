@@ -205,6 +205,7 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels,
                 config.ncc_threshold,
             )
+            raw_positions = positions.copy()
             smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
             smoothed = apply_motion_model(
                 smoothed,
@@ -339,6 +340,8 @@ class SpeckleTrackingWorker(QRunnable):
                         gls_quality_gated,
                     )
                     gls = gls_quality_gated
+            raw_phase_positions = np.full((n_frames, n_kernels, 2), np.nan)
+            raw_phase_positions[phase_start : phase_end + 1] = raw_positions
             tracked_positions_all = np.full((n_frames, n_kernels, 2), np.nan)
             ncc_all_frames = np.full((n_frames, n_kernels), np.nan)
             tracked_positions_all[phase_start : phase_end + 1] = smoothed
@@ -399,6 +402,7 @@ class SpeckleTrackingWorker(QRunnable):
                 tracked_es_positions=tracked_es_positions,
                 tracked_ed_positions=tracked_ed_positions,
                 tracked_positions_all=tracked_positions_all,
+                raw_tracked_positions=raw_phase_positions,
                 ncc_all_frames=ncc_all_frames,
                 es_ncc_scores=es_ncc,
                 es_valid_mask=es_valid,

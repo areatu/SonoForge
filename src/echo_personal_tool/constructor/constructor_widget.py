@@ -28,7 +28,6 @@ from echo_personal_tool.constructor.storage import (
     YamlStorage,
 )
 from echo_personal_tool.infrastructure.i18n import tr
-from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,6 @@ class ConstructorWidget(QWidget):
     # ── UI ──
 
     def _build_ui(self) -> None:
-        p = get_theme_palette()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -71,11 +69,6 @@ class ConstructorWidget(QWidget):
         # Search bar
         self._search_bar = QLineEdit()
         self._search_bar.setPlaceholderText(tr("constructor.search_placeholder"))
-        self._search_bar.setStyleSheet(
-            f"QLineEdit {{ border: 1px solid {p['border']}; border-radius: 4px; "
-            f"padding: 6px 10px; color: {p['text']}; background: {p['bg_control']}; font-size: 13px; }}"
-            f"QLineEdit:focus {{ border: 1px solid {p['accent']}; }}"
-        )
         layout.addWidget(self._search_bar)
 
         # 3-panel splitter

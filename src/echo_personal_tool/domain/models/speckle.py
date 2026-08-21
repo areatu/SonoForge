@@ -127,6 +127,7 @@ class StrainResult:
     tracked_es_positions: np.ndarray | None = None
     tracked_ed_positions: np.ndarray | None = None
     tracked_positions_all: np.ndarray | None = None
+    raw_tracked_positions: np.ndarray | None = None
     ncc_all_frames: np.ndarray | None = None
     es_ncc_scores: np.ndarray | None = None
     es_valid_mask: np.ndarray | None = None

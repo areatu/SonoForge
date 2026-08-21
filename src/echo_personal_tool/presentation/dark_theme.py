@@ -300,6 +300,19 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0;
 }}
 
+/* ── Line Edit ──────────────────────────────────────────────── */
+QLineEdit {{
+    border: 1px solid {p['border']};
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: {p['text']};
+    background: {p['bg_control']};
+    font-size: {font_size}px;
+}}
+QLineEdit:focus {{
+    border: 1px solid {p['accent_tab']};
+}}
+
 /* ── Status bar ─────────────────────────────────────────────── */
 QStatusBar {{
     background-color: {p["bg_control"]};
@@ -722,6 +735,46 @@ QMessageBox QLabel#qt_msgbox_label {{
 }}
 QMessageBox QLabel#qt_msgbox_icon {{
     background: transparent;
+}}
+
+/* ── Constructor Dialog ─────────────────────────────────────── */
+#constructorTitleBar {{
+    background: {p['bg_panel']};
+}}
+#constructorTitleLabel {{
+    color: {p['text']};
+    font-weight: bold;
+    font-size: {font_size}px;
+}}
+#windowButton {{
+    border: none;
+    color: {p['text']};
+    font-size: 14px;
+}}
+#windowButton:hover {{
+    background: {p['bg_button_hover']};
+}}
+#constructorToolbar {{
+    background: {p['bg_control']};
+    border-bottom: 1px solid {p['border']};
+}}
+#constructorToolbar QPushButton {{
+    border: 1px solid {p['border']};
+    border-radius: 3px;
+    padding: 2px 8px;
+    color: {p['text']};
+    background: {p['bg_panel']};
+}}
+#constructorToolbar QPushButton:hover {{
+    background: {p['bg_button_hover']};
+}}
+#constructorToolbar QPushButton:pressed {{
+    background: {p['bg_button_pressed']};
+}}
+#constructorDirtyLabel {{
+    color: {p['accent']};
+    font-weight: bold;
+    font-size: 14px;
 }}
 """
 

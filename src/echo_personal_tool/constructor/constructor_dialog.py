@@ -118,15 +118,14 @@ class ConstructorDialog(QDialog):
     # ── Title bar ──
 
     def _build_title_bar(self) -> QWidget:
-        p = get_theme_palette()
         bar = QWidget()
+        bar.setObjectName("constructorTitleBar")
         bar.setFixedHeight(36)
-        bar.setStyleSheet(f"background: {p['bg_panel']};")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(12, 0, 4, 0)
 
         title = QLabel(tr("constructor.window_title"))
-        title.setStyleSheet(f"color: {p['text']}; font-weight: bold; font-size: 13px;")
+        title.setObjectName("constructorTitleLabel")
         layout.addWidget(title)
         layout.addStretch(1)
 
@@ -136,13 +135,10 @@ class ConstructorDialog(QDialog):
             ("×", self._close, tr("constructor.close")),
         ]:
             btn = QPushButton(text)
+            btn.setObjectName("windowButton")
             btn.setFixedSize(32, 28)
             btn.setToolTip(tip)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                f"QPushButton {{ border: none; color: {p['text']}; font-size: 14px; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
-            )
             btn.clicked.connect(slot)
             layout.addWidget(btn)
 
@@ -168,12 +164,7 @@ class ConstructorDialog(QDialog):
     # ── Menu bar ──
 
     def _build_menu(self) -> QMenuBar:
-        p = get_theme_palette()
         menu_bar = QMenuBar()
-        menu_bar.setStyleSheet(
-            f"QMenuBar {{ background: {p['bg_panel']}; color: {p['text']}; }}"
-            f"QMenuBar::item:selected {{ background: {p['bg_button_hover']}; }}"
-        )
 
         file_menu = menu_bar.addMenu(tr("constructor.file_menu"))
         file_menu.addAction(tr("constructor.file_menu.save"), self._constructor_widget.save, "Ctrl+S")
@@ -203,10 +194,9 @@ class ConstructorDialog(QDialog):
     # ── Toolbar ──
 
     def _build_toolbar(self) -> QWidget:
-        p = get_theme_palette()
         bar = QWidget()
+        bar.setObjectName("constructorToolbar")
         bar.setFixedHeight(36)
-        bar.setStyleSheet(f"background: {p['bg_control']}; border-bottom: 1px solid {p['border']};")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(8, 2, 8, 2)
         layout.setSpacing(4)
@@ -224,12 +214,6 @@ class ConstructorDialog(QDialog):
             if tip:
                 btn.setToolTip(tip)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                f"QPushButton {{ border: 1px solid {p['border']}; border-radius: 3px; "
-                f"padding: 2px 8px; color: {p['text']}; background: {p['bg_panel']}; }}"
-                f"QPushButton:hover {{ background: {p['bg_button_hover']}; }}"
-                f"QPushButton:pressed {{ background: {p['bg_button_pressed']}; }}"
-            )
             btn.clicked.connect(slot)
             layout.addWidget(btn)
 
@@ -237,7 +221,7 @@ class ConstructorDialog(QDialog):
 
         # Dirty indicator
         self._dirty_label = QLabel("")
-        self._dirty_label.setStyleSheet(f"color: {p['accent']}; font-weight: bold; font-size: 14px;")
+        self._dirty_label.setObjectName("constructorDirtyLabel")
         layout.addWidget(self._dirty_label)
 
         self._constructor_widget.dirty_changed.connect(self._on_dirty_changed)
@@ -257,11 +241,7 @@ class ConstructorDialog(QDialog):
     # ── Theme ──
 
     def _apply_theme(self) -> None:
-        p = get_theme_palette()
-        self.setStyleSheet(
-            f"QDialog {{ background: {p['bg_panel']}; color: {p['text']}; }}"
-            f"QSplitter::handle {{ background: {p['border']}; }}"
-        )
+        pass
 
     # ── Drag support ──
 

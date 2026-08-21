@@ -29,6 +29,81 @@
     --header-height: 44px;
 }
 
+/* ── Light theme ─────────────────────────────────────────────── */
+[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #e2e8f0;
+    --bg-surface: #f1f5f9;
+    --bg-hover: #e2e8f0;
+    --bg-active: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --text-caption: #334155;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-subtle: rgba(37, 99, 235, 0.08);
+    --border: #e2e8f0;
+    --border-focus: #2563eb;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --info: #ea580c;
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ── VS Code Dark theme ──────────────────────────────────────── */
+[data-theme="vscode_dark"] {
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #252526;
+    --bg-tertiary: #333333;
+    --bg-surface: #2d2d2d;
+    --bg-hover: #383838;
+    --bg-active: #454545;
+    --text-primary: #cccccc;
+    --text-secondary: #969696;
+    --text-muted: #6a6a6a;
+    --text-caption: #bbbbbb;
+    --accent: #007acc;
+    --accent-hover: #1a8fe3;
+    --accent-subtle: rgba(0, 122, 204, 0.15);
+    --border: #3c3c3c;
+    --border-focus: #007acc;
+    --success: #4ec9b0;
+    --warning: #cca700;
+    --danger: #f14c4c;
+    --info: #d7ba7d;
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* ── VS Code Light theme ─────────────────────────────────────── */
+[data-theme="vscode_light"] {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f3f3f3;
+    --bg-tertiary: #ececec;
+    --bg-surface: #f0f0f0;
+    --bg-hover: #e0e0e0;
+    --bg-active: #d0d0d0;
+    --text-primary: #333333;
+    --text-secondary: #555555;
+    --text-muted: #888888;
+    --text-caption: #444444;
+    --accent: #0066b8;
+    --accent-hover: #005a9e;
+    --accent-subtle: rgba(0, 102, 184, 0.08);
+    --border: #d4d4d4;
+    --border-focus: #0066b8;
+    --success: #16825d;
+    --warning: #bf8803;
+    --danger: #c42b1c;
+    --info: #c586c0;
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 html, body { height: 100%; overflow: hidden; }
@@ -351,4 +426,44 @@ body {
     object-fit: contain; border-radius: var(--radius-sm);
     box-shadow: var(--shadow-lg);
     cursor: zoom-out;
+}
+
+/* ── Light theme overrides for specific elements ─────────────── */
+[data-theme="light"] .topic-btn.active,
+[data-theme="vscode_light"] .topic-btn.active {
+    color: #fff;
+}
+[data-theme="light"] .patho-btn.active,
+[data-theme="vscode_light"] .patho-btn.active {
+    color: #fff;
+}
+[data-theme="light"] .grad-normal-cell,
+[data-theme="vscode_light"] .grad-normal-cell {
+    background: rgba(22, 163, 74, 0.12);
+    color: #16a34a;
+}
+[data-theme="light"] .grad-mild-cell,
+[data-theme="vscode_light"] .grad-mild-cell {
+    background: rgba(217, 119, 6, 0.12);
+    color: #d97706;
+}
+[data-theme="light"] .grad-moderate-cell,
+[data-theme="vscode_light"] .grad-moderate-cell {
+    background: rgba(234, 88, 12, 0.12);
+    color: #ea580c;
+}
+[data-theme="light"] .grad-severe-cell,
+[data-theme="vscode_light"] .grad-severe-cell {
+    background: rgba(220, 38, 38, 0.12);
+    color: #dc2626;
+}
+[data-theme="light"] .modal-toolbar,
+[data-theme="vscode_light"] .modal-toolbar {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: var(--border);
+}
+[data-theme="light"] .topic-btn .topic-badge,
+[data-theme="vscode_light"] .topic-btn .topic-badge {
+    background: rgba(0,0,0,0.08);
+    color: var(--text-muted);
 }

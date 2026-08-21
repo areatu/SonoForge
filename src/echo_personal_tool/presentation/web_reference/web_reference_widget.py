@@ -13,6 +13,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
+from echo_personal_tool.presentation.dark_theme import get_theme_palette
 from echo_personal_tool.presentation.web_reference.web_reference_bridge import (
     WebReferenceBridge,
 )
@@ -54,8 +55,10 @@ class WebReferenceWidget(QWidget):
         self._web_view.page().setWebChannel(self._channel)
 
         self._status_label = QLabel("Загрузка справочника...")
+        p = get_theme_palette()
         self._status_label.setStyleSheet(
-            "color: #9fa8da; font-size: 14px; padding: 40px; qproperty-alignment: AlignCenter; background: #1a1a2e;"
+            f"color: {p['text_dim']}; font-size: 14px; padding: 40px; "
+            f"qproperty-alignment: AlignCenter; background: {p['bg_dark']};"
         )
 
         html_path = _WEB_DIR / "index.html"
@@ -86,8 +89,17 @@ class WebReferenceWidget(QWidget):
             self.web_failed.emit()
             return
         log.info("Page loaded, checking bridge")
+        self._apply_theme_to_web()
         self._init_attempts = 0
         self._try_init_bridge()
+
+    def _apply_theme_to_web(self) -> None:
+        """Inject current theme name into the web page via data-theme attribute."""
+        from echo_personal_tool.presentation.dark_theme import _current_theme_mode
+
+        theme = _current_theme_mode
+        js = f"document.documentElement.setAttribute('data-theme', '{theme}');"
+        self._web_view.page().runJavaScript(js)
 
     def _try_init_bridge(self) -> None:
         self._init_attempts += 1
@@ -124,6 +136,7 @@ class WebReferenceWidget(QWidget):
     def reload(self) -> None:
         self._store.load()
         self._bridge.configure(self._store)
+        self._apply_theme_to_web()
         if self._bridge_ready:
             self._web_view.page().runJavaScript("if(typeof init==='function')init();")
         else:

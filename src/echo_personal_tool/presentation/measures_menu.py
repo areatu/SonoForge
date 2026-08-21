@@ -408,7 +408,7 @@ class MeasuresMenuWidget(QWidget):
         preset_layout.setContentsMargins(8, 0, 8, 0)
         preset_layout.setSpacing(6)
         preset_label = QLabel(tr("menu.vessel_preset"))
-        preset_label.setStyleSheet("color: #90caf9; font-size: 11px;")
+        preset_label.setStyleSheet("font-size: 11px;")
         self._vessel_preset_combo = QComboBox()
         self._vessel_preset_combo.addItem(tr("menu.vessel_preset_low"), "low")
         self._vessel_preset_combo.addItem(tr("menu.vessel_preset_normal"), "normal")
