@@ -305,6 +305,9 @@ class WebReferenceBridge(QObject):
                     parsed = None
                 self._store.update_param(param_id, field, parsed)
             elif field in ("name", "unit"):
+                if field == "name":
+                    import re as _re
+                    value = _re.sub(r'\s*\([^)]+\)\s*$', '', value).strip() or value.strip()
                 self._store.update_param(param_id, field, value.strip())
             else:
                 return json.dumps({"error": f"Unknown field '{field}'"})

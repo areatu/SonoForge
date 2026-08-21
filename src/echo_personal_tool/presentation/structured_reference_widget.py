@@ -917,6 +917,20 @@ class StructuredReferenceWidget(QWidget):
             return
         self._render_parameter_table()
 
+    @staticmethod
+    def _all_norms_identical(params: list) -> bool:
+        """Return True if every parameter has identical male and female norms."""
+        for p in params:
+            nm = p.norm_male
+            nf = p.norm_female
+            if nm and nf:
+                if nm.low != nf.low or nm.high != nf.high:
+                    return False
+            elif nm or nf:
+                # One has norm, other doesn't — not identical
+                return False
+        return True
+
     def _render_parameter_table(self) -> None:
         """Unified table: Показатель | Норм М | Норм Ж | [Градации...]."""
         if self._current_pathology is None:
@@ -943,7 +957,10 @@ class StructuredReferenceWidget(QWidget):
         # When the pathology has gradations (which include "Норма"), the
         # "Норм М" / "Норм Ж" columns duplicate the "Норма" gradation — omit them.
         show_norm_columns = not has_gradations
-        n_cols = (1 if not show_norm_columns else 3) + len(grad_names)
+        # When all params share identical male/female norms, show a single
+        # "Норма" column instead of separate "Норм М" / "Норм Ж".
+        single_norm = show_norm_columns and self._all_norms_identical(params)
+        n_cols = (1 if not show_norm_columns else (1 if single_norm else 3)) + len(grad_names)
         n_rows = len(params)
 
         table = QTableWidget(n_rows, n_cols)
@@ -966,7 +983,10 @@ class StructuredReferenceWidget(QWidget):
             header.resizeSection(c, 120 if c == 0 else 100)
 
         if show_norm_columns:
-            headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
+            if single_norm:
+                headers = [tr("ref_table.col_param"), tr("ref_table.col_norm")]
+            else:
+                headers = [tr("ref_table.col_param"), tr("ref_table.col_norm_male"), tr("ref_table.col_norm_female")]
         else:
             headers = [tr("ref_table.col_param")]
         headers.extend(grad_names)
@@ -1004,23 +1024,36 @@ class StructuredReferenceWidget(QWidget):
             table.setItem(r, 0, name_item)
 
             grad_base = 3 if show_norm_columns else 1
+            if show_norm_columns and single_norm:
+                grad_base = 2
 
             if show_norm_columns:
-                norm_m = self._format_norm_range(param.norm_male)
-                norm_m_item = QTableWidgetItem(norm_m)
-                norm_m_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
-                norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
-                norm_m_item.setFont(mono_font)
-                norm_m_item.setForeground(QColor(pal["accent_tab"]))
-                table.setItem(r, 1, norm_m_item)
+                if single_norm:
+                    # Single combined norm column — use male norm (or female if male is missing)
+                    norm_val = param.norm_male or param.norm_female
+                    norm_text = self._format_norm_range(norm_val)
+                    norm_item = QTableWidgetItem(norm_text)
+                    norm_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
+                    norm_item.setFlags(norm_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    norm_item.setFont(mono_font)
+                    norm_item.setForeground(QColor(pal["accent_tab"]))
+                    table.setItem(r, 1, norm_item)
+                else:
+                    norm_m = self._format_norm_range(param.norm_male)
+                    norm_m_item = QTableWidgetItem(norm_m)
+                    norm_m_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
+                    norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    norm_m_item.setFont(mono_font)
+                    norm_m_item.setForeground(QColor(pal["accent_tab"]))
+                    table.setItem(r, 1, norm_m_item)
 
-                norm_f = self._format_norm_range(param.norm_female)
-                norm_f_item = QTableWidgetItem(norm_f)
-                norm_f_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_female"))
-                norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
-                norm_f_item.setFont(mono_font)
-                norm_f_item.setForeground(QColor(pal["accent_tab"]))
-                table.setItem(r, 2, norm_f_item)
+                    norm_f = self._format_norm_range(param.norm_female)
+                    norm_f_item = QTableWidgetItem(norm_f)
+                    norm_f_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_female"))
+                    norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    norm_f_item.setFont(mono_font)
+                    norm_f_item.setForeground(QColor(pal["accent_tab"]))
+                    table.setItem(r, 2, norm_f_item)
 
             grad_map = {g.name: g for g in param.gradations}
             for g_idx, g_name in enumerate(grad_names):
@@ -1120,7 +1153,11 @@ class StructuredReferenceWidget(QWidget):
         if len(data) == 2:
             param_id, field = data
             if field == "name":
-                self._store.update_param(param_id, "name", new_text)
+                # Strip trailing unit suffix appended for display to prevent
+                # cumulative duplication (e.g. "(мс) (мс) ...").
+                import re as _re
+                cleaned = _re.sub(r'\s*\([^)]+\)\s*$', '', new_text).strip()
+                self._store.update_param(param_id, "name", cleaned or new_text)
             else:
                 parsed = _parse_norm_range_str(new_text)
                 if parsed is None:

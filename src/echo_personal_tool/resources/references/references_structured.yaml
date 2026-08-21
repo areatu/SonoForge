@@ -505,8 +505,7 @@ topics:
         Function by Echocardiography
       unit: ''
     - id: dt
-      name: Время замедления E (DT) (мс) (мс) (мс) (мс) (мс) (мс) (мс) (мс)
-      full_name: Время замедления E (DT)
+      name: Время замедления E (DT)
       unit: мс
       norm_male:
         low: 160.0
@@ -528,8 +527,7 @@ topics:
         Function by Echocardiography
       unit: ''
     - id: e_prime_sept
-      name: e' септальная (см/с) (см/с) (см/с) (см/с) (см/с) (см/с) (см/с) (см/с)
-      full_name: e' септальная
+      name: e' септальная
       unit: см/с
       norm_male:
         low: 7.0
@@ -539,8 +537,7 @@ topics:
       source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
         Function by Echocardiography
     - id: e_prime_lat
-      name: e' латеральная (см/с) (см/с) (см/с) (см/с) (см/с) (см/с) (см/с) (см/с)
-      full_name: e' латеральная
+      name: e' латеральная
       unit: см/с
       norm_male:
         low: 10.0
@@ -550,9 +547,7 @@ topics:
       source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
         Function by Echocardiography
     - id: la_vol_index
-      name: Объём ЛП (LAVi) (мл/м²) (мл/м²) (мл/м²) (мл/м²) (мл/м²) (мл/м²) (мл/м²)
-        (мл/м²)
-      full_name: Объём ЛП (LAVi)
+      name: Объём ЛП (LAVi)
       unit: мл/м²
       norm_male:
         high: 34.0
@@ -562,8 +557,7 @@ topics:
       source: 2016, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
         Function by Echocardiography
     - id: tr_vmax
-      name: Максимальная скорость ТР (м/с) (м/с) (м/с) (м/с) (м/с) (м/с) (м/с) (м/с)
-      full_name: Максимальная скорость ТР
+      name: Максимальная скорость ТР
       unit: м/с
       norm_male:
         high: 2.8
@@ -1431,194 +1425,123 @@ topics:
     - MR111.png
     - MR112.png
     - 01-MR.png
-    gradations:
-    - name: Лёгкая
-      parameters:
-      - id: mr_eroa_primary
-        name: EROA
-        unit: см²
-        norm_male:
+    parameters:
+    - id: mr_eroa_primary
+      name: EROA
+      unit: см²
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
           high: 0.2
-        pathology_desc: <0.20
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rvol_primary
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_vc_primary
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: <3
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rf_primary
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Умеренная
-      parameters:
-      - id: mr_eroa_primary
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.2
-        pathology_desc: 0.20-0.39
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rvol_primary
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: 30-59 (перв.) / 30-44 (втор.)
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_vc_primary
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: 3-7
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rf_primary
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: 30-49
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Тяжёлая
-      parameters:
-      - id: mr_eroa_primary
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.2
-        pathology_desc: ≥0.40
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rvol_primary
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: ≥60 (перв.) / ≥45 (втор.)
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_vc_primary
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: ≥7
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rf_primary
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: ≥50
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
+      - name: Умеренная
+        range_male:
+          low: 0.2
+          high: 0.39
+      - name: Тяжёлая
+        range_male:
+          low: 0.4
+    - id: mr_rvol_primary
+      name: RVol
+      unit: мл
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male: {}
+      - name: Тяжёлая
+        range_male: {}
+    - id: mr_vc_primary
+      name: VC
+      unit: мм
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 3.0
+      - name: Умеренная
+        range_male:
+          low: 3.0
+          high: 7.0
+      - name: Тяжёлая
+        range_male:
+          low: 7.0
+    - id: mr_rf_primary
+      name: RF
+      unit: '%'
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male:
+          low: 30.0
+          high: 49.0
+      - name: Тяжёлая
+        range_male:
+          low: 50.0
   - name: Вторичная митральная регургитация
     slug: secondary_mr
     image_paths:
     - MR_secondary.png
     - MR_visual.png
     - 01-MR.png
-    gradations:
-    - name: Лёгкая
-      parameters:
-      - id: mr_eroa_secondary
-        name: EROA
-        unit: см²
-        norm_male:
+    parameters:
+    - id: mr_eroa_secondary
+      name: EROA
+      unit: см²
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
           high: 0.2
-        pathology_desc: <0.20
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rvol_secondary
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rf_secondary
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Умеренная
-      parameters:
-      - id: mr_eroa_secondary
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.2
-        pathology_desc: 0.20-0.39
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rvol_secondary
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: 30-44
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rf_secondary
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: 30-49
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Тяжёлая
-      parameters:
-      - id: mr_eroa_secondary
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.2
-        pathology_desc: ≥0.40
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rvol_secondary
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: ≥45
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: mr_rf_secondary
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: ≥50
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
+      - name: Умеренная
+        range_male:
+          low: 0.2
+          high: 0.39
+      - name: Тяжёлая
+        range_male:
+          low: 0.4
+    - id: mr_rvol_secondary
+      name: RVol
+      unit: мл
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male:
+          low: 30.0
+          high: 44.0
+      - name: Тяжёлая
+        range_male:
+          low: 45.0
+    - id: mr_rf_secondary
+      name: RF
+      unit: '%'
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male:
+          low: 30.0
+          high: 49.0
+      - name: Тяжёлая
+        range_male:
+          low: 50.0
   - name: Митральный стеноз
     slug: mitral_stenosis
     image_paths:
@@ -1756,274 +1679,178 @@ topics:
     - Aortic_stenosis.png
     - AV_pathology.png
     - 01-AS.png
-    gradations:
-    - name: Лёгкий
-      parameters:
-      - id: as_vmax
-        name: Vmax
-        unit: м/с
-        norm_male:
-          high: 2.5
-        pathology_desc: 2.6 – 2.9
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_mg_aha
-        name: Средний градиент (AHA/ACC)
-        unit: мм рт. ст.
-        norm_male:
-          high: 10
-        pathology_desc: < 20
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_mg_esc
-        name: Средний градиент (ESC)
-        unit: мм рт. ст.
-        norm_male:
-          high: 10
-        pathology_desc: < 30
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_ava
-        name: AVA
-        unit: см²
-        norm_male:
-          low: 2.5
-          high: 3.5
-        norm_female:
-          low: 2.5
-          high: 3.5
-        pathology_desc: '> 1.5'
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_ava_indexed
-        name: AVA Indexed
-        unit: см²/м²
-        norm_male:
+    parameters:
+    - id: as_vmax
+      name: Vmax
+      unit: м/с
+      source: Bonita Anderson, Echo Reference Values, March 2017
+      gradations:
+      - name: Лёгкий
+        range_male:
+          low: 2.6
+          high: 2.9
+      - name: Умеренный
+        range_male:
+          low: 3.0
+          high: 4.0
+      - name: Тяжёлый
+        range_male:
+          low: 4.0
+    - id: as_mg_aha
+      name: Средний градиент (AHA/ACC)
+      unit: мм рт. ст.
+      source: Bonita Anderson, Echo Reference Values, March 2017
+      gradations:
+      - name: Лёгкий
+        range_male:
+          high: 20.0
+      - name: Умеренный
+        range_male:
+          low: 20.0
+          high: 40.0
+      - name: Тяжёлый
+        range_male:
+          low: 40.0
+    - id: as_mg_esc
+      name: Средний градиент (ESC)
+      unit: мм рт. ст.
+      source: Bonita Anderson, Echo Reference Values, March 2017
+      gradations:
+      - name: Лёгкий
+        range_male:
+          high: 30.0
+      - name: Умеренный
+        range_male:
+          low: 30.0
+          high: 50.0
+      - name: Тяжёлый
+        range_male:
+          low: 50.0
+    - id: as_ava
+      name: AVA
+      unit: см²
+      source: Bonita Anderson, Echo Reference Values, March 2017
+      gradations:
+      - name: Лёгкий
+        range_male:
+          low: 1.5
+      - name: Умеренный
+        range_male:
+          low: 1.0
+          high: 1.5
+      - name: Тяжёлый
+        range_male:
+          high: 1.0
+    - id: as_ava_indexed
+      name: AVA Indexed
+      unit: см²/м²
+      source: Bonita Anderson, Echo Reference Values, March 2017
+      gradations:
+      - name: Лёгкий
+        range_male:
           low: 0.85
-        norm_female:
-          low: 0.85
-        pathology_desc: '> 0.85'
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_dsi
-        name: DSI
-        norm_male:
+      - name: Умеренный
+        range_male:
+          low: 0.6
+          high: 0.85
+      - name: Тяжёлый
+        range_male:
+          high: 0.6
+    - id: as_dsi
+      name: DSI
+      unit: ''
+      source: Bonita Anderson, Echo Reference Values, March 2017
+      gradations:
+      - name: Лёгкий
+        range_male:
           low: 0.5
-        pathology_desc: '> 0.5'
-        source: Bonita Anderson, Echo Reference Values, March 2017
-        unit: ''
-    - name: Умеренный
-      parameters:
-      - id: as_vmax
-        name: Vmax
-        unit: м/с
-        norm_male:
-          high: 2.5
-        pathology_desc: 3.0 – 4.0
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_mg_aha
-        name: Средний градиент (AHA/ACC)
-        unit: мм рт. ст.
-        norm_male:
-          high: 10
-        pathology_desc: 20 – 40
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_mg_esc
-        name: Средний градиент (ESC)
-        unit: мм рт. ст.
-        norm_male:
-          high: 10
-        pathology_desc: 30 – 50
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_ava
-        name: AVA
-        unit: см²
-        norm_male:
-          low: 2.5
-          high: 3.5
-        norm_female:
-          low: 2.5
-          high: 3.5
-        pathology_desc: 1.0 – 1.5
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_ava_indexed
-        name: AVA Indexed
-        unit: см²/м²
-        norm_male:
-          low: 0.85
-        norm_female:
-          low: 0.85
-        pathology_desc: 0.6 – 0.85
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_dsi
-        name: DSI
-        norm_male:
-          low: 0.5
-        pathology_desc: 0.25 – 0.50
-        source: Bonita Anderson, Echo Reference Values, March 2017
-        unit: ''
-    - name: Тяжёлый
-      parameters:
-      - id: as_vmax
-        name: Vmax
-        unit: м/с
-        norm_male:
-          high: 2.5
-        pathology_desc: '> 4.0'
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_mg_aha
-        name: Средний градиент (AHA/ACC)
-        unit: мм рт. ст.
-        norm_male:
-          high: 10
-        pathology_desc: '> 40'
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_mg_esc
-        name: Средний градиент (ESC)
-        unit: мм рт. ст.
-        norm_male:
-          high: 10
-        pathology_desc: '> 50'
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_ava
-        name: AVA
-        unit: см²
-        norm_male:
-          low: 2.5
-          high: 3.5
-        norm_female:
-          low: 2.5
-          high: 3.5
-        pathology_desc: < 1.0
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_ava_indexed
-        name: AVA Indexed
-        unit: см²/м²
-        norm_male:
-          low: 0.85
-        norm_female:
-          low: 0.85
-        pathology_desc: < 0.6
-        source: Bonita Anderson, Echo Reference Values, March 2017
-      - id: as_dsi
-        name: DSI
-        norm_male:
-          low: 0.5
-        pathology_desc: < 0.25
-        source: Bonita Anderson, Echo Reference Values, March 2017
-        unit: ''
+      - name: Умеренный
+        range_male:
+          low: 0.25
+          high: 0.5
+      - name: Тяжёлый
+        range_male:
+          high: 0.25
   - name: Аортальная регургитация
     slug: aortic_regurgitation
     image_paths:
     - Aortic_regurgitation_1.png
     - Aortic_regurgitation_2.png
     - 01-AR.png
-    gradations:
-    - name: Лёгкая
-      parameters:
-      - id: ar_eroa
-        name: EROA
-        unit: см²
-        norm_male:
+    parameters:
+    - id: ar_eroa
+      name: EROA
+      unit: см²
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
           high: 0.1
-        pathology_desc: <0.10
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_rvol
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_vc
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: <3
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_rf
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_vena_contracta_width
-        name: Ширина vena contracta
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: <3
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Умеренная
-      parameters:
-      - id: ar_eroa
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.1
-        pathology_desc: 0.10-0.29
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_rvol
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: 30-59
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_vc
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: 3-6
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_rf
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: 30-49
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Тяжёлая
-      parameters:
-      - id: ar_eroa
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.1
-        pathology_desc: ≥0.30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_rvol
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: ≥60
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_vc
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: ≥6
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: ar_rf
-        name: RF
-        unit: '%'
-        norm_male:
-          high: 30
-        pathology_desc: ≥50
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
+      - name: Умеренная
+        range_male:
+          low: 0.1
+          high: 0.29
+      - name: Тяжёлая
+        range_male:
+          low: 0.3
+    - id: ar_rvol
+      name: RVol
+      unit: мл
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male:
+          low: 30.0
+          high: 59.0
+      - name: Тяжёлая
+        range_male:
+          low: 60.0
+    - id: ar_vc
+      name: VC
+      unit: мм
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 3.0
+      - name: Умеренная
+        range_male:
+          low: 3.0
+          high: 6.0
+      - name: Тяжёлая
+        range_male:
+          low: 6.0
+    - id: ar_rf
+      name: RF
+      unit: '%'
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male:
+          low: 30.0
+          high: 49.0
+      - name: Тяжёлая
+        range_male:
+          low: 50.0
+    - id: ar_vena_contracta_width
+      name: Ширина vena contracta
+      unit: мм
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 3.0
 - name: Трикуспидальный клапан
   slug: tricuspid_valve
   pathologies:
@@ -2032,85 +1859,55 @@ topics:
     image_paths:
     - Tricuspid_regurgitation.png
     - 01-TR.png
-    gradations:
-    - name: Лёгкая
-      parameters:
-      - id: tr_eroa
-        name: EROA
-        unit: см²
-        norm_male:
+    parameters:
+    - id: tr_eroa
+      name: EROA
+      unit: см²
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
           high: 0.2
-        pathology_desc: <0.20
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: tr_rvol
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: <30
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: tr_vc
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: <3
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Умеренная
-      parameters:
-      - id: tr_eroa
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.2
-        pathology_desc: 0.20-0.39
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: tr_rvol
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: 30-44
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: tr_vc
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: 3-7
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Тяжёлая
-      parameters:
-      - id: tr_eroa
-        name: EROA
-        unit: см²
-        norm_male:
-          high: 0.2
-        pathology_desc: ≥0.40
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: tr_rvol
-        name: RVol
-        unit: мл
-        norm_male:
-          high: 30
-        pathology_desc: ≥45
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: tr_vc
-        name: VC
-        unit: мм
-        norm_male:
-          high: 3
-        pathology_desc: ≥7
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
+      - name: Умеренная
+        range_male:
+          low: 0.2
+          high: 0.39
+      - name: Тяжёлая
+        range_male:
+          low: 0.4
+    - id: tr_rvol
+      name: RVol
+      unit: мл
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 30.0
+      - name: Умеренная
+        range_male:
+          low: 30.0
+          high: 44.0
+      - name: Тяжёлая
+        range_male:
+          low: 45.0
+    - id: tr_vc
+      name: VC
+      unit: мм
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 3.0
+      - name: Умеренная
+        range_male:
+          low: 3.0
+          high: 7.0
+      - name: Тяжёлая
+        range_male:
+          low: 7.0
   - name: Трикуспидальный стеноз
     slug: tricuspid_stenosis
     image_paths:
@@ -2179,96 +1976,78 @@ topics:
     slug: pulmonary_regurgitation
     image_paths:
     - 01-PR.png
-    gradations:
-    - name: Лёгкая
-      parameters:
-      - id: pr_jet_width
-        name: Ширина струи (% кольца ЛА)
-        unit: '%'
-        pathology_desc: <20
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: pr_rf
-        name: Регургитационная фракция (RF)
-        unit: '%'
-        pathology_desc: <20
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Умеренная
-      parameters:
-      - id: pr_jet_width
-        name: Ширина струи (% кольца ЛА)
-        unit: '%'
-        pathology_desc: 20–40
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: pr_rf
-        name: Регургитационная фракция (RF)
-        unit: '%'
-        pathology_desc: 20–40
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-    - name: Тяжёлая
-      parameters:
-      - id: pr_jet_width
-        name: Ширина струи (% кольца ЛА)
-        unit: '%'
-        pathology_desc: '>40'
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: pr_rf
-        name: Регургитационная фракция (RF)
-        unit: '%'
-        pathology_desc: '>40'
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: pr_pht
-        name: Полураспад (PHT)
-        unit: мс
-        pathology_desc: <100
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-      - id: pr_index
-        name: PR-индекс
-        pathology_desc: <0.77
-        source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of
-          Native Valvular Regurgitation
-        unit: ''
+    parameters:
+    - id: pr_jet_width
+      name: Ширина струи (% кольца ЛА)
+      unit: '%'
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 20.0
+      - name: Умеренная
+        range_male:
+          low: 20.0
+          high: 40.0
+      - name: Тяжёлая
+        range_male:
+          low: 40.0
+    - id: pr_rf
+      name: Регургитационная фракция (RF)
+      unit: '%'
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Лёгкая
+        range_male:
+          high: 20.0
+      - name: Умеренная
+        range_male:
+          low: 20.0
+          high: 40.0
+      - name: Тяжёлая
+        range_male:
+          low: 40.0
+    - id: pr_pht
+      name: Полураспад (PHT)
+      unit: мс
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Тяжёлая
+        range_male:
+          high: 100.0
+    - id: pr_index
+      name: PR-индекс
+      unit: ''
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
+        Valvular Regurgitation
+      gradations:
+      - name: Тяжёлая
+        range_male:
+          high: 0.77
   - name: Легочный стеноз
     slug: pulmonary_stenosis
     image_paths:
     - Pulmonic_stenosis.png
-    gradations:
-    - name: Лёгкий
-      parameters:
-      - id: ps_vmax
-        name: Vmax
-        unit: м/с
-        norm_male:
-          high: 2.0
-        pathology_desc: <3.0
-        source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-          Heart Disease
-    - name: Умеренный
-      parameters:
-      - id: ps_vmax
-        name: Vmax
-        unit: м/с
-        norm_male:
-          high: 2.0
-        pathology_desc: 3.0-4.0
-        source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-          Heart Disease
-    - name: Тяжёлый
-      parameters:
-      - id: ps_vmax
-        name: Vmax
-        unit: м/с
-        norm_male:
-          high: 2.0
-        pathology_desc: '>4.0'
-        source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-          Heart Disease
+    parameters:
+    - id: ps_vmax
+      name: Vmax
+      unit: м/с
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
+        Heart Disease
+      gradations:
+      - name: Лёгкий
+        range_male:
+          high: 3.0
+      - name: Умеренный
+        range_male:
+          low: 3.0
+          high: 4.0
+      - name: Тяжёлый
+        range_male:
+          low: 4.0
   - name: Легочный ствол
     slug: pulmonary_trunk
     parameters:
