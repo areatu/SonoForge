@@ -2,67 +2,6 @@ topics:
 - name: Левый желудочек
   slug: left_ventricle
   pathologies:
-  - name: Масса миокарда левого желудочка
-    slug: lv_mass
-    parameters:
-    - id: lvm
-      name: ММ ЛЖ (LVM)
-      unit: г
-      norm_male: {low: 88, high: 224}
-      norm_female: {low: 66, high: 150}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-      gradations:
-      - name: Норма
-        range_male: {low: 88, high: 224}
-        range_female: {low: 66, high: 150}
-      - name: Лёгкое
-        range_male: {low: 225, high: 258}
-        range_female: {low: 151, high: 171}
-      - name: Умеренное
-        range_male: {low: 259, high: 292}
-        range_female: {low: 172, high: 193}
-      - name: Тяжёлое
-        range_male: {low: 293}
-        range_female: {low: 194}
-    - id: lvmi
-      name: Индекс массы миокарда (LVMI)
-      full_name: Индекс массы миокарда (LVMI)
-      unit: г/м²
-      norm_male: {low: 49, high: 115}
-      norm_female: {low: 43, high: 95}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-      gradations:
-      - name: Норма
-        range_male: {low: 49, high: 115}
-        range_female: {low: 43, high: 95}
-      - name: Лёгкое
-        range_male: {low: 116, high: 134}
-        range_female: {low: 96, high: 111}
-      - name: Умеренное
-        range_male: {low: 135, high: 148}
-        range_female: {low: 112, high: 121}
-      - name: Тяжёлое
-        range_male: {low: 149}
-        range_female: {low: 122}
-    - id: rwt
-      name: ОТС (RWT)
-      full_name: Относительная толщина стенок (RWT)
-      norm_male: {low: 0.32, high: 0.42}
-      norm_female: {low: 0.32, high: 0.42}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-      gradations:
-      - name: Норма
-        range_male: {low: 0.32, high: 0.42}
-        range_female: {low: 0.32, high: 0.42}
-      - name: Концентрическое ремоделирование
-        range_male: {low: 0.42}
-        range_female: {low: 0.42}
-      - name: Эксцентрическая гипертрофия
-        range_male: {high: 0.32}
-        range_female: {high: 0.32}
   - name: Размеры левого желудочка
     slug: lv_dimensions
     image_paths:
@@ -75,8 +14,7 @@ topics:
       unit: мм
       norm_male: {low: 42, high: 59}
       norm_female: {low: 36, high: 51}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 42, high: 59}
@@ -96,8 +34,7 @@ topics:
       unit: мм
       norm_male: {low: 25, high: 40}
       norm_female: {low: 20, high: 35}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 25, high: 40}
@@ -117,8 +54,7 @@ topics:
       unit: мл/м²
       norm_male: {low: 37, high: 97}
       norm_female: {low: 32, high: 87}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 37, high: 97}
@@ -138,8 +74,7 @@ topics:
       unit: мл/м²
       norm_male: {low: 12, high: 38}
       norm_female: {low: 9, high: 32}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 12, high: 38}
@@ -159,8 +94,7 @@ topics:
       unit: мм
       norm_male: {low: 6, high: 11}
       norm_female: {low: 6, high: 10}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 6, high: 11}
@@ -180,8 +114,7 @@ topics:
       unit: мм
       norm_male: {low: 6, high: 11}
       norm_female: {low: 6, high: 10}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 6, high: 11}
@@ -201,32 +134,49 @@ topics:
     - LV_geometry.jpg
     - LV_geometry2.png
     parameters:
+    - id: lvm
+      name: ММ ЛЖ (LVM)
+      unit: г
+      norm_male: {low: 88, high: 224}
+      norm_female: {low: 66, high: 150}
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
+      gradations:
+      - name: Норма
+        range_male: {low: 88, high: 224}
+        range_female: {low: 66, high: 150}
+      - name: Лёгкое
+        range_male: {low: 225, high: 258}
+        range_female: {low: 151, high: 171}
+      - name: Умеренное
+        range_male: {low: 259, high: 292}
+        range_female: {low: 172, high: 193}
+      - name: Тяжёлое
+        range_male: {low: 293}
+        range_female: {low: 194}
     - id: lvmi_hyp
       name: Индекс массы миокарда (LVMI)
       unit: г/м²
       norm_male: {low: 49, high: 115}
       norm_female: {low: 43, high: 95}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 49, high: 115}
         range_female: {low: 43, high: 95}
-      - name: Лёгкая гипертрофия
+      - name: Лёгкая
         range_male: {low: 116, high: 134}
         range_female: {low: 96, high: 111}
-      - name: Умеренная гипертрофия
+      - name: Умеренная
         range_male: {low: 135, high: 148}
         range_female: {low: 112, high: 121}
-      - name: Тяжёлая гипертрофия
+      - name: Тяжёлая
         range_male: {low: 149}
         range_female: {low: 122}
     - id: rwt_hyp
       name: Относительная толщина стенок (RWT)
       norm_male: {low: 0.32, high: 0.42}
       norm_female: {low: 0.32, high: 0.42}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 0.32, high: 0.42}
@@ -242,8 +192,7 @@ topics:
       unit: мм
       norm_male: {low: 6, high: 11}
       norm_female: {low: 6, high: 10}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 6, high: 11}
@@ -256,8 +205,7 @@ topics:
       unit: мм
       norm_male: {low: 6, high: 11}
       norm_female: {low: 6, high: 10}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 6, high: 11}
@@ -273,8 +221,7 @@ topics:
       unit: '%'
       norm_male: {low: 52, high: 72}
       norm_female: {low: 54, high: 74}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 52, high: 72}
@@ -293,8 +240,7 @@ topics:
       unit: '%'
       norm_male: {low: -22, high: -18}
       norm_female: {low: -22, high: -18}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: -22, high: -18}
@@ -313,8 +259,7 @@ topics:
       unit: '%'
       norm_male: {low: 52, high: 72}
       norm_female: {low: 54, high: 74}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {low: 52, high: 72}
@@ -333,8 +278,7 @@ topics:
       unit: мл/м²
       norm_male: {low: 35}
       norm_female: {low: 35}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {low: 35}
@@ -353,8 +297,7 @@ topics:
       unit: '%'
       norm_male: {low: 35}
       norm_female: {low: 35}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 35}
@@ -380,21 +323,18 @@ topics:
       name: Соотношение E/A
       norm_male: {low: 0.8, high: 2.0}
       norm_female: {low: 0.8, high: 2.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
     - id: dt
       name: Время замедления E (DT)
       unit: мс
       norm_male: {low: 160.0, high: 200.0}
       norm_female: {low: 160.0, high: 200.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
     - id: e_e_prime_avg
       name: Среднее E/e'
       norm_male: {high: 10.0}
       norm_female: {high: 10.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {high: 10.0}
@@ -410,8 +350,7 @@ topics:
       unit: см/с
       norm_male: {low: 7.0}
       norm_female: {low: 7.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {low: 7.0}
@@ -424,8 +363,7 @@ topics:
       unit: см/с
       norm_male: {low: 10.0}
       norm_female: {low: 10.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {low: 10.0}
@@ -438,8 +376,7 @@ topics:
       unit: мл/м²
       norm_male: {high: 34.0}
       norm_female: {high: 34.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {high: 34.0}
@@ -452,8 +389,7 @@ topics:
       unit: м/с
       norm_male: {high: 2.8}
       norm_female: {high: 2.8}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {high: 2.8}
@@ -466,8 +402,7 @@ topics:
       unit: мс
       norm_male: {high: 70.0}
       norm_female: {high: 70.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {low: 70.0}
@@ -479,15 +414,13 @@ topics:
       name: Соотношение S/D лёгочных вен
       norm_male: {low: 1.0}
       norm_female: {low: 1.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
     - id: pv_systolic_ff
       name: Систолическая фракция наполнения ЛВ
       unit: '%'
       norm_male: {low: 40.0}
       norm_female: {low: 40.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {low: 40.0}
@@ -500,8 +433,7 @@ topics:
       unit: мс
       norm_male: {high: 30.0}
       norm_female: {high: 30.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {high: 30.0}
@@ -514,8 +446,7 @@ topics:
       unit: см/с
       norm_male: {high: 35.0}
       norm_female: {high: 35.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {high: 35.0}
@@ -527,8 +458,7 @@ topics:
       name: Соотношение E/Vp
       norm_male: {high: 2.5}
       norm_female: {high: 2.5}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
+      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
       gradations:
       - name: Норма
         range_male: {high: 2.5}
@@ -536,11 +466,6 @@ topics:
       - name: Повышение
         range_male: {low: 2.5}
         range_female: {low: 2.5}
-    - id: valsalva_ea
-      name: Проба Вальсальвы
-      full_name: Проба Вальсальвы (изменение E/A)
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic
-        Function by Echocardiography
     - id: lars
       name: Индекс растяжимости ЛП (LARS)
       unit: '%'
@@ -559,31 +484,7 @@ topics:
     image_paths:
     - LV_segments2.jpg
     - LV_segments.jpg
-    parameters:
-    - id: seg_anterior
-      name: Передняя стенка
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: seg_septal
-      name: Межжелудочковая перегородка
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: seg_lateral
-      name: Боковая стенка
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: seg_inferior
-      name: Нижняя стенка
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: seg_apical
-      name: Апикальный сегмент
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: seg_posterior
-      name: Задняя стенка
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+    parameters: []
 - name: Левое предсердие
   slug: left_atrium
   pathologies:
@@ -608,8 +509,7 @@ topics:
       unit: мл/м²
       norm_male: {high: 34}
       norm_female: {high: 34}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
       gradations:
       - name: Норма
         range_male: {high: 34}
@@ -646,8 +546,7 @@ topics:
       unit: '%'
       norm_male: {low: 26.1}
       norm_female: {low: 26.1}
-      source: 2018, EACVI/ASE, Standardization of Left Atrial Strain (Sugimoto et
-        al.)
+      source: 2018, EACVI/ASE, Standardization of Left Atrial Strain (Sugimoto et al.)
       gradations:
       - name: Норма
         range_male: {low: 26.1}
@@ -660,8 +559,7 @@ topics:
       unit: '%'
       norm_male: {low: 12.0}
       norm_female: {low: 12.0}
-      source: 2018, EACVI/ASE, Standardization of Left Atrial Strain (Sugimoto et
-        al.)
+      source: 2018, EACVI/ASE, Standardization of Left Atrial Strain (Sugimoto et al.)
       gradations:
       - name: Норма
         range_male: {low: 12.0}
@@ -674,8 +572,7 @@ topics:
       unit: '%'
       norm_male: {low: 7.7}
       norm_female: {low: 7.7}
-      source: 2018, EACVI/ASE, Standardization of Left Atrial Strain (Sugimoto et
-        al.)
+      source: 2018, EACVI/ASE, Standardization of Left Atrial Strain (Sugimoto et al.)
       gradations:
       - name: Норма
         range_male: {low: 7.7}
@@ -696,8 +593,7 @@ topics:
       unit: мм
       norm_male: {high: 41}
       norm_female: {high: 38}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 41}
@@ -710,8 +606,7 @@ topics:
       unit: мм
       norm_male: {high: 35}
       norm_female: {high: 33}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 35}
@@ -724,8 +619,7 @@ topics:
       unit: мм
       norm_male: {high: 71}
       norm_female: {high: 68}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 71}
@@ -738,8 +632,7 @@ topics:
       unit: мм
       norm_male: {high: 5}
       norm_female: {high: 5}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 5}
@@ -752,8 +645,7 @@ topics:
       unit: мл
       norm_male: {low: 56, high: 133}
       norm_female: {low: 46, high: 106}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 133}
@@ -766,8 +658,7 @@ topics:
       unit: мл
       norm_male: {low: 19, high: 56}
       norm_female: {low: 16, high: 46}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 56}
@@ -780,8 +671,7 @@ topics:
       unit: см²
       norm_male: {high: 18}
       norm_female: {high: 18}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 18}
@@ -800,8 +690,7 @@ topics:
       unit: мм
       norm_male: {low: 17}
       norm_female: {low: 17}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 17}
@@ -820,8 +709,7 @@ topics:
       unit: '%'
       norm_male: {low: 35}
       norm_female: {low: 35}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 35}
@@ -840,8 +728,7 @@ topics:
       unit: см/с
       norm_male: {low: 9.5}
       norm_female: {low: 9.5}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 9.5}
@@ -860,8 +747,7 @@ topics:
       unit: '%'
       norm_male: {low: -20, high: -17}
       norm_female: {low: -20, high: -17}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: -20, high: -17}
@@ -880,8 +766,7 @@ topics:
       unit: '%'
       norm_male: {low: -25, high: -20}
       norm_female: {low: -25, high: -20}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: -25, high: -20}
@@ -900,8 +785,7 @@ topics:
       unit: '%'
       norm_male: {low: 45}
       norm_female: {low: 45}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 45}
@@ -919,8 +803,7 @@ topics:
       name: RIMP / Tei
       norm_male: {high: 0.4}
       norm_female: {high: 0.4}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 0.4}
@@ -937,22 +820,11 @@ topics:
   - name: Диастолическая функция правого желудочка
     slug: rv_diastolic
     parameters:
-    - id: e_rv
-      name: E-волна ПЖ
-      unit: см/с
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
-    - id: a_rv
-      name: A-волна ПЖ
-      unit: см/с
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
     - id: e_a_rv
       name: E/A ПЖ
       norm_male: {low: 0.8, high: 2.0}
       norm_female: {low: 0.8, high: 2.0}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 0.8, high: 2.0}
@@ -971,14 +843,12 @@ topics:
       unit: мс
       norm_male: {low: 120, high: 230}
       norm_female: {low: 120, high: 230}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
     - id: e_e_prime_rv
       name: E/e' ПЖ
       norm_male: {high: 6.0}
       norm_female: {high: 6.0}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 6.0}
@@ -996,8 +866,7 @@ topics:
       unit: мм рт. ст.
       norm_male: {high: 34}
       norm_female: {high: 34}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 34}
@@ -1016,8 +885,7 @@ topics:
       unit: мм рт. ст.
       norm_male: {high: 20}
       norm_female: {high: 20}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 20}
@@ -1030,8 +898,7 @@ topics:
       unit: мм рт. ст.
       norm_male: {high: 20}
       norm_female: {high: 20}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 20}
@@ -1047,8 +914,7 @@ topics:
       unit: м/с
       norm_male: {high: 2.8}
       norm_female: {high: 2.8}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Низкая вероятность ЛГ
         range_male: {high: 2.8}
@@ -1059,17 +925,12 @@ topics:
       - name: Высокая вероятность
         range_male: {low: 3.4}
         range_female: {low: 3.4}
-    - id: rv_sph
-      name: Признаки перегрузки ПЖ
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
     - id: paat
       name: Время ускорения ПА (PAAT)
       unit: мс
       norm_male: {low: 105}
       norm_female: {low: 105}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 105}
@@ -1081,8 +942,7 @@ topics:
       name: Отношение ПА/Ао
       norm_male: {high: 0.9}
       norm_female: {high: 0.9}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 0.9}
@@ -1094,8 +954,7 @@ topics:
       name: Отношение ПЖ/ЛЖ (базальное)
       norm_male: {high: 1.0}
       norm_female: {high: 1.0}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 1.0}
@@ -1108,8 +967,7 @@ topics:
       unit: м/с
       norm_male: {high: 2.2}
       norm_female: {high: 2.2}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 2.2}
@@ -1130,8 +988,7 @@ topics:
       unit: см²
       norm_male: {high: 18}
       norm_female: {high: 18}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 18}
@@ -1150,8 +1007,7 @@ topics:
       unit: мл
       norm_male: {high: 39}
       norm_female: {high: 33}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 39}
@@ -1170,8 +1026,7 @@ topics:
       unit: мм
       norm_male: {high: 53}
       norm_female: {high: 50}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 53}
@@ -1184,8 +1039,7 @@ topics:
       unit: мм
       norm_male: {high: 45}
       norm_female: {high: 43}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 45}
@@ -1204,8 +1058,7 @@ topics:
       unit: мм рт. ст.
       norm_male: {low: 0, high: 5}
       norm_female: {low: 0, high: 5}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {low: 0, high: 5}
@@ -1221,8 +1074,7 @@ topics:
       unit: мм
       norm_male: {high: 21}
       norm_female: {high: 21}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 21}
@@ -1235,8 +1087,7 @@ topics:
       unit: '%'
       norm_male: {low: 50}
       norm_female: {low: 50}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
-        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
 - name: Митральный клапан
   slug: mitral_valve
   pathologies:
@@ -1250,8 +1101,7 @@ topics:
     - id: mr_eroa_primary
       name: EROA
       unit: см²
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 0.2}
@@ -1262,18 +1112,16 @@ topics:
     - id: mr_rvol_primary
       name: RVol
       unit: мл
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
-      - {name: Умеренная}
-      - {name: Тяжёлая}
+      - name: Умеренная
+      - name: Тяжёлая
     - id: mr_vc_primary
       name: VC
       unit: мм
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 3.0}
@@ -1284,8 +1132,7 @@ topics:
     - id: mr_rf_primary
       name: RF
       unit: '%'
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1303,8 +1150,7 @@ topics:
     - id: mr_eroa_secondary
       name: EROA
       unit: см²
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Лёгкая
         range_male: {high: 0.2}
@@ -1315,8 +1161,7 @@ topics:
     - id: mr_rvol_secondary
       name: RVol
       unit: мл
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1327,8 +1172,7 @@ topics:
     - id: mr_rf_secondary
       name: RF
       unit: '%'
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1349,8 +1193,7 @@ topics:
       unit: см²
       norm_male: {low: 4.0, high: 6.0}
       norm_female: {low: 4.0, high: 6.0}
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Норма
         range_male: {low: 4.0, high: 6.0}
@@ -1369,8 +1212,7 @@ topics:
       unit: мм рт. ст.
       norm_male: {high: 5}
       norm_female: {high: 5}
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Норма
         range_male: {high: 5}
@@ -1386,8 +1228,7 @@ topics:
       unit: мс
       norm_male: {high: 150}
       norm_female: {high: 150}
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Норма
         range_male: {high: 150}
@@ -1404,19 +1245,7 @@ topics:
     - MV_measurements.png
     - MV_anatomy.png
     - MV_leaflets.png
-    parameters:
-    - id: p1
-      name: P1 (латеральный)
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
-    - id: p2
-      name: P2 (средний)
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
-    - id: p3
-      name: P3 (медиальный)
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+    parameters: []
 - name: Аортальный клапан
   slug: aortic_valve
   pathologies:
@@ -1502,8 +1331,7 @@ topics:
     - id: ar_eroa
       name: EROA
       unit: см²
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 0.1}
@@ -1514,8 +1342,7 @@ topics:
     - id: ar_rvol
       name: RVol
       unit: мл
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1526,8 +1353,7 @@ topics:
     - id: ar_vc
       name: VC
       unit: мм
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 3.0}
@@ -1538,8 +1364,7 @@ topics:
     - id: ar_rf
       name: RF
       unit: '%'
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1550,16 +1375,14 @@ topics:
     - id: ar_vena_contracta_width
       name: Ширина vena contracta
       unit: мм
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 3.0}
     - id: ar_jet_csa_lvot
       name: Площадь струи / площадь ЛЖОТ (%)
       unit: '%'
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 5.0}
@@ -1570,8 +1393,7 @@ topics:
     - id: ar_pht
       name: Полураспад давления (PHT)
       unit: мс
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {low: 500.0}
@@ -1582,8 +1404,7 @@ topics:
     - id: ar_edv_reversal
       name: Скорость диастолического обратного потока (нисходящая аорта)
       unit: см/с
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Лёгкая
         range_male: {high: 20.0}
@@ -1603,8 +1424,7 @@ topics:
     - id: tr_eroa
       name: EROA
       unit: см²
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 0.2}
@@ -1615,8 +1435,7 @@ topics:
     - id: tr_rvol
       name: RVol
       unit: мл
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1627,8 +1446,7 @@ topics:
     - id: tr_vc
       name: VC
       unit: мм
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Тяжёлая
         range_male: {low: 7.0}
@@ -1641,8 +1459,7 @@ topics:
     - id: ts_area
       name: Площадь ТК
       unit: см²
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Норма
         range_male: {low: 1.0}
@@ -1655,8 +1472,7 @@ topics:
       unit: мм рт. ст.
       norm_male: {high: 5}
       norm_female: {high: 5}
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Норма
         range_male: {high: 5}
@@ -1669,8 +1485,7 @@ topics:
       unit: мс
       norm_male: {high: 150}
       norm_female: {high: 150}
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Норма
         range_male: {high: 150}
@@ -1692,8 +1507,7 @@ topics:
     - id: pr_jet_width
       name: Ширина струи (% кольца ЛА)
       unit: '%'
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 25.0}
@@ -1704,8 +1518,7 @@ topics:
     - id: pr_rf
       name: Регургитационная фракция (RF)
       unit: '%'
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Лёгкая
         range_male: {high: 20.0}
@@ -1716,15 +1529,13 @@ topics:
     - id: pr_pht
       name: Полураспад (PHT)
       unit: мс
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Тяжёлая
         range_male: {high: 100.0}
     - id: pr_index
       name: PR-индекс
-      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
-        Valvular Regurgitation
+      source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native Valvular Regurgitation
       gradations:
       - name: Тяжёлая
         range_male: {high: 0.77}
@@ -1736,8 +1547,7 @@ topics:
     - id: ps_vmax
       name: Vmax
       unit: м/с
-      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
-        Heart Disease
+      source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular Heart Disease
       gradations:
       - name: Лёгкий
         range_male: {high: 3.0}
@@ -1753,8 +1563,7 @@ topics:
       unit: мм
       norm_male: {high: 29}
       norm_female: {high: 27}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 29}
@@ -1767,8 +1576,7 @@ topics:
       unit: мм
       norm_male: {high: 30}
       norm_female: {high: 28}
-      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
-        of Pulmonary Hypertension
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
       - name: Норма
         range_male: {high: 30}
@@ -1790,19 +1598,18 @@ topics:
       unit: мм
       norm_male: {high: 40}
       norm_female: {high: 36}
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
       gradations:
       - name: Норма
         range_male: {high: 40}
         range_female: {high: 36}
-      - name: Лёгкое расширение
+      - name: Лёгкое
         range_male: {low: 41, high: 44}
         range_female: {low: 37, high: 40}
-      - name: Умеренное расширение
+      - name: Умеренное
         range_male: {low: 45, high: 49}
         range_female: {low: 41, high: 44}
-      - name: Тяжёлое расширение
+      - name: Тяжёлое
         range_male: {low: 50}
         range_female: {low: 45}
     - id: sinotubular
@@ -1810,19 +1617,18 @@ topics:
       unit: мм
       norm_male: {high: 35}
       norm_female: {high: 33}
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
       gradations:
       - name: Норма
         range_male: {high: 35}
         range_female: {high: 33}
-      - name: Лёгкое расширение
+      - name: Лёгкое
         range_male: {low: 36, high: 39}
         range_female: {low: 34, high: 37}
-      - name: Умеренное расширение
+      - name: Умеренное
         range_male: {low: 40, high: 44}
         range_female: {low: 38, high: 41}
-      - name: Тяжёлое расширение
+      - name: Тяжёлое
         range_male: {low: 45}
         range_female: {low: 42}
     - id: ascending_aorta
@@ -1831,19 +1637,18 @@ topics:
       unit: мм
       norm_male: {high: 40}
       norm_female: {high: 36}
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
       gradations:
       - name: Норма
         range_male: {high: 40}
         range_female: {high: 36}
-      - name: Лёгкое расширение
+      - name: Лёгкое
         range_male: {low: 41, high: 44}
         range_female: {low: 37, high: 40}
-      - name: Умеренное расширение
+      - name: Умеренное
         range_male: {low: 45, high: 49}
         range_female: {low: 41, high: 44}
-      - name: Тяжёлое расширение
+      - name: Тяжёлое
         range_male: {low: 50}
         range_female: {low: 45}
     - id: aortic_arch
@@ -1851,19 +1656,18 @@ topics:
       unit: мм
       norm_male: {high: 30}
       norm_female: {high: 28}
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
       gradations:
       - name: Норма
         range_male: {high: 30}
         range_female: {high: 28}
-      - name: Лёгкое расширение
+      - name: Лёгкое
         range_male: {low: 31, high: 34}
         range_female: {low: 29, high: 32}
-      - name: Умеренное расширение
+      - name: Умеренное
         range_male: {low: 35, high: 39}
         range_female: {low: 33, high: 37}
-      - name: Тяжёлое расширение
+      - name: Тяжёлое
         range_male: {low: 40}
         range_female: {low: 38}
     - id: descending_aorta
@@ -1872,19 +1676,18 @@ topics:
       unit: мм
       norm_male: {high: 30}
       norm_female: {high: 28}
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
       gradations:
       - name: Норма
         range_male: {high: 30}
         range_female: {high: 28}
-      - name: Лёгкое расширение
+      - name: Лёгкое
         range_male: {low: 31, high: 34}
         range_female: {low: 29, high: 32}
-      - name: Умеренное расширение
+      - name: Умеренное
         range_male: {low: 35, high: 39}
         range_female: {low: 33, high: 37}
-      - name: Тяжёлое расширение
+      - name: Тяжёлое
         range_male: {low: 40}
         range_female: {low: 38}
     - id: abdominal_aorta
@@ -1892,42 +1695,25 @@ topics:
       unit: мм
       norm_male: {high: 30}
       norm_female: {high: 28}
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management of Aortic Disease
       gradations:
       - name: Норма
         range_male: {high: 30}
         range_female: {high: 28}
-      - name: Лёгкое расширение
+      - name: Лёгкое
         range_male: {low: 31, high: 34}
         range_female: {low: 29, high: 32}
-      - name: Умеренное расширение
+      - name: Умеренное
         range_male: {low: 35, high: 39}
         range_female: {low: 33, high: 37}
-      - name: Тяжёлое расширение
+      - name: Тяжёлое
         range_male: {low: 40}
         range_female: {low: 38}
   - name: Расслоение аорты
     slug: aortic_dissection
     image_paths:
     - Aortic_dissection.png
-    parameters:
-    - id: dissection_type
-      name: Тип расслоения
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
-    - id: dissection_intimal_flap
-      name: Интимальный флаттер
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
-    - id: dissection_lumens
-      name: Истинный и ложный просветы
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
-    - id: dissection_pericardial_eff
-      name: Перикардиальный выпот
-      source: 2022, ACC/AHA, 2022 ACC/AHA Guideline for the Diagnosis and Management
-        of Aortic Disease
+    parameters: []
 - name: Протезы клапанов
   slug: prosthetic_valves
   pathologies:
@@ -1939,8 +1725,7 @@ topics:
     - id: mv_prosth_gradient_mean
       name: Средний градиент
       unit: мм рт. ст.
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function with Cardiovascular Imaging
       gradations:
       - name: Норма
         range_male: {high: 5}
@@ -1951,16 +1736,10 @@ topics:
       - name: Стеноз
         range_male: {low: 10}
         range_female: {low: 10}
-    - id: mv_prosth_orifice
-      name: Effective Orifice Area (EOA)
-      unit: см²
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
     - id: mv_prosth_pht
       name: Полураспад PHT
       unit: мс
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function with Cardiovascular Imaging
       gradations:
       - name: Норма
         range_male: {high: 130}
@@ -1973,8 +1752,7 @@ topics:
         range_female: {low: 220}
     - id: mv_prosth_regurg
       name: Парапротезная регургитация
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function with Cardiovascular Imaging
       gradations:
       - name: Лёгкая
         range_male: {high: 3}
@@ -1993,8 +1771,7 @@ topics:
     - id: av_prosth_gradient_mean
       name: Средний градиент
       unit: мм рт. ст.
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function with Cardiovascular Imaging
       gradations:
       - name: Норма
         range_male: {high: 20}
@@ -2005,16 +1782,10 @@ topics:
       - name: Стеноз
         range_male: {low: 35}
         range_female: {low: 35}
-    - id: av_prosth_orifice
-      name: Effective Orifice Area (EOA)
-      unit: см²
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
     - id: av_prosth_dvi
       name: Doppler Velocity Index (DVI)
       norm_male: {low: 0.35}
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function with Cardiovascular Imaging
       gradations:
       - name: Норма
         range_male: {low: 0.35}
@@ -2027,8 +1798,7 @@ topics:
         range_female: {high: 0.25}
     - id: av_prosth_regurg
       name: Парапротезная регургитация
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function with Cardiovascular Imaging
       gradations:
       - name: Лёгкая
         range_male: {high: 3}
@@ -2047,35 +1817,10 @@ topics:
       unit: уд/мин
       norm_male: {low: 60, high: 100}
       norm_female: {low: 60, high: 100}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: bsa
-      name: Площадь поверхности тела (ППТ)
-      unit: м²
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: blood_pressure
-      name: Артериальное давление (АД)
-      unit: мм рт. ст.
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
+      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification by Echocardiography in Adults
   - name: Методика измерений
     slug: measurement_technique
-    parameters:
-    - id: simpson_method
-      name: Метод Симпсона (модифицированный)
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: doppler_angle
-      name: Угол допплера
-      unit: °
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-    - id: pisa_radius
-      name: Радиус PISA
-      unit: мм
-      source: 2023, ASE, Guidelines for the Evaluation of Prosthetic Valve Function
-        with Cardiovascular Imaging
+    parameters: []
   - name: Некомпактный миокард левого желудочка
     slug: lv_noncompaction
     image_paths:
@@ -2085,8 +1830,7 @@ topics:
       name: Отношение некомпактного/компактного слоя (NC/C)
       norm_male: {high: 2.0}
       norm_female: {high: 2.0}
-      source: 2001, Jenni et al., Echocardiographic and Pathoanatomical Characteristics
-        of Isolated Left Ventricular Non-Compaction
+      source: 2001, Jenni et al., Echocardiographic and Pathoanatomical Characteristics of Isolated Left Ventricular Non-Compaction
       gradations:
       - name: Норма
         range_male: {high: 2.0}
@@ -2094,14 +1838,9 @@ topics:
       - name: Некомпактность
         range_male: {low: 2.0}
         range_female: {low: 2.0}
-    - id: nc_compact_layer
-      name: Компактный слой
-      source: 2001, Jenni et al., Echocardiographic and Pathoanatomical Characteristics
-        of Isolated Left Ventricular Non-Compaction
     - id: nc_trabeculations
       name: Число трабекул
-      source: 2001, Jenni et al., Echocardiographic and Pathoanatomical Characteristics
-        of Isolated Left Ventricular Non-Compaction
+      source: 2001, Jenni et al., Echocardiographic and Pathoanatomical Characteristics of Isolated Left Ventricular Non-Compaction
       gradations:
       - name: Норма
         range_male: {high: 3}
@@ -2113,16 +1852,4 @@ topics:
     slug: pda
     image_paths:
     - PDA.png
-    parameters:
-    - id: pda_flow
-      name: Поток в лёгочной артерии
-      source: 2018, AHA/ACC, Guideline for the Management of Adults With Congenital
-        Heart Disease
-    - id: pda_shunt
-      name: Направление шунта
-      source: 2018, AHA/ACC, Guideline for the Management of Adults With Congenital
-        Heart Disease
-    - id: pda_lv_overload
-      name: Признаки перегрузки ЛЖ
-      source: 2018, AHA/ACC, Guideline for the Management of Adults With Congenital
-        Heart Disease
+    parameters: []
