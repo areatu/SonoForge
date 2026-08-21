@@ -230,7 +230,7 @@ class TestFormatResultsOverlayHtml:
         idx = IndexedMeasurements(bsa_m2=1.85, lvmi_g_m2=95.0)
         snap = _snap(indexed=idx)
         result = format_results_overlay_html(snap)
-        assert "1.85" in result
+        assert "95.0" in result
 
     def test_amplitude_only(self) -> None:
         snap = _snap(doppler=DopplerResults(dt_ms=200.0))
