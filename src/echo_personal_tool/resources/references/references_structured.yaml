@@ -319,17 +319,6 @@ topics:
     - Diastolic_other1.png
     - Diastolic_other2.png
     parameters:
-    - id: ea_ratio
-      name: Соотношение E/A
-      norm_male: {low: 0.8, high: 2.0}
-      norm_female: {low: 0.8, high: 2.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
-    - id: dt
-      name: Время замедления E (DT)
-      unit: мс
-      norm_male: {low: 160.0, high: 200.0}
-      norm_female: {low: 160.0, high: 200.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
     - id: e_e_prime_avg
       name: Среднее E/e'
       norm_male: {high: 10.0}
@@ -410,11 +399,6 @@ topics:
       - name: Повышение давления
         range_male: {high: 70.0}
         range_female: {high: 70.0}
-    - id: pv_sd_ratio
-      name: Соотношение S/D лёгочных вен
-      norm_male: {low: 1.0}
-      norm_female: {low: 1.0}
-      source: 2025, ASE, Recommendations for the Evaluation of Left Ventricular Diastolic Function by Echocardiography
     - id: pv_systolic_ff
       name: Систолическая фракция наполнения ЛВ
       unit: '%'
@@ -523,18 +507,6 @@ topics:
       - name: Тяжёлое
         range_male: {low: 49}
         range_female: {low: 49}
-    - id: la_lax
-      name: Длина ЛП (ПЗК)
-      unit: мм
-      norm_male: {low: 31, high: 48}
-      norm_female: {low: 31, high: 48}
-      source: 2014, EACVI/NORRE, Normal Values for Echocardiography (Kou et al.)
-    - id: la_sax
-      name: Ширина ЛП (КЖК)
-      unit: мм
-      norm_male: {low: 27, high: 43}
-      norm_female: {low: 27, high: 43}
-      source: 2014, EACVI/NORRE, Normal Values for Echocardiography (Kou et al.)
     - id: la_antpost
       name: Передне-задний размер (PLAX)
       unit: мм
@@ -838,12 +810,6 @@ topics:
       - name: Рестриктивный
         range_male: {low: 2.1}
         range_female: {low: 2.1}
-    - id: dt_rv
-      name: Время замедления E ПЖ (DT)
-      unit: мс
-      norm_male: {low: 120, high: 230}
-      norm_female: {low: 120, high: 230}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
     - id: e_e_prime_rv
       name: E/e' ПЖ
       norm_male: {high: 6.0}
@@ -1082,12 +1048,6 @@ topics:
       - name: Повышение RAP
         range_male: {low: 21}
         range_female: {low: 21}
-    - id: ivc_collaps
-      name: Коллапс НПВ на вдохе
-      unit: '%'
-      norm_male: {low: 50}
-      norm_female: {low: 50}
-      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right Heart in Adults and Special Considerations in Pulmonary Hypertension
 - name: Митральный клапан
   slug: mitral_valve
   pathologies:
