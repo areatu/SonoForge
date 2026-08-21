@@ -300,6 +300,10 @@ body {
 .params-area { display: flex; flex-direction: column; flex: 1; }
 .table-scroll { flex: 1; overflow-y: auto; }
 
+/* ===== Smooth Content Transitions ===== */
+.content-split { transition: opacity 0.1s ease; }
+.params-area, .content-images { will-change: opacity; }
+
 /* ===== Parameter Table ===== */
 .param-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .param-table th {

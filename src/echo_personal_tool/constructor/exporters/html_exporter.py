@@ -185,28 +185,188 @@ def _format_norm(norm) -> str:
 
 
 _CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Design Tokens (DESIGN.md: VUNO-inspired clinical) ── */
+:root {
+  --bg-dark: #102135;
+  --bg-panel: #12273d;
+  --bg-control: #1a3050;
+  --bg-button: #244161;
+  --accent: #40e2de;
+  --accent-dim: #2a9d98;
+  --text: #f1f5f9;
+  --text-dim: #9bacbb;
+  --border: #2a4a6b;
+  --hairline: #1e3a5f;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e8eef4; line-height: 1.6; }  # noqa: E501
-.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
-h1 { font-size: 24px; margin-bottom: 16px; color: #f1f5f9; }
-h2 { font-size: 20px; margin: 24px 0 12px; color: #94a3b8; cursor: pointer; }
-h2:hover { color: #f1f5f9; }
-h3 { font-size: 16px; margin: 12px 0 8px; color: #e8eef4; }
-h4 { font-size: 14px; margin: 8px 0 4px; color: #94a3b8; }
-.toggle { font-size: 12px; margin-left: 8px; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-dark);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 32px; }
+
+/* ── Typography ── */
+h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+h2:hover { color: var(--accent); }
+h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 10px 0 6px;
+  color: var(--text);
+}
+h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+  color: var(--text-dim);
+}
+.toggle { font-size: 11px; margin-left: 8px; color: var(--accent); }
+
+/* ── Search ── */
 .search-box { margin-bottom: 16px; }
-.search-box input { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #e8eef4; font-size: 14px; }  # noqa: E501
-.search-box input:focus { outline: none; border-color: #3b82f6; }
-.pathology-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }  # noqa: E501
-.pathology-desc { color: #94a3b8; font-style: italic; margin: 4px 0 8px; }
-.param-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-.param-table th, .param-table td { border: 1px solid #334155; padding: 6px 10px; text-align: left; }
-.param-table th { background: #334155; font-weight: 600; font-size: 13px; }
-.param-table td { font-size: 13px; }
-.param-table code { color: #3b82f6; font-size: 12px; }
-.norm { color: #64748b; }
-.images { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
-.ref-image { max-width: 300px; max-height: 200px; border-radius: 4px; border: 1px solid #334155; }
-.img-missing { color: #64748b; font-style: italic; }
+.search-box input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-control);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+.search-box input::placeholder { color: var(--text-dim); }
+.search-box input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Pathology Cards ── */
+.pathology-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px 16px;
+  margin: 8px 0;
+}
+.pathology-card.expanded {
+  border-left: 3px solid var(--accent);
+}
+.pathology-desc {
+  color: var(--text-dim);
+  font-style: italic;
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+
+/* ── Tables (Core Component) ── */
+.param-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.param-table th,
+.param-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  line-height: 1.3;
+}
+.param-table th {
+  background: var(--bg-control);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.param-table td { font-size: 12px; }
+.param-table tr:nth-child(even) td { background: rgba(26, 48, 80, 0.3); }
+.param-table tr:hover td { background: rgba(64, 226, 222, 0.05); }
+
+/* ── Parameter IDs (Monospace) ── */
+.param-table code {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+/* ── Normative Values ── */
+.norm {
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+/* ── Gradation Sub-tables ── */
+.gradation-table { margin: 4px 0 8px; }
+.gradation-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--hairline);
+}
+.gradation-table td {
+  font-size: 11px;
+  padding: 4px 8px;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* ── Images ── */
+.images {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ref-image {
+  max-width: 300px;
+  max-height: 200px;
+  border-radius: 0;
+  border: 1px solid var(--border);
+}
+.img-missing {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* ── Layout ── */
 .section-content { padding-left: 16px; }
+
+/* ── Print Styles ── */
+@media print {
+  body { background: #fff; color: #000; }
+  .search-box { display: none; }
+  .pathology-card { border: 1px solid #ccc; background: #fff; }
+  .param-table th { background: #f0f0f0; }
+  .param-table code { color: #0891b2; }
+  .toggle { display: none; }
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
 """

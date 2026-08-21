@@ -97,6 +97,9 @@ def show_ase_reference_dialog(parent: QWidget | None = None, param_id: str | Non
             _CACHED_REFERENCE_DIALOG = dialog
     else:
         dialog = _CACHED_REFERENCE_DIALOG
+    # Apply current theme when showing cached dialog (theme may have changed)
+    if dialog._web_ref_widget is not None:
+        dialog._web_ref_widget.apply_theme()
     if param_id:
         dialog.navigate_to_param(param_id)
     # A preloaded dialog is created hidden; make sure it is shown maximized

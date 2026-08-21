@@ -79,15 +79,18 @@ async function selectPathology(slug) {
     var data = await bridge.getPathology(state.selectedTopic, slug);
     if (data.error) return;
 
-    // Description panel
-    renderDescription(data.description);
+    // Use requestAnimationFrame to batch DOM updates and avoid micro-jumps
+    requestAnimationFrame(function() {
+        // Description panel
+        renderDescription(data.description);
 
-    // Parameters
-    state.currentParams = data.parameters || [];
-    renderParams(data);
+        // Parameters
+        state.currentParams = data.parameters || [];
+        renderParams(data);
 
-    // Images
-    renderImages(data.images || []);
+        // Images
+        renderImages(data.images || []);
+    });
 }
 
 /* ===== Description ===== */
@@ -111,29 +114,32 @@ function renderParams(data) {
 
     area.hidden = false;
 
-    // Table header
-    head.innerHTML = "";
-    var hr = document.createElement("tr");
+    // Build new header
     var hasGrads = data.grad_names && data.grad_names.length > 0;
-    // When the pathology has gradations (which include "Норма"), the
-    // "Норм М" / "Норм Ж" columns duplicate the "Норма" gradation — omit them.
     var headers = hasGrads ? ["Показатель"] : ["Показатель", "Норм М", "Норм Ж"];
-    headers.forEach(function (h) {
-        var th = document.createElement("th");
-        th.textContent = h;
-        hr.appendChild(th);
-    });
     if (hasGrads) {
-        data.grad_names.forEach(function (gn) {
+        headers = headers.concat(data.grad_names);
+    }
+
+    // Check if we can reuse existing structure (same headers = no jump)
+    var existingHeaders = [];
+    head.querySelectorAll("th").forEach(function(th) { existingHeaders.push(th.textContent); });
+    var headersMatch = JSON.stringify(existingHeaders) === JSON.stringify(headers);
+
+    if (!headersMatch) {
+        // Only rebuild header when structure changes
+        head.innerHTML = "";
+        var hr = document.createElement("tr");
+        headers.forEach(function (h) {
             var th = document.createElement("th");
-            th.textContent = gn;
+            th.textContent = h;
             hr.appendChild(th);
         });
+        head.appendChild(hr);
     }
-    head.appendChild(hr);
 
-    // Table body
-    body.innerHTML = "";
+    // Build body fragment (off-DOM for performance)
+    var fragment = document.createDocumentFragment();
     if (!data.parameters || !data.parameters.length) {
         var emptyTr = document.createElement("tr");
         var emptyTd = document.createElement("td");
@@ -142,61 +148,59 @@ function renderParams(data) {
         emptyTd.className = "patho-desc";
         emptyTd.style.textAlign = "center";
         emptyTr.appendChild(emptyTd);
-        body.appendChild(emptyTr);
-        source.hidden = true;
-        return;
-    }
-    data.parameters.forEach(function (param) {
-        var tr = document.createElement("tr");
+        fragment.appendChild(emptyTr);
+    } else {
+        data.parameters.forEach(function (param) {
+            var tr = document.createElement("tr");
 
-        // Name cell with unit
-        var tdName = document.createElement("td");
-        tdName.className = "param-name";
-        var nameHtml = '<span class="param-title" data-field="name" data-param="' + escapeHtml(param.id) + '">' + escapeHtml(param.name) + '</span>';
-        if (param.unit) {
-            nameHtml += ' <span class="param-unit" data-field="unit" data-param="' + escapeHtml(param.id) + '">(' + escapeHtml(param.unit) + ')</span>';
-        }
-        tdName.innerHTML = nameHtml;
-        tdName.setAttribute("data-full", param.full_name || param.name);
-        if (param.unit) tdName.setAttribute("data-unit", param.unit);
-        tr.appendChild(tdName);
+            // Name cell with unit
+            var tdName = document.createElement("td");
+            tdName.className = "param-name";
+            var nameHtml = '<span class="param-title" data-field="name" data-param="' + escapeHtml(param.id) + '">' + escapeHtml(param.name) + '</span>';
+            if (param.unit) {
+                nameHtml += ' <span class="param-unit" data-field="unit" data-param="' + escapeHtml(param.id) + '">(' + escapeHtml(param.unit) + ')</span>';
+            }
+            tdName.innerHTML = nameHtml;
+            tdName.setAttribute("data-full", param.full_name || param.name);
+            if (param.unit) tdName.setAttribute("data-unit", param.unit);
+            tr.appendChild(tdName);
 
-        // Norm male / female — only when the pathology has no gradations
-        if (!hasGrads) {
-            var tdM = document.createElement("td");
-            tdM.className = "norm-value";
-            tdM.textContent = param.norm_male || "\u2014";
-            tdM.setAttribute("data-field", "norm_male");
-            tdM.setAttribute("data-param", param.id);
-            tr.appendChild(tdM);
+            // Norm male / female — only when the pathology has no gradations
+            if (!hasGrads) {
+                var tdM = document.createElement("td");
+                tdM.className = "norm-value";
+                tdM.textContent = param.norm_male || "\u2014";
+                tdM.setAttribute("data-field", "norm_male");
+                tdM.setAttribute("data-param", param.id);
+                tr.appendChild(tdM);
 
-            var tdF = document.createElement("td");
-            tdF.className = "norm-value";
-            tdF.textContent = param.norm_female || "\u2014";
-            tdF.setAttribute("data-field", "norm_female");
-            tdF.setAttribute("data-param", param.id);
-            tr.appendChild(tdF);
-        }
+                var tdF = document.createElement("td");
+                tdF.className = "norm-value";
+                tdF.textContent = param.norm_female || "\u2014";
+                tdF.setAttribute("data-field", "norm_female");
+                tdF.setAttribute("data-param", param.id);
+                tr.appendChild(tdF);
+            }
 
-        // Gradation cells
-        if (param.gradations) {
-            param.gradations.forEach(function (gv, gi) {
-                var td = document.createElement("td");
-                td.className = "grad-cell";
-                td.textContent = gv || "\u2014";
-                td.setAttribute("data-field", "gradation");
-                td.setAttribute("data-param", param.id);
-                if (data.grad_names) td.setAttribute("data-grad", data.grad_names[gi]);
-                if (gv && gv !== "\u2014") {
-                    var name = data.grad_names && data.grad_names[gi];
-                    var cls = gradClassForName(name);
-                    if (cls) td.classList.add(cls);
-                }
-                tr.appendChild(td);
-            });
-        }
+            // Gradation cells
+            if (param.gradations) {
+                param.gradations.forEach(function (gv, gi) {
+                    var td = document.createElement("td");
+                    td.className = "grad-cell";
+                    td.textContent = gv || "\u2014";
+                    td.setAttribute("data-field", "gradation");
+                    td.setAttribute("data-param", param.id);
+                    if (data.grad_names) td.setAttribute("data-grad", data.grad_names[gi]);
+                    if (gv && gv !== "\u2014") {
+                        var name = data.grad_names && data.grad_names[gi];
+                        var cls = gradClassForName(name);
+                        if (cls) td.classList.add(cls);
+                    }
+                    tr.appendChild(td);
+                });
+            }
 
-        // Pathology description row (below the main row)
+            // Pathology description row (below the main row)
         if (param.pathology_desc) {
             tr.addEventListener("click", function () {
                 $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
@@ -222,12 +226,17 @@ function renderParams(data) {
             descTd.colSpan = 3 + (data.grad_names ? data.grad_names.length : 0);
             descTd.textContent = param.pathology_desc;
             descTr.appendChild(descTd);
-            body.appendChild(descTr);
+            fragment.appendChild(descTr);
         }
     });
+    }
+
+    // Single DOM replacement to avoid micro-jumps
+    body.innerHTML = "";
+    body.appendChild(fragment);
 
     // Source from first param with source
-    var firstWithSource = data.parameters.find(function (p) { return p.source; });
+    var firstWithSource = data.parameters ? data.parameters.find(function (p) { return p.source; }) : null;
     if (firstWithSource) {
         showSource(firstWithSource.source);
     } else {

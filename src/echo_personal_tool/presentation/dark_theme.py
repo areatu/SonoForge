@@ -302,15 +302,15 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
 
 /* ── Line Edit ──────────────────────────────────────────────── */
 QLineEdit {{
-    border: 1px solid {p['border']};
+    border: 1px solid {p["border"]};
     border-radius: 4px;
     padding: 6px 10px;
-    color: {p['text']};
-    background: {p['bg_control']};
+    color: {p["text"]};
+    background: {p["bg_control"]};
     font-size: {font_size}px;
 }}
 QLineEdit:focus {{
-    border: 1px solid {p['accent_tab']};
+    border: 1px solid {p["accent_tab"]};
 }}
 
 /* ── Status bar ─────────────────────────────────────────────── */
@@ -739,42 +739,85 @@ QMessageBox QLabel#qt_msgbox_icon {{
 
 /* ── Constructor Dialog ─────────────────────────────────────── */
 #constructorTitleBar {{
-    background: {p['bg_panel']};
+    background: {p["bg_panel"]};
 }}
 #constructorTitleLabel {{
-    color: {p['text']};
+    color: {p["text"]};
     font-weight: bold;
     font-size: {font_size}px;
 }}
 #windowButton {{
     border: none;
-    color: {p['text']};
+    color: {p["text"]};
     font-size: 14px;
 }}
 #windowButton:hover {{
-    background: {p['bg_button_hover']};
+    background: {p["bg_button_hover"]};
 }}
 #constructorToolbar {{
-    background: {p['bg_control']};
-    border-bottom: 1px solid {p['border']};
+    background: {p["bg_control"]};
+    border-bottom: 1px solid {p["border"]};
 }}
 #constructorToolbar QPushButton {{
-    border: 1px solid {p['border']};
+    border: 1px solid {p["border"]};
     border-radius: 3px;
     padding: 2px 8px;
-    color: {p['text']};
-    background: {p['bg_panel']};
+    color: {p["text"]};
+    background: {p["bg_panel"]};
 }}
 #constructorToolbar QPushButton:hover {{
-    background: {p['bg_button_hover']};
+    background: {p["bg_button_hover"]};
 }}
 #constructorToolbar QPushButton:pressed {{
-    background: {p['bg_button_pressed']};
+    background: {p["bg_button_pressed"]};
 }}
 #constructorDirtyLabel {{
-    color: {p['accent']};
+    color: {p["accent"]};
     font-weight: bold;
     font-size: 14px;
+}}
+
+/* ── Menu Bar & Menus ──────────────────────────────────────── */
+QMenuBar {{
+    background: {p["bg_panel"]};
+    color: {p["text"]};
+    border-bottom: 1px solid {p["border"]};
+    padding: 2px 0;
+}}
+QMenuBar::item {{
+    padding: 4px 10px;
+    background: transparent;
+    border: none;
+}}
+QMenuBar::item:selected {{
+    background: {p["bg_button"]};
+    color: {p["text"]};
+}}
+QMenuBar::item:pressed {{
+    background: {p["bg_button_pressed"]};
+}}
+QMenu {{
+    background: {p["bg_panel"]};
+    color: {p["text"]};
+    border: 1px solid {p["border"]};
+    border-radius: 4px;
+    padding: 4px 0;
+}}
+QMenu::item {{
+    padding: 6px 24px;
+    background: transparent;
+}}
+QMenu::item:selected {{
+    background: {p["accent_tab"]};
+    color: {p["text"]};
+}}
+QMenu::item:disabled {{
+    color: {p["text_dim"]};
+}}
+QMenu::separator {{
+    height: 1px;
+    background: {p["border"]};
+    margin: 4px 8px;
 }}
 """
 

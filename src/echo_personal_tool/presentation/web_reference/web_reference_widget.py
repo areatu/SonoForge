@@ -161,3 +161,8 @@ class WebReferenceWidget(QWidget):
 
     def set_maximized_mode(self, maximized: bool) -> None:
         pass
+
+    def apply_theme(self) -> None:
+        """Apply current theme to the web view without full reload."""
+        if self._bridge_ready:
+            self._apply_theme_to_web()
