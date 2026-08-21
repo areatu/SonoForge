@@ -103,6 +103,17 @@ class WebReferenceBridge(QObject):
         self._store = store
 
     @Slot(result=str)
+    def reload_store(self) -> str:
+        """Reload the YAML data from disk and return success/error."""
+        if self._store is None:
+            return json.dumps({"error": "Not configured"})
+        try:
+            self._store.load()
+            return json.dumps({"ok": True})
+        except Exception as exc:
+            return json.dumps({"error": str(exc)})
+
+    @Slot(result=str)
     def get_topics(self) -> str:
         """Return topic list with labels, icons, pathology counts."""
         if self._store is None:

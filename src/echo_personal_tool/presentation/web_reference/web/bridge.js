@@ -63,6 +63,7 @@ window.bridge = {
     search: function (q) { return this._call("search", q); },
     updateParam: function (t, p, id, field, value) { return this._call("update_param", t, p, id, field, value); },
     updateGradation: function (t, p, id, grad, male, female) { return this._call("update_gradation", t, p, id, grad, male, female); },
+    reloadStore: function () { return this._call("reload_store"); },
 };
 
 // Wait for qt to be available, then initialize
