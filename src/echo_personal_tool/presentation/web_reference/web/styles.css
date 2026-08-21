@@ -1,31 +1,31 @@
 :root {
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-tertiary: #0f3460;
-    --bg-surface: #1e1e3a;
-    --bg-hover: #2a2a4a;
-    --bg-active: #3a3a6a;
-    --text-primary: #e8eaf6;
-    --text-secondary: #9fa8da;
-    --text-muted: #5c6bc0;
-    --text-caption: #c7cbf0;
-    --accent: #4a90d9;
-    --accent-hover: #5ba0e9;
-    --accent-subtle: rgba(74, 144, 217, 0.15);
-    --border: #2a2a4a;
-    --border-focus: #4a90d9;
-    --success: #22c55e;
-    --warning: #eab308;
-    --danger: #ef4444;
+    --bg-primary: #102135;
+    --bg-secondary: #12273d;
+    --bg-tertiary: #1a3050;
+    --bg-surface: #12273d;
+    --bg-hover: #244161;
+    --bg-active: #2e5580;
+    --text-primary: #f1f5f9;
+    --text-secondary: #9bacbb;
+    --text-muted: #6b8299;
+    --text-caption: #c5ced8;
+    --accent: #40e2de;
+    --accent-hover: #5ff0ea;
+    --accent-subtle: rgba(64, 226, 222, 0.12);
+    --border: #2a4a6b;
+    --border-focus: #40e2de;
+    --success: #34d399;
+    --warning: #fb923c;
+    --danger: #f87171;
     --info: #f97316;
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-    --radius-sm: 4px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
+    --shadow-md: none;
+    --shadow-lg: none;
+    --radius-sm: 2px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
     --transition-fast: 0.15s ease;
     --transition-normal: 0.25s ease;
-    --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --header-height: 44px;
 }
 
@@ -33,25 +33,25 @@
 [data-theme="light"] {
     --bg-primary: #f8fafc;
     --bg-secondary: #ffffff;
-    --bg-tertiary: #e2e8f0;
-    --bg-surface: #f1f5f9;
+    --bg-tertiary: #f1f5f9;
+    --bg-surface: #ffffff;
     --bg-hover: #e2e8f0;
     --bg-active: #cbd5e1;
     --text-primary: #0f172a;
     --text-secondary: #475569;
-    --text-muted: #94a3b8;
+    --text-muted: #64748b;
     --text-caption: #334155;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-subtle: rgba(37, 99, 235, 0.08);
+    --accent: #0891b2;
+    --accent-hover: #06b6d4;
+    --accent-subtle: rgba(8, 145, 178, 0.08);
     --border: #e2e8f0;
-    --border-focus: #2563eb;
+    --border-focus: #0891b2;
     --success: #16a34a;
     --warning: #d97706;
     --danger: #dc2626;
     --info: #ea580c;
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-md: none;
+    --shadow-lg: none;
 }
 
 /* ── VS Code Dark theme ──────────────────────────────────────── */
