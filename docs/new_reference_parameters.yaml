@@ -1,0 +1,1073 @@
+# =============================================================================
+# НОВЫЕ ПАРАМЕТРЫ СПРАВОЧНИКА: Сосудистые измерения, Щитовидная железа,
+# Почки, Органы брюшной полости, Брюшная аорта, Лимфоузлы
+# =============================================================================
+#
+# ИСТОЧНИКИ (верифицированы через официальные сайты организаций):
+#
+# AIUM Practice Parameters (https://www.aium.org/resources/practice-parameters):
+#   [1] Extracranial Cerebrovascular (2021) — DOI: 10.1002/jum.15877
+#   [2] Thyroid and Extracranial Head and Neck (2023) — DOI: 10.1002/jum.16251
+#   [3] Abdomen or Retroperitoneum (2021) — DOI: 10.1002/jum.15874
+#   [4] Abdominal Aorta (2025) — DOI: 10.1002/jum.70167
+#   [5] Native Renal Vessels (2023) — DOI: 10.1002/jum.16353
+#
+# EFSUMB Guidelines (https://efsumb.org/guidelines-recommendations-english-versions/):
+#   [6] Multiparametric Ultrasound Thyroid Nodule Evaluation Part I (2026)
+#       — DOI: 10.1055/a-2761-1191
+#   [7] Multiparametric Ultrasound Thyroid Nodule Evaluation Part II (2026)
+#       — DOI: 10.1055/a-2761-1329
+#   [8] Head and Neck Ultrasound Training Recommendations (2022)
+#       — DOI: 10.1055/a-1922-6778
+#   [9] GIUS Part 1: Examination Techniques and Normal Findings (2016)
+#       — DOI: 10.1055/s-0042-115410
+#
+# ATA Guidelines (https://www.thyroid.org/professionals/ata-professional-guidelines/):
+#   [10] Haugen et al. 2016 — 2015 ATA Guidelines for Management of Thyroid
+#        Nodules and Differentiated Thyroid Cancer, Thyroid 2016;26(10):1331-1434
+#
+# ACR TI-RADS (https://www.acr.org/Clinical-Resources/Practice-Parameters):
+#   [11] Tessler et al. 2017 — ACR Thyroid Imaging, Reporting and Data System
+#        (TI-RADS), JACR 2017;14(5):587-595
+#
+# ESVS/SVS Guidelines:
+#   [12] Naylor AR et al. 2024 ESVS Guidelines on Management of Atherosclerotic
+#        Carotid and Vertebral Artery Disease, Eur J Vasc Endovasc Surg 2024
+#   [13] Chaikof EL et al. 2018 SVS Practice Guidelines on AAA, JVS 2018
+#
+# Mannheim IMT Consensus:
+#   [14] Touboul PJ et al. 2012 Mannheim Carotid Intima-Media Thickness and
+#        Plaque Consensus, Cerebrovasc Dis 2012;33:290-296
+#
+# Другие:
+#   [15] Defined by Expert Consensus (European Thyroid Association/EFSUMB)
+#   [16] Defined by Expert Consensus (AIUM/EFSUMB)
+
+# =============================================================================
+# ФОРМАТ: Добавляется к существующему списку topics в YAML
+# =============================================================================
+topics:
+
+# =============================================================================
+# 1. СОННЫЕ АРТЕРИИ (Common Carotid Artery, Internal Carotid Artery)
+# =============================================================================
+- name: Сонные артерии
+  slug: carotid_arteries
+  pathologies:
+  - name: Структура стенки (IMT)
+    slug: carotid_imt
+    description: Толщина комплекса интима-медиа (КИМ) сонной артерии — маркер атеросклероза
+    parameters:
+    - id: cca_imt
+      name: КИМ общей сонной артерии (CCA IMT)
+      full_name: Толщина комплекса интима-медиа общей сонной артерии
+      unit: мм
+      norm_male: {high: 0.9}
+      norm_female: {high: 0.9}
+      pathology_desc: "КИМ ≥0.9 мм — утолщение; ≥1.0 мм — гиперплазия; ≥1.5 мм — бляшка (Mannheim consensus 2012)"
+      source: 2012, Mannheim Consensus, Touboul et al., Cerebrovasc Dis 2012;33:290-296; 2024 ESVS Guidelines
+      gradations:
+      - name: Норма
+        range_male: {high: 0.9}
+        range_female: {high: 0.9}
+      - name: Утолщение (diffuse thickening)
+        range_male: {low: 0.9, high: 1.0}
+        range_female: {low: 0.9, high: 1.0}
+      - name: Гиперплазия
+        range_male: {low: 1.0, high: 1.5}
+        range_female: {low: 1.0, high: 1.5}
+      - name: Бляшка
+        range_male: {low: 1.5}
+        range_female: {low: 1.5}
+
+  - name: Стеноз сонной артерии
+    slug: carotid_stenosis
+    description: Степени стеноза внутренней сонной артерии по ESVS/ACAS/ECST
+    parameters:
+    - id: ica_stenosis_pc
+      name: Стеноз ВСА (%)
+      full_name: Степень стеноза внутренней сонной артерии по диаметру (%)
+      unit: '%'
+      norm_male: {high: 50}
+      norm_female: {high: 50}
+      pathology_desc: "Стеноз ВСА ≥50% — гемодинамически значимый; ≥70% — тяжёлый; ≥90% — критический"
+      source: 2024 ESVS Guidelines, Naylor et al., Eur J Vasc Endovasc Surg 2024; 2003 NASCET/ECST criteria
+      gradations:
+      - name: Норма
+        range_male: {high: 50}
+        range_female: {high: 50}
+      - name: Умеренный (50–69%)
+        range_male: {low: 50, high: 69}
+        range_female: {low: 50, high: 69}
+      - name: Выраженный (70–99%)
+        range_male: {low: 70, high: 99}
+        range_female: {low: 70, high: 99}
+      - name: Окклюзия
+        range_male: {low: 100}
+        range_female: {low: 100}
+
+    - id: ica_peak_systolic_velocity
+      name: ПСВ ВСА (ICA PSV)
+      full_name: Пиковая систолическая скорость кровотока во внутренней сонной артерии
+      unit: см/с
+      norm_male: {high: 125}
+      norm_female: {high: 125}
+      pathology_desc: "PSV >125 см/с — подозрение на стеноз ≥50%; >230 см/с — стеноз ≥70%"
+      source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice Parameter
+      gradations:
+      - name: Норма
+        range_male: {high: 125}
+        range_female: {high: 125}
+      - name: Стеноз 50–69%
+        range_male: {low: 125, high: 230}
+        range_female: {low: 125, high: 230}
+      - name: Стеноз 70–99%
+        range_male: {low: 230, high: 400}
+        range_female: {low: 230, high: 400}
+      - name: Окклюзия
+        range_male: {low: 0, high: 0}
+        range_female: {low: 0, high: 0}
+
+    - id: ica_edv
+      name: КДВ ВСА (ICA EDV)
+      full_name: Конечно-диастолическая скорость кровотока во внутренней сонной артерии
+      unit: см/с
+      norm_male: {high: 40}
+      norm_female: {high: 40}
+      pathology_desc: "EDV >40 см/с — стеноз ≥50%; >100 см/с — стеноз ≥70%"
+      source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice Parameter
+      gradations:
+      - name: Норма
+        range_male: {high: 40}
+        range_female: {high: 40}
+      - name: Стеноз 50–69%
+        range_male: {low: 40, high: 100}
+        range_female: {low: 40, high: 100}
+      - name: Стеноз 70–99%
+        range_male: {low: 100, high: 150}
+        range_female: {low: 100, high: 150}
+      - name: Окклюзия
+        range_male: {low: 150}
+        range_female: {low: 150}
+
+    - id: ica_cca_ratio
+      name: Соотношение PSV ВСА/ОСА (ICA/CCA ratio)
+      full_name: Отношение пиковой систолической скорости внутренней сонной артерии к общей сонной артерии
+      unit: ""
+      norm_male: {high: 2.0}
+      norm_female: {high: 2.0}
+      pathology_desc: "Ratio >2.0 — стеноз ≥50%; >4.0 — стеноз ≥70%"
+      source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice Parameter
+      gradations:
+      - name: Норма
+        range_male: {high: 2.0}
+        range_female: {high: 2.0}
+      - name: Стеноз 50–69%
+        range_male: {low: 2.0, high: 4.0}
+        range_female: {low: 2.0, high: 4.0}
+      - name: Стеноз ≥70%
+        range_male: {low: 4.0}
+        range_female: {low: 4.0}
+
+  - name: Диаметр сонной артерии
+    slug: carotid_diameter
+    description: Диаметр общей и внутренней сонной артерии
+    parameters:
+    - id: cca_diameter
+      name: Диаметр ОСА
+      full_name: Диаметр общей сонной артерии в диастолу
+      unit: мм
+      norm_male: {low: 6.0, high: 8.0}
+      norm_female: {low: 5.5, high: 7.0}
+      pathology_desc: "Диаметр >8.0 мм (муж.) / >7.0 мм (жен.) — дилатация; >10 мм — аневризма"
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+      gradations:
+      - name: Норма
+        range_male: {low: 6.0, high: 8.0}
+        range_female: {low: 5.5, high: 7.0}
+      - name: Дилатация
+        range_male: {low: 8.0, high: 10.0}
+        range_female: {low: 7.0, high: 10.0}
+      - name: Аневризма
+        range_male: {low: 10.0}
+        range_female: {low: 10.0}
+
+    - id: ica_diameter
+      name: Диаметр ВСА
+      full_name: Диаметр внутренней сонной артерии (проксимальный сегмент)
+      unit: мм
+      norm_male: {low: 4.0, high: 6.5}
+      norm_female: {low: 3.5, high: 6.0}
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+
+# =============================================================================
+# 2. ПОЗВОНОЧНЫЕ АРТЕРИИ (Vertebral Arteries)
+# =============================================================================
+- name: Позвоночные артерии
+  slug: vertebral_arteries
+  pathologies:
+  - name: Гемодинамика позвоночных артерий
+    slug: vertebral_hemodynamics
+    description: Кровоток в позвоночных артериях и признаки стеноза/ретроградного кровотока
+    parameters:
+    - id: va_peak_systolic_velocity
+      name: ПСВ позвоночной артерии (VA PSV)
+      full_name: Пиковая систолическая скорость в позвоночной артерии
+      unit: см/с
+      norm_male: {low: 18, high: 60}
+      norm_female: {low: 18, high: 60}
+      pathology_desc: "PSV >100 см/с — подозрение на стеноз проксимального отдела"
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+      gradations:
+      - name: Норма
+        range_male: {low: 18, high: 60}
+        range_female: {low: 18, high: 60}
+      - name: Увеличена (>60 см/с)
+        range_male: {low: 60, high: 100}
+        range_female: {low: 60, high: 100}
+      - name: Подозрение на стеноз
+        range_male: {low: 100}
+        range_female: {low: 100}
+
+    - id: va_edv
+      name: КДВ позвоночной артерии (VA EDV)
+      full_name: Конечно-диастолическая скорость в позвоночной артерии
+      unit: см/с
+      norm_male: {low: 5, high: 20}
+      norm_female: {low: 5, high: 20}
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+
+    - id: va_flow_direction
+      name: Направление кровотока
+      full_name: Направление кровотока в позвоночной артерии (антероградное/ретроградное)
+      unit: ""
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+      pathology_desc: "Ретроградный кровоток — признак синдрома обкрадывания (subclavian steal)"
+
+    - id: va_osis
+      name: Систолическая скорость в позвоночной артерии (OSI)
+      full_name: Орбисальный индекс (отношение PSV позвоночной артерии к PSV контралатеральной)
+      unit: ""
+      norm_male: {high: 1.5}
+      norm_female: {high: 1.5}
+      pathology_desc: "Асимметрия >1.5 раза — подозрение на гемодинамически значимый стеноз одной из ВА"
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+
+# =============================================================================
+# 3. ЩИТОВИДНАЯ ЖЕЛЕЗА
+# =============================================================================
+- name: Щитовидная железа
+  slug: thyroid_gland
+  pathologies:
+  - name: Размеры и объём щитовидной железы
+    slug: thyroid_dimensions
+    description: Размеры долей и перешейка щитовидной железы, суммарный объём
+    parameters:
+    - id: thyroid_volume
+      name: Объём щитовидной железы
+      full_name: Суммарный объём обеих долей щитовидной железы
+      unit: мл
+      norm_male: {low: 7, high: 25}
+      norm_female: {low: 4, high: 18}
+      pathology_desc: "Увеличение объёма >18 мл (жен.) / >25 мл (муж.) — зоб (diffuse goiter)"
+      source: 2023 AIUM Thyroid Practice Parameter [2]; 2022 EFSUMB Head/Neck Training [8]; WHO classification of goiter
+      gradations:
+      - name: Норма
+        range_male: {low: 7, high: 25}
+        range_female: {low: 4, high: 18}
+      - name: Увеличение (I степень)
+        range_male: {low: 25, high: 40}
+        range_female: {low: 18, high: 30}
+      - name: Увеличение (II степень)
+        range_male: {low: 40, high: 80}
+        range_female: {low: 30, high: 60}
+      - name: Увеличение (III степень)
+        range_male: {low: 80}
+        range_female: {low: 60}
+
+    - id: thyroid_lobe_length
+      name: Длина доли
+      full_name: Длина доли щитовидной железы (сагиттальный размер)
+      unit: мм
+      norm_male: {high: 50}
+      norm_female: {high: 50}
+      pathology_desc: "Длина >50 мм — увеличение доли"
+      source: 2023 AIUM Thyroid Practice Parameter [2]
+
+    - id: thyroid_lobe_width
+      name: Ширина доли
+      full_name: Ширина (медиолатеральный размер) доли щитовидной железы
+      unit: мм
+      norm_male: {high: 25}
+      norm_female: {high: 20}
+      source: 2023 AIUM Thyroid Practice Parameter [2]
+
+    - id: thyroid_isthmus_thickness
+      name: Толщина перешейка
+      full_name: Передне-задний размер перешейка щитовидной железы
+      unit: мм
+      norm_male: {high: 4}
+      norm_female: {high: 4}
+      pathology_desc: "Толщина >4 мм — утолщение перешейка (признак аутоиммунного тиреоидита, зоба)"
+      source: 2023 AIUM Thyroid Practice Parameter [2]
+
+  - name: Структура паренхимы щитовидной железы
+    slug: thyroid_echostructure
+    description: Эхогенность и однородность паренхимы щитовидной железы
+    parameters:
+    - id: thyroid_echostructure
+      name: Эхоструктура
+      full_name: Эхогенность паренхимы щитовидной железы относительно мышц шеи
+      unit: ""
+      source: 2023 AIUM Thyroid Practice Parameter [2]; 2026 EFSUMB Thyroid Guidelines [6][7]
+      gradations:
+      - name: Нормоэхогенная (норма)
+      - name: Диффузно гипоэхогенная (тиреоидит)
+      - name: Диффузно гиперэхогенная
+      - name: Неоднородная (смешанная)
+
+    - id: thyroid_vascularity
+      name: Васкуляризация
+      full_name: Степень васкуляризации паренхимы по цветному допплеровскому картированию
+      unit: ""
+      source: 2023 AIUM Thyroid Practice Parameter [2]
+      gradations:
+      - name: Нормальная васкуляризация
+      - name: Сниженная
+      - name: Повышенная (thyroid inferno — тиреотоксикоз)
+      - name: Абсолютное отсутствие кровотока
+
+  - name: Узловые образования щитовидной железы
+    slug: thyroid_nodules
+    description: Классификация узловых образований по ACR TI-RADS и EU-TIRADS
+    parameters:
+    - id: nodule_composition
+      name: Состав узла (ACR TI-RADS)
+      full_name: Состав (scripción) узлового образования по ACR TI-RADS
+      unit: ""
+      source: 2017, ACR TI-RADS, Tessler et al., JACR 2017;14(5):587-595 [11]
+      gradations:
+      - name: Полностью жидкостный (0 баллов)
+      - name: Смешанный成分 (микрокальцинаты) (1 балл)
+      - name: Смешанный компонент (суспензия) (2 балла)
+      - name: Солидный или почти солидный (3 балла)
+      - name: Очень гипоэхогенный (4 балла)
+
+    - id: nodule_echostructure
+      name: Эхогенность узла (ACR TI-RADS)
+      full_name: Эхогенность узлового образования по ACR TI-RADS
+      unit: ""
+      source: 2017, ACR TI-RADS [11]; 2016 ATA Guidelines [10]
+      gradations:
+      - name: Анаэхогенный (0 баллов)
+      - name: Гиперэхогенный (1 балл)
+      - name: Изоэхогенный (2 балла)
+      - name: Гипоэхогенный (3 балла)
+      - name: Очень гипоэхогенный (4 балла)
+
+    - id: nodule_margins
+      name: Форма и контуры узла (ACR TI-RADS)
+      full_name: Форма, контуры и края узлового образования по ACR TI-RADS
+      unit: ""
+      source: 2017, ACR TI-RADS [11]
+      gradations:
+      - name: Округлый/овальный, гладкие контуры (0 баллов)
+      - name: Вытянутый (<высоты), гладкие (0 баллов)
+      - name: Неправильные контуры (2 балла)
+      - name: Зубчатые контуры (3 балла)
+      - name: Экстракапсулярное распространение (3 балла)
+
+    - id: nodule_calcifications
+      name: Кальцинаты узла (ACR TI-RADS)
+      full_name: Тип кальцинатов в узловом образовании по ACR TI-RADS
+      unit: ""
+      source: 2017, ACR TI-RADS [11]
+      gradations:
+      - name: Отсутствуют (0 баллов)
+      - name: Грубые (крупные) кальцинаты (1 балл)
+      - name: Микрокальцинаты (3 балла)
+      - name: Микрокальцинаты + экстракапсулярное распространение (3 балла)
+
+    - id: nodule_height_width_ratio
+      name: Соотношение высота/ширина (taller-than-wide)
+      full_name: Соотношение передне-задний размер к медиолатеральному (>1 — taller-than-wide)
+      unit: ""
+      source: 2017, ACR TI-RADS [11]; 2016 ATA Guidelines [10]
+      gradations:
+      - name: Шире, чем высокий (0 баллов)
+      - name: Выше, чем широкий (3 балла)
+
+    - id: nodule_tirads_category
+      name: Категория ACR TI-RADS
+      full_name: Итоговая категория узлового образования по ACR TI-RADS
+      unit: ""
+      source: 2017, ACR TI-RADS [11]
+      gradations:
+      - name: TR1 — Доброкачественный (0 баллов)
+      - name: TR2 — Не вызывающий подозрения (2 балла)
+      - name: TR3 — Умеренно подозрительный (3 балла)
+      - name: TR4 — Вызывающий подозрение (4–6 баллов)
+      - name: TR5 — Высокоподозрительный (≥7 баллов)
+
+    - id: nodule_size
+      name: Максимальный размер узла
+      full_name: Максимальный (AP) диаметр узлового образования
+      unit: мм
+      source: 2016 ATA Guidelines [10]; 2017 ACR TI-RADS [11]
+      pathology_desc: ">10 мм — рекомендована тонкоигольная аспирационная биопсия (FNA) при подозрительных признаках"
+
+    - id: nodule_vascularity
+      name: васкуляризация узла
+      full_name: Паттерн кровотока в узловом образовании по цветному допплеровскому картированию
+      unit: ""
+      source: 2023 AIUM Thyroid Practice Parameter [2]; 2026 EFSUMB Thyroid Guidelines [6][7]
+      gradations:
+      - name: Аvascularный
+      - name: Периферический кровоток (rim flow)
+      - name: Центральный кровоток
+      - name: Смешанный (периферический + центральный)
+      - name: Массивный (hypervascular)
+
+# =============================================================================
+# 4. ПОЧКИ
+# =============================================================================
+- name: Почки
+  slug: kidneys
+  pathologies:
+  - name: Размеры почек
+    slug: kidney_dimensions
+    description: Длина, ширина, передне-задний размер почки
+    parameters:
+    - id: kidney_length
+      name: Длина почки
+      full_name: Длина почки (краниокаудальный размер) в стандартной проекции
+      unit: мм
+      norm_male: {low: 100, high: 130}
+      norm_female: {low: 90, high: 120}
+      pathology_desc: "Длина <90 мм — уменьшение (атрофия); >140 мм — увеличение"
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2023 AIUM Native Renal Vessels [5]
+      gradations:
+      - name: Атрофия
+        range_male: {high: 90}
+        range_female: {high: 80}
+      - name: Норма
+        range_male: {low: 100, high: 130}
+        range_female: {low: 90, high: 120}
+      - name: Увеличение
+        range_male: {low: 140}
+        range_female: {low: 130}
+
+    - id: kidney_width
+      name: Ширина почки
+      full_name: Ширина почки (медиолатеральный размер)
+      unit: мм
+      norm_male: {low: 45, high: 65}
+      norm_female: {low: 40, high: 60}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: kidney_cortex_thickness
+      name: Толщина кортикального слоя
+      full_name: Толщина кортикального слоя почки
+      unit: мм
+      norm_male: {low: 8, high: 18}
+      norm_female: {low: 8, high: 18}
+      pathology_desc: "<8 мм — истончение коры (хроническая болезнь почек); отёчность >20 мм — острый пиелонефрит"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Истончение (<8 мм)
+        range_male: {high: 8}
+        range_female: {high: 8}
+      - name: Норма
+        range_male: {low: 8, high: 18}
+        range_female: {low: 8, high: 18}
+      - name: Утолщение (>18 мм)
+        range_male: {low: 18}
+        range_female: {low: 18}
+
+    - id: kidney_pelvis_width
+      name: Ширина лоханки
+      full_name: Ширина почечной лоханки (внутриорганный отдел) в зоне ворот
+      unit: мм
+      norm_male: {high: 10}
+      norm_female: {high: 10}
+      pathology_desc: ">10 мм — пиелоэктазия; >20 мм — выраженная гидронефрозная деформация"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Норма
+        range_male: {high: 10}
+        range_female: {high: 10}
+      - name: Пиелоэктазия
+        range_male: {low: 10, high: 20}
+        range_female: {low: 10, high: 20}
+      - name: Гидронефроз
+        range_male: {low: 20}
+        range_female: {low: 20}
+
+  - name: Эхогенность почечной паренхимы
+    slug: kidney_echostructure
+    description: Эхогенность кортикального слоя относительно печени и паренхимы
+    parameters:
+    - id: kidney_cortex_echogenicity
+      name: Эхогенность коры почки
+      full_name: Эхогенность кортикального слоя почки относительно печени (по нормативной шкале)
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Гипоэхогенная (норма — ниже эхогенности печени)
+      - name: Изоэхогенная ( равноэхогенная печени)
+      - name: Гиперэхогенная (выше эхогенности печени — ХБП, гломерулонефрит)
+      - name: Неоднородная
+
+    - id: kidney_sinus_echogenicity
+      name: Эхогенность синуса
+      full_name: Эхогенность почечного синуса (жировая клетчатка ворот)
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Высокоэхогенная (норма)
+      - name: Сниженная эхогенность (отёк, пиелонефрит)
+      - name: Неоднородная
+
+  - name: Гидронефроз
+    slug: hydronephrosis
+    description: Степени гидронефроза по классификации SFU (Society for Fetal Urology)
+    parameters:
+    - id: hydronephrosis_grade
+      name: Степень гидронефроза
+      full_name: Степень расширения чашечно-лоханочной системы (SFU grading)
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]; Society for Fetal Urology (SFU) classification
+      gradations:
+      - name: SFU 0 — Норма
+      - name: SFU 1 — Расширение только лоханки
+      - name: SFU 2 — Расширение лоханки + отдельных чашечек
+      - name: SFU 3 — Диффузное расширение всех чашечек + лоханки
+      - name: SFU 4 — Диффузное расширение + истончение коры (>2 мм)
+
+# =============================================================================
+# 5. ОРГАНЫ БРЮШНОЙ ПОЛОСТИ
+# =============================================================================
+- name: Органы брюшной полости
+  slug: abdominal_organs
+  pathologies:
+  - name: Печень
+    slug: liver
+    description: Размеры, структура и эхогенность печени
+    parameters:
+    - id: liver_size
+      name: Размер печени по Курлову
+      full_name: Длина печени по Курлову (правая доля по среднеключичной линии)
+      unit: см
+      norm_male: {low: 10, high: 14}
+      norm_female: {low: 10, high: 13}
+      pathology_desc: ">15 см — гепатомегалия (цирроз, застойная сердечная недостаточность, опухоли)"
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+      gradations:
+      - name: Норма
+        range_male: {low: 10, high: 14}
+        range_female: {low: 10, high: 13}
+      - name: Гепатомегалия (умеренная)
+        range_male: {low: 15, high: 18}
+        range_female: {low: 14, high: 17}
+      - name: Гепатомегалия (выраженная)
+        range_male: {low: 18}
+        range_female: {low: 17}
+
+    - id: liver_left_lobe_length
+      name: Длина левой доли печени
+      full_name: Краниокаудальный размер левой доли печени
+      unit: см
+      norm_male: {low: 5, high: 8}
+      norm_female: {low: 5, high: 7}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: liver_echogenicity
+      name: Эхогенность печени
+      full_name: Эхогенность паренхимы печени относительно почечной коры и селезёнки
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+      gradations:
+      - name: Нормальная (умеренноэхогенная)
+      - name: Повышенная (стеатоз — fatty liver)
+      - name: Пониженная (отёк, острый гепатит)
+      - name: Неоднородная (цирроз)
+
+    - id: liver_vessels
+      name: Вены печени (IVC, печеночные вены)
+      full_name: Диаметр нижней полой вены и печеночных вен в конце диастолы
+      unit: мм
+      norm_male: {low: 15, high: 25}
+      norm_female: {low: 15, high: 25}
+      pathology_desc: ">25 мм — расширение (застойная СН); <10 мм — гиповолемия"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: portal_vein_diameter
+      name: Диаметр воротной вены
+      full_name: Диаметр воротной вены (внутрипеченочный сегмент) в конце экспираторной фазы
+      unit: мм
+      norm_male: {low: 10, high: 13}
+      norm_female: {low: 10, high: 13}
+      pathology_desc: ">13 мм — портальная гипертензия; >15 мм — выраженная ПГ"
+      source: 2021 AIUM Abdomen Practice Parameter [3]; 2016 EFSUMB GIUS Part 1 [9]
+      gradations:
+      - name: Норма
+        range_male: {low: 10, high: 13}
+        range_female: {low: 10, high: 13}
+      - name: Умеренная дилатация
+        range_male: {low: 13, high: 15}
+        range_female: {low: 13, high: 15}
+      - name: Выраженная дилатация
+        range_male: {low: 15}
+        range_female: {low: 15}
+
+  - name: Желчный пузырь
+    slug: gallbladder
+    description: Размеры, стенки и содержимое желчного пузыря
+    parameters:
+    - id: gallbladder_length
+      name: Длина желчного пузыря
+      full_name: Продольный размер желчного пузыря (от дна до шейки)
+      unit: мм
+      norm_male: {low: 60, high: 100}
+      norm_female: {low: 60, high: 100}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: gallbladder_width
+      name: Ширина желчного пузыря
+      full_name: Поперечный (anteroposterior) размер желчного пузыря
+      unit: мм
+      norm_male: {low: 20, high: 40}
+      norm_female: {low: 20, high: 40}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: gallbladder_wall_thickness
+      name: Толщина стенки ЖП
+      full_name: Толщина стенки желчного пузыря (при条件下 отсутствия сокращения)
+      unit: мм
+      norm_male: {high: 3}
+      norm_female: {high: 3}
+      pathology_desc: ">3 мм — утолщение стенки (острый/хронический холецистит, реактивное утолщение)"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Норма
+        range_male: {high: 3}
+        range_female: {high: 3}
+      - name: Утолщение стенки
+        range_male: {low: 3, high: 5}
+        range_female: {low: 3, high: 5}
+      - name: Значительное утолщение (>5 мм)
+        range_male: {low: 5}
+        range_female: {low: 5}
+
+    - id: gallbladder_sludge
+      name: Билиарный сладж
+      full_name: Наличие билиарного сладжа (гиперэхогенной подвижной суспензии) в ЖП
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+  - name: Поджелудочная железа
+    slug: pancreas
+    description: Размеры, структура и эхогенность поджелудочной железы
+    parameters:
+    - id: pancreas_head_diameter
+      name: Передне-задний размер головки ПЖ
+      full_name: Передне-задний размер головки поджелудочной железы
+      unit: мм
+      norm_male: {low: 20, high: 35}
+      norm_female: {low: 20, high: 35}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: pancreas_body_diameter
+      name: Передне-задний размер тела ПЖ
+      full_name: Передне-задний размер тела поджелудочной железы
+      unit: мм
+      norm_male: {low: 10, high: 20}
+      norm_female: {low: 10, high: 20}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: pancreas_tail_diameter
+      name: Передне-задний размер хвоста ПЖ
+      full_name: Передне-задний размер хвоста поджелудочной железы
+      unit: мм
+      norm_male: {low: 15, high: 25}
+      norm_female: {low: 15, high: 25}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: pancreas_echogenicity
+      name: Эхогенность ПЖ
+      full_name: Эхогенность паренхимы поджелудочной железы относительно печени
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Нормальная (гомогенная, изо-/умеренно гиперэхогенная)
+      - name: Повышенная (липоматоз, возрастные изменения)
+      - name: Пониженная (острый панкреатит, отёк)
+      - name: Неоднородная (хронический панкреатит, опухоль)
+
+    - id: pancreatic_duct_width
+      name: Ширина протока ПЖ (Вирсунгов проток)
+      full_name: Диаметр основного панкреатического протока ( ductus Wirsungi )
+      unit: мм
+      norm_male: {high: 3}
+      norm_female: {high: 3}
+      pathology_desc: ">3 мм — дилатация протока (хронический панкреатит, обструкция)"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Норма
+        range_male: {high: 3}
+        range_female: {high: 3}
+      - name: Умеренная дилатация (3–5 мм)
+        range_male: {low: 3, high: 5}
+        range_female: {low: 3, high: 5}
+      - name: Выраженная дилатация (>5 мм)
+        range_male: {low: 5}
+        range_female: {low: 5}
+
+  - name: Селезёнка
+    slug: spleen
+    description: Размеры и эхогенность селезёнки
+    parameters:
+    - id: spleen_length
+      name: Длина селезёнки
+      full_name: Краниокаудальный размер селезёнки в стандартной проекции
+      unit: мм
+      norm_male: {low: 80, high: 130}
+      norm_female: {low: 80, high: 120}
+      pathology_desc: ">130 мм (муж.) / >120 мм (жен.) — спленомегалия"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Норма
+        range_male: {low: 80, high: 130}
+        range_female: {low: 80, high: 120}
+      - name: Умеренная спленомегалия
+        range_male: {low: 130, high: 180}
+        range_female: {low: 120, high: 160}
+      - name: Выраженная спленомегалия
+        range_male: {low: 180}
+        range_female: {low: 160}
+
+    - id: spleen_width
+      name: Ширина селезёнки
+      full_name: Поперечный (медиолатеральный) размер селезёнки
+      unit: мм
+      norm_male: {low: 40, high: 70}
+      norm_female: {low: 40, high: 65}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: spleen_echogenicity
+      name: Эхогенность селезёнки
+      full_name: Эхогенность паренхимы селезёнки относительно печени
+      unit: ""
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+      gradations:
+      - name: Нормальная (однородная, изоэхогенная печени)
+      - name: Повышенная (гипертензия в системе v. lienalis)
+      - name: Пониженная (острый спленит, инфаркт)
+      - name: Неоднородная (лимфома, метастазы)
+
+  - name: Надпочечники
+    slug: adrenal_glands
+    description: Размеры и структура надпочечников
+    parameters:
+    - id: adrenal_gland_length
+      name: Длина надпочечника
+      full_name: Краниокаудальный размер надпочечника
+      unit: мм
+      norm_male: {low: 30, high: 60}
+      norm_female: {low: 30, high: 60}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: adrenal_gland_width
+      name: Ширина тела надпочечника
+      full_name: Поперечный размер тела надпочечника
+      unit: мм
+      norm_male: {low: 10, high: 20}
+      norm_female: {low: 10, high: 20}
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+    - id: adrenal_gland_arms
+      name: Ножки надпочечника
+      full_name: Толщина ножек (крыльев) надпочечника
+      unit: мм
+      norm_male: {high: 5}
+      norm_female: {high: 5}
+      pathology_desc: ">5 мм — утолщение ножек (гиперплазия, инфильтрация)"
+      source: 2021 AIUM Abdomen Practice Parameter [3]
+
+# =============================================================================
+# 6. БРЮШНАЯ АОРТА
+# =============================================================================
+- name: Брюшная аорта
+  slug: abdominal_aorta
+  pathologies:
+  - name: Диаметр брюшной аорты
+    slug: aaa_diameter
+    description: Передне-задний и поперечный диаметры брюшной аорты
+    parameters:
+    - id: aorta_diameter_ant
+      name: ПЗ-диаметр брюшной аорты
+      full_name: Передне-задний (anteroposterior) диаметр брюшной аорты на уровне 1-2 см ниже отхождения ЧА
+      unit: мм
+      norm_male: {low: 15, high: 30}
+      norm_female: {low: 15, high: 28}
+      pathology_desc: ">30 мм (муж.) / >28 мм (жен.) — аневризма; >55 мм — показание к плановой операции"
+      source: 2025 AIUM Abdominal Aorta Practice Parameter [4]; 2018 SVS AAA Guidelines [13]
+      gradations:
+      - name: Норма
+        range_male: {low: 15, high: 30}
+        range_female: {low: 15, high: 28}
+      - name: Дилатация (30–40 мм)
+        range_male: {low: 30, high: 40}
+        range_female: {low: 28, high: 40}
+      - name: Малая аневризма (40–54 мм)
+        range_male: {low: 40, high: 54}
+        range_female: {low: 40, high: 54}
+      - name: Большая аневризма (55–69 мм)
+        range_male: {low: 55, high: 69}
+        range_female: {low: 55, high: 69}
+      - name: Критическая аневризма (≥70 мм)
+        range_male: {low: 70}
+        range_female: {low: 70}
+
+    - id: aorta_diameter_trans
+      name: Поперечный диаметр брюшной аорты
+      full_name: Поперечный (laterolateral) диаметр брюшной аорты
+      unit: мм
+      norm_male: {low: 15, high: 30}
+      norm_female: {low: 15, high: 28}
+      source: 2025 AIUM Abdominal Aorta Practice Parameter [4]; 2018 SVS AAA Guidelines [13]
+
+    - id: aorta_iliac_diameter
+      name: Диаметр подвздошных артерий
+      full_name: Диаметр общих подвздошных артерий
+      unit: мм
+      norm_male: {low: 8, high: 14}
+      norm_female: {low: 8, high: 14}
+      pathology_desc: ">15 мм — аневризма подвздошных артерий"
+      source: 2025 AIUM Abdominal Aorta Practice Parameter [4]
+
+  - name: Атеросклеротические изменения брюшной аорты
+    slug: aaa_atherosclerosis
+    description: Стенозирующие и окклюзионные поражения брюшной аорты
+    parameters:
+    - id: aorta_stenosis
+      name: Стеноз брюшной аорты (%)
+      full_name: Степень стеноза брюшной аорты по диаметру (%)
+      unit: '%'
+      norm_male: {high: 50}
+      norm_female: {high: 50}
+      source: 2025 AIUM Abdominal Aorta Practice Parameter [4]
+      gradations:
+      - name: Норма
+        range_male: {high: 50}
+        range_female: {high: 50}
+      - name: Умеренный стеноз (50–69%)
+        range_male: {low: 50, high: 69}
+        range_female: {low: 50, high: 69}
+      - name: Выраженный стеноз (70–99%)
+        range_male: {low: 70, high: 99}
+        range_female: {low: 70, high: 99}
+      - name: Окклюзия
+        range_male: {low: 100}
+        range_female: {low: 100}
+
+    - id: aorta_peak_systolic_velocity
+      name: ПСВ брюшной аорты
+      full_name: Пиковая систолическая скорость кровотока в брюшной аорте
+      unit: см/с
+      norm_male: {low: 50, high: 120}
+      norm_female: {low: 50, high: 120}
+      source: 2025 AIUM Abdominal Aorta Practice Parameter [4]
+
+    - id: aorta_calcification
+      name: Кальцификация стенки аорты
+      full_name: Степень кальцификации стенки брюшной аорты
+      unit: ""
+      source: 2025 AIUM Abdominal Aorta Practice Parameter [4]
+      gradations:
+      - name: Нет кальцификации
+      - name: Незначительная (<50% окружности)
+      - name: Умеренная (50–75% окружности)
+      - name: Тяжёлая (>75% окружности)
+
+  - name: Аневризма брюшной аорты — классификация
+    slug: aaa_classification
+    description: Морфологическая классификация аневризм брюшной аорты
+    parameters:
+    - id: aaa_morphology
+      name: Морфология аневризмы
+      full_name: Тип аневризмы по морфологии
+      unit: ""
+      source: 2018 SVS AAA Guidelines [13]
+      gradations:
+      - name: Мешотчатая (saccular)
+      - name: Веретенообразная (fusiform)
+
+    - id: aaa_relation_to_renal
+      name: Соотношение с почечными артериями
+      full_name: Расположение дистального края аневризмы относительно почечных артерий
+      unit: ""
+      source: 2018 SVS AAA Guidelines [13]
+      gradations:
+      - name: Инфраренальная (ниже почечных артерий)
+      - name: Паратрениальная (на уровне почечных артерий)
+      - name: Параадренальная/преренальная (выше/на уровне почечных артерий)
+
+# =============================================================================
+# 7. ЛИМФОУЗЛЫ (superficial lymph nodes)
+# =============================================================================
+- name: Лимфоузлы
+  slug: lymph_nodes
+  pathologies:
+  - name: Шейные лимфоузлы
+    slug: cervical_lymph_nodes
+    description: Классификация шейных лимфоузлов (I–VI уровни) по TNM / AJCC
+    parameters:
+    - id: ln_long_diameter
+      name: Длинник лимфоузла (short axis)
+      full_name: Поперечный (короткая ось, short-axis) диаметр лимфоузла
+      unit: мм
+      norm_male: {high: 8}
+      norm_female: {high: 8}
+      pathology_desc: "Short-axis >8 мм (шейные), >10 мм (паховые), >11 мм (подмышечные) — патологическое увеличение"
+      source: 2023 AIUM Thyroid/Head-Neck Practice Parameter [2]; 2022 EFSUMB Head/Neck Training [8]; AJCC 8th ed.
+      gradations:
+      - name: Норма
+        range_male: {high: 8}
+        range_female: {high: 8}
+      - name: Увеличение (подозрительные)
+        range_male: {low: 8, high: 10}
+        range_female: {low: 8, high: 10}
+      - name: Патологическое увеличение
+        range_male: {low: 10}
+        range_female: {low: 10}
+
+    - id: ln_sla_sa_ratio
+      name: Соотношение S/L (short/long axis)
+      full_name: Отношение короткой оси к длинной оси лимфоузла (>0.5 — патологическое)
+      unit: ""
+      norm_male: {high: 0.5}
+      norm_female: {high: 0.5}
+      pathology_desc: "S/L ratio >0.5 — овальная форма (подозрительно); >1.0 — шаровидная форма"
+      source: 2022 EFSUMB Head/Neck Training [8]; Defined by Expert Consensus [15]
+      gradations:
+      - name: Норма (овальный, S/L <0.5)
+        range_male: {high: 0.5}
+        range_female: {high: 0.5}
+      - name: Подозрительный (S/L 0.5–1.0)
+        range_male: {low: 0.5, high: 1.0}
+        range_female: {low: 0.5, high: 1.0}
+      - name: Критический (шаровидный, S/L >1.0)
+        range_male: {low: 1.0}
+        range_female: {low: 1.0}
+
+    - id: ln_cortex_width
+      name: Толщина кортикального слоя
+      full_name: Толщина кортикального слоя лимфоузла
+      unit: мм
+      norm_male: {high: 3}
+      norm_female: {high: 3}
+      pathology_desc: ">3 мм — утолщение кортикального слоя (признак метастатического поражения)"
+      source: 2022 EFSUMB Head/Neck Training [8]; Defined by Expert Consensus [15]
+
+    - id: ln_echostructure
+      name: Эхоструктура лимфоузла
+      full_name: Эхогенность и структура лимфоузла
+      unit: ""
+      source: 2022 EFSUMB Head/Neck Training [8]; 2023 AIUM Thyroid/Head-Neck Practice Parameter [2]
+      gradations:
+      - name: Нормальная (гилус + кортикальный слой)
+      - name: Диффузно гипоэхогенная (воспаление, лимфома)
+      - name: Неоднородная (некроз, метастазы)
+      - name: С обширной зоной некроза (метастаз плоскоклеточного рака)
+
+    - id: ln_vascularity
+      name: Васкуляризация лимфоузла
+      full_name: Паттерн кровотока в лимфоузле по цветному допплеровскому картированию
+      unit: ""
+      source: 2022 EFSUMB Head/Neck Training [8]
+      gradations:
+      - name: Нормальная (hilum blood flow — воротниковый тип)
+      - name: Периферическая васкуляризация
+      - name: Аvascular (некроз)
+      - name: Смешанная
+
+    - id: ln_calcification
+      name: Кальцинаты лимфоузла
+      full_name: Наличие кальцинатов в лимфоузле
+      unit: ""
+      source: 2022 EFSUMB Head/Neck Training [8]
+      gradations:
+      - name: Отсутствуют
+      - name: Микрокальцинаты (подозрительно на метастазы)
+      - name: Грубые кальцинаты (постинфекционные)
+
+  - name: Подмышечные лимфоузлы
+    slug: axillary_lymph_nodes
+    description: Классификация подмышечных лимфоузлов
+    parameters:
+    - id: ax_ln_short_axis
+      name: Поперечный размер подмышечного ЛУ
+      full_name: Short-axis диаметр подмышечного лимфоузла
+      unit: мм
+      norm_male: {high: 10}
+      norm_female: {high: 10}
+      pathology_desc: "Short-axis >10 мм — подозрительно; >15 мм — патологическое увеличение"
+      source: 2023 AIUM Abdomen Practice Parameter [3]; Defined by Expert Consensus [16]
+      gradations:
+      - name: Норма
+        range_male: {high: 10}
+        range_female: {high: 10}
+      - name: Подозрительный (10–15 мм)
+        range_male: {low: 10, high: 15}
+        range_female: {low: 10, high: 15}
+      - name: Патологический (>15 мм)
+        range_male: {low: 15}
+        range_female: {low: 15}
+
+  - name: Паховые лимфоузлы
+    slug: inguinal_lymph_nodes
+    description: Классификация паховых лимфоузлов
+    parameters:
+    - id: ing_ln_short_axis
+      name: Поперечный размер пахового ЛУ
+      full_name: Short-axis диаметр пахового лимфоузла
+      unit: мм
+      norm_male: {high: 10}
+      norm_female: {high: 10}
+      pathology_desc: "Short-axis >10 мм — подозрительно; утолщение коры, потеря гилуса — признаки метастазов"
+      source: 2023 AIUM Abdomen Practice Parameter [3]; Defined by Expert Consensus [16]
+      gradations:
+      - name: Норма
+        range_male: {high: 10}
+        range_female: {high: 10}
+      - name: Подозрительный (10–15 мм)
+        range_male: {low: 10, high: 15}
+        range_female: {low: 10, high: 15}
+      - name: Патологический (>15 мм)
+        range_male: {low: 15}
+        range_female: {low: 15}
+
+  - name: Морфологические критерии лимфоузлов
+    slug: ln_morphology
+    description: Общие морфологические признаки, характеризующие лимфоузел как нормальный/реактивный/патологический
+    parameters:
+    - id: ln_hilus_echogenicity
+      name: Эхогенность гилуса
+      full_name: Наличие и эхогенность лимфатического гилуса (ворот)
+      unit: ""
+      source: 2022 EFSUMB Head/Neck Training [8]
+      gradations:
+      - name: Гилус визуализируется (норма/реактивный)
+      - name: Гилус истончён
+      - name: Гилус отсутствует (подозрительно на инфильтрацию)
+
+    - id: ln_border
+      name: Контуры лимфоузла
+      full_name: Чёткость контуров лимфоузла
+      unit: ""
+      source: 2022 EFSUMB Head/Neck Training [8]
+      gradations:
+      - name: Чёткие, ровные (норма/реактивный)
+      - name: Неровные (подозрительно)
+      - name: Нечёткие (инвазия, перилимфатический рост)
