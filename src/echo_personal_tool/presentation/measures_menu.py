@@ -400,7 +400,7 @@ class MeasuresMenuWidget(QWidget):
         layout.addStretch(1)
         self._vessel_status_label = QLabel("")
         self._vessel_status_label.setWordWrap(True)
-        self._vessel_status_label.setStyleSheet("color: #90caf9; font-size: 12px;")
+        self._vessel_status_label.setStyleSheet("font-size: 12px;")
         layout.addWidget(self._vessel_status_label)
 
         preset_row = QWidget()
@@ -417,6 +417,7 @@ class MeasuresMenuWidget(QWidget):
         self._vessel_preset_combo.setToolTip(tr("menu.vessel_preset_tip"))
         preset_layout.addWidget(preset_label)
         preset_layout.addWidget(self._vessel_preset_combo, stretch=1)
+        preset_row.hide()
         layout.addWidget(preset_row)
         scroll.setWidget(inner)
 

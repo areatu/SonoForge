@@ -696,6 +696,16 @@ class ViewerWidget(QWidget):
 
         self._ste_sensitivity = SteSensitivityOverlay(self)
         self._ste_sensitivity.smoothness_changed.connect(self._on_ste_smoothness_changed)
+
+        from echo_personal_tool.presentation.vessel_sensitivity_overlay import (
+            VesselSensitivityOverlay,
+        )
+
+        self._vessel_sensitivity = VesselSensitivityOverlay(self)
+        self._vessel_sensitivity.preset_changed.connect(self._on_vessel_preset_changed)
+        self._vessel_direction: str | None = None
+        self._vessel_current_preset: str = "normal"
+
         self._calibration_kind: Literal["depth", "spectral", "doppler_velocity", "mmode_time", "mmode_depth"] | None = (
             None
         )
@@ -1122,6 +1132,9 @@ class ViewerWidget(QWidget):
 
         if self._ste_sensitivity.isVisible():
             self._position_ste_overlay()
+
+        if self._vessel_sensitivity.isVisible():
+            self._position_vessel_sensitivity_overlay()
 
     def _position_dicom_tags_overlay(self, geo) -> None:
         self._dicom_tags_overlay_label.adjustSize()
@@ -1603,6 +1616,7 @@ class ViewerWidget(QWidget):
     @_prof
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
+        self._vessel_sensitivity.hide()
         frame = np.asarray(pixels)
         media_format = (
             self._current_state.instance.media_format
@@ -2398,7 +2412,53 @@ class ViewerWidget(QWidget):
         psv, edv = result
         self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
         self._measurement_label.show()
+        self._vessel_direction = direction
+        self._vessel_current_preset = preset
+        self._vessel_sensitivity.set_preset(preset)
+        self._show_vessel_sensitivity_overlay()
         return True
+
+    def _show_vessel_sensitivity_overlay(self) -> None:
+        self._vessel_sensitivity.show()
+        self._position_vessel_sensitivity_overlay()
+
+    def _position_vessel_sensitivity_overlay(self) -> None:
+        geo = self._graphics.geometry()
+        vw = self._vessel_sensitivity.width()
+        vh = self._vessel_sensitivity.height()
+        self._vessel_sensitivity.move(
+            geo.x() + geo.width() - vw - 5 + 235,
+            geo.y() + (geo.height() - vh) // 2 + 310,
+        )
+
+    def _on_vessel_preset_changed(self, preset: str) -> None:
+        if not self.is_vessel_available():
+            return
+        if self._current_frame is None:
+            return
+        state = self.get_doppler_calibration_state()
+        if state is None or state.roi is None or state.baseline_y_px is None:
+            return
+        self._vessel_current_preset = preset
+        from echo_personal_tool.domain.services.doppler_envelope import (
+            extract_doppler_envelope,
+        )
+
+        envelope = extract_doppler_envelope(
+            self._current_frame,
+            state.roi,
+            state.baseline_y_px,
+            preset=preset,
+            force_direction=self._vessel_direction,
+        )
+        if not envelope:
+            return
+        cycles = self._doppler_cardiac_cycles(envelope)
+        result = self._doppler.apply_auto_trace(envelope, cycles=cycles)
+        if result is None:
+            return
+        psv, edv = result
+        self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
 
     def _doppler_cardiac_cycles(
         self,
@@ -2612,6 +2672,8 @@ class ViewerWidget(QWidget):
         had = self._doppler.vessel_status() != "none"
         self._doppler.clear_vessel()
         self._measurement_label.hide()
+        self._vessel_sensitivity.hide()
+        self._vessel_direction = None
         return had
 
     def apply_doppler_calibration_state(
