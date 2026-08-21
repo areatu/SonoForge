@@ -215,7 +215,7 @@ function renderParams(data) {
             });
         }
 
-        body.appendChild(tr);
+        fragment.appendChild(tr);
 
         // Pathology description sub-row
         if (param.pathology_desc) {

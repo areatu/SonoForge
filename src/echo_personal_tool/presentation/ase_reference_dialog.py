@@ -98,8 +98,7 @@ def show_ase_reference_dialog(parent: QWidget | None = None, param_id: str | Non
     else:
         dialog = _CACHED_REFERENCE_DIALOG
     # Apply current theme when showing cached dialog (theme may have changed)
-    if dialog._web_ref_widget is not None:
-        dialog._web_ref_widget.apply_theme()
+    dialog._apply_current_theme()
     if param_id:
         dialog.navigate_to_param(param_id)
     # A preloaded dialog is created hidden; make sure it is shown maximized
@@ -181,11 +180,11 @@ class _DocTab(QWidget):
         if active:
             self._btn_label.setStyleSheet(
                 f"QPushButton {{ border: none; padding: 0; background: transparent; "
-                f"color: {p['text']}; font-weight: bold; }}"
+                f"color: #ffffff; font-weight: bold; }}"
             )
         else:
             self._btn_label.setStyleSheet(
-                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p['text_dim']}; }}"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p['text']}; }}"
             )
 
     def _apply_close_style(self, active: bool) -> None:
@@ -317,13 +316,7 @@ class AseReferenceDialog(QDialog):
         self._btn_structured_tab.setCheckable(True)
         self._btn_structured_tab.setChecked(True)
         self._btn_structured_tab.setCursor(Qt.CursorShape.PointingHandCursor)
-        p_tab = get_theme_palette()
-        self._btn_structured_tab.setStyleSheet(
-            f"QPushButton {{ border: none; padding: 4px 8px; background: transparent; "
-            f"color: {p_tab['text']}; }}"
-            f"QPushButton:checked {{ background: {p_tab['accent_tab']}; font-weight: bold; }}"
-            f"QPushButton:hover:!checked {{ background: {p_tab['bg_button_hover']}; }}"
-        )
+        self._apply_structured_tab_style()
         self._btn_structured_tab.clicked.connect(self._show_structured_tab)
         self._tabs_layout.addWidget(self._btn_structured_tab)
 
@@ -332,13 +325,7 @@ class AseReferenceDialog(QDialog):
         self._btn_add_tab.setFixedSize(32, 24)
         self._btn_add_tab.setToolTip(tr("ase_refs.add_document"))
         self._btn_add_tab.setCursor(Qt.CursorShape.PointingHandCursor)
-        p = get_theme_palette()
-        self._btn_add_tab.setStyleSheet(
-            f"QPushButton {{ background: {p['accent_tab']}; color: {p['text']}; "
-            f"border: none; padding: 0; border-radius: 3px; font-weight: bold; font-size: 16px; }}"
-            f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
-            f"QPushButton:pressed {{ background: {p['bg_button_pressed']}; color: {p['text']}; }}"
-        )
+        self._apply_add_button_style()
         self._btn_add_tab.clicked.connect(self._add_document)
         self._tabs_layout.addWidget(self._btn_add_tab)
         root.addWidget(self._tabs_widget)
@@ -539,6 +526,25 @@ class AseReferenceDialog(QDialog):
         else:
             self._normal_geometry = self.geometry()
             self.showMaximized()
+
+    def _apply_structured_tab_style(self) -> None:
+        p = get_theme_palette()
+        self._btn_structured_tab.setStyleSheet(
+            f"QPushButton {{ border: none; padding: 4px 8px; background: transparent; "
+            f"color: {p['text_dim']}; font-weight: 500; }}"
+            f"QPushButton:checked {{ background: {p['accent_tab']}; color: #ffffff; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: {p['bg_button_hover']}; color: {p['text']}; }}"
+        )
+
+    def _apply_add_button_style(self) -> None:
+        p = get_theme_palette()
+        self._btn_add_tab.setStyleSheet(
+            f"QPushButton {{ background: {p['bg_control']}; color: {p['text']}; "
+            f"border: 1px solid {p['border']}; padding: 0; border-radius: 3px; "
+            f"font-weight: bold; font-size: 16px; }}"
+            f"QPushButton:hover {{ background: {p['accent_tab']}; color: #ffffff; border-color: {p['accent_tab']}; }}"
+            f"QPushButton:pressed {{ background: {p['bg_button_pressed']}; color: {p['text']}; }}"
+        )
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
@@ -1034,6 +1040,17 @@ class AseReferenceDialog(QDialog):
     def _apply_font(self) -> None:
         font = QFont(self._font_family, self._font_size)
         self._browser.setFont(font)
+
+    def _apply_current_theme(self) -> None:
+        """Re-apply styles for current theme (called when dialog is re-shown)."""
+        self._apply_structured_tab_style()
+        self._apply_add_button_style()
+        for i in range(self._tabs_layout.count()):
+            widget = self._tabs_layout.itemAt(i).widget()
+            if isinstance(widget, _DocTab):
+                widget._apply_style(widget._btn_label.isChecked())
+        if self._web_ref_widget is not None:
+            self._web_ref_widget.apply_theme()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         # Keep the cached QWebEngineView alive (dialog is reused, not destroyed),
