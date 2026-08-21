@@ -48,14 +48,10 @@ def dialog(qtbot, yaml_file) -> ConstructorDialog:
         return_value=_THEME,
     ):
         with patch(
-            "echo_personal_tool.constructor.constructor_widget.get_theme_palette",
-            return_value=_THEME,
+            "echo_personal_tool.constructor.constructor_dialog._YAML_PATH",
+            yaml_file,
         ):
-            with patch(
-                "echo_personal_tool.constructor.constructor_dialog._YAML_PATH",
-                yaml_file,
-            ):
-                d = ConstructorDialog()
+            d = ConstructorDialog()
     d._skip_close_prompt = True
     qtbot.addWidget(d)
     return d

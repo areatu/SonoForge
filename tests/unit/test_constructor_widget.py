@@ -65,45 +65,41 @@ def yaml_file(tmp_path: Path, sample_data: dict) -> Path:
 @pytest.fixture
 def widget(qtbot, yaml_file) -> ConstructorWidget:
     with patch(
-        "echo_personal_tool.constructor.constructor_widget.get_theme_palette",
+        "echo_personal_tool.constructor.editors.topic_editor.get_theme_palette",
         return_value=_THEME,
     ):
         with patch(
-            "echo_personal_tool.constructor.editors.topic_editor.get_theme_palette",
+            "echo_personal_tool.constructor.editors.pathology_editor.get_theme_palette",
             return_value=_THEME,
         ):
             with patch(
-                "echo_personal_tool.constructor.editors.pathology_editor.get_theme_palette",
+                "echo_personal_tool.constructor.editors.parameter_table_editor.get_theme_palette",
                 return_value=_THEME,
             ):
                 with patch(
-                    "echo_personal_tool.constructor.editors.parameter_table_editor.get_theme_palette",
+                    "echo_personal_tool.constructor.editors.image_editor.get_theme_palette",
                     return_value=_THEME,
                 ):
                     with patch(
-                        "echo_personal_tool.constructor.editors.image_editor.get_theme_palette",
+                        "echo_personal_tool.constructor.editors.metadata_editor.get_theme_palette",
                         return_value=_THEME,
                     ):
-                        with patch(
-                            "echo_personal_tool.constructor.editors.metadata_editor.get_theme_palette",
-                            return_value=_THEME,
-                        ):
-                            from echo_personal_tool.constructor.constructor_widget import (
-                                ConstructorWidget,
-                            )
+                        from echo_personal_tool.constructor.constructor_widget import (
+                        ConstructorWidget,
+                        )
 
-                            storage = YamlStorage(yaml_file)
-                            from echo_personal_tool.constructor.storage.schema_validator import (
-                                SchemaValidator,
-                            )
+                        storage = YamlStorage(yaml_file)
+                        from echo_personal_tool.constructor.storage.schema_validator import (
+                            SchemaValidator,
+                        )
 
-                            with patch.object(SchemaValidator, "__init__", lambda self: None):
-                                validator = SchemaValidator()
-                                validator.validate = MagicMock(return_value=[])
-                            w = ConstructorWidget(
-                                yaml_storage=storage,
-                                validator=validator,
-                            )
+                        with patch.object(SchemaValidator, "__init__", lambda self: None):
+                            validator = SchemaValidator()
+                            validator.validate = MagicMock(return_value=[])
+                        w = ConstructorWidget(
+                            yaml_storage=storage,
+                            validator=validator,
+                        )
     qtbot.addWidget(w)
     return w
 
