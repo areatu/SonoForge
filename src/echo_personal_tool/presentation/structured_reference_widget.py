@@ -54,17 +54,24 @@ _TOPIC_ICONS: dict[str, str] = {
 }
 
 _TOPIC_LABELS: dict[str, str] = {
-    "left_ventricle": tr("ref_topic.left_ventricle"),
-    "left_atrium": tr("ref_topic.left_atrium"),
-    "right_ventricle": tr("ref_topic.right_ventricle"),
-    "right_atrium": tr("ref_topic.right_atrium"),
-    "mitral_valve": tr("ref_topic.mitral_valve"),
-    "aortic_valve": tr("ref_topic.aortic_valve"),
-    "tricuspid_valve": tr("ref_topic.tricuspid_valve"),
-    "pulmonary_valve": tr("ref_topic.pulmonary_valve"),
-    "aorta": tr("ref_topic.aorta"),
-    "prosthetic_valves": tr("ref_topic.prosthetic_valves"),
-    "other": tr("ref_topic.other"),
+    "left_ventricle": "",
+    "left_atrium": "",
+    "right_ventricle": "",
+    "right_atrium": "",
+    "mitral_valve": "",
+    "aortic_valve": "",
+    "tricuspid_valve": "",
+    "pulmonary_valve": "",
+    "aorta": "",
+    "prosthetic_valves": "",
+    "other": "",
+    "carotid_arteries": "",
+    "vertebral_arteries": "",
+    "thyroid_gland": "",
+    "kidneys": "",
+    "abdominal_organs": "",
+    "abdominal_aorta": "",
+    "lymph_nodes": "",
 }
 
 _TOPIC_FULL_NAMES: dict[str, str] = {
@@ -79,6 +86,13 @@ _TOPIC_FULL_NAMES: dict[str, str] = {
     "aorta": tr("ref_topic.full_aorta"),
     "prosthetic_valves": tr("ref_topic.full_prosthetic_valves"),
     "other": tr("ref_topic.full_other"),
+    "carotid_arteries": tr("ref_topic.full_carotid_arteries"),
+    "vertebral_arteries": tr("ref_topic.full_vertebral_arteries"),
+    "thyroid_gland": tr("ref_topic.full_thyroid_gland"),
+    "kidneys": tr("ref_topic.full_kidneys"),
+    "abdominal_organs": tr("ref_topic.full_abdominal_organs"),
+    "abdominal_aorta": tr("ref_topic.full_abdominal_aorta"),
+    "lymph_nodes": tr("ref_topic.full_lymph_nodes"),
 }
 
 

@@ -19,19 +19,24 @@ log = logging.getLogger(__name__)
 _IMAGES_DIR = Path(__file__).resolve().parents[2] / "resources" / "references" / "images"
 
 _TOPIC_LABELS: dict[str, str] = {
-    "left_ventricle": "ЛЖ",
-    "left_atrium": "ЛП",
-    "right_ventricle": "ПЖ",
-    "right_atrium": "ПП",
-    "mitral_valve": "МК",
-    "aortic_valve": "АК",
-    "tricuspid_valve": "ТК",
-    "pulmonary_valve": "ЛК",
+    "left_ventricle": "",
+    "left_atrium": "",
+    "right_ventricle": "",
+    "right_atrium": "",
+    "mitral_valve": "",
+    "aortic_valve": "",
+    "tricuspid_valve": "",
+    "pulmonary_valve": "",
     "aorta": "",
-    # These three are not abbreviations of their full names, so no short label
-    # is shown (it would otherwise duplicate/overlap the full name).
     "prosthetic_valves": "",
     "other": "",
+    "carotid_arteries": "",
+    "vertebral_arteries": "",
+    "thyroid_gland": "",
+    "kidneys": "",
+    "abdominal_organs": "",
+    "abdominal_aorta": "",
+    "lymph_nodes": "",
 }
 
 _TOPIC_ICONS: dict[str, str] = {
