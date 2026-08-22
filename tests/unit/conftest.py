@@ -17,6 +17,7 @@ Usage in test files:
 
 from __future__ import annotations
 
+import gc
 import os
 import sys
 from pathlib import Path
@@ -72,6 +73,20 @@ def _drain_global_thread_pool():
     from PySide6.QtCore import QThreadPool
 
     QThreadPool.globalInstance().waitForDone(5000)
+
+
+@pytest.fixture(autouse=True)
+def _gc_per_test():
+    """Freeze GC during each test; collect only between tests.
+
+    Prevents segfaults when GC runs *inside* pytestqt._process_events:
+    a pyqtgraph PlotCurveItem whose C++ backing is deleted can still be
+    reached via pending Qt events → boundingRect() → SIGSEGV.
+    """
+    gc.disable()
+    yield
+    gc.enable()
+    gc.collect()
 
 
 # ═══════════════════════════════════════════════════════════════════
