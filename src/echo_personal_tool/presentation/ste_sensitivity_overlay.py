@@ -53,6 +53,7 @@ class SteSensitivityOverlay(QWidget):
         self._reset_btn.setFixedSize(20, 20)
         self._reset_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
         from PySide6.QtGui import QFont
+
         font = QFont()
         font.setPointSize(11)
         self._reset_btn.setFont(font)

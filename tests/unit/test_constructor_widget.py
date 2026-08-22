@@ -85,7 +85,7 @@ def widget(qtbot, yaml_file) -> ConstructorWidget:
                         return_value=_THEME,
                     ):
                         from echo_personal_tool.constructor.constructor_widget import (
-                        ConstructorWidget,
+                            ConstructorWidget,
                         )
 
                         storage = YamlStorage(yaml_file)

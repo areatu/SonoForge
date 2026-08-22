@@ -148,7 +148,7 @@ def _schedule_reference_preload(window: MainWindow) -> None:
 
     def _preload_when_idle(attempt: int = 0) -> None:
         app = QApplication.instance()
-        if app is not None and hasattr(app, 'hasPendingEvents') and app.hasPendingEvents() and attempt < 120:
+        if app is not None and hasattr(app, "hasPendingEvents") and app.hasPendingEvents() and attempt < 120:
             # The app is busy (e.g. still handling startup or playback) — retry.
             QTimer.singleShot(1000, lambda: _preload_when_idle(attempt + 1))
             return

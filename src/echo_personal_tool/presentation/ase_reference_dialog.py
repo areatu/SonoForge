@@ -179,8 +179,7 @@ class _DocTab(QWidget):
         p = get_theme_palette()
         if active:
             self._btn_label.setStyleSheet(
-                "QPushButton { border: none; padding: 0; background: transparent; "
-                "color: #ffffff; font-weight: bold; }"
+                "QPushButton { border: none; padding: 0; background: transparent; color: #ffffff; font-weight: bold; }"
             )
         else:
             self._btn_label.setStyleSheet(

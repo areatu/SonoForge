@@ -297,9 +297,7 @@ class WebReferenceBridge(QObject):
         return json.dumps(results[:50], ensure_ascii=False)
 
     @Slot(str, str, str, str, str, result=str)
-    def update_param(
-        self, topic_slug: str, patho_slug: str, param_id: str, field: str, value: str
-    ) -> str:
+    def update_param(self, topic_slug: str, patho_slug: str, param_id: str, field: str, value: str) -> str:
         """Update a parameter field (name|unit|norm_male|norm_female) and persist to YAML."""
         if self._store is None:
             return json.dumps({"error": "Not configured"})
@@ -318,7 +316,8 @@ class WebReferenceBridge(QObject):
             elif field in ("name", "unit"):
                 if field == "name":
                     import re as _re
-                    value = _re.sub(r'\s*\([^)]+\)\s*$', '', value).strip() or value.strip()
+
+                    value = _re.sub(r"\s*\([^)]+\)\s*$", "", value).strip() or value.strip()
                 self._store.update_param(param_id, field, value.strip())
             else:
                 return json.dumps({"error": f"Unknown field '{field}'"})

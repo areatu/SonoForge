@@ -4201,7 +4201,9 @@ class ViewerWidget(QWidget):
 
         smoothed = re_smooth_trajectories(raw, ncc, result.kernels, smoothness)
         smoothed = apply_motion_model(
-            smoothed, ncc, result.kernels,
+            smoothed,
+            ncc,
+            result.kernels,
             result.ed_index - result.tracking_window_start,
             result.ncc_threshold,
         )
@@ -4218,26 +4220,33 @@ class ViewerWidget(QWidget):
         local_es = result.es_index - result.tracking_window_start
         ed_ncc = ncc[local_ed].copy() if local_ed < n_frames else np.ones(ncc.shape[1])
 
-        window_long = compute_weighted_longitudinal_strain_gl(
-            smoothed, local_ed, ps, endo_indices, ed_ncc
-        )
+        window_long = compute_weighted_longitudinal_strain_gl(smoothed, local_ed, ps, endo_indices, ed_ncc)
         if result.drift_compensation_applied:
             window_long = apply_drift_compensation(window_long, local_ed, local_es)
         from echo_personal_tool.application.workers.speckle_worker import _embed_window_curve
+
         longitudinal = _embed_window_curve(
-            window_long, n_frames,
-            result.tracking_window_start, result.tracking_window_end,
+            window_long,
+            n_frames,
+            result.tracking_window_start,
+            result.tracking_window_end,
         )
 
         n_pairs = min(len(endo_indices), len(epi_indices))
         if n_pairs > 0:
             window_radial = compute_weighted_radial_strain_gl(
-                smoothed, local_ed, ps,
-                endo_indices[:n_pairs], epi_indices[:n_pairs], ed_ncc,
+                smoothed,
+                local_ed,
+                ps,
+                endo_indices[:n_pairs],
+                epi_indices[:n_pairs],
+                ed_ncc,
             )
             radial = _embed_window_curve(
-                window_radial, n_frames,
-                result.tracking_window_start, result.tracking_window_end,
+                window_radial,
+                n_frames,
+                result.tracking_window_start,
+                result.tracking_window_end,
             )
         else:
             radial = np.full(n_frames, np.nan)
@@ -4247,8 +4256,12 @@ class ViewerWidget(QWidget):
             longitudinal=longitudinal,
             radial=radial,
             gls=compute_gls(window_long, local_ed, local_es),
-            tracked_es_positions=smoothed[local_es].copy() if local_es < smoothed.shape[0] else result.tracked_es_positions,
-            tracked_ed_positions=smoothed[local_ed].copy() if local_ed < smoothed.shape[0] else result.tracked_ed_positions,
+            tracked_es_positions=smoothed[local_es].copy()
+            if local_es < smoothed.shape[0]
+            else result.tracked_es_positions,
+            tracked_ed_positions=smoothed[local_ed].copy()
+            if local_ed < smoothed.shape[0]
+            else result.tracked_ed_positions,
         )
 
         self._refresh_speckle_overlay_for_current_frame()

@@ -1156,7 +1156,8 @@ class StructuredReferenceWidget(QWidget):
                 # Strip trailing unit suffix appended for display to prevent
                 # cumulative duplication (e.g. "(мс) (мс) ...").
                 import re as _re
-                cleaned = _re.sub(r'\s*\([^)]+\)\s*$', '', new_text).strip()
+
+                cleaned = _re.sub(r"\s*\([^)]+\)\s*$", "", new_text).strip()
                 self._store.update_param(param_id, "name", cleaned or new_text)
             else:
                 parsed = _parse_norm_range_str(new_text)
