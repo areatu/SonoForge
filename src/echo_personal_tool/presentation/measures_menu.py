@@ -267,12 +267,30 @@ class MeasuresAccordionSection(QWidget):
         self._content_height = 0
         self._title_key = title_key
 
+        # Header with chevron indicator
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(4)
+
+        self._chevron = QLabel("▶")
+        self._chevron.setObjectName("measuresChevron")
+        self._chevron.setFixedWidth(12)
+        self._chevron.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(self._chevron)
+
         self._header = QPushButton(tr(title_key))
         self._header.setObjectName("measuresSectionTitle")
         self._header.setFlat(True)
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
         self._header.clicked.connect(self._on_header_clicked)
         HoverButtonMixin.install(self._header)
+        header_layout.addWidget(self._header, 1)
+
+        self._header_container = QWidget()
+        self._header_container.setObjectName("measuresSectionHeader")
+        self._header_container.setLayout(header_layout)
+        self._header_container.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._header_container.mousePressEvent = lambda e: self._on_header_clicked()
 
         self._body = QWidget()
         self._body.setObjectName("measuresSectionBody")
@@ -300,9 +318,24 @@ class MeasuresAccordionSection(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self._header)
+        layout.addWidget(self._header_container)
         layout.addWidget(self._body)
         self._body.setMaximumHeight(0)
+
+        # Chevron rotation animation
+        self._chevron_angle = 0
+        self._chevron_anim = QPropertyAnimation(self, b"chevronRotation")
+        self._chevron_anim.setDuration(_ACCORDION_ANIM_MS)
+        self._chevron_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def _get_chevron_rotation(self) -> int:
+        return self._chevron_angle
+
+    def _set_chevron_rotation(self, angle: int) -> None:
+        self._chevron_angle = angle
+        self._chevron.setStyleSheet(f"font-size: 10px; transform: rotate({angle}deg);")
+
+    chevronRotation = property(_get_chevron_rotation, _set_chevron_rotation)
 
     def is_expanded(self) -> bool:
         return self._expanded
@@ -318,8 +351,14 @@ class MeasuresAccordionSection(QWidget):
             self._animation.setStartValue(self._body.maximumHeight())
             self._animation.setEndValue(self._content_height)
             self._animation.start()
+            # Animate chevron rotation
+            self._chevron_anim.stop()
+            self._chevron_anim.setStartValue(self._chevron_angle)
+            self._chevron_anim.setEndValue(90)
+            self._chevron_anim.start()
         else:
             self._body.setMaximumHeight(self._content_height)
+            self._set_chevron_rotation(90)
 
     def collapse(self, *, animated: bool = True) -> None:
         self._expanded = False
@@ -331,8 +370,14 @@ class MeasuresAccordionSection(QWidget):
             self._animation.setStartValue(self._body.maximumHeight())
             self._animation.setEndValue(0)
             self._animation.start()
+            # Animate chevron rotation
+            self._chevron_anim.stop()
+            self._chevron_anim.setStartValue(self._chevron_angle)
+            self._chevron_anim.setEndValue(0)
+            self._chevron_anim.start()
         else:
             self._body.setMaximumHeight(0)
+            self._set_chevron_rotation(0)
 
     def contains_button(self, button: QPushButton) -> bool:
         return button in self._body.findChildren(QPushButton)

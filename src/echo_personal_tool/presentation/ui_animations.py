@@ -192,3 +192,193 @@ def set_button_loading(btn: QPushButton, loading: bool, text: str = "...") -> No
         saved_enabled = btn.property("_saved_enabled")
         btn.setText(saved_text if saved_text is not None else btn.text())
         btn.setEnabled(saved_enabled if saved_enabled is not None else True)
+
+
+class AnimatedButton(QPushButton):
+    """QPushButton with scale animation on press/release."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._scale_effect = None
+        self._setup_animation()
+
+    def _setup_animation(self) -> None:
+        """Set up the scale animation."""
+        from PySide6.QtWidgets import QGraphicsScaleEffect
+
+        self._scale_effect = QGraphicsScaleEffect(self)
+        self.setGraphicsEffect(self._scale_effect)
+
+    def mousePressEvent(self, event) -> None:
+        """Animate scale down on press."""
+        if not _reduce_motion_enabled():
+            self._animate_scale(0.95, 80)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        """Animate scale up on release."""
+        if not _reduce_motion_enabled():
+            self._animate_scale(1.0, 120)
+        super().mouseReleaseEvent(event)
+
+    def _animate_scale(self, target: float, duration: int) -> None:
+        """Animate scale to target value."""
+        from PySide6.QtCore import QPropertyAnimation
+
+        if self._scale_effect is None:
+            return
+
+        anim = QPropertyAnimation(self._scale_effect, b"scale")
+        anim.setDuration(duration)
+        anim.setStartValue(self._scale_effect.scale())
+        anim.setEndValue(target)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.start()
+        self.setProperty("_scale_anim", anim)
+
+
+class SlideUpWidget(QWidget):
+    """QWidget that slides up when shown."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._slide_anim = None
+        self._original_height = 0
+
+    def showSlideUp(self, duration_ms: int = 200) -> None:
+        """Show widget with slide-up animation."""
+        if _reduce_motion_enabled():
+            self.show()
+            return
+
+        self._original_height = self.sizeHint().height()
+        self.setMaximumHeight(0)
+        self.show()
+
+        self._slide_anim = QPropertyAnimation(self, b"maximumHeight")
+        self._slide_anim.setDuration(duration_ms)
+        self._slide_anim.setStartValue(0)
+        self._slide_anim.setEndValue(self._original_height)
+        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._slide_anim.start()
+
+    def hideSlideDown(self, duration_ms: int = 150) -> None:
+        """Hide widget with slide-down animation."""
+        if _reduce_motion_enabled():
+            self.hide()
+            return
+
+        self._slide_anim = QPropertyAnimation(self, b"maximumHeight")
+        self._slide_anim.setDuration(duration_ms)
+        self._slide_anim.setStartValue(self.height())
+        self._slide_anim.setEndValue(0)
+        self._slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        self._slide_anim.finished.connect(self.hide)
+        self._slide_anim.start()
+
+
+class AnimatedStatusBar(QStatusBar):
+    """QStatusBar with slide-up animation on show."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._slide_anim = None
+        self._original_height = 0
+
+    def showSlideUp(self, duration_ms: int = 200) -> None:
+        """Show status bar with slide-up animation."""
+        if _reduce_motion_enabled():
+            self.show()
+            return
+
+        self._original_height = self.sizeHint().height()
+        self.setMaximumHeight(0)
+        self.show()
+
+        self._slide_anim = QPropertyAnimation(self, b"maximumHeight")
+        self._slide_anim.setDuration(duration_ms)
+        self._slide_anim.setStartValue(0)
+        self._slide_anim.setEndValue(self._original_height)
+        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._slide_anim.start()
+
+    def hideSlideDown(self, duration_ms: int = 150) -> None:
+        """Hide status bar with slide-down animation."""
+        if _reduce_motion_enabled():
+            self.hide()
+            return
+
+        self._slide_anim = QPropertyAnimation(self, b"maximumHeight")
+        self._slide_anim.setDuration(duration_ms)
+        self._slide_anim.setStartValue(self.height())
+        self._slide_anim.setEndValue(0)
+        self._slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        self._slide_anim.finished.connect(self.hide)
+        self._slide_anim.start()
+
+
+class SkeletonPulse(QWidget):
+    """Pulsing placeholder widget for loading states."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._pulse_anim = None
+        self._opacity_effect = None
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        """Set up the skeleton UI."""
+        from PySide6.QtGui import QColor, QPalette
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+
+        self.setMinimumHeight(40)
+        self.setMaximumHeight(40)
+
+        # Set palette for background color
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor("#2a4a6b"))
+        self.setPalette(palette)
+        self.setAutoFillBackground(True)
+
+        # Opacity effect for pulsing
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(0.6)
+        self.setGraphicsEffect(self._opacity_effect)
+
+    def startPulse(self, duration_ms: int = 800) -> None:
+        """Start pulsing animation."""
+        if _reduce_motion_enabled():
+            return
+
+        if self._pulse_anim is not None:
+            self._pulse_anim.stop()
+
+        self._pulse_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
+        self._pulse_anim.setDuration(duration_ms)
+        self._pulse_anim.setStartValue(0.4)
+        self._pulse_anim.setEndValue(0.8)
+        self._pulse_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._pulse_anim.setLoopCount(-1)  # Infinite loop
+        self._pulse_anim.start()
+
+    def stopPulse(self) -> None:
+        """Stop pulsing animation."""
+        if self._pulse_anim is not None:
+            self._pulse_anim.stop()
+            self._pulse_anim = None
+
+    def paintEvent(self, event) -> None:
+        """Custom paint for rounded rectangle."""
+        from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Draw rounded rectangle
+        pen = QPen(QColor("#3d5a7a"), 1)
+        brush = QBrush(QColor("#1e3a5f"))
+        painter.setPen(pen)
+        painter.setBrush(brush)
+        painter.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 4, 4)
+
+        painter.end()

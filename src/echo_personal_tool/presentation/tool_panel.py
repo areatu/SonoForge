@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -269,6 +269,77 @@ class ToolPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._tabs)
+
+        # Slide animation for show/hide
+        self._slide_anim = QPropertyAnimation(self, b"maximumWidth", self)
+        self._slide_anim.setDuration(200)
+        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        # Tab crossfade animation
+        self._current_tab_widget = None
+        self._fade_anim = None
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Crossfade animation when switching tabs."""
+        widget = self._tabs.widget(index)
+        if widget is None or widget == self._current_tab_widget:
+            return
+
+        # Fade out current widget
+        if self._current_tab_widget is not None:
+            effect = self._current_tab_widget.graphicsEffect()
+            if effect is None:
+                from PySide6.QtWidgets import QGraphicsOpacityEffect
+                effect = QGraphicsOpacityEffect(self._current_tab_widget)
+                self._current_tab_widget.setGraphicsEffect(effect)
+
+            self._fade_anim = QPropertyAnimation(effect, b"opacity")
+            self._fade_anim.setDuration(100)
+            self._fade_anim.setStartValue(1.0)
+            self._fade_anim.setEndValue(0.0)
+            self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._fade_anim.start()
+
+        # Fade in new widget
+        effect = widget.graphicsEffect()
+        if effect is None:
+            from PySide6.QtWidgets import QGraphicsOpacityEffect
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(150)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.start()
+        self.setProperty("_tab_fade_anim", anim)
+
+        self._current_tab_widget = widget
+
+    def showAnimated(self) -> None:
+        """Show panel with slide animation."""
+        self.setMaximumWidth(0)
+        self.show()
+        self._slide_anim.stop()
+        self._slide_anim.setStartValue(0)
+        self._slide_anim.setEndValue(self._saved_width)
+        self._slide_anim.start()
+
+    def hideAnimated(self) -> None:
+        """Hide panel with slide animation."""
+        self._saved_width = self.width()
+        self._slide_anim.stop()
+        self._slide_anim.setStartValue(self.width())
+        self._slide_anim.setEndValue(0)
+        self._slide_anim.start()
+        self._slide_anim.finished.connect(self._on_hide_finished)
+
+    def _on_hide_finished(self) -> None:
+        self.hide()
+        self._slide_anim.finished.disconnect(self._on_hide_finished)
+        self.setMaximumWidth(16777215)  # Reset to default
 
     def set_patient_metrics(self, height_cm: float | None, weight_kg: float | None) -> None:
         self.measure.set_patient_metrics(height_cm, weight_kg)
