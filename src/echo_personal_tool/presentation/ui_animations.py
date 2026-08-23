@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QGraphicsOpacityEffect,
     QPushButton,
+    QStatusBar,
     QWidget,
 )
 
