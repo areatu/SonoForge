@@ -81,7 +81,10 @@ class _StudyQueryWorker(QRunnable):
         except Exception as exc:  # noqa: BLE001
             log.warning("[DLG] study query failed: %s", exc)
             studies = []
-        self._signals.finished.emit(studies)
+        try:
+            self._signals.finished.emit(studies)
+        except RuntimeError:
+            log.debug("[DLG] study query worker: signal already deleted, skipping emit")
 
 
 class _SeriesQuerySignals(QObject):
@@ -106,7 +109,10 @@ class _SeriesQueryWorker(QRunnable):
             log.warning("[DLG] series query failed for %s: %s", self._study_uid[:16], exc)
             series = []
             error = str(exc)
-        self._signals.finished.emit((self._study_uid, series, error))
+        try:
+            self._signals.finished.emit((self._study_uid, series, error))
+        except RuntimeError:
+            log.debug("[DLG] series query worker: signal already deleted, skipping emit")
 
 
 class OrthancStudyDialog(QDialog):
