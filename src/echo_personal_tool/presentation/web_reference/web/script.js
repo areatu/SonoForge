@@ -51,14 +51,14 @@ async function selectTopic(slug) {
         var pathoData = await bridge.getPathology(slug, pathos[0].slug);
         if (!pathoData.error) {
             var split = $(".content-split");
-            split.style.opacity = "0";
+            split.classList.add("fading-out");
             requestAnimationFrame(function() {
                 requestAnimationFrame(function() {
                     renderDescription(pathoData.description);
                     state.currentParams = pathoData.parameters || [];
                     renderParams(pathoData);
                     renderImages(pathoData.images || []);
-                    split.style.opacity = "1";
+                    split.classList.remove("fading-out");
                 });
             });
         }
@@ -68,6 +68,22 @@ async function selectTopic(slug) {
 }
 
 /* ===== Pathologies ===== */
+/* ===== Pathology Tab Indicator ===== */
+function moveTabIndicator() {
+    var bar = $("#pathologyBar");
+    var activeBtn = bar.querySelector(".patho-btn.active");
+    var indicator = bar;
+    if (activeBtn) {
+        var rect = activeBtn.getBoundingClientRect();
+        var barRect = bar.getBoundingClientRect();
+        bar.style.setProperty("--indicator-left", (rect.left - barRect.left + bar.scrollLeft) + "px");
+        bar.style.setProperty("--indicator-width", rect.width + "px");
+    } else {
+        bar.style.setProperty("--indicator-left", "0px");
+        bar.style.setProperty("--indicator-width", "0px");
+    }
+}
+
 function renderPathologies(pathologies, topicName) {
     var bar = $("#pathologyBar");
     if (!pathologies || !pathologies.length) {
@@ -89,6 +105,7 @@ function renderPathologies(pathologies, topicName) {
     });
     bar.innerHTML = "";
     bar.appendChild(fragment);
+    requestAnimationFrame(moveTabIndicator);
 }
 
 function updatePathologyActive(newSlug) {
@@ -96,6 +113,7 @@ function updatePathologyActive(newSlug) {
         var isActive = btn.textContent.trim().indexOf(newSlug) >= 0;
         btn.classList.toggle("active", isActive);
     });
+    moveTabIndicator();
 }
 
 async function selectPathology(slug) {
@@ -114,20 +132,22 @@ async function selectPathology(slug) {
             break;
         }
     }
+    // Animate indicator to active tab
+    moveTabIndicator();
 
     var data = await bridge.getPathology(state.selectedTopic, slug);
     if (data.error) return;
 
-    // Fade out content area, swap, fade in — single frame
+    // Cross-fade + slide: fade out, swap content, fade in with slide
     var split = $(".content-split");
-    split.style.opacity = "0";
+    split.classList.add("fading-out");
     requestAnimationFrame(function() {
         requestAnimationFrame(function() {
             renderDescription(data.description);
             state.currentParams = data.parameters || [];
             renderParams(data);
             renderImages(data.images || []);
-            split.style.opacity = "1";
+            split.classList.remove("fading-out");
         });
     });
 }
@@ -189,8 +209,10 @@ function renderParams(data) {
         emptyTr.appendChild(emptyTd);
         fragment.appendChild(emptyTr);
     } else {
+        var rowIndex = 0;
         data.parameters.forEach(function (param) {
             var tr = document.createElement("tr");
+            tr.style.setProperty("--row-index", rowIndex++);
 
             // Name cell with unit
             var tdName = document.createElement("td");
