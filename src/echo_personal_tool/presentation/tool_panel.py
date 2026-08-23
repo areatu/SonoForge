@@ -289,32 +289,23 @@ class ToolPanel(QWidget):
         # Fade out current widget
         if self._current_tab_widget is not None:
             effect = self._current_tab_widget.graphicsEffect()
-            if effect is None:
-                from PySide6.QtWidgets import QGraphicsOpacityEffect
-                effect = QGraphicsOpacityEffect(self._current_tab_widget)
-                self._current_tab_widget.setGraphicsEffect(effect)
+            if effect is not None:
+                effect.setOpacity(1.0)
 
-            self._fade_anim = QPropertyAnimation(effect, b"opacity")
-            self._fade_anim.setDuration(100)
-            self._fade_anim.setStartValue(1.0)
-            self._fade_anim.setEndValue(0.0)
-            self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-            self._fade_anim.start()
-
-        # Fade in new widget
+        # Set new widget opacity to 0 and animate to 1
         effect = widget.graphicsEffect()
         if effect is None:
             from PySide6.QtWidgets import QGraphicsOpacityEffect
             effect = QGraphicsOpacityEffect(widget)
             widget.setGraphicsEffect(effect)
 
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(150)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim.start()
-        self.setProperty("_tab_fade_anim", anim)
+        effect.setOpacity(0.0)
+        self._fade_anim = QPropertyAnimation(effect, b"opacity")
+        self._fade_anim.setDuration(150)
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_anim.start()
 
         self._current_tab_widget = widget
 
