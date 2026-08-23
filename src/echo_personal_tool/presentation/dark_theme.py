@@ -21,6 +21,7 @@ _DARK = {
     "accent": "#40e2de",
     "accent_bright": "#5ff0ea",
     "accent_tab": "#40e2de",
+    "accent_selected": "#1a5c5a",
     "text": "#f1f5f9",
     "text_dim": "#9bacbb",
     "border": "#2a4a6b",
@@ -52,6 +53,7 @@ _LIGHT = {
     "accent": "#0891b2",
     "accent_bright": "#06b6d4",
     "accent_tab": "#0891b2",
+    "accent_selected": "#0e7490",
     "text": "#0f172a",
     "text_dim": "#64748b",
     "border": "#e2e8f0",
@@ -83,6 +85,7 @@ _VS_CODE_DARK = {
     "accent": "#007acc",
     "accent_bright": "#1a8fe3",
     "accent_tab": "#007acc",
+    "accent_selected": "#005f9e",
     "text": "#cccccc",
     "text_dim": "#858585",
     "border": "#3c3c3c",
@@ -655,29 +658,26 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border-right: 1px solid {p["border"]};
 }}
 
-/* ── Tab bar scroll buttons (left/right arrows) ────────────── */
-QTabBar QToolButton {{
+/* ── Tab bar custom scroll arrows ───────────────────────────── */
+#tabScrollArrow {{
     background: {p["bg_control"]};
     color: {p["text"]};
     border: 1px solid {p["border"]};
     border-radius: 4px;
-    padding: 4px 14px;
-    min-width: 42px;
-    min-height: 26px;
-    font-size: {font_size}px;
+    font-size: {max(font_size - 2, 10)}px;
     font-weight: bold;
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0px;
 }}
-QTabBar QToolButton:hover {{
+#tabScrollArrow:hover {{
     background: {p["bg_button_hover"]};
     border-color: {p["accent"]};
 }}
-QTabBar QToolButton:pressed {{
+#tabScrollArrow:pressed {{
     background: {p["bg_button_pressed"]};
-}}
-QTabBar QToolButton:disabled {{
-    color: {p["text_dim"]};
-    background: {p["bg_control"]};
-    border-color: {p["border"]};
 }}
 
 /* ── Focus ring ─────────────────────────────────────────────── */

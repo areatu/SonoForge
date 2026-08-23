@@ -621,7 +621,7 @@ class AseReferenceDialog(QDialog):
         file_menu = QMenu(tr("ase_refs.file_menu"), menu_bar)
         file_menu.setStyleSheet(
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
-            f"QMenu::item:selected {{ background: {p['accent']}; }}"
+            f"QMenu::item:selected {{ background: {p['accent_selected']}; }}"
         )
         file_menu.addAction(tr("ase_refs.add_document"), self._add_document)
         file_menu.addSeparator()
@@ -634,7 +634,7 @@ class AseReferenceDialog(QDialog):
         settings_menu = QMenu(tr("ase_refs.settings_menu"), menu_bar)
         settings_menu.setStyleSheet(
             f"QMenu {{ color: {p['text']}; background: {p['bg_control']}; border: 1px solid {p['border']}; }}"
-            f"QMenu::item:selected {{ background: {p['accent']}; }}"
+            f"QMenu::item:selected {{ background: {p['accent_selected']}; }}"
         )
         settings_menu.addAction(tr("ase_refs.font_action"), self._show_font_settings)
         menu_bar.addMenu(settings_menu)
