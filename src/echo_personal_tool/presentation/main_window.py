@@ -1860,6 +1860,14 @@ class MainWindow(QMainWindow):
         if action == MeasurementAction.VESSEL_ACCEPT:
             self._viewer.accept_vessel_measurement()
             return
+        if action == MeasurementAction.VESSEL_STENOSIS_DIAMETER:
+            if self._viewer.start_vessel_stenosis_diameter():
+                self._show_status(tr("status.vessel_stenosis_diameter"))
+            return
+        if action == MeasurementAction.VESSEL_STENOSIS_AREA:
+            if self._viewer.start_vessel_stenosis_area():
+                self._show_status(tr("status.vessel_stenosis_area"))
+            return
         handler = handlers.get(action)
         if handler is not None:
             handler()  # type: ignore[operator]
@@ -2443,6 +2451,10 @@ class MainWindow(QMainWindow):
         if chamber in {"AREA", "VOL"}:
             if self._viewer._comparison_state.kind == "area":
                 self._viewer._handle_area_compare_contour(contour)
+                self._sync_results_overlay(self._controller.state_manager.snapshot)
+                return
+            if self._viewer._comparison_state.kind == "stenosis_area":
+                self._viewer._handle_stenosis_area_contour(contour)
                 self._sync_results_overlay(self._controller.state_manager.snapshot)
                 return
             spacing = self._controller.state_manager.snapshot.effective_pixel_spacing

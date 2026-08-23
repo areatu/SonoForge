@@ -51,3 +51,5 @@ class MeasurementAction(StrEnum):
     VESSEL_AVERAGE = "vessel_average"
     VESSEL_CLEAR = "vessel_clear"
     VESSEL_ACCEPT = "vessel_accept"
+    VESSEL_STENOSIS_DIAMETER = "vessel_stenosis_diameter"
+    VESSEL_STENOSIS_AREA = "vessel_stenosis_area"

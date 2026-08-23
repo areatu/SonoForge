@@ -132,18 +132,12 @@ class MeasureTab(QWidget):
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
         self._bsa_label = QLabel()
-        self._bsa_label.setStyleSheet("font-size: 14px; font-weight: 600;")
+        self._bsa_label.setStyleSheet("font-size: 14px; font-weight: 600; padding-left: 8px;")
         self._bsa_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self._bsa_label.setVisible(False)
         self._patient_metrics.metrics_changed.connect(self._update_bsa)
 
         from echo_personal_tool.infrastructure.i18n import tr
-
-        self._bsa_label = QLabel()
-        self._bsa_label.setStyleSheet("font-size: 14px; font-weight: 600;")
-        self._bsa_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._bsa_label.setVisible(False)
-        self._patient_metrics.metrics_changed.connect(self._update_bsa)
 
         self._auto_play_check = QCheckBox(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
@@ -167,8 +161,8 @@ class MeasureTab(QWidget):
         self._layout.addWidget(self._menu, stretch=1)
         self._layout.addWidget(self._patient_metrics, stretch=0)
         self._layout.addWidget(self._bsa_label, stretch=0)
-        self._layout.addWidget(self._auto_play_check, stretch=0)
         self._layout.addWidget(self._metrics_results_gap, stretch=0)
+        self._layout.addWidget(self._auto_play_check, stretch=0)
         self._layout.addWidget(results_wrap, stretch=0)
 
     def _sync_patient_metrics_lift(self) -> None:
@@ -254,9 +248,11 @@ class ToolPanel(QWidget):
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
 
+        from echo_personal_tool.infrastructure.i18n import tr
+
         self._tabs.addTab(self.measure, "Measures")
         self._tabs.addTab(self.controls, "Controls")
-        self._tabs.addTab(self._properties_panel, "Properties")
+        self._tabs.addTab(self._properties_panel, tr("tool_panel.properties"))
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
         self.measure.action_requested.connect(self.action_requested.emit)
@@ -344,6 +340,9 @@ class ToolPanel(QWidget):
         self.measure.reload_text()
         self._tabs.setTabText(0, tr("tool_panel.measures"))
         self._tabs.setTabText(1, tr("tool_panel.controls"))
+        props_idx = self._tabs.indexOf(self._properties_panel)
+        if props_idx != -1:
+            self._tabs.setTabText(props_idx, tr("tool_panel.properties"))
 
     def set_dicom_inspector_visible(self, visible: bool) -> None:
         """Show/hide the DICOM Tags tab."""
@@ -387,15 +386,65 @@ class ToolPanel(QWidget):
 
     def showEvent(self, event: QShowEvent) -> None:  # type: ignore[override]
         super().showEvent(event)
-        QTimer.singleShot(0, self._setup_tab_scroll_arrows)
+        QTimer.singleShot(0, self._ensure_tab_scroll_arrows)
 
-    def _setup_tab_scroll_arrows(self) -> None:
+    def _ensure_tab_scroll_arrows(self) -> None:
+        """Create custom left/right scroll arrows overlaid on the tab bar."""
+        if hasattr(self, "_arrow_left") and self._arrow_left is not None:
+            self._update_arrow_positions()
+            return
+
         tab_bar = self._tabs.tabBar()
-        for btn in tab_bar.findChildren(QToolButton):
-            # Scroll buttons are children of the tab bar with no text
-            if not btn.text():
-                btn.setMinimumWidth(28)
-                if btn.x() < tab_bar.width() // 2:
-                    btn.setText("<")
-                else:
-                    btn.setText(">")
+        btn_size = 22
+
+        self._arrow_left = QToolButton(self._tabs)
+        self._arrow_left.setText("\u25C0")  # ◀
+        self._arrow_left.setObjectName("tabScrollArrow")
+        self._arrow_left.setFixedSize(btn_size, btn_size)
+        self._arrow_left.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._arrow_left.clicked.connect(self._scroll_tab_left)
+
+        self._arrow_right = QToolButton(self._tabs)
+        self._arrow_right.setText("\u25B6")  # ▶
+        self._arrow_right.setObjectName("tabScrollArrow")
+        self._arrow_right.setFixedSize(btn_size, btn_size)
+        self._arrow_right.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._arrow_right.clicked.connect(self._scroll_tab_right)
+
+        tab_bar.installEventFilter(self)
+        self._tabs.resizeEvent = self._on_tabs_resize  # type: ignore[assignment]
+        self._update_arrow_positions()
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        if obj is self._tabs.tabBar() and event.type() == event.Type.Resize:
+            self._update_arrow_positions()
+        return super().eventFilter(obj, event)
+
+    def _on_tabs_resize(self, event) -> None:
+        QTabWidget.resizeEvent(self._tabs, event)
+        self._update_arrow_positions()
+
+    def _update_arrow_positions(self) -> None:
+        tab_bar = self._tabs.tabBar()
+        if not hasattr(self, "_arrow_left") or self._arrow_left is None:
+            return
+        btn_size = 22
+        margin = 2
+        bar_h = tab_bar.height()
+        x_right = tab_bar.width() - btn_size - margin
+        y = (bar_h - btn_size) // 2
+        self._arrow_right.move(x_right, max(y, 0))
+        self._arrow_left.move(x_right - btn_size - margin, max(y, 0))
+        has_overflow = tab_bar.width() < tab_bar.sizeHint().width()
+        self._arrow_left.setVisible(has_overflow)
+        self._arrow_right.setVisible(has_overflow)
+
+    def _scroll_tab_left(self) -> None:
+        idx = self._tabs.currentIndex()
+        if idx > 0:
+            self._tabs.setCurrentIndex(idx - 1)
+
+    def _scroll_tab_right(self) -> None:
+        idx = self._tabs.currentIndex()
+        if idx < self._tabs.count() - 1:
+            self._tabs.setCurrentIndex(idx + 1)

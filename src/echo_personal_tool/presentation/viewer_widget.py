@@ -2113,9 +2113,9 @@ class ViewerWidget(QWidget):
             sop_instance_uid=instance_uid,
         )
         if pct_s is not None:
-            pct_key = ("%S", frame if frame is not None else -1)
+            pct_key = ("%S стеноз", frame if frame is not None else -1)
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S",
+                label="%S стеноз",
                 pixel_length=0.0,
                 millimeter_length=pct_s,
                 frame_index=frame,
@@ -2163,6 +2163,172 @@ class ViewerWidget(QWidget):
             area1=f"{a1:.2f}",
             area2=f"{a2:.2f}",
             percent_s=f"{pct_s:.1f}",
+        )
+
+    # ── Vessel stenosis tools ───────────────────────────────────────
+
+    def start_vessel_stenosis_diameter(self) -> bool:
+        if self._current_frame is None:
+            return False
+        self._clear_calibration_caliper()
+        self._clear_linear_caliper_graphics()
+        self._linear_caliper_active = True
+        self._linear_caliper_start = None
+        self._comparison_state = _ComparisonState(
+            kind="stenosis_diameter",
+            frame_index=self._contour_frame_index(),
+        )
+        self._measurement_label.setText(tr("viewer.stenosis_d_click_start"))
+        return True
+
+    def start_vessel_stenosis_area(self) -> bool:
+        if self._current_frame is None:
+            return False
+        self.cancel_active_tool()
+        if not self.start_generic_area_contour():
+            return False
+        self._comparison_state = _ComparisonState(
+            kind="stenosis_area",
+            frame_index=self._contour_frame_index(),
+        )
+        self._measurement_label.setText(tr("viewer.stenosis_a_click_start"))
+        return True
+
+    @staticmethod
+    def _compute_stenosis_diameter(d1: float | None, d2: float | None) -> float | None:
+        if d1 is None or d2 is None:
+            return None
+        bigger = max(d1, d2)
+        if bigger == 0:
+            return None
+        return (1.0 - min(d1, d2) / bigger) * 100.0
+
+    @staticmethod
+    def _compute_stenosis_area(s_total: float | None, s_lumen: float | None) -> float | None:
+        if s_total is None or s_lumen is None:
+            return None
+        if s_total <= 0:
+            return None
+        return (s_total - s_lumen) / s_total * 100.0
+
+    def _build_stenosis_diameter_overlay(self) -> str:
+        state = self._comparison_state
+        if state.kind != "stenosis_diameter" or not state.first_segment_done or state.segment2_mm is None:
+            return ""
+        d1 = state.segment1_mm if state.segment1_mm is not None else 0.0
+        d2 = state.segment2_mm if state.segment2_mm is not None else 0.0
+        if d1 == 0 and d2 == 0:
+            return ""
+        stenosis = self._compute_stenosis_diameter(d1, d2)
+        unit = self._length_display_unit
+        m1 = LinearMeasurement(label="D1", pixel_length=0, millimeter_length=d1)
+        m2 = LinearMeasurement(label="D2", pixel_length=0, millimeter_length=d2)
+        return tr(
+            "viewer.stenosis_d_result",
+            length1=inline_caliper_text(m1, length_unit=unit),
+            length2=inline_caliper_text(m2, length_unit=unit),
+            percent=f"{stenosis:.1f}%" if stenosis is not None else "—",
+        )
+
+    def _build_stenosis_area_overlay(self) -> str:
+        state = self._comparison_state
+        if state.kind != "stenosis_area" or not state.first_contour_done or state.contour2_area_cm2 is None:
+            return ""
+        s_total = state.contour1_area_cm2 if state.contour1_area_cm2 is not None else 0.0
+        s_lumen = state.contour2_area_cm2 if state.contour2_area_cm2 is not None else 0.0
+        if s_total == 0 and s_lumen == 0:
+            return ""
+        stenosis = self._compute_stenosis_area(s_total, s_lumen)
+        return tr(
+            "viewer.stenosis_a_result",
+            area_total=f"{s_total:.2f}",
+            area_lumen=f"{s_lumen:.2f}",
+            percent=f"{stenosis:.1f}%" if stenosis is not None else "—",
+        )
+
+    def _handle_stenosis_area_contour(self, contour: Contour) -> None:
+        state = self._comparison_state
+        if state.kind != "stenosis_area":
+            return
+        spacing, _ = self._effective_pixel_spacing()
+        if spacing is None or len(contour.points) < 3:
+            self._measurement_label.setText(tr("viewer.stenosis_a_need_calibration"))
+            return
+        from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
+
+        area_cm2 = closed_polygon_area_cm2(contour, spacing)
+        if area_cm2 is None or area_cm2 <= 0:
+            self._measurement_label.setText(tr("viewer.stenosis_a_invalid_contour"))
+            return
+        frame = state.frame_index
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
+        points = list(contour.points)
+        if not state.first_contour_done:
+            state.contour1_points = points
+            state.contour1_area_cm2 = area_cm2
+            s_key = ("S1", frame if (frame := state.frame_index) is not None else -1)
+            self._stored_linear_measurements[s_key] = LinearMeasurement(
+                label="S1",
+                pixel_length=0.0,
+                millimeter_length=area_cm2,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+            self._measurement_label.setText(tr("viewer.stenosis_a_second_start"))
+            self._render_persistent_linear_calipers()
+            self._emit_stored_linear_measurements()
+            self._refresh_frame_overlays()
+            saved = _ComparisonState(
+                kind=state.kind,
+                frame_index=state.frame_index,
+                contour1_points=state.contour1_points,
+                contour1_area_cm2=state.contour1_area_cm2,
+            )
+            self.start_generic_area_contour()
+            self._comparison_state = saved
+            return
+        state.contour2_points = points
+        state.contour2_area_cm2 = area_cm2
+        stenosis = self._compute_stenosis_area(state.contour1_area_cm2, area_cm2)
+        s2_key = ("S2", frame if frame is not None else -1)
+        self._stored_linear_measurements[s2_key] = LinearMeasurement(
+            label="S2",
+            pixel_length=0.0,
+            millimeter_length=area_cm2,
+            frame_index=frame,
+            sop_instance_uid=instance_uid,
+        )
+        if stenosis is not None:
+            pct_key = ("%S стеноз", frame if frame is not None else -1)
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%S стеноз",
+                pixel_length=0.0,
+                millimeter_length=stenosis,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+        self._comparison_state = _ComparisonState(
+            kind=state.kind,
+            frame_index=state.frame_index,
+            contour1_points=state.contour1_points,
+            contour1_area_cm2=state.contour1_area_cm2,
+            contour2_points=state.contour2_points,
+            contour2_area_cm2=state.contour2_area_cm2,
+        )
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
+        self._emit_stored_linear_measurements()
+        self._measurement_label.setText(
+            tr(
+                "viewer.stenosis_a_result",
+                area_total=f"{state.contour1_area_cm2:.2f}",
+                area_lumen=f"{area_cm2:.2f}",
+                percent=f"{stenosis:.1f}%" if stenosis is not None else "—",
+            )
         )
 
     def activate_generic_dist_caliper(self) -> str | None:
@@ -5568,6 +5734,7 @@ class ViewerWidget(QWidget):
             self._refresh_frame_overlays()
         elif is_planimeter_polygon(contour) and contour.frame_index == current_frame:
             self._recalculate_percent_s()
+            self._recalculate_stenosis_area()
             self._emit_stored_linear_measurements()
             self._refresh_frame_overlays()
 
@@ -5672,7 +5839,7 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
-                if measurement.label in ("%D", "%S", "S1", "S2"):
+                if measurement.label in ("%D стеноз", "%S стеноз", "S1", "S2"):
                     continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
@@ -5681,6 +5848,14 @@ class ViewerWidget(QWidget):
                 self.append_frame_overlay(cmp_line)
         if self._comparison_state.kind == "area" and self._comparison_state.first_contour_done:
             cmp_line = self._build_comparison_s_overlay()
+            if cmp_line:
+                self.append_frame_overlay(cmp_line)
+        if self._comparison_state.kind == "stenosis_diameter" and self._comparison_state.first_segment_done:
+            cmp_line = self._build_stenosis_diameter_overlay()
+            if cmp_line:
+                self.append_frame_overlay(cmp_line)
+        if self._comparison_state.kind == "stenosis_area" and self._comparison_state.first_contour_done:
+            cmp_line = self._build_stenosis_area_overlay()
             if cmp_line:
                 self.append_frame_overlay(cmp_line)
         for line in extra_lines:
@@ -6160,6 +6335,8 @@ class ViewerWidget(QWidget):
             return False
         if self._comparison_state.kind == "diameter":
             return self._handle_diameter_compare_press(ev)
+        if self._comparison_state.kind == "stenosis_diameter":
+            return self._handle_diameter_compare_press(ev, stenosis=True)
         if ev.button() != Qt.MouseButton.LeftButton:
             return False
         if self._calibration_active:
@@ -6194,7 +6371,7 @@ class ViewerWidget(QWidget):
         self._commit_linear_measurement_from_endpoints(start, end)
         return True
 
-    def _handle_diameter_compare_press(self, ev) -> bool:
+    def _handle_diameter_compare_press(self, ev, *, stenosis: bool = False) -> bool:
         if ev.button() != Qt.MouseButton.LeftButton:
             return False
         click: tuple[float, float] | None = None
@@ -6209,11 +6386,14 @@ class ViewerWidget(QWidget):
 
         state = self._comparison_state
         frame = state.frame_index
+        is_stenosis = stenosis or state.kind == "stenosis_diameter"
 
         if state.segment1_start is None:
             state.segment1_start = click
             self._update_linear_caliper_preview(click, click)
-            self._measurement_label.setText(tr("viewer.dcmp_click_end"))
+            self._measurement_label.setText(
+                tr("viewer.stenosis_d_click_end") if is_stenosis else tr("viewer.dcmp_click_end")
+            )
             return True
 
         if state.segment1_end is None:
@@ -6240,14 +6420,18 @@ class ViewerWidget(QWidget):
             self._linear_caliper_start = None
             self._clear_linear_caliper_graphics()
             self._linear_caliper_active = True
-            self._measurement_label.setText(tr("viewer.dcmp_second_start"))
+            self._measurement_label.setText(
+                tr("viewer.stenosis_d_second_start") if is_stenosis else tr("viewer.dcmp_second_start")
+            )
             return True
 
         if state.segment2_start is None:
             state.segment2_start = click
             self._linear_caliper_start = click
             self._update_linear_caliper_preview(click, click)
-            self._measurement_label.setText(tr("viewer.dcmp_second_end"))
+            self._measurement_label.setText(
+                tr("viewer.stenosis_d_second_end") if is_stenosis else tr("viewer.dcmp_second_end")
+            )
             return True
 
         state.segment2_end = click
@@ -6267,23 +6451,38 @@ class ViewerWidget(QWidget):
             end=click,
             sop_instance_uid=instance_uid,
         )
-        pct_d = self._compute_percent_d(state.segment1_mm, state.segment2_mm)
-        if pct_d is not None:
-            pct_key = ("%D", frame if frame is not None else -1)
-            self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%D",
-                pixel_length=0.0,
-                millimeter_length=pct_d,
-                frame_index=frame,
-                sop_instance_uid=instance_uid,
-            )
+        if is_stenosis:
+            stenosis_pct = self._compute_stenosis_diameter(state.segment1_mm, state.segment2_mm)
+            if stenosis_pct is not None:
+                pct_key = ("%D стеноз", frame if frame is not None else -1)
+                self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                    label="%D стеноз",
+                    pixel_length=0.0,
+                    millimeter_length=stenosis_pct,
+                    frame_index=frame,
+                    sop_instance_uid=instance_uid,
+                )
+        else:
+            pct_d = self._compute_percent_d(state.segment1_mm, state.segment2_mm)
+            if pct_d is not None:
+                pct_key = ("%D стеноз", frame if frame is not None else -1)
+                self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                    label="%D стеноз",
+                    pixel_length=0.0,
+                    millimeter_length=pct_d,
+                    frame_index=frame,
+                    sop_instance_uid=instance_uid,
+                )
         self._linear_caliper_start = None
         self._clear_linear_caliper_graphics()
         self._render_persistent_linear_calipers()
         self._refresh_frame_overlays()
         self._linear_caliper_active = False
         self._emit_stored_linear_measurements()
-        result_text = self._build_comparison_d_overlay()
+        if is_stenosis:
+            result_text = self._build_stenosis_diameter_overlay()
+        else:
+            result_text = self._build_comparison_d_overlay()
         if result_text:
             self._measurement_label.setText(result_text)
         return True
@@ -6328,10 +6527,10 @@ class ViewerWidget(QWidget):
                     frame = m.frame_index
                     instance_uid = m.sop_instance_uid
         pct_d = self._compute_percent_d(d1_mm, d2_mm)
-        pct_key = ("%D", frame if frame is not None else -1)
+        pct_key = ("%D стеноз", frame if frame is not None else -1)
         if pct_d is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%D",
+                label="%D стеноз",
                 pixel_length=0.0,
                 millimeter_length=pct_d,
                 frame_index=frame,
@@ -6369,14 +6568,93 @@ class ViewerWidget(QWidget):
                 sop_instance_uid=instance_uid,
             )
         pct_s = self._compute_percent_s()
-        pct_key = ("%S", frame if frame is not None else -1)
+        pct_key = ("%S стеноз", frame if frame is not None else -1)
         if pct_s is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S",
+                label="%S стеноз",
                 pixel_length=0.0,
                 millimeter_length=pct_s,
                 frame_index=frame,
                 sop_instance_uid=instance_uid,
+            )
+        elif pct_key in self._stored_linear_measurements:
+            del self._stored_linear_measurements[pct_key]
+
+    def _recalculate_stenosis_diameter(self) -> None:
+        d1_mm: float | None = None
+        d2_mm: float | None = None
+        frame: int | None = None
+        instance_uid = ""
+        for key, m in self._stored_linear_measurements.items():
+            if isinstance(key, tuple) and key[0] in ("D1", "D2"):
+                if m.label == "D1":
+                    d1_mm = m.millimeter_length
+                    frame = m.frame_index
+                    instance_uid = m.sop_instance_uid
+                elif m.label == "D2":
+                    d2_mm = m.millimeter_length
+                    frame = m.frame_index
+                    instance_uid = m.sop_instance_uid
+        stenosis = self._compute_stenosis_diameter(d1_mm, d2_mm)
+        pct_key = ("%D стеноз", frame if frame is not None else -1)
+        if stenosis is not None:
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%D стеноз",
+                pixel_length=0.0,
+                millimeter_length=stenosis,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
+            )
+        elif pct_key in self._stored_linear_measurements:
+            del self._stored_linear_measurements[pct_key]
+
+    def _recalculate_stenosis_area(self) -> None:
+        state = self._comparison_state
+        if state.kind != "stenosis_area":
+            return
+        frame = state.frame_index
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
+        spacing, _ = self._effective_pixel_spacing()
+        if spacing is None:
+            return
+        from echo_personal_tool.domain.calculations.planimeter import closed_polygon_area_cm2
+
+        area1: float | None = None
+        area2: float | None = None
+        for c in self._stored_contours:
+            if c.chamber.upper() not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
+                continue
+            if c.frame_index != frame:
+                continue
+            a = closed_polygon_area_cm2(c, spacing)
+            if a is None or a <= 0:
+                continue
+            if area1 is None:
+                area1 = a
+                s1_key = ("S1", frame if frame is not None else -1)
+                self._stored_linear_measurements[s1_key] = LinearMeasurement(
+                    label="S1", pixel_length=0.0, millimeter_length=a,
+                    frame_index=frame, sop_instance_uid=instance_uid,
+                )
+            elif area2 is None:
+                area2 = a
+                s2_key = ("S2", frame if frame is not None else -1)
+                self._stored_linear_measurements[s2_key] = LinearMeasurement(
+                    label="S2", pixel_length=0.0, millimeter_length=a,
+                    frame_index=frame, sop_instance_uid=instance_uid,
+                )
+        state.contour1_area_cm2 = area1
+        state.contour2_area_cm2 = area2
+        stenosis = self._compute_stenosis_area(area1, area2)
+        pct_key = ("%S стеноз", frame if frame is not None else -1)
+        if stenosis is not None:
+            self._stored_linear_measurements[pct_key] = LinearMeasurement(
+                label="%S стеноз", pixel_length=0.0, millimeter_length=stenosis,
+                frame_index=frame, sop_instance_uid=instance_uid,
             )
         elif pct_key in self._stored_linear_measurements:
             del self._stored_linear_measurements[pct_key]
@@ -6493,7 +6771,7 @@ class ViewerWidget(QWidget):
             [start[0], end[0]],
             [start[1], end[1]],
         )
-        if self._comparison_state.kind == "diameter":
+        if self._comparison_state.kind in ("diameter", "stenosis_diameter"):
             label = "D2" if self._comparison_state.first_segment_done else "D1"
         else:
             label = None
@@ -6583,7 +6861,7 @@ class ViewerWidget(QWidget):
         start: tuple[float, float],
         end: tuple[float, float],
     ) -> None:
-        if self._comparison_state.kind == "diameter":
+        if self._comparison_state.kind in ("diameter", "stenosis_diameter"):
             label = "D2" if self._comparison_state.first_segment_done else "D1"
         else:
             label = self._current_caliper_label()
@@ -6708,6 +6986,7 @@ class ViewerWidget(QWidget):
         )
         self._measurement_label.setText(updated.display_text(length_unit=self._length_display_unit))
         self._recalculate_percent_d()
+        self._recalculate_stenosis_diameter()
         self._update_results_overlay_for_caliper_drag(updated)
 
     def _finish_caliper_node_drag(self, *, cancel: bool = False) -> None:
