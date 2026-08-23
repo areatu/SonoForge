@@ -246,8 +246,10 @@ body {
     color: var(--text-secondary); font-size: 13px;
     cursor: pointer; text-align: left;
     transition: all var(--transition-fast);
+    transform: scale(1);
 }
-.topic-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.topic-btn:hover { background: var(--bg-hover); color: var(--text-primary); transform: scale(1.02); }
+.topic-btn:active { transform: scale(0.98); }
 .topic-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
 .topic-btn .topic-icon { font-size: 12px; flex-shrink: 0; width: 18px; text-align: center; opacity: 0.7; }
 .topic-btn.active .topic-icon { opacity: 1; }
@@ -437,7 +439,11 @@ body {
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     cursor: zoom-out;
-    animation: fadeIn 0.2s ease-out;
+    animation: modalFadeIn 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 .modal-toolbar {
     position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
@@ -457,6 +463,13 @@ body {
 .modal-close:hover { background: #e81123; color: #fff; border-color: #e81123; }
 #modalImage {
     max-width: 92%; max-height: 88%;
+    object-fit: contain; cursor: default;
+    animation: modalImageIn 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes modalImageIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
     object-fit: contain; border-radius: var(--radius-sm);
     box-shadow: var(--shadow-lg);
     cursor: zoom-out;
