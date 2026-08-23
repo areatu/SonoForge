@@ -44,19 +44,22 @@ async function selectTopic(slug) {
     if (data.error) return;
     var pathos = data.pathologies || [];
     if (pathos.length > 0) {
-        // Pre-set active pathology before rendering to avoid double-render
         state.selectedPathology = pathos[0].slug;
     }
     renderPathologies(pathos, data.name);
     if (pathos.length > 0) {
-        // Fetch pathology data — render all at once in the callback
         var pathoData = await bridge.getPathology(slug, pathos[0].slug);
         if (!pathoData.error) {
+            var split = $(".content-split");
+            split.style.opacity = "0";
             requestAnimationFrame(function() {
-                renderDescription(pathoData.description);
-                state.currentParams = pathoData.parameters || [];
-                renderParams(pathoData);
-                renderImages(pathoData.images || []);
+                requestAnimationFrame(function() {
+                    renderDescription(pathoData.description);
+                    state.currentParams = pathoData.parameters || [];
+                    renderParams(pathoData);
+                    renderImages(pathoData.images || []);
+                    split.style.opacity = "1";
+                });
             });
         }
     } else {
@@ -88,23 +91,44 @@ function renderPathologies(pathologies, topicName) {
     bar.appendChild(fragment);
 }
 
+function updatePathologyActive(newSlug) {
+    $$(".patho-btn").forEach(function (btn) {
+        var isActive = btn.textContent.trim().indexOf(newSlug) >= 0;
+        btn.classList.toggle("active", isActive);
+    });
+}
+
 async function selectPathology(slug) {
     state.selectedPathology = slug;
+
+    // Synchronously update tab highlight (no DOM rebuild)
+    $$(".patho-btn").forEach(function (btn) {
+        btn.classList.remove("active");
+    });
+    // Find the clicked button and mark active immediately
+    var allBtns = $$(".patho-btn");
+    for (var i = 0; i < allBtns.length; i++) {
+        if (allBtns[i].getAttribute("title") === slug ||
+            allBtns[i].textContent.toLowerCase().indexOf(slug.replace(/_/g, " ")) >= 0) {
+            allBtns[i].classList.add("active");
+            break;
+        }
+    }
+
     var data = await bridge.getPathology(state.selectedTopic, slug);
     if (data.error) return;
 
-    // Batch all DOM updates in a single frame to avoid micro-jumps
+    // Fade out content area, swap, fade in — single frame
+    var split = $(".content-split");
+    split.style.opacity = "0";
     requestAnimationFrame(function() {
-        // Re-render pathology tabs with active state
-        var topicData = null;
-        bridge.getTopicDetail(state.selectedTopic).then(function(d) {
-            if (!d.error) renderPathologies(d.pathologies || [], d.name);
+        requestAnimationFrame(function() {
+            renderDescription(data.description);
+            state.currentParams = data.parameters || [];
+            renderParams(data);
+            renderImages(data.images || []);
+            split.style.opacity = "1";
         });
-
-        renderDescription(data.description);
-        state.currentParams = data.parameters || [];
-        renderParams(data);
-        renderImages(data.images || []);
     });
 }
 
