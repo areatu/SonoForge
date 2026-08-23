@@ -293,7 +293,7 @@ class AseReferenceDialog(QDialog):
         self._web_ref_active: bool = True
         self._web_ref_widget = None
 
-        root = QVBoxLayout(self)
+        self._root_layout = root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
@@ -418,15 +418,9 @@ class AseReferenceDialog(QDialog):
         self._pdf_continuous_scroll.hide()
         self._pdf_toolbar.hide()
 
-        # ── Structured reference widget (Qt fallback) ──
-        try:
-            self._structured_widget = StructuredReferenceWidget(ReferenceDataStore().load())
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("StructuredReferenceWidget failed to init: %s", exc)
-            self._structured_widget = None
-        if self._structured_widget is not None:
-            self._structured_widget.hide()
-            root.addWidget(self._structured_widget, stretch=1)
+        # ── Structured reference widget (Qt fallback) — lazy init ──
+        self._structured_widget: StructuredReferenceWidget | None = None
+        self._structured_widget_added = False
 
         # ── Web reference widget (default) ──
         try:
@@ -965,6 +959,23 @@ class AseReferenceDialog(QDialog):
         self._update_pdf_view_visibility()
         self._render_pdf()
 
+    def _init_structured_widget(self) -> None:
+        """Lazily create and add StructuredReferenceWidget to the layout."""
+        if self._structured_widget is not None:
+            return
+        try:
+            self._structured_widget = StructuredReferenceWidget(ReferenceDataStore().load())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("StructuredReferenceWidget failed to init: %s", exc)
+            self._structured_widget = None
+            return
+        if not self._structured_widget_added:
+            self._structured_widget.hide()
+            self._root_layout.addWidget(self._structured_widget, stretch=1)
+            self._structured_widget_added = True
+        if self._is_maximized:
+            self._structured_widget.set_maximized_mode(True)
+
     def _show_structured_tab(self) -> None:
         """Switch to structured reference view."""
         self._browser.hide()
@@ -973,6 +984,7 @@ class AseReferenceDialog(QDialog):
         self._pdf_toolbar.hide()
         if self._web_ref_active and self._web_ref_widget is not None:
             self._web_ref_widget.show()
+        self._init_structured_widget()
         if self._structured_widget is not None and not self._web_ref_active:
             self._structured_widget.show()
         self._btn_structured_tab.setChecked(True)
@@ -984,6 +996,7 @@ class AseReferenceDialog(QDialog):
             self._web_ref_active = False
             if self._web_ref_widget is not None:
                 self._web_ref_widget.hide()
+            self._init_structured_widget()
             if self._structured_widget is not None:
                 self._structured_widget.show()
 

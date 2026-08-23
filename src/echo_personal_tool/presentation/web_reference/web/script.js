@@ -16,7 +16,7 @@ var $$ = function (s) { return document.querySelectorAll(s); };
 function renderTopics(topics) {
     state.topics = topics;
     var c = $("#topicsList");
-    c.innerHTML = "";
+    var fragment = document.createDocumentFragment();
     topics.forEach(function (topic) {
         var btn = document.createElement("button");
         btn.className = "topic-btn" + (state.selectedTopic === topic.slug ? " active" : "");
@@ -26,8 +26,10 @@ function renderTopics(topics) {
             '<span>' + escapeHtml(topic.name) + '</span>' +
             '<span class="topic-badge">' + topic.n_params + '</span>';
         btn.addEventListener("click", function () { selectTopic(topic.slug); });
-        c.appendChild(btn);
+        fragment.appendChild(btn);
     });
+    c.innerHTML = "";
+    c.appendChild(fragment);
     // Stats
     var totalParams = topics.reduce(function (s, t) { return s + t.n_params; }, 0);
     var totalImages = topics.reduce(function (s, t) { return s + t.n_images; }, 0);
@@ -41,9 +43,22 @@ async function selectTopic(slug) {
     var data = await bridge.getTopicDetail(slug);
     if (data.error) return;
     var pathos = data.pathologies || [];
+    if (pathos.length > 0) {
+        // Pre-set active pathology before rendering to avoid double-render
+        state.selectedPathology = pathos[0].slug;
+    }
     renderPathologies(pathos, data.name);
     if (pathos.length > 0) {
-        await selectPathology(pathos[0].slug);
+        // Fetch pathology data — render all at once in the callback
+        var pathoData = await bridge.getPathology(slug, pathos[0].slug);
+        if (!pathoData.error) {
+            requestAnimationFrame(function() {
+                renderDescription(pathoData.description);
+                state.currentParams = pathoData.parameters || [];
+                renderParams(pathoData);
+                renderImages(pathoData.images || []);
+            });
+        }
     } else {
         clearContent();
     }
@@ -52,11 +67,11 @@ async function selectTopic(slug) {
 /* ===== Pathologies ===== */
 function renderPathologies(pathologies, topicName) {
     var bar = $("#pathologyBar");
-    bar.innerHTML = "";
     if (!pathologies || !pathologies.length) {
         bar.innerHTML = '<span class="empty-hint">Нет патологий</span>';
         return;
     }
+    var fragment = document.createDocumentFragment();
     pathologies.forEach(function (patho) {
         var btn = document.createElement("button");
         btn.className = "patho-btn" + (state.selectedPathology === patho.slug ? " active" : "");
@@ -67,28 +82,28 @@ function renderPathologies(pathologies, topicName) {
         btn.innerHTML = label;
         btn.title = patho.description || patho.name;
         btn.addEventListener("click", function () { selectPathology(patho.slug); });
-        bar.appendChild(btn);
+        fragment.appendChild(btn);
     });
+    bar.innerHTML = "";
+    bar.appendChild(fragment);
 }
 
 async function selectPathology(slug) {
     state.selectedPathology = slug;
-    var topicData = await bridge.getTopicDetail(state.selectedTopic);
-    if (!topicData.error) renderPathologies(topicData.pathologies || [], topicData.name);
-
     var data = await bridge.getPathology(state.selectedTopic, slug);
     if (data.error) return;
 
-    // Use requestAnimationFrame to batch DOM updates and avoid micro-jumps
+    // Batch all DOM updates in a single frame to avoid micro-jumps
     requestAnimationFrame(function() {
-        // Description panel
-        renderDescription(data.description);
+        // Re-render pathology tabs with active state
+        var topicData = null;
+        bridge.getTopicDetail(state.selectedTopic).then(function(d) {
+            if (!d.error) renderPathologies(d.pathologies || [], d.name);
+        });
 
-        // Parameters
+        renderDescription(data.description);
         state.currentParams = data.parameters || [];
         renderParams(data);
-
-        // Images
         renderImages(data.images || []);
     });
 }
@@ -293,7 +308,7 @@ function renderImages(images) {
     nav.hidden = false;
 
     // Render thumbnails
-    thumbs.innerHTML = "";
+    var thumbFragment = document.createDocumentFragment();
     thumbs.hidden = state.currentImages.length <= 1;
     state.currentImages.forEach(function (img, idx) {
         var thumb = document.createElement("div");
@@ -307,8 +322,10 @@ function renderImages(images) {
             state.currentImageIndex = idx;
             showCurrentImage();
         });
-        thumbs.appendChild(thumb);
+        thumbFragment.appendChild(thumb);
     });
+    thumbs.innerHTML = "";
+    thumbs.appendChild(thumbFragment);
 
     showCurrentImage();
 }
@@ -554,7 +571,7 @@ function setupSearch() {
                 res.hidden = false;
                 return;
             }
-            res.innerHTML = "";
+            var fragment = document.createDocumentFragment();
             var labels = { topic: "\u{1F4CB} Тема", pathology: "\u{1F4C4} Патология", parameter: "\u{1F4CA} Параметр" };
             hits.forEach(function (h) {
                 var el = document.createElement("div");
@@ -575,8 +592,10 @@ function setupSearch() {
                         });
                     }
                 });
-                res.appendChild(el);
+                fragment.appendChild(el);
             });
+            res.innerHTML = "";
+            res.appendChild(fragment);
             res.hidden = false;
         }, 200);
     });

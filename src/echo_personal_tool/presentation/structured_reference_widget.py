@@ -7,10 +7,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QSettings, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
+    QGraphicsOpacityEffect,
     QButtonGroup,
     QGridLayout,
     QHBoxLayout,
@@ -150,6 +151,7 @@ class _PathologyPanel(QWidget):
     """Two-column pathology list: items flow left→right, max 4 rows per column."""
 
     currentRowChanged = Signal(int)
+    _BTN_STYLE = ""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -167,18 +169,20 @@ class _PathologyPanel(QWidget):
     def addItems(self, items: list[str]) -> None:
         self.clear()
         self._items = list(items)
-        p = get_theme_palette()
-        for i, text in enumerate(items):
-            btn = QPushButton(text)
-            btn.setCheckable(True)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
+        if not _PathologyPanel._BTN_STYLE:
+            p = get_theme_palette()
+            _PathologyPanel._BTN_STYLE = (
                 f"QPushButton {{ text-align: left; padding: 4px 8px; border: none; "
                 f"background: transparent; color: {p['text']}; font-size: 13px; "
                 f"border-radius: 3px; }}"
                 f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
                 f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
             )
+        for i, text in enumerate(items):
+            btn = QPushButton(text)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(_PathologyPanel._BTN_STYLE)
             btn.clicked.connect(lambda _checked, idx=i: self._on_clicked(idx))
             self._group.addButton(btn, i)
             self._buttons.append(btn)
@@ -253,6 +257,9 @@ class _EditDelegate(QStyledItemDelegate):
 class _ParameterCard(QWidget):
     """Single parameter card with mini-tables for norm and pathology."""
 
+    _STYLE_NORMAL = ""
+    _STYLE_SELECTED = ""
+
     def __init__(self, param, norm_text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._param = param
@@ -261,11 +268,17 @@ class _ParameterCard(QWidget):
 
         p = get_theme_palette()
         unit = param.unit or ""
-        self.setStyleSheet(
-            f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
-            f"background: {p['bg_panel']}; }}"
-            f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
-        )
+        if not _ParameterCard._STYLE_NORMAL:
+            _ParameterCard._STYLE_NORMAL = (
+                f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
+                f"background: {p['bg_panel']}; }}"
+                f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
+            )
+            _ParameterCard._STYLE_SELECTED = (
+                f"_ParameterCard {{ border: 2px solid {p['accent_tab']}; border-radius: 4px; "
+                f"background: {p['bg_control']}; }}"
+            )
+        self.setStyleSheet(_ParameterCard._STYLE_NORMAL)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -414,25 +427,20 @@ class _ParameterCard(QWidget):
             parent = parent.parent()
 
     def set_selected(self, selected: bool) -> None:
+        if self._selected == selected:
+            return
         self._selected = selected
-        p = get_theme_palette()
-        if selected:
-            self.setStyleSheet(
-                f"_ParameterCard {{ border: 2px solid {p['accent_tab']}; border-radius: 4px; "
-                f"background: {p['bg_control']}; }}"
-            )
-        else:
-            self.setStyleSheet(
-                f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
-                f"background: {p['bg_panel']}; }}"
-                f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
-            )
+        self.setStyleSheet(
+            _ParameterCard._STYLE_SELECTED if selected else _ParameterCard._STYLE_NORMAL
+        )
 
 
 class StructuredReferenceWidget(QWidget):
     """Topic → pathology → gradation → parameter cards with images."""
 
     param_clicked = Signal(str)  # future: overlay link
+    _TABLE_STYLE = ""
+    _HEADER_STYLE = ""
 
     def __init__(
         self,
@@ -449,6 +457,7 @@ class StructuredReferenceWidget(QWidget):
         self._original_pixmap: QPixmap | None = None
         self._image_paths: list[str] = []
         self._current_image_index: int = 0
+        self._default_section_loaded: bool = False
 
         self._build_ui()
 
@@ -692,9 +701,6 @@ class StructuredReferenceWidget(QWidget):
         main_layout.addWidget(right_panel, stretch=1)
         root.addLayout(main_layout, stretch=1)
 
-        # Open default section
-        self._open_default_section()
-
     def _show_placeholder(self) -> None:
         self._pathology_panel.clear()
         self._clear_cards()
@@ -732,6 +738,19 @@ class StructuredReferenceWidget(QWidget):
             item = self._cards_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _fade_in_widget(self, widget: QWidget) -> None:
+        """Apply a quick fade-in animation to a widget (150ms)."""
+        effect = QGraphicsOpacityEffect(widget)
+        widget.setGraphicsEffect(effect)
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(150)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.start()
+        # Prevent GC — keep reference on the widget
+        widget._fade_anim = anim  # type: ignore[attr-defined]
 
     def _scale_image(self) -> None:
         # Guard against recursive calls from resizeEvent
@@ -826,6 +845,9 @@ class StructuredReferenceWidget(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        if not self._default_section_loaded:
+            self._default_section_loaded = True
+            QTimer.singleShot(0, self._open_default_section)
         self._last_scale_size = None
         self._scale_image()
 
@@ -868,6 +890,7 @@ class StructuredReferenceWidget(QWidget):
             card.setToolTip(f"{patho.name}" + (f" ({grad.name})" if grad else ""))
             self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
             self._param_cards.append(card)
+            self._fade_in_widget(card)
         self._image_label.clear()
         self._image_label.setText(tr("reference.no_image"))
 
@@ -1006,18 +1029,19 @@ class StructuredReferenceWidget(QWidget):
         headers.extend(grad_names)
         table.setHorizontalHeaderLabels(headers)
 
-        header_style = (
-            f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
-            f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
-        )
-        header.setStyleSheet(f"QHeaderView::section {{ {header_style} padding: 4px 8px; }}")
-
-        table.setStyleSheet(
-            f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
-            f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
-            f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
-            f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
-        )
+        if not StructuredReferenceWidget._HEADER_STYLE:
+            StructuredReferenceWidget._HEADER_STYLE = (
+                f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
+                f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
+            )
+            StructuredReferenceWidget._TABLE_STYLE = (
+                f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
+                f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
+                f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
+                f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
+            )
+        header.setStyleSheet(f"QHeaderView::section {{ {StructuredReferenceWidget._HEADER_STYLE} padding: 4px 8px; }}")
+        table.setStyleSheet(StructuredReferenceWidget._TABLE_STYLE)
 
         mono_font = table.font()
         mono_font.setStyleHint(QFont.StyleHint.Monospace)
@@ -1101,6 +1125,7 @@ class StructuredReferenceWidget(QWidget):
 
         # Insert table into cards layout (inside scroll area)
         self._cards_layout.insertWidget(self._cards_layout.count() - 1, table)
+        self._fade_in_widget(table)
         # Restore saved column widths and connect resize signal
         QTimer.singleShot(0, lambda: self._restore_column_widths(table))
         header.sectionResized.connect(lambda _idx, _old, _new: self._save_column_widths(table))

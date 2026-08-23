@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, QUrl, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -54,8 +55,10 @@ class WebReferenceWidget(QWidget):
         self._channel.registerObject("backend", self._bridge)
         self._web_view.page().setWebChannel(self._channel)
 
-        self._status_label = QLabel("Загрузка справочника...")
         p = get_theme_palette()
+        self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
+
+        self._status_label = QLabel("Загрузка справочника...")
         self._status_label.setStyleSheet(
             f"color: {p['text_dim']}; font-size: 14px; padding: 40px; "
             f"qproperty-alignment: AlignCenter; background: {p['bg_dark']};"
@@ -136,6 +139,8 @@ class WebReferenceWidget(QWidget):
     def reload(self) -> None:
         self._store.load()
         self._bridge.configure(self._store)
+        p = get_theme_palette()
+        self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
         self._apply_theme_to_web()
         if self._bridge_ready:
             self._web_view.page().runJavaScript("if(typeof init==='function')init();")
@@ -164,5 +169,7 @@ class WebReferenceWidget(QWidget):
 
     def apply_theme(self) -> None:
         """Apply current theme to the web view without full reload."""
+        p = get_theme_palette()
+        self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
         if self._bridge_ready:
             self._apply_theme_to_web()
