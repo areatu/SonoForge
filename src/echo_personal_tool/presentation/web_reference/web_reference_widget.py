@@ -173,3 +173,5 @@ class WebReferenceWidget(QWidget):
         self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
         if self._bridge_ready:
             self._apply_theme_to_web()
+            # Force web view to re-render with new theme
+            self._web_view.update()

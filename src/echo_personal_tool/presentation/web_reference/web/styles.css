@@ -9,11 +9,11 @@
     --text-secondary: #9bacbb;
     --text-muted: #6b8299;
     --text-caption: #c5ced8;
-    --accent: #40e2de;
-    --accent-hover: #5ff0ea;
-    --accent-subtle: rgba(64, 226, 222, 0.12);
+    --accent: #2dd4bf;
+    --accent-hover: #5eead4;
+    --accent-subtle: rgba(45, 212, 191, 0.15);
     --border: #2a4a6b;
-    --border-focus: #40e2de;
+    --border-focus: #2dd4bf;
     --success: #34d399;
     --warning: #fb923c;
     --danger: #f87171;
@@ -66,11 +66,11 @@
     --text-secondary: #969696;
     --text-muted: #6a6a6a;
     --text-caption: #bbbbbb;
-    --accent: #007acc;
-    --accent-hover: #1a8fe3;
-    --accent-subtle: rgba(0, 122, 204, 0.15);
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-subtle: rgba(59, 130, 246, 0.2);
     --border: #3c3c3c;
-    --border-focus: #007acc;
+    --border-focus: #3b82f6;
     --success: #4ec9b0;
     --warning: #cca700;
     --danger: #f14c4c;
@@ -311,7 +311,7 @@ body {
 /* ===== Content Split ===== */
 .content-split {
     flex: 1; display: flex; overflow: hidden;
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    transition: opacity 0.25s ease, transform 0.25s ease;
     will-change: opacity, transform;
 }
 .content-split.fading-out {
@@ -397,10 +397,10 @@ body {
 .image-main img {
     max-width: 100%; max-height: 100%;
     object-fit: contain; border-radius: var(--radius-sm);
-    transition: transform var(--transition-normal);
+    transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1);
     cursor: zoom-in;
 }
-.image-main img:hover { transform: scale(1.03); }
+.image-main img:hover { transform: scale(1.05); }
 
 .image-thumbs {
     display: flex; gap: 4px; padding: 6px 0;
