@@ -322,20 +322,9 @@ class MeasuresAccordionSection(QWidget):
         layout.addWidget(self._body)
         self._body.setMaximumHeight(0)
 
-        # Chevron rotation animation
-        self._chevron_angle = 0
-        self._chevron_anim = QPropertyAnimation(self, b"chevronRotation")
-        self._chevron_anim.setDuration(_ACCORDION_ANIM_MS)
-        self._chevron_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-    def _get_chevron_rotation(self) -> int:
-        return self._chevron_angle
-
-    def _set_chevron_rotation(self, angle: int) -> None:
-        self._chevron_angle = angle
-        self._chevron.setStyleSheet(f"font-size: 10px; transform: rotate({angle}deg);")
-
-    chevronRotation = property(_get_chevron_rotation, _set_chevron_rotation)
+    def _set_chevron(self, angle: int) -> None:
+        """Update chevron text based on angle."""
+        self._chevron.setText("▼" if angle > 45 else "▶")
 
     def is_expanded(self) -> bool:
         return self._expanded
@@ -351,14 +340,10 @@ class MeasuresAccordionSection(QWidget):
             self._animation.setStartValue(self._body.maximumHeight())
             self._animation.setEndValue(self._content_height)
             self._animation.start()
-            # Animate chevron rotation
-            self._chevron_anim.stop()
-            self._chevron_anim.setStartValue(self._chevron_angle)
-            self._chevron_anim.setEndValue(90)
-            self._chevron_anim.start()
+            self._set_chevron(90)
         else:
             self._body.setMaximumHeight(self._content_height)
-            self._set_chevron_rotation(90)
+            self._set_chevron(90)
 
     def collapse(self, *, animated: bool = True) -> None:
         self._expanded = False
@@ -370,14 +355,10 @@ class MeasuresAccordionSection(QWidget):
             self._animation.setStartValue(self._body.maximumHeight())
             self._animation.setEndValue(0)
             self._animation.start()
-            # Animate chevron rotation
-            self._chevron_anim.stop()
-            self._chevron_anim.setStartValue(self._chevron_angle)
-            self._chevron_anim.setEndValue(0)
-            self._chevron_anim.start()
+            self._set_chevron(0)
         else:
             self._body.setMaximumHeight(0)
-            self._set_chevron_rotation(0)
+            self._set_chevron(0)
 
     def contains_button(self, button: QPushButton) -> bool:
         return button in self._body.findChildren(QPushButton)
