@@ -85,7 +85,7 @@ _VS_CODE_DARK = {
     "accent": "#007acc",
     "accent_bright": "#1a8fe3",
     "accent_tab": "#007acc",
-    "accent_selected": "#005f9e",
+    "accent_selected": "#007acc",
     "text": "#cccccc",
     "text_dim": "#858585",
     "border": "#3c3c3c",
