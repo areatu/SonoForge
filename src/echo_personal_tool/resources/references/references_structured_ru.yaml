@@ -190,12 +190,6 @@ topics:
       - name: Норма
         range_male: {low: 0.32, high: 0.42}
         range_female: {low: 0.32, high: 0.42}
-      - name: Концентрическое ремоделирование
-        range_male: {low: 0.42}
-        range_female: {low: 0.42}
-      - name: Эксцентрическая гипертрофия
-        range_male: {high: 0.32}
-        range_female: {high: 0.32}
     - id: lvpwd_hyp
       name: Толщина задней стенки (LVPWd)
       unit: мм
@@ -207,9 +201,6 @@ topics:
       - name: Норма
         range_male: {low: 6, high: 11}
         range_female: {low: 6, high: 10}
-      - name: Гипертрофия
-        range_male: {low: 12}
-        range_female: {low: 11}
     - id: ivsd_hyp
       name: Толщина МЖП (IVSd)
       unit: мм
@@ -221,9 +212,6 @@ topics:
       - name: Норма
         range_male: {low: 6, high: 11}
         range_female: {low: 6, high: 10}
-      - name: Гипертрофия
-        range_male: {low: 12}
-        range_female: {low: 11}
   - name: Фракция выброса левого желудочка
     slug: lv_systolic
     parameters:
@@ -345,12 +333,6 @@ topics:
       - name: Норма
         range_male: {high: 10.0}
         range_female: {high: 10.0}
-      - name: Серая зона
-        range_male: {low: 10.0, high: 14.0}
-        range_female: {low: 10.0, high: 14.0}
-      - name: Повышено
-        range_male: {low: 14.0}
-        range_female: {low: 14.0}
     - id: e_prime_sept
       name: e' септальная
       unit: см/с
@@ -362,9 +344,6 @@ topics:
       - name: Норма
         range_male: {low: 7.0}
         range_female: {low: 7.0}
-      - name: Снижение
-        range_male: {high: 7.0}
-        range_female: {high: 7.0}
     - id: e_prime_lat
       name: e' латеральная
       unit: см/с
@@ -376,9 +355,6 @@ topics:
       - name: Норма
         range_male: {low: 10.0}
         range_female: {low: 10.0}
-      - name: Снижение
-        range_male: {high: 10.0}
-        range_female: {high: 10.0}
     - id: la_vol_index
       name: Объём ЛП (LAVi)
       unit: мл/м²
@@ -390,9 +366,6 @@ topics:
       - name: Норма
         range_male: {high: 34.0}
         range_female: {high: 34.0}
-      - name: Повышение
-        range_male: {low: 34.0}
-        range_female: {low: 34.0}
     - id: tr_vmax
       name: Максимальная скорость ТР
       unit: м/с
@@ -404,9 +377,6 @@ topics:
       - name: Норма
         range_male: {high: 2.8}
         range_female: {high: 2.8}
-      - name: ЛГ
-        range_male: {low: 2.8}
-        range_female: {low: 2.8}
     - id: ivrt
       name: Время изоволюмической релаксации (IVRT)
       unit: мс
@@ -418,9 +388,6 @@ topics:
       - name: Норма
         range_male: {low: 70.0}
         range_female: {low: 70.0}
-      - name: Повышение давления
-        range_male: {high: 70.0}
-        range_female: {high: 70.0}
     - id: pv_systolic_ff
       name: Систолическая фракция наполнения ЛВ
       unit: '%'
@@ -432,9 +399,6 @@ topics:
       - name: Норма
         range_male: {low: 40.0}
         range_female: {low: 40.0}
-      - name: Повышение давления
-        range_male: {high: 40.0}
-        range_female: {high: 40.0}
     - id: pv_ar_duration
       name: Разница длительности Ar и A (Ar-A)
       unit: мс
@@ -446,9 +410,6 @@ topics:
       - name: Норма
         range_male: {high: 30.0}
         range_female: {high: 30.0}
-      - name: Повышение
-        range_male: {low: 30.0}
-        range_female: {low: 30.0}
     - id: pv_ar_velocity
       name: Скорость волны Ar (лёгочные вены)
       unit: см/с
@@ -460,9 +421,6 @@ topics:
       - name: Норма
         range_male: {high: 35.0}
         range_female: {high: 35.0}
-      - name: Повышение
-        range_male: {low: 35.0}
-        range_female: {low: 35.0}
     - id: evp_ratio
       name: Соотношение E/Vp
       norm_male: {high: 2.5}
@@ -473,9 +431,6 @@ topics:
       - name: Норма
         range_male: {high: 2.5}
         range_female: {high: 2.5}
-      - name: Повышение
-        range_male: {low: 2.5}
-        range_female: {low: 2.5}
     - id: lars
       name: Индекс растяжимости ЛП (LARS)
       unit: '%'
@@ -486,9 +441,6 @@ topics:
       - name: Норма
         range_male: {low: 18.0}
         range_female: {low: 18.0}
-      - name: Нарушение
-        range_male: {high: 18.0}
-        range_female: {high: 18.0}
   - name: Сегменты и кровоснабжение левого желудочка
     slug: lv_segments
     image_paths:
@@ -550,9 +502,6 @@ topics:
       - name: Норма
         range_male: {low: 26.1}
         range_female: {low: 26.1}
-      - name: Нарушение
-        range_male: {high: 26.1}
-        range_female: {high: 26.1}
     - id: la_strain_conduit
       name: Стрейн ЛП — конduit (LAS-passive)
       unit: '%'
@@ -564,9 +513,6 @@ topics:
       - name: Норма
         range_male: {low: 12.0}
         range_female: {low: 12.0}
-      - name: Нарушение
-        range_male: {high: 12.0}
-        range_female: {high: 12.0}
     - id: la_strain_contractile
       name: Стрейн ЛП — контрактильная (LAS-active)
       unit: '%'
@@ -578,9 +524,6 @@ topics:
       - name: Норма
         range_male: {low: 7.7}
         range_female: {low: 7.7}
-      - name: Нарушение
-        range_male: {high: 7.7}
-        range_female: {high: 7.7}
 - name: Правый желудочек
   slug: right_ventricle
   pathologies:
@@ -864,9 +807,6 @@ topics:
       - name: Норма
         range_male: {high: 6.0}
         range_female: {high: 6.0}
-      - name: Повышение давления
-        range_male: {low: 6.0}
-        range_female: {low: 6.0}
   - name: Давление в легочной артерии
     slug: pulmonary_pressure
     image_paths:
@@ -903,9 +843,6 @@ topics:
       - name: Норма
         range_male: {high: 20}
         range_female: {high: 20}
-      - name: ЛГ
-        range_male: {low: 21}
-        range_female: {low: 21}
     - id: dpap
       name: Конечно-диастолическое давление в ЛА (dPAP)
       unit: мм рт. ст.
@@ -917,9 +854,6 @@ topics:
       - name: Норма
         range_male: {high: 20}
         range_female: {high: 20}
-      - name: Повышение
-        range_male: {low: 21}
-        range_female: {low: 21}
   - name: Вероятность легочной гипертензии
     slug: pulmonary_hypertension_prob
     parameters:
@@ -931,6 +865,9 @@ topics:
       source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
         of Pulmonary Hypertension
       gradations:
+      - name: Норма
+        range_male: {high: 2.8}
+        range_female: {high: 2.8}
       - name: Низкая вероятность ЛГ
         range_male: {high: 2.8}
         range_female: {high: 2.8}
@@ -951,9 +888,6 @@ topics:
       - name: Норма
         range_male: {low: 105}
         range_female: {low: 105}
-      - name: Признак ЛГ
-        range_male: {high: 105}
-        range_female: {high: 105}
     - id: pa_ao_ratio
       name: Отношение ПА/Ао
       norm_male: {high: 0.9}
@@ -964,9 +898,6 @@ topics:
       - name: Норма
         range_male: {high: 0.9}
         range_female: {high: 0.9}
-      - name: Признак ЛГ
-        range_male: {low: 0.9}
-        range_female: {low: 0.9}
     - id: rv_lv_ratio
       name: Отношение ПЖ/ЛЖ (базальное)
       norm_male: {high: 1.0}
@@ -977,9 +908,6 @@ topics:
       - name: Норма
         range_male: {high: 1.0}
         range_female: {high: 1.0}
-      - name: Признак ЛГ
-        range_male: {low: 1.0}
-        range_female: {low: 1.0}
     - id: pr_early_velocity
       name: Раннедиастолическая скорость ЛР
       unit: м/с
@@ -991,9 +919,6 @@ topics:
       - name: Норма
         range_male: {high: 2.2}
         range_female: {high: 2.2}
-      - name: Признак ЛГ
-        range_male: {low: 2.2}
-        range_female: {low: 2.2}
 - name: Правое предсердие
   slug: right_atrium
   pathologies:
@@ -1053,9 +978,6 @@ topics:
       - name: Норма
         range_male: {high: 53}
         range_female: {high: 50}
-      - name: Расширение
-        range_male: {low: 54}
-        range_female: {low: 51}
     - id: ra_sax
       name: Ширина ПП (КЖК)
       unit: мм
@@ -1067,9 +989,6 @@ topics:
       - name: Норма
         range_male: {high: 45}
         range_female: {high: 43}
-      - name: Расширение
-        range_male: {low: 46}
-        range_female: {low: 44}
   - name: Давление в правом предсердии
     slug: ra_pressure
     image_paths:
@@ -1090,9 +1009,6 @@ topics:
       - name: Промежуточное
         range_male: {low: 5, high: 10}
         range_female: {low: 5, high: 10}
-      - name: Повышенное
-        range_male: {low: 10, high: 20}
-        range_female: {low: 10, high: 20}
     - id: ivc_diameter
       name: Диаметр НПВ
       unit: мм
@@ -1104,9 +1020,6 @@ topics:
       - name: Норма
         range_male: {high: 21}
         range_female: {high: 21}
-      - name: Повышение RAP
-        range_male: {low: 21}
-        range_female: {low: 21}
 - name: Митральный клапан
   slug: mitral_valve
   pathologies:
@@ -1504,6 +1417,9 @@ topics:
       - name: Норма
         range_male: {low: 1.0}
         range_female: {low: 1.0}
+      - name: Умеренный стеноз
+        range_male: {high: 1.0}
+        range_female: {high: 1.0}
       - name: Тяжёлый стеноз
         range_male: {high: 1.0}
         range_female: {high: 1.0}
@@ -1518,9 +1434,12 @@ topics:
       - name: Норма
         range_male: {high: 5}
         range_female: {high: 5}
+      - name: Умеренный стеноз
+        range_male: {low: 5, high: 10}
+        range_female: {low: 5, high: 10}
       - name: Тяжёлый стеноз
-        range_male: {low: 5}
-        range_female: {low: 5}
+        range_male: {low: 10}
+        range_female: {low: 10}
     - id: ts_pht
       name: Полураспад PHT
       unit: мс
@@ -1616,9 +1535,6 @@ topics:
       - name: Норма
         range_male: {high: 29}
         range_female: {high: 27}
-      - name: Дилатация
-        range_male: {low: 30}
-        range_female: {low: 28}
     - id: pa_rvot
       name: Диаметр ПЖОТ
       unit: мм
@@ -1630,9 +1546,6 @@ topics:
       - name: Норма
         range_male: {high: 30}
         range_female: {high: 28}
-      - name: Расширение
-        range_male: {low: 31}
-        range_female: {low: 29}
 - name: Аорта
   slug: aorta
   pathologies:
@@ -2195,7 +2108,7 @@ topics:
       norm_male: {high: 10}
       norm_female: {high: 10}
       source: 2021 AIUM Abdomen Practice Parameter [3]
-- name: Органы брюшной полости
+- name: Брюшная полость
   slug: abdominal_organs
   pathologies:
   - name: Печень

@@ -333,16 +333,6 @@ topics:
         range_female:
           low: 0.32
           high: 0.42
-      - name: Concentric remodeling
-        range_male:
-          low: 0.42
-        range_female:
-          low: 0.42
-      - name: Eccentric hypertrophy
-        range_male:
-          high: 0.32
-        range_female:
-          high: 0.32
     - id: lvpwd_hyp
       name: LVPWd
       unit: mm
@@ -361,11 +351,6 @@ topics:
         range_female:
           low: 6
           high: 10
-      - name: Hypertrophy
-        range_male:
-          low: 12
-        range_female:
-          low: 11
     - id: ivsd_hyp
       name: IVSd
       unit: mm
@@ -384,11 +369,6 @@ topics:
         range_female:
           low: 6
           high: 10
-      - name: Hypertrophy
-        range_male:
-          low: 12
-        range_female:
-          low: 11
   - name: LV Systolic Function
     slug: lv_systolic
     parameters:
@@ -591,18 +571,6 @@ topics:
           high: 10.0
         range_female:
           high: 10.0
-      - name: Grey zone
-        range_male:
-          low: 10.0
-          high: 14.0
-        range_female:
-          low: 10.0
-          high: 14.0
-      - name: Elevated
-        range_male:
-          low: 14.0
-        range_female:
-          low: 14.0
     - id: e_prime_sept
       name: Septal e'
       unit: cm/s
@@ -617,11 +585,6 @@ topics:
           low: 7.0
         range_female:
           low: 7.0
-      - name: Reduced
-        range_male:
-          high: 7.0
-        range_female:
-          high: 7.0
     - id: e_prime_lat
       name: Lateral e'
       unit: cm/s
@@ -636,11 +599,6 @@ topics:
           low: 10.0
         range_female:
           low: 10.0
-      - name: Reduced
-        range_male:
-          high: 10.0
-        range_female:
-          high: 10.0
     - id: la_vol_index
       name: LAVi
       unit: mL/m²
@@ -655,11 +613,6 @@ topics:
           high: 34.0
         range_female:
           high: 34.0
-      - name: Elevated
-        range_male:
-          low: 34.0
-        range_female:
-          low: 34.0
     - id: tr_vmax
       name: TR Vmax
       unit: m/s
@@ -674,11 +627,6 @@ topics:
           high: 2.8
         range_female:
           high: 2.8
-      - name: PH
-        range_male:
-          low: 2.8
-        range_female:
-          low: 2.8
     - id: ivrt
       name: IVRT
       unit: ms
@@ -693,11 +641,6 @@ topics:
           low: 70.0
         range_female:
           low: 70.0
-      - name: Elevated pressure
-        range_male:
-          high: 70.0
-        range_female:
-          high: 70.0
     - id: pv_systolic_ff
       name: Systolic filling fraction
       unit: '%'
@@ -712,11 +655,6 @@ topics:
           low: 40.0
         range_female:
           low: 40.0
-      - name: Elevated pressure
-        range_male:
-          high: 40.0
-        range_female:
-          high: 40.0
     - id: pv_ar_duration
       name: Ar-A duration difference
       unit: ms
@@ -731,11 +669,6 @@ topics:
           high: 30.0
         range_female:
           high: 30.0
-      - name: Elevated
-        range_male:
-          low: 30.0
-        range_female:
-          low: 30.0
     - id: pv_ar_velocity
       name: Ar wave velocity (pulmonary veins)
       unit: cm/s
@@ -750,11 +683,6 @@ topics:
           high: 35.0
         range_female:
           high: 35.0
-      - name: Elevated
-        range_male:
-          low: 35.0
-        range_female:
-          low: 35.0
     - id: evp_ratio
       name: E/Vp ratio
       norm_male:
@@ -768,11 +696,6 @@ topics:
           high: 2.5
         range_female:
           high: 2.5
-      - name: Elevated
-        range_male:
-          low: 2.5
-        range_female:
-          low: 2.5
     - id: lars
       name: LARS
       unit: '%'
@@ -787,11 +710,6 @@ topics:
           low: 18.0
         range_female:
           low: 18.0
-      - name: Impaired
-        range_male:
-          high: 18.0
-        range_female:
-          high: 18.0
   - name: LV Segments and Blood Supply
     slug: lv_segments
     image_paths:
@@ -881,11 +799,6 @@ topics:
           low: 26.1
         range_female:
           low: 26.1
-      - name: Impaired
-        range_male:
-          high: 26.1
-        range_female:
-          high: 26.1
     - id: la_strain_conduit
       name: LA Strain — Conduit (LAS-passive)
       unit: '%'
@@ -900,11 +813,6 @@ topics:
           low: 12.0
         range_female:
           low: 12.0
-      - name: Impaired
-        range_male:
-          high: 12.0
-        range_female:
-          high: 12.0
     - id: la_strain_contractile
       name: LA Strain — Contractile (LAS-active)
       unit: '%'
@@ -919,11 +827,6 @@ topics:
           low: 7.7
         range_female:
           low: 7.7
-      - name: Impaired
-        range_male:
-          high: 7.7
-        range_female:
-          high: 7.7
 - name: Right Ventricle
   slug: right_ventricle
   pathologies:
@@ -1379,11 +1282,6 @@ topics:
           high: 6.0
         range_female:
           high: 6.0
-      - name: Elevated pressure
-        range_male:
-          low: 6.0
-        range_female:
-          low: 6.0
   - name: Pulmonary Artery Pressure
     slug: pulmonary_pressure
     image_paths:
@@ -1437,11 +1335,6 @@ topics:
           high: 20
         range_female:
           high: 20
-      - name: PH
-        range_male:
-          low: 21
-        range_female:
-          low: 21
     - id: dpap
       name: dPAP
       unit: mmHg
@@ -1456,11 +1349,6 @@ topics:
           high: 20
         range_female:
           high: 20
-      - name: Elevated
-        range_male:
-          low: 21
-        range_female:
-          low: 21
   - name: Pulmonary Hypertension Probability
     slug: pulmonary_hypertension_prob
     parameters:
@@ -1473,6 +1361,11 @@ topics:
         high: 2.8
       source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment of Pulmonary Hypertension
       gradations:
+      - name: Normal
+        range_male:
+          high: 2.8
+        range_female:
+          high: 2.8
       - name: Low PH probability
         range_male:
           high: 2.8
@@ -1504,11 +1397,6 @@ topics:
           low: 105
         range_female:
           low: 105
-      - name: Sign of PH
-        range_male:
-          high: 105
-        range_female:
-          high: 105
     - id: pa_ao_ratio
       name: PA/Ao ratio
       norm_male:
@@ -1522,11 +1410,6 @@ topics:
           high: 0.9
         range_female:
           high: 0.9
-      - name: Sign of PH
-        range_male:
-          low: 0.9
-        range_female:
-          low: 0.9
     - id: rv_lv_ratio
       name: RV/LV ratio (basal)
       norm_male:
@@ -1540,11 +1423,6 @@ topics:
           high: 1.0
         range_female:
           high: 1.0
-      - name: Sign of PH
-        range_male:
-          low: 1.0
-        range_female:
-          low: 1.0
     - id: pr_early_velocity
       name: PR early velocity
       unit: m/s
@@ -1559,11 +1437,6 @@ topics:
           high: 2.2
         range_female:
           high: 2.2
-      - name: Sign of PH
-        range_male:
-          low: 2.2
-        range_female:
-          low: 2.2
 - name: Right Atrium
   slug: right_atrium
   pathologies:
@@ -1655,11 +1528,6 @@ topics:
           high: 53
         range_female:
           high: 50
-      - name: Dilation
-        range_male:
-          low: 54
-        range_female:
-          low: 51
     - id: ra_sax
       name: RA Width (CLS)
       unit: mm
@@ -1675,11 +1543,6 @@ topics:
           high: 45
         range_female:
           high: 43
-      - name: Dilation
-        range_male:
-          low: 46
-        range_female:
-          low: 44
   - name: Right Atrial Pressure
     slug: ra_pressure
     image_paths:
@@ -1712,13 +1575,6 @@ topics:
         range_female:
           low: 5
           high: 10
-      - name: Elevated
-        range_male:
-          low: 10
-          high: 20
-        range_female:
-          low: 10
-          high: 20
     - id: ivc_diameter
       name: IVC Diameter
       unit: mm
@@ -1734,11 +1590,6 @@ topics:
           high: 21
         range_female:
           high: 21
-      - name: Elevated RAP
-        range_male:
-          low: 21
-        range_female:
-          low: 21
 - name: Mitral Valve
   slug: mitral_valve
   pathologies:
@@ -2241,6 +2092,11 @@ topics:
           low: 1.0
         range_female:
           low: 1.0
+      - name: Moderate stenosis
+        range_male:
+          high: 1.0
+        range_female:
+          high: 1.0
       - name: Severe stenosis
         range_male:
           high: 1.0
@@ -2260,11 +2116,18 @@ topics:
           high: 5
         range_female:
           high: 5
-      - name: Severe stenosis
+      - name: Moderate stenosis
         range_male:
           low: 5
+          high: 10
         range_female:
           low: 5
+          high: 10
+      - name: Severe stenosis
+        range_male:
+          low: 10
+        range_female:
+          low: 10
     - id: ts_pht
       name: PHT Half-time
       unit: ms
@@ -2381,11 +2244,6 @@ topics:
           high: 29
         range_female:
           high: 27
-      - name: Dilation
-        range_male:
-          low: 30
-        range_female:
-          low: 28
     - id: pa_rvot
       name: RVOT Diameter
       unit: mm
@@ -2400,11 +2258,6 @@ topics:
           high: 30
         range_female:
           high: 28
-      - name: Dilation
-        range_male:
-          low: 31
-        range_female:
-          low: 29
 - name: Aorta
   slug: aorta
   pathologies:
@@ -3204,7 +3057,7 @@ topics:
       norm_female:
         high: 10
       source: 2021 AIUM Abdomen Practice Parameter [3]
-- name: Abdominal Organs
+- name: Abdomen
   slug: abdominal_organs
   pathologies:
   - name: Liver
