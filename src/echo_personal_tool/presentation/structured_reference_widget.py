@@ -11,8 +11,8 @@ from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QS
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
-    QGraphicsOpacityEffect,
     QButtonGroup,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -102,6 +102,10 @@ _GRADATION_COLORS: dict[str, tuple[str, str]] = {
     "лёгк": ("rgba(234, 179, 8, 0.12)", "#eab308"),
     "умерен": ("rgba(249, 115, 22, 0.12)", "#f97316"),
     "тяжёл": ("rgba(239, 68, 68, 0.12)", "#ef4444"),
+    "normal": ("rgba(34, 197, 94, 0.12)", "#22c55e"),
+    "mild": ("rgba(234, 179, 8, 0.12)", "#eab308"),
+    "moderate": ("rgba(249, 115, 22, 0.12)", "#f97316"),
+    "severe": ("rgba(239, 68, 68, 0.12)", "#ef4444"),
 }
 
 
@@ -169,15 +173,14 @@ class _PathologyPanel(QWidget):
     def addItems(self, items: list[str]) -> None:
         self.clear()
         self._items = list(items)
-        if not _PathologyPanel._BTN_STYLE:
-            p = get_theme_palette()
-            _PathologyPanel._BTN_STYLE = (
-                f"QPushButton {{ text-align: left; padding: 4px 8px; border: none; "
-                f"background: transparent; color: {p['text']}; font-size: 13px; "
-                f"border-radius: 3px; }}"
-                f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
-                f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
-            )
+        p = get_theme_palette()
+        _PathologyPanel._BTN_STYLE = (
+            f"QPushButton {{ text-align: left; padding: 4px 8px; border: none; "
+            f"background: transparent; color: {p['text']}; font-size: 13px; "
+            f"border-radius: 3px; }}"
+            f"QPushButton:checked {{ background: {p['accent_tab']}; font-weight: bold; }}"
+            f"QPushButton:hover:!checked {{ background: {p['bg_button_hover']}; }}"
+        )
         for i, text in enumerate(items):
             btn = QPushButton(text)
             btn.setCheckable(True)
@@ -379,8 +382,18 @@ class _ParameterCard(QWidget):
 
         for r, (grad_name, grad_value) in enumerate(rows):
             name_item = QTableWidgetItem(grad_name)
-            name_item.setForeground(QColor(p["text_dim"]))
             val_item = QTableWidgetItem(grad_value)
+
+            colors = _gradation_color(grad_name)
+            if colors:
+                bg, text = colors
+                name_item.setBackground(QColor(bg))
+                name_item.setForeground(QColor(text))
+                val_item.setBackground(QColor(bg))
+                val_item.setForeground(QColor(text))
+            else:
+                name_item.setForeground(QColor(p["text_dim"]))
+
             table.setItem(r, 0, name_item)
             table.setItem(r, 1, val_item)
 

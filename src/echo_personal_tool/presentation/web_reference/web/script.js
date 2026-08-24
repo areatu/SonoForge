@@ -94,6 +94,7 @@ function renderPathologies(pathologies, topicName) {
     pathologies.forEach(function (patho) {
         var btn = document.createElement("button");
         btn.className = "patho-btn" + (state.selectedPathology === patho.slug ? " active" : "");
+        btn.setAttribute("data-slug", patho.slug);
         var label = escapeHtml(patho.name);
         if (patho.image_count > 0) {
             label += ' <span class="patho-badge">🖼' + patho.image_count + '</span>';
@@ -110,7 +111,7 @@ function renderPathologies(pathologies, topicName) {
 
 function updatePathologyActive(newSlug) {
     $$(".patho-btn").forEach(function (btn) {
-        var isActive = btn.textContent.trim().indexOf(newSlug) >= 0;
+        var isActive = btn.getAttribute("data-slug") === newSlug;
         btn.classList.toggle("active", isActive);
     });
     moveTabIndicator();
@@ -123,11 +124,10 @@ async function selectPathology(slug) {
     $$(".patho-btn").forEach(function (btn) {
         btn.classList.remove("active");
     });
-    // Find the clicked button and mark active immediately
+    // Find the clicked button and mark active by data-slug
     var allBtns = $$(".patho-btn");
     for (var i = 0; i < allBtns.length; i++) {
-        if (allBtns[i].getAttribute("title") === slug ||
-            allBtns[i].textContent.toLowerCase().indexOf(slug.replace(/_/g, " ")) >= 0) {
+        if (allBtns[i].getAttribute("data-slug") === slug) {
             allBtns[i].classList.add("active");
             break;
         }

@@ -200,14 +200,23 @@ def _flow_dict_representer(dumper, data):
 class ReferenceDataStore:
     """Loads and provides access to structured reference data."""
 
-    def __init__(self, yaml_path: str | Path | None = None) -> None:
-        self._yaml_path = Path(yaml_path) if yaml_path else self._default_path()
+    def __init__(self, yaml_path: str | Path | None = None, language: str | None = None) -> None:
+        if yaml_path:
+            self._yaml_path = Path(yaml_path)
+        elif language == "ru":
+            self._yaml_path = self._ru_path()
+        else:
+            self._yaml_path = self._default_path()
         self._topics: list[TopicRef] = []
         self._param_index: dict[str, tuple[TopicRef, PathologyRef, GradationRef | None]] = {}
 
     @staticmethod
     def _default_path() -> Path:
         return Path(__file__).resolve().parents[2] / "resources" / "references" / "references_structured.yaml"
+
+    @staticmethod
+    def _ru_path() -> Path:
+        return Path(__file__).resolve().parents[2] / "resources" / "references" / "references_structured_ru.yaml"
 
     def load(self) -> ReferenceDataStore:
         raw = yaml.safe_load(self._yaml_path.read_text(encoding="utf-8"))
