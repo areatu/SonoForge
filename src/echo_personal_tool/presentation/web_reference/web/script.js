@@ -325,10 +325,10 @@ function clearContent() {
 function gradClassForName(name) {
     if (!name) return "";
     var lower = name.toLowerCase();
-    if (lower.indexOf("\u043d\u043e\u0440\u043c") >= 0) return "grad-normal-cell";
-    if (lower.indexOf("\u043b\u0451\u0433\u043a") >= 0 || lower.indexOf("\u043b\u0435\u0433\u043a") >= 0) return "grad-mild-cell";
-    if (lower.indexOf("\u0443\u043c\u0435\u0440\u0435\u043d") >= 0) return "grad-moderate-cell";
-    if (lower.indexOf("\u0442\u044f\u0436\u0451\u043b") >= 0 || lower.indexOf("\u0442\u044f\u0436\u0435\u043b") >= 0) return "grad-severe-cell";
+    if (lower.indexOf("\u043d\u043e\u0440\u043c") >= 0 || lower.indexOf("normal") >= 0) return "grad-normal-cell";
+    if (lower.indexOf("\u043b\u0451\u0433\u043a") >= 0 || lower.indexOf("\u043b\u0435\u0433\u043a") >= 0 || lower.indexOf("mild") >= 0) return "grad-mild-cell";
+    if (lower.indexOf("\u0443\u043c\u0435\u0440\u0435\u043d") >= 0 || lower.indexOf("moderate") >= 0) return "grad-moderate-cell";
+    if (lower.indexOf("\u0442\u044f\u0436\u0451\u043b") >= 0 || lower.indexOf("\u0442\u044f\u0436\u0435\u043b") >= 0 || lower.indexOf("severe") >= 0) return "grad-severe-cell";
     return "";
 }
 

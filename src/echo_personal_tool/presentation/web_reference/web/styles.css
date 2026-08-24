@@ -365,6 +365,15 @@ body {
 .grad-moderate-cell { background: rgba(249, 115, 22, 0.18); color: #fb923c; }
 .grad-severe-cell { background: rgba(239, 68, 68, 0.18); color: #f87171; }
 
+[data-theme="light"] .grad-normal-cell,
+[data-theme="vscode_light"] .grad-normal-cell { background: rgba(22, 163, 74, 0.12); color: #16a34a; }
+[data-theme="light"] .grad-mild-cell,
+[data-theme="vscode_light"] .grad-mild-cell { background: rgba(217, 119, 6, 0.12); color: #d97706; }
+[data-theme="light"] .grad-moderate-cell,
+[data-theme="vscode_light"] .grad-moderate-cell { background: rgba(234, 88, 12, 0.12); color: #ea580c; }
+[data-theme="light"] .grad-severe-cell,
+[data-theme="vscode_light"] .grad-severe-cell { background: rgba(220, 38, 38, 0.12); color: #dc2626; }
+
 .source-bar {
     padding: 6px 8px; font-size: 11px; color: var(--text-muted);
     border-top: 1px solid var(--border); background: var(--bg-secondary);

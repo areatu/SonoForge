@@ -98,21 +98,39 @@ _TOPIC_FULL_NAMES: dict[str, str] = {
 
 
 _GRADATION_COLORS: dict[str, tuple[str, str]] = {
-    "норм": ("rgba(34, 197, 94, 0.12)", "#22c55e"),
-    "лёгк": ("rgba(234, 179, 8, 0.12)", "#eab308"),
-    "умерен": ("rgba(249, 115, 22, 0.12)", "#f97316"),
-    "тяжёл": ("rgba(239, 68, 68, 0.12)", "#ef4444"),
-    "normal": ("rgba(34, 197, 94, 0.12)", "#22c55e"),
-    "mild": ("rgba(234, 179, 8, 0.12)", "#eab308"),
-    "moderate": ("rgba(249, 115, 22, 0.12)", "#f97316"),
-    "severe": ("rgba(239, 68, 68, 0.12)", "#ef4444"),
+    "норм": ("#1E22C55E", "#22c55e"),
+    "лёгк": ("#1EEAB308", "#eab308"),
+    "умерен": ("#1EF97316", "#f97316"),
+    "тяжёл": ("#1EEF4444", "#ef4444"),
+    "normal": ("#1E22C55E", "#22c55e"),
+    "mild": ("#1EEAB308", "#eab308"),
+    "moderate": ("#1EF97316", "#f97316"),
+    "severe": ("#1EEF4444", "#ef4444"),
 }
+
+_GRADATION_COLORS_LIGHT: dict[str, tuple[str, str]] = {
+    "норм": ("#2D22C55E", "#16a34a"),
+    "лёгк": ("#2DEAB308", "#d97706"),
+    "умерен": ("#2DF97316", "#ea580c"),
+    "тяжёл": ("#2DEF4444", "#dc2626"),
+    "normal": ("#2D22C55E", "#16a34a"),
+    "mild": ("#2DEAB308", "#d97706"),
+    "moderate": ("#2DF97316", "#ea580c"),
+    "severe": ("#2DEF4444", "#dc2626"),
+}
+
+
+def _is_light_theme() -> bool:
+    """Check if the current theme is light."""
+    from echo_personal_tool.presentation.dark_theme import _current_theme_mode
+    return _current_theme_mode in ("light", "vscode_light")
 
 
 def _gradation_color(name: str) -> tuple[str, str] | None:
     """Return (bg, text) colors for a gradation name, or None."""
     lower = name.lower()
-    for keyword, colors in _GRADATION_COLORS.items():
+    palette = _GRADATION_COLORS_LIGHT if _is_light_theme() else _GRADATION_COLORS
+    for keyword, colors in palette.items():
         if keyword in lower:
             return colors
     return None
@@ -271,16 +289,15 @@ class _ParameterCard(QWidget):
 
         p = get_theme_palette()
         unit = param.unit or ""
-        if not _ParameterCard._STYLE_NORMAL:
-            _ParameterCard._STYLE_NORMAL = (
-                f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
-                f"background: {p['bg_panel']}; }}"
-                f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
-            )
-            _ParameterCard._STYLE_SELECTED = (
-                f"_ParameterCard {{ border: 2px solid {p['accent_tab']}; border-radius: 4px; "
-                f"background: {p['bg_control']}; }}"
-            )
+        _ParameterCard._STYLE_NORMAL = (
+            f"_ParameterCard {{ border: 1px solid {p['border']}; border-radius: 4px; "
+            f"background: {p['bg_panel']}; }}"
+            f"_ParameterCard:hover {{ background: {p['bg_button_hover']}; }}"
+        )
+        _ParameterCard._STYLE_SELECTED = (
+            f"_ParameterCard {{ border: 2px solid {p['accent_tab']}; border-radius: 4px; "
+            f"background: {p['bg_control']}; }}"
+        )
         self.setStyleSheet(_ParameterCard._STYLE_NORMAL)
 
         layout = QVBoxLayout(self)
@@ -1042,17 +1059,16 @@ class StructuredReferenceWidget(QWidget):
         headers.extend(grad_names)
         table.setHorizontalHeaderLabels(headers)
 
-        if not StructuredReferenceWidget._HEADER_STYLE:
-            StructuredReferenceWidget._HEADER_STYLE = (
-                f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
-                f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
-            )
-            StructuredReferenceWidget._TABLE_STYLE = (
-                f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
-                f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
-                f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
-                f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
-            )
+        StructuredReferenceWidget._HEADER_STYLE = (
+            f"background: {pal['bg_control']}; font-weight: bold; font-size: 12px; "
+            f"color: {pal['text']}; border-bottom: 2px solid {pal['accent_tab']};"
+        )
+        StructuredReferenceWidget._TABLE_STYLE = (
+            f"QTableWidget {{ border: 1px solid {pal['border']}; gridline-color: {pal['border']}; "
+            f"font-size: 13px; background: {pal['bg_panel']}; color: {pal['text']}; "
+            f"alternate-background-color: {pal.get('bg_panel_alt', pal['bg_control'])}; }}"
+            f"QTableWidget::item {{ padding: 4px 8px; border: none; }}"
+        )
         header.setStyleSheet(f"QHeaderView::section {{ {StructuredReferenceWidget._HEADER_STYLE} padding: 4px 8px; }}")
         table.setStyleSheet(StructuredReferenceWidget._TABLE_STYLE)
 

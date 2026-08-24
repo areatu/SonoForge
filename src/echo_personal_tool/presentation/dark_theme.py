@@ -117,6 +117,7 @@ _VS_CODE_LIGHT = {
     "accent": "#0066b8",
     "accent_bright": "#005a9e",
     "accent_tab": "#0066b8",
+    "accent_selected": "#0066b8",
     "text": "#333333",
     "text_dim": "#6e6e6e",
     "border": "#d4d4d4",
