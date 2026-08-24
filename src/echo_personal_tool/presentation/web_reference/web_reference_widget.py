@@ -14,6 +14,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.domain.services.reference_data_store import ReferenceDataStore
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 from echo_personal_tool.presentation.web_reference.web_reference_bridge import (
     WebReferenceBridge,
@@ -58,7 +59,7 @@ class WebReferenceWidget(QWidget):
         p = get_theme_palette()
         self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
 
-        self._status_label = QLabel("Загрузка справочника...")
+        self._status_label = QLabel(tr("web_ref.loading"))
         self._status_label.setStyleSheet(
             f"color: {p['text_dim']}; font-size: 14px; padding: 40px; "
             f"qproperty-alignment: AlignCenter; background: {p['bg_dark']};"
@@ -72,7 +73,7 @@ class WebReferenceWidget(QWidget):
             self._web_view.setUrl(file_url)
         else:
             log.error("HTML not found: %s", html_path)
-            self._status_label.setText(f"Файл не найден: {html_path}")
+            self._status_label.setText(tr("web_ref.file_not_found").format(path=html_path))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -88,7 +89,7 @@ class WebReferenceWidget(QWidget):
     def _on_load_finished(self, ok: bool) -> None:
         if not ok:
             self._fallback_timer.stop()
-            self._status_label.setText("Ошибка загрузки")
+            self._status_label.setText(tr("web_ref.load_error"))
             self.web_failed.emit()
             return
         log.info("Page loaded, checking bridge")
@@ -97,18 +98,25 @@ class WebReferenceWidget(QWidget):
         self._try_init_bridge()
 
     def _apply_theme_to_web(self) -> None:
-        """Inject current theme name into the web page via data-theme attribute."""
+        """Inject current theme name and locale strings into the web page."""
         from echo_personal_tool.presentation.dark_theme import _current_theme_mode
 
         theme = _current_theme_mode
-        js = f"document.documentElement.setAttribute('data-theme', '{theme}');"
+        title = tr("constructor.export.html_title")
+        # Escape for JS string
+        title_escaped = title.replace("\\", "\\\\").replace("'", "\\'")
+        js = (
+            f"document.documentElement.setAttribute('data-theme', '{theme}');"
+            f"document.title='{title_escaped}';"
+            f"var h1=document.querySelector('h1');if(h1)h1.textContent='{title_escaped}';"
+        )
         self._web_view.page().runJavaScript(js)
 
     def _try_init_bridge(self) -> None:
         self._init_attempts += 1
         if self._init_attempts > 30:
             log.warning("Bridge init timed out")
-            self._status_label.setText("Веб-интерфейс не загрузился")
+            self._status_label.setText(tr("web_ref.init_failed"))
             self.web_failed.emit()
             return
         self._web_view.page().runJavaScript(
@@ -133,7 +141,7 @@ class WebReferenceWidget(QWidget):
         if not self._bridge_ready:
             log.warning("Web fallback triggered")
             self._init_attempts = 999  # stop retry loop
-            self._status_label.setText("Веб-недоступен — Qt-вид")
+            self._status_label.setText(tr("web_ref.fallback"))
             self.web_failed.emit()
 
     def reload(self) -> None:
@@ -154,7 +162,7 @@ class WebReferenceWidget(QWidget):
         self._bridge.configure(self._store)
         self._bridge_ready = False
         self._init_attempts = 0
-        self._status_label.setText("Перезагрузка...")
+        self._status_label.setText(tr("web_ref.reloading"))
         self._status_label.show()
         self._web_view.hide()
         self._fallback_timer.stop()

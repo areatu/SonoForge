@@ -33,7 +33,7 @@ function renderTopics(topics) {
     // Stats
     var totalParams = topics.reduce(function (s, t) { return s + t.n_params; }, 0);
     var totalImages = topics.reduce(function (s, t) { return s + t.n_images; }, 0);
-    $("#statsText").textContent = topics.length + " тем · " + totalParams + " параметров · " + totalImages + " изображений";
+    $("#statsText").textContent = topics.length + " topics · " + totalParams + " parameters · " + totalImages + " images";
 }
 
 async function selectTopic(slug) {
@@ -87,7 +87,7 @@ function moveTabIndicator() {
 function renderPathologies(pathologies, topicName) {
     var bar = $("#pathologyBar");
     if (!pathologies || !pathologies.length) {
-        bar.innerHTML = '<span class="empty-hint">Нет патологий</span>';
+        bar.innerHTML = '<span class="empty-hint">No pathologies</span>';
         return;
     }
     var fragment = document.createDocumentFragment();
@@ -175,7 +175,7 @@ function renderParams(data) {
 
     // Build new header
     var hasGrads = data.grad_names && data.grad_names.length > 0;
-    var headers = hasGrads ? ["Показатель"] : ["Показатель", "Норм М", "Норм Ж"];
+    var headers = hasGrads ? ["Parameter"] : ["Parameter", "Norm M", "Norm F"];
     if (hasGrads) {
         headers = headers.concat(data.grad_names);
     }
@@ -203,7 +203,7 @@ function renderParams(data) {
         var emptyTr = document.createElement("tr");
         var emptyTd = document.createElement("td");
         emptyTd.colSpan = hasGrads ? 1 + data.grad_names.length : 3;
-        emptyTd.textContent = "Нет параметров для этой патологии";
+        emptyTd.textContent = "No parameters for this pathology";
         emptyTd.className = "patho-desc";
         emptyTd.style.textAlign = "center";
         emptyTr.appendChild(emptyTd);
@@ -613,12 +613,12 @@ function setupSearch() {
         searchTimeout = setTimeout(async function () {
             var hits = await bridge.search(q);
             if (!hits || !hits.length) {
-                res.innerHTML = '<div class="search-result-item"><span class="search-result-name">Ничего не найдено</span></div>';
+                res.innerHTML = '<div class="search-result-item"><span class="search-result-name">Nothing found</span></div>';
                 res.hidden = false;
                 return;
             }
             var fragment = document.createDocumentFragment();
-            var labels = { topic: "\u{1F4CB} Тема", pathology: "\u{1F4C4} Патология", parameter: "\u{1F4CA} Параметр" };
+            var labels = { topic: "\u{1F4CB} Topic", pathology: "\u{1F4C4} Pathology", parameter: "\u{1F4CA} Parameter" };
             hits.forEach(function (h) {
                 var el = document.createElement("div");
                 el.className = "search-result-item";

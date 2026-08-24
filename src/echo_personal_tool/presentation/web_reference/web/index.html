@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Справочник</title>
+    <title>Справочник по ЭхоКГ и УЗИ</title>
     <style>body{background:#102135}</style>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -11,23 +11,23 @@
     <header class="header">
         <div class="header-left">
             <span class="app-icon">📋</span>
-            <h1>Справочник эхокардиографии</h1>
+            <h1>Справочник по ЭхоКГ и УЗИ</h1>
         </div>
         <div class="header-right">
             <div class="age-filter" id="ageFilter">
-                <label class="age-label">Возраст:</label>
+                <label class="age-label">Age:</label>
                 <input type="number" id="ageInput" class="age-input" placeholder="—" min="0" max="120">
-                <span class="age-unit">лет</span>
+                <span class="age-unit">y</span>
             </div>
             <div class="search-box">
                 <span class="search-icon">🔍</span>
-                <input type="text" id="searchInput" placeholder="Поиск..." autocomplete="off">
+                <input type="text" id="searchInput" placeholder="Search..." autocomplete="off">
                 <div class="search-results" id="searchResults" hidden></div>
             </div>
-            <button class="edit-toggle" id="editToggle" title="Режим редактирования">✏️ Правка</button>
+            <button class="edit-toggle" id="editToggle" title="Edit mode">✏️ Edit</button>
             <div class="edit-actions" id="editActions" hidden>
-                <button class="save-btn" id="saveBtn">💾 Сохранить</button>
-                <button class="cancel-btn" id="cancelBtn">✕ Отмена</button>
+                <button class="save-btn" id="saveBtn">💾 Save</button>
+                <button class="cancel-btn" id="cancelBtn">✕ Cancel</button>
                 <span class="edit-status" id="editStatus"></span>
             </div>
         </div>
@@ -37,7 +37,7 @@
         <!-- Left: Topics -->
         <section class="panel panel-left" id="panelTopics">
             <div class="panel-header">
-                <h2>Анатомия</h2>
+                <h2>Anatomy</h2>
             </div>
             <div class="panel-body" id="topicsList"></div>
             <div class="panel-stats" id="statsBar">
@@ -51,7 +51,7 @@
         <section class="panel panel-right" id="panelContent">
             <!-- Pathology tabs -->
             <div class="pathology-bar" id="pathologyBar">
-                <div class="empty-hint" id="pathoHint">Выберите тему слева</div>
+                <div class="empty-hint" id="pathoHint">Select a topic on the left</div>
             </div>
 
             <!-- Description panel -->
@@ -80,7 +80,7 @@
                     <div class="image-gallery" id="imageGallery">
                         <div class="empty-state" id="imageEmpty">
                             <span class="empty-icon">🖼</span>
-                            <p>Нет изображений</p>
+                            <p>No images</p>
                         </div>
                         <div class="image-main" id="imageMain" hidden>
                             <img id="mainImage" alt="">
@@ -103,10 +103,10 @@
     <!-- Image lightbox modal -->
     <div class="image-modal" id="imageModal" hidden>
         <div class="modal-toolbar">
-            <button class="nav-btn" id="modalPrev" title="Предыдущее">◀</button>
+            <button class="nav-btn" id="modalPrev" title="Previous">◀</button>
             <span class="image-counter" id="modalCounter"></span>
-            <button class="nav-btn" id="modalNext" title="Следующее">▶</button>
-            <button class="modal-close" id="modalClose" title="Закрыть (Esc)">✕</button>
+            <button class="nav-btn" id="modalNext" title="Next">▶</button>
+            <button class="modal-close" id="modalClose" title="Close (Esc)">✕</button>
         </div>
         <img id="modalImage" alt="">
     </div>
