@@ -113,6 +113,21 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 
 </div>
 
+### 🩸 Doppler & Vascular Measurements
+
+- **PSV/EDV Peak Measurement** — Manual peaks on spectral Doppler with automatic RI and S/D indices
+- **Vessel Stenosis** — By diameter (%D) and by area (%S) with guided multi-step workflows
+- **Cycle Averaging Without ECG** — PSV/EDV averaged over automatically detected cardiac cycles, with manual cycle selection (`←`/`→`, `Enter`)
+- **Auto VTI** — Two-click region selection with direction detection, velocity spike filtering, and VTI trace extraction
+- **Study-Wide Measurements** — Cross-file persistence within a study (E peak on one file + e′ peaks on TDI file → mean E/e′ in the overlay)
+
+### 🎚️ Doppler Auto-Calibration
+
+- **Velocity Scale Detection** — Automatic calibration from ruler ticks with grid-line fallback
+- **Sweep Speed Calibration** — Samsung RS85 tick detector for time-axis calibration (linear tick-spacing model)
+- **Baseline Line Detection** — Visual baseline detector with line → DICOM tag → intensity priority chain
+- **Manual 2-Click Wizard** — Calibration wizard with snapping to detected ticks; auto-detection never overrides manual calibration
+
 ### 🤖 AI-Powered Segmentation
 
 SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentation:
@@ -176,6 +191,17 @@ SonoForge includes a **built-in Reference Constructor** that lets you build and 
 
 The Constructor is designed for **clinicians, not developers** — a simple point-and-click interface for managing the reference data you rely on every day.
 
+**Web-Based Reference Viewer:**
+The structured reference browser opens as a fast web view (QWebEngine) with automatic fallback to a native Qt widget:
+- **Instant Search** — Search across all topics, pathologies, and parameters, plus age-based filtering
+- **Inline Editing** — Edit values directly in tables; changes are saved back to YAML
+- **Image Lightbox** — Full-size image viewing with keyboard navigation
+- **Full-Name Tooltips** — Hover any parameter to see its complete descriptive name
+- **Theme Sync** — Four CSS themes synchronized with the application dark/light theme
+
+**Expanded Reference Library:**
+Beyond adult echocardiography, the built-in handbook now covers vascular ultrasound, thyroid, kidney, abdominal aorta, and lymph node parameters — including regurgitant fraction for MR/AR, pulmonary hypertension echo signs, 3D LVEF/SVi norms, and severity gradations (AS/AR/TR/PR).
+
 ### 🎨 User Interface & Experience
 
 - **Dark/Light Theme** — Clinical-friendly color schemes optimized for long reading sessions
@@ -186,6 +212,9 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 - **Crosshair** — Spatial reference across synchronized views
 - **Keyboard Shortcuts** — Full keyboard navigation for efficient workflow
 - **Internationalization (i18n)** — English and Russian language support with live switching
+- **Micro-Animations** — Accordion chevrons, panel slides, tab crossfades, button feedback, and skeleton placeholders
+- **Polished Dialogs** — ✓/✗ icons on OK/Cancel buttons with tinted shortcut labels across all dialogs
+- **Smart Result Overlays** — Re-measuring the same parameter updates the existing value instead of duplicating it
 
 <div align="center">
 
@@ -194,6 +223,12 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 *M-Mode with Teichholz calculations: IVSd, LVIDd, LVPWd, LVEF*
 
 </div>
+
+### ⚡ Performance & Reliability
+
+- **Smooth Playback** — Forward-arc frame cache eviction eliminates frame skips on large RGB cines; short cines are fully preloaded for seamless looping
+- **Non-Blocking PACS** — Asynchronous study/series queries with retries and exponential backoff; cancellable download timeouts (60 s)
+- **Server Browser Filters** — Filter studies by date (1/3/30 days) with correct chronological sorting
 
 ---
 
@@ -204,6 +239,8 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 ---
 
 ## 🏃 Quick Start
+
+> Check the installed version anytime: `sonoforge --version` (current release: **v0.2.4**).
 
 ### 1. Open DICOM Data
 
@@ -239,7 +276,7 @@ The Constructor is designed for **clinicians, not developers** — a simple poin
 | [SECURITY.md](SECURITY.md) | PHI handling, data security, model integrity, HIPAA considerations |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
-| [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (STE, DICOMweb, M-Mode, etc.) |
+| [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |
 | [docs/superpowers/plans/](docs/superpowers/plans/) | Implementation plans and sprint backlogs |
 | [docs/bench/](docs/bench/) | Performance benchmarks |
 
@@ -252,7 +289,7 @@ SonoForge follows **Clean Architecture** principles with clear separation of con
 ```
 src/echo_personal_tool/
 ├── domain/              # Business logic (no Qt dependency)
-│   ├── models/          # Data models: Contour, Doppler, Speckle, MMode
+│   ├── models/          # Data models: Contour, Doppler, MMode
 │   ├── calculations/    # Cardiac calculations: Simpson, Bernoulli, Teichholz
 │   └── services/        # Segmentation, tracking, reference data
 ├── infrastructure/      # External integrations
@@ -269,6 +306,7 @@ src/echo_personal_tool/
 │   ├── main_window.py   # Main application window
 │   ├── viewer_widget.py # DICOM image viewer
 │   ├── doppler_widget.py # Spectral Doppler display
+│   ├── web_reference/   # Web-based reference viewer (QWebEngineView)
 │   └── ...              # 30+ UI components
 ├── constructor/         # Reference browser editor
 └── resources/           # Fonts, icons, ASE reference data
@@ -314,11 +352,11 @@ ruff check src tests
 ruff format src tests
 ```
 
-**Test Coverage:** ~77% with 1400+ unit tests across all layers (domain, application, presentation, infrastructure).
+**Test Coverage:** ~77% with 4400+ unit tests across all layers (domain, application, presentation, infrastructure).
 
 ### Areas for Contribution
 
-- 🩺 New measurement tools (3D echo, strain rate, etc.)
+- 🩺 New measurement tools (3D echo, valve quantification, etc.)
 - 🤖 Additional AI models (RV segmentation, valve detection)
 - 🌐 Localization (i18n) for different languages
 - 📊 Additional reference databases

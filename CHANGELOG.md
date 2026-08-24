@@ -4,6 +4,284 @@
 
 ---
 
+## 2026-08-23
+
+### Features
+- `feat(tools)`: vessel stenosis measurements — %D (by diameter) and %S (by area) tools in Vessels section; tool panel fixes: BSA label alignment, custom tab scroll arrows with visibility logic, Properties tab translated to RU, stenosis label preview shows D1/D2, %S recalculation on contour edit, results renamed to `%D стеноз`/`%S стеноз`
+- `feat(interface)`: Qt interface animations module — accordion chevrons, panel slides, tab crossfade, button feedback, status bar slide, skeleton pulse (`ui_animations.py`)
+- `feat(reference)`: hover micro-interactions + lightbox scale animation
+- `feat(reference)`: smooth pathology viewer animations — tab fade transitions, active state sync
+
+### Fixes
+- `fix(reference)`: white flash eliminated, tab-switch flicker reduced, theme sync, image zoom, contrast, transition timing
+- `fix(dark-theme)`: VS Code Dark selection color preserved; new `accent_selected` color for selected menu items
+- `fix(tool_panel)`: simplified tab crossfade prevents widgets stuck at opacity 0
+- `fix(measures_menu)`: broken chevronRotation Q_PROPERTY animation replaced with simple chevron text swap
+- `fix(dialog)`: RuntimeError guarded when emitting signals on deleted QObject
+- `fix(ui_animations)`: missing QStatusBar import
+
+---
+
+## 2026-08-22
+
+### Features
+- `feat(reference)`: new parameter groups — vascular, thyroid, kidney, abdominal aorta, lymph nodes (+1073 lines, `docs/new_reference_parameters.yaml`)
+
+### Refactor
+- `refactor(reference)`: pathology gradations removed for anatomy sections, duplicate labels fixed
+
+### Tests
+- `fix(test)`: GC frozen during each test to prevent coverage segfault; stale `get_theme_palette` mock removed; BSA overlay tests updated
+- `style`: ruff format (7 files)
+
+---
+
+## 2026-08-21
+
+### Features
+- `feat(design)`: DESIGN.md VUNO palette applied to main window
+- `feat(viewer)`: vessel sensitivity overlay for auto-trace preset control
+- `feat(reference)`: regurgitant fraction for MR/AR, pulmonary hypertension echo signs, 3D LVEF/SVi norms; preload dialog, full-name tooltips, norm columns hidden when gradations present
+- `feat`: constructor light theme, web refs 4-theme CSS, BSA restore, STE smoothing overlay
+
+### Refactor
+- `refactor(references)`: LV mass + geometry merged, empty-parameter rows removed, pathology_desc rows dropped, missing gradations added
+
+### Fixes
+- `fix(reference)`: AS/AR/TR/PR gradations restructured, single norm column, diastolic name duplication fixed
+- `fix(presentation)`: broken tables, tab contrast, theme refresh (web view palette)
+- `fix(playback)`: short cines prefetched fully — looping and rewind restored
+- `fix(doppler)`: 2-click manual calibration wizard restored, time scale kept on reset
+
+---
+
+## 2026-08-20
+
+### Releases
+- `feat(release)`: v0.2.4 — `--version` flag and status bar version label
+
+---
+
+## 2026-08-19
+
+### Features
+- `feat(reference)`: web-first dialog with inline edit mode
+- `feat(reference)`: web view redesign — lightbox modal, tooltips, live reload
+
+### Fixes
+- `fix(reference)`: OpenGL contexts shared with QtWebEngine, double-click interval restored
+
+---
+
+## 2026-08-18
+
+### Features
+- `feat(ui)`: BSA row in measurement panel, context menu Edit, hover animations, i18n fixes
+- `feat(reference)`: inline editing in Qt view + web view loading fix
+
+### Fixes
+- `fix(playback)`: frame-skip jumps on large RGB cines prevented (forward-arc eviction, continuous prefetch tail)
+- `fix(doppler)`: manual velocity calibration takes priority over auto-detection
+- `fix(roi)`: false-positive Doppler ROI rejected on bright B-mode frames
+- `fix(area)`: completed contour persisted in area-compare mode
+- `fix(ui)`: shorter double-click interval for faster contour point placement
+- `chore(logs)`: startup debug print and multi-study warning dropped
+
+---
+
+## 2026-08-17
+
+### Features
+- `feat(reference)`: web-based structured reference viewer (QWebEngineView) with Qt fallback — bridge polling, retry-loop init, `setUrl` qrc loading, full content + interactions
+- `feat(reference)`: interactive column resizing for all tables
+
+### Fixes
+- `fix(reference)`: signal emitted in `setCurrentRow`, test attribute name fixed
+
+### CI/CD
+- `ci`: ruff pinned to 0.16.0; format fixes after main merge
+
+---
+
+## 2026-08-16
+
+### Features
+- `feat(reference)`: unified table with color-coded gradations, no-scroll layout; sex radio buttons removed — both norm columns always shown
+- `feat(constructor)`: Excel-like context menu (insert/delete/merge/split cells), gradation-aware preview, toolbar consolidation
+- `feat(data)`: `ParameterGradationRef` model + gradation data for all parameters in YAML
+- `feat(lav)`: LA volume auto-segmentation and contour edge snap (#51)
+- `feat(doppler)`: velocity scale auto-calibration on single baseline click (#45/#50)
+- `perf`: adaptive FrameCache memory budget + async `release_stale_sessions` (#40/#43/#49)
+- `fix(orthanc)`: download reliability — error propagation, thread-local clients, exponential backoff, interruptible sleeps (#44/#48)
+- `fix(ci)`: orthanc dialog teardown segfault + properties panel fixes (#46/#47)
+
+### Refactor
+- `refactor(reference)`: two-column pathology panel, fixed row height, thumbnails restored, gradation names shortened, table panel expanded, column widths saved
+
+### Docs
+- `docs`: reference redesign design spec + implementation plan
+
+---
+
+## 2026-08-14
+
+### Features
+- `feat(measure)`: Simpson biplane from combined 4C+2C contours; buttons renamed, E/e′ mean label
+
+### Fixes
+- `fix(roi)`: Doppler ROI validation unified — recurring false positives prevented
+- `fix(ci)`: ruff format, import sorting, flaky baseline test
+
+---
+
+## 2026-08-13
+
+### Tests
+- `test`: end-to-end integration tests for `autovti_region` flow
+
+### Fixes
+- `fix`: rolling median spike filter replaces fixed-threshold filter
+- `fix(ci)`: FileNotFoundError and Qt event loop pollution in unit tests resolved
+- `fix(autovti)`: band clear deferred, tuple return type fixed
+- `fix(i18n)`: missing `layout.status_bar_mode` translation added
+
+---
+
+## 2026-08-12
+
+### Features
+- `feat(doppler)`: new Auto VTI (1 cycle) — two-click region selection + click-side direction detection
+- `feat(doppler)`: spike filtering for Auto VTI envelope traces (clamp ±400 cm/s)
+- `feat(doppler)`: inter-file measurement persistence within a study — E peak on mitral inflow file + e′ peaks on TDI file → mean E/e′ in overlay
+- `feat(doppler)`: ROI skipped on B-mode without grid lines; vessel direction Up/Down toggle
+- `feat`: Doppler PGmean fix + experimental features flag
+
+### Fixes
+- `fix(doppler)`: s′ПЖ (RV s′ prime) tissue Doppler measurement implemented end-to-end
+- `fix(vti)`: VTI always returns absolute value
+- `fix(doppler)`: auto time scale flag kept through manual velocity recalibration
+- `fix`: M-mode Time/HR caliper, interval line thickness, TRpeak label, «Insufficient data» overlay removed
+
+---
+
+## 2026-08-11
+
+### Features
+- `feat(samsung)`: linear tick calibration for sweep speed (spacing = frequency/5), K-constant calibration builder, tick fallback auto-enables time scale for mis-tagged PW/CW
+- `feat(doppler)`: baseline doubles as first velocity point — 2-click wizard
+- `feat`: vendor profiles architecture + download to disk
+
+### Fixes
+- `fix(samsung)`: color-space handling, input validation, named constants
+- `fix(mmode)`: auto time scale used, ms dialog skipped when present
+- `fix(doppler)`: lowest dark band preferred for spectral ROI detection
+- `i18n`: doppler calibration wizard hints clarified
+
+### Docs
+- `docs`: Samsung tick calibration design spec + implementation plan
+
+---
+
+## 2026-08-10
+
+### Fixes
+- `fix(ci)`: doppler/cache regressions from Phase A resolved, SF=1 physics guard ordering
+- `test(ci)`: global QThreadPool drained after each test — Qt SIGSEGV race eliminated
+- `style(lint)`: repo-wide `ruff check --fix` + `ruff format`
+
+---
+
+## 2026-08-07
+
+### Fixes
+- `fix`: Time/HR button starts horizontal caliper in current viewer window (no anatomical M-mode panel activation); eventFilter guard against uninitialized `_graphics`
+
+---
+
+## 2026-08-06
+
+### Features
+- `feat`: Orthanc study dialog — date filter (All/1/3/30 days), DD.MM.YYYY format, themed checkbox indicators, single-click expand
+- `perf`: async study/series loading in Orthanc dialog — instant open, background queries (QRunnable/QThreadPool)
+- `feat`: Settings dialog restructured — consolidated tabs into grouped blocks
+- `feat`: ✓/✗ icons on OK/Cancel buttons + theme-contrast shortcut labels (all dialogs)
+- `feat`: simplified manual Doppler calibration — baseline-first flow, ROI step skipped
+
+### Fixes
+- `fix`: file duplication prevented when loading study from Orthanc server
+- `perf`: CPU usage during video playback and Windows 10 memory consumption reduced
+- `perf(dicom)`: full cine released from thread-local sessions — multi-GB memory growth fixed
+- `fix`: np.trapezoid compatibility, formula audit fixes, download diagnostics
+- `fix`: display_form UnboundLocalError, styled_dialogs QSize bug, «Серии» error on study click
+- `fix`: HTTP timeout 30→10 s; query errors surfaced instead of silent empty results
+
+---
+
+## 2026-08-05
+
+### Features
+- `feat(doppler)`: ECG-free cardiac cycle detection from envelope; EDV as adaptive window before systolic upstroke; median PSV/EDV averaging with per-cycle candidates
+- `feat(doppler)`: cycle-selection highlight for manual PSV correction (←/→, Enter/Esc)
+- `feat(doppler)`: below-baseline vessel envelopes auto-detected and traced
+
+### Fixes
+- `fix`: instance downloads retried up to 3× on transient failures
+- `fix`: DICOM filename fallback decode after raw bytes freed; vessel state cleared on measurement clear
+- `fix`: ECG strip height capped; ECG-sync doppler refinement, VTI units, trace label output
+
+---
+
+## 2026-08-04
+
+### Features
+- `feat`: vessel envelope auto-trace with sensitivity presets
+- `feat`: EDV searched at diastolic minimum in Doppler auto-trace
+- `feat`: ECG cardiac-cycle service + ECG-snapped PSV/EDV in vessel auto-trace
+- `feat`: ECG-first CINE ED/ES detection with image fallback
+
+### Fixes
+- `fix`: on-screen text ignored in Doppler envelope auto-trace
+
+---
+
+## 2026-08-03
+
+### Features
+- `feat`: Vessels measurement section — PSV/EDV manual workflow: `VesselMeasurement` model, RI/S/D/MV metrics, study-session merge/filter, Measures menu section, hotkeys, report/panel integration
+- `feat(doppler)`: baseline detected via visible color line (priority: line → tag → intensity)
+
+### Fixes
+- `fix`: carotid Doppler auto-calibration from Samsung correct tags
+- `fix`: file extension appended in constructor/custom save dialogs
+- `fix`: pixel bytes reloaded when re-opening released DICOM session
+- `fix`: explicit error reported when frame save fails (silent failure on Windows)
+
+---
+
+## 2026-08-01
+
+### Features
+- `feat(mmode)`: maximum calibration chain — ROI tick depth detection, FrameTime fallback, parallel API to Doppler, banner with actual values + sources, M-mode group buttons in Measures menu (Time/HR, Teichholz ED/ES)
+- `feat(doppler)`: Phase A — time axis first-class, no silent 1000 ms default
+- `feat`: Samsung Doppler mis-tagging fix + M-mode vertical caliper
+
+### Fixes
+- `fix`: Samsung B-mode regions rejected as Doppler fallback
+- `fix(viewer)`: DICOM flags preserved when rebuilding MmodeCalibrationState
+- `fix(physics)`: SPATIAL_2D constant replaces magic number
+
+### Tests
+- `test(regression)`: 16 tests for maximum calibration
+
+---
+
+## 2026-07-31
+
+### Performance
+- `perf`: double setImage fixed, OpenGL improvements, Windows timer + playback diagnostics
+
+---
+
 ## 2026-07-30
 
 ### Fixes
