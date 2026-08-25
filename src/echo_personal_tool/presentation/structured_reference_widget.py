@@ -1099,6 +1099,7 @@ class StructuredReferenceWidget(QWidget):
                     norm_text = self._format_norm_range(norm_val)
                     norm_item = QTableWidgetItem(norm_text)
                     norm_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
+                    norm_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     norm_item.setFlags(norm_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     norm_item.setFont(mono_font)
                     norm_item.setForeground(QColor(pal["accent_tab"]))
@@ -1107,6 +1108,7 @@ class StructuredReferenceWidget(QWidget):
                     norm_m = self._format_norm_range(param.norm_male)
                     norm_m_item = QTableWidgetItem(norm_m)
                     norm_m_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_male"))
+                    norm_m_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     norm_m_item.setFlags(norm_m_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     norm_m_item.setFont(mono_font)
                     norm_m_item.setForeground(QColor(pal["accent_tab"]))
@@ -1115,6 +1117,7 @@ class StructuredReferenceWidget(QWidget):
                     norm_f = self._format_norm_range(param.norm_female)
                     norm_f_item = QTableWidgetItem(norm_f)
                     norm_f_item.setData(Qt.ItemDataRole.UserRole, (param.id, "norm_female"))
+                    norm_f_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     norm_f_item.setFlags(norm_f_item.flags() | Qt.ItemFlag.ItemIsEditable)
                     norm_f_item.setFont(mono_font)
                     norm_f_item.setForeground(QColor(pal["accent_tab"]))
@@ -1136,6 +1139,7 @@ class StructuredReferenceWidget(QWidget):
 
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, (param.id, "grad", g_name))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 if grad:
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 item.setFont(mono_font)

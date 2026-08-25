@@ -337,7 +337,7 @@ body {
 }
 
 /* ===== Parameter Table ===== */
-.param-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.param-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .param-table th {
     position: sticky; top: 0; background: var(--bg-secondary);
     padding: 7px 10px; text-align: left; font-weight: 600; font-size: 12px;
@@ -352,9 +352,9 @@ body {
 }
 .param-table tr:hover td { background: var(--bg-hover); }
 .param-table tr.selected td { background: var(--accent-subtle); }
-.param-table td.param-name { font-weight: 600; color: var(--text-primary); white-space: normal; min-width: 160px; font-size: 13px; }
+.param-table td.param-name { font-weight: 600; color: var(--text-primary); white-space: normal; width: 40%; font-size: 13px; }
 .param-table td.norm-value { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-.param-table td.grad-cell { text-align: center; font-size: 12px; font-weight: 600; }
+.param-table td.grad-cell { text-align: left; font-size: 12px; font-weight: 600; }
 .param-table td.patho-desc {
     font-size: 12px; color: var(--text-caption); white-space: normal;
     max-width: 240px; padding: 4px 10px;

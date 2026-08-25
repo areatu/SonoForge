@@ -1840,8 +1840,6 @@ topics:
       unit: мм
       norm_male: {high: 0.9}
       norm_female: {high: 0.9}
-      pathology_desc: КИМ ≥0.9 мм — утолщение; ≥1.0 мм — гиперплазия; ≥1.5 мм — бляшка
-        (Mannheim consensus 2012)
       source: 2012, Mannheim Consensus, Touboul et al., Cerebrovasc Dis 2012;33:290-296;
         2024 ESVS Guidelines
       gradations:
@@ -1857,97 +1855,151 @@ topics:
       - name: Бляшка
         range_male: {low: 1.5}
         range_female: {low: 1.5}
-  - name: Стеноз сонной артерии
+  - name: Стеноз ВСА (ICA stenosis)
     slug: carotid_stenosis
     description: Степени стеноза внутренней сонной артерии по ESVS/ACAS/ECST
     parameters:
-    - id: ica_stenosis_pc
-      name: Стеноз ВСА (%)
-      full_name: Степень стеноза внутренней сонной артерии по диаметру (%)
-      unit: '%'
-      norm_male: {high: 50}
-      norm_female: {high: 50}
-      pathology_desc: Стеноз ВСА ≥50% — гемодинамически значимый; ≥70% — тяжёлый;
-        ≥90% — критический
+    - id: ica_psv_at_stenosis
+      name: ПСС в месте стеноза (см/с)
+      full_name: Пиковая систолическая скорость в месте максимального стеноза ВСА
+      unit: см/с
+      norm_male: {high: 180}
       source: 2024 ESVS Guidelines, Naylor et al., Eur J Vasc Endovasc Surg 2024;
         2003 NASCET/ECST criteria
       gradations:
-      - name: Норма
-        range_male: {high: 50}
-        range_female: {high: 50}
-      - name: Умеренный (50–69%)
-        range_male: {low: 50, high: 69}
-        range_female: {low: 50, high: 69}
-      - name: Выраженный (70–99%)
-        range_male: {low: 70, high: 99}
-        range_female: {low: 70, high: 99}
-      - name: Окклюзия
-        range_male: {low: 100}
-        range_female: {low: 100}
-    - id: ica_peak_systolic_velocity
-      name: ПСВ ВСА (ICA PSV)
-      full_name: Пиковая систолическая скорость кровотока во внутренней сонной артерии
+      - name: "< 50%"
+        range_male: {high: 180}
+      - name: 50–59%
+        range_male: {low: 200, high: 200}
+      - name: 60–69%
+        range_male: {low: 250, high: 250}
+      - name: 70–79%
+        range_male: {low: 300, high: 300}
+      - name: 80–89%
+        range_male: {low: 350, high: 400}
+    - id: ica_psv_threshold
+      name: ПСС пороговая (см/с)
+      full_name: Пороговая пиковая систолическая скорость для стеноза ВСА
       unit: см/с
       norm_male: {high: 125}
-      norm_female: {high: 125}
-      pathology_desc: PSV >125 см/с — подозрение на стеноз ≥50%; >230 см/с — стеноз
-        ≥70%
       source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice
         Parameter
       gradations:
-      - name: Норма
-        range_male: {high: 125}
-        range_female: {high: 125}
-      - name: Стеноз 50–69%
-        range_male: {low: 125, high: 230}
-        range_female: {low: 125, high: 230}
-      - name: Стеноз 70–99%
-        range_male: {low: 230, high: 400}
-        range_female: {low: 230, high: 400}
-      - name: Окклюзия
-        range_male: {low: 0, high: 0}
-        range_female: {low: 0, high: 0}
-    - id: ica_edv
-      name: КДВ ВСА (ICA EDV)
-      full_name: Конечно-диастолическая скорость кровотока во внутренней сонной артерии
+      - name: 50–59%
+        range_male: {low: 125, high: 180}
+      - name: 70–79%
+        range_male: {low: 230}
+    - id: ica_edv_stenosis
+      name: КДС (см/с)
+      full_name: Конечно-диастолическая скорость во внутренней сонной артерии
       unit: см/с
       norm_male: {high: 40}
-      norm_female: {high: 40}
-      pathology_desc: EDV >40 см/с — стеноз ≥50%; >100 см/с — стеноз ≥70%
       source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice
         Parameter
       gradations:
-      - name: Норма
+      - name: "< 50%"
         range_male: {high: 40}
-        range_female: {high: 40}
-      - name: Стеноз 50–69%
+      - name: 50–59%
         range_male: {low: 40, high: 100}
-        range_female: {low: 40, high: 100}
-      - name: Стеноз 70–99%
-        range_male: {low: 100, high: 150}
-        range_female: {low: 100, high: 150}
-      - name: Окклюзия
-        range_male: {low: 150}
-        range_female: {low: 150}
-    - id: ica_cca_ratio
-      name: Соотношение PSV ВСА/ОСА (ICA/CCA ratio)
-      full_name: Отношение пиковой систолической скорости внутренней сонной артерии
-        к общей сонной артерии
+      - name: 60–69%
+        range_male: {low: 40, high: 100}
+      - name: 70–79%
+        range_male: {low: 100}
+      - name: 80–89%
+        range_male: {low: 100}
+    - id: ica_post_stenotic_psv
+      name: ПСС постстенотический участок ВСА (см/с)
+      full_name: Пиковая систолическая скорость на постстенотическом участке внутренней
+        сонной артерии
+      unit: см/с
+      source: 2024 ESVS Guidelines; 2003 NASCET/ECST criteria
+      gradations:
+      - name: 70–79%
+        range_male: {low: 50}
+      - name: 80–89%
+        range_male: {high: 50}
+      - name: 90–99%
+        range_male: {high: 30}
+    - id: ica_cca_psv_ratio
+      name: Индекс ПСС ВСА/ПСС ОСА
+      full_name: Отношение пиковой систолической скорости ВСА к пиковой систолической
+        скорости ОСА
       norm_male: {high: 2.0}
-      norm_female: {high: 2.0}
-      pathology_desc: Ratio >2.0 — стеноз ≥50%; >4.0 — стеноз ≥70%
+      source: 2024 ESVS Guidelines; 2003 NASCET/ECST criteria
+      gradations:
+      - name: "< 50%"
+        range_male: {high: 2.0}
+      - name: 50–59%
+        range_male: {low: 2.0, high: 4.0}
+      - name: 60–69%
+        range_male: {low: 2.0, high: 4.0}
+      - name: 70–79%
+        range_male: {low: 4.0}
+      - name: 80–89%
+        range_male: {low: 4.0}
+    - id: ica_psv_edv_ratio
+      name: Индекс ПСС ВСА/КДС ОСА
+      full_name: Отношение пиковой систолической скорости ВСА к конечно-диастолической
+        скорости ОСА
+      norm_male: {high: 8.0}
+      source: 2024 ESVS Guidelines; 2003 NASCET/ECST criteria
+      gradations:
+      - name: "< 50%"
+        range_male: {high: 8.0}
+      - name: 50–59%
+        range_male: {low: 8.0, high: 10.0}
+      - name: 60–69%
+        range_male: {low: 11.0, high: 13.0}
+      - name: 70–79%
+        range_male: {low: 14.0, high: 21.0}
+      - name: 80–89%
+        range_male: {low: 22.0, high: 29.0}
+      - name: 90–99%
+        range_male: {low: 30.0}
+  - name: Стеноз НСА (ECA stenosis)
+    slug: eca_stenosis
+    description: Критерии стеноза наружной сонной артерии (НСА)
+    parameters:
+    - id: eca_psv
+      name: ПСС НСА (см/с)
+      full_name: Пиковая систолическая скорость кровотока во наружной сонной артерии
+      unit: см/с
+      norm_male: {high: 148}
       source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice
         Parameter
       gradations:
-      - name: Норма
-        range_male: {high: 2.0}
-        range_female: {high: 2.0}
-      - name: Стеноз 50–69%
-        range_male: {low: 2.0, high: 4.0}
-        range_female: {low: 2.0, high: 4.0}
-      - name: Стеноз ≥70%
-        range_male: {low: 4.0}
-        range_female: {low: 4.0}
+      - name: Без стеноза ВСА
+        range_male: {low: 148}
+      - name: Стеноз ВСА ≥50%
+        range_male: {low: 179}
+    - id: eca_cca_psv_ratio
+      name: Индекс ПСС НСА/ОСА
+      full_name: Отношение пиковой систолической скорости наружной сонной артерии к общей
+        сонной артерии
+      norm_male: {high: 1.45}
+      source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice
+        Parameter
+      gradations:
+      - name: Без стеноза ВСА
+        range_male: {low: 1.45}
+      - name: Стеноз ВСА ≥50%
+        range_male: {low: 1.89}
+  - name: Стеноз ОСА (CCA stenosis)
+    slug: cca_stenosis
+    description: Критерии стеноза общей сонной артерии (ОСА)
+    parameters:
+    - id: cca_psv_stenosis
+      name: ПСС ОСА (см/с)
+      full_name: Пиковая систолическая скорость кровотока в общей сонной артерии
+      unit: см/с
+      norm_male: {high: 125}
+      source: 2024 ESVS Guidelines; 2021 AIUM Extracranial Cerebrovascular Practice
+        Parameter
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 125, high: 250}
+      - name: ≥50%
+        range_male: {low: 250}
   - name: Диаметр сонной артерии
     slug: carotid_diameter
     description: Диаметр общей и внутренней сонной артерии
@@ -1958,8 +2010,6 @@ topics:
       unit: мм
       norm_male: {low: 6.0, high: 8.0}
       norm_female: {low: 5.5, high: 7.0}
-      pathology_desc: Диаметр >8.0 мм (муж.) / >7.0 мм (жен.) — дилатация; >10 мм
-        — аневризма
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
       gradations:
       - name: Норма
@@ -1992,7 +2042,6 @@ topics:
       unit: см/с
       norm_male: {low: 18, high: 60}
       norm_female: {low: 18, high: 60}
-      pathology_desc: PSV >100 см/с — подозрение на стеноз проксимального отдела
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
       gradations:
       - name: Норма
@@ -2014,17 +2063,104 @@ topics:
     - id: va_flow_direction
       name: Направление кровотока
       full_name: Направление кровотока в позвоночной артерии (антероградное/ретроградное)
-      pathology_desc: Ретроградный кровоток — признак синдрома обкрадывания (subclavian
-        steal)
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
     - id: va_osis
       name: Систолическая скорость в позвоночной артерии (OSI)
       full_name: Орбисальный индекс (отношение PSV позвоночной артерии к PSV контралатеральной)
       norm_male: {high: 1.5}
       norm_female: {high: 1.5}
-      pathology_desc: Асимметрия >1.5 раза — подозрение на гемодинамически значимый
-        стеноз одной из ВА
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+  - name: Стеноз позвоночных артерий
+    slug: vertebral_stenosis
+    description: Критерии стеноза позвоночных артерий в устье (V1) и межпозвонковом
+      (V2) сегментах
+    parameters:
+    - id: va_v1_header
+      name: "━━━ V1: Устье (проксимальный отдел) ━━━"
+      full_name: Сегмент V1 — устье позвоночной артерии
+      source: 2024 ESVS Guidelines; Yurdakul et al.
+    - id: va_v1_psv
+      name: ПСВ V1 (см/с)
+      full_name: Пиковая систолическая скорость в устье позвоночной артерии (V1)
+      unit: см/с
+      norm_male: {low: 85, high: 100}
+      source: 2024 ESVS Guidelines; Yurdakul et al.
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 85, high: 100}
+      - name: 50–69%
+        range_male: {low: 140}
+      - name: 70–99%
+        range_male: {low: 210}
+    - id: va_v1_edv
+      name: КДВ V1 (см/с)
+      full_name: Конечно-диастолическая скорость в устье позвоночной артерии (V1)
+      unit: см/с
+      norm_male: {low: 27}
+      source: 2024 ESVS Guidelines
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 27}
+      - name: 50–69%
+        range_male: {low: 35}
+      - name: 70–99%
+        range_male: {low: 50}
+    - id: va_v1_psv_ratio
+      name: Отношение PSV V1/PSV дистальнее
+      full_name: Отношение пиковой систолической скорости в устье к PSV дистальнее
+      norm_male: {low: 1.3}
+      source: 2024 ESVS Guidelines
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 1.3}
+      - name: 50–69%
+        range_male: {low: 2.1}
+      - name: 70–99%
+        range_male: {low: 4.0}
+    - id: va_v2_header
+      name: "━━━ V2: Межпозвонковый сегмент ━━━"
+      full_name: Сегмент V2 — межпозвонковый отдел позвоночной артерии
+      source: 2024 ESVS Guidelines
+    - id: va_v2_psv
+      name: ПСВ V2 (см/с)
+      full_name: Пиковая систолическая скорость в межпозвонковом сегменте (V2)
+      unit: см/с
+      norm_male: {low: 81.5}
+      source: 2024 ESVS Guidelines
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 81.5}
+      - name: 50–69%
+        range_male: {low: 137.5}
+      - name: 70–99%
+        range_male: {low: 216}
+    - id: va_v2_edv
+      name: КДВ V2 (см/с)
+      full_name: Конечно-диастолическая скорость в межпозвонковом сегменте (V2)
+      unit: см/с
+      norm_male: {low: 24.5}
+      source: 2024 ESVS Guidelines
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 24.5}
+      - name: 50–69%
+        range_male: {low: 36.5}
+      - name: 70–99%
+        range_male: {low: 55}
+    - id: va_v2_psv_ratio
+      name: Отношение PSV V2/PSV дистальнее
+      full_name: Отношение пиковой систолической скорости в межпозвонковом сегменте
+        к PSV дистальнее
+      norm_male: {low: 1.49}
+      source: 2024 ESVS Guidelines
+      gradations:
+      - name: "< 50%"
+        range_male: {low: 1.49}
+      - name: 50–69%
+        range_male: {low: 3.14}
+      - name: 70–99%
+        range_male: {low: 4.31}
+        range_female: {low: 4.31}
 - name: Щитовидная железа
   slug: thyroid_gland
   pathologies:
@@ -2038,8 +2174,6 @@ topics:
       unit: мл
       norm_male: {low: 7, high: 25}
       norm_female: {low: 4, high: 18}
-      pathology_desc: Увеличение объёма >18 мл (жен.) / >25 мл (муж.) — зоб (diffuse
-        goiter)
       source: 2023 AIUM Thyroid Practice Parameter [2]; 2022 EFSUMB Head/Neck Training
         [8]; WHO classification of goiter
     - id: thyroid_lobe_length
@@ -2048,7 +2182,6 @@ topics:
       unit: мм
       norm_male: {high: 50}
       norm_female: {high: 50}
-      pathology_desc: Длина >50 мм — увеличение доли
       source: 2023 AIUM Thyroid Practice Parameter [2]
     - id: thyroid_lobe_width
       name: Ширина доли
@@ -2063,8 +2196,6 @@ topics:
       unit: мм
       norm_male: {high: 4}
       norm_female: {high: 4}
-      pathology_desc: Толщина >4 мм — утолщение перешейка (признак аутоиммунного тиреоидита,
-        зоба)
       source: 2023 AIUM Thyroid Practice Parameter [2]
   - name: Диффузные изменения
     slug: thyroid_echostructure
@@ -2343,7 +2474,7 @@ topics:
         Training [8]; AJCC 8th ed.
     - id: ln_sla_sa_ratio
       name: Соотношение S/L (short/long axis)
-      full_name: Отношение короткой оси к длинной оси лимфоузла (>0.5 — патологическое)
+      full_name: Отношение короткой оси к длинной оси лимфоузла
       norm_male: {high: 0.5}
       norm_female: {high: 0.5}
       source: 2022 EFSUMB Head/Neck Training [8]; Defined by Expert Consensus [15]
