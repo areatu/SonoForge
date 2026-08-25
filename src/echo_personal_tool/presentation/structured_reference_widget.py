@@ -460,9 +460,7 @@ class _ParameterCard(QWidget):
         if self._selected == selected:
             return
         self._selected = selected
-        self.setStyleSheet(
-            _ParameterCard._STYLE_SELECTED if selected else _ParameterCard._STYLE_NORMAL
-        )
+        self.setStyleSheet(_ParameterCard._STYLE_SELECTED if selected else _ParameterCard._STYLE_NORMAL)
 
 
 class StructuredReferenceWidget(QWidget):
