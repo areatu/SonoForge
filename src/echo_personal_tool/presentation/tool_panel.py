@@ -292,6 +292,7 @@ class ToolPanel(QWidget):
         effect = widget.graphicsEffect()
         if effect is None:
             from PySide6.QtWidgets import QGraphicsOpacityEffect
+
             effect = QGraphicsOpacityEffect(widget)
             widget.setGraphicsEffect(effect)
 
@@ -398,14 +399,14 @@ class ToolPanel(QWidget):
         btn_size = 22
 
         self._arrow_left = QToolButton(self._tabs)
-        self._arrow_left.setText("\u25C0")  # ◀
+        self._arrow_left.setText("\u25c0")  # ◀
         self._arrow_left.setObjectName("tabScrollArrow")
         self._arrow_left.setFixedSize(btn_size, btn_size)
         self._arrow_left.setCursor(Qt.CursorShape.PointingHandCursor)
         self._arrow_left.clicked.connect(self._scroll_tab_left)
 
         self._arrow_right = QToolButton(self._tabs)
-        self._arrow_right.setText("\u25B6")  # ▶
+        self._arrow_right.setText("\u25b6")  # ▶
         self._arrow_right.setObjectName("tabScrollArrow")
         self._arrow_right.setFixedSize(btn_size, btn_size)
         self._arrow_right.setCursor(Qt.CursorShape.PointingHandCursor)

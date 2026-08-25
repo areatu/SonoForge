@@ -6637,15 +6637,21 @@ class ViewerWidget(QWidget):
                 area1 = a
                 s1_key = ("S1", frame if frame is not None else -1)
                 self._stored_linear_measurements[s1_key] = LinearMeasurement(
-                    label="S1", pixel_length=0.0, millimeter_length=a,
-                    frame_index=frame, sop_instance_uid=instance_uid,
+                    label="S1",
+                    pixel_length=0.0,
+                    millimeter_length=a,
+                    frame_index=frame,
+                    sop_instance_uid=instance_uid,
                 )
             elif area2 is None:
                 area2 = a
                 s2_key = ("S2", frame if frame is not None else -1)
                 self._stored_linear_measurements[s2_key] = LinearMeasurement(
-                    label="S2", pixel_length=0.0, millimeter_length=a,
-                    frame_index=frame, sop_instance_uid=instance_uid,
+                    label="S2",
+                    pixel_length=0.0,
+                    millimeter_length=a,
+                    frame_index=frame,
+                    sop_instance_uid=instance_uid,
                 )
         state.contour1_area_cm2 = area1
         state.contour2_area_cm2 = area2
@@ -6653,8 +6659,11 @@ class ViewerWidget(QWidget):
         pct_key = ("%S стеноз", frame if frame is not None else -1)
         if stenosis is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз", pixel_length=0.0, millimeter_length=stenosis,
-                frame_index=frame, sop_instance_uid=instance_uid,
+                label="%S стеноз",
+                pixel_length=0.0,
+                millimeter_length=stenosis,
+                frame_index=frame,
+                sop_instance_uid=instance_uid,
             )
         elif pct_key in self._stored_linear_measurements:
             del self._stored_linear_measurements[pct_key]
