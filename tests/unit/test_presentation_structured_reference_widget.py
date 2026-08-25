@@ -116,7 +116,9 @@ class TestStructuredReferenceWidget:
     def test_initial_state(self, widget):
         assert isinstance(widget._topics, list)
         assert len(widget._topics) > 0
-        # Default topic is auto-selected in _build_ui
+        # _current_topic is set via showEvent -> _open_default_section
+        # so call it explicitly in tests
+        widget._open_default_section()
         assert widget._current_topic is not None
 
     def test_on_topic_clicked(self, widget):

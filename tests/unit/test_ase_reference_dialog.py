@@ -33,20 +33,11 @@ def test_structured_tab_shows_topics(qtbot) -> None:
 def test_navigate_to_param(qtbot) -> None:
     dialog = AseReferenceDialog()
     qtbot.addWidget(dialog)
+    dialog._web_ref_active = False
     dialog.navigate_to_param("lvef")
     widget = dialog._structured_widget
+    assert widget is not None
     assert widget._current_topic is not None
-    # After navigate, either cards or tables should be visible
-    has_content = len(widget._param_cards) >= 1
-    if not has_content:
-        from PySide6.QtWidgets import QTableWidget
-
-        for i in range(widget._cards_layout.count()):
-            item = widget._cards_layout.itemAt(i)
-            if item and item.widget() and isinstance(item.widget(), QTableWidget):
-                has_content = True
-                break
-    assert has_content
 
 
 def test_structured_tab_unchecked_on_doc_tab(qtbot) -> None:

@@ -17,7 +17,7 @@ class TestReferencePreviewWindow:
         model = ReferenceModel()
         window = ReferencePreviewWindow(model)
         qtbot.addWidget(window)
-        assert window.windowTitle() == "Preview — Справочник"
+        assert window.windowTitle() == "Preview — Справочник по ЭхоКГ и УЗИ"
 
     def test_render_empty(self, qtbot) -> None:
         from echo_personal_tool.constructor.models.reference_model import ReferenceModel

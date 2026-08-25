@@ -110,7 +110,7 @@ class TestHtmlExporterBuildHtml:
         storage = ImageStorage(tmp_path)
         html = _build_html(model, storage)
         assert "<!DOCTYPE html>" in html
-        assert "Справочник эхокардиографии" in html
+        assert "Справочник по ЭхоКГ и УЗИ" in html
 
     def test_model_with_topic(self, tmp_path) -> None:
         from echo_personal_tool.constructor.exporters.html_exporter import _build_html

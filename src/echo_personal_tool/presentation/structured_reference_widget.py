@@ -11,8 +11,8 @@ from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QS
 from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
-    QGraphicsOpacityEffect,
     QButtonGroup,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
