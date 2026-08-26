@@ -1782,18 +1782,6 @@ topics:
 - name: Прочее
   slug: other
   pathologies:
-  - name: Общие показатели
-    slug: general
-    parameters:
-    - id: heart_rate
-      name: Частота сердечных сокращений (ЧСС)
-      unit: уд/мин
-      norm_male: {low: 60, high: 100}
-      norm_female: {low: 60, high: 100}
-      source: 2015, ASE/EACVI, Recommendations for Cardiac Chamber Quantification
-        by Echocardiography in Adults
-  - name: Методика измерений
-    slug: measurement_technique
   - name: Некомпактный миокард левого желудочка
     slug: lv_noncompaction
     image_paths:
@@ -1830,7 +1818,7 @@ topics:
 - name: Сонные артерии
   slug: carotid_arteries
   pathologies:
-  - name: Структура стенки (IMT)
+  - name: Структура стенки
     slug: carotid_imt
     description: Толщина комплекса интима-медиа (КИМ) сонной артерии — маркер атеросклероза
     parameters:
@@ -1855,7 +1843,7 @@ topics:
       - name: Бляшка
         range_male: {low: 1.5}
         range_female: {low: 1.5}
-  - name: Стеноз ВСА (ICA stenosis)
+  - name: Стеноз ВСА
     slug: carotid_stenosis
     description: Степени стеноза внутренней сонной артерии по ESVS/ACAS/ECST
     parameters:
@@ -1956,7 +1944,7 @@ topics:
         range_male: {low: 22.0, high: 29.0}
       - name: 90–99%
         range_male: {low: 30.0}
-  - name: Стеноз НСА (ECA stenosis)
+  - name: Стеноз НСА
     slug: eca_stenosis
     description: Критерии стеноза наружной сонной артерии (НСА)
     parameters:
@@ -1984,7 +1972,7 @@ topics:
         range_male: {low: 1.45}
       - name: Стеноз ВСА ≥50%
         range_male: {low: 1.89}
-  - name: Стеноз ОСА (CCA stenosis)
+  - name: Стеноз ОСА
     slug: cca_stenosis
     description: Критерии стеноза общей сонной артерии (ОСА)
     parameters:
@@ -2031,44 +2019,41 @@ topics:
 - name: Позвоночные артерии
   slug: vertebral_arteries
   pathologies:
-  - name: Гемодинамика позвоночных артерий
-    slug: vertebral_hemodynamics
-    description: Кровоток в позвоночных артериях и признаки стеноза/ретроградного
-      кровотока
+  - name: Диаметр и особенности
+    slug: vertebral_diameter
+    description: Диаметр позвоночной артерии и особенности строения
     parameters:
-    - id: va_peak_systolic_velocity
-      name: ПСВ позвоночной артерии (VA PSV)
-      full_name: Пиковая систолическая скорость в позвоночной артерии
-      unit: см/с
-      norm_male: {low: 18, high: 60}
-      norm_female: {low: 18, high: 60}
+    - id: va_diameter
+      name: Диаметр ПА
+      full_name: Диаметр позвоночной артерии
+      unit: мм
+      norm_male: {low: 3, high: 4}
+      norm_female: {low: 3, high: 4}
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
-      gradations:
-      - name: Норма
-        range_male: {low: 18, high: 60}
-        range_female: {low: 18, high: 60}
-      - name: Увеличена (>60 см/с)
-        range_male: {low: 60, high: 100}
-        range_female: {low: 60, high: 100}
-      - name: Подозрение на стеноз
-        range_male: {low: 100}
-        range_female: {low: 100}
-    - id: va_edv
-      name: КДВ позвоночной артерии (VA EDV)
-      full_name: Конечно-диастолическая скорость в позвоночной артерии
-      unit: см/с
-      norm_male: {low: 5, high: 20}
-      norm_female: {low: 5, high: 20}
+    - id: va_dilatation
+      name: Дилатация
+      full_name: Дилатация позвоночной артерии
+      unit: мм
+      norm_male: {high: 5}
+      norm_female: {high: 5}
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
-    - id: va_flow_direction
-      name: Направление кровотока
-      full_name: Направление кровотока в позвоночной артерии (антероградное/ретроградное)
+    - id: va_small_diameter
+      name: Малый диаметр
+      full_name: Малый диаметр позвоночной артерии
+      unit: мм
+      norm_male: {low: 2.1, high: 2.9}
+      norm_female: {low: 2.1, high: 2.9}
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
-    - id: va_osis
-      name: Систолическая скорость в позвоночной артерии (OSI)
-      full_name: Орбисальный индекс (отношение PSV позвоночной артерии к PSV контралатеральной)
-      norm_male: {high: 1.5}
-      norm_female: {high: 1.5}
+    - id: va_hypoplasia
+      name: Гипоплазия
+      full_name: Гипоплазия позвоночной артерии
+      unit: мм
+      norm_male: {high: 2}
+      norm_female: {high: 2}
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+    - id: va_high_entry
+      name: Высокий вход в канал
+      full_name: Высокий вход позвоночной артерии в канал (>C5)
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
   - name: Стеноз позвоночных артерий
     slug: vertebral_stenosis
@@ -2080,7 +2065,7 @@ topics:
       full_name: Сегмент V1 — устье позвоночной артерии
       source: 2024 ESVS Guidelines; Yurdakul et al.
     - id: va_v1_psv
-      name: ПСВ V1 (см/с)
+      name: ПСС V1 (см/с)
       full_name: Пиковая систолическая скорость в устье позвоночной артерии (V1)
       unit: см/с
       norm_male: {low: 85, high: 100}
@@ -2093,7 +2078,7 @@ topics:
       - name: 70–99%
         range_male: {low: 210}
     - id: va_v1_edv
-      name: КДВ V1 (см/с)
+      name: КДС V1 (см/с)
       full_name: Конечно-диастолическая скорость в устье позвоночной артерии (V1)
       unit: см/с
       norm_male: {low: 27}
@@ -2122,7 +2107,7 @@ topics:
       full_name: Сегмент V2 — межпозвонковый отдел позвоночной артерии
       source: 2024 ESVS Guidelines
     - id: va_v2_psv
-      name: ПСВ V2 (см/с)
+      name: ПСС V2 (см/с)
       full_name: Пиковая систолическая скорость в межпозвонковом сегменте (V2)
       unit: см/с
       norm_male: {low: 81.5}
@@ -2135,7 +2120,7 @@ topics:
       - name: 70–99%
         range_male: {low: 216}
     - id: va_v2_edv
-      name: КДВ V2 (см/с)
+      name: КДС V2 (см/с)
       full_name: Конечно-диастолическая скорость в межпозвонковом сегменте (V2)
       unit: см/с
       norm_male: {low: 24.5}

@@ -2067,47 +2067,41 @@ topics:
 - name: Vertebral Arteries
   slug: vertebral_arteries
   pathologies:
-  - name: Vertebral Artery Hemodynamics
-    slug: vertebral_hemodynamics
-    description: Vertebral artery blood flow and signs of stenosis/retrograde flow
+  - name: Diameter and Features
+    slug: vertebral_diameter
+    description: Vertebral artery diameter and structural features
     parameters:
-    - id: va_peak_systolic_velocity
-      name: VA PSV
-      full_name: Vertebral Artery Peak Systolic Velocity
-      unit: cm/s
-      norm_male: {low: 18, high: 60}
-      norm_female: {low: 18, high: 60}
-      pathology_desc: PSV >100 cm/s — suspected proximal stenosis
+    - id: va_diameter
+      name: VA Diameter
+      full_name: Vertebral Artery Diameter
+      unit: mm
+      norm_male: {low: 3, high: 4}
+      norm_female: {low: 3, high: 4}
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
-      gradations:
-      - name: Normal
-        range_male: {low: 18, high: 60}
-        range_female: {low: 18, high: 60}
-      - name: Elevated (>60 cm/s)
-        range_male: {low: 60, high: 100}
-        range_female: {low: 60, high: 100}
-      - name: Suspicious for stenosis
-        range_male: {low: 100}
-        range_female: {low: 100}
-    - id: va_edv
-      name: VA EDV
-      full_name: Vertebral Artery End-Diastolic Velocity
-      unit: cm/s
-      norm_male: {low: 5, high: 20}
-      norm_female: {low: 5, high: 20}
+    - id: va_dilatation
+      name: Dilatation
+      full_name: Vertebral Artery Dilatation
+      unit: mm
+      norm_male: {high: 5}
+      norm_female: {high: 5}
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
-    - id: va_flow_direction
-      name: Flow Direction
-      full_name: Vertebral Artery Flow Direction (Antegrade/Retrograde)
-      pathology_desc: Retrograde flow — sign of subclavian steal syndrome
+    - id: va_small_diameter
+      name: Small Diameter
+      full_name: Small Vertebral Artery Diameter
+      unit: mm
+      norm_male: {low: 2.1, high: 2.9}
+      norm_female: {low: 2.1, high: 2.9}
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
-    - id: va_osis
-      name: Vertebral OSI
-      full_name: Orbital Index (VA PSV / Contralateral PSV)
-      norm_male: {high: 1.5}
-      norm_female: {high: 1.5}
-      pathology_desc: Asymmetry >1.5x — suspected hemodynamically significant stenosis
-        of one VA
+    - id: va_hypoplasia
+      name: Hypoplasia
+      full_name: Vertebral Artery Hypoplasia
+      unit: mm
+      norm_male: {high: 2}
+      norm_female: {high: 2}
+      source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
+    - id: va_high_entry
+      name: High Entry into Canal
+      full_name: High Entry of Vertebral Artery into Canal (>C5)
       source: 2021 AIUM Extracranial Cerebrovascular Practice Parameter [1]
 - name: Thyroid Gland
   slug: thyroid_gland
