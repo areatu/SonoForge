@@ -169,6 +169,11 @@ class SystemBar(QWidget):
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_references.setToolTip(tr("system_bar.references_tooltip"))
         self._btn_references.clicked.connect(self.references_requested.emit)
+        self._btn_references.setStyleSheet(
+            "QPushButton { background: #3a5a6a; color: #d0e8f0; border: 1px solid #5a8a9a; border-radius: 4px; }"
+            "QPushButton:hover { background: #4a6a7a; border-color: #6a9aaa; }"
+            "QPushButton:pressed { background: #2a4a5a; }"
+        )
 
         btn_heart_rate = QPushButton("HR")
         btn_heart_rate.setIcon(_load_icon("heart_rate"))

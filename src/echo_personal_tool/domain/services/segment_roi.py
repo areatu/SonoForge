@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 
-from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
 from echo_personal_tool.infrastructure.dicom_frame_panels import try_parse_from_path
 from echo_personal_tool.infrastructure.pixel_utils import to_grayscale_uint8
+from echo_personal_tool.infrastructure.samsung_tick_detector import detect_ticks
+
+logger = logging.getLogger(__name__)
 
 ECHONET_CROP_CENTER_SQUARE = "center_square"
 ECHONET_CROP_FULL_ROI = "full_roi"
@@ -139,35 +142,89 @@ def _trim_sector_content_bounds(
 
 
 def resolve_cine_segment_roi_xyxy(frame: np.ndarray) -> tuple[float, float, float, float] | None:
-    """Heuristic B-mode strip for MP4/video without DICOM ultrasound regions."""
+    """Detect Doppler ROI from horizontal time scale at bottom of frame.
+
+    Algorithm:
+    1. Detect horizontal tick marks (time scale) in the bottom 15% of the frame.
+    2. If ticks found with sufficient confidence → Doppler frame, compute ROI
+       from tick positions and the dark spectral band above them.
+    3. If no ticks → B-mode frame, return None (no ROI needed).
+
+    This replaces the old heuristic that always returned a B-mode ROI, which
+    incorrectly marked B-mode frames as having Doppler content.
+    """
     try:
         grayscale = to_grayscale_uint8(frame)
     except ValueError:
         return None
 
     height, width = grayscale.shape[:2]
-    layout = detect_panels_heuristic(grayscale)
-    if layout is not None and layout.b_mode is not None:
-        bounds = layout.b_mode.bounds
-        panel_y0 = int(round(bounds.y0))
-        panel_y1 = int(round(bounds.y0 + bounds.height))
-    else:
-        panel_y0 = 0
-        panel_y1 = height
+    if height < 80 or width < 80:
+        return None
 
-    panel_y1 = min(
-        height - 8,
-        panel_y1 + max(12, int(round(height * CINE_PANEL_BOTTOM_PAD_RATIO))),
-    )
+    # Step 1: Detect horizontal time scale (tick marks) at bottom of frame.
+    # A real Doppler frame has periodic vertical ticks on a ruler near the bottom.
+    # B-mode frames have a black strip but NO periodic ticks.
+    tick_result = detect_ticks(grayscale)
 
-    x0, x1 = _trim_lateral_content_columns(grayscale, y0=panel_y0, y1=panel_y1)
-    panel_roi = (float(x0), float(panel_y0), float(x1), float(panel_y1))
-    return _trim_sector_content_bounds(
-        grayscale,
-        panel_roi,
-        trim_bottom=False,
-        apex_guard=True,
+    if tick_result.confidence < 0.4 or len(tick_result.tick_positions) < 5:
+        # No reliable time scale detected → B-mode frame, no ROI.
+        logger.debug(
+            "resolve_cine_segment_roi_xyxy: no time scale (conf=%.2f, ticks=%d) → B-mode",
+            tick_result.confidence,
+            len(tick_result.tick_positions),
+        )
+        return None
+
+    # Step 2: Time scale found → Doppler frame. Compute ROI from ticks.
+    band_y = tick_result.band_y  # center of tick band (bottom of spectral region)
+    tick_positions = tick_result.tick_positions
+    spacing = tick_result.spacing_px
+
+    # ROI horizontal bounds: from tick positions with margin.
+    tick_x0 = min(tick_positions)
+    tick_x1 = max(tick_positions)
+    margin_x = max(spacing * 2, 10.0)
+    left_x = max(0.0, tick_x0 - margin_x)
+    right_x = min(float(width), tick_x1 + margin_x)
+
+    # ROI vertical bounds: top from dark spectral band above the ticks.
+    # The spectral band sits above the time ruler and is DARK.
+    # Estimate its height as ~45% of frame height (typical Samsung Doppler).
+    estimated_band_height = height * 0.45
+    top_y = max(0.0, band_y - estimated_band_height)
+    bottom_y = min(float(height), band_y + 10.0)  # include the tick ruler
+
+    # Validate width >= 90% of frame width.
+    roi_width = right_x - left_x
+    if roi_width < width * 0.9:
+        deficit = width * 0.9 - roi_width
+        left_x = max(0.0, left_x - deficit / 2)
+        right_x = min(float(width), right_x + deficit / 2)
+
+    # Validate height is 30%-70% of frame height.
+    roi_height = bottom_y - top_y
+    min_height = height * 0.3
+    max_height = height * 0.7
+    if roi_height < min_height:
+        top_y = bottom_y - min_height
+    elif roi_height > max_height:
+        top_y = bottom_y - max_height
+    top_y = max(0.0, top_y)
+
+    if right_x <= left_x or bottom_y <= top_y:
+        return None
+
+    logger.debug(
+        "resolve_cine_segment_roi_xyxy: Doppler ROI from ticks (conf=%.2f, ticks=%d, roi=(%.0f,%.0f,%.0f,%.0f))",
+        tick_result.confidence,
+        len(tick_positions),
+        left_x,
+        top_y,
+        right_x,
+        bottom_y,
     )
+    return (left_x, top_y, right_x, bottom_y)
 
 
 def resolve_dicom_segment_roi_xyxy(
@@ -178,12 +235,23 @@ def resolve_dicom_segment_roi_xyxy(
 
     No sector trim applied — SequenceOfUltrasoundRegions bounds are already
     correct for DICOM; trimming risks cutting the LV apex.
+
+    Priority:
+    1. Doppler panel bounds (spectral PW/CW/M-mode/TDI) if available.
+    2. B-mode panel bounds (for ONNX segmentation of B-mode frames).
+    3. Cine fallback (tick detection for Doppler, None for B-mode).
     """
     if instance_path is not None:
         layout = try_parse_from_path(instance_path)
-        if layout is not None and layout.b_mode is not None:
-            bounds = layout.b_mode.bounds
-            return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
+        if layout is not None:
+            # Prefer Doppler panel bounds if present (spectral frames).
+            if layout.doppler is not None:
+                bounds = layout.doppler.bounds
+                return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
+            # Fall back to B-mode panel bounds (B-mode frames).
+            if layout.b_mode is not None:
+                bounds = layout.b_mode.bounds
+                return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
 
     return resolve_cine_segment_roi_xyxy(frame)
 

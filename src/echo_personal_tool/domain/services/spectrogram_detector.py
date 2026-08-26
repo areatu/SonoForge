@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def _dark_bands(gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol: int = 8) -> list[tuple[int, int]]:
@@ -32,6 +36,51 @@ def _dark_bands(gray: np.ndarray, dark_threshold: float, min_rows: int, gap_tol:
     if in_band and len(gray) - start >= min_rows:
         bands.append((start, len(gray)))
     return bands
+
+
+def _extend_to_time_scale(gray: np.ndarray, dark_band_y1: int) -> int:
+    """Extend the dark band bottom downward to include the time scale ruler.
+
+    The spectral Doppler band is DARK, and the time scale ruler sits BELOW
+    it as a thin bright horizontal axis line with small vertical ticks.
+    B-mode frames have a black strip at the bottom but NO bright axis line.
+
+    This function scans rows below the dark band for the axis line and
+    returns the extended y1 that includes the ruler.
+    """
+    h, w = gray.shape
+    # Scan up to 80px below the dark band (typical ruler height is 10-40px).
+    scan_limit = min(h, dark_band_y1 + 80)
+    if dark_band_y1 >= scan_limit:
+        return dark_band_y1
+
+    # Compute brightness profile of rows below the dark band.
+    rows_below = gray[dark_band_y1:scan_limit, :]
+    if rows_below.size == 0:
+        return dark_band_y1
+    row_means = np.mean(rows_below, axis=1)
+
+    # The dark band is near-black; the time scale axis is a bright line.
+    # Find the first row with a significant brightness jump (>20 levels above
+    # the dark band mean).
+    dark_mean = float(np.mean(gray[max(0, dark_band_y1 - 20) : dark_band_y1, :])) if dark_band_y1 > 20 else 40.0
+    bright_threshold = max(dark_mean + 20.0, 50.0)
+
+    for i, mean_val in enumerate(row_means):
+        if mean_val > bright_threshold:
+            # Found the axis line. The ruler extends a few rows below.
+            # Return y1 as the axis line row + small margin for ticks.
+            extended_y1 = dark_band_y1 + i + 8
+            logger.debug(
+                "_extend_to_time_scale: extended y1 from %d to %d (axis at row %d, mean=%.1f)",
+                dark_band_y1,
+                extended_y1,
+                dark_band_y1 + i,
+                mean_val,
+            )
+            return min(extended_y1, h)
+
+    return dark_band_y1
 
 
 def detect_spectrogram_roi(
@@ -96,5 +145,9 @@ def detect_spectrogram_roi(
         if region_bounds is not None:
             return tuple(float(v) for v in region_bounds)
         return None
+
+    # Extend y1 downward to include the time scale ruler below the dark band.
+    # The ruler is a thin bright horizontal axis line with vertical ticks.
+    y1 = _extend_to_time_scale(gray, y1)
 
     return (x0, float(y0), x1, float(y1))
