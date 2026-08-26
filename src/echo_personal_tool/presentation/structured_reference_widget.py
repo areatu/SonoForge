@@ -123,6 +123,7 @@ _GRADATION_COLORS_LIGHT: dict[str, tuple[str, str]] = {
 def _is_light_theme() -> bool:
     """Check if the current theme is light."""
     from echo_personal_tool.presentation.dark_theme import _current_theme_mode
+
     return _current_theme_mode in ("light", "vscode_light")
 
 

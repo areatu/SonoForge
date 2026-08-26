@@ -425,9 +425,8 @@ class AseReferenceDialog(QDialog):
         # ── Web reference widget (default) ──
         try:
             from echo_personal_tool.infrastructure.i18n import get_language
-            self._web_ref_widget = WebReferenceWidget(
-                ReferenceDataStore(language=get_language()).load()
-            )
+
+            self._web_ref_widget = WebReferenceWidget(ReferenceDataStore(language=get_language()).load())
         except Exception as exc:  # noqa: BLE001
             logger.warning("WebReferenceWidget failed to init: %s", exc)
             self._web_ref_widget = None
@@ -968,9 +967,8 @@ class AseReferenceDialog(QDialog):
             return
         try:
             from echo_personal_tool.infrastructure.i18n import get_language
-            self._structured_widget = StructuredReferenceWidget(
-                ReferenceDataStore(language=get_language()).load()
-            )
+
+            self._structured_widget = StructuredReferenceWidget(ReferenceDataStore(language=get_language()).load())
         except Exception as exc:  # noqa: BLE001
             logger.warning("StructuredReferenceWidget failed to init: %s", exc)
             self._structured_widget = None
