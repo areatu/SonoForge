@@ -52,6 +52,32 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
     return float(min_x), float(min_y), float(max_x), float(max_y)
 
 
+def _samsung_panel_top_from_tags(dataset: Dataset, frame_height: float) -> float | None:
+    """Best-guess spectral panel top from mis-tagged Samsung S:1 regions.
+
+    Samsung RS85 mis-tags PW/CW Doppler as S:1 (2D) regions whose ``max_y``
+    equals the boundary between the B-mode image and the spectral panel
+    (observed 393, 473 on real RS85 captures). Use it when it plausibly lands
+    inside the frame (30%-75% height), otherwise ``None`` (caller falls back
+    to a pixel heuristic).
+    """
+    best_max_y: float | None = None
+    regions = dataset.get("SequenceOfUltrasoundRegions")
+    if not regions:
+        return None
+    for region in regions:
+        if int(region.get("RegionSpatialFormat", 0) or 0) != 1:
+            continue  # not the mis-tagged 2D region
+        max_y = region.get("RegionLocationMaxY1")
+        if max_y is None:
+            continue
+        max_y_f = float(max_y)
+        if 0.30 * frame_height <= max_y_f <= 0.75 * frame_height:
+            if best_max_y is None or max_y_f > best_max_y:
+                best_max_y = max_y_f
+    return best_max_y
+
+
 def _compute_baseline_with_profile(
     profile: VendorProfile,
     region: Dataset,
@@ -291,7 +317,44 @@ def try_parse_samsung_tick_calibration(
     if len(tick_result.tick_positions) < 5:
         return None
 
-    positions = tick_result.tick_positions
+    h, w = arr.shape[:2]
+    tick_positions = sorted(tick_result.tick_positions)
+    span_x_px = float(tick_positions[-1] - tick_positions[0])
+    span_x_frac = span_x_px / float(w) if w > 0 else 0.0
+
+    # ── Ruler sanity gates (Samsung) ────────────────────────────────────
+    # A real time ruler spans most of the frame width (~86-88% on RS85
+    # captures). B-mode ECG strips / left-side scales produce short runs of
+    # periodic verticals (5-30% width) and must not be treated as Doppler.
+    if span_x_frac < 0.5:
+        logger.debug(
+            "Samsung tick: REJECTED — ruler spans only %.0f%% of width (%.0fpx of %dpx)",
+            100.0 * span_x_frac,
+            span_x_px,
+            w,
+        )
+        return None
+
+    # Real Samsung rulers use 36-60 px spacing; spurious rows (label columns)
+    # can show 200-310 px (gold73). Reject anything implausible.
+    if not (10.0 <= tick_result.spacing_px <= 120.0):
+        logger.debug(
+            "Samsung tick: REJECTED — implausible tick spacing %.1fpx",
+            tick_result.spacing_px,
+        )
+        return None
+
+    # The time ruler sits in the bottom ~15% of the frame. A candidate band
+    # much higher is a banner/scale, not a Doppler time axis.
+    if tick_result.band_y < h * 0.85:
+        logger.debug(
+            "Samsung tick: REJECTED — ruler band_y=%.1f not in bottom 15%% (h=%d)",
+            tick_result.band_y,
+            h,
+        )
+        return None
+
+    positions = tick_positions
     visible_width_px = float(positions[-1] - positions[0]) + tick_result.spacing_px
     frequency_hz = tick_calibration.k_constant * tick_result.spacing_px
     per_pixel_ms = 1000.0 / frequency_hz
@@ -324,11 +387,56 @@ def try_parse_samsung_tick_calibration(
             roi = candidate_roi
         else:
             logger.debug("Samsung tick: no velocity grid in refined ROI, trying fallback")
-    else:
-        # Fallback 1: try dark-band detection with geometry validation.
-        # Grid line check is skipped here because time ticks were already
-        # validated (confidence >= 0.4, >= 5 ticks), which is a strong
-        # Doppler signal. The dark-band detector just provides the ROI bounds.
+
+    if roi is None and tick_result.band_y > 0:
+        # Fallback 2: derive ROI from time scale tick positions.
+        # Bottom = time ruler; top = mis-tagged S:1 panel boundary if it looks
+        # plausible, else estimate the band height from the frame.
+        tick_x0 = min(tick_result.tick_positions)
+        tick_x1 = max(tick_result.tick_positions)
+        margin_x = tick_result.spacing_px * 2
+        band_bottom = tick_result.band_y + 10.0  # include the ruler ticks
+
+        # Prefer the region boundary (Samsung mis-tags S:1 -> B/panel split).
+        panel_top = _samsung_panel_top_from_tags(dataset, float(h))
+        if panel_top is None:
+            estimated_height = h * 0.45
+            panel_top = max(0.0, band_bottom - estimated_height)
+        # B-mode frames can be full-height; clamp to bottom 15% when the tag
+        # does not give a usable boundary.
+        panel_top = min(panel_top, h * 0.85)
+
+        candidate_roi = DopplerSpectrogramRoi(
+            x0=max(0.0, tick_x0 - margin_x),
+            y0=max(0.0, panel_top),
+            width=min(float(w), tick_x1 + margin_x) - max(0.0, tick_x0 - margin_x),
+            height=band_bottom - max(0.0, panel_top),
+        )
+        # Relaxed geometry: time ticks are already validated by the span /
+        # spacing / band_y gates above, so only prevent obviously invalid ROIs.
+        # NB: the panel top may sit slightly above mid-frame (max_y=393 on an
+        # 884px frame for RS85) — require_lower_half is intentionally OFF here.
+        vresult = validate_doppler_roi(
+            candidate_roi,
+            arr,
+            check_grid_lines=False,
+            min_width_fraction=0.3,
+            require_lower_half=False,
+        )
+        if vresult.valid:
+            roi = candidate_roi
+            logger.debug(
+                "Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f) band_height=%.0f",
+                roi.x0,
+                roi.y0,
+                roi.x0 + roi.width,
+                roi.y0 + roi.height,
+                roi.height,
+            )
+
+    if roi is None:
+        # Fallback 1: try dark-band detection with geometry validation
+        # (last resort — the ruler gates above already rejected most B-mode).
         detected = None
         try:
             detected = detect_spectrogram_roi(arr)
@@ -351,42 +459,6 @@ def try_parse_samsung_tick_calibration(
                 roi = candidate_roi
             else:
                 logger.debug("Samsung tick dark-band: REJECTED — %s", vresult.reason)
-
-    if roi is None and tick_result.band_y > 0:
-        # Fallback 2: derive ROI from time scale tick positions.
-        # We know the ticks span the spectral band width, and band_y is the
-        # bottom. Estimate the band height as ~45% of frame height.
-        h, w = arr.shape[:2]
-        tick_x0 = min(tick_result.tick_positions)
-        tick_x1 = max(tick_result.tick_positions)
-        margin_x = tick_result.spacing_px * 2
-        band_bottom = tick_result.band_y
-        estimated_height = h * 0.45
-        band_top = max(0.0, band_bottom - estimated_height)
-        candidate_roi = DopplerSpectrogramRoi(
-            x0=max(0.0, tick_x0 - margin_x),
-            y0=band_top,
-            width=min(float(w), tick_x1 + margin_x) - max(0.0, tick_x0 - margin_x),
-            height=band_bottom - band_top,
-        )
-        # Relaxed geometry: time ticks are already validated (strong Doppler
-        # signal), so we only need to prevent obviously invalid ROIs.
-        vresult = validate_doppler_roi(
-            candidate_roi,
-            arr,
-            check_grid_lines=False,
-            min_width_fraction=0.3,
-            require_lower_half=False,
-        )
-        if vresult.valid:
-            roi = candidate_roi
-            logger.debug(
-                "Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f)",
-                roi.x0,
-                roi.y0,
-                roi.x0 + roi.width,
-                roi.y0 + roi.height,
-            )
 
     if roi is None:
         # All detection failed — return None instead of full-frame fallback.
