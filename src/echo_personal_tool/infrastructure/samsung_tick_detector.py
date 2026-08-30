@@ -241,6 +241,115 @@ def detect_ticks(
 
 
 # ---------------------------------------------------------------------------
+# Bottom velocity scale detection (vertical marks on horizontal ruler)
+# ---------------------------------------------------------------------------
+
+_MIN_BOTTOM_TICKS = 5
+_BOTTOM_TICK_MIN_BRIGHT_ABOVE = 3
+_BOTTOM_TICK_MIN_BRIGHT_BELOW = 3
+_BOTTOM_TICK_BRIGHTNESS = 100
+_BOTTOM_TICK_RULER_BRIGHTNESS = 130
+_BOTTOM_TICK_SEARCH_RANGE = 12  # rows above/below ruler to check
+
+
+def detect_bottom_velocity_scale(
+    gray: np.ndarray,
+    ruler_y: int,
+) -> TickDetectionResult:
+    """Detect vertical velocity tick marks crossing a horizontal ruler.
+
+    On Samsung Doppler frames, the horizontal ruler at the bottom has
+    periodic vertical marks that encode the velocity scale.  These are
+    distinct from the time ruler's vertical ticks: they cross the ruler
+    line (bright both above and below), while time ticks are short marks
+    below the ruler.
+
+    ``ruler_y`` is a hint (e.g. from detect_ticks band_y); the actual
+    ruler line is located as the brightest full-width row within ±60 px.
+
+    Returns TickDetectionResult with tick x-positions, spacing, and confidence.
+    """
+    h, w = gray.shape
+    if ruler_y < 5 or ruler_y >= h - 5:
+        return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
+
+    # Locate actual ruler: brightest full-width row near the hint.
+    # The ruler is a continuous bright line spanning >80% of frame width.
+    search_lo = max(0, ruler_y - 60)
+    search_hi = min(h, ruler_y + 61)
+    best_y = ruler_y
+    best_score = -1.0
+    for y in range(search_lo, search_hi):
+        row = gray[y, :]
+        bright_frac = float((row > 150).sum()) / w
+        if bright_frac > 0.8 and row.mean() > best_score:
+            best_score = float(row.mean())
+            best_y = y
+    ruler_y = best_y
+
+    # Find columns where a vertical bright bar crosses the ruler
+    tick_cols: list[int] = []
+    for x in range(10, w - 10):
+        if gray[ruler_y, x] < _BOTTOM_TICK_RULER_BRIGHTNESS:
+            continue
+        above = sum(
+            1
+            for dy in range(3, _BOTTOM_TICK_SEARCH_RANGE + 1)
+            if ruler_y - dy >= 0 and gray[ruler_y - dy, x] > _BOTTOM_TICK_BRIGHTNESS
+        )
+        below = sum(
+            1
+            for dy in range(3, _BOTTOM_TICK_SEARCH_RANGE + 1)
+            if ruler_y + dy < h and gray[ruler_y + dy, x] > _BOTTOM_TICK_BRIGHTNESS
+        )
+        if above >= _BOTTOM_TICK_MIN_BRIGHT_ABOVE and below >= _BOTTOM_TICK_MIN_BRIGHT_BELOW:
+            tick_cols.append(x)
+
+    if len(tick_cols) < _MIN_BOTTOM_TICKS:
+        return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
+
+    # Cluster consecutive columns
+    clusters: list[list[int]] = [[tick_cols[0]]]
+    for x in tick_cols[1:]:
+        if x - clusters[-1][-1] <= 3:
+            clusters[-1].append(x)
+        else:
+            clusters.append([x])
+    centers = [float(np.mean(c)) for c in clusters]
+
+    if len(centers) < _MIN_BOTTOM_TICKS:
+        return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
+
+    gaps = np.diff(centers)
+    # Filter: keep only gaps close to the median (real velocity ticks are uniform)
+    if len(gaps) >= 3:
+        med = float(np.median(gaps))
+        gaps = gaps[(gaps > med * 0.5) & (gaps < med * 2.0)]
+    gaps = gaps[gaps > _MIN_SPACING_PX]
+    if len(gaps) < _MIN_BOTTOM_TICKS - 1:
+        return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
+
+    median_gap = float(np.median(gaps))
+    std_gap = float(np.std(gaps))
+    uniformity = 1.0 - min(std_gap / median_gap, 1.0) if median_gap > 0 else 0.0
+    count_factor = min(len(centers) / 15.0, 1.0)
+    score = uniformity * count_factor
+
+    logger.debug(
+        "Bottom velocity scale: %d ticks, median_gap=%.1f, uniformity=%.2f",
+        len(centers),
+        median_gap,
+        uniformity,
+    )
+    return TickDetectionResult(
+        tick_positions=centers,
+        spacing_px=median_gap,
+        confidence=float(score),
+        band_y=float(ruler_y),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Velocity scale detection (vertical scales on left/right sides)
 # ---------------------------------------------------------------------------
 # Samsung velocity scales are vertical axes on the left and right sides of the
@@ -478,6 +587,7 @@ class SamsungDopplerScales:
     time_scale: TickDetectionResult
     left_velocity_scale: VelocityScaleResult | None
     right_velocity_scale: VelocityScaleResult | None
+    bottom_velocity_scale: TickDetectionResult | None = None
     refined_roi: tuple[float, float, float, float] | None = field(default=None)
     # refined_roi is (x0, y0, x1, y1) or None if detection failed
 
@@ -515,36 +625,55 @@ def detect_samsung_doppler_scales(
         channel_order=channel_order,
     )
 
+    # Detect bottom velocity scale (vertical marks on the horizontal ruler).
+    # This is the primary velocity scale on Samsung Doppler frames where the
+    # left/right vertical axes are too short or absent.
+    bottom_scale = None
+    if time_scale.confidence >= 0.3 and time_scale.band_y > 0:
+        if pixel_array.ndim == 3:
+            if channel_order == "bgr":
+                gray_bs = 0.114 * pixel_array[..., 0] + 0.587 * pixel_array[..., 1] + 0.299 * pixel_array[..., 2]
+            else:
+                gray_bs = 0.299 * pixel_array[..., 0] + 0.587 * pixel_array[..., 1] + 0.114 * pixel_array[..., 2]
+        else:
+            gray_bs = np.asarray(pixel_array, dtype=np.float32)
+        bottom_scale = detect_bottom_velocity_scale(
+            np.asarray(gray_bs, dtype=np.float32),
+            ruler_y=int(time_scale.band_y),
+        )
+
     # Compute refined ROI from detected scales
     refined_roi = None
 
-    # Require BOTH time scale AND at least one velocity scale for valid Doppler.
-    # Without velocity scales, it's likely B-mode, not spectral Doppler.
+    # Require time scale AND at least one velocity scale for valid Doppler.
+    # Velocity scale can be left/right vertical axes OR bottom horizontal axis.
     # Time scale must have >= 5 ticks (real Doppler has 10-30+).
-    # Velocity scale must have >= 4 ticks with high uniformity.
     has_time_scale = time_scale.confidence >= 0.4 and len(time_scale.tick_positions) >= 5
     has_left_scale = left_scale is not None and left_scale.confidence >= 0.4 and len(left_scale.tick_rows) >= 4
     has_right_scale = right_scale is not None and right_scale.confidence >= 0.4 and len(right_scale.tick_rows) >= 4
+    has_bottom_scale = bottom_scale is not None and bottom_scale.confidence >= 0.3 and len(bottom_scale.tick_positions) >= 5
 
-    if has_time_scale and (has_left_scale or has_right_scale):
+    if has_time_scale and (has_left_scale or has_right_scale or has_bottom_scale):
         h, w = pixel_array.shape[:2] if pixel_array.ndim == 2 else pixel_array.shape[:2]
 
         # Bottom boundary: y position of the time scale (from detected band_y)
         bottom_y = time_scale.band_y
 
-        # Left boundary: from left velocity scale
+        # Left boundary: from left velocity scale, or time ruler extent
         if has_left_scale:
             left_x = left_scale.x_center + 5  # Just inside the scale
-        else:
-            # Default: leftmost tick position minus margin
+        elif time_scale.tick_positions:
             left_x = min(time_scale.tick_positions) - 10
+        else:
+            left_x = 0.0
 
-        # Right boundary: from right velocity scale
+        # Right boundary: from right velocity scale, or time ruler extent
         if has_right_scale:
             right_x = right_scale.x_center - 5  # Just inside the scale
-        else:
-            # Default: rightmost tick position plus margin
+        elif time_scale.tick_positions:
             right_x = max(time_scale.tick_positions) + 10
+        else:
+            right_x = float(w)
 
         # Top boundary: top of the highest velocity scale AXIS LINE.
         # The axis line extends through the full spectral band height,
@@ -619,5 +748,6 @@ def detect_samsung_doppler_scales(
         time_scale=time_scale,
         left_velocity_scale=left_scale,
         right_velocity_scale=right_scale,
+        bottom_velocity_scale=bottom_scale,
         refined_roi=refined_roi,
     )
