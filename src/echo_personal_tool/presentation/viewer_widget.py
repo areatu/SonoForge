@@ -3453,8 +3453,9 @@ class ViewerWidget(QWidget):
         scales = detect_samsung_doppler_scales(self._current_frame)
 
         # Check if time scale exists - without it, no Doppler spectrum present.
-        # Require confidence >= 0.4 and >= 5 ticks for reliable detection.
-        if scales.time_scale.confidence < 0.4 or len(scales.time_scale.tick_positions) < 5:
+        # Threshold 0.3 (relaxed from 0.4) to accept frames where the ruler
+        # is detected but has low uniformity due to mixed spectrum/ECG content.
+        if scales.time_scale.confidence < 0.3 or len(scales.time_scale.tick_positions) < 5:
             mapping = DopplerAxisMapping.from_frame_size(width, height)
             self._doppler.set_axis_mapping(mapping)
             self._doppler_axis_calibrated = False
@@ -3508,6 +3509,54 @@ class ViewerWidget(QWidget):
                 kind=DopplerKind.SPECTRAL,
             )
             self.apply_doppler_calibration_state(state, persist=False)
+        elif scales.bottom_velocity_scale is not None and scales.bottom_velocity_scale.confidence >= 0.3:
+            # Fallback: bottom velocity scale detected but no left/right axes.
+            # Build ROI from time ruler x-extent and bottom scale y-position.
+            ts = scales.time_scale
+            bs = scales.bottom_velocity_scale
+            tick_x_min = min(ts.tick_positions)
+            tick_x_max = max(ts.tick_positions)
+            margin = max(ts.spacing_px * 2, 10.0)
+            roi = DopplerSpectrogramRoi(
+                x0=max(0.0, tick_x_min - margin),
+                y0=max(0.0, bs.band_y - height * 0.45),
+                width=max(1.0, (tick_x_max + margin) - max(0.0, tick_x_min - margin)),
+                height=max(1.0, bs.band_y + 10.0 - max(0.0, bs.band_y - height * 0.45)),
+            )
+            vresult = validate_doppler_roi(roi, self._current_frame)
+            if not vresult.valid:
+                logger.debug("[ROI-TRACE] bottom_vel_scale: REJECTED — %s", vresult.reason)
+                mapping = DopplerAxisMapping.from_frame_size(width, height)
+                self._doppler.set_axis_mapping(mapping)
+                self._doppler_axis_calibrated = False
+            else:
+                baseline_y = roi.y0 + roi.height / 2.0
+                # Time span from time ruler
+                time_span_ms = 0.0
+                if ts.spacing_px > 0:
+                    k_constant = 0.2
+                    frequency_hz = k_constant * ts.spacing_px
+                    if frequency_hz > 0:
+                        per_pixel_ms = 1000.0 / frequency_hz
+                        time_span_ms = per_pixel_ms * roi.width
+                # Velocity span from bottom scale tick count:
+                # Samsung spectral Doppler typically has 5-8 major ticks
+                # spanning the velocity range.  Default 200 cm/s unless
+                # we can infer from tick spacing (future: OCR labels).
+                velocity_span = 200.0
+                state = calibration_from_roi_and_baseline(
+                    roi,
+                    baseline_y,
+                    velocity_span_cm_s=velocity_span,
+                    time_span_ms=time_span_ms,
+                    kind=DopplerKind.SPECTRAL,
+                )
+                logger.debug(
+                    "[ROI-TRACE] bottom_vel_scale: roi=(%.0f,%.0f,%.0f,%.0f) vel=%.0f t=%.0fms",
+                    roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
+                    velocity_span, time_span_ms,
+                )
+                self.apply_doppler_calibration_state(state, persist=False)
         else:
             # Fallback: try dark-band detection with unified validation.
             spec_roi = detect_spectrogram_roi(self._current_frame)
