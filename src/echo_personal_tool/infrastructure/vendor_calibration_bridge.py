@@ -84,8 +84,12 @@ def _compute_baseline_with_profile(
     frame_height: int,
     frame_pixels: np.ndarray | None,
     roi: DopplerSpectrogramRoi,
-) -> float:
-    """Compute baseline using vendor profile, falling back to pixel detection."""
+) -> tuple[float, int]:
+    """Compute baseline using vendor profile, falling back to pixel detection.
+
+    Returns (baseline_y, velocity_sign): the sign is the vendor's tag-formula
+    convention (+1 standard, -1 inverted) and is recorded on the state.
+    """
     # 1. Try vendor-specific baseline computation
     try:
         result = profile.compute_baseline(region, frame_height, frame_pixels)
@@ -97,12 +101,12 @@ def _compute_baseline_with_profile(
                 result.confidence,
                 result.source,
             )
-            return result.baseline_y
+            return result.baseline_y, result.velocity_sign
     except Exception as e:
         logger.debug("Vendor baseline computation failed: %s", e)
 
-    # 2. Fallback: center of ROI
-    return roi.y0 + roi.height / 2.0
+    # 2. Fallback: center of ROI, standard convention
+    return roi.y0 + roi.height / 2.0, 1
 
 
 def try_parse_with_vendor_profile(
@@ -141,6 +145,7 @@ def try_parse_with_vendor_profile(
     # 2. Find the best Doppler region
     best_region = None
     best_priority = -1
+    best_width = -1.0
 
     for region in regions:
         spatial = int(region.get("RegionSpatialFormat", 0) or 0)
@@ -154,8 +159,13 @@ def try_parse_with_vendor_profile(
         else:
             continue
 
-        if priority > best_priority:
+        bounds = _region_bounds(region)
+        width = bounds[2] - bounds[0] if bounds is not None else 0.0
+        # Equal priority: GE writes two SF=3 regions — the velocity scale strip
+        # and the spectrum. Prefer the wider one (the actual spectrogram).
+        if priority > best_priority or (priority == best_priority and width > best_width):
             best_priority = priority
+            best_width = width
             best_region = region
 
     if best_region is None:
@@ -226,7 +236,7 @@ def try_parse_with_vendor_profile(
     time_span_ms = time_result.span_ms if time_result else None
 
     # 6. Compute baseline using vendor profile
-    baseline_y = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
+    baseline_y, velocity_sign = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
 
     # 7. Build calibration state
     data_type = int(best_region.get("RegionDataType", 0) or 0)
@@ -250,6 +260,7 @@ def try_parse_with_vendor_profile(
         from_dicom_tags=True,
         time_from_dicom_tags=time_result is not None,
         velocity_from_dicom_tags=velocity_result is not None,
+        velocity_sign=velocity_sign,
     )
 
 

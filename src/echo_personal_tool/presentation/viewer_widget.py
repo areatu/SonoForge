@@ -2863,6 +2863,7 @@ class ViewerWidget(QWidget):
                 time_from_dicom_tags=getattr(state, "time_from_dicom_tags", False),
                 velocity_from_dicom_tags=getattr(state, "velocity_from_dicom_tags", False),
                 velocity_per_pixel_cm_s=getattr(state, "velocity_per_pixel_cm_s", None),
+                velocity_sign=getattr(state, "velocity_sign", 1),
             )
         self._doppler_calibration_state = state
         self._doppler_calibration_instance_uid = self._current_instance_uid()

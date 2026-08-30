@@ -19,14 +19,49 @@ _TISSUE_SPANS = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0]
 
 
 def _round_velocity(per_interval: float) -> bool:
-    """True if per-interval velocity is a 'nice' clinical number."""
+    """True if per-interval velocity is a 'nice' clinical number.
+
+    Relative tolerance (3.5%, floored at 0.2 and capped at 0.5 cm/s): scale
+    ticks are laid out at exact nice values, so measured intervals land
+    within detector noise of them. A flat ±0.5 tolerance used to admit
+    false matches (e.g. 2.78 cm/s taken for 2.5), producing a wrong yet
+    "unambiguous" span 3.5x off the real scale.
+    """
     if per_interval <= 0:
         return False
     nice = {1.0, 2.0, 2.5, 5.0, 10.0, 12.5, 15.0, 20.0, 25.0, 30.0, 50.0, 75.0, 100.0}
     for n in nice:
-        if abs(per_interval - n) < 0.5:
+        if abs(per_interval - n) <= min(0.5, max(0.2, 0.035 * n)):
             return True
     return False
+
+
+def _drop_outlier_ticks(sorted_ticks: list[float]) -> list[float]:
+    """Drop ticks whose every adjacent gap deviates >30% from the median gap.
+
+    Scale ticks form an arithmetic progression, but detector output on
+    untagged frames mixes in label artifacts and axis marks. A tick is
+    removed only when ALL gaps touching it are irregular, so uniform sets
+    pass through unchanged and interior ticks of a clean run survive a
+    single noisy neighbour.
+    """
+    if len(sorted_ticks) < 3:
+        return sorted_ticks
+    gaps = [sorted_ticks[i + 1] - sorted_ticks[i] for i in range(len(sorted_ticks) - 1)]
+    median_gap = float(np.median(gaps))
+    if median_gap <= 0:
+        return sorted_ticks
+    keep = [True] * len(sorted_ticks)
+    for i in range(len(sorted_ticks)):
+        adjacent = []
+        if i > 0:
+            adjacent.append(gaps[i - 1])
+        if i < len(gaps):
+            adjacent.append(gaps[i])
+        if adjacent and all(abs(g - median_gap) > 0.3 * median_gap for g in adjacent):
+            keep[i] = False
+    filtered = [t for t, k in zip(sorted_ticks, keep) if k]
+    return filtered if len(filtered) >= 3 else sorted_ticks
 
 
 def infer_velocity_span(
@@ -47,11 +82,17 @@ def infer_velocity_span(
     represents a velocity of S / N. We check that this matches a "nice" clinical
     number and that the implied velocity-per-pixel is consistent with the ROI
     height.
+
+    The consistency score is invariant to S (it only couples tick spacing to
+    ROI height), so when the nice-value arithmetic leaves several standard
+    spans plausible the geometry cannot disambiguate them — inference must
+    refuse rather than guess. Irregular ticks (label artifacts, axis marks)
+    are dropped before inference so they cannot skew N.
     """
     if len(tick_ys) < 3:
         return None
 
-    sorted_ticks = sorted(tick_ys)
+    sorted_ticks = _drop_outlier_ticks(sorted(tick_ys))
     spacings = np.array([sorted_ticks[i + 1] - sorted_ticks[i] for i in range(len(sorted_ticks) - 1)])
     pixel_spacing = float(np.median(spacings))
     if pixel_spacing <= 0:
