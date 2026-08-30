@@ -119,29 +119,51 @@ def spectral_band_is_dark(gray: np.ndarray, band_y: float) -> bool:
       the top of the frame (relative check).
     - An overall dark frame (cropped Doppler frames, synthetic tests): a purely
       absolute darkness check on the spectral band is used.
+
+    Samsung Doppler frames vary in layout:
+    - Standard: wide spectral band filling ~30-45% of the frame above the ruler.
+    - Compressed: narrow Doppler band (~10% of frame) near the ruler, with
+      B-mode tissue above it.  A wide scan would include the bright B-mode
+      tissue and reject the ruler.  A narrow scan (bottom 10% of frame)
+      catches only the spectral band.
     """
     h, w = gray.shape
     if band_y <= 0:
         return False
     y1 = int(band_y)
-    y0 = max(int(h * _SPECTRAL_BAND_COL_FRACTION + h * 0.10), int(band_y - h * _SPECTRAL_BAND_HEIGHT_FRACTION))
-    if y1 <= y0:
-        return False
     x0 = int(w * _SPECTRAL_BAND_COL_FRACTION)
     x1 = int(w * (1.0 - _SPECTRAL_BAND_COL_FRACTION))
     if x1 <= x0:
         x0, x1 = 0, w
     top = gray[int(h * 0.05) : int(h * 0.35), x0:x1]
-    region = gray[y0:y1, x0:x1]
-    if region.size == 0 or top.size == 0:
+    if top.size == 0:
         return False
-    band_mean = float(np.mean(region))
     top_mean = float(np.mean(top))
-    if top_mean > _BRIGHT_TOP_MIN_MEAN:
-        # B-mode top present: the spectral band below the ruler must be much
-        # darker, otherwise this is a bright B-mode bottom, not a Doppler panel.
-        return band_mean < top_mean * _SPECTRAL_TO_TOP_MAX_RATIO
-    return band_mean < _SPECTRAL_BAND_MAX_MEAN
+
+    # --- Wide region check (standard layout) ---
+    y0_wide = max(int(h * _SPECTRAL_BAND_COL_FRACTION + h * 0.10), int(band_y - h * _SPECTRAL_BAND_HEIGHT_FRACTION))
+    if y1 > y0_wide:
+        region_wide = gray[y0_wide:y1, x0:x1]
+        band_mean_wide = float(np.mean(region_wide))
+        if top_mean > _BRIGHT_TOP_MIN_MEAN:
+            if band_mean_wide < top_mean * _SPECTRAL_TO_TOP_MAX_RATIO:
+                return True
+        elif band_mean_wide < _SPECTRAL_BAND_MAX_MEAN:
+            return True
+
+    # --- Narrow fallback (compressed layout) ---
+    # Check just the bottom 10% of the frame above the ruler.  Samsung
+    # Doppler frames place the spectral band directly above the time ruler;
+    # if it's dark there, the ruler is real even when B-mode tissue sits
+    # higher up.
+    y0_narrow = max(0, int(band_y - h * 0.10))
+    if y1 > y0_narrow:
+        region_narrow = gray[y0_narrow:y1, x0:x1]
+        band_mean_narrow = float(np.mean(region_narrow))
+        if band_mean_narrow < _SPECTRAL_BAND_MAX_MEAN:
+            return True
+
+    return False
 
 
 def detect_ticks(
