@@ -35,7 +35,7 @@ _SCAN_STEP_PX = 2  # row stride while searching for the best band
 _FULL_CONFIDENCE_TICK_COUNT = 20
 # Samsung places the time-scale ruler at a fixed height from the bottom of the
 # frame; detection is restricted to the bottom slice of the image.
-_BOTTOM_SCAN_FRACTION = 0.15
+_BOTTOM_SCAN_FRACTION = 0.25
 
 # The spectral Doppler band sits ABOVE the time ruler and is DARK (near-black
 # background with a bright envelope).  B-mode frames are bright tissue, so a
@@ -307,7 +307,7 @@ def _detect_vertical_scale_at_x(
     col_bright = (strip > _VELOCITY_BRIGHTNESS_THRESHOLD).sum(axis=0)
     # Use search height for threshold, not full frame height, so narrow
     # spectral bands (e.g. 86 px in an 800 px frame) are still detected.
-    axis_candidates = np.where(col_bright > search_h * 0.3)[0]
+    axis_candidates = np.where(col_bright > search_h * 0.20)[0]
 
     if len(axis_candidates) == 0:
         return None
@@ -449,15 +449,19 @@ def detect_velocity_scales(
         # Right scale: just to the right of the band
         right_x_center = min(w - _VELOCITY_SEARCH_WIDTH_PX - 1, int(band_x1) + _VELOCITY_SEARCH_WIDTH_PX)
     else:
-        # Search in outer regions
-        left_x_center = int(w * 0.1)
-        right_x_center = int(w * 0.9)
+        # Search near frame edges — Samsung velocity axes sit at the very
+        # border (x≈5 / x≈w-5), not at 10%/90% width.
+        left_x_center = int(w * 0.05)
+        right_x_center = int(w * 0.95)
 
     # Limit vertical search to spectral band height when band_y is known.
-    # Without this, the axis-brightness threshold (30% of full frame height)
-    # fails for narrow spectral bands (e.g. 86px in an 800px frame = 10.75%).
-    if band_y is not None:
-        y_range = (0, min(h - 1, int(band_y) + _VELOCITY_SEARCH_WIDTH_PX))
+    # Without this, the axis-brightness threshold (20% of search height) can
+    # trigger false detections on bright B-mode areas for standard frames.
+    # For compressed frames, the velocity axis extends well above band_y, so
+    # we expand the search to 2× the distance from top to band_y.
+    if band_y is not None and band_y > 0:
+        y_max = min(h - 1, max(int(band_y) + _VELOCITY_SEARCH_WIDTH_PX, int(band_y * 2)))
+        y_range = (0, y_max)
     else:
         y_range = (0, h - 1)
 
