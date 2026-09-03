@@ -3553,8 +3553,12 @@ class ViewerWidget(QWidget):
                 )
                 logger.debug(
                     "[ROI-TRACE] bottom_vel_scale: roi=(%.0f,%.0f,%.0f,%.0f) vel=%.0f t=%.0fms",
-                    roi.x0, roi.y0, roi.x0 + roi.width, roi.y0 + roi.height,
-                    velocity_span, time_span_ms,
+                    roi.x0,
+                    roi.y0,
+                    roi.x0 + roi.width,
+                    roi.y0 + roi.height,
+                    velocity_span,
+                    time_span_ms,
                 )
                 self.apply_doppler_calibration_state(state, persist=False)
         else:

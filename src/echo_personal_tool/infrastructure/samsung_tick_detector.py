@@ -651,7 +651,9 @@ def detect_samsung_doppler_scales(
     has_time_scale = time_scale.confidence >= 0.4 and len(time_scale.tick_positions) >= 5
     has_left_scale = left_scale is not None and left_scale.confidence >= 0.4 and len(left_scale.tick_rows) >= 4
     has_right_scale = right_scale is not None and right_scale.confidence >= 0.4 and len(right_scale.tick_rows) >= 4
-    has_bottom_scale = bottom_scale is not None and bottom_scale.confidence >= 0.3 and len(bottom_scale.tick_positions) >= 5
+    has_bottom_scale = (
+        bottom_scale is not None and bottom_scale.confidence >= 0.3 and len(bottom_scale.tick_positions) >= 5
+    )
 
     if has_time_scale and (has_left_scale or has_right_scale or has_bottom_scale):
         h, w = pixel_array.shape[:2] if pixel_array.ndim == 2 else pixel_array.shape[:2]
