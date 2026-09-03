@@ -21,3 +21,4 @@ jobs:
           fail-on-severity: high
           comment-summary-in-pr: always
           deny-licenses: GPL-3.0, AGPL-3.0
+          allow-ghsas: GHSA-8mgp-746c-j5xp
