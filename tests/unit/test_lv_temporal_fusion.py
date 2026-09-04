@@ -360,3 +360,193 @@ def test_compute_window_partial_fusion_threshold() -> None:
     valid = 3
     processed = 3
     assert valid >= 3 and processed >= 3
+
+
+def _open_arc(n: int, annulus: tuple, apex: tuple) -> list[tuple[float, float]]:
+    septal, lateral = annulus
+    points: list[tuple[float, float]] = []
+    for i in range(n):
+        t = i / max(n - 1, 1)
+        x = septal[0] * (1.0 - t) + lateral[0] * t
+        y = septal[1] + (apex[1] - septal[1]) * math.sin(math.pi * t)
+        points.append((x, y))
+    points[0] = septal
+    points[-1] = lateral
+    return points
+
+
+def test_temporal_fuse_lv_calls_two_pass_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def _fake_two_pass(mask, *, original_shape, phase=None, view_hint="A4C", num_nodes=32):
+        calls.append(phase or "")
+        annulus = ((30.0, 30.0), (70.0, 30.0))
+        apex = (50.0, 80.0)
+        return _open_arc(num_nodes, annulus, apex), annulus, apex, mask
+
+    monkeypatch.setattr(
+        "echo_personal_tool.domain.services.lv_temporal_fusion.lv_cavity_mask_to_open_arc",
+        _fake_two_pass,
+    )
+
+    center_mask = _circle_mask(100, 100, 50, 50, 20)
+    annulus = ((30.0, 30.0), (70.0, 30.0))
+    apex = (50.0, 80.0)
+    center = _make_contour(_open_arc(32, annulus, apex), annulus, apex, frame_index=10)
+    neighbor = _make_contour(
+        _open_arc(32, ((32.0, 32.0), (68.0, 32.0)), (50.0, 78.0)),
+        ((32.0, 32.0), (68.0, 32.0)),
+        (50.0, 78.0),
+        frame_index=11,
+    )
+    result = temporal_fuse(
+        center_mask=center_mask,
+        neighbor_masks={11: _circle_mask(100, 100, 52, 48, 18)},
+        center_contour=center,
+        neighbor_contours={11: neighbor},
+        anchor_frame_index=10,
+        phase="ED",
+        config=TemporalFusionConfig(window=2, vote_threshold=2),
+        original_shape=(100, 100),
+    )
+    assert calls == ["ED"]
+    assert result.fused_contour.frame_index == 10
+
+
+def test_confidence_below_0_3_dropped_from_vote(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    original = mask_vote_fusion
+
+    def _spy(masks, threshold=3):
+        captured["n"] = len(masks)
+        captured["threshold"] = threshold
+        captured["sums"] = [int(m.sum()) for m in masks]
+        return original(masks, threshold=threshold)
+
+    monkeypatch.setattr(
+        "echo_personal_tool.domain.services.lv_temporal_fusion.mask_vote_fusion",
+        _spy,
+    )
+
+    center_mask = _circle_mask(100, 100, 50, 50, 20)
+    annulus = ((30.0, 30.0), (70.0, 30.0))
+    apex = (50.0, 80.0)
+    points = _open_arc(32, annulus, apex)
+    center = _make_contour(points, annulus, apex, frame_index=10)
+
+    good_ids = (8, 9, 11)
+    neighbor_masks = {i: _circle_mask(100, 100, 50, 50, 20) for i in good_ids}
+    neighbor_contours = {
+        i: _make_contour(points, annulus, apex, frame_index=i) for i in good_ids
+    }
+    garbage_id = 12
+    garbage_mask = np.ones((100, 100), dtype=np.uint8)
+    neighbor_masks[garbage_id] = garbage_mask
+    # No MA → confidence 0 after alignment; must be dropped from the vote set.
+    neighbor_contours[garbage_id] = _make_contour(
+        [(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)],
+        None,
+        None,
+        frame_index=garbage_id,
+    )
+
+    config = TemporalFusionConfig(
+        window=2,
+        vote_threshold=3,
+        outlier_rejection=False,
+        confidence_weighted=True,
+        min_confidence_score=0.3,
+    )
+    result = temporal_fuse(
+        center_mask=center_mask,
+        neighbor_masks=neighbor_masks,
+        center_contour=center,
+        neighbor_contours=neighbor_contours,
+        anchor_frame_index=10,
+        phase="ED",
+        config=config,
+        original_shape=(100, 100),
+    )
+
+    assert captured["n"] == 4  # center + 3 good; garbage dropped before vote
+    assert max(captured["sums"]) < 5000  # all-ones garbage not in the vote set
+    assert garbage_id not in result.neighbor_contours
+    assert result.frames_used == 4
+
+
+def test_unequal_node_counts_are_resampled_before_median() -> None:
+    center_mask = _circle_mask(100, 100, 50, 50, 20)
+    annulus = ((30.0, 30.0), (70.0, 30.0))
+    apex = (50.0, 80.0)
+    center = _make_contour(_open_arc(32, annulus, apex), annulus, apex, frame_index=10)
+    neighbor_annulus = ((32.0, 32.0), (68.0, 32.0))
+    neighbor_apex = (50.0, 78.0)
+    neighbor = _make_contour(
+        _open_arc(31, neighbor_annulus, neighbor_apex),
+        neighbor_annulus,
+        neighbor_apex,
+        frame_index=11,
+    )
+    result = temporal_fuse(
+        center_mask=center_mask,
+        neighbor_masks={11: _circle_mask(100, 100, 52, 48, 18)},
+        center_contour=center,
+        neighbor_contours={11: neighbor},
+        anchor_frame_index=10,
+        phase="ED",
+        config=TemporalFusionConfig(window=2, vote_threshold=2),
+        original_shape=(100, 100),
+    )
+    assert result.fused_contour.frame_index == 10
+    assert len(result.fused_contour.points) == 32
+    assert result.frames_used == 2
+
+
+def test_three_good_one_garbage_excluded_fused_stays_on_anchor() -> None:
+    center_mask = _circle_mask(100, 100, 50, 50, 20)
+    annulus = ((30.0, 30.0), (70.0, 30.0))
+    apex = (50.0, 80.0)
+    points = _open_arc(32, annulus, apex)
+    center = _make_contour(points, annulus, apex, frame_index=10)
+    good_ids = (8, 9, 11)
+    neighbor_masks = {i: _circle_mask(100, 100, 50, 50, 19) for i in good_ids}
+    neighbor_contours = {
+        i: _make_contour(points, annulus, apex, frame_index=i) for i in good_ids
+    }
+    garbage_id = 12
+    garbage_annulus = ((5.0, 90.0), (20.0, 90.0))
+    garbage_apex = (12.0, 10.0)
+    neighbor_masks[garbage_id] = np.ones((100, 100), dtype=np.uint8)
+    neighbor_contours[garbage_id] = _make_contour(
+        _open_arc(32, garbage_annulus, garbage_apex),
+        garbage_annulus,
+        garbage_apex,
+        frame_index=garbage_id,
+    )
+
+    result = temporal_fuse(
+        center_mask=center_mask,
+        neighbor_masks=neighbor_masks,
+        center_contour=center,
+        neighbor_contours=neighbor_contours,
+        anchor_frame_index=10,
+        phase="ED",
+        config=TemporalFusionConfig(window=2, vote_threshold=3),
+        original_shape=(100, 100),
+    )
+    assert garbage_id not in result.neighbor_contours
+    assert result.fused_contour.frame_index == 10
+    assert result.frames_used == 4
+
+
+def test_shipped_manifest_temporal_fusion_disabled() -> None:
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "models" / "model_manifest.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    fusion = data["temporal_fusion"]
+    assert fusion["enabled"] is False
+    assert fusion["window"] == 2
+    assert fusion["vote_threshold"] == 3
+    assert fusion["min_confidence_score"] == 0.3

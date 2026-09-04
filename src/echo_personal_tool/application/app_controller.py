@@ -2501,7 +2501,7 @@ class AppController(QObject):
             instance_path=instance_path,
             frame_index=frame_index,
             original_shape=original_shape,
-            mask=mask,
+            mask=cleaned_mask,
             center_contour=contour,
         )
 
@@ -3062,6 +3062,7 @@ class AppController(QObject):
             return
 
         is_la = chamber.upper() == "LA"
+        vote_mask = mask
         if is_la:
             from echo_personal_tool.domain.services.la_segmentation_service import la_mask_to_contour
 
@@ -3073,7 +3074,7 @@ class AppController(QObject):
             refined_points = open_points
         else:
             try:
-                open_points, annulus, apex, _cleaned = lv_cavity_mask_to_open_arc(
+                open_points, annulus, apex, cleaned = lv_cavity_mask_to_open_arc(
                     mask,
                     original_shape=original_shape,
                     phase=phase,
@@ -3083,6 +3084,7 @@ class AppController(QObject):
                 self._on_neighbor_segment_failed(neighbor_idx)
                 return
             refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
+            vote_mask = cleaned
 
         instance_uid = self._current_instance.sop_instance_uid if self._current_instance is not None else None
         contour = Contour(
@@ -3098,7 +3100,18 @@ class AppController(QObject):
             sop_instance_uid=instance_uid,
         )
 
-        self._fusion_masks[neighbor_idx] = mask
+        if not is_la:
+            pixel_spacing, _ = self._resolve_pixel_spacing(self._state_manager.snapshot)
+            reject_reason = explain_lv_auto_reject_reason(
+                contour,
+                pixel_spacing,
+                roi_xyxy=self._last_segment_roi_xyxy,
+            )
+            if reject_reason is not None:
+                self._on_neighbor_segment_failed(neighbor_idx)
+                return
+
+        self._fusion_masks[neighbor_idx] = vote_mask
         self._fusion_contours[neighbor_idx] = contour
         self._fusion_processed.add(neighbor_idx)
 

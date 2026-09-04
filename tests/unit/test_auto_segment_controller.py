@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata
+from echo_personal_tool.domain.models.temporal_fusion import TemporalFusionConfig
 
 pytest.importorskip("pytestqt")
 
@@ -407,6 +408,49 @@ def test_on_auto_segment_finished_auto_refines_when_enabled(
     assert contours[0].review_pending is True
     assert refine_calls
     assert refine_calls[0][0] is pixels
+
+
+def test_neighbor_quality_reject_not_stored_for_vote(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_dicom_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.lv_cavity_mask_to_open_arc",
+        lambda *args, **kwargs: (
+            [(10.0, 50.0), (24.0, 20.0), (38.0, 12.0), (52.0, 20.0), (66.0, 50.0)],
+            ((10.0, 50.0), (66.0, 50.0)),
+            (38.0, 12.0),
+            np.ones((64, 48), dtype=np.uint8),
+        ),
+    )
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.explain_lv_auto_reject_reason",
+        lambda *args, **kwargs: "inverted_apex",
+    )
+    controller, _, _, instance, _ = _prepared_controller(monkeypatch, synthetic_dicom_path)
+    controller._fusion_in_progress = True
+    controller._fusion_config = TemporalFusionConfig()
+    controller._fusion_anchor_frame = 0
+    controller._fusion_window = [0, 1, 2, 3, 4]
+    controller._fusion_processed = {0}
+    controller._fusion_masks = {0: np.zeros((8, 8), dtype=np.uint8)}
+    controller._fusion_contours = {}
+    controller._last_segment_roi_xyxy = (0.0, 0.0, 48.0, 64.0)
+
+    controller._on_neighbor_segment_finished(
+        np.ones((64, 48), dtype=np.uint8),
+        phase="ED",
+        view="A4C",
+        chamber="LV",
+        instance_path=instance.path,
+        neighbor_idx=1,
+        original_shape=(64, 48),
+    )
+
+    assert 1 not in controller._fusion_masks
+    assert 1 not in controller._fusion_contours
+    assert 1 in controller._fusion_processed
 
 
 def test_request_auto_segment_requires_a4c_view(

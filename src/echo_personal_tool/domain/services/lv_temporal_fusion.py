@@ -17,12 +17,14 @@ from echo_personal_tool.domain.models.temporal_fusion import (
     TemporalFusionResult,
 )
 from echo_personal_tool.domain.services.contour_geometry import (
+    DEFAULT_NODE_COUNT,
+    resample_open_arc,
+    resample_open_arc_landmarks,
     smooth_open_arc,
 )
 from echo_personal_tool.domain.services.segmentation_service import (
     exclude_papillary_concavities,
-    open_arc_from_cavity_mask,
-    papillary_mask_cleanup,
+    lv_cavity_mask_to_open_arc,
 )
 
 
@@ -214,6 +216,50 @@ def _arc_span(points: list[tuple[float, float]]) -> float:
     return max_span
 
 
+def _aligned_vote_masks(
+    *,
+    center_mask: np.ndarray,
+    neighbor_masks: dict[int, np.ndarray],
+    neighbor_contours: dict[int, Contour],
+    neighbor_ids: list[int],
+    center_centroid: tuple[float, float],
+) -> list[np.ndarray]:
+    """Center mask plus neighbors translated so MA centroids match the anchor."""
+    aligned = [center_mask]
+    for i in neighbor_ids:
+        contour = neighbor_contours[i]
+        mask_i = neighbor_masks[i]
+        if contour.mitral_annulus is not None:
+            t_centroid = _ma_centroid(contour.mitral_annulus)
+            aligned.append(align_mask_to_anchor(mask_i, t_centroid, center_centroid))
+        else:
+            aligned.append(mask_i)
+    return aligned
+
+
+def _resample_arc_to_nodes(
+    contour: Contour,
+    *,
+    num_nodes: int = DEFAULT_NODE_COUNT,
+) -> list[tuple[float, float]]:
+    """Resample an open arc to *num_nodes* using that frame's aligned MA."""
+    points = list(contour.points)
+    if len(points) < 2:
+        return points
+    annulus = contour.mitral_annulus
+    if annulus is not None:
+        septal, lateral = annulus
+        apex = contour.apex_landmark or points[len(points) // 2]
+        return resample_open_arc_landmarks(
+            points,
+            septal=septal,
+            lateral=lateral,
+            apex=apex,
+            num_nodes=num_nodes,
+        )
+    return resample_open_arc(points, num_nodes=num_nodes)
+
+
 def reject_outlier_neighbors(
     anchor_contour: Contour,
     neighbor_contours: dict[int, Contour],
@@ -264,16 +310,14 @@ def temporal_fuse(
     """Full temporal fusion pipeline on anchor frame N.
 
     1. Align neighbor masks to anchor via MA centroid translation.
-    2. Mask vote fusion.
-    3. Papillary cleanup + open_arc on fused mask.
-    4. Node clamp (median of neighbors clamped to center ± shift_cap).
+    2. Mask vote fusion (after outlier + confidence filters rebuild the vote set).
+    3. Two-pass ``lv_cavity_mask_to_open_arc`` on the fused LV mask.
+    4. Resample all arcs to 32 nodes, then node clamp (median ± shift_cap).
     5. Annulus fusion with δ.
     6. Apex direction lock.
     7. Papillary concavity exclusion + smooth.
     """
     valid_neighbor_ids = sorted(i for i in neighbor_masks if i in neighbor_contours)
-    all_masks = [center_mask] + [neighbor_masks[i] for i in valid_neighbor_ids]
-    all_contours = [center_contour] + [neighbor_contours[i] for i in valid_neighbor_ids]
 
     # --- 1. Compute centroids for alignment ---
     center_ma = center_contour.mitral_annulus
@@ -340,21 +384,14 @@ def temporal_fuse(
             aligned_neighbor_contours,
             max_shift_ratio=config.max_neighbor_shift_ratio,
         )
-        # Rebuild valid_neighbor_ids and aligned_masks after rejection
         valid_neighbor_ids = sorted(aligned_neighbor_contours.keys())
-        aligned_masks = [center_mask]
-        alignment_deltas_filtered: dict[int, tuple[float, float]] = {}
-        for i in valid_neighbor_ids:
-            c = neighbor_contours[i]
-            if c.mitral_annulus is not None:
-                t_centroid = _ma_centroid(c.mitral_annulus)
-                dx = center_centroid[0] - t_centroid[0]
-                dy = center_centroid[1] - t_centroid[1]
-                alignment_deltas_filtered[i] = (dx, dy)
-                aligned_masks.append(align_mask_to_anchor(neighbor_masks[i], t_centroid, center_centroid))
-            else:
-                alignment_deltas_filtered[i] = (0.0, 0.0)
-                aligned_masks.append(neighbor_masks[i])
+        aligned_masks = _aligned_vote_masks(
+            center_mask=center_mask,
+            neighbor_masks=neighbor_masks,
+            neighbor_contours=neighbor_contours,
+            neighbor_ids=valid_neighbor_ids,
+            center_centroid=center_centroid,
+        )
 
     # --- 1c. Compute neighbor confidence scores ---
     confidence_scores: dict[int, float] = {}
@@ -366,16 +403,23 @@ def temporal_fuse(
                 nc,
                 phase=phase,
             )
-        # Filter by minimum confidence
         valid_neighbor_ids = [
             i for i in valid_neighbor_ids if confidence_scores.get(i, 0.0) >= config.min_confidence_score
         ]
+        aligned_masks = _aligned_vote_masks(
+            center_mask=center_mask,
+            neighbor_masks=neighbor_masks,
+            neighbor_contours=neighbor_contours,
+            neighbor_ids=valid_neighbor_ids,
+            center_centroid=center_centroid,
+        )
 
     # --- 2. Mask vote fusion ---
-    threshold = min(config.vote_threshold, len(aligned_masks))
+    n_valid = len(aligned_masks)
+    threshold = min(config.vote_threshold, n_valid)
     fused_mask = mask_vote_fusion(aligned_masks, threshold=threshold)
 
-    # --- 3. Papillary cleanup + open arc ---
+    # --- 3. Two-pass open arc (LV) / LA contour ---
     is_la = (center_contour.chamber or "").upper() == "LA"
     if is_la:
         from echo_personal_tool.domain.services.la_segmentation_service import la_mask_to_contour
@@ -391,7 +435,7 @@ def temporal_fuse(
                 config=config,
             )
         try:
-            open_points, annulus, apex = la_mask_to_contour(fused_mask, num_nodes=32)
+            open_points, annulus, apex = la_mask_to_contour(fused_mask, num_nodes=DEFAULT_NODE_COUNT)
         except ValueError:
             return TemporalFusionResult(
                 anchor_frame_index=anchor_frame_index,
@@ -403,7 +447,6 @@ def temporal_fuse(
                 config=config,
             )
     else:
-        fused_mask = papillary_mask_cleanup(fused_mask, phase=phase)
         if int(np.count_nonzero(fused_mask)) < 80:
             return TemporalFusionResult(
                 anchor_frame_index=anchor_frame_index,
@@ -416,10 +459,12 @@ def temporal_fuse(
             )
 
         try:
-            open_points, annulus, apex = open_arc_from_cavity_mask(
+            open_points, annulus, apex, fused_mask = lv_cavity_mask_to_open_arc(
                 fused_mask,
                 original_shape=original_shape,
-                num_nodes=32,
+                phase=phase,
+                view_hint=center_contour.view or "A4C",
+                num_nodes=DEFAULT_NODE_COUNT,
             )
         except ValueError:
             return TemporalFusionResult(
@@ -436,11 +481,12 @@ def temporal_fuse(
     ma_len = _ma_length(annulus)
     shift_cap = config.max_node_shift_ratio(phase) * ma_len
     apex_shift_cap = config.apex_max_shift_ratio(phase) * ma_len
-    center_nodes = center_contour.points
+    n_nodes = DEFAULT_NODE_COUNT
+    center_nodes = _resample_arc_to_nodes(center_contour, num_nodes=n_nodes)
 
-    # Find apex index (node closest to apex landmark)
+    # Find apex index (node closest to apex landmark) on the resampled center arc
     apex_idx = None
-    if center_contour.apex_landmark is not None:
+    if center_contour.apex_landmark is not None and center_nodes:
         apex_pt = center_contour.apex_landmark
         min_dist = float("inf")
         for j, pt in enumerate(center_nodes):
@@ -449,18 +495,20 @@ def temporal_fuse(
                 min_dist = d
                 apex_idx = j
 
-    # Resample all arcs to 32 nodes (center is already 32 from open_arc)
-    neighbor_node_lists = []
+    neighbor_node_lists: list[list[tuple[float, float]]] = []
     for i in valid_neighbor_ids:
         c = aligned_neighbor_contours.get(i, neighbor_contours[i])
-        pts = c.points
-        if len(pts) == len(open_points):
-            neighbor_node_lists.append(pts)
+        pts = _resample_arc_to_nodes(c, num_nodes=n_nodes)
+        if len(pts) != n_nodes and len(pts) >= 2:
+            pts = resample_open_arc(pts, num_nodes=n_nodes)
+        if len(pts) != n_nodes:
+            pts = list(open_points)
+        neighbor_node_lists.append(pts)
 
-    if neighbor_node_lists:
+    if neighbor_node_lists and len(center_nodes) == n_nodes:
         median_nodes = [
             _component_wise_median([center_nodes[j]] + [nl[j] for nl in neighbor_node_lists])
-            for j in range(len(open_points))
+            for j in range(n_nodes)
         ]
         fused_nodes = clamp_nodes_to_center(
             median_nodes,
