@@ -10,7 +10,11 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from echo_personal_tool.domain.services.contour_geometry import resample_open_arc, smooth_open_arc
+from echo_personal_tool.domain.services.contour_geometry import (
+    apex_point,
+    resample_open_arc,
+    smooth_open_arc,
+)
 
 _NEIGHBOR_OFFSETS: tuple[tuple[int, int], ...] = (
     (1, 0),
@@ -1099,6 +1103,40 @@ def open_arc_from_cavity_mask(
 
 
 _LV_MASK_MIN_PIXELS = 80
+_LV_PASS2_MIN_IOU = 0.85
+_LV_PASS2_MAX_AREA_JUMP = 0.25
+
+
+def _canonical_apex(
+    open_points: list[tuple[float, float]],
+    annulus: tuple[tuple[float, float], tuple[float, float]],
+    seed: tuple[float, float],
+) -> tuple[float, float]:
+    """Simpson tip (farthest from MA chord); band apex is seed if the arc is short."""
+    if len(open_points) < 3:
+        return seed
+    return apex_point(open_points, annulus)
+
+
+def _binary_mask_iou(first: np.ndarray, second: np.ndarray) -> float:
+    a = np.asarray(first) > 0
+    b = np.asarray(second) > 0
+    intersection = int(np.count_nonzero(a & b))
+    union = int(np.count_nonzero(a | b))
+    if union == 0:
+        return 1.0
+    return intersection / union
+
+
+def _pass2_mask_implausible(first: np.ndarray, second: np.ndarray) -> bool:
+    """True when pass-2 overgrew / diverged from pass-1 (keep pass 1)."""
+    n1 = int(np.count_nonzero(first))
+    n2 = int(np.count_nonzero(second))
+    if n1 <= 0:
+        return True
+    if abs(n2 - n1) / n1 > _LV_PASS2_MAX_AREA_JUMP:
+        return True
+    return _binary_mask_iou(first, second) < _LV_PASS2_MIN_IOU
 
 
 def lv_cavity_mask_to_open_arc(
@@ -1116,8 +1154,9 @@ def lv_cavity_mask_to_open_arc(
 ]:
     """Two-pass papillary cleanup then open-arc extraction (no longest-chord fallback).
 
-    Pass 1: isotropic closing. Pass 2: rotate the SE along MA midpoint → apex.
-    If the second pass is too small or fails to open, keep the first-pass arc.
+    Pass 1: isotropic closing. Pass 2: rotate the SE along MA midpoint → Simpson apex.
+    If the second pass is too small, fails to open, or overgrows (IoU < 0.85 or
+    pixel count jumps > 25%), keep the first-pass arc.
     """
     first = papillary_mask_cleanup(mask, phase=phase)
     if int(np.count_nonzero(first)) < _LV_MASK_MIN_PIXELS:
@@ -1130,6 +1169,7 @@ def lv_cavity_mask_to_open_arc(
         num_nodes=num_nodes,
         view_hint=view_hint,
     )
+    apex = _canonical_apex(open_points, annulus, apex)
     septal, lateral = annulus
     ma_mid = (
         (septal[0] + lateral[0]) / 2.0,
@@ -1140,7 +1180,9 @@ def lv_cavity_mask_to_open_arc(
         phase=phase,
         long_axis_hint=(ma_mid, apex),
     )
-    if int(np.count_nonzero(second)) < _LV_MASK_MIN_PIXELS:
+    if int(np.count_nonzero(second)) < _LV_MASK_MIN_PIXELS or _pass2_mask_implausible(
+        first, second
+    ):
         return open_points, annulus, apex, first
     try:
         open_points2, annulus2, apex2 = open_arc_from_cavity_mask(
@@ -1151,6 +1193,7 @@ def lv_cavity_mask_to_open_arc(
         )
     except ValueError:
         return open_points, annulus, apex, first
+    apex2 = _canonical_apex(open_points2, annulus2, apex2)
     return open_points2, annulus2, apex2, second
 
 

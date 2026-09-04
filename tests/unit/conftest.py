@@ -70,8 +70,10 @@ def _drain_global_thread_pool():
     waitForDone() on an idle pool returns immediately.
     """
     yield
-    from PySide6.QtCore import QThreadPool
-
+    try:
+        from PySide6.QtCore import QThreadPool
+    except ImportError:
+        return
     QThreadPool.globalInstance().waitForDone(5000)
 
 
