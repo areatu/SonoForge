@@ -2728,25 +2728,44 @@ class MainWindow(QMainWindow):
             self._cancel_active_tool()
             event.accept()
             return True
-        # Ghost overlay keys (temporal fusion)
+        # Ghost overlay keys (temporal fusion) — no new shortcuts; status shows fused k/n
         if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.NoModifier:
             mode = v.toggle_ghost_mode()
-            self._show_status(f"Ghost: {mode}")
+            self._show_status(self._ghost_status_line(v, mode=mode))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_G and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
             v.set_ghost_mode("neighbor")
-            self._show_status("Ghost: neighbor")
+            self._show_status(self._ghost_status_line(v, mode="neighbor"))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_BracketLeft:
             v.cycle_neighbor_ghost(-1)
-            self._show_status(f"Ghost: neighbor {v.ghost_mode}")
+            self._show_status(self._ghost_status_line(v, mode=v.ghost_mode))
             event.accept()
             return True
         if event.key() == Qt.Key.Key_BracketRight:
             v.cycle_neighbor_ghost(1)
-            self._show_status(f"Ghost: neighbor {v.ghost_mode}")
+            self._show_status(self._ghost_status_line(v, mode=v.ghost_mode))
             event.accept()
             return True
         return False
+
+    def _ghost_status_line(self, viewer: ViewerWidget, *, mode: str) -> str:
+        """Status: ``{view} {phase} · frame {n} · fused k/n · G: {mode}``."""
+        parts: list[str] = []
+        pending = viewer.pending_ai_review_contour() if hasattr(viewer, "pending_ai_review_contour") else None
+        fusion = self._controller.fusion_result
+        if pending is not None:
+            parts.append(f"{pending.view} {pending.phase}".strip())
+            if pending.frame_index is not None:
+                parts.append(f"frame {pending.frame_index}")
+        elif fusion is not None:
+            contour = fusion.fused_contour
+            parts.append(f"{contour.view} {contour.phase}".strip())
+            parts.append(f"frame {fusion.anchor_frame_index}")
+        if fusion is not None:
+            parts.append(f"fused {fusion.frames_used}/{fusion.frames_requested}")
+        ghost = mode if mode != "off" else "fused"
+        parts.append(f"G: {ghost}")
+        return " · ".join(p for p in parts if p)

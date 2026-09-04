@@ -47,6 +47,29 @@ def bench_manifest(tmp_path: Path) -> Path:
     return manifest_path
 
 
+class TestBenchC4Columns:
+    def test_apex_vs_simpson_helper(self) -> None:
+        from echo_personal_tool.domain.models.contour import Contour
+        from scripts.run_lv_auto_bench import _apex_vs_simpson_px
+
+        annulus = ((0.0, 0.0), (20.0, 0.0))
+        simpson = (10.0, 40.0)
+        contour = Contour(
+            phase="ED",
+            view="A4C",
+            chamber="LV",
+            points=[(0.0, 0.0), simpson, (20.0, 0.0)],
+            mitral_annulus=annulus,
+            apex_landmark=(10.0, 38.0),
+        )
+        assert _apex_vs_simpson_px(contour) == 2.0
+
+    def test_fusion_on_reads_false_from_shipped_manifest(self) -> None:
+        from scripts.run_lv_auto_bench import _fusion_on_from_models
+
+        assert _fusion_on_from_models(None) is False
+
+
 class TestBenchRun:
     def test_empty_manifest(self, tmp_path: Path) -> None:
         from scripts.run_lv_auto_bench import run_bench

@@ -3172,6 +3172,7 @@ class AppController(QObject):
             phase=self._fusion_phase or "ED",
             config=config,
             original_shape=self._fusion_original_shape,
+            frames_requested=len(self._fusion_window),
         )
 
         self._fusion_result = result

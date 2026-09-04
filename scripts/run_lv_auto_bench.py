@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -38,7 +39,7 @@ from echo_personal_tool.domain.services.segmentation_service import (
     exclude_papillary_concavities,
     lv_cavity_mask_to_open_arc,
 )
-from echo_personal_tool.domain.services.contour_geometry import smooth_open_arc
+from echo_personal_tool.domain.services.contour_geometry import apex_point, smooth_open_arc
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
@@ -92,6 +93,29 @@ def _run_auto_segment(
         num_nodes=len(smoothed),
     )
     return contour
+
+
+def _apex_vs_simpson_px(contour: Contour) -> float | None:
+    """Distance between stored apex_landmark and Simpson tip (farthest from MA)."""
+    if contour.mitral_annulus is None or not contour.points:
+        return None
+    simpson = apex_point(contour.points, contour.mitral_annulus)
+    stored = contour.apex_landmark if contour.apex_landmark is not None else simpson
+    return math.hypot(stored[0] - simpson[0], stored[1] - simpson[1])
+
+
+def _fusion_on_from_models(models_dir: Path | None) -> bool:
+    """Shipped fusion stays off; column records whatever the models dir says."""
+    try:
+        from echo_personal_tool.infrastructure.onnx_engine import _default_models_dir, _load_manifest
+
+        manifest = _load_manifest(models_dir or _default_models_dir())
+    except Exception:
+        return False
+    if not manifest:
+        return False
+    tf = manifest.get("temporal_fusion")
+    return bool(isinstance(tf, dict) and tf.get("enabled", False))
 
 
 def _contour_to_mask(contour: Contour, shape: tuple[int, int]) -> np.ndarray:
@@ -154,6 +178,7 @@ def run_bench(
 
     gold_dir = manifest_path.parent / "gold"
     engine = OnnxInferenceEngine(models_dir=models_dir)
+    fusion_on = _fusion_on_from_models(models_dir)
 
     rows: list[dict] = []
     # Per-instance pair data: key = (study_id, instance_name)
@@ -200,6 +225,9 @@ def run_bench(
                 "instance": instance_path.name,
                 "phase": phase_key,
                 "frame_index": frame_index,
+                "fusion_on": fusion_on,
+                "frames_used": 1,
+                "apex_vs_simpson_px": None,
             }
 
             if contour is None:
@@ -219,6 +247,8 @@ def run_bench(
                 continue
 
             row["reject"] = False
+            apex_err = _apex_vs_simpson_px(contour)
+            row["apex_vs_simpson_px"] = None if apex_err is None else round(apex_err, 2)
 
             # Find matching gold frame (per DICOM instance, not global frame_index)
             gold_frame = _find_gold_frame(
