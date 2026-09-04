@@ -299,18 +299,46 @@ def build_zone_mask_from_kernels(
     return mask
 
 
+def log_reference_max(frames: np.ndarray, percentile: float = 99.0) -> float:
+    """Robust global intensity reference for per-cine log compression.
+
+    A per-frame ``log1p(f) / log1p(f.max())`` normalization re-scales every
+    frame to its own maximum and destroys inter-frame brightness consistency
+    (the speckle pattern contrast changes from frame to frame). Instead, use a
+    single high-percentile value computed over the whole cine so the dynamic
+    range mapping is identical for all frames.
+    """
+    flat: list[np.ndarray] = []
+    for frame in frames:
+        f = frame
+        if f.ndim == 3 and f.shape[2] >= 3:
+            f = np.mean(f[:, :, :3].astype(np.float64), axis=2)
+        flat.append(np.asarray(f, dtype=np.float64).ravel())
+    if not flat:
+        return 1.0
+    return float(np.percentile(np.concatenate(flat), percentile))
+
+
 def preprocess_echo_frame(
     frame: np.ndarray,
     clahe_clip: float = 2.0,
     clahe_grid: int = 8,
     log_compress: bool = True,
     median_ksize: int = 3,
+    log_ref_max: float | None = None,
 ) -> np.ndarray:
+    """Preprocess a B-mode frame for block matching.
+
+    Log compression (optionally against a global ``log_ref_max`` reference, see
+    ``log_reference_max``), CLAHE contrast equalization, then a small median
+    blur. Output is a float32 image in [0, 1].
+    """
     f = frame.copy()
     if f.ndim == 3 and f.shape[2] >= 3:
         f = np.mean(f[:, :, :3].astype(np.float64), axis=2).astype(np.float32)
     if log_compress and f.max() > 0:
-        f = np.log1p(f.astype(np.float64)) / np.log1p(f.max())
+        denom = np.log1p(float(log_ref_max)) if log_ref_max is not None else np.log1p(f.max())
+        f = np.log1p(f.astype(np.float64)) / max(denom, 1e-9)
     f_uint8 = np.clip(f * 255, 0, 255).astype(np.uint8)
     clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(clahe_grid, clahe_grid))
     f_uint8 = clahe.apply(f_uint8)
@@ -370,7 +398,7 @@ def track_cine_bidirectional(
             for i in range(n_kernels):
                 if v_fwd[i] and bwd.valid_mask[i]:
                     closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - ed_centers[i]))
-                    if closure_err > config.search_radius * 0.8:
+                    if closure_err > config.closure_error_threshold * config.search_radius:
                         valid_all[t, i] = False
                     else:
                         ncc_all[t, i] = (w_fwd[i] + bwd.ncc_scores[i]) / 2.0
@@ -554,7 +582,7 @@ def track_cine_incremental(
                 for i in range(n_kernels):
                     if match.valid_mask[i] and bwd.valid_mask[i]:
                         closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - current_ed_centers[i]))
-                        if closure_err > config.search_radius * 0.8:
+                        if closure_err > config.closure_error_threshold * config.search_radius:
                             final_valid[t, i] = False
                         else:
                             final_ncc[t, i] = (match.ncc_scores[i] + bwd.ncc_scores[i]) / 2.0
@@ -652,7 +680,7 @@ def track_cine_sequential(
             for j in range(n_kernels):
                 if valid[i + 1, j] and bwd.valid_mask[j]:
                     closure_err = float(np.linalg.norm(bwd.kernel_positions[j] - prev_pos[j]))
-                    if closure_err > config.search_radius:
+                    if closure_err > config.closure_error_threshold * config.search_radius:
                         valid[i + 1, j] = False
                     else:
                         ncc[i + 1, j] = (ncc[i + 1, j] + bwd.ncc_scores[j]) / 2.0

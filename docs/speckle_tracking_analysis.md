@@ -20,7 +20,7 @@
 Два главных измеренных дефекта (синтетический cine со спекл-шумом и
 растущей межкадровой декорреляцией, пиковое смещение 16 px):
 
-| Метрика | ED-anchored (текущий дефолт) | Frame-to-frame (последовательный) |
+| Метрика | ED-anchored (старый дефолт) | Frame-to-frame (последовательный) |
 |---|---|---|
 | Доля кадров с NCC < 0.3 | **71 %** | **0 %** |
 | Средняя NCC | 0.40 | 0.82 |
@@ -54,11 +54,11 @@ Jaccard-совпадение с корректным кольцом эндо/э�
    - вызывает один из режимов трекинга и считает продольную/радиальную
      деформацию по Green–Lagrange.
 3. Режимы трекинга (speckle_tracking.py):
-   - `track_cine_bidirectional` (ED-anchored + прямая/обратная проверка);
+   - `track_cine_sequential` — frame-to-frame с пере-якорением; **дефолт**
+     (`preset_standard().tracking_mode == "sequential"`);
    - `track_cine_incremental` (ED-anchored, двухпроходный с «прогрессивной»
-     зоной); **дефолт** (`preset_standard().tracking_mode == "incremental"`);
-   - `track_cine` — последовательный frame-to-frame, но из worker он
-     **недостижим** (нет ветки, которая его вызывает).
+     зоной) — legacy;
+   - `track_cine_bidirectional` (ED-anchored + прямая/обратная проверка) — legacy.
 4. Пост-обработка (worker): `extract_trajectories` → `interpolate_invalid_kernels`
    → `smooth_trajectories` → `apply_motion_model` → расчёт strain.
 
@@ -188,31 +188,41 @@ optical flow. Поэтому P0-правки дают максимальный �
    привязкой к ED. Подключён в worker как `tracking_mode == "sequential"`.
 5. **`SpeckleSettingsDialog` получил выбор режима** ("Sequential /
    Incremental / Bidirectional"), по умолчанию — Sequential.
-6. Добавлены регрессионные тесты (геометрия маски, точность sequential vs
-   ED-anchored).
+6. **`tracking_mode="sequential"` стал дефолтом** в классе `SpeckleConfig` и в
+   пресетах standard/research (правки §5.2.1 выполнены).
+7. **`apply_motion_model` исправлен** (правка §5.2.3): эндокард и эпикард
+   теперь оба ожидаются движущимися внутрь в систолу; убран неверный знак
+   «наружу» для epi-ядер.
+8. **Временнóе сглаживание заменено** (правка §5.2.4): вместо сплайна с
+   `s = smoothing * n_frames` — фильтр Савицкого–Голея с предварительной
+   интерполяцией низкоуверенных кадров во времени (NCC-взвешивание сохранено).
+9. **Препроцессинг нормализуется по глобальной шкале** (правка §5.2.5):
+   добавлен `log_reference_max` (перцентиль всего cine) и параметр
+   `log_ref_max` в `preprocess_echo_frame`.
+10. **Мёртвые поля конфига вычищены** (правка §5.2.6): удалены
+    `multi_cycle_average` и `contour_resample_points`; `min_segment_quality`
+    подключён к гейту GLS по сегментам; `closure_error_threshold` подключён ко
+    всем forward-backward проверкам (доля от `search_radius`).
+11. **ED-anchored режимы помечены как legacy и получили увеличенное окно
+    поиска** (правка §5.2.2): в worker для incremental/bidirectional
+    `search_radius` поднимается до ≥24 px, чтобы окно покрывало полную
+    систолическую экскурсию.
+12. Добавлены регрессионные тесты (геометрия маски, точность sequential vs
+    ED-anchored, знак motion-model для epi, препроцессинг с глобальной
+    нормализацией).
 
-### 5.2 Рекомендуемые следующие шаги (по убыванию ценности)
+### 5.2 Выполненные шаги из рекомендаций
 
-1. **Сделать `tracking_mode="sequential"` дефолтом** в `preset_standard()` —
-   одна строка. Это и есть главное «лекарство» для жалобы пользователя.
-   (Я сознательно не переключил дефолт сам, чтобы изменение поведения прошло
-   через явное решение владельца кодовой базы; тесты при переключении не
-   ломаются — они вызывают функции напрямую.)
-2. **Увеличить `search_radius`/`kernel_size` для ED-anchored режимов** (если
-   они останутся для отладки) либо полностью убрать их из UI, чтобы не
-   давать пользователю заведомо неточный путь.
-3. **Выключить или исправить `apply_motion_model`** (знак для epi), либо
-   заменить на простое временнóе медианное сглаживание по 3–5 кадрам.
-4. **Пересмотреть веса сглаживания** в `smooth_trajectories` (s = smoothing *
-   n_frames — слишком агрессивно), а лучше — заменить временнóй сплайн на
-   фильтр Савицкого–Голея или медиану, которые не «распрямляют» пик систолы.
-5. **Нормализовать препроцессинг по глобальной шкале** (перцентиль cine), а
-   не по максимуму каждого кадра.
-6. **Убрать мёртвые поля конфига** или реализовать их: `closure_error_threshold`,
-   `min_segment_quality`, `multi_cycle_average`, `contour_resample_points`.
-7. **Опционально**: аффинный варп ядра в `block_match_single` (Lucas–Kanade
-   inverse-compositional) вместо чистого сдвига — даст выигрыш на вращении и
-   сжатии стенки, при умеренной цене.
+1. ~~Сделать `tracking_mode="sequential"` дефолтом~~ — **сделано** (§5.1.6).
+2. ~~Увеличить `search_radius` для ED-anchored режимов / пометить их legacy~~ —
+   **сделано** (§5.1.11).
+3. ~~Исправить `apply_motion_model` (знак для epi)~~ — **сделано** (§5.1.7).
+4. ~~Заменить временнóй сплайн на Савицкого–Голея~~ — **сделано** (§5.1.8).
+5. ~~Нормализовать препроцессинг по глобальной шкале~~ — **сделано** (§5.1.9).
+6. ~~Вычистить мёртвые поля конфига~~ — **сделано** (§5.1.10).
+7. **Опционально (не делалось)**: аффинный варп ядра в `block_match_single`
+   (Lucas–Kanade inverse-compositional) вместо чистого сдвига — даст выигрыш
+   на вращении и сжатии стенки, при умеренной цене.
 
 ### 5.3 Метрики для валидации
 
@@ -240,10 +250,15 @@ optical flow. Поэтому P0-правки дают максимальный �
 
 ## 7. Файлы, затронутые правками
 
+- `src/echo_personal_tool/domain/models/speckle.py`
 - `src/echo_personal_tool/domain/services/speckle_tracking.py`
+- `src/echo_personal_tool/domain/services/tracking_smoothing.py`
 - `src/echo_personal_tool/application/workers/speckle_worker.py`
 - `src/echo_personal_tool/presentation/speckle_settings_dialog.py`
 - `tests/unit/test_speckle_tracking.py`
+- `tests/unit/test_speckle_models.py`
+- `tests/unit/test_tracking_smoothing_v2.py`
+- `tests/unit/test_worker_speckle.py`
 
 ---
 

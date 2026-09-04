@@ -43,8 +43,8 @@ class SpeckleSettingsDialog(QDialog):
 
         self._mode_combo = QComboBox(self)
         self._mode_combo.addItem("Sequential (frame-to-frame)", "sequential")
-        self._mode_combo.addItem("Incremental (ED-anchored)", "incremental")
-        self._mode_combo.addItem("Bidirectional (ED-anchored)", "bidirectional")
+        self._mode_combo.addItem("Incremental (ED-anchored, legacy)", "incremental")
+        self._mode_combo.addItem("Bidirectional (ED-anchored, legacy)", "bidirectional")
 
         self._drift_compensation_check = QCheckBox(self)
         self._drift_compensation_check.setChecked(True)

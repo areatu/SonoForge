@@ -25,6 +25,8 @@ from echo_personal_tool.domain.services.speckle_tracking import (
     build_gaussian_pyramid,
     build_zone_mask,
     build_zone_mask_from_kernels,
+    log_reference_max,
+    preprocess_echo_frame,
     track_cine,
     track_cine_bidirectional,
     track_cine_incremental,
@@ -358,6 +360,28 @@ class TestZoneMaskFromKernels:
         assert mask.any()
         centroid = np.mean(endo, axis=0)
         assert not mask[int(centroid[1]), int(centroid[0])]
+
+
+class TestPreprocessing:
+    def test_log_reference_positive(self) -> None:
+        frames = np.random.randint(0, 256, (5, 32, 32), dtype=np.uint8)
+        ref = log_reference_max(frames)
+        assert ref > 0
+
+    def test_preprocess_with_global_ref_bounds(self) -> None:
+        frame = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
+        ref = log_reference_max(np.stack([frame, frame]))
+        out = preprocess_echo_frame(frame, log_ref_max=ref)
+        assert out.shape == (64, 64)
+        assert float(out.max()) <= 1.0 + 1e-6
+        assert float(out.min()) >= -1e-6
+
+    def test_preprocess_default_matches_legacy(self) -> None:
+        frame = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
+        # No global ref falls back to per-frame max normalization (back-compat)
+        out = preprocess_echo_frame(frame)
+        assert out.shape == (64, 64)
+        assert float(out.max()) <= 1.0 + 1e-6
 
 
 class TestSequentialTracking:

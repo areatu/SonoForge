@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.interpolate import UnivariateSpline
+from scipy.signal import savgol_filter
 
 from echo_personal_tool.domain.models.speckle import (
     SpeckleConfig,
@@ -131,17 +132,32 @@ def smooth_trajectories(
                 out[t, idx, 1] = cs_y(t_param)
 
     if config.temporal_smoothing > 0 and n_frames >= 4:
+        # Savitzky-Golay: a local polynomial filter that follows the systolic
+        # peak without the overshoot/flattening of a heavy smoothing spline
+        # (the old `s = temporal_smoothing * n_frames` essentially straightened
+        # the whole trajectory when many kernels had been interpolated).
+        window = int(round(2.0 * config.temporal_smoothing + 3.0))
+        window = max(3, window)
+        if window % 2 == 0:
+            window += 1
+        window = min(window, n_frames - (1 - n_frames % 2))
+        if window < 3:
+            window = 3
+        polyorder = min(2, window - 1)
         times = np.arange(n_frames, dtype=np.float64)
         for i in range(n_kernels):
-            weights = np.clip(ncc_scores[:, i], 0.01, 1.0)
-            s = config.temporal_smoothing * n_frames
+            xs = out[:, i, 0].copy()
+            ys = out[:, i, 1].copy()
             if config.quality_weighted_smoothing:
-                s *= float(np.mean(1.0 - weights) + 0.1)
-            k = min(3, n_frames - 1)  # spline degree can't exceed n_points - 1
-            cs_x = UnivariateSpline(times, out[:, i, 0], w=weights, s=s, k=k)
-            cs_y = UnivariateSpline(times, out[:, i, 1], w=weights, s=s, k=k)
-            out[:, i, 0] = cs_x(times)
-            out[:, i, 1] = cs_y(times)
+                # Re-interpolate low-confidence frames in time before filtering
+                # so high-NCC frames dominate the smoothed trajectory.
+                weights = np.clip(ncc_scores[:, i], 0.0, 1.0)
+                strong = weights >= 0.5
+                if strong.sum() >= 2:
+                    xs = np.interp(times, times[strong], xs[strong])
+                    ys = np.interp(times, times[strong], ys[strong])
+            out[:, i, 0] = savgol_filter(xs, window, polyorder, mode="interp")
+            out[:, i, 1] = savgol_filter(ys, window, polyorder, mode="interp")
     return out
 
 
@@ -155,12 +171,11 @@ def apply_motion_model(
 ) -> np.ndarray:
     """Apply physiological motion model constraints during systole.
 
-    During systole (t > ed_index):
-    - Endo kernels should move toward LV center (inward)
-    - Epi kernels should move away from LV center (outward)
-
-    The constraint gently pulls positions toward physiologically expected
-    directions without overriding the actual tracking results.
+    During systole (t > ed_index) both the endocardium and the epicardium move
+    inward (toward the LV cavity centre); the endocardium moves more, which
+    manifests as wall thickening. The constraint only corrects kernels that
+    moved in the opposite (outward) direction, gently pulling them back without
+    overriding the actual tracking results.
 
     Args:
         positions: (n_frames, n_kernels, 2) smoothed positions.
@@ -198,10 +213,8 @@ def apply_motion_model(
             disp_along_center = np.dot(displacement, to_center)
 
             kernel = kernels[i]
-            if kernel.layer == "endo":
+            if kernel.layer in ("endo", "epi"):
                 expected_sign = 1.0
-            elif kernel.layer == "epi":
-                expected_sign = -1.0
             else:
                 continue
 
