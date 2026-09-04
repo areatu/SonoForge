@@ -1128,6 +1128,8 @@
   "domain.lvef.contour_too_flat": "contour too flat (arc depth {depth}px / annulus {annulus}px < {ratio:.0%}) — possibly ES or wrong view",
   "domain.lvef.center_outside_roi": "contour center outside ROI — check sector selection",
   "domain.lvef.self_intersecting": "contour self-intersects — try another frame or redraw",
+  "domain.lvef.apex_inverted": "apex inverted relative to mitral annulus (A4C) — select another frame",
+  "domain.lvef.annulus_slope_implausible": "mitral annulus too steep ({angle:.0f}°) with a shallow cavity — likely the wrong opening",
   "domain.rv_fac.no_area": "RV FAC {phase}: area —",
   "domain.planimeter.area_label": "Area{count}",
   "domain.planimeter.volume_label": "Volume{count}",

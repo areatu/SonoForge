@@ -31,10 +31,18 @@ def open_arc_contour(*, phase: str, view: str, width_px: float, height_px: float
     import math
 
     n = 9
-    annulus = ((0.0, 0.0), (width_px, 0.0))
+    # A4C sector: MA at the bottom (large y), apex toward the top (small y).
+    annulus = ((0.0, height_px), (width_px, height_px))
     angles = [math.pi - i * math.pi / (n - 1) for i in range(n)]
-    points = [(width_px / 2.0 + (width_px / 2.0) * math.cos(a), height_px * math.sin(a)) for a in angles]
-    return Contour(phase=phase, view=view, mitral_annulus=annulus, points=points)
+    points = [
+        (
+            width_px / 2.0 + (width_px / 2.0) * math.cos(a),
+            height_px - height_px * math.sin(a),
+        )
+        for a in angles
+    ]
+    apex = (width_px / 2.0, 0.0)
+    return Contour(phase=phase, view=view, mitral_annulus=annulus, points=points, apex_landmark=apex)
 
 
 def test_calculate_monoplan_rectangle_volume() -> None:
@@ -244,7 +252,7 @@ def test_compute_simpson_lines_returns_lines_for_valid_contour() -> None:
     assert result is not None
     base, tip = result.central_line
     assert base[0] == pytest.approx(30.0, rel=1e-6)
-    assert tip[1] > base[1]
+    assert tip[1] < base[1]
     # 20 mid-height disks perpendicular to the long axis (same as volume calc)
     assert len(result.disk_lines) == 20
 

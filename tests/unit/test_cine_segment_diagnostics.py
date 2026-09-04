@@ -252,6 +252,39 @@ class TestCollectIssues:
 # ── format_diagnostic_report ───────────────────────────────────────
 
 
+def test_diagnose_cine_frame_valueerror_reports_cleaned_mask(monkeypatch) -> None:
+    from echo_personal_tool.domain.services import cine_segment_diagnostics as cine
+
+    class _FakeEngine:
+        def is_available(self) -> bool:
+            return True
+
+        def segment(self, frame, roi_xyxy=None, crop_mode=None):
+            mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+            mask[10:40, 10:40] = 1
+            mask[0, 0] = 1  # speckle; cleanup should drop it
+            return mask
+
+    cleaned = np.zeros((50, 80), dtype=np.uint8)
+    cleaned[10:40, 10:40] = 1
+
+    monkeypatch.setattr(cine, "OnnxInferenceEngine", _FakeEngine)
+    monkeypatch.setattr(
+        cine,
+        "lv_cavity_mask_to_open_arc",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("cavity boundary too short")),
+    )
+    monkeypatch.setattr(cine, "papillary_mask_cleanup", lambda mask, phase=None: cleaned)
+
+    frame = np.zeros((50, 80), dtype=np.uint8)
+    report = cine.diagnose_cine_frame(frame, media_format="dicom", run_onnx=True)
+    assert report.mask_pixels == int(np.count_nonzero(cleaned))
+    assert report.mask_bbox == (10, 10, 39, 39)
+    assert report.mask_centroid_xy is not None
+    assert abs(report.mask_centroid_xy[0] - 24.5) < 0.6
+    assert abs(report.mask_centroid_xy[1] - 24.5) < 0.6
+
+
 class TestFormatDiagnosticReport:
     def test_basic(self) -> None:
         report = CineSegmentDiagnosticReport(

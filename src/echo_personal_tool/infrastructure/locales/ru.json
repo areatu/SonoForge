@@ -1128,6 +1128,8 @@
   "domain.lvef.contour_too_flat": "контур слишком плоский (глубина {depth}px / кольцо {annulus}px < {ratio:.0%}) — возможно ES или не тот view",
   "domain.lvef.center_outside_roi": "центр контура вне ROI — проверьте выделение сектора",
   "domain.lvef.self_intersecting": "контур самопересекается — попробуйте другой кадр или перерисуйте",
+  "domain.lvef.apex_inverted": "апекс инвертирован относительно митрального кольца (A4C) — выберите другой кадр",
+  "domain.lvef.annulus_slope_implausible": "митральное кольцо слишком крутое ({angle:.0f}°) при мелкой полости — возможно неверное отверстие",
   "domain.rv_fac.no_area": "RV FAC {phase}: площадь —",
   "domain.planimeter.area_label": "Площадь{count}",
   "domain.planimeter.volume_label": "Объем{count}",

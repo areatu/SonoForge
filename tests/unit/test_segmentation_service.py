@@ -639,6 +639,18 @@ class TestBlendAnnulusWithArcTips:
         assert lateral == annulus[1]
 
 
+def test_annulus_if_not_collapsed_keeps_previous_when_short() -> None:
+    from echo_personal_tool.domain.services.segmentation_service import (
+        _annulus_if_not_collapsed,
+    )
+
+    previous = ((0.0, 80.0), (40.0, 80.0))
+    collapsed = ((18.0, 80.0), (22.0, 80.0))
+    assert _annulus_if_not_collapsed(previous, collapsed) == previous
+    kept = ((2.0, 80.0), (38.0, 82.0))
+    assert _annulus_if_not_collapsed(previous, kept) == kept
+
+
 class TestSnapWiredIntoOpenArc:
     def test_open_arc_snap_does_not_break_existing(self) -> None:
         """Regression: existing sloped MV test still passes after snap wiring."""

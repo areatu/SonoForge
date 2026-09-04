@@ -182,7 +182,9 @@ def diagnose_cine_frame(
                 roi_xyxy=roi_xyxy,
             )
         except ValueError:
-            cleaned = mask
+            cleaned = papillary_mask_cleanup(mask, phase="ED")
+            if int(np.count_nonzero(cleaned)) == 0:
+                cleaned = mask
             mask_pixels = int(np.count_nonzero(cleaned))
             mask_bbox = _mask_bbox(cleaned)
             centroid = _mask_centroid(cleaned)

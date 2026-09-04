@@ -139,6 +139,8 @@ _MIN_LV_AUTO_LONG_AXIS_PX = 15.0
 _MIN_LV_AUTO_ARC_SPAN_PX = 8.0
 _MIN_LV_AUTO_ANNULUS_MM = 5.0
 _MIN_ARC_DEPTH_RATIO = 0.15
+_MAX_MA_SLOPE_DEG = 40.0
+_MIN_DEPTH_RATIO_STEEP_MA = 0.2
 
 
 def _contour_self_intersects(points: list[tuple[float, float]]) -> bool:
@@ -218,6 +220,27 @@ def _contour_arc_depth_px(contour: Contour) -> float:
     return max_depth
 
 
+def _a4c_apex_inverted(contour: Contour) -> bool:
+    """True when A4C apex sits on the basal side of the MA (larger image-y)."""
+    if contour.view.upper() != "A4C" or contour.mitral_annulus is None:
+        return False
+    septal, lateral = contour.mitral_annulus
+    apex = contour.apex_landmark
+    if apex is None and len(contour.points) >= 3:
+        apex = long_axis_endpoints(list(contour.points), contour.mitral_annulus)[1]
+    if apex is None:
+        return False
+    annulus_mid_y = (septal[1] + lateral[1]) / 2.0
+    return annulus_mid_y < apex[1]
+
+
+def _ma_slope_deg(contour: Contour) -> float:
+    if contour.mitral_annulus is None:
+        return 0.0
+    septal, lateral = contour.mitral_annulus
+    return abs(math.degrees(math.atan2(lateral[1] - septal[1], lateral[0] - septal[0])))
+
+
 def _contour_centroid(contour: Contour) -> tuple[float, float] | None:
     """Centroid of the closed contour polygon."""
     if len(contour.points) < 3:
@@ -249,6 +272,8 @@ def explain_lv_auto_reject_reason(
         return tr("domain.lvef.no_annulus")
     if long_axis_px < _MIN_LV_AUTO_LONG_AXIS_PX:
         return tr("domain.lvef.lv_axis_too_short")
+    if _a4c_apex_inverted(contour):
+        return tr("domain.lvef.apex_inverted")
 
     # v2: spacing-aware MA length check
     if pixel_spacing is not None:
@@ -262,6 +287,13 @@ def explain_lv_auto_reject_reason(
     arc_depth = _contour_arc_depth_px(contour)
     if annulus_px > 0 and arc_depth / annulus_px < _MIN_ARC_DEPTH_RATIO:
         return tr("domain.lvef.contour_too_flat", depth=arc_depth, annulus=annulus_px, ratio=_MIN_ARC_DEPTH_RATIO)
+    ma_slope = _ma_slope_deg(contour)
+    if (
+        annulus_px > 0
+        and ma_slope > _MAX_MA_SLOPE_DEG
+        and arc_depth / annulus_px < _MIN_DEPTH_RATIO_STEEP_MA
+    ):
+        return tr("domain.lvef.annulus_slope_implausible", angle=ma_slope)
 
     # v2: centroid outside ROI check
     if roi_xyxy is not None:

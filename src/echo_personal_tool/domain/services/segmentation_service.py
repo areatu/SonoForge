@@ -772,12 +772,13 @@ def _annulus_and_apex_from_mask_pixels(
 
     # Boundary snap when full mask is available
     if mask is not None:
-        septal, lateral = _snap_annulus_to_mask_boundary(
+        snapped = _snap_annulus_to_mask_boundary(
             septal,
             lateral,
             mask,
             basal_y_range=basal_y_range,
         )
+        septal, lateral = _annulus_if_not_collapsed((septal, lateral), snapped)
 
     if np.any(apex_mask):
         apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
@@ -832,12 +833,13 @@ def _fallback_annulus_wider_band(
 
     # Boundary snap when full mask is available
     if mask is not None:
-        septal, lateral = _snap_annulus_to_mask_boundary(
+        snapped = _snap_annulus_to_mask_boundary(
             septal,
             lateral,
             mask,
             basal_y_range=basal_y_range,
         )
+        septal, lateral = _annulus_if_not_collapsed((septal, lateral), snapped)
 
     if np.any(apex_mask):
         apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
@@ -881,6 +883,27 @@ def _fallback_annulus_sector_chord(
 _MA_ONNX_MODEL_PATH = Path(__file__).resolve().parent.parent.parent.parent.parent / "models" / "ma_landmark_224.onnx"
 _MA_ONNX_CROP = 224
 _MA_ONNX_BLEND_WEIGHT = 0.35
+# Keep in sync with `_MIN_LV_AUTO_ANNULUS_PX` in lvef_simpson.
+_MA_MIN_LENGTH_PX = 20.0
+
+
+def _annulus_length_px(
+    septal: tuple[float, float],
+    lateral: tuple[float, float],
+) -> float:
+    return math.hypot(lateral[0] - septal[0], lateral[1] - septal[1])
+
+
+def _annulus_if_not_collapsed(
+    previous: tuple[tuple[float, float], tuple[float, float]],
+    candidate: tuple[tuple[float, float], tuple[float, float]],
+    *,
+    min_length: float = _MA_MIN_LENGTH_PX,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Keep *previous* when snap/blend/ONNX would collapse the MA chord."""
+    if _annulus_length_px(*candidate) >= min_length:
+        return candidate
+    return previous
 
 
 def _blend_landmark(
@@ -915,11 +938,11 @@ def _try_refine_annulus_with_onnx(
         if math.hypot(pred[0] - base[0], pred[1] - base[1]) > max_offset_px:
             return septal, lateral
 
-    septal = _blend_landmark(septal, onnx_septal, blend_weight)
-    lateral = _blend_landmark(lateral, onnx_lateral, blend_weight)
-    if septal[0] > lateral[0]:
-        septal, lateral = lateral, septal
-    return septal, lateral
+    blended_septal = _blend_landmark(septal, onnx_septal, blend_weight)
+    blended_lateral = _blend_landmark(lateral, onnx_lateral, blend_weight)
+    if blended_septal[0] > blended_lateral[0]:
+        blended_septal, blended_lateral = blended_lateral, blended_septal
+    return _annulus_if_not_collapsed((septal, lateral), (blended_septal, blended_lateral))
 
 
 def _predict_ma_onnx_keypoints(
@@ -1085,12 +1108,13 @@ def open_arc_from_cavity_mask(
 
     # Preliminary arc for tip-guided MA refinement, then rebuild arc with final MA.
     open_points = _boundary_open_arc(boundary, septal, lateral, apex)
-    septal, lateral = _blend_annulus_with_arc_tips(
+    blended = _blend_annulus_with_arc_tips(
         (septal, lateral),
         open_points,
         max_blend_dist_px=12.0,
         blend_weight=0.3,
     )
+    septal, lateral = _annulus_if_not_collapsed((septal, lateral), blended)
     open_points = _boundary_open_arc(boundary, septal, lateral, apex)
     annulus = (septal, lateral)
 
