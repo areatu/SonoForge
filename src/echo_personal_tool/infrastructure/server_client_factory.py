@@ -47,7 +47,13 @@ def make_dicom_query_service(settings: ServerSettings) -> DicomQueryService:
 
 
 def make_dicom_retrieve_service(settings: ServerSettings):
-    """Build DicomRetrieveService for OrthancDownloadWorker."""
+    """Build DicomRetrieveService for OrthancDownloadWorker.
+
+    Non-blocking: no network probe is performed at build time (auto
+    fallback is resolved at retrieval time). The HTTP client is registered
+    as the cancel hook so a user-initiated cancel aborts in-flight
+    downloads immediately instead of waiting for the timeout.
+    """
     from echo_personal_tool.application.services.dicom_retrieve_service import (
         make_retrieve_service,
     )
@@ -60,11 +66,14 @@ def make_dicom_retrieve_service(settings: ServerSettings):
     else:
         web = None
 
-    return make_retrieve_service(
+    service = make_retrieve_service(
         settings,
         web_client=web,
         dimse_client=make_dimse_client(settings),
     )
+    if web is not None and hasattr(web, "cancel_inflight"):
+        service.set_cancel_web_hook(web.cancel_inflight)
+    return service
 
 
 def make_upload_targets(

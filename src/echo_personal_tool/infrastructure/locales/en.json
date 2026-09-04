@@ -294,7 +294,7 @@
   "orthanc.cancel_download": "Cancel download",
   "orthanc.connect_error.body": "Failed to connect to Orthanc server.\nYou can continue with mock data if enabled in settings.",
   "orthanc.connect_error.title": "Server",
-  "orthanc.dimse_info_banner": "Download via DIMSE (C-GET)",
+  "orthanc.dimse_info_banner": "Search via DIMSE (C-FIND). Download source: {retrieval} (configured in server settings)",
   "orthanc.download_cancelled": "Cancelling download…",
   "orthanc.download_complete": "Download complete",
   "orthanc.download_error.body": "Download error: {message}",
@@ -1229,5 +1229,10 @@
   "web_ref.load_error": "Load error",
   "web_ref.init_failed": "Web interface failed to load",
   "web_ref.fallback": "Web unavailable — Qt view",
-  "web_ref.reloading": "Reloading..."
+  "web_ref.reloading": "Reloading...",
+  "orthanc.dimse_disabled": "DIMSE is disabled in server settings — enable it or choose DICOMweb/Auto source",
+  "orthanc.partial_done": "Downloaded {saved}/{total} studies. The rest failed — the successful ones are available to open.",
+  "orthanc.disk_download_partial": "Saved {saved}/{total} studies to {path}. The rest failed.",
+  "server_settings.port_invalid": "\"{value}\" is not a valid number in the \"{field}\" field. Enter a port from 1 to 65535.",
+  "server_settings.port_out_of_range": "Port \"{value}\" in \"{field}\" is outside the range 1-65535."
 }

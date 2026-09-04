@@ -67,7 +67,9 @@ class _MockDimse:
         return None
 
 
-def test_web_exception_returns_empty() -> None:
+def test_web_exception_raises_in_explicit_mode() -> None:
+    """Explicit DICOMWEB: a failed query must raise so the UI can show the
+    error instead of displaying an empty 'no studies' list."""
     web = _MockWeb(fail=True)
     dimse = _MockDimse(
         studies=[
@@ -82,13 +84,15 @@ def test_web_exception_returns_empty() -> None:
         ]
     )
     svc = DicomQueryService(web=web, dimse=dimse, source=QuerySource.DICOMWEB)
-    assert svc.query_studies() == []
+    with pytest.raises(ConnectionError):
+        svc.query_studies()
 
 
-def test_dimse_exception_returns_empty() -> None:
+def test_dimse_exception_raises_in_explicit_mode() -> None:
     dimse = _MockDimse(fail=True)
     svc = DicomQueryService(web=None, dimse=dimse, source=QuerySource.DIMSE)
-    assert svc.query_studies() == []
+    with pytest.raises(ConnectionError):
+        svc.query_studies()
 
 
 def test_auto_web_exception_fallback_to_dimse() -> None:
@@ -110,6 +114,24 @@ def test_auto_web_exception_fallback_to_dimse() -> None:
 
 def test_auto_both_empty_returns_empty() -> None:
     web = _MockWeb(studies=[])
+    dimse = _MockDimse(studies=[])
+    svc = DicomQueryService(web=web, dimse=dimse, source=QuerySource.AUTO)
+    assert svc.query_studies() == []
+
+
+def test_auto_all_sources_raise_propagates() -> None:
+    """AUTO: web and DIMSE both raise → the error propagates for the UI."""
+    web = _MockWeb(fail=True)
+    dimse = _MockDimse(fail=True)
+    svc = DicomQueryService(web=web, dimse=dimse, source=QuerySource.AUTO)
+    with pytest.raises(ConnectionError):
+        svc.query_studies()
+
+
+def test_auto_dimse_empty_after_web_failure_is_authoritative() -> None:
+    """AUTO: web fails but DIMSE answers (even with 0 studies) → the DIMSE
+    empty answer is a valid result, not an error."""
+    web = _MockWeb(fail=True)
     dimse = _MockDimse(studies=[])
     svc = DicomQueryService(web=web, dimse=dimse, source=QuerySource.AUTO)
     assert svc.query_studies() == []

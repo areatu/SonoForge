@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from echo_personal_tool.application.services.dicom_retrieve_service import (
@@ -96,6 +98,7 @@ class MockDimseClient:
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         self.c_move_calls.append((study_uid, series_uid, instance_uids, move_destination_ae))
         for uid in instance_uids:
@@ -218,19 +221,24 @@ def test_make_retrieve_service_auto_with_wado() -> None:
 
     result = service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
     assert result == _MOCK_BYTES
-    # WADO should be preferred in auto mode when ping succeeds
+    # WADO should be preferred in auto mode (first in the fallback chain)
     assert web_client.download_calls == [(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)]
     assert dimse_client.c_get_calls == []
 
 
-def test_make_retrieve_service_auto_falls_back_to_dimse_when_wado_unreachable() -> None:
-    web_client = MockDicomWebClient()
+def test_make_retrieve_service_auto_falls_back_to_dimse_when_wado_download_fails() -> None:
+    """Auto mode must fall back to DIMSE at retrieval time when WADO fails.
 
-    class _NoPingWeb(MockDicomWebClient):
-        def ping(self) -> bool:
-            return False
+    Reachability is no longer probed at startup (that blocked the GUI);
+    the fallback chain is resolved per download request instead.
+    """
 
-    web_client = _NoPingWeb()
+    class _FailingWadoWeb(MockDicomWebClient):
+        def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
+            self.download_calls.append((study_uid, series_uid, instance_uid))
+            raise ConnectionError("WADO refused the request")
+
+    web_client = _FailingWadoWeb()
     dimse_client = MockDimseClient()
     settings = ServerSettings(retrieval_source="auto")
 
@@ -238,7 +246,7 @@ def test_make_retrieve_service_auto_falls_back_to_dimse_when_wado_unreachable() 
 
     result = service.retrieve_instance(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)
     assert result == _MOCK_BYTES
-    assert web_client.download_calls == []
+    assert len(web_client.download_calls) == 1
     assert dimse_client.c_get_calls == [(_STUDY_UID, _SERIES_UID, _INSTANCE_UID)]
 
 

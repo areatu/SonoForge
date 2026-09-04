@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from echo_personal_tool.infrastructure.dimse_client import (
     DimseAssociationError,
     DimseMoveDestinationError,
@@ -69,20 +71,23 @@ class TestCEcho:
 
 
 class TestCFind:
-    def test_c_find_studies_returns_empty_on_error(self):
-        client = PynetdimseClient(host="127.0.0.1", port=1, timeout_s=0.5)
-        result = client.c_find_studies(patient_name="test")
-        assert result == []
+    """C-FIND failures raise DimseAssociationError instead of silently
+    returning [] (which was indistinguishable from 'no results')."""
 
-    def test_c_find_series_returns_empty_on_error(self):
+    def test_c_find_studies_raises_on_error(self):
         client = PynetdimseClient(host="127.0.0.1", port=1, timeout_s=0.5)
-        result = client.c_find_series("1.2.3")
-        assert result == []
+        with pytest.raises(DimseAssociationError):
+            client.c_find_studies(patient_name="test")
 
-    def test_c_find_instances_returns_empty_on_error(self):
+    def test_c_find_series_raises_on_error(self):
         client = PynetdimseClient(host="127.0.0.1", port=1, timeout_s=0.5)
-        result = client.c_find_instances("1.2.3", "4.5.6")
-        assert result == []
+        with pytest.raises(DimseAssociationError):
+            client.c_find_series("1.2.3")
+
+    def test_c_find_instances_raises_on_error(self):
+        client = PynetdimseClient(host="127.0.0.1", port=1, timeout_s=0.5)
+        with pytest.raises(DimseAssociationError):
+            client.c_find_instances("1.2.3", "4.5.6")
 
 
 class TestCStore:

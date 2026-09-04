@@ -88,6 +88,14 @@ class OrthancDownloadWorker(QRunnable):
 
     def cancel(self) -> None:
         self._cancelled.set()
+        # Abort in-flight downloads through the retrieve service first — this
+        # closes the underlying HTTP client sockets so blocked WADO requests
+        # fail immediately instead of waiting for their (long) timeout.
+        if self._retrieve_service is not None:
+            try:
+                self._retrieve_service.cancel_inflight()
+            except Exception:  # noqa: BLE001
+                logger.debug("retrieve service cancel failed", exc_info=True)
         thread_client = self._thread_client
         if thread_client is not None:
             thread_client.cancel_inflight()
@@ -184,13 +192,12 @@ class OrthancDownloadWorker(QRunnable):
             failed_count = 0
             errors: list[str] = []
 
-            with ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_DOWNLOADS) as pool:
+            pool = ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_DOWNLOADS)
+            try:
                 futures = {}
                 for series_uid, instance_uid in all_instances:
                     if self._cancelled.is_set():
-                        pool.shutdown(wait=False, cancel_futures=True)
-                        self._finish_cancelled()
-                        return
+                        break
                     future = pool.submit(
                         self._download_one,
                         self._study_uid,
@@ -201,9 +208,7 @@ class OrthancDownloadWorker(QRunnable):
 
                 for future in as_completed(futures):
                     if self._cancelled.is_set():
-                        pool.shutdown(wait=False, cancel_futures=True)
-                        self._finish_cancelled()
-                        return
+                        break
 
                     series_uid, instance_uid = futures[future]
                     try:
@@ -216,9 +221,7 @@ class OrthancDownloadWorker(QRunnable):
                                 failed_count += 1
                                 errors.append(f"instance {instance_uid[:16]}: empty data")
                     except DownloadCancelled:
-                        pool.shutdown(wait=False, cancel_futures=True)
-                        self._finish_cancelled()
-                        return
+                        break
                     except Exception as exc:
                         with self._lock:
                             failed_count += 1
@@ -230,6 +233,15 @@ class OrthancDownloadWorker(QRunnable):
                     from echo_personal_tool.infrastructure.i18n import tr
 
                     self.signals.status.emit(tr("orthanc.downloaded", done=str(done), total=str(total)))
+            finally:
+                # Join all running downloads *before* touching the session cache:
+                # on cancel, clear_session() must never race with a worker thread
+                # that is still saving an instance (which would recreate the dir).
+                pool.shutdown(wait=True, cancel_futures=self._cancelled.is_set())
+
+            if self._cancelled.is_set():
+                self._finish_cancelled()
+                return
 
             elapsed_total = time.monotonic() - t_start
             logger.info(
