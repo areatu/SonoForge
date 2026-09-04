@@ -165,6 +165,112 @@ def la_landmarks_from_mask_or_user(
 
 
 # ---------------------------------------------------------------------------
+# Anatomical filters: Basal plane clamp & Pulmonary vein bulge suppression
+# ---------------------------------------------------------------------------
+
+
+def clamp_la_basal_plane(
+    points: Sequence[tuple[float, float]],
+    annulus: tuple[tuple[float, float], tuple[float, float]],
+    apex: tuple[float, float],
+) -> list[tuple[float, float]]:
+    """Ensure open arc points do not cross the mitral annulus chord into the LV.
+
+    For LA, the apex/roof is deeper into the LA cavity. Any point whose signed
+    projection along the annulus-to-apex normal is negative has crossed into the LV
+    and is projected back onto the mitral annulus segment.
+    """
+    if len(points) < 3:
+        return list(points)
+
+    septal, lateral = annulus
+    ma_dx = lateral[0] - septal[0]
+    ma_dy = lateral[1] - septal[1]
+    ma_len = math.hypot(ma_dx, ma_dy)
+    if ma_len <= 1e-6:
+        return list(points)
+
+    # Unit normal pointing towards apex (into the LA cavity)
+    ma_mid_x = (septal[0] + lateral[0]) / 2.0
+    ma_mid_y = (septal[1] + lateral[1]) / 2.0
+    to_apex_x = apex[0] - ma_mid_x
+    to_apex_y = apex[1] - ma_mid_y
+
+    n1_x = -ma_dy / ma_len
+    n1_y = ma_dx / ma_len
+    if n1_x * to_apex_x + n1_y * to_apex_y < 0:
+        n_x, n_y = -n1_x, -n1_y
+    else:
+        n_x, n_y = n1_x, n1_y
+
+    clamped: list[tuple[float, float]] = []
+    for i, (px, py) in enumerate(points):
+        if i == 0:
+            clamped.append((float(septal[0]), float(septal[1])))
+            continue
+        if i == len(points) - 1:
+            clamped.append((float(lateral[0]), float(lateral[1])))
+            continue
+
+        depth = (px - ma_mid_x) * n_x + (py - ma_mid_y) * n_y
+        if depth < 0.0:
+            # Point crossed into LV — project onto MA line segment [septal, lateral]
+            t = ((px - septal[0]) * ma_dx + (py - septal[1]) * ma_dy) / (ma_len * ma_len)
+            t = max(0.0, min(1.0, t))
+            proj_x = septal[0] + t * ma_dx
+            proj_y = septal[1] + t * ma_dy
+            clamped.append((proj_x, proj_y))
+        else:
+            clamped.append((px, py))
+
+    return clamped
+
+
+def filter_la_pulmonary_vein_bulges(
+    points: Sequence[tuple[float, float]],
+    annulus: tuple[tuple[float, float], tuple[float, float]],
+    apex: tuple[float, float],
+    *,
+    max_bulge_ratio: float = 0.25,
+) -> list[tuple[float, float]]:
+    """Suppress localized outward spikes (PV ostia / LAA) exceeding smooth atrial envelope.
+
+    ASE rule: LA volume should exclude pulmonary veins and left atrial appendage.
+    """
+    if len(points) < 5:
+        return list(points)
+
+    septal, lateral = annulus
+    ma_dx = lateral[0] - septal[0]
+    ma_dy = lateral[1] - septal[1]
+    ma_len = math.hypot(ma_dx, ma_dy)
+    if ma_len <= 1e-6:
+        return list(points)
+
+    ma_mid_x = (septal[0] + lateral[0]) / 2.0
+    ma_mid_y = (septal[1] + lateral[1]) / 2.0
+    long_len = math.hypot(apex[0] - ma_mid_x, apex[1] - ma_mid_y)
+    max_bulge_px = max_bulge_ratio * max(ma_len, long_len)
+
+    filtered = list(points)
+    n = len(filtered)
+    for i in range(2, n - 2):
+        prev_p = filtered[i - 1]
+        next_p = filtered[i + 1]
+        chord_mid_x = 0.5 * (prev_p[0] + next_p[0])
+        chord_mid_y = 0.5 * (prev_p[1] + next_p[1])
+
+        spike_dist = math.hypot(filtered[i][0] - chord_mid_x, filtered[i][1] - chord_mid_y)
+        if spike_dist > max_bulge_px * 0.5:
+            filtered[i] = (
+                0.5 * filtered[i][0] + 0.5 * chord_mid_x,
+                0.5 * filtered[i][1] + 0.5 * chord_mid_y,
+            )
+
+    return filtered
+
+
+# ---------------------------------------------------------------------------
 # Mask boundary → open-arc contour
 # ---------------------------------------------------------------------------
 
@@ -281,9 +387,11 @@ def la_mask_boundary_to_open_arc(
         blend=0.45,
         taubin=True,
     )
-    smoothed[0] = septal
-    smoothed[-1] = lateral
-    return smoothed
+    pv_filtered = filter_la_pulmonary_vein_bulges(smoothed, (septal, lateral), apex)
+    clamped = clamp_la_basal_plane(pv_filtered, (septal, lateral), apex)
+    clamped[0] = septal
+    clamped[-1] = lateral
+    return clamped
 
 
 # ---------------------------------------------------------------------------

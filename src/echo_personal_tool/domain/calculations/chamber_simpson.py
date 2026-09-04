@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.calculations.lvef_simpson import (
+    _biplane_volume_ml,
     _build_view_metrics,
     _contour_to_mm,
 )
@@ -58,23 +59,59 @@ def calculate_chamber(
     if a4c is None and a2c is None:
         return None
 
-    per_view_volumes: dict[str, tuple[float, float]] = {}
-    for view, metrics in (("A4C", a4c), ("A2C", a2c)):
-        if metrics is None:
-            continue
-        if metrics.edv_ml is not None and metrics.esv_ml is not None:
-            per_view_volumes[view] = (metrics.edv_ml, metrics.esv_ml)
+    # Biplane calculation for ES (maximum LA volume) and ED (minimum LA volume)
+    esv_bi_ml: float | None = None
+    if "es" in grouped_mm["A4C"] and "es" in grouped_mm["A2C"]:
+        a4c_es_pts, a4c_es_ann = grouped_mm["A4C"]["es"]
+        a2c_es_pts, a2c_es_ann = grouped_mm["A2C"]["es"]
+        if a4c_es_pts and a2c_es_pts:
+            esv_bi_ml = _biplane_volume_ml(a4c_es_pts, a4c_es_ann, a2c_es_pts, a2c_es_ann)
 
-    ef_percent: float | None = None
+    edv_bi_ml: float | None = None
+    if "ed" in grouped_mm["A4C"] and "ed" in grouped_mm["A2C"]:
+        a4c_ed_pts, a4c_ed_ann = grouped_mm["A4C"]["ed"]
+        a2c_ed_pts, a2c_ed_ann = grouped_mm["A2C"]["ed"]
+        if a4c_ed_pts and a2c_ed_pts:
+            edv_bi_ml = _biplane_volume_ml(a4c_ed_pts, a4c_ed_ann, a2c_ed_pts, a2c_ed_ann)
+
+    # Determine volumes and method
     method: str | None = None
-    if per_view_volumes:
-        edv_ml = sum(volume[0] for volume in per_view_volumes.values()) / len(per_view_volumes)
-        esv_ml = sum(volume[1] for volume in per_view_volumes.values()) / len(per_view_volumes)
-        if edv_ml > 0.0:
-            ef_percent = (edv_ml - esv_ml) / edv_ml * 100.0
-            method = "simpson_biplan" if len(per_view_volumes) == 2 else "simpson_monoplan"
+    if esv_bi_ml is not None or edv_bi_ml is not None:
+        method = "simpson_biplan"
+        esv_ml = esv_bi_ml if esv_bi_ml is not None else biplane_es_volume_ml(a4c, a2c)
+        edv_ml = edv_bi_ml
+    else:
+        # Monoplane calculation
+        method = "simpson_monoplan"
+        esv_ml = None
+        edv_ml = None
+        for metrics in (a4c, a2c):
+            if metrics is not None:
+                if metrics.esv_ml is not None and esv_ml is None:
+                    esv_ml = metrics.esv_ml
+                if metrics.edv_ml is not None and edv_ml is None:
+                    edv_ml = metrics.edv_ml
 
-    max_volume_ml = _max_volume_ml(a4c, a2c)
+    # Max volume
+    candidates: list[float] = []
+    if esv_ml is not None and esv_ml > 0.0:
+        candidates.append(esv_ml)
+    if edv_ml is not None and edv_ml > 0.0:
+        candidates.append(edv_ml)
+    if not candidates:
+        single_max = _max_volume_ml(a4c, a2c)
+        if single_max is not None:
+            candidates.append(single_max)
+    max_volume_ml = max(candidates) if candidates else None
+
+    # Emptying fraction (LA EF)
+    ef_percent: float | None = None
+    if edv_ml is not None and esv_ml is not None and edv_ml > 0.0 and esv_ml > 0.0:
+        v_max = max(edv_ml, esv_ml)
+        v_min = min(edv_ml, esv_ml)
+        if v_max > 0.0:
+            ef_percent = (v_max - v_min) / v_max * 100.0
+
     area_cm2 = _area_cm2_from_contours(grouped_contours, pixel_spacing)
 
     return ChamberSimpsonResult(

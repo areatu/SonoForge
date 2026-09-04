@@ -75,6 +75,23 @@ def test_chamber_calculator_ignores_other_chambers() -> None:
     assert result.a4c.edv_ml is None
 
 
+def test_la_simpson_biplane_volume() -> None:
+    contours = (
+        _open_arc(chamber="LA", phase="ES", view="A4C", width=80.0, height=50.0),
+        _open_arc(chamber="LA", phase="ES", view="A2C", width=70.0, height=45.0),
+    )
+
+    result = calculate_chamber(contours, "LA", (0.5, 0.5))
+
+    assert result is not None
+    assert result.chamber == "LA"
+    assert result.a4c is not None
+    assert result.a2c is not None
+    assert result.method == "simpson_biplan"
+    assert result.max_volume_ml is not None
+    assert result.max_volume_ml > 0.0
+
+
 def test_ra_simpson_includes_area_cm2() -> None:
     contours = (_open_arc(chamber="RA", phase="ES", view="A4C", width=80.0, height=50.0),)
 

@@ -500,7 +500,14 @@ def temporal_fuse(
 
     # --- 7. Concavity exclusion + smooth ---
     if is_la:
-        smoothed = smooth_open_arc(fused_nodes, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
+        from echo_personal_tool.domain.services.la_segmentation_service import (
+            clamp_la_basal_plane,
+            filter_la_pulmonary_vein_bulges,
+        )
+
+        filtered = filter_la_pulmonary_vein_bulges(fused_nodes, fused_annulus, fused_apex)
+        clamped = clamp_la_basal_plane(filtered, fused_annulus, fused_apex)
+        smoothed = smooth_open_arc(clamped, fused_annulus, apex=fused_apex, iterations=4, blend=0.45)
     else:
         refined = exclude_papillary_concavities(
             fused_nodes,

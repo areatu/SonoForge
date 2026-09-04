@@ -195,33 +195,38 @@ def snap_point(
     normal_x /= norm_len
     normal_y /= norm_len
 
+    scores: list[float] = []
     best_score = cfg.min_edge_strength
-    best_offset = 0.0
+    best_idx = -1
     found = False
 
-    for offset in offsets:
+    for idx, offset in enumerate(offsets):
         sample_x = x + float(offset) * normal_x
         sample_y = y + float(offset) * normal_y
         magnitude = _sample_bilinear(edge_map.magnitude, sample_x, sample_y, edge_map)
         if magnitude <= 0.0:
+            scores.append(0.0)
             continue
         gx = _sample_bilinear(edge_map.grad_x, sample_x, sample_y, edge_map)
         gy = _sample_bilinear(edge_map.grad_y, sample_x, sample_y, edge_map)
         grad_len = float(np.hypot(gx, gy))
         if grad_len <= 1e-6:
+            scores.append(0.0)
             continue
         grad_dir_x = gx / grad_len
         grad_dir_y = gy / grad_len
         directional = grad_dir_x * normal_x + grad_dir_y * normal_y
         if cfg.inward_only and directional <= 0.0:
+            scores.append(0.0)
             continue
         score = magnitude * (directional if cfg.inward_only else abs(directional))
+        scores.append(score)
         if score > best_score:
             best_score = score
-            best_offset = float(offset)
+            best_idx = idx
             found = True
 
-    if not found:
+    if not found or best_idx < 0:
         if cfg.intensity_fallback and cfg.outward_only:
             return _snap_intensity_ridge(
                 edge_map,
@@ -230,8 +235,23 @@ def snap_point(
                 (normal_x, normal_y),
                 radius,
                 samples,
+                outward_only=cfg.outward_only,
             )
         return None
+
+    # Parabolic subpixel refinement around discrete peak
+    best_offset = float(offsets[best_idx])
+    if 0 < best_idx < len(scores) - 1:
+        s_prev = scores[best_idx - 1]
+        s_mid = scores[best_idx]
+        s_next = scores[best_idx + 1]
+        denom = 2.0 * (s_prev - 2.0 * s_mid + s_next)
+        if abs(denom) > 1e-6:
+            delta_idx = (s_prev - s_next) / denom
+            delta_idx = max(-0.5, min(0.5, delta_idx))
+            step_size = float(offsets[1] - offsets[0]) if len(offsets) > 1 else 0.0
+            best_offset += delta_idx * step_size
+
     new_x = _clamp(x + best_offset * normal_x, 0.0, edge_map.width - 1.0)
     new_y = _clamp(y + best_offset * normal_y, 0.0, edge_map.height - 1.0)
     return (new_x, new_y)

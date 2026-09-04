@@ -197,3 +197,36 @@ class TestExplainLaAutoRejectReason:
         reason = explain_la_auto_reject_reason(c, None, mask=irregular)
         assert reason is not None
         assert "нерегулярна" in reason
+
+
+class TestLaAnatomicalFilters:
+    def test_clamp_la_basal_plane_projects_ventricular_points(self) -> None:
+        from echo_personal_tool.domain.services.la_segmentation_service import clamp_la_basal_plane
+
+        annulus = ((80.0, 100.0), (160.0, 100.0))
+        apex = (120.0, 200.0)
+        # Point with y=80 has crossed into LV (smaller Y than MA line y=100)
+        raw_points = [(80.0, 100.0), (100.0, 80.0), (120.0, 200.0), (160.0, 100.0)]
+        clamped = clamp_la_basal_plane(raw_points, annulus, apex)
+        # Clamped point should have y >= 100.0
+        assert clamped[1][1] >= 100.0
+
+    def test_filter_la_pulmonary_vein_bulges_suppresses_spike(self) -> None:
+        from echo_personal_tool.domain.services.la_segmentation_service import filter_la_pulmonary_vein_bulges
+
+        annulus = ((80.0, 100.0), (160.0, 100.0))
+        apex = (120.0, 200.0)
+        # Sharp outward bulge at index 2
+        raw_points = [
+            (80.0, 100.0),
+            (85.0, 130.0),
+            (50.0, 150.0),  # large lateral spike (PV ostium)
+            (95.0, 170.0),
+            (120.0, 200.0),
+            (145.0, 170.0),
+            (155.0, 130.0),
+            (160.0, 100.0),
+        ]
+        filtered = filter_la_pulmonary_vein_bulges(raw_points, annulus, apex)
+        # Outlier spike should be smoothed inward
+        assert filtered[2][0] > raw_points[2][0]

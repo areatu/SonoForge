@@ -3048,7 +3048,13 @@ class AppController(QObject):
             gray = np.mean(frame[..., :3], axis=2).astype(np.uint8)
             frame = np.stack([gray, gray, gray], axis=-1)
 
-        worker = OnnxWorker(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode, parent=self)
+        worker = OnnxWorker(
+            frame,
+            roi_xyxy=roi_xyxy,
+            crop_mode=crop_mode,
+            manifest_section="la_inference" if chamber.upper() == "LA" else None,
+            parent=self,
+        )
         worker.signals.finished.connect(
             partial(
                 self._on_neighbor_segment_finished,

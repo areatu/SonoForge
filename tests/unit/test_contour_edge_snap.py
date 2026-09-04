@@ -168,6 +168,18 @@ class TestSnapPoint:
         result = snap_point(em, 32.0, 32.0, (0.0, 0.0))
         assert result is None
 
+    def test_subpixel_snap_accuracy(self):
+        # Create a sharp step edge at x=32.5
+        img = np.zeros((64, 64), dtype=np.uint8)
+        img[:, 33:] = 255
+        em = build_edge_map(img, blur_sigma=0.8)
+        # Snap from x=30.0 along normal (1, 0)
+        cfg = EdgeSnapConfig(search_radius_px=6.0, min_edge_strength=0.01)
+        snapped = snap_point(em, 30.0, 32.0, (1.0, 0.0), config=cfg)
+        assert snapped is not None
+        # Snapped x should be close to the boundary (around 32-33)
+        assert 31.5 <= snapped[0] <= 33.5
+
 
 class TestToGrayscale:
     def test_grayscale_passthrough(self):
