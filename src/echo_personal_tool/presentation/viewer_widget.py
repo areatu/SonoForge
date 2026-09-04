@@ -2544,7 +2544,9 @@ class ViewerWidget(QWidget):
 
         When *direction* is ``"up"`` or ``"down"`` the envelope is forced
         to the corresponding side of the baseline; ``None`` picks the
-        side with the strongest signal automatically.
+        side with the strongest signal automatically.  If the initial
+        preset yields no envelope, retries with the ``"low"`` preset to
+        handle weak AK/MK signals.
         """
         if not self.is_vessel_available():
             return False
@@ -2565,6 +2567,17 @@ class ViewerWidget(QWidget):
             preset=preset,
             force_direction=direction,
         )
+        used_preset = preset
+        # Retry with lower sensitivity if the initial preset found nothing
+        if not envelope and preset != "low":
+            envelope = extract_doppler_envelope(
+                self._current_frame,
+                state.roi,
+                state.baseline_y_px,
+                preset="low",
+                force_direction=direction,
+            )
+            used_preset = "low"
         if not envelope:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
@@ -2579,8 +2592,8 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
         self._measurement_label.show()
         self._vessel_direction = direction
-        self._vessel_current_preset = preset
-        self._vessel_sensitivity.set_preset(preset)
+        self._vessel_current_preset = used_preset
+        self._vessel_sensitivity.set_preset(used_preset)
         self._show_vessel_sensitivity_overlay()
         return True
 
