@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
+import pydicom
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 
 from echo_personal_tool.domain.services.segment_roi import (
     ECHONET_CROP_CENTER_SQUARE,
     echonet_crop_mode_for_media,
     resolve_cine_segment_roi_xyxy,
+    resolve_dicom_segment_roi_xyxy,
     resolve_segment_roi_xyxy,
 )
 
@@ -161,3 +167,145 @@ def test_frozen_cine_roi_none_falls_back_to_heuristic() -> None:
         frozen_cine_roi=None,
     )
     assert roi_result == roi_live
+
+
+# ---------------------------------------------------------------------------
+# DICOM panel priority (resolve_dicom_segment_roi_xyxy)
+#
+# The ROI returned here feeds ONNX LV segmentation, so on split-screen studies
+# it MUST be the B-mode chamber panel and never the Doppler spectrum. These
+# tests pin that ordering: the Doppler region is deliberately written FIRST in
+# SequenceOfUltrasoundRegions, so a resolver that simply takes the first/any
+# Doppler panel would fail them.
+# ---------------------------------------------------------------------------
+
+# DICOM PS3.3 C.8.5.5 RegionSpatialFormat / RegionDataType
+_SPATIAL_2D = 1
+_SPATIAL_SPECTRAL = 3
+_DATA_TYPE_TISSUE = 1
+_DATA_TYPE_PW_DOPPLER = 3
+
+_BMODE_BOUNDS = (120, 60, 1060, 400)
+_DOPPLER_BOUNDS = (40, 420, 1140, 860)
+
+
+def _make_region(
+    spatial_format: int,
+    data_type: int,
+    bounds: tuple[int, int, int, int],
+) -> Dataset:
+    x0, y0, x1, y1 = bounds
+    region = Dataset()
+    region.RegionSpatialFormat = spatial_format
+    region.RegionDataType = data_type
+    region.RegionLocationMinX0 = x0
+    region.RegionLocationMinY0 = y0
+    region.RegionLocationMaxX1 = x1
+    region.RegionLocationMaxY1 = y1
+    return region
+
+
+def _write_dicom(path: Path, regions: list[Dataset] | None) -> Path:
+    """Write a minimal tags-only US DICOM (read with stop_before_pixels=True)."""
+    file_meta = FileMetaDataset()
+    file_meta.MediaStorageSOPClassUID = pydicom.uid.UltrasoundImageStorage
+    file_meta.MediaStorageSOPInstanceUID = generate_uid()
+    file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+
+    ds = FileDataset(str(path), {}, file_meta=file_meta, preamble=b"\0" * 128)
+    ds.SOPClassUID = file_meta.MediaStorageSOPClassUID
+    ds.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
+    ds.Modality = "US"
+    if regions is not None:
+        ds.SequenceOfUltrasoundRegions = regions
+
+    ds.save_as(path, enforce_file_format=True)
+    return path
+
+
+def _bounds_to_xyxy(bounds: tuple[int, int, int, int]) -> tuple[float, float, float, float]:
+    x0, y0, x1, y1 = bounds
+    return (float(x0), float(y0), float(x1), float(y1))
+
+
+def test_dicom_split_screen_prefers_bmode_over_doppler(tmp_path) -> None:
+    """Split-screen (B-mode + Doppler): the LV segmentation ROI must be the
+    B-mode panel, even though the Doppler region comes first in the sequence."""
+    path = _write_dicom(
+        tmp_path / "split_screen.dcm",
+        [
+            _make_region(_SPATIAL_SPECTRAL, _DATA_TYPE_PW_DOPPLER, _DOPPLER_BOUNDS),
+            _make_region(_SPATIAL_2D, _DATA_TYPE_TISSUE, _BMODE_BOUNDS),
+        ],
+    )
+    frame = _make_doppler_frame(height=900, width=1200)
+
+    roi = resolve_dicom_segment_roi_xyxy(frame, path)
+
+    assert roi == _bounds_to_xyxy(_BMODE_BOUNDS)
+    assert roi != _bounds_to_xyxy(_DOPPLER_BOUNDS)
+
+
+def test_dicom_bmode_only_returns_bmode_panel(tmp_path) -> None:
+    """A plain B-mode study returns its single 2D panel."""
+    path = _write_dicom(
+        tmp_path / "bmode_only.dcm",
+        [_make_region(_SPATIAL_2D, _DATA_TYPE_TISSUE, _BMODE_BOUNDS)],
+    )
+    frame = _make_bmode_frame(height=900, width=1200)
+
+    roi = resolve_dicom_segment_roi_xyxy(frame, path)
+
+    assert roi == _bounds_to_xyxy(_BMODE_BOUNDS)
+
+
+def test_dicom_doppler_only_falls_back_to_doppler_panel(tmp_path) -> None:
+    """Doppler-only studies still resolve: B-mode is preferred, not required."""
+    path = _write_dicom(
+        tmp_path / "doppler_only.dcm",
+        [_make_region(_SPATIAL_SPECTRAL, _DATA_TYPE_PW_DOPPLER, _DOPPLER_BOUNDS)],
+    )
+    frame = _make_doppler_frame(height=900, width=1200)
+
+    roi = resolve_dicom_segment_roi_xyxy(frame, path)
+
+    assert roi == _bounds_to_xyxy(_DOPPLER_BOUNDS)
+
+
+def test_dicom_without_regions_falls_back_to_cine_detection(tmp_path) -> None:
+    """No SequenceOfUltrasoundRegions → heuristic cine path (None on B-mode)."""
+    path = _write_dicom(tmp_path / "no_regions.dcm", None)
+    frame = _make_bmode_frame(height=600, width=800)
+
+    assert resolve_dicom_segment_roi_xyxy(frame, path) is None
+
+
+def test_dicom_unreadable_path_falls_back_to_cine_detection(tmp_path) -> None:
+    """An unparseable file must not raise — it degrades to cine detection."""
+    path = tmp_path / "garbage.dcm"
+    path.write_bytes(b"not a dicom file")
+    frame = _make_doppler_frame(height=600, width=800)
+
+    assert resolve_dicom_segment_roi_xyxy(frame, path) == resolve_cine_segment_roi_xyxy(frame)
+
+
+def test_dicom_none_path_falls_back_to_cine_detection() -> None:
+    frame = _make_doppler_frame(height=600, width=800)
+
+    assert resolve_dicom_segment_roi_xyxy(frame, None) == resolve_cine_segment_roi_xyxy(frame)
+
+
+def test_resolve_segment_roi_dicom_uses_panel_priority(tmp_path) -> None:
+    """The public entry point routes DICOM to the panel-aware resolver."""
+    path = _write_dicom(
+        tmp_path / "split_screen.dcm",
+        [
+            _make_region(_SPATIAL_SPECTRAL, _DATA_TYPE_PW_DOPPLER, _DOPPLER_BOUNDS),
+            _make_region(_SPATIAL_2D, _DATA_TYPE_TISSUE, _BMODE_BOUNDS),
+        ],
+    )
+    frame = _make_doppler_frame(height=900, width=1200)
+
+    roi = resolve_segment_roi_xyxy(frame, media_format="dicom", instance_path=path)
+
+    assert roi == _bounds_to_xyxy(_BMODE_BOUNDS)
