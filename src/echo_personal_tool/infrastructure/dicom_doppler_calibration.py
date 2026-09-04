@@ -71,10 +71,21 @@ def _force_roi_to_bottom_half(
     )
 
 
+def _region_width(region: Dataset) -> float:
+    bounds = _region_bounds(region)
+    return bounds[2] - bounds[0] if bounds is not None else 0.0
+
+
 def _sorted_doppler_regions(regions: object) -> list[Dataset]:
     strict = [region for region in regions if is_spectral_doppler_region(region)]
     if strict:
-        return sorted(strict, key=spectral_doppler_region_priority, reverse=True)
+        # Equal priority: GE writes the velocity scale strip and the spectrum
+        # as two SF=3 regions; the wider one is the actual spectrogram.
+        return sorted(
+            strict,
+            key=lambda region: (spectral_doppler_region_priority(region), _region_width(region)),
+            reverse=True,
+        )
     # Samsung mis-tags tissue/spectral Doppler as SF=1. Fallback: trust units.
     # But skip SF=1 if there's an SF=2 (M-mode) region — that's B-mode strip.
     has_mmode = any(int(r.get("RegionSpatialFormat", 0) or 0) == 2 for r in regions)
