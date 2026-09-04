@@ -129,7 +129,7 @@ class TestSpeckleConfig:
         assert cfg.search_radius == 8
         assert cfg.pyramid_levels == 2
         assert cfg.ncc_threshold == 0.3
-        assert cfg.tracking_mode == "incremental"
+        assert cfg.tracking_mode == "sequential"
         assert cfg.bidirectional is True
         assert cfg.drift_compensation is True
 
@@ -139,7 +139,7 @@ class TestSpeckleConfig:
         assert cfg.search_radius == 8
         assert cfg.bidirectional is True
         assert cfg.drift_compensation is True
-        assert cfg.tracking_mode == "incremental"
+        assert cfg.tracking_mode == "sequential"
         assert cfg.ncc_threshold == 0.3
 
     def test_preset_research(self) -> None:

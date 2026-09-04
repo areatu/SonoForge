@@ -141,6 +141,25 @@ class TestApplyMotionModel:
             new_disp = np.linalg.norm(result[5, i] - pos[0, i])
             assert new_disp <= orig_disp + 1e-10
 
+    def test_epi_pulled_inward(self) -> None:
+        """The epicardium also moves inward in systole — outward drift must be corrected."""
+        pos = np.zeros((6, 6, 2), dtype=np.float64)
+        cx, cy = 50.0, 50.0
+        for i in range(6):
+            angle = 2 * np.pi * i / 6
+            ed_x = cx + 28 * np.cos(angle)
+            ed_y = cy + 28 * np.sin(angle)
+            pos[0, i, :] = [ed_x, ed_y]
+            # After ED, epi moves outward (wrong direction for systole)
+            pos[1:, i, :] = [ed_x + 5 * np.cos(angle), ed_y + 5 * np.sin(angle)]
+        ncc = np.full((6, 6), 0.9)
+        kernels = _make_kernels(n=6, layer="epi")
+        result = apply_motion_model(pos, ncc, kernels, ed_index=0, strength=1.0)
+        for i in range(6):
+            orig_disp = np.linalg.norm(pos[5, i] - pos[0, i])
+            new_disp = np.linalg.norm(result[5, i] - pos[0, i])
+            assert new_disp <= orig_disp + 1e-10
+
     def test_low_ncc_skipped(self) -> None:
         pos = _make_positions()
         ncc = _make_ncc(value=0.1)  # below threshold

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import time
@@ -29,6 +30,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
+    log_reference_max,
     preprocess_echo_frame,
     track_cine_bidirectional,
     track_cine_incremental,
@@ -161,8 +163,9 @@ class SpeckleTrackingWorker(QRunnable):
             tracking_frames_raw = self._frames[phase_start : phase_end + 1]
 
             logger.info("STE: preprocessing frames (CLAHE + log)")
+            log_ref = log_reference_max(tracking_frames_raw)
             preprocessed = np.stack(
-                [preprocess_echo_frame(tracking_frames_raw[i]) for i in range(tracking_frames_raw.shape[0])]
+                [preprocess_echo_frame(tracking_frames_raw[i], log_ref_max=log_ref) for i in range(tracking_frames_raw.shape[0])]
             )
 
             zone_mask = build_zone_mask(self._zone, preprocessed.shape[1:3])
@@ -170,6 +173,14 @@ class SpeckleTrackingWorker(QRunnable):
 
             self.signals.progress.emit(0, 100)
             wall_thickness_px = int(config.wall_thickness_mm / avg_spacing)
+            if config.tracking_mode in ("incremental", "bidirectional"):
+                # ED-anchored modes jump from ED to every frame, so the search
+                # window must span the full systolic excursion. A frame-to-frame
+                # sized radius would clip the match near end-systole.
+                config = dataclasses.replace(
+                    config,
+                    search_radius=max(config.search_radius, 24),
+                )
             if config.tracking_mode == "incremental":
                 tracking_results = track_cine_incremental(
                     preprocessed,
@@ -341,7 +352,11 @@ class SpeckleTrackingWorker(QRunnable):
 
             # Compute quality-gated GLS using segment strains
             if segment_strain:
-                gls_quality_gated = compute_gls_from_segments(segment_strain, segment_quality, min_quality=min_quality)
+                gls_quality_gated = compute_gls_from_segments(
+                    segment_strain,
+                    segment_quality,
+                    min_quality=config.min_segment_quality,
+                )
                 # Use quality-gated GLS if available, otherwise fallback to curve-based GLS
                 if gls_quality_gated != 0.0:
                     logger.info(
