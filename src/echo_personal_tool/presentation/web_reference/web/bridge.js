@@ -64,15 +64,23 @@ window.bridge = {
     updateParam: function (t, p, id, field, value) { return this._call("update_param", t, p, id, field, value); },
     updateGradation: function (t, p, id, grad, male, female) { return this._call("update_gradation", t, p, id, grad, male, female); },
     reloadStore: function () { return this._call("reload_store"); },
+    getUiStrings: function () { return this._call("get_ui_strings"); },
 };
 
-// Wait for qt to be available, then initialize
+// Wait for qt to be available, then initialize. Retries are bounded so we don't
+// spin forever when QWebChannel never appears — the Python side has its own
+// 5s fallback timer that detects the failure.
+var _initAttempts = 0;
 function tryInit() {
-    if (typeof qt !== "undefined" && typeof QWebChannel !== "undefined") {
+    if (typeof QWebChannel !== "undefined" && typeof qt !== "undefined") {
         window.bridge.init();
-    } else if (typeof QWebChannel !== "undefined") {
-        // QWebChannel available but qt not yet — retry
+        return;
+    }
+    _initAttempts++;
+    if (_initAttempts <= 100) {
         setTimeout(tryInit, 50);
+    } else if (_initAttempts === 101) {
+        console.warn("QWebChannel did not become available; bridge offline");
     }
 }
 

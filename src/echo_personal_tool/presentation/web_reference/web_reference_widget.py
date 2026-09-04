@@ -98,17 +98,50 @@ class WebReferenceWidget(QWidget):
         self._try_init_bridge()
 
     def _apply_theme_to_web(self) -> None:
-        """Inject current theme name and locale strings into the web page."""
-        from echo_personal_tool.presentation.dark_theme import _current_theme_mode
+        """Inject current theme name, palette colors and locale strings."""
+        from echo_personal_tool.presentation.dark_theme import (
+            _current_theme_mode,
+            _is_system_dark,
+        )
 
+        # Resolve 'system' to a concrete theme the CSS knows about.
         theme = _current_theme_mode
+        if theme == "system":
+            theme = "dark" if _is_system_dark() else "light"
+
+        p = get_theme_palette()
+        # Map the Qt palette onto the CSS custom properties so the web view
+        # always matches the application theme (accent, borders, surfaces).
+        css_vars = {
+            "--bg-primary": p.get("bg_dark"),
+            "--bg-secondary": p.get("bg_panel"),
+            "--bg-tertiary": p.get("bg_control"),
+            "--bg-surface": p.get("bg_panel"),
+            "--bg-hover": p.get("bg_button_hover"),
+            "--bg-active": p.get("bg_button"),
+            "--text-primary": p.get("text"),
+            "--text-secondary": p.get("text_dim"),
+            "--text-muted": p.get("text_dim"),
+            "--accent": p.get("accent_tab"),
+            "--accent-hover": p.get("accent_bright"),
+            "--border": p.get("border"),
+            "--border-focus": p.get("accent_tab"),
+            "--success": p.get("success"),
+            "--warning": p.get("warning"),
+            "--danger": p.get("error"),
+        }
+
         title = tr("constructor.export.html_title")
-        # Escape for JS string
         title_escaped = title.replace("\\", "\\\\").replace("'", "\\'")
+        import json as _json
+
+        vars_js = _json.dumps(css_vars, ensure_ascii=False)
         js = (
             f"document.documentElement.setAttribute('data-theme', '{theme}');"
             f"document.title='{title_escaped}';"
             f"var h1=document.querySelector('h1');if(h1)h1.textContent='{title_escaped}';"
+            f"var _v={vars_js};var _s=document.documentElement.style;"
+            f"Object.keys(_v).forEach(function(k){{_s.setProperty(k,_v[k]);}});"
         )
         self._web_view.page().runJavaScript(js)
 
@@ -119,8 +152,10 @@ class WebReferenceWidget(QWidget):
             self._status_label.setText(tr("web_ref.init_failed"))
             self.web_failed.emit()
             return
+        # Only treat the bridge as ready once it is actually connected to the
+        # Python backend — otherwise the fallback timer must fire.
         self._web_view.page().runJavaScript(
-            "typeof bridge !== 'undefined' ? 'ok' : 'wait'",
+            "typeof bridge !== 'undefined' && bridge._backend ? 'ok' : 'wait'",
             lambda r: self._on_bridge_check(r),
         )
 
