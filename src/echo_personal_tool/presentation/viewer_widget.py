@@ -5103,7 +5103,8 @@ class ViewerWidget(QWidget):
             compute_simpson_lines,
         )
 
-        lines = compute_simpson_lines(contour)
+        spacing, _ = self._effective_pixel_spacing()
+        lines = compute_simpson_lines(contour, pixel_spacing=spacing)
         if lines is None:
             return
 
@@ -5134,8 +5135,8 @@ class ViewerWidget(QWidget):
             self._view.removeItem(item)
         self._contour_simpson_items.clear()
 
-        # Compute and render new lines
-        lines = compute_simpson_lines(contour)
+        spacing, _ = self._effective_pixel_spacing()
+        lines = compute_simpson_lines(contour, pixel_spacing=spacing)
         if lines is None:
             return
 

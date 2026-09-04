@@ -245,8 +245,8 @@ def test_compute_simpson_lines_returns_lines_for_valid_contour() -> None:
     base, tip = result.central_line
     assert base[0] == pytest.approx(30.0, rel=1e-6)
     assert tip[1] > base[1]
-    # Disk lines may be fewer than N//2 if parallel ones near MV are filtered
-    assert len(result.disk_lines) >= 0
+    # 20 mid-height disks perpendicular to the long axis (same as volume calc)
+    assert len(result.disk_lines) == 20
 
 
 def test_compute_simpson_lines_returns_none_for_no_annulus() -> None:
@@ -268,3 +268,59 @@ def test_compute_simpson_lines_returns_none_for_too_few_points() -> None:
     )
     result = compute_simpson_lines(contour)
     assert result is None
+
+
+def test_compute_simpson_lines_matches_disk_count_and_axis() -> None:
+    from echo_personal_tool.domain.calculations.lvef_simpson import (
+        _SIMPSON_N_DISKS,
+        compute_simpson_lines,
+    )
+
+    contour = open_arc_contour(phase="ed", view="A4C", width_px=80.0, height_px=160.0)
+    result = compute_simpson_lines(contour, pixel_spacing=(0.5, 0.5))
+    assert result is not None
+    assert len(result.disk_lines) == _SIMPSON_N_DISKS
+    base, tip = result.central_line
+    axis_dx = tip[0] - base[0]
+    axis_dy = tip[1] - base[1]
+    axis_len = (axis_dx**2 + axis_dy**2) ** 0.5
+    assert axis_len > 0.0
+    for left, right in result.disk_lines:
+        chord_dx = right[0] - left[0]
+        chord_dy = right[1] - left[1]
+        assert abs(chord_dx * axis_dx + chord_dy * axis_dy) < 1e-4 * axis_len * max(
+            1.0, (chord_dx**2 + chord_dy**2) ** 0.5
+        )
+
+
+def test_biplane_volume_uses_max_long_axis_height() -> None:
+    import math
+
+    from echo_personal_tool.domain.calculations.lvef_simpson import (
+        _SIMPSON_N_DISKS,
+        _biplane_volume_ml,
+        _contour_to_mm,
+        _disk_diameters_mm,
+        _long_axis_mm,
+    )
+
+    a4c = open_arc_contour(phase="ed", view="A4C", width_px=100.0, height_px=50.0)
+    a2c = open_arc_contour(phase="ed", view="A2C", width_px=80.0, height_px=80.0)
+    spacing = (0.5, 0.5)
+    pts_a, ann_a = _contour_to_mm(a4c, spacing)
+    pts_b, ann_b = _contour_to_mm(a2c, spacing)
+    volume = _biplane_volume_ml(pts_a, ann_a, pts_b, ann_b)
+    diameters_a = _disk_diameters_mm(pts_a, ann_a)
+    diameters_b = _disk_diameters_mm(pts_b, ann_b)
+    long_a = _long_axis_mm(pts_a, ann_a)
+    long_b = _long_axis_mm(pts_b, ann_b)
+    assert long_a != pytest.approx(long_b)
+    disk_height = max(long_a, long_b) / float(_SIMPSON_N_DISKS)
+    expected_mm3 = 0.0
+    for d_a, d_b in zip(diameters_a, diameters_b, strict=True):
+        if d_a <= 0.0 or d_b <= 0.0:
+            continue
+        expected_mm3 += (math.pi / 4.0) * d_a * d_b * disk_height
+    assert volume == pytest.approx(expected_mm3 / 1000.0)
+    avg_height = (long_a + long_b) / (2.0 * _SIMPSON_N_DISKS)
+    assert disk_height != pytest.approx(avg_height)

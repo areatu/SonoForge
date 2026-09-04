@@ -66,7 +66,6 @@ from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.auto_depth_calibration import (
     try_auto_depth_calibration,
 )
-from echo_personal_tool.domain.services.contour_geometry import apex_point
 from echo_personal_tool.domain.services.lv_temporal_fusion import (
     compute_window,
     temporal_fuse,
@@ -78,12 +77,8 @@ from echo_personal_tool.domain.services.segment_roi import (
     resolve_segment_roi_xyxy,
 )
 from echo_personal_tool.domain.services.segmentation_service import (
-    closed_polygon_to_open_arc,
     exclude_papillary_concavities,
-    mask_to_contour,
-    open_arc_from_cavity_mask,
-    papillary_mask_cleanup,
-    smooth_contour,
+    lv_cavity_mask_to_open_arc,
 )
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.onnx_engine import (
@@ -1447,6 +1442,10 @@ class AppController(QObject):
                     lvef,
                     edv_bi_ml=study_lvef.edv_bi_ml,
                     esv_bi_ml=study_lvef.esv_bi_ml,
+                    lvef_percent=study_lvef.lvef_percent,
+                    method=study_lvef.method,
+                    a4c=study_lvef.a4c or lvef.a4c,
+                    a2c=study_lvef.a2c or lvef.a2c,
                 )
         teichholz = from_linear_measurements(linear_measurements)
         la_simpson = calculate_chamber(contours, "LA", pixel_spacing)
@@ -2351,24 +2350,6 @@ class AppController(QObject):
             return frozen
         return None
 
-    def _open_arc_from_cleaned_mask(
-        self,
-        cleaned_mask: np.ndarray,
-        *,
-        original_shape: tuple[int, int],
-        view: str,
-    ) -> tuple[
-        list[tuple[float, float]],
-        tuple[tuple[float, float], tuple[float, float]],
-        tuple[float, float],
-    ]:
-        return open_arc_from_cavity_mask(
-            cleaned_mask,
-            original_shape=original_shape,
-            num_nodes=32,
-            view_hint=view,
-        )
-
     def _auto_segment_context_matches(
         self,
         instance_path: Path | None,
@@ -2429,33 +2410,21 @@ class AppController(QObject):
         if not isinstance(mask, np.ndarray):
             return
 
-        cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
-        if int(np.count_nonzero(cleaned_mask)) < 80:
-            self.status_message.emit(tr("app.segmentation_mask_too_small"))
+        try:
+            open_points, annulus, apex, cleaned_mask = lv_cavity_mask_to_open_arc(
+                mask,
+                original_shape=original_shape,
+                phase=phase,
+                view_hint=view,
+            )
+        except ValueError as exc:
+            if "too small" in str(exc).lower():
+                self.status_message.emit(tr("app.segmentation_mask_too_small"))
+            else:
+                self.status_message.emit(tr("app.segmentation_open_arc_fail"))
             return
 
         is_cine = self._current_instance is not None and self._current_instance.media_format != "dicom"
-
-        try:
-            open_points, annulus, apex = self._open_arc_from_cleaned_mask(
-                cleaned_mask,
-                original_shape=original_shape,
-                view=view,
-            )
-        except ValueError:
-            closed_points = smooth_contour(
-                mask_to_contour(cleaned_mask, original_shape),
-                num_nodes=32,
-            )
-            if not closed_points:
-                self.status_message.emit(tr("app.segmentation_no_contour"))
-                return
-            try:
-                open_points, annulus = closed_polygon_to_open_arc(closed_points, view_hint=view)
-            except ValueError:
-                self.status_message.emit(tr("app.segmentation_open_arc_fail"))
-                return
-            apex = apex_point(open_points, annulus)
 
         refined_points = exclude_papillary_concavities(open_points, annulus, apex, phase=phase)
 
@@ -2503,7 +2472,11 @@ class AppController(QObject):
             refine_locked_indices=(),
         )
         pixel_spacing, _ = self._resolve_pixel_spacing(self._state_manager.snapshot)
-        reject_reason = explain_lv_auto_reject_reason(contour, pixel_spacing)
+        reject_reason = explain_lv_auto_reject_reason(
+            contour,
+            pixel_spacing,
+            roi_xyxy=self._last_segment_roi_xyxy,
+        )
         if reject_reason is not None:
             mask_px = int(np.count_nonzero(cleaned_mask))
             arc_px = _contour_arc_span_px(contour)
@@ -3099,16 +3072,12 @@ class AppController(QObject):
                 return
             refined_points = open_points
         else:
-            cleaned_mask = papillary_mask_cleanup(mask, phase=phase)
-            if int(np.count_nonzero(cleaned_mask)) < 80:
-                self._on_neighbor_segment_failed(neighbor_idx)
-                return
-
             try:
-                open_points, annulus, apex = self._open_arc_from_cleaned_mask(
-                    cleaned_mask,
+                open_points, annulus, apex, _cleaned = lv_cavity_mask_to_open_arc(
+                    mask,
                     original_shape=original_shape,
-                    view=view,
+                    phase=phase,
+                    view_hint=view,
                 )
             except ValueError:
                 self._on_neighbor_segment_failed(neighbor_idx)
@@ -3224,7 +3193,11 @@ class AppController(QObject):
         else:
             from echo_personal_tool.domain.calculations.lvef_simpson import explain_lv_auto_reject_reason
 
-            reject_reason = explain_lv_auto_reject_reason(fused_contour, pixel_spacing)
+            reject_reason = explain_lv_auto_reject_reason(
+                fused_contour,
+                pixel_spacing,
+                roi_xyxy=self._last_segment_roi_xyxy,
+            )
         if reject_reason is not None:
             logger.info("[TF] fused contour rejected by quality gate: %s — using center-only", reject_reason)
             fused_contour = center_contour

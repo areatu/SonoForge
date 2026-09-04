@@ -36,8 +36,7 @@ from echo_personal_tool.domain.services.segment_roi import (
 )
 from echo_personal_tool.domain.services.segmentation_service import (
     exclude_papillary_concavities,
-    open_arc_from_cavity_mask,
-    papillary_mask_cleanup,
+    lv_cavity_mask_to_open_arc,
 )
 from echo_personal_tool.domain.services.contour_geometry import smooth_open_arc
 from echo_personal_tool.infrastructure.dicom_reader import DicomReaderImpl
@@ -70,15 +69,11 @@ def _run_auto_segment(
     crop_mode = engine.crop_mode
     mask = engine.segment(gray, roi_xyxy=roi_xyxy, crop_mode=crop_mode)
 
-    mask_int = np.count_nonzero(mask)
-    if mask_int < 80:
-        return None
-
-    cleaned = papillary_mask_cleanup(mask, phase=phase)
     try:
-        open_points, annulus, apex = open_arc_from_cavity_mask(
-            cleaned,
+        open_points, annulus, apex, _cleaned = lv_cavity_mask_to_open_arc(
+            mask,
             original_shape=gray.shape[:2],
+            phase=phase,
         )
     except ValueError:
         return None

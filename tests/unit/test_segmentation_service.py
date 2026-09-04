@@ -365,6 +365,47 @@ def test_embed_echonet_mask_uses_linear_interpolation() -> None:
     assert set(np.unique(embedded)).issubset({0, 1})
 
 
+def test_papillary_mask_cleanup_bbox_angle_follows_top_bottom_centroids() -> None:
+    """Without a hint, SE rotation uses top/bottom centroids, not a fixed 90°."""
+    height, width = 80, 80
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for y in range(10, 70):
+        cx = 20 + int(0.6 * (y - 10))
+        mask[y, max(0, cx - 8) : min(width, cx + 8)] = 1
+    mask[38:48, 35:48] = 0  # mid-cavity gap so SE orientation matters
+    ys, xs = np.where(mask > 0)
+    top_y, bottom_y = int(ys.min()), int(ys.max())
+    top = (float(xs[ys == top_y].mean()), float(top_y))
+    bottom = (float(xs[ys == bottom_y].mean()), float(bottom_y))
+    mid_x = float(xs.mean())
+    cleaned_default = papillary_mask_cleanup(mask)
+    cleaned_bbox = papillary_mask_cleanup(mask, long_axis_hint=(top, bottom))
+    cleaned_vertical = papillary_mask_cleanup(
+        mask,
+        long_axis_hint=((mid_x, float(top_y)), (mid_x, float(bottom_y))),
+    )
+    assert np.array_equal(cleaned_default, cleaned_bbox)
+    assert not np.array_equal(cleaned_default, cleaned_vertical)
+
+
+def test_lv_cavity_mask_to_open_arc_two_pass() -> None:
+    from echo_personal_tool.domain.services.segmentation_service import lv_cavity_mask_to_open_arc
+
+    height, width = 120, 80
+    mask = np.zeros((height, width), dtype=np.uint8)
+    mask[15:105, 20:60] = 1
+    mask[50:70, 32:48] = 0  # papillary-like notch
+    open_points, annulus, apex, cleaned = lv_cavity_mask_to_open_arc(
+        mask,
+        original_shape=(height, width),
+        phase="ED",
+    )
+    assert len(open_points) >= 4
+    assert annulus[0][0] < annulus[1][0]
+    assert int(np.count_nonzero(cleaned)) >= 80
+    assert cleaned[60, 40] == 1
+
+
 def test_papillary_mask_cleanup_es_stronger_closing() -> None:
     """ES phase uses larger SE than ED."""
     mask = _mask_with_mid_notch(height=100, width=80)

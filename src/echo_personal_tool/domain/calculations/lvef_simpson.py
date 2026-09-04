@@ -11,6 +11,7 @@ from echo_personal_tool.infrastructure.i18n import tr
 
 _VALID_PHASES = {"ed", "es"}
 _VALID_VIEWS = {"A4C", "A2C"}
+_SIMPSON_N_DISKS = 20
 
 
 def calculate(
@@ -406,15 +407,8 @@ def _disk_diameters_mm(
         if long_axis_mm <= 0.0:
             return []
 
-        axis_dx = tip[0] - base[0]
-        axis_dy = tip[1] - base[1]
         disk_diameters_mm: list[float] = []
-        for index in range(20):
-            alpha = (index + 0.5) / 20.0
-            center = (
-                base[0] + alpha * axis_dx,
-                base[1] + alpha * axis_dy,
-            )
+        for center in _simpson_disk_centers(base, tip):
             disk_diameters_mm.append(
                 _find_width_perpendicular_to_axis(
                     contour_points_mm,
@@ -432,9 +426,9 @@ def _disk_diameters_mm(
     if long_axis_mm <= 0.0:
         return []
 
-    disk_height_mm = long_axis_mm / 20.0
+    disk_height_mm = long_axis_mm / float(_SIMPSON_N_DISKS)
     disk_diameters_mm = []
-    for index in range(20):
+    for index in range(_SIMPSON_N_DISKS):
         y_mid = min_y + (index + 0.5) * disk_height_mm
         diameter_mm = _find_width_at_y(contour_points_mm, y_mid)
         disk_diameters_mm.append(diameter_mm)
@@ -460,7 +454,7 @@ def _simpson_volume_ml(
     if long_axis_mm <= 0.0:
         return 0.0
 
-    disk_height_mm = long_axis_mm / 20.0
+    disk_height_mm = long_axis_mm / float(_SIMPSON_N_DISKS)
     disk_volume_mm3 = 0.0
     for diameter_mm in disk_diameters_mm:
         disk_volume_mm3 += (math.pi / 4.0) * diameter_mm * diameter_mm * disk_height_mm
@@ -497,7 +491,8 @@ def _biplane_volume_ml(
     if long_axis_a <= 0.0 or long_axis_b <= 0.0:
         return None
 
-    disk_height_mm = (long_axis_a + long_axis_b) / 40.0
+    # ASE: disk height is max(L4C, L2C) / n to avoid foreshortening bias.
+    disk_height_mm = max(long_axis_a, long_axis_b) / float(_SIMPSON_N_DISKS)
     volume_mm3 = 0.0
     for d_a, d_b in zip(diameters_a, diameters_b):
         if d_a <= 0.0 or d_b <= 0.0:
@@ -527,26 +522,47 @@ def _find_width_at_y(contour_points_mm: tuple[tuple[float, float], ...], y_mm: f
     return max(intersections) - min(intersections)
 
 
-def _find_width_perpendicular_to_axis(
-    polygon: tuple[tuple[float, float], ...],
+def _simpson_disk_centers(
     axis_base: tuple[float, float],
     axis_tip: tuple[float, float],
-    center: tuple[float, float],
-) -> float:
-    """Find the polygon span along the line perpendicular to the long axis."""
-    if len(polygon) < 2:
-        return 0.0
+    n_disks: int = _SIMPSON_N_DISKS,
+) -> list[tuple[float, float]]:
+    """Mid-height centers of n equal disks along the long axis."""
+    axis_dx = axis_tip[0] - axis_base[0]
+    axis_dy = axis_tip[1] - axis_base[1]
+    return [
+        (
+            axis_base[0] + (index + 0.5) / n_disks * axis_dx,
+            axis_base[1] + (index + 0.5) / n_disks * axis_dy,
+        )
+        for index in range(n_disks)
+    ]
 
+
+def _axis_unit_and_perp(
+    axis_base: tuple[float, float],
+    axis_tip: tuple[float, float],
+) -> tuple[float, float] | None:
+    """Return the unit perpendicular to the long axis, or None if degenerate."""
     axis_dx = axis_tip[0] - axis_base[0]
     axis_dy = axis_tip[1] - axis_base[1]
     axis_length = math.hypot(axis_dx, axis_dy)
     if axis_length <= 0.0:
-        return 0.0
-
+        return None
     unit_x = axis_dx / axis_length
     unit_y = axis_dy / axis_length
-    perp_x = -unit_y
-    perp_y = unit_x
+    return (-unit_y, unit_x)
+
+
+def _perp_intersection_s(
+    polygon: tuple[tuple[float, float], ...],
+    center: tuple[float, float],
+    perp_x: float,
+    perp_y: float,
+) -> list[float]:
+    """Signed distances from center along the perpendicular, at polygon edges."""
+    if len(polygon) < 2:
+        return []
 
     def cross(ax: float, ay: float, bx: float, by: float) -> float:
         return ax * by - ay * bx
@@ -566,11 +582,44 @@ def _find_width_perpendicular_to_axis(
         t = cross(rel_x, rel_y, perp_x, perp_y) / denom
         if -1e-9 <= t <= 1.0 + 1e-9:
             intersections.append(s)
+    return intersections
 
+
+def _perpendicular_chord(
+    polygon: tuple[tuple[float, float], ...],
+    axis_base: tuple[float, float],
+    axis_tip: tuple[float, float],
+    center: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Contour chord through *center* perpendicular to the long axis."""
+    perp = _axis_unit_and_perp(axis_base, axis_tip)
+    if perp is None:
+        return None
+    perp_x, perp_y = perp
+    intersections = _perp_intersection_s(polygon, center, perp_x, perp_y)
     if len(intersections) < 2:
-        return 0.0
+        return None
+    s_min = min(intersections)
+    s_max = max(intersections)
+    if s_max - s_min <= 0.0:
+        return None
+    left = (center[0] + s_min * perp_x, center[1] + s_min * perp_y)
+    right = (center[0] + s_max * perp_x, center[1] + s_max * perp_y)
+    return left, right
 
-    return max(intersections) - min(intersections)
+
+def _find_width_perpendicular_to_axis(
+    polygon: tuple[tuple[float, float], ...],
+    axis_base: tuple[float, float],
+    axis_tip: tuple[float, float],
+    center: tuple[float, float],
+) -> float:
+    """Find the polygon span along the line perpendicular to the long axis."""
+    chord = _perpendicular_chord(polygon, axis_base, axis_tip, center)
+    if chord is None:
+        return 0.0
+    left, right = chord
+    return math.hypot(right[0] - left[0], right[1] - left[1])
 
 
 # ── Simpson visualization lines ────────────────────────────────────
@@ -584,39 +633,53 @@ class SimpsonLines:
     disk_lines: list[tuple[tuple[float, float], tuple[float, float]]]
 
 
-def compute_simpson_lines(contour: Contour) -> SimpsonLines | None:
-    """Compute central axis + paired disk lines for a confirmed LV contour.
+def compute_simpson_lines(
+    contour: Contour,
+    pixel_spacing: tuple[float, float] | None = None,
+) -> SimpsonLines | None:
+    """Central axis + 20 disk chords matching the volume calculation.
 
-    Each disk line connects a pair of symmetric contour points:
-    point[i] ↔ point[N-1-i].  Number of lines = N // 2.
-    Returns None when the contour lacks mitral_annulus or has too few points.
-    All coordinates are in **pixel** space (same as contour.points).
+    Disks are mid-height slices perpendicular to the MA→apex long axis — the
+    same geometry as `_disk_diameters_mm`. Coordinates are returned in pixel
+    space. When *pixel_spacing* is given, intersections are computed in mm
+    (anisotropic-safe) and converted back.
     """
     if contour.mitral_annulus is None or len(contour.points) < 4:
         return None
 
-    points = list(contour.points)
-    n = len(points)
-    septal, lateral = contour.mitral_annulus
-    base = ((septal[0] + lateral[0]) / 2.0, (septal[1] + lateral[1]) / 2.0)
+    row_spacing = col_spacing = 1.0
+    use_mm = False
+    if pixel_spacing is not None:
+        row_spacing, col_spacing = pixel_spacing
+        use_mm = row_spacing > 0.0 and col_spacing > 0.0
 
-    # Apex: point farthest from the MA chord line
-    def _point_line_distance(px: float, py: float) -> float:
-        dx = lateral[0] - septal[0]
-        dy = lateral[1] - septal[1]
-        chord_len = math.hypot(dx, dy)
-        if chord_len < 1e-6:
-            return 0.0
-        return abs(dy * px - dx * py + lateral[0] * septal[1] - lateral[1] * septal[0]) / chord_len
+    if use_mm:
+        polygon, annulus = _contour_to_mm(contour, (row_spacing, col_spacing))
+    else:
+        polygon = tuple(contour.closed_polygon_points())
+        annulus = contour.mitral_annulus
 
-    apex = max(points, key=lambda p: _point_line_distance(p[0], p[1]))
+    if annulus is None or len(polygon) < 3:
+        return None
 
-    # Pair points symmetrically: point[i] ↔ point[N-1-i]
-    num_lines = n // 2
+    base, tip = long_axis_endpoints(list(polygon), annulus)
+    if math.hypot(tip[0] - base[0], tip[1] - base[1]) <= 0.0:
+        return None
+
     disk_lines: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    for i in range(num_lines):
-        left = (float(points[i][0]), float(points[i][1]))
-        right = (float(points[n - 1 - i][0]), float(points[n - 1 - i][1]))
-        disk_lines.append((left, right))
+    for center in _simpson_disk_centers(base, tip):
+        chord = _perpendicular_chord(polygon, base, tip, center)
+        if chord is None:
+            continue
+        disk_lines.append(chord)
 
-    return SimpsonLines(central_line=(base, apex), disk_lines=disk_lines)
+    if use_mm:
+
+        def _to_px(point: tuple[float, float]) -> tuple[float, float]:
+            return (point[0] / col_spacing, point[1] / row_spacing)
+
+        base = _to_px(base)
+        tip = _to_px(tip)
+        disk_lines = [(_to_px(left), _to_px(right)) for left, right in disk_lines]
+
+    return SimpsonLines(central_line=(base, tip), disk_lines=disk_lines)

@@ -17,9 +17,8 @@ from echo_personal_tool.domain.services.segment_roi import (
 )
 from echo_personal_tool.domain.services.segmentation_service import (
     crop_frame_for_echonet,
+    lv_cavity_mask_to_open_arc,
     mask_to_contour,
-    open_arc_from_cavity_mask,
-    papillary_mask_cleanup,
 )
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
@@ -153,17 +152,16 @@ def diagnose_cine_frame(
 
     if run_onnx and onnx_available:
         mask = engine.segment(frame, roi_xyxy=roi_xyxy, crop_mode=crop_mode)
-        cleaned = papillary_mask_cleanup(mask)
-        mask_pixels = int(np.count_nonzero(cleaned))
-        mask_bbox = _mask_bbox(cleaned)
-        centroid = _mask_centroid(cleaned)
         try:
-            open_points, annulus, apex = open_arc_from_cavity_mask(
-                cleaned,
+            open_points, annulus, apex, cleaned = lv_cavity_mask_to_open_arc(
+                mask,
                 original_shape=original_shape,
-                num_nodes=32,
+                phase="ED",
                 view_hint="A4C",
             )
+            mask_pixels = int(np.count_nonzero(cleaned))
+            mask_bbox = _mask_bbox(cleaned)
+            centroid = _mask_centroid(cleaned)
             annulus_mid_y = (annulus[0][1] + annulus[1][1]) / 2.0
             apex_y = float(apex[1])
             arc_count = len(open_points)
@@ -178,8 +176,16 @@ def diagnose_cine_frame(
                 points=open_points,
                 source="ai",
             )
-            reject_reason = explain_lv_auto_reject_reason(contour, None)
+            reject_reason = explain_lv_auto_reject_reason(
+                contour,
+                None,
+                roi_xyxy=roi_xyxy,
+            )
         except ValueError:
+            cleaned = mask
+            mask_pixels = int(np.count_nonzero(cleaned))
+            mask_bbox = _mask_bbox(cleaned)
+            centroid = _mask_centroid(cleaned)
             boundary = mask_to_contour(cleaned, original_shape)
             arc_count = len(boundary)
 

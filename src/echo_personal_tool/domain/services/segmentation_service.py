@@ -249,9 +249,12 @@ def papillary_mask_cleanup(
         (ax0, ay0), (ax1, ay1) = long_axis_hint
         angle = math.degrees(math.atan2(ay1 - ay0, ax1 - ax0))
     else:
-        # Derive from mask bbox: top (narrow) → bottom (wide) = long axis
-        mid_x = float(xs.mean())
-        angle = 90.0  # default: vertical (top→bottom)
+        # Derive from mask bbox: top centroid → bottom centroid ≈ long axis
+        top_xs = xs[ys == top_y]
+        bottom_xs = xs[ys == bottom_y]
+        top_cx = float(top_xs.mean()) if top_xs.size else float(xs.mean())
+        bottom_cx = float(bottom_xs.mean()) if bottom_xs.size else float(xs.mean())
+        angle = math.degrees(math.atan2(float(bottom_y - top_y), bottom_cx - top_cx))
 
     # Build rotated elliptical SE
     ry = max(se_len // 2, 1)
@@ -1093,6 +1096,62 @@ def open_arc_from_cavity_mask(
     resampled[0] = septal
     resampled[-1] = lateral
     return resampled, annulus, apex
+
+
+_LV_MASK_MIN_PIXELS = 80
+
+
+def lv_cavity_mask_to_open_arc(
+    mask: np.ndarray,
+    *,
+    original_shape: tuple[int, int],
+    phase: str | None = None,
+    view_hint: str = "A4C",
+    num_nodes: int = 32,
+) -> tuple[
+    list[tuple[float, float]],
+    tuple[tuple[float, float], tuple[float, float]],
+    tuple[float, float],
+    np.ndarray,
+]:
+    """Two-pass papillary cleanup then open-arc extraction (no longest-chord fallback).
+
+    Pass 1: isotropic closing. Pass 2: rotate the SE along MA midpoint → apex.
+    If the second pass is too small or fails to open, keep the first-pass arc.
+    """
+    first = papillary_mask_cleanup(mask, phase=phase)
+    if int(np.count_nonzero(first)) < _LV_MASK_MIN_PIXELS:
+        msg = "mask too small"
+        raise ValueError(msg)
+
+    open_points, annulus, apex = open_arc_from_cavity_mask(
+        first,
+        original_shape=original_shape,
+        num_nodes=num_nodes,
+        view_hint=view_hint,
+    )
+    septal, lateral = annulus
+    ma_mid = (
+        (septal[0] + lateral[0]) / 2.0,
+        (septal[1] + lateral[1]) / 2.0,
+    )
+    second = papillary_mask_cleanup(
+        mask,
+        phase=phase,
+        long_axis_hint=(ma_mid, apex),
+    )
+    if int(np.count_nonzero(second)) < _LV_MASK_MIN_PIXELS:
+        return open_points, annulus, apex, first
+    try:
+        open_points2, annulus2, apex2 = open_arc_from_cavity_mask(
+            second,
+            original_shape=original_shape,
+            num_nodes=num_nodes,
+            view_hint=view_hint,
+        )
+    except ValueError:
+        return open_points, annulus, apex, first
+    return open_points2, annulus2, apex2, second
 
 
 def closed_polygon_to_open_arc(
