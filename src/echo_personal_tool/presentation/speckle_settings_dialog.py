@@ -41,6 +41,11 @@ class SpeckleSettingsDialog(QDialog):
         self._preset_combo.addItem("Research", "research")
         self._preset_combo.addItem("Debug", "debug")
 
+        self._mode_combo = QComboBox(self)
+        self._mode_combo.addItem("Sequential (frame-to-frame)", "sequential")
+        self._mode_combo.addItem("Incremental (ED-anchored)", "incremental")
+        self._mode_combo.addItem("Bidirectional (ED-anchored)", "bidirectional")
+
         self._drift_compensation_check = QCheckBox(self)
         self._drift_compensation_check.setChecked(True)
 
@@ -72,6 +77,7 @@ class SpeckleSettingsDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Preset:", self._preset_combo)
+        form.addRow("Tracking mode:", self._mode_combo)
         form.addRow("Drift compensation:", self._drift_compensation_check)
         form.addRow("Wall thickness:", self._wall_thickness_spin)
         form.addRow(self._ed_auto_check)
@@ -117,4 +123,5 @@ class SpeckleSettingsDialog(QDialog):
             base,
             drift_compensation=self._drift_compensation_check.isChecked(),
             wall_thickness_mm=float(self._wall_thickness_spin.value()),
+            tracking_mode=str(self._mode_combo.currentData()),
         )
