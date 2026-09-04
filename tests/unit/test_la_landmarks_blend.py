@@ -27,14 +27,14 @@ def test_pure_ai_landmarks(dummy_mask):
     assert apex is not None
     # Septal should be left of lateral
     assert septal[0] < lateral[0]
-    # Apex should be above MA (smaller y = superior in image coords)
-    assert apex[1] < septal[1]
+    # In standard A4C, LA roof apex is deeper in the image (larger Y) than MA
+    assert apex[1] > septal[1]
 
 
 def test_blended_landmarks(dummy_mask):
-    user_septal = (80.0, 180.0)
-    user_lateral = (140.0, 180.0)
-    user_apex = (112.0, 40.0)
+    user_septal = (80.0, 50.0)
+    user_lateral = (140.0, 50.0)
+    user_apex = (112.0, 180.0)
     septal, lateral, apex = la_landmarks_from_mask_or_user(
         dummy_mask,
         user_septal=user_septal,
@@ -52,9 +52,9 @@ def test_blended_landmarks(dummy_mask):
 
 def test_blend_factor_zero_uses_user(dummy_mask):
     """blend_factor=0 should return pure user landmarks."""
-    user_septal = (80.0, 180.0)
-    user_lateral = (140.0, 180.0)
-    user_apex = (112.0, 40.0)
+    user_septal = (80.0, 50.0)
+    user_lateral = (140.0, 50.0)
+    user_apex = (112.0, 180.0)
     septal, lateral, apex = la_landmarks_from_mask_or_user(
         dummy_mask,
         user_septal=user_septal,
@@ -69,9 +69,9 @@ def test_blend_factor_zero_uses_user(dummy_mask):
 
 def test_blend_factor_one_uses_ai(dummy_mask):
     """blend_factor=1.0 should return pure AI landmarks."""
-    user_septal = (80.0, 180.0)
-    user_lateral = (140.0, 180.0)
-    user_apex = (112.0, 40.0)
+    user_septal = (80.0, 50.0)
+    user_lateral = (140.0, 50.0)
+    user_apex = (112.0, 180.0)
     septal, lateral, apex = la_landmarks_from_mask_or_user(
         dummy_mask,
         user_septal=user_septal,

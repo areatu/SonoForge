@@ -62,13 +62,13 @@ class TestLaMaskToContour:
         # Septal is left of lateral
         assert septal[0] < lateral[0]
 
-    def test_ellipse_apex_above_ma(self) -> None:
-        """Roof apex should be above (smaller Y) the MV chord midpoint."""
+    def test_ellipse_apex_below_ma(self) -> None:
+        """Roof apex should be deeper (larger Y) than the MV chord midpoint in A4C."""
         mask = _ellipse_mask(cy=130, cx=112, ry=50, rx=35)
         _, (septal, lateral), apex = la_mask_to_contour(mask)
 
         ma_mid_y = (septal[1] + lateral[1]) / 2.0
-        assert apex[1] < ma_mid_y
+        assert apex[1] > ma_mid_y
 
     def test_empty_mask_raises(self) -> None:
         mask = np.zeros((224, 224), dtype=np.uint8)
@@ -124,16 +124,16 @@ class TestLaMaskToContour:
 class TestExplainLaAutoRejectReason:
     def test_valid_contour_passes(self) -> None:
         pts = [
-            (80.0, 180.0),
+            (80.0, 80.0),
             (100.0, 130.0),
-            (120.0, 100.0),
-            (140.0, 80.0),
-            (160.0, 100.0),
+            (120.0, 160.0),
+            (140.0, 180.0),
+            (160.0, 160.0),
             (180.0, 130.0),
-            (200.0, 180.0),
+            (200.0, 80.0),
         ]
-        ma = ((80.0, 180.0), (200.0, 180.0))
-        apex = (140.0, 80.0)
+        ma = ((80.0, 80.0), (200.0, 80.0))
+        apex = (140.0, 180.0)
         c = _make_contour(pts, ma=ma, apex=apex)
         assert explain_la_auto_reject_reason(c, (0.15, 0.15)) is None
 
@@ -143,18 +143,18 @@ class TestExplainLaAutoRejectReason:
 
     def test_tiny_mv_span_rejects(self) -> None:
         c = _make_contour(
-            [(100, 180), (101, 150), (100, 120)],
-            ma=((100.0, 180.0), (100.5, 180.0)),
-            apex=(100, 120),
+            [(100, 80), (101, 110), (100, 140)],
+            ma=((100.0, 80.0), (100.5, 80.0)),
+            apex=(100, 140),
         )
         reason = explain_la_auto_reject_reason(c, None)
         assert reason is not None
 
     def test_mv_span_mm_too_small_rejects(self) -> None:
         c = _make_contour(
-            [(100, 180), (105, 150), (110, 120)],
-            ma=((100.0, 180.0), (110.0, 180.0)),
-            apex=(105, 120),
+            [(100, 80), (105, 110), (110, 140)],
+            ma=((100.0, 80.0), (110.0, 80.0)),
+            apex=(105, 140),
         )
         # 10px * 0.15mm/px = 1.5mm < 3mm threshold
         reason = explain_la_auto_reject_reason(c, (0.15, 0.15))
@@ -162,20 +162,20 @@ class TestExplainLaAutoRejectReason:
         assert "мало" in reason
 
     def test_inverted_geometry_rejects(self) -> None:
-        """Apex below MV chord → inverted LA."""
+        """Apex above MV chord (inside LV) → inverted LA."""
         c = _make_contour(
-            [(80, 100), (140, 80), (200, 100)],
+            [(80, 100), (140, 20), (200, 100)],
             ma=((80.0, 100.0), (200.0, 100.0)),
-            apex=(140, 200),  # below MA
+            apex=(140, 20),  # above MA in image coords
         )
         reason = explain_la_auto_reject_reason(c, None)
         assert reason is not None
         assert "инвертирована" in reason
 
     def test_centroid_outside_roi_rejects(self) -> None:
-        pts = [(80, 180), (100, 130), (120, 100), (140, 80), (160, 100), (180, 130), (200, 180)]
-        ma = ((80.0, 180.0), (200.0, 180.0))
-        apex = (140.0, 80.0)
+        pts = [(80, 80), (100, 130), (120, 160), (140, 180), (160, 160), (180, 130), (200, 80)]
+        ma = ((80.0, 80.0), (200.0, 80.0))
+        apex = (140.0, 180.0)
         c = _make_contour(pts, ma=ma, apex=apex)
         # ROI far away from contour
         reason = explain_la_auto_reject_reason(c, None, roi_xyxy=(0, 0, 10, 10))

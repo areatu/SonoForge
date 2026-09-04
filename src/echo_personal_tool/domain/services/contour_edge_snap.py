@@ -244,7 +244,7 @@ def snap_magnetic_point(
     normal: tuple[float, float],
     config: EdgeSnapConfig | None = None,
 ) -> tuple[float, float] | None:
-    """Magnetic drag snap: combine gradient + intensity ridge, prefer outward pull."""
+    """Magnetic drag snap: combine gradient + intensity ridge, preferring precise nearest edge."""
     cfg = config or magnetic_edge_snap_config_for_source("manual")
     gradient = snap_point(edge_map, x, y, normal, cfg)
     ridge = _snap_intensity_ridge(
@@ -254,6 +254,7 @@ def snap_magnetic_point(
         normal,
         max(float(cfg.search_radius_px), 1.0),
         max(int(cfg.profile_samples), 3),
+        outward_only=cfg.outward_only,
     )
     if gradient is None and ridge is None:
         return None
@@ -262,17 +263,10 @@ def snap_magnetic_point(
     if ridge is None:
         return gradient
 
-    normal_x, normal_y = normal
-    norm_len = float(np.hypot(normal_x, normal_y))
-    if norm_len <= 1e-6:
-        return gradient
-    normal_x /= norm_len
-    normal_y /= norm_len
-
-    def outward_delta(position: tuple[float, float]) -> float:
-        return (position[0] - x) * normal_x + (position[1] - y) * normal_y
-
-    return ridge if outward_delta(ridge) > outward_delta(gradient) else gradient
+    dist_grad = float(np.hypot(gradient[0] - x, gradient[1] - y))
+    dist_ridge = float(np.hypot(ridge[0] - x, ridge[1] - y))
+    # Prefer the Sobel gradient peak or the candidate closer to current position
+    return gradient if dist_grad <= dist_ridge + 2.0 else ridge
 
 
 def apply_soft_magnetic_snap(
@@ -288,7 +282,7 @@ def apply_soft_magnetic_snap(
     grab_index: int | None = None,
     min_radial_px: float = 0.35,
 ) -> list[tuple[float, float]]:
-    """Gently pull nodes toward edges along outward normals; cursor motion dominates."""
+    """Gently pull nodes toward edges along normal; cursor motion dominates."""
     if len(points) < 3:
         return list(points)
     pinned = pinned_indices if pinned_indices is not None else frozenset({0, len(points) - 1})
@@ -321,13 +315,15 @@ def apply_soft_magnetic_snap(
             continue
 
         radial = (target[0] - px) * normal_x + (target[1] - py) * normal_y
-        if radial <= min_radial_px:
+        abs_radial = abs(radial)
+        if abs_radial <= min_radial_px:
             continue
 
         influence = 1.0 if grabbed else weight
-        step = min(radial, max_step) * blend * influence
-        if step <= 1e-6:
+        step_mag = min(abs_radial, max_step) * blend * influence
+        if step_mag <= 1e-6:
             continue
+        step = float(np.copysign(step_mag, radial))
         updated[index] = (
             _clamp(px + step * normal_x, 0.0, edge_map.width - 1.0),
             _clamp(py + step * normal_y, 0.0, edge_map.height - 1.0),
@@ -473,12 +469,17 @@ def _snap_intensity_ridge(
     normal: tuple[float, float],
     radius: float,
     samples: int,
+    *,
+    outward_only: bool = False,
 ) -> tuple[float, float] | None:
-    """Find strongest intensity transition (bright→dark or dark→bright) along outward normal."""
+    """Find strongest intensity transition (bright→dark or dark→bright) along normal."""
     if edge_map.intensity is None:
         return None
     normal_x, normal_y = normal
-    offsets = np.linspace(0.0, radius, max(samples, 3))
+    if outward_only:
+        offsets = np.linspace(0.0, radius, max(samples, 3))
+    else:
+        offsets = np.linspace(-radius, radius, max(samples, 3))
     intensities: list[float] = []
     for offset in offsets:
         sample_x = x + float(offset) * normal_x

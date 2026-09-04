@@ -105,10 +105,8 @@ def run_stepped_refine_pass(
     new_locked = set(locked_indices)
     newly_locked = 0
 
-    if cine:
-        search_offsets = np.linspace(-step_px, step_px, max(7, step_px * 2 + 1)).tolist()
-    else:
-        search_offsets = [0, -step_px, step_px]
+    search_samples = max(7, int(step_px * 2 + 1))
+    search_offsets = np.linspace(-step_px, step_px, search_samples).tolist()
 
     for index in range(1, len(points) - 1):
         if index in locked_indices:

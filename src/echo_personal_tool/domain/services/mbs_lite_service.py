@@ -38,20 +38,20 @@ _MIN_ANNULUS_LENGTH_PX = 10.0
 _MIN_APEX_DISTANCE_PX = 3.0
 _TEMPLATE_POINT_COUNT = 81
 
-# LA / RA open-arc template: short diameter = long diameter × ratio (default 85%).
+# LA / RA open-arc template: short diameter = long diameter × ratio (default 68%).
 # Long diameter = MA midpoint → apex; short axis is perpendicular to that line.
-_ATRIAL_ELLIPSE_SHORT_AXIS_RATIO = 0.85
+_ATRIAL_ELLIPSE_SHORT_AXIS_RATIO = 0.68
 
-# Active contour config for atrial chambers (LA/RA) — softer internal force,
-# stronger edge force so the mask boundary acts as a loose shape prior.
+# Active contour config for atrial chambers (LA/RA) — balanced internal/external forces,
+# so the mask boundary acts as a guide without inflating the thin atrial border.
 _ATRIAL_CONTOUR_CONFIG = ActiveContourConfig(
     search_radius_px=10.0,
-    k_int=0.15,
-    k_ext=1.2,
-    k_smooth=0.4,
-    step_size=0.4,
-    max_iterations=60,
-    gradient_samples=21,
+    k_int=0.20,
+    k_ext=1.0,
+    k_smooth=0.35,
+    step_size=0.35,
+    max_iterations=50,
+    gradient_samples=25,
 )
 
 
@@ -59,9 +59,9 @@ def _adaptive_superellipse_n(aspect_ratio: float) -> float:
     """Compute superellipse exponent from short/long axis ratio.
 
     aspect_ratio ~0.4 -> n=2.0 (ellipse)
-    aspect_ratio ~0.85 -> n=3.5 (rounded rectangle)
+    aspect_ratio ~0.7 -> n=2.1 (smooth natural atrial ellipse, avoiding squircle distortion)
     """
-    return 2.0 + 2.0 * max(0.0, min(1.0, (aspect_ratio - 0.4) / 0.45))
+    return 2.0 + 0.3 * max(0.0, min(1.0, (aspect_ratio - 0.4) / 0.4))
 
 
 def _warp_elliptical_open_arc(

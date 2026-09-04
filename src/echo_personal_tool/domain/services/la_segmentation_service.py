@@ -51,8 +51,8 @@ def _la_landmarks_from_mask(
 ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
     """Extract MV septal/lateral + roof apex from LA binary mask.
 
-    LA on A4C: MV annulus is at the **inferior** (bottom) of the cavity bbox,
-    roof apex is at the **superior** (top).
+    LA on standard A4C: MV annulus is at the **superior** (top, smaller Y) of the cavity bbox,
+    roof apex is at the **inferior** (bottom, larger Y).
     """
     binary = np.asarray(mask) > 0
     ys, xs = np.where(binary)
@@ -64,17 +64,17 @@ def _la_landmarks_from_mask(
     y_max = int(ys.max())
     height = y_max - y_min + 1
 
-    # --- MV annulus: inferior 15-20% of mask bbox (widest horizontal span) ---
+    # --- MV annulus: superior 15-20% of mask bbox (top of LA, adjacent to LV base) ---
     band_depth = max(3, int(round(0.18 * height)))
-    inferior_band = (y_max - band_depth, y_max)
-    band_xs = xs[(ys >= inferior_band[0]) & (ys <= inferior_band[1])]
-    band_ys = ys[(ys >= inferior_band[0]) & (ys <= inferior_band[1])]
+    superior_band = (y_min, y_min + band_depth)
+    band_xs = xs[(ys >= superior_band[0]) & (ys <= superior_band[1])]
+    band_ys = ys[(ys >= superior_band[0]) & (ys <= superior_band[1])]
     if band_xs.size < 2:
         # fallback: wider band (25%)
         band_depth = max(3, int(round(0.25 * height)))
-        inferior_band = (y_max - band_depth, y_max)
-        band_xs = xs[(ys >= inferior_band[0]) & (ys <= inferior_band[1])]
-        band_ys = ys[(ys >= inferior_band[0]) & (ys <= inferior_band[1])]
+        superior_band = (y_min, y_min + band_depth)
+        band_xs = xs[(ys >= superior_band[0]) & (ys <= superior_band[1])]
+        band_ys = ys[(ys >= superior_band[0]) & (ys <= superior_band[1])]
     if band_xs.size < 2:
         msg = "cannot locate MV annulus on LA mask"
         raise ValueError(msg)
@@ -104,21 +104,21 @@ def _la_landmarks_from_mask(
     if septal[0] > lateral[0]:
         septal, lateral = lateral, septal
 
-    # --- Roof apex: superior margin median ---
+    # --- Roof apex: inferior margin median (bottom of LA, far field) ---
     apex_band_depth = max(3, int(round(0.10 * height)))
-    superior_band = (y_min, y_min + apex_band_depth)
-    apex_ys = ys[(ys >= superior_band[0]) & (ys <= superior_band[1])]
-    apex_xs = xs[(ys >= superior_band[0]) & (ys <= superior_band[1])]
+    inferior_band = (y_max - apex_band_depth, y_max)
+    apex_ys = ys[(ys >= inferior_band[0]) & (ys <= inferior_band[1])]
+    apex_xs = xs[(ys >= inferior_band[0]) & (ys <= inferior_band[1])]
     if apex_xs.size > 0:
         apex = (float(np.median(apex_xs)), float(np.median(apex_ys)))
     else:
-        # Fallback: median of all mask points above midpoint
+        # Fallback: median of all mask points below midpoint
         mid_y = (y_min + y_max) / 2.0
-        above = ys < mid_y
-        if np.any(above):
-            apex = (float(np.median(xs[above])), float(np.median(ys[above])))
+        below = ys > mid_y
+        if np.any(below):
+            apex = (float(np.median(xs[below])), float(np.median(ys[below])))
         else:
-            apex = (float(np.median(xs)), float(y_min + 5))
+            apex = (float(np.median(xs)), float(y_max - 5))
 
     return septal, lateral, apex
 
@@ -428,9 +428,9 @@ def explain_la_auto_reject_reason(
             if mv_span_mm < _MIN_LA_MV_SPAN_MM:
                 return tr("domain.la_seg.annulus_too_small", mv_span_mm=mv_span_mm, min_mm=_MIN_LA_MV_SPAN_MM)
 
-    # Apex must be above MV chord (image Y: smaller Y = superior)
+    # Apex must be below MV chord in standard A4C (image Y: larger Y = deeper/inferior)
     ma_mid_y = (septal[1] + lateral[1]) / 2.0
-    if apex is not None and apex[1] >= ma_mid_y + 10.0:
+    if apex is not None and apex[1] <= ma_mid_y - 10.0:
         return tr("domain.la_seg.inverted")
 
     # Long axis: MA midpoint → apex

@@ -133,9 +133,11 @@ def _outward_normal(
     tangent_y /= length
     normal_x = -tangent_y
     normal_y = tangent_x
-    to_center_x = current[0] - 0.5 * (previous[0] + following[0])
-    to_center_y = current[1] - 0.5 * (previous[1] + following[1])
-    if normal_x * to_center_x + normal_y * to_center_y > 0.0:
+    centroid_x = sum(float(point[0]) for point in points) / len(points)
+    centroid_y = sum(float(point[1]) for point in points) / len(points)
+    to_interior_x = centroid_x - current[0]
+    to_interior_y = centroid_y - current[1]
+    if normal_x * to_interior_x + normal_y * to_interior_y > 0.0:
         normal_x = -normal_x
         normal_y = -normal_y
     return (normal_x, normal_y)
