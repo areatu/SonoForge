@@ -129,6 +129,7 @@ class OrthancStudyDialog(QDialog):
         username: str | None = None,
         password: str | None = None,
         query_service=None,  # DicomQueryService | None
+        retrieve_service=None,  # DicomRetrieveService | None
     ) -> None:
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -139,7 +140,12 @@ class OrthancStudyDialog(QDialog):
         self._username = username
         self._password = password
         self._query_service = query_service
-        self._retrieve_service = make_dicom_retrieve_service(server_settings) if server_settings is not None else None
+        # The caller may inject a retrieve service sharing the same HTTP/DIMSE
+        # clients (L4). Fall back to building one from settings for callers
+        # that do not provide it (kept for backwards compatibility).
+        self._retrieve_service = retrieve_service
+        if self._retrieve_service is None and server_settings is not None:
+            self._retrieve_service = make_dicom_retrieve_service(server_settings)
         self._result: tuple[str, str] | None = None
         self._downloading = False
         self._worker: OrthancDownloadWorker | None = None

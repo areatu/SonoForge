@@ -38,16 +38,37 @@ def make_dicom_web_client(settings: ServerSettings) -> DicomWebClient:
     return OrthancDicomWebClient.from_settings(settings)
 
 
-def make_dicom_query_service(settings: ServerSettings) -> DicomQueryService:
+def make_dicom_query_service(
+    settings: ServerSettings,
+    *,
+    web: DicomWebClient | None = None,
+    dimse: DimseClient | None = None,
+) -> DicomQueryService:
+    """Build the unified query service.
+
+    ``web``/``dimse`` may be injected to share a single client instance
+    between the query service, the retrieve service and the dialog (avoids
+    duplicating HTTP connection pools per component). When omitted they are
+    created from ``settings`` (legacy behaviour).
+    """
     return DicomQueryService(
-        web=make_dicom_web_client(settings),
-        dimse=make_dimse_client(settings),
+        web=web if web is not None else make_dicom_web_client(settings),
+        dimse=dimse if dimse is not None else make_dimse_client(settings),
         source=parse_query_source(settings.query_source),
     )
 
 
-def make_dicom_retrieve_service(settings: ServerSettings):
+def make_dicom_retrieve_service(
+    settings: ServerSettings,
+    *,
+    web_client: DicomWebClient | None = None,
+    dimse_client: DimseClient | None = None,
+):
     """Build DicomRetrieveService for OrthancDownloadWorker.
+
+    ``web_client``/``dimse_client`` may be injected to share a single client
+    instance across the query service, retrieve service and dialog; when
+    omitted they are created from ``settings`` (legacy behaviour).
 
     Non-blocking: no network probe is performed at build time (auto
     fallback is resolved at retrieval time). The HTTP client is registered
@@ -58,18 +79,21 @@ def make_dicom_retrieve_service(settings: ServerSettings):
         make_retrieve_service,
     )
 
-    web: DicomWebClient | None
-    if settings.use_mock:
-        web = FakeDicomWebClient()
-    elif settings.url.strip():
-        web = OrthancDicomWebClient.from_settings(settings)
-    else:
-        web = None
+    web: DicomWebClient | None = web_client
+    if web is None:
+        if settings.use_mock:
+            web = FakeDicomWebClient()
+        elif settings.url.strip():
+            web = OrthancDicomWebClient.from_settings(settings)
+        else:
+            web = None
+    if dimse_client is None:
+        dimse_client = make_dimse_client(settings)
 
     service = make_retrieve_service(
         settings,
         web_client=web,
-        dimse_client=make_dimse_client(settings),
+        dimse_client=dimse_client,
     )
     if web is not None and hasattr(web, "cancel_inflight"):
         service.set_cancel_web_hook(web.cancel_inflight)

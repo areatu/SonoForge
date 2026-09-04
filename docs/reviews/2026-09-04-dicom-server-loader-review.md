@@ -198,7 +198,7 @@ tr("orthanc.series_error_status", current=..., total=..., message=message)
 | L1 | ✅ | Правильный i18n-ключ/аргументы в статусе ошибки серии (`orthanc.series_error`) | `orthanc_study_dialog.py` |
 | L2 | ✅ | Скрытые фильтром дат исследования исключены из сбора отмеченных серий | `orthanc_study_dialog.py` |
 | L3 | ✅ | Сохранение настроек не сбрасывает `query_source`/`network_timeout`; валидация портов с понятным сообщением | `server_settings_dialog.py`, i18n |
+| L4 | ✅ | Общий HTTP/DIMSE-клиент: фабрики `make_dicom_query_service` / `make_dicom_retrieve_service` принимают инжектированные `web`/`dimse`-клиенты; диалог принимает `retrieve_service`; `main_window._open_orthanc_dialog` строит ОДИН web- и ОДИН DIMSE-клиент и делит их между query service, retrieve service и диалогом (диалог закрывает клиент при shutdown). Fallback «создать из настроек» сохранён для обратной совместимости | `server_client_factory.py`, `orthanc_study_dialog.py`, `main_window.py` |
 | L5 | ⚠️ | Обезопасен `int()` парсера серий (`_as_int`). Переименование «WADO-RS»→«Orthanc REST» не делал (безопасно, но требует правок UI/локалей) | `orthanc_dicom_json.py` |
-| L4 | ⏳ | Не делал (тройной клиент в `main_window`): требует рефакторинга фабрик, вне рамок этого прохода | — |
 
 Проверка: не-GUI unit-наборы (`test_dicom_retrieve_service*`, `test_dicom_query_service*`, `test_dimse_client*`, `test_orthanc_client*`, `test_orthanc_download_worker`, `test_p4_skip_scan_worker`, `test_server_settings` и др.) — зелёные. GUI-тесты диалога в песочнице запустить нельзя (нет системных `libGL`/`libEGL`), нужен прогон CI на GUI-маркерах.
