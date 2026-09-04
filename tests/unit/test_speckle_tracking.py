@@ -23,9 +23,12 @@ from echo_personal_tool.domain.services.myocardial_zone import (
 )
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_gaussian_pyramid,
+    build_zone_mask,
+    build_zone_mask_from_kernels,
     track_cine,
     track_cine_bidirectional,
     track_cine_incremental,
+    track_cine_sequential,
 )
 from echo_personal_tool.domain.services.strain_computation import (
     compute_gls,
@@ -284,6 +287,133 @@ class TestIncrementalTracking:
         results = track_cine_incremental(frames, kernels, ed_index=0, config=config)
         assert len(results) == n_frames - 1
         assert results[-1].reference_frame == 0
+
+
+def _make_u_shaped_zone() -> tuple[MyocardialZone, np.ndarray]:
+    """Open A4C-like endo contour (U-shape) with an outward epi contour."""
+    t = np.linspace(0, np.pi, 128)
+    endo = np.stack([64 + 30 * np.cos(t), 40 + 55 * np.sin(t)], axis=1)
+    center = np.mean(endo, axis=0)
+    dirs = endo - center
+    dirs = dirs / (np.linalg.norm(dirs, axis=1, keepdims=True) + 1e-9)
+    epi = endo + dirs * 12.0
+    return (
+        MyocardialZone(
+            endo_points=endo,
+            epi_points=epi,
+            thickness_mm=8.0,
+            pixel_spacing=(0.5, 0.5),
+        ),
+        endo,
+    )
+
+
+class TestZoneMaskFromKernels:
+    def test_ring_mask_excludes_lv_cavity(self) -> None:
+        """The mask must be a myocardial ring, not a convex hull over the cavity."""
+        zone, endo = _make_u_shaped_zone()
+        shape = (128, 128)
+        ring = build_zone_mask(zone, shape)
+
+        endo_kernels = [
+            TrackingKernel(center=(float(endo[i, 0]), float(endo[i, 1])), node_index=i, layer="endo")
+            for i in range(0, 128, 4)
+        ]
+        epi_kernels = [
+            TrackingKernel(center=(float(zone.epi_points[i, 0]), float(zone.epi_points[i, 1])), node_index=i, layer="epi")
+            for i in range(0, 128, 4)
+        ]
+        kernels = endo_kernels + epi_kernels
+        positions = np.array([k.center for k in kernels])
+        layers = np.array([k.layer for k in kernels])
+
+        mask = build_zone_mask_from_kernels(
+            positions,
+            layers == "endo",
+            shape,
+            wall_thickness_px=20,
+            epi_layer_mask=layers == "epi",
+        )
+
+        assert mask.any()
+        # high agreement with the geometrically correct ring
+        jaccard = (mask & ring).sum() / max((mask | ring).sum(), 1)
+        assert jaccard > 0.5
+        # the LV cavity centre must not be inside the mask
+        centroid = np.mean(endo, axis=0)
+        assert not mask[int(centroid[1]), int(centroid[0])]
+
+    def test_fallback_to_normal_expansion_without_epi_layer(self) -> None:
+        """Without an epicardial layer, the mask expands endo outward along normals."""
+        zone, endo = _make_u_shaped_zone()
+        shape = (128, 128)
+        endo_kernels = [
+            TrackingKernel(center=(float(endo[i, 0]), float(endo[i, 1])), node_index=i, layer="endo")
+            for i in range(0, 128, 4)
+        ]
+        positions = np.array([k.center for k in endo_kernels])
+        layers = np.array([k.layer for k in endo_kernels])
+
+        mask = build_zone_mask_from_kernels(positions, layers == "endo", shape, wall_thickness_px=12)
+        assert mask.any()
+        centroid = np.mean(endo, axis=0)
+        assert not mask[int(centroid[1]), int(centroid[0])]
+
+
+class TestSequentialTracking:
+    def _decorrelated_cine(self) -> tuple[np.ndarray, list[TrackingKernel], float]:
+        """Speckle cine with inter-frame decorrelation growing away from ED."""
+        from scipy.ndimage import shift as ndimage_shift
+
+        rng = np.random.default_rng(11)
+        h = w = 180
+        base = rng.normal(120, 28, (h, w)).astype(np.float32)
+        xx = np.linspace(-1, 1, w)[None, :]
+        yy = np.linspace(-1, 1, h)[:, None]
+        base += 18 * np.sin(3 * xx) + 18 * np.sin(3 * yy)
+        n_frames = 25
+        amp = 16.0
+        frames = np.zeros((n_frames, h, w), dtype=np.float32)
+        for t in range(n_frames):
+            d = amp * np.sin(np.pi * t / (n_frames - 1))
+            frames[t] = ndimage_shift(base, (0, d), order=1, mode="nearest")
+            frames[t] += rng.normal(0, 2 + 0.5 * t, (h, w)).astype(np.float32)
+        kernels = [
+            TrackingKernel(center=(90.0, y), node_index=i, layer="endo")
+            for i, y in enumerate(np.linspace(70, 110, 10))
+        ]
+        return frames, kernels, amp
+
+    def test_sequential_keeps_high_ncc_at_es(self) -> None:
+        """Frame-to-frame tracking must not decorrelate at end-systole."""
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=True)
+        results = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        per_frame_ncc = np.array([r.ncc_scores.mean() for r in results])
+        assert (per_frame_ncc < config.ncc_threshold).mean() < 0.2
+        assert per_frame_ncc.mean() > 0.6
+
+    def test_sequential_more_accurate_than_ed_anchored(self) -> None:
+        """Sequential tracking beats ED-anchored on decorrelated speckle."""
+        frames, kernels, amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=True)
+        seq = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        bidi = track_cine_bidirectional(frames, kernels, ed_index=0, config=config)
+
+        peak = 12  # frame with max displacement (0-based index 12 of 25)
+        true_x = np.array([k.center[0] + amp for k in kernels])
+        err_seq = np.abs(seq[peak - 1].kernel_positions[:, 0] - true_x).mean()
+        err_bidi = np.abs(bidi[peak - 1].kernel_positions[:, 0] - true_x).mean()
+        assert err_seq < 3.0
+        assert err_seq < err_bidi
+
+    def test_sequential_returns_correct_shape(self) -> None:
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=True)
+        results = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        assert len(results) == frames.shape[0] - 1
+        assert results[-1].reference_frame == 0
+        assert results[-1].kernel_positions.shape == (len(kernels), 2)
 
 
 class TestCardiacCycleDetector:

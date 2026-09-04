@@ -32,6 +32,7 @@ from echo_personal_tool.domain.services.speckle_tracking import (
     preprocess_echo_frame,
     track_cine_bidirectional,
     track_cine_incremental,
+    track_cine_sequential,
 )
 from echo_personal_tool.domain.services.strain_computation import (
     apply_drift_compensation,
@@ -178,6 +179,15 @@ class SpeckleTrackingWorker(QRunnable):
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                     zone_mask=zone_mask,
                     wall_thickness_px=wall_thickness_px,
+                )
+            elif config.tracking_mode == "sequential":
+                tracking_results = track_cine_sequential(
+                    preprocessed,
+                    kernels,
+                    ed_index=track_ed_index,
+                    config=config,
+                    progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
+                    zone_mask=zone_mask,
                 )
             else:
                 tracking_results = track_cine_bidirectional(
