@@ -13,6 +13,21 @@ from echo_personal_tool.domain.services.ecg_rpeak_detector import detect_r_peaks
 _DEFAULT_CONFIDENCE_THRESHOLD = 0.4
 
 
+def detect_ed_es_from_area_curve(
+    samples: tuple[tuple[int, float], ...],
+    n_frames: int,
+) -> tuple[int, int] | None:
+    """Select ED=max area and ES=min area from stored Simpson samples."""
+    by_frame = {int(frame): float(area) for frame, area in samples if 0 <= int(frame) < n_frames and np.isfinite(area)}
+    if len(by_frame) < 2:
+        return None
+    frames = np.array(sorted(by_frame), dtype=np.int64)
+    areas = np.array([by_frame[int(frame)] for frame in frames], dtype=np.float64)
+    if np.ptp(areas) <= 1e-8:
+        return None
+    return int(frames[np.argmax(areas)]), int(frames[np.argmin(areas)])
+
+
 def map_rpeaks_to_frames(
     r_peak_result: RPeakResult | None,
     frame_time_ms: float,
@@ -84,15 +99,15 @@ def detect_ed_es_for_cine(
     n_frames: int,
     *,
     r_peak_result: RPeakResult | None = None,
+    simpson_fallback: Callable[[], tuple[int, int] | None] | None = None,
     image_fallback: Callable[[], tuple[int, int]] | None = None,
     confidence_threshold: float = _DEFAULT_CONFIDENCE_THRESHOLD,
 ) -> EcEDFrameMapping:
     """Detect ED/ES for a CINE sequence with an ECG-first policy.
 
     Prefers ECG R-peaks when a usable waveform with reliable confidence is
-    available; otherwise falls back to the image-based detector (evaluated
-    lazily via *image_fallback*) or a neutral default. The returned mapping's
-    ``source`` reflects the winner ("ecg" or "image").
+    available; otherwise falls back to a stored Simpson area curve, then the
+    image-based detector. The returned mapping's ``source`` reflects the winner.
     """
     if n_frames <= 0:
         return EcEDFrameMapping(0, 0, 0, 0, source="image")
@@ -106,6 +121,24 @@ def detect_ed_es_for_cine(
     ):
         mapping = map_rpeaks_to_frames(r_peak_result, frame_time_ms, n_frames)
         return replace(mapping, r_peak_result=r_peak_result)
+
+    if simpson_fallback is not None:
+        try:
+            simpson_phases = simpson_fallback()
+        except Exception:  # noqa: BLE001
+            simpson_phases = None
+        if simpson_phases is not None:
+            ed, es = simpson_phases
+            ed = int(np.clip(ed, 0, n_frames - 1))
+            es = int(np.clip(es, 0, n_frames - 1))
+            if ed != es:
+                return EcEDFrameMapping(
+                    ed_frame_index=ed,
+                    es_frame_index=es,
+                    cycle_start_frame=min(ed, es),
+                    cycle_end_frame=max(ed, es),
+                    source="simpson",
+                )
 
     if image_fallback is not None:
         try:

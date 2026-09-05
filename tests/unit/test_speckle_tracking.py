@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -25,8 +27,10 @@ from echo_personal_tool.domain.services.speckle_tracking import (
     build_gaussian_pyramid,
     build_zone_mask,
     build_zone_mask_from_kernels,
+    estimate_global_translations,
     log_reference_max,
     preprocess_echo_frame,
+    remove_global_translations,
     track_cine,
     track_cine_bidirectional,
     track_cine_incremental,
@@ -322,7 +326,9 @@ class TestZoneMaskFromKernels:
             for i in range(0, 128, 4)
         ]
         epi_kernels = [
-            TrackingKernel(center=(float(zone.epi_points[i, 0]), float(zone.epi_points[i, 1])), node_index=i, layer="epi")
+            TrackingKernel(
+                center=(float(zone.epi_points[i, 0]), float(zone.epi_points[i, 1])), node_index=i, layer="epi"
+            )
             for i in range(0, 128, 4)
         ]
         kernels = endo_kernels + epi_kernels
@@ -403,8 +409,7 @@ class TestSequentialTracking:
             frames[t] = ndimage_shift(base, (0, d), order=1, mode="nearest")
             frames[t] += rng.normal(0, 2 + 0.5 * t, (h, w)).astype(np.float32)
         kernels = [
-            TrackingKernel(center=(90.0, y), node_index=i, layer="endo")
-            for i, y in enumerate(np.linspace(70, 110, 10))
+            TrackingKernel(center=(90.0, y), node_index=i, layer="endo") for i, y in enumerate(np.linspace(70, 110, 10))
         ]
         return frames, kernels, amp
 
@@ -438,6 +443,86 @@ class TestSequentialTracking:
         assert len(results) == frames.shape[0] - 1
         assert results[-1].reference_frame == 0
         assert results[-1].kernel_positions.shape == (len(kernels), 2)
+
+
+class TestGlobalMotionCompensation:
+    def test_estimate_translations_identity(self) -> None:
+        """Identical frames should yield zero translation for the reference frame."""
+        frames = np.random.randint(50, 200, (5, 64, 64), dtype=np.uint8)
+        translations = estimate_global_translations(frames, reference_index=0)
+        assert translations.shape == (5, 2)
+        assert np.allclose(translations[0], 0.0)
+
+    def test_estimate_translations_shifted_frame(self) -> None:
+        """A horizontally shifted frame should produce a non-zero translation."""
+        base = np.random.randint(50, 200, (64, 64), dtype=np.uint8)
+        shifted = np.roll(base, shift=5, axis=1)
+        frames = np.stack([base, shifted])
+        translations = estimate_global_translations(frames, reference_index=0)
+        assert translations.shape == (2, 2)
+        assert np.abs(translations[1, 0]) > 1.0
+
+    def test_remove_translations_basic(self) -> None:
+        """remove_global_translations subtracts per-frame translation from positions."""
+        positions = np.array(
+            [
+                [[10.0, 20.0], [30.0, 40.0]],
+                [[12.0, 22.0], [32.0, 42.0]],
+            ]
+        )
+        translations = np.array([[0.0, 0.0], [2.0, 2.0]])
+        corrected = remove_global_translations(positions, translations)
+        assert corrected.shape == positions.shape
+        np.testing.assert_allclose(corrected[0], positions[0])
+        np.testing.assert_allclose(corrected[1], positions[1] - translations[1])
+
+    def test_remove_translations_wrong_shape_returns_copy(self) -> None:
+        """Mismatched shapes should return an unchanged copy."""
+        positions = np.array([[[10.0, 20.0]]])
+        translations = np.array([[0.0, 0.0], [1.0, 1.0]])
+        corrected = remove_global_translations(positions, translations)
+        np.testing.assert_allclose(corrected, positions)
+
+    def test_remove_translations_2d_returns_copy(self) -> None:
+        """Non-3D positions should be returned unchanged."""
+        positions = np.array([[10.0, 20.0]])
+        translations = np.array([[1.0, 1.0]])
+        corrected = remove_global_translations(positions, translations)
+        np.testing.assert_allclose(corrected, positions)
+
+    def test_estimate_translations_empty(self) -> None:
+        """Empty frames array should return empty translations."""
+        frames = np.zeros((0, 64, 64), dtype=np.uint8)
+        translations = estimate_global_translations(frames, reference_index=0)
+        assert translations.shape == (0, 2)
+
+    def test_estimate_translations_clamps_reference_index(self) -> None:
+        """Out-of-range reference_index should be clamped."""
+        frames = np.random.randint(0, 256, (3, 32, 32), dtype=np.uint8)
+        translations = estimate_global_translations(frames, reference_index=999)
+        assert translations.shape == (3, 2)
+        # Last frame is reference; its translation should be zero
+        assert np.allclose(translations[-1], 0.0)
+
+
+class TestCreateMyocardialZoneEpiPoints:
+    def test_custom_epi_points_used(self) -> None:
+        """When epi_points are provided, they should be resampled and used."""
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        custom_epi = endo + 10.0
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0, epi_points=custom_epi)
+        assert zone.epi_points.shape == (128, 2)
+        # Epi should be roughly 10 pixels away from endo (resampled)
+        endo_resampled = zone.endo_points
+        dists = np.linalg.norm(zone.epi_points - endo_resampled, axis=1)
+        assert np.mean(dists) > 5.0
+
+    def test_none_epi_points_auto_expand(self) -> None:
+        """When epi_points is None, automatic expansion should be used."""
+        endo = np.array([[50, 50], [60, 50], [60, 60], [50, 60]], dtype=np.float64)
+        zone_auto = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        zone_custom = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0, epi_points=None)
+        np.testing.assert_allclose(zone_auto.epi_points, zone_custom.epi_points)
 
 
 class TestCardiacCycleDetector:
@@ -526,3 +611,126 @@ class TestCardiacCycleDetector:
         assert ed in (2, 3, 4)
         assert es in (8, 9, 10)
         assert ed != es
+
+
+_GOLD_DIR = Path("/home/areatu/ECHO2026_src/gold")
+_GOLD_DCM = _GOLD_DIR / "gold1.dcm"
+_has_pydicom = True
+try:
+    import pydicom  # noqa: F401
+except ImportError:
+    _has_pydicom = False
+
+
+def _load_gold_cine(path: Path) -> np.ndarray:
+    """Load a DICOM cine file as (N, H, W) uint8 array."""
+    import pydicom
+
+    ds = pydicom.dcmread(str(path), force=True)
+    arr = np.asarray(ds.pixel_array)
+    if arr.ndim == 2:
+        frames = arr[np.newaxis, ...]
+    elif arr.ndim == 3:
+        frames = arr
+    elif arr.ndim == 4:
+        frames = arr[..., 0] if arr.shape[-1] in (3, 4) else arr
+    else:
+        raise ValueError(f"Unsupported ndim {arr.ndim}")
+    # Normalize to uint8
+    if frames.dtype != np.uint8:
+        fmin, fmax = float(frames.min()), float(frames.max())
+        if fmax - fmin > 0:
+            frames = ((frames - fmin) / (fmax - fmin) * 255).astype(np.uint8)
+        else:
+            frames = np.zeros_like(frames, dtype=np.uint8)
+    return np.ascontiguousarray(frames)
+
+
+@pytest.mark.skipif(
+    not _has_pydicom or not _GOLD_DCM.exists(),
+    reason="pydicom or gold DICOM not available",
+)
+class TestGlobalMotionCompensationGold:
+    """Smoke-test global motion compensation on real gold DICOM data."""
+
+    def test_gold_cine_loads(self) -> None:
+        frames = _load_gold_cine(_GOLD_DCM)
+        assert frames.ndim == 3
+        assert frames.shape[0] >= 5
+        assert frames.dtype == np.uint8
+
+    def test_global_motion_does_not_degrade_ncc(self) -> None:
+        """Global motion compensation should not reduce mean NCC."""
+        frames = _load_gold_cine(_GOLD_DCM)
+        n_frames = min(frames.shape[0], 20)
+        frames = frames[:n_frames]
+        h, w = frames.shape[1], frames.shape[2]
+
+        # Create synthetic circular zone in center
+        from echo_personal_tool.domain.services.myocardial_zone import create_myocardial_zone
+
+        cx, cy = w / 2, h / 2
+        radius = min(h, w) * 0.2
+        n_pts = 64
+        angles = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
+        endo = np.column_stack(
+            [
+                cx + radius * np.cos(angles),
+                cy + radius * np.sin(angles),
+            ]
+        )
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        kernels = sample_kernels_in_zone(zone, num_kernels_per_ring=8, num_rings=2)
+
+        config_on = SpeckleConfig(
+            global_motion_compensation=True,
+            bidirectional=True,
+            drift_compensation=True,
+        )
+        config_off = SpeckleConfig(
+            global_motion_compensation=False,
+            bidirectional=True,
+            drift_compensation=True,
+        )
+
+        results_on = track_cine_sequential(frames, kernels, ed_index=0, config=config_on)
+        results_off = track_cine_sequential(frames, kernels, ed_index=0, config=config_off)
+
+        mean_ncc_on = float(np.mean([r.ncc_scores.mean() for r in results_on]))
+        mean_ncc_off = float(np.mean([r.ncc_scores.mean() for r in results_off]))
+
+        # Global motion compensation should not reduce NCC significantly
+        assert mean_ncc_on >= mean_ncc_off * 0.9
+
+    def test_remove_translations_on_gold_positions(self) -> None:
+        """Translations from gold cine should be subtractable from positions."""
+        frames = _load_gold_cine(_GOLD_DCM)
+        n_frames = min(frames.shape[0], 10)
+        frames = frames[:n_frames]
+        h, w = frames.shape[1], frames.shape[2]
+
+        cx, cy = w / 2, h / 2
+        radius = min(h, w) * 0.2
+        n_pts = 32
+        angles = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
+        endo = np.column_stack(
+            [
+                cx + radius * np.cos(angles),
+                cy + radius * np.sin(angles),
+            ]
+        )
+        zone = create_myocardial_zone(endo, pixel_spacing=(0.5, 0.5), thickness_mm=8.0)
+        kernels = sample_kernels_in_zone(zone, num_kernels_per_ring=4, num_rings=2)
+
+        config = SpeckleConfig(global_motion_compensation=False, bidirectional=True)
+        results = track_cine_sequential(frames, kernels, ed_index=0, config=config)
+
+        positions = np.array([r.kernel_positions for r in results])
+        translations = estimate_global_translations(frames, reference_index=0)
+        corrected = remove_global_translations(positions, translations)
+
+        assert corrected.shape == positions.shape
+        # Translations may be near zero for stable data; verify output is finite
+        assert np.all(np.isfinite(corrected))
+        # The reference frame's positions should be unchanged
+        np.testing.assert_allclose(corrected[0], positions[0])
