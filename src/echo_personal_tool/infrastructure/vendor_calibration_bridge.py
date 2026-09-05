@@ -52,6 +52,33 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
     return float(min_x), float(min_y), float(max_x), float(max_y)
 
 
+def _merge_ge_spectral_regions(
+    regions: object,
+    selected: Dataset,
+) -> tuple[float, float, float, float] | None:
+    """Join GE spectral regions split by a black scale strip."""
+    selected_bounds = _region_bounds(selected)
+    if selected_bounds is None:
+        return None
+    _, y0, _, y1 = selected_bounds
+    candidates = []
+    for region in regions or []:
+        bounds = _region_bounds(region)
+        if bounds is None or not is_spectral_doppler_region(region):
+            continue
+        x0_r, y0_r, x1_r, y1_r = bounds
+        if abs(y0_r - y0) <= 2.0 and abs(y1_r - y1) <= 2.0:
+            candidates.append(bounds)
+    if len(candidates) < 2:
+        return selected_bounds
+    return (
+        min(bounds[0] for bounds in candidates),
+        min(bounds[1] for bounds in candidates),
+        max(bounds[2] for bounds in candidates),
+        max(bounds[3] for bounds in candidates),
+    )
+
+
 def _compute_baseline_with_profile(
     profile: VendorProfile,
     region: Dataset,
@@ -140,6 +167,10 @@ def try_parse_with_vendor_profile(
     if bounds is None:
         return None
 
+    if profile.vendor is Vendor.GE:
+        merged = _merge_ge_spectral_regions(regions, best_region)
+        if merged is not None:
+            bounds = merged
     x0, y0, x1, y1 = bounds
     roi = DopplerSpectrogramRoi(
         x0=x0,
@@ -201,6 +232,16 @@ def try_parse_with_vendor_profile(
 
     # 6. Compute baseline using vendor profile
     baseline_y = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
+    if profile.vendor is Vendor.GE:
+        # GE screen exports may encode ReferencePixelY0 relative to the left
+        # split region, while the visible zero line belongs to the merged
+        # spectral panel. Prefer a confirmed pixel line over that tag.
+        if frame is not None:
+            detected = detect_baseline_y(frame, roi)
+            if roi.y0 < detected < roi.y1:
+                baseline_y = detected
+        if not roi.y0 < baseline_y < roi.y1:
+            baseline_y = roi.y0 + roi.height / 2.0
 
     # 7. Build calibration state
     data_type = int(best_region.get("RegionDataType", 0) or 0)

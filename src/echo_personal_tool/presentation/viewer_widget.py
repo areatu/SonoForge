@@ -257,6 +257,9 @@ class ContourViewBox(pg.ViewBox):
 
     @_prof
     def mouseMoveEvent(self, ev) -> None:  # type: ignore[override]
+        if self._viewer_widget is not None and self._viewer_widget._handle_doppler_peak_drag(ev):
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_contour_hover(ev):
             ev.accept()
             return
@@ -3685,7 +3688,8 @@ class ViewerWidget(QWidget):
         return click is not None and self._doppler.begin_peak_drag(*click)
 
     def _handle_doppler_peak_drag(self, ev) -> bool:
-        if ev.button() != Qt.MouseButton.LeftButton:
+        left_pressed = ev.button() == Qt.MouseButton.LeftButton or bool(ev.buttons() & Qt.MouseButton.LeftButton)
+        if not left_pressed or not self._doppler.has_peak_drag():
             return False
         click = self._map_view_event(ev)
         return click is not None and self._doppler.move_peak_drag(*click)
