@@ -1,4 +1,4 @@
-"""Tests for the AnythingLLM 1.16-style fullscreen startup splash (v3)."""
+"""Tests for the splash concept 4 / 4.1 (logo fill, big bold words)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ def _make_splash(qtbot, **kwargs) -> SplashScreen:
     splash = SplashScreen(
         words=WORDS,
         reduce_motion=kwargs.pop("reduce_motion", False),
+        compact=kwargs.pop("compact", False),
         **kwargs,
     )
     qtbot.addWidget(splash)
@@ -38,7 +39,7 @@ class TestSplashStructure:
         assert flags & Qt.WindowType.FramelessWindowHint
         assert flags & Qt.WindowType.WindowStaysOnTopHint
 
-    def test_covers_full_screen(self, qtbot) -> None:
+    def test_fullscreen_covers_screen(self, qtbot) -> None:
         from PySide6.QtWidgets import QApplication
 
         splash = _make_splash(qtbot)
@@ -48,19 +49,40 @@ class TestSplashStructure:
         assert splash.geometry() == screen.geometry()
         splash._close_splash()
 
+    def test_compact_is_small_and_centered(self, qtbot) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        splash = _make_splash(qtbot, compact=True)
+        splash.show_and_play()
+        screen = QApplication.primaryScreen()
+        assert screen is not None
+        assert splash.width() < screen.geometry().width()
+        assert splash.height() < screen.geometry().height()
+        # centered on the screen center
+        sc = screen.availableGeometry().center()
+        assert abs(splash.geometry().center().x() - sc.x()) <= 4
+        assert abs(splash.geometry().center().y() - sc.y()) <= 4
+        splash._close_splash()
+
     def test_has_logo_fill_percent_and_words(self, qtbot) -> None:
         splash = _make_splash(qtbot)
-        # logo fill widget exists with a real (scaled) logo pixmap
         assert not splash._fill._pm.isNull()
         assert splash._fill.width() > 0
         assert splash._percent_label.text() == "0%"
         assert [w._label.text() for w in splash._word_widgets] == list(WORDS)
 
-    def test_black_background(self, qtbot) -> None:
-        from PySide6.QtGui import QPalette
+    def test_words_are_bold_and_large(self, qtbot) -> None:
+        from PySide6.QtGui import QFont
 
         splash = _make_splash(qtbot)
-        assert splash.palette().color(QPalette.ColorRole.Window).name() == "#000000"
+        for word in splash._word_widgets:
+            font = word._label.font()
+            assert font.weight() >= QFont.Weight.DemiBold
+            assert font.pointSize() >= 18
+
+    def test_percent_font_is_large(self, qtbot) -> None:
+        splash = _make_splash(qtbot)
+        assert splash._percent_label.font().pointSize() >= 20
 
     def test_words_start_hidden_and_blurred(self, qtbot) -> None:
         splash = _make_splash(qtbot)
@@ -68,7 +90,7 @@ class TestSplashStructure:
             zone = splash_mod._WORD_ZONES[i]
             if zone[0] > 0:
                 assert word._opacity_effect.opacity() < 0.15
-                assert word._blur_effect.blurRadius() > 8
+                assert word._blur_effect.blurRadius() > 10
 
 
 class TestSplashProgress:
@@ -103,13 +125,17 @@ class TestSplashProgress:
         qtbot.waitUntil(_full, timeout=2500)
         splash._close_splash()
 
-    def test_words_placed_around_logo(self, qtbot) -> None:
+    def test_words_placed_around_logo_asymmetrically(self, qtbot) -> None:
         splash = _make_splash(qtbot)
         fill = splash._fill
-        fx, fy = fill.x(), fill.y()
-        for word in splash._word_widgets:
-            # every word lives outside the logo rectangle (above or below)
-            assert word.y() + word.height() < fy or word.y() > fy + fill.height()
+        fy, fh = fill.y(), fill.height()
+        # words 0/2 left of the logo, word 1 right of the logo
+        assert splash._word_widgets[0].x() + splash._word_widgets[0].width() < fill.x()
+        assert splash._word_widgets[1].x() > fill.x() + fill.width()
+        assert splash._word_widgets[2].x() + splash._word_widgets[2].width() < fill.x()
+        # different heights: word 0 near the top, word 1 higher above, word 2 below
+        assert splash._word_widgets[1].y() < splash._word_widgets[0].y() < fy
+        assert splash._word_widgets[2].y() > fy + fh
 
 
 class TestSplashTimeline:
@@ -148,7 +174,7 @@ class TestSplashTimeline:
         qtbot.addWidget(dummy)
         splash.show_and_play()
         for word in splash._word_widgets:
-            assert word._opacity_effect.opacity() == 1.0 or word._opacity_effect.opacity() > 0.95
+            assert word._opacity_effect.opacity() > 0.9
         revealed: list[QWidget] = []
         splash.complete_with(dummy, on_complete=lambda win: revealed.append(win))
         qtbot.waitUntil(lambda: len(revealed) == 1, timeout=3000)

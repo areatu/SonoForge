@@ -229,19 +229,24 @@ def main() -> int:
 
     set_language(preferences.language)
 
-    # ── Startup splash (AnythingLLM 1.16-style fullscreen boot, ~3.4 s) ─
-    # Pure black fullscreen window: the logo fills from bottom to top with
-    # white (wavy “water” mask + droplets), “NN%” under it, and words around
-    # the logo sharpening from blur into focus as progress grows; then the
-    # black window fades into the maximized app.
+    # ── Startup splash (concept 4, AnythingLLM 1.16 lineage, ~3.4 s) ──
+    # Fullscreen black window: the logo fills from bottom to top with
+    # white through an animated wavy mask (no droplets), big “NN%” under
+    # it, and big bold words scattered around the logo sharpening from
+    # blur into focus as progress grows; then the window fades into the
+    # maximized app.
+    # Concept 4.1 (small rounded card) preview: ECHO_SPLASH_COMPACT=1.
     # Disable with ECHO_NO_SPLASH=1 (tests, screenshots, slow CI).
     splash = None
     if is_splash_enabled():
         from echo_personal_tool.presentation.splash import SplashScreen
 
+        _compact = os.environ.get("ECHO_SPLASH_COMPACT", "0").strip().lower()
+        _compact = _compact not in ("", "0", "false", "no", "off")
         splash = SplashScreen(
             words=tuple(w for w in tr("splash.words").split("|") if w.strip()),
             reduce_motion=preferences.reduce_motion,
+            compact=_compact,
         )
         splash.show_and_play()
         _pump_event_loop(app, frames=5)

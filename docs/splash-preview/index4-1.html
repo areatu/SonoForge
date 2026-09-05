@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>SonoForge — Splash v4 (logo-fill, крупные слова вокруг)</title>
+<title>SonoForge — Splash 4.1 (компактная карточка 620×430)</title>
 <style>
   :root {
     --bg-page: #0a0f16; --line: #1f2c3b; --accent: #40e2de; --dim: #9aabbe;
@@ -45,15 +45,22 @@
   .mock-strip { height:70px; flex:0 0 70px; border-top:1px solid #16283f; background:#0d1928; display:flex; gap:8px; align-items:center; padding:8px 12px; }
   .mock-strip .th { width:62px; height:100%; border-radius:6px; background:linear-gradient(#122a40,#0c1a2b); }
 
-  .boot { position:absolute; inset:0; background:#000; z-index:5; transition:opacity .42s cubic-bezier(.22,.61,.36,1); }
+  /* — 4.1: центр-карточка поверх затемнённого фона окна —
+     в Qt: SplashScreen(compact=True) — окно 620×430, радиус 26, по центру экрана */
+  .cardback { position:absolute; inset:0; background:#05070a; opacity:.72; z-index:4; transition:opacity .42s; }
+  .cardback.gone { opacity:0; pointer-events:none; }
+  .card { position:absolute; left:50%; top:50%; width:620px; height:430px; transform:translate(-50%,-50%);
+    background:#000; border-radius:26px; box-shadow:0 0 0 1px #151d27, 0 24px 70px rgba(0,0,0,.7);
+    z-index:5; transition:transform .42s cubic-bezier(.22,.61,.36,1), opacity .42s; }
+  .boot { position:absolute; inset:0; background:#000; border-radius:26px; overflow:hidden; transition:opacity .42s; }
   .boot.gone { opacity:0; pointer-events:none; }
-  .boot canvas { position:absolute; left:240px; top:110px; }
-  .pct { position:absolute; left:430px; top:466px; transform:translateX(-50%);
-    font-size:20px; font-weight:700; color:rgba(255,255,255,.75); font-variant-numeric:tabular-nums; }
-  .bw { position:absolute; font-size:20px; font-weight:700; color:rgba(255,255,255,.95); white-space:nowrap; }
-  .bw.w0 { left:250px; top:116px; transform:translateX(-100%); }   /* above-left, near, low */
-  .bw.w1 { left:630px; top:37px; }                                 /* above-right, higher, far */
-  .bw.w2 { left:266px; top:552px; transform:translateX(-100%); }   /* below-left, far below */
+  .boot canvas { position:absolute; left:150px; top:38px; }
+  .pct { position:absolute; left:308px; top:336px; transform:translateX(-50%);
+    font-size:19px; font-weight:700; color:rgba(255,255,255,.78); font-variant-numeric:tabular-nums; }
+  .bw { position:absolute; font-size:18px; font-weight:700; color:rgba(255,255,255,.95); white-space:nowrap; }
+  .bw.w0 { left:168px; top:47px; transform:translateX(-100%); }  /* left of logo, top zone */
+  .bw.w1 { left:452px; top:6px; }                                /* right, higher */
+  .bw.w2 { left:162px; top:388px; transform:translateX(-100%); }  /* below-left */
 
   .demo-caption { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0 28px; }
   .badge { font-size:11px; font-family:var(--mono); border:1px solid rgba(64,226,222,.4); color:var(--accent); border-radius:20px; padding:2px 9px; }
@@ -66,8 +73,8 @@
 
 <header>
   <div>
-    <h1>SonoForge — заставка · концепт 4 (fullscreen logo-fill)</h1>
-    <p class="sub">Изменения к концепту: <b>брызги убраны</b> (осталась только волнистая маска); слова <b>Local-first · Private · ASE aligned — крупные и Bold</b>, разнесены на разные высоты и расстояния от логотипа; <b>шрифт процентов увеличен</b>. Фон остался чистым чёрным — смотрите вариант 4.1, если захотите фон-эхо.</p>
+    <h1>SonoForge — заставка · концепт 4.1 (компактная карточка)</h1>
+    <p class="sub">Тот же logo-fill, что в концепте 4, но <b>не на весь экран</b>: окно 620×430 с радиусом 26 — карточка по центру поверх слегка затемнённого «окна приложения». На маленьких экранах карточка масштабируется. После финального кадра карточка мягко уходит, и появляется главное окно.</p>
   </div>
   <div class="controls">
     <button id="btn-replay">↻ Повторить</button>
@@ -77,8 +84,8 @@
 </header>
 
 <div class="nav">
-  <a href="index.html"><b>4 · fullscreen logo-fill — этот файл (актуальный)</b></a>
-  <a href="index4-1.html">4.1 · компактная карточка</a>
+  <a href="index.html">4 · fullscreen logo-fill</a>
+  <a href="index4-1.html"><b>4.1 · компактная карточка — этот файл (актуальный)</b></a>
   <a href="index3.html">3 · logo-fill v1 (с брызгами)</a>
   <a href="index2.html">2 · black boot + бар</a>
   <a href="index1.html">1 · компактное окно</a>
@@ -95,21 +102,24 @@
     <div class="mock-strip"><div class="th"></div><div class="th"></div><div class="th"></div></div>
   </div>
 
-  <div class="boot" id="bootA">
-    <canvas id="logoCanvas" width="380" height="380"></canvas>
-    <div class="pct" id="pctA">0%</div>
-    <span class="bw w0" id="w0"></span>
-    <span class="bw w1" id="w1"></span>
-    <span class="bw w2" id="w2"></span>
+  <div class="cardback" id="cardbackA"></div>
+  <div class="card" id="cardA">
+    <div class="boot" id="bootA">
+      <canvas id="logoCanvas" width="380" height="380"></canvas>
+      <div class="pct" id="pctA">0%</div>
+      <span class="bw w0" id="w0"></span>
+      <span class="bw w1" id="w1"></span>
+      <span class="bw w2" id="w2"></span>
+    </div>
   </div>
 </div>
 
 <div class="demo-caption">
-  <span class="badge">4 · РЕАЛИЗОВАНО В КОДЕ</span>
-  <span class="stage-tag">fullscreen · брызг нет · слова 20px Bold: зоны 16–58 / 34–76 / 52–96 % · % 22px · авто до 92 % → 100 % на финише · fade 420 мс</span>
+  <span class="badge">4.1 · РЕАЛИЗОВАНО В КОДЕ (ECHO_SPLASH_COMPACT=1)</span>
+  <span class="stage-tag">карточка 620×430 · радиус 26 · затемнение фона · слова/проценты масштабируются от карточки · в конце карточка «уезжает» к центру → окно приложения</span>
 </div>
 
-<p class="note">💡 <b>Композиция слов (асимметрия):</b> <code>Local-first</code> — слева над логотипом, близко и низко; <code>Private</code> — справа над логотипом, выше и дальше; <code>ASE aligned</code> — слева под логотипом, далеко вниз. Каждое слово стартует с opacity ~0,08 и blur 16 px и проявляется в своей зоне прогресса. В Qt позиции заданы в <code>_relayout()</code> — легко поменять под ваше чувство баланса.</p>
+<p class="note">💡 <b>Итоговое состояние то же, что в 4:</b> слова появляются асимметрично вокруг логотипа (левый-верх близко, правый-верх выше и дальше, левый-низ далеко), маска волнистая без брызг, честные проценты. В Qt: <code>SplashScreen(compact=True)</code>; 4.1 включается через <code>ECHO_SPLASH_COMPACT=1</code>, чтобы посмотреть обе версии без пересборки.</p>
 
 <script>
   const LANG = { ru: { words: ["Локально", "Конфиденциально", "Стандарты ASE"] },
@@ -118,12 +128,13 @@
   const TARGETS = [8, 18, 30, 44, 58, 72, 84, 92];
   const STEP_MS = 420, EASE_MS = 380;
   let lang = "ru", timers = [], raf = 0;
+  const card = document.getElementById("cardA"), cardback = document.getElementById("cardbackA");
   const boot = document.getElementById("bootA"), canvas = document.getElementById("logoCanvas");
   const ctx = canvas.getContext("2d");
   const img = new Image();
   img.src = "../../src/echo_personal_tool/resources/logo_dark.png";
-  const CW = 380, CH = 380, LO = 300, LOH = LO * 910 / 960;
-  const LX = (CW - LO) / 2, LY = (CH - LOH) / 2;
+  const CW = 380, CH = 380, LO = 220, LOH = LO * 910 / 960;
+  const LX = (CW - LO) / 2, LY = 42 + (CH - 150 - LOH) / 2;
   const pctEl = document.getElementById("pctA");
   const wordsEl = [document.getElementById("w0"), document.getElementById("w1"), document.getElementById("w2")];
   let p = 0, target = 0, a0 = 0, a1 = 0, t0 = 0, phase = 0, done = false;
@@ -166,7 +177,8 @@
   }
   function clearT() { while (timers.length) clearTimeout(timers.pop()); }
   function play() {
-    clearT(); boot.classList.remove("gone");
+    clearT(); boot.classList.remove("gone"); cardback.classList.remove("gone");
+    card.style.transform = "translate(-50%,-50%)"; card.style.opacity = "1";
     p = 0; target = 0; done = false;
     pctEl.textContent = "0%";
     LANG[lang].words.forEach((w, i) => wordsEl[i].textContent = w);
@@ -177,7 +189,11 @@
       if (idx < TARGETS.length) { a0 = p; a1 = TARGETS[idx]; t0 = performance.now(); target = a1; idx++;
         timers.push(setTimeout(step, STEP_MS)); }
       else { done = true; a0 = p; a1 = 100; t0 = performance.now(); target = 100;
-        timers.push(setTimeout(() => { boot.style.opacity = 0; timers.push(setTimeout(play, 1400)); }, 1500)); }
+        timers.push(setTimeout(() => {
+          boot.classList.add("gone"); cardback.classList.add("gone");
+          card.style.transform = "translate(-50%,-50%) scale(.86)"; card.style.opacity = "0";
+          timers.push(setTimeout(play, 1200));
+        }, 1500)); }
     };
     timers.push(setTimeout(step, STEP_MS));
   }
