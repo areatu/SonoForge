@@ -78,6 +78,31 @@ def _merge_ge_spectral_regions(
         max(bounds[3] for bounds in candidates),
     )
 
+def _samsung_panel_top_from_tags(dataset: Dataset, frame_height: float) -> float | None:
+    """Best-guess spectral panel top from mis-tagged Samsung S:1 regions.
+
+    Samsung RS85 mis-tags PW/CW Doppler as S:1 (2D) regions whose ``max_y``
+    equals the boundary between the B-mode image and the spectral panel
+    (observed 393, 473 on real RS85 captures). Use it when it plausibly lands
+    inside the frame (30%-75% height), otherwise ``None`` (caller falls back
+    to a pixel heuristic).
+    """
+    best_max_y: float | None = None
+    regions = dataset.get("SequenceOfUltrasoundRegions")
+    if not regions:
+        return None
+    for region in regions:
+        if int(region.get("RegionSpatialFormat", 0) or 0) != 1:
+            continue  # not the mis-tagged 2D region
+        max_y = region.get("RegionLocationMaxY1")
+        if max_y is None:
+            continue
+        max_y_f = float(max_y)
+        if 0.30 * frame_height <= max_y_f <= 0.75 * frame_height:
+            if best_max_y is None or max_y_f > best_max_y:
+                best_max_y = max_y_f
+    return best_max_y
+
 
 def _compute_baseline_with_profile(
     profile: VendorProfile,
@@ -85,8 +110,12 @@ def _compute_baseline_with_profile(
     frame_height: int,
     frame_pixels: np.ndarray | None,
     roi: DopplerSpectrogramRoi,
-) -> float:
-    """Compute baseline using vendor profile, falling back to pixel detection."""
+) -> tuple[float, int]:
+    """Compute baseline using vendor profile, falling back to pixel detection.
+
+    Returns (baseline_y, velocity_sign): the sign is the vendor's tag-formula
+    convention (+1 standard, -1 inverted) and is recorded on the state.
+    """
     # 1. Try vendor-specific baseline computation
     try:
         result = profile.compute_baseline(region, frame_height, frame_pixels)
@@ -98,12 +127,12 @@ def _compute_baseline_with_profile(
                 result.confidence,
                 result.source,
             )
-            return result.baseline_y
+            return result.baseline_y, result.velocity_sign
     except Exception as e:
         logger.debug("Vendor baseline computation failed: %s", e)
 
-    # 2. Fallback: center of ROI
-    return roi.y0 + roi.height / 2.0
+    # 2. Fallback: center of ROI, standard convention
+    return roi.y0 + roi.height / 2.0, 1
 
 
 def try_parse_with_vendor_profile(
@@ -142,6 +171,7 @@ def try_parse_with_vendor_profile(
     # 2. Find the best Doppler region
     best_region = None
     best_priority = -1
+    best_width = -1.0
 
     for region in regions:
         spatial = int(region.get("RegionSpatialFormat", 0) or 0)
@@ -155,8 +185,13 @@ def try_parse_with_vendor_profile(
         else:
             continue
 
-        if priority > best_priority:
+        bounds = _region_bounds(region)
+        width = bounds[2] - bounds[0] if bounds is not None else 0.0
+        # Equal priority: GE writes two SF=3 regions — the velocity scale strip
+        # and the spectrum. Prefer the wider one (the actual spectrogram).
+        if priority > best_priority or (priority == best_priority and width > best_width):
             best_priority = priority
+            best_width = width
             best_region = region
 
     if best_region is None:
@@ -265,6 +300,7 @@ def try_parse_with_vendor_profile(
         from_dicom_tags=True,
         time_from_dicom_tags=time_result is not None,
         velocity_from_dicom_tags=velocity_result is not None,
+        velocity_sign=velocity_sign,
     )
 
 
@@ -398,7 +434,44 @@ def try_parse_samsung_tick_calibration(
     if len(tick_result.tick_positions) < 5:
         return None
 
-    positions = tick_result.tick_positions
+    h, w = arr.shape[:2]
+    tick_positions = sorted(tick_result.tick_positions)
+    span_x_px = float(tick_positions[-1] - tick_positions[0])
+    span_x_frac = span_x_px / float(w) if w > 0 else 0.0
+
+    # ── Ruler sanity gates (Samsung) ────────────────────────────────────
+    # A real time ruler spans most of the frame width (~86-88% on RS85
+    # captures). B-mode ECG strips / left-side scales produce short runs of
+    # periodic verticals (5-30% width) and must not be treated as Doppler.
+    if span_x_frac < 0.5:
+        logger.debug(
+            "Samsung tick: REJECTED — ruler spans only %.0f%% of width (%.0fpx of %dpx)",
+            100.0 * span_x_frac,
+            span_x_px,
+            w,
+        )
+        return None
+
+    # Real Samsung rulers use 36-60 px spacing; spurious rows (label columns)
+    # can show 200-310 px (gold73). Reject anything implausible.
+    if not (10.0 <= tick_result.spacing_px <= 120.0):
+        logger.debug(
+            "Samsung tick: REJECTED — implausible tick spacing %.1fpx",
+            tick_result.spacing_px,
+        )
+        return None
+
+    # The time ruler sits in the bottom ~15% of the frame. A candidate band
+    # much higher is a banner/scale, not a Doppler time axis.
+    if tick_result.band_y < h * 0.85:
+        logger.debug(
+            "Samsung tick: REJECTED — ruler band_y=%.1f not in bottom 15%% (h=%d)",
+            tick_result.band_y,
+            h,
+        )
+        return None
+
+    positions = tick_positions
     visible_width_px = float(positions[-1] - positions[0]) + tick_result.spacing_px
     frequency_hz = tick_calibration.k_constant * tick_result.spacing_px
     per_pixel_ms = 1000.0 / frequency_hz
@@ -437,11 +510,56 @@ def try_parse_samsung_tick_calibration(
             roi = candidate_roi
         else:
             logger.debug("Samsung tick: no velocity grid in refined ROI, trying fallback")
-    else:
-        # Fallback 1: try dark-band detection with geometry validation.
-        # Grid line check is skipped here because time ticks were already
-        # validated (confidence >= 0.4, >= 5 ticks), which is a strong
-        # Doppler signal. The dark-band detector just provides the ROI bounds.
+
+    if roi is None and tick_result.band_y > 0:
+        # Fallback 2: derive ROI from time scale tick positions.
+        # Bottom = time ruler; top = mis-tagged S:1 panel boundary if it looks
+        # plausible, else estimate the band height from the frame.
+        tick_x0 = min(tick_result.tick_positions)
+        tick_x1 = max(tick_result.tick_positions)
+        margin_x = tick_result.spacing_px * 2
+        band_bottom = tick_result.band_y + 10.0  # include the ruler ticks
+
+        # Prefer the region boundary (Samsung mis-tags S:1 -> B/panel split).
+        panel_top = _samsung_panel_top_from_tags(dataset, float(h))
+        if panel_top is None:
+            estimated_height = h * 0.45
+            panel_top = max(0.0, band_bottom - estimated_height)
+        # B-mode frames can be full-height; clamp to bottom 15% when the tag
+        # does not give a usable boundary.
+        panel_top = min(panel_top, h * 0.85)
+
+        candidate_roi = DopplerSpectrogramRoi(
+            x0=max(0.0, tick_x0 - margin_x),
+            y0=max(0.0, panel_top),
+            width=min(float(w), tick_x1 + margin_x) - max(0.0, tick_x0 - margin_x),
+            height=band_bottom - max(0.0, panel_top),
+        )
+        # Relaxed geometry: time ticks are already validated by the span /
+        # spacing / band_y gates above, so only prevent obviously invalid ROIs.
+        # NB: the panel top may sit slightly above mid-frame (max_y=393 on an
+        # 884px frame for RS85) — require_lower_half is intentionally OFF here.
+        vresult = validate_doppler_roi(
+            candidate_roi,
+            arr,
+            check_grid_lines=False,
+            min_width_fraction=0.3,
+            require_lower_half=False,
+        )
+        if vresult.valid:
+            roi = candidate_roi
+            logger.debug(
+                "Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f) band_height=%.0f",
+                roi.x0,
+                roi.y0,
+                roi.x0 + roi.width,
+                roi.y0 + roi.height,
+                roi.height,
+            )
+
+    if roi is None:
+        # Fallback 1: try dark-band detection with geometry validation
+        # (last resort — the ruler gates above already rejected most B-mode).
         detected = None
         try:
             detected = detect_spectrogram_roi(arr)
@@ -465,42 +583,6 @@ def try_parse_samsung_tick_calibration(
             else:
                 logger.debug("Samsung tick dark-band: REJECTED — %s", vresult.reason)
 
-    if roi is None and tick_result.band_y > 0:
-        # Fallback 2: derive ROI from time scale tick positions.
-        # We know the ticks span the spectral band width, and band_y is the
-        # bottom. Estimate the band height as ~45% of frame height.
-        h, w = arr.shape[:2]
-        tick_x0 = min(tick_result.tick_positions)
-        tick_x1 = max(tick_result.tick_positions)
-        margin_x = tick_result.spacing_px * 2
-        band_bottom = tick_result.band_y
-        estimated_height = h * 0.45
-        band_top = max(0.0, band_bottom - estimated_height)
-        candidate_roi = DopplerSpectrogramRoi(
-            x0=max(0.0, tick_x0 - margin_x),
-            y0=band_top,
-            width=min(float(w), tick_x1 + margin_x) - max(0.0, tick_x0 - margin_x),
-            height=band_bottom - band_top,
-        )
-        # Relaxed geometry: time ticks are already validated (strong Doppler
-        # signal), so we only need to prevent obviously invalid ROIs.
-        vresult = validate_doppler_roi(
-            candidate_roi,
-            arr,
-            check_grid_lines=False,
-            min_width_fraction=0.3,
-            require_lower_half=False,
-        )
-        if vresult.valid:
-            roi = candidate_roi
-            logger.debug(
-                "Samsung tick: using tick-derived ROI (%.0f,%.0f,%.0f,%.0f)",
-                roi.x0,
-                roi.y0,
-                roi.x0 + roi.width,
-                roi.y0 + roi.height,
-            )
-
     if roi is None:
         # All detection failed — return None instead of full-frame fallback.
         # A full-frame ROI is never a valid Doppler spectrogram.
@@ -509,9 +591,89 @@ def try_parse_samsung_tick_calibration(
 
     baseline_y = roi.y0 + roi.height / 2.0
     try:
-        detected_baseline = detect_baseline_y(arr, roi)
-        if detected_baseline is not None:
-            baseline_y = float(detected_baseline)
+        # For Samsung dual-spectrum frames, the ROI spans from the B-mode
+        # area to the ruler.  The baseline is ALWAYS a visible horizontal
+        # line drawn in the Doppler band — the only such line.
+        #
+        # The baseline appears as a "median plateau": consecutive rows
+        # where the median brightness stays constant (< 2 units).  We
+        # score each plateau by how much it stands out from its
+        # neighbors (gain) — the baseline is brighter than the dark
+        # spectral area (q222-style) or sits in a gradient zone near
+        # the ruler (q111-style).  A bonus is given to plateaus closer
+        # to the ROI edges (top or bottom), since baseline is often
+        # near a boundary.
+        gray = arr.astype(np.float32)
+        if gray.ndim == 3:
+            gray = 0.299 * gray[..., 0] + 0.587 * gray[..., 1] + 0.114 * gray[..., 2]
+        x0 = int(max(0, roi.x0))
+        x1 = int(min(gray.shape[1], roi.x0 + roi.width))
+        y0 = int(max(0, roi.y0))
+        y1 = int(min(gray.shape[0], roi.y0 + roi.height))
+        if x1 > x0 and y1 > y0:
+            roi_h = y1 - y0
+            search_start = int(roi_h * 0.05)
+            search_end = int(roi_h * 0.98)
+            # B-mode transition zone (top ~15%) and ruler zone (bottom ~5%)
+            # get lower scores so the baseline (which sits at a spectral
+            # band edge) is not drowned out by B-mode plateaus.
+            bmode_end = int(roi_h * 0.15)
+            ruler_start = int(roi_h * 0.95)
+            if search_end > search_start + 10:
+                medians = []
+                for i in range(search_start, search_end):
+                    medians.append(float(np.median(gray[y0 + i, x0:x1])))
+                medians = np.array(medians)
+
+                # Find plateaus
+                best_row = -1
+                best_score = -999.0
+                i = 0
+                while i < len(medians):
+                    j = i
+                    while j + 1 < len(medians) and abs(medians[j + 1] - medians[i]) < 2.0:
+                        j += 1
+                    plateau_len = j - i + 1
+                    if plateau_len >= 2:
+                        above = medians[max(0, i - 1)] if i > 0 else medians[i]
+                        below = medians[min(len(medians) - 1, j + 1)] if j < len(medians) - 1 else medians[i]
+                        gain = medians[i] - (above + below) / 2.0
+                        # Score: gain + edge proximity bonus.  The baseline
+                        # is often at the top or bottom of the spectral band.
+                        # Penalize plateaus inside the B-mode or ruler zones
+                        # so that edge baselines in the spectral band win.
+                        mid = (i + j) / 2.0
+                        edge_dist = min(mid, len(medians) - 1 - mid) / (len(medians) / 2.0)
+                        edge_bonus = max(0.0, 1.0 - edge_dist) * 5.0
+                        # Penalize if plateau is inside B-mode or ruler zones
+                        in_bmode = j < bmode_end - search_start
+                        in_ruler = i > ruler_start - search_start
+                        zone_penalty = -50.0 if (in_bmode or in_ruler) else 0.0
+                        score = gain + edge_bonus + zone_penalty
+                        if score > best_score:
+                            best_score = score
+                            best_row = search_start + mid
+                    i = j + 1
+
+                if best_row >= 0:
+                    baseline_y = float(y0 + best_row) + 0.5
+                    logger.debug(
+                        "Samsung tick: baseline from plateau: y=%.1f (score=%.1f)",
+                        baseline_y,
+                        best_score,
+                    )
+                else:
+                    detected_baseline = detect_baseline_y(arr, roi)
+                    if detected_baseline is not None:
+                        baseline_y = float(detected_baseline)
+            else:
+                detected_baseline = detect_baseline_y(arr, roi)
+                if detected_baseline is not None:
+                    baseline_y = float(detected_baseline)
+        else:
+            detected_baseline = detect_baseline_y(arr, roi)
+            if detected_baseline is not None:
+                baseline_y = float(detected_baseline)
     except Exception:
         logger.debug("Samsung tick fallback: baseline detection failed")
 

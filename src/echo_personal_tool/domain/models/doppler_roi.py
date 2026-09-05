@@ -60,6 +60,12 @@ class DopplerCalibrationState:
     time_from_dicom_tags: bool = False
     velocity_from_dicom_tags: bool = False
     velocity_per_pixel_cm_s: float | None = None
+    # Tag-formula convention from the vendor profile: +1 = standard DICOM
+    # v = (y - RefY) * deltaY (Philips, negative deltaY), -1 = inverted
+    # v = (RefY - y) * deltaY (GE/Samsung, positive deltaY). Both resolve to
+    # the same display convention (velocity above baseline is positive), so
+    # this is recorded metadata — it must NOT be applied to the axis mapping.
+    velocity_sign: int = 1
 
     def is_complete(self) -> bool:
         return self.has_velocity_scale() and self.has_time_scale()

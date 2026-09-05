@@ -237,20 +237,21 @@ def resolve_dicom_segment_roi_xyxy(
     correct for DICOM; trimming risks cutting the LV apex.
 
     Priority:
-    1. Doppler panel bounds (spectral PW/CW/M-mode/TDI) if available.
-    2. B-mode panel bounds (for ONNX segmentation of B-mode frames).
+    1. B-mode panel bounds (this ROI feeds ONNX LV segmentation).
+    2. Doppler panel bounds (frames with spectral content only).
     3. Cine fallback (tick detection for Doppler, None for B-mode).
     """
     if instance_path is not None:
         layout = try_parse_from_path(instance_path)
         if layout is not None:
-            # Prefer Doppler panel bounds if present (spectral frames).
-            if layout.doppler is not None:
-                bounds = layout.doppler.bounds
-                return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
-            # Fall back to B-mode panel bounds (B-mode frames).
+            # Prefer B-mode panel bounds: this ROI is used for LV segmentation.
+            # On split-screen files (B-mode + Doppler) the Doppler panel would
+            # feed the spectrum to EchoNet instead of the chamber.
             if layout.b_mode is not None:
                 bounds = layout.b_mode.bounds
+                return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
+            if layout.doppler is not None:
+                bounds = layout.doppler.bounds
                 return _bounds_to_xyxy(bounds.x0, bounds.y0, bounds.width, bounds.height)
 
     return resolve_cine_segment_roi_xyxy(frame)
