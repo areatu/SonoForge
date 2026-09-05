@@ -1,5 +1,10 @@
 # Changelog — Текущая сессия
 
+## [2026-09-04] Заставка (splash screen) при запуске — дизайн в духе AnythingLLM Desktop
+- **Тип:** feature
+- **Файлы:** `src/echo_personal_tool/presentation/splash.py` (новый), `src/echo_personal_tool/main.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_splash_screen.py` (новый), `docs/splash-preview/` (превью концептов)
+- **Суть:** Frameless-окно 520×352, всегда сверху, по центру экрана: тайл с логотипом + «SonoForge» + локализованный таглайн → тонкий спиннер-дуга акцентного цвета с пульсирующей точкой-«пульсом» → строка статуса (4 стадии × 850 мс: Запуск → Модули анализа → Рабочее пространство → Готово; минимум показа 3400 мс). Фон — градиент темы приложения (тёмный `#102135` по умолчанию, светлый вариант для light-темы), скруглённые углы, плавный fade 360 мс в главное окно (окно раскрывается под заставкой — без белой вспышки). Реальные этапы старта синхронизируются через `set_status()` между синхронными шагами `main()`. Учитывается «Reduce motion» (без анимаций, короче показ). Отключение: `ECHO_NO_SPLASH=1`. В `docs/splash-preview/index.html` — живое превью концепта A + альтернативы B («консоль УЗИ», как vendor-boot) и C (светлая glass-карточка). Проверено: ruff clean, py_compile, юнит-тесты splash (offscreen-стиль как у остальных gui-тестов).
+
 ## [2026-08-06 22:30] M-mode Time/HR: горизонтальный калипер без анатомической панели
 - **Тип:** fix
 - **Файлы:** `src/echo_personal_tool/presentation/main_window.py`, `src/echo_personal_tool/presentation/viewer_widget.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`
