@@ -2544,7 +2544,9 @@ class ViewerWidget(QWidget):
 
         When *direction* is ``"up"`` or ``"down"`` the envelope is forced
         to the corresponding side of the baseline; ``None`` picks the
-        side with the strongest signal automatically.
+        side with the strongest signal automatically.  If the initial
+        preset yields no envelope, retries with the ``"low"`` preset to
+        handle weak AK/MK signals.
         """
         if not self.is_vessel_available():
             return False
@@ -2565,6 +2567,17 @@ class ViewerWidget(QWidget):
             preset=preset,
             force_direction=direction,
         )
+        used_preset = preset
+        # Retry with lower sensitivity if the initial preset found nothing
+        if not envelope and preset != "low":
+            envelope = extract_doppler_envelope(
+                self._current_frame,
+                state.roi,
+                state.baseline_y_px,
+                preset="low",
+                force_direction=direction,
+            )
+            used_preset = "low"
         if not envelope:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
@@ -2579,8 +2592,8 @@ class ViewerWidget(QWidget):
         self._measurement_label.setText(tr("viewer.vessel_auto_trace_done", psv=psv, edv=edv))
         self._measurement_label.show()
         self._vessel_direction = direction
-        self._vessel_current_preset = preset
-        self._vessel_sensitivity.set_preset(preset)
+        self._vessel_current_preset = used_preset
+        self._vessel_sensitivity.set_preset(used_preset)
         self._show_vessel_sensitivity_overlay()
         return True
 
@@ -3494,17 +3507,30 @@ class ViewerWidget(QWidget):
             if scales.time_scale.spacing_px > 0:
                 # Compute per-pixel time from tick spacing
                 # Samsung calibration: frequency_hz = k_constant * spacing_px
-                # For now use default k_constant = 0.2
-                k_constant = 0.2
-                frequency_hz = k_constant * scales.time_scale.spacing_px
+                from echo_personal_tool.infrastructure.samsung_calibration_builder import (
+                    load_calibration as _load_samsung_cal,
+                )
+
+                _samsung_cal = _load_samsung_cal()
+                _k = _samsung_cal.k_constant if _samsung_cal is not None else 5.0
+                frequency_hz = _k * scales.time_scale.spacing_px
                 if frequency_hz > 0:
                     per_pixel_ms = 1000.0 / frequency_hz
                     time_span_ms = per_pixel_ms * roi.width
 
+            velocity_span = 200.0
+            auto_vel = try_auto_doppler_velocity_calibration(
+                self._current_frame,
+                roi=roi,
+                baseline_y=baseline_y,
+                kind=DopplerKind.SPECTRAL,
+            )
+            if auto_vel is not None:
+                velocity_span = auto_vel.velocity_span_cm_s
             state = calibration_from_roi_and_baseline(
                 roi,
                 baseline_y,
-                velocity_span_cm_s=200.0,
+                velocity_span_cm_s=velocity_span,
                 time_span_ms=time_span_ms,
                 kind=DopplerKind.SPECTRAL,
             )
@@ -3534,16 +3560,27 @@ class ViewerWidget(QWidget):
                 # Time span from time ruler
                 time_span_ms = 0.0
                 if ts.spacing_px > 0:
-                    k_constant = 0.2
-                    frequency_hz = k_constant * ts.spacing_px
+                    from echo_personal_tool.infrastructure.samsung_calibration_builder import (
+                        load_calibration as _load_samsung_cal2,
+                    )
+
+                    _samsung_cal2 = _load_samsung_cal2()
+                    _k2 = _samsung_cal2.k_constant if _samsung_cal2 is not None else 5.0
+                    frequency_hz = _k2 * ts.spacing_px
                     if frequency_hz > 0:
                         per_pixel_ms = 1000.0 / frequency_hz
                         time_span_ms = per_pixel_ms * roi.width
-                # Velocity span from bottom scale tick count:
-                # Samsung spectral Doppler typically has 5-8 major ticks
-                # spanning the velocity range.  Default 200 cm/s unless
-                # we can infer from tick spacing (future: OCR labels).
+                # Velocity span: try auto-detection from velocity scale ticks,
+                # fall back to default 200 cm/s if inference is ambiguous.
                 velocity_span = 200.0
+                auto_vel = try_auto_doppler_velocity_calibration(
+                    self._current_frame,
+                    roi=roi,
+                    baseline_y=baseline_y,
+                    kind=DopplerKind.SPECTRAL,
+                )
+                if auto_vel is not None:
+                    velocity_span = auto_vel.velocity_span_cm_s
                 state = calibration_from_roi_and_baseline(
                     roi,
                     baseline_y,

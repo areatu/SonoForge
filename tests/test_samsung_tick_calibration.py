@@ -366,6 +366,19 @@ def test_samsung_tick_fallback_rejects_bmode_frame():
     assert try_parse_from_dataset(dataset, _bmode_frame_with_fake_ruler()) is None
 
 
+def test_detect_ticks_rejects_bright_bmode_with_dark_gaps():
+    """Regression: bright B-mode frame with periodic dark gaps on a ruler
+    must be rejected — the inverted detector should not accept it as a
+    real Doppler time ruler without a dark spectral band in the middle."""
+    frame = np.full((200, 800, 3), 180, dtype=np.uint8)
+    # Bright ruler at bottom with dark gaps (periodic vertical lines)
+    frame[160:167, :, :] = 220
+    frame[160:167, 100:700:50, :] = 10
+    result = detect_ticks(frame)
+    assert result.confidence == 0.0
+    assert len(result.tick_positions) == 0
+
+
 # ---------------------------------------------------------------------------
 # Samsung tick calibration hardening (fix branch)
 # ---------------------------------------------------------------------------

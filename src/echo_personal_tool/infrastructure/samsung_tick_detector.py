@@ -59,8 +59,19 @@ class TickDetectionResult:
     band_y: float = 0.0  # y position of the detected tick band (center)
 
 
-def _tick_score(gray: np.ndarray, y0: int, band_height: int) -> tuple | None:
+def _tick_score(
+    gray: np.ndarray,
+    y0: int,
+    band_height: int,
+    *,
+    invert: bool = False,
+) -> tuple | None:
     """Score a horizontal band as a candidate tick ruler.
+
+    When *invert* is False (default), detects bright ticks on a dark
+    background.  When *invert* is True, detects dark gaps on a bright
+    ruler — Samsung RS85 places a bright horizontal band with periodic
+    dark gaps that encode the time scale.
 
     Returns (score, uniformity, median_gap, tick_centers) or None if the band
     does not hold a plausible ruler.
@@ -68,7 +79,10 @@ def _tick_score(gray: np.ndarray, y0: int, band_height: int) -> tuple | None:
     h, w = gray.shape
     y1 = min(h, y0 + band_height)
     band = gray[y0:y1, :]
-    cnt = (band > _BRIGHTNESS_THRESHOLD).sum(axis=0)
+    if invert:
+        cnt = (band < _BRIGHTNESS_THRESHOLD).sum(axis=0)
+    else:
+        cnt = (band > _BRIGHTNESS_THRESHOLD).sum(axis=0)
     cols = np.where(cnt >= _MIN_VERTICAL_HITS)[0]
     if len(cols) < _MIN_TICKS:
         return None
@@ -105,7 +119,12 @@ def _tick_score(gray: np.ndarray, y0: int, band_height: int) -> tuple | None:
     return score, uniformity, median_gap, centers
 
 
-def spectral_band_is_dark(gray: np.ndarray, band_y: float) -> bool:
+def spectral_band_is_dark(
+    gray: np.ndarray,
+    band_y: float,
+    *,
+    check_wide_region: bool = False,
+) -> bool:
     """True when the region above the tick ruler looks like a Doppler spectral band.
 
     The spectral display is a DARK area (near-black background with a bright
@@ -163,6 +182,61 @@ def spectral_band_is_dark(gray: np.ndarray, band_y: float) -> bool:
         if band_mean_narrow < _SPECTRAL_BAND_MAX_MEAN:
             return True
 
+    # --- Distant dark band (dual-spectrum layout) ---
+    # Samsung RS85 dual-spectrum frames have B-mode tissue in the top, a dark
+    # spectral band in the middle (~40-55% of frame height), and the time ruler
+    # further down (~75-80%).  The wide/narrow checks above only look at the
+    # region directly above the ruler and miss the distant dark band.  Scan the
+    # bottom 60% of the frame for a contiguous dark strip; if one spans >= 8%
+    # of the frame height, the ruler is real.
+    scan_top = int(h * 0.35)
+    scan_bottom = int(band_y)
+    if scan_bottom - scan_top > h * 0.1:
+        strip = gray[scan_top:scan_bottom, x0:x1]
+        if strip.size > 0:
+            col_means = np.mean(strip, axis=1)
+            dark_rows = col_means < _SPECTRAL_BAND_MAX_MEAN
+            if dark_rows.any():
+                # Find longest contiguous dark run
+                best_run = 0
+                current_run = 0
+                for is_dark in dark_rows:
+                    if is_dark:
+                        current_run += 1
+                        best_run = max(best_run, current_run)
+                    else:
+                        current_run = 0
+                min_dark_height = int(h * 0.08)
+                if best_run >= min_dark_height:
+                    return True
+
+    # --- Wide region check for inverted detections (bright ruler, dark gaps) ---
+    # When check_wide_region=True, verify a dark band exists in the middle
+    # third of the frame.  B-mode frames have bright tissue everywhere;
+    # a real Doppler dual-spectrum layout always has a dark spectral band
+    # between the B-mode top and the bright ruler at the bottom.
+    if check_wide_region:
+        mid_top = int(h * 0.30)
+        mid_bot = int(h * 0.70)
+        if mid_bot > mid_top:
+            strip = gray[mid_top:mid_bot, x0:x1]
+            if strip.size > 0:
+                col_means = np.mean(strip, axis=1)
+                dark_rows = col_means < _SPECTRAL_BAND_MAX_MEAN
+                if dark_rows.any():
+                    best_run = 0
+                    current_run = 0
+                    for is_dark in dark_rows:
+                        if is_dark:
+                            current_run += 1
+                            best_run = max(best_run, current_run)
+                        else:
+                            current_run = 0
+                    if best_run >= int(h * 0.08):
+                        return True
+            # No dark band in the middle third -> not a Doppler layout
+            return False
+
     return False
 
 
@@ -202,14 +276,17 @@ def detect_ticks(
     h = gray.shape[0]
     best: tuple | None = None
     best_y0 = 0
+    best_inverted = False
     scan_top = int(h * (1.0 - _BOTTOM_SCAN_FRACTION))
-    for y0 in range(scan_top, max(scan_top + 1, h - _BAND_HEIGHT + 1), _SCAN_STEP_PX):
-        cand = _tick_score(gray, y0, _BAND_HEIGHT)
-        if cand is None:
-            continue
-        if best is None or cand[0] > best[0]:
-            best = (cand[0], cand[1], cand[2], cand[3])
-            best_y0 = y0
+    for invert in (False, True):
+        for y0 in range(scan_top, max(scan_top + 1, h - _BAND_HEIGHT + 1), _SCAN_STEP_PX):
+            cand = _tick_score(gray, y0, _BAND_HEIGHT, invert=invert)
+            if cand is None:
+                continue
+            if best is None or cand[0] > best[0]:
+                best = (cand[0], cand[1], cand[2], cand[3])
+                best_y0 = y0
+                best_inverted = invert
 
     if best is None:
         return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
@@ -219,7 +296,17 @@ def detect_ticks(
     band_y = float(best_y0) + _BAND_HEIGHT / 2.0
     # Reject rulers sitting over a bright B-mode-like region: a real Doppler
     # time ruler always has a dark spectral band above it.
-    if not spectral_band_is_dark(gray, band_y):
+    # For inverted detections (bright ruler with dark gaps), verify a dark
+    # spectral band exists in the middle third of the frame instead of
+    # checking immediately above the ruler (which IS the bright ruler).
+    if best_inverted:
+        if not spectral_band_is_dark(gray, band_y, check_wide_region=True):
+            logger.debug(
+                "Best tick ruler at y=%d rejected: no dark spectral band in middle of frame (inverted)",
+                best_y0,
+            )
+            return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
+    elif not spectral_band_is_dark(gray, band_y):
         logger.debug(
             "Best tick ruler at y=%d rejected: region above is bright (B-mode-like)",
             best_y0,
@@ -726,18 +813,26 @@ def detect_samsung_doppler_scales(
         if right_x > left_x and bottom_y > top_y:
             # The refined ROI must sit over a dark spectral band; a bright
             # region (B-mode tissue, text banner) is not a Doppler panel.
-            if pixel_array.ndim == 3:
-                if channel_order == "bgr":
-                    gray = 0.114 * pixel_array[..., 0] + 0.587 * pixel_array[..., 1] + 0.299 * pixel_array[..., 2]
+            # Skip the darkness check when the bottom velocity scale confirms
+            # the ruler — Samsung dual-spectrum frames have B-mode tissue
+            # above the ruler, but the velocity scale marks prove it's real.
+            skip_darkness = has_bottom_scale and bottom_scale is not None and bottom_scale.confidence >= 0.4
+            if not skip_darkness:
+                if pixel_array.ndim == 3:
+                    if channel_order == "bgr":
+                        gray = 0.114 * pixel_array[..., 0] + 0.587 * pixel_array[..., 1] + 0.299 * pixel_array[..., 2]
+                    else:
+                        gray = 0.299 * pixel_array[..., 0] + 0.587 * pixel_array[..., 1] + 0.114 * pixel_array[..., 2]
                 else:
-                    gray = 0.299 * pixel_array[..., 0] + 0.587 * pixel_array[..., 1] + 0.114 * pixel_array[..., 2]
-            else:
-                gray = np.asarray(pixel_array, dtype=np.float32)
-            if not spectral_band_is_dark(np.asarray(gray, dtype=np.float32), bottom_y):
-                logger.debug("Refined ROI rejected: region above the time ruler is bright (B-mode-like)")
-                refined_roi = None
+                    gray = np.asarray(pixel_array, dtype=np.float32)
+                if not spectral_band_is_dark(np.asarray(gray, dtype=np.float32), bottom_y):
+                    logger.debug("Refined ROI rejected: region above the time ruler is bright (B-mode-like)")
+                    refined_roi = None
+                else:
+                    refined_roi = (left_x, top_y, right_x, bottom_y)
             else:
                 refined_roi = (left_x, top_y, right_x, bottom_y)
+            if refined_roi is not None:
                 logger.debug(
                     "Refined ROI from scales: (%.1f, %.1f, %.1f, %.1f)",
                     left_x,
