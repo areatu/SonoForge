@@ -7,6 +7,7 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.services.auto_doppler_velocity_calibration import (
+    infer_samsung_velocity_span,
     infer_velocity_span,
     try_auto_doppler_velocity_calibration,
 )
@@ -47,6 +48,23 @@ def test_infer_span_returns_value_when_unambiguous() -> None:
     tick_ys = [25.0, 50.0, 75.0, 100.0, 125.0, 150.0, 175.0]
     span = infer_velocity_span(tick_ys, 0.0, roi=roi, kind=DopplerKind.SPECTRAL)
     assert span == 350.0
+
+
+def test_infer_samsung_span_from_wide_scale_ticks() -> None:
+    roi = DopplerSpectrogramRoi(x0=0, y0=393, width=1180, height=478)
+    assert infer_samsung_velocity_span([474.5, 566.5, 659.0, 761.5, 844.5], roi=roi) == 500.0
+
+
+def test_infer_samsung_span_from_noisy_compact_scale_ticks() -> None:
+    roi = DopplerSpectrogramRoi(x0=0, y0=473, width=1180, height=398)
+    ticks = [492.5, 526.7, 565.5, 601.0, 638.5, 675.5, 711.5, 742.0, 748.5, 784.5, 822.5, 833.0, 860.5]
+    assert infer_samsung_velocity_span(ticks, roi=roi) == 350.0
+
+
+def test_infer_samsung_tissue_span_from_four_cm_ticks() -> None:
+    roi = DopplerSpectrogramRoi(x0=0, y0=100, width=800, height=240)
+    ticks = [112.0, 136.0, 160.0, 184.0, 208.0, 232.0, 256.0, 280.0, 304.0, 328.0]
+    assert infer_samsung_velocity_span(ticks, roi=roi, kind=DopplerKind.TISSUE) == 40.0
 
 
 def test_orchestrator_uses_grid_lines_when_strip_fails() -> None:

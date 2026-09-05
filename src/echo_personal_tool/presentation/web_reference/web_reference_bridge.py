@@ -13,31 +13,61 @@ from PySide6.QtCore import QObject, Slot
 from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
 )
+from echo_personal_tool.infrastructure.i18n import get_language, tr
 
 log = logging.getLogger(__name__)
 
 _IMAGES_DIR = Path(__file__).resolve().parents[2] / "resources" / "references" / "images"
 
-_TOPIC_LABELS: dict[str, str] = {
-    "left_ventricle": "",
-    "left_atrium": "",
-    "right_ventricle": "",
-    "right_atrium": "",
-    "mitral_valve": "",
-    "aortic_valve": "",
-    "tricuspid_valve": "",
-    "pulmonary_valve": "",
-    "aorta": "",
-    "prosthetic_valves": "",
-    "other": "",
-    "carotid_arteries": "",
-    "vertebral_arteries": "",
-    "thyroid_gland": "",
-    "kidneys": "",
-    "abdominal_organs": "",
-    "abdominal_aorta": "",
-    "lymph_nodes": "",
+# Short, language-aware topic labels used as the icon chip in the left menu.
+_TOPIC_LABELS_RU: dict[str, str] = {
+    "left_ventricle": "ЛЖ",
+    "left_atrium": "ЛП",
+    "right_ventricle": "ПЖ",
+    "right_atrium": "ПП",
+    "mitral_valve": "МК",
+    "aortic_valve": "АК",
+    "tricuspid_valve": "ТК",
+    "pulmonary_valve": "КЛА",
+    "aorta": "Ао",
+    "prosthetic_valves": "Прот",
+    "other": "…",
+    "carotid_arteries": "СА",
+    "vertebral_arteries": "ПА",
+    "thyroid_gland": "ЩЖ",
+    "kidneys": "Поч",
+    "abdominal_organs": "ОБП",
+    "abdominal_aorta": "БА",
+    "lymph_nodes": "ЛУ",
 }
+
+_TOPIC_LABELS_EN: dict[str, str] = {
+    "left_ventricle": "LV",
+    "left_atrium": "LA",
+    "right_ventricle": "RV",
+    "right_atrium": "RA",
+    "mitral_valve": "MV",
+    "aortic_valve": "AV",
+    "tricuspid_valve": "TV",
+    "pulmonary_valve": "PV",
+    "aorta": "Ao",
+    "prosthetic_valves": "Pr",
+    "other": "…",
+    "carotid_arteries": "CA",
+    "vertebral_arteries": "VA",
+    "thyroid_gland": "Th",
+    "kidneys": "Kd",
+    "abdominal_organs": "Abd",
+    "abdominal_aorta": "AA",
+    "lymph_nodes": "LN",
+}
+
+
+def _topic_label(slug: str) -> str:
+    """Short label for a topic slug, localized to the current UI language."""
+    labels = _TOPIC_LABELS_RU if get_language() == "ru" else _TOPIC_LABELS_EN
+    return labels.get(slug, "")
+
 
 _TOPIC_ICONS: dict[str, str] = {
     "left_ventricle": "LV01",
@@ -119,6 +149,34 @@ class WebReferenceBridge(QObject):
             return json.dumps({"error": str(exc)})
 
     @Slot(result=str)
+    def get_ui_strings(self) -> str:
+        """Return UI strings localized to the current language."""
+        keys = {
+            "edit": tr("web_ref.edit"),
+            "edit_title": tr("web_ref.edit_title"),
+            "save": tr("web_ref.save"),
+            "cancel": tr("web_ref.cancel"),
+            "anatomy": tr("web_ref.anatomy"),
+            "select_topic": tr("web_ref.select_topic"),
+            "no_pathologies": tr("web_ref.no_pathologies"),
+            "no_images": tr("web_ref.no_images"),
+            "no_parameters": tr("web_ref.no_parameters"),
+            "nothing_found": tr("web_ref.nothing_found"),
+            "type_topic": tr("web_ref.type_topic"),
+            "type_pathology": tr("web_ref.type_pathology"),
+            "type_parameter": tr("web_ref.type_parameter"),
+            "previous": tr("web_ref.previous"),
+            "next": tr("web_ref.next"),
+            "close": tr("web_ref.close"),
+            "search_placeholder": tr("ref_table.search_placeholder"),
+            "col_param": tr("ref_table.col_param"),
+            "col_norm_male": tr("ref_table.col_norm_male"),
+            "col_norm_female": tr("ref_table.col_norm_female"),
+            "stats": tr("web_ref.stats"),
+        }
+        return json.dumps(keys, ensure_ascii=False)
+
+    @Slot(result=str)
     def get_topics(self) -> str:
         """Return topic list with labels, icons, pathology counts."""
         if self._store is None:
@@ -135,7 +193,7 @@ class WebReferenceBridge(QObject):
                 {
                     "name": t.name,
                     "slug": t.slug,
-                    "label": _TOPIC_LABELS.get(t.slug, t.name[:6]),
+                    "label": _topic_label(t.slug),
                     "icon": _TOPIC_ICONS.get(t.slug, "LV01"),
                     "n_pathologies": n_pathos,
                     "n_params": n_params,
@@ -198,12 +256,7 @@ class WebReferenceBridge(QObject):
             for gn in grad_names:
                 g = grad_map.get(gn)
                 if g:
-                    parts = []
-                    if g.range_male:
-                        parts.append(self._fmt_range(g.range_male))
-                    if g.range_female:
-                        parts.append(self._fmt_range(g.range_female))
-                    grad_values.append(" / ".join(parts) if parts else "\u2014")
+                    grad_values.append(self._fmt_grad_cell(g.range_male, g.range_female))
                 else:
                     grad_values.append("\u2014")
             rows.append(
@@ -212,8 +265,9 @@ class WebReferenceBridge(QObject):
                     "name": param.name,
                     "full_name": param.tooltip,
                     "unit": param.unit or "",
-                    "norm_male": self._fmt_range(param.norm_male) if param.norm_male else "",
-                    "norm_female": self._fmt_range(param.norm_female) if param.norm_female else "",
+                    "has_gradations": bool(param.gradations),
+                    "norm_male": self._fmt_range(param.norm_male) if self._has_range(param.norm_male) else "",
+                    "norm_female": self._fmt_range(param.norm_female) if self._has_range(param.norm_female) else "",
                     "pathology_desc": param.pathology_desc or "",
                     "source": param.source or "",
                     "gradations": grad_values,
@@ -253,7 +307,6 @@ class WebReferenceBridge(QObject):
             return json.dumps([])
         results = []
         for topic in self._store.get_topics():
-            topic_label = _TOPIC_LABELS.get(topic.slug, topic.name[:6])
             if q in topic.name.lower() or q in topic.slug.lower():
                 results.append(
                     {
@@ -271,7 +324,7 @@ class WebReferenceBridge(QObject):
                             "topic_slug": topic.slug,
                             "patho_slug": patho.slug,
                             "name": patho.name,
-                            "parent": topic_label,
+                            "parent": topic.name,
                         }
                     )
                 for param in patho.parameters or []:
@@ -283,7 +336,7 @@ class WebReferenceBridge(QObject):
                                 "patho_slug": patho.slug,
                                 "param_id": param.id,
                                 "name": param.name,
-                                "parent": topic_label + " / " + patho.name,
+                                "parent": topic.name + " / " + patho.name,
                             }
                         )
                 for grad in patho.gradations or []:
@@ -296,7 +349,7 @@ class WebReferenceBridge(QObject):
                                     "patho_slug": patho.slug,
                                     "param_id": param.id,
                                     "name": param.name,
-                                    "parent": topic_label + " / " + patho.name,
+                                    "parent": topic.name + " / " + patho.name,
                                 }
                             )
         return json.dumps(results[:50], ensure_ascii=False)
@@ -319,10 +372,9 @@ class WebReferenceBridge(QObject):
                     parsed = None
                 self._store.update_param(param_id, field, parsed)
             elif field in ("name", "unit"):
-                if field == "name":
-                    import re as _re
-
-                    value = _re.sub(r"\s*\([^)]+\)\s*$", "", value).strip() or value.strip()
+                # Keep the name as typed — the store preserves the original
+                # long name in `full_name` for tooltips, so no suffix stripping
+                # is needed here (and stripping corrupted names like "КДР ЛЖ (LVEDD)").
                 self._store.update_param(param_id, field, value.strip())
             else:
                 return json.dumps({"error": f"Unknown field '{field}'"})
@@ -347,17 +399,45 @@ class WebReferenceBridge(QObject):
         if self._store.get_pathology(topic_slug, patho_slug) is None:
             return json.dumps({"error": "Pathology not found"})
         try:
-            male = _parse_range_str(male_str)
-            female = _parse_range_str(female_str)
-            if (male_str.strip() and male_str.strip() != "\u2014" and male is None) or (
-                female_str.strip() and female_str.strip() != "\u2014" and female is None
-            ):
-                return json.dumps({"error": "Некорректный диапазон градации"})
+            male = self._parse_grad_range(male_str)
+            female = self._parse_grad_range(female_str)
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)})
+        try:
+            # `{}` (empty dict) signals "clear this side"; the store converts it
+            # to an empty NormRange which is omitted on save.
             self._store.update_gradation(param_id, grad_name, male, female)
         except Exception as exc:  # noqa: BLE001
             log.exception("update_gradation failed")
             return json.dumps({"error": str(exc)})
         return json.dumps({"ok": True})
+
+    @staticmethod
+    def _parse_grad_range(text: str) -> dict:
+        """Parse one side of a gradation range; empty/— clears it ({})."""
+        s = (text or "").strip()
+        if s in ("", "\u2014"):
+            return {}
+        parsed = _parse_range_str(s)
+        if parsed is None:
+            raise ValueError(f"Некорректный диапазон градации: {text!r}")
+        return parsed
+
+    @staticmethod
+    def _has_range(r) -> bool:
+        """True when the range actually holds a bound (not an empty NormRange)."""
+        return r is not None and (r.low is not None or r.high is not None)
+
+    @staticmethod
+    def _fmt_grad_cell(male, female) -> str:
+        """Format a gradation cell with explicit sex markers so the editor can
+        parse it back unambiguously (single-sided ranges stay on the right sex)."""
+        parts = []
+        if WebReferenceBridge._has_range(male):
+            parts.append(f"\u2642 {WebReferenceBridge._fmt_range(male)}")
+        if WebReferenceBridge._has_range(female):
+            parts.append(f"\u2640 {WebReferenceBridge._fmt_range(female)}")
+        return " / ".join(parts) if parts else "\u2014"
 
     @staticmethod
     def _fmt_range(r) -> str:

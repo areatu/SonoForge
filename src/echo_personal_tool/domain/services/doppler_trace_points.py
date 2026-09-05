@@ -40,7 +40,7 @@ def finalize_vti_trace_points(
 def filter_velocity_spikes(
     points: Sequence[tuple[float, float]],
     *,
-    max_velocity_cm_s: float = 400.0,
+    max_velocity_cm_s: float | None = None,
     window_half: int = 3,
     k_mad: float = 3.0,
 ) -> tuple[tuple[float, float], ...]:
@@ -61,6 +61,8 @@ def filter_velocity_spikes(
     if len(points) < 3:
         return tuple((float(t), float(v)) for t, v in points)
 
+    if max_velocity_cm_s is None:
+        max_velocity_cm_s = float("inf")
     clamped = [(float(t), max(-max_velocity_cm_s, min(max_velocity_cm_s, float(v)))) for t, v in points]
     velocities = np.array([v for _, v in clamped], dtype=np.float64)
     n = len(velocities)

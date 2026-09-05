@@ -52,6 +52,33 @@ def _region_bounds(region: Dataset) -> tuple[float, float, float, float] | None:
     return float(min_x), float(min_y), float(max_x), float(max_y)
 
 
+def _merge_ge_spectral_regions(
+    regions: object,
+    selected: Dataset,
+) -> tuple[float, float, float, float] | None:
+    """Join GE spectral regions split by a black scale strip."""
+    selected_bounds = _region_bounds(selected)
+    if selected_bounds is None:
+        return None
+    _, y0, _, y1 = selected_bounds
+    candidates = []
+    for region in regions or []:
+        bounds = _region_bounds(region)
+        if bounds is None or not is_spectral_doppler_region(region):
+            continue
+        x0_r, y0_r, x1_r, y1_r = bounds
+        if abs(y0_r - y0) <= 2.0 and abs(y1_r - y1) <= 2.0:
+            candidates.append(bounds)
+    if len(candidates) < 2:
+        return selected_bounds
+    return (
+        min(bounds[0] for bounds in candidates),
+        min(bounds[1] for bounds in candidates),
+        max(bounds[2] for bounds in candidates),
+        max(bounds[3] for bounds in candidates),
+    )
+
+
 def _samsung_panel_top_from_tags(dataset: Dataset, frame_height: float) -> float | None:
     """Best-guess spectral panel top from mis-tagged Samsung S:1 regions.
 
@@ -176,6 +203,10 @@ def try_parse_with_vendor_profile(
     if bounds is None:
         return None
 
+    if profile.vendor is Vendor.GE:
+        merged = _merge_ge_spectral_regions(regions, best_region)
+        if merged is not None:
+            bounds = merged
     x0, y0, x1, y1 = bounds
     roi = DopplerSpectrogramRoi(
         x0=x0,
@@ -236,7 +267,17 @@ def try_parse_with_vendor_profile(
     time_span_ms = time_result.span_ms if time_result else None
 
     # 6. Compute baseline using vendor profile
-    baseline_y, velocity_sign = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
+    baseline_y = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
+    if profile.vendor is Vendor.GE:
+        # GE screen exports may encode ReferencePixelY0 relative to the left
+        # split region, while the visible zero line belongs to the merged
+        # spectral panel. Prefer a confirmed pixel line over that tag.
+        if frame is not None:
+            detected = detect_baseline_y(frame, roi)
+            if roi.y0 < detected < roi.y1:
+                baseline_y = detected
+        if not roi.y0 < baseline_y < roi.y1:
+            baseline_y = roi.y0 + roi.height / 2.0
 
     # 7. Build calibration state
     data_type = int(best_region.get("RegionDataType", 0) or 0)
@@ -305,8 +346,15 @@ def try_parse_samsung_tick_calibration(
     if detect_vendor(dataset) is not Vendor.SAMSUNG:
         return None
 
-    # Skip M-mode frames — their ROI is already defined by DICOM tags.
+    # TDI/Tissue Doppler uses a compact 4 cm/s-style ruler, not the wide PW/CW
+    # scale. Preserve the region's kind when the caller used the generic
+    # spectral default.
+    effective_kind = kind
     regions = dataset.get("SequenceOfUltrasoundRegions")
+    if regions and any(int(region.get("RegionDataType", 0) or 0) in (0x10, 0x11) for region in regions):
+        effective_kind = DopplerKind.TISSUE
+
+    # Skip M-mode frames — their ROI is already defined by DICOM tags.
     if regions:
         for region in regions:
             if is_mmode_region(region):
@@ -323,8 +371,67 @@ def try_parse_samsung_tick_calibration(
         return None
 
     tick_result = detect_ticks(arr)
-    if tick_result.confidence < 0.4 or tick_result.spacing_px <= 0.0:
-        return None
+    # A number of Samsung captures contain a real spectral panel but no
+    # readable bottom time ruler. Their SF=1 region still ends at the top of
+    # the spectral panel, so use that boundary to recover ROI and baseline.
+    # This path deliberately requires a Doppler grid line and rejects M-mode
+    # above, preventing ordinary B-mode frames from becoming Doppler ROIs.
+    if tick_result.confidence < 0.25 or tick_result.spacing_px <= 0.0 or len(tick_result.tick_positions) < 5:
+        fallback_roi = _samsung_region_roi_fallback(dataset, arr)
+        if fallback_roi is None:
+            return None
+        # The dark-band guard can reject a valid composite Doppler frame when
+        # bright B-mode content sits above the spectral panel. The ROI/grid
+        # validation above is the stronger guard for this vendor-specific
+        # fallback, so retry the ruler without the global darkness check.
+        relaxed_ticks = detect_ticks(arr, require_dark_band=False)
+        if (
+            relaxed_ticks.confidence >= 0.25
+            and relaxed_ticks.spacing_px > 0.0
+            and len(relaxed_ticks.tick_positions) >= 5
+        ):
+            positions = relaxed_ticks.tick_positions
+            visible_width_px = float(positions[-1] - positions[0]) + relaxed_ticks.spacing_px
+            frequency_hz = tick_calibration.k_constant * relaxed_ticks.spacing_px
+            time_span_ms = (1000.0 / frequency_hz) * visible_width_px
+            baseline_y = detect_baseline_y(arr, fallback_roi)
+            candidate = calibration_from_roi_and_baseline(
+                fallback_roi,
+                baseline_y,
+                velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
+                time_span_ms=time_span_ms,
+                kind=effective_kind,
+            )
+            return DopplerCalibrationState(
+                roi=candidate.roi,
+                baseline_y_px=candidate.baseline_y_px,
+                time_origin_ms=candidate.time_origin_ms,
+                time_span_ms=candidate.time_span_ms,
+                velocity_span_cm_s=candidate.velocity_span_cm_s,
+                kind=candidate.kind,
+                from_dicom_tags=True,
+                time_from_dicom_tags=True,
+                velocity_from_dicom_tags=False,
+            )
+        baseline_y = detect_baseline_y(arr, fallback_roi)
+        candidate = calibration_from_roi_and_baseline(
+            fallback_roi,
+            baseline_y,
+            velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
+            time_span_ms=0.0,
+            kind=effective_kind,
+        )
+        return DopplerCalibrationState(
+            roi=candidate.roi,
+            baseline_y_px=candidate.baseline_y_px,
+            time_origin_ms=candidate.time_origin_ms,
+            time_span_ms=candidate.time_span_ms,
+            velocity_span_cm_s=candidate.velocity_span_cm_s,
+            kind=candidate.kind,
+            from_dicom_tags=False,
+            time_from_dicom_tags=False,
+            velocity_from_dicom_tags=False,
+        )
     if len(tick_result.tick_positions) < 5:
         return None
 
@@ -371,12 +478,18 @@ def try_parse_samsung_tick_calibration(
     per_pixel_ms = 1000.0 / frequency_hz
     time_span_ms = per_pixel_ms * visible_width_px
 
+    # Prefer the DICOM region boundary when it identifies the top of the
+    # spectral panel. The tick-derived 45%-height fallback is intentionally
+    # conservative, but it cuts off the upper half on Samsung CW captures
+    # such as US005000.
+    roi = _samsung_region_roi_fallback(dataset, arr)
+
     # Detect all scales (time + velocity) for refined ROI boundaries.
     scales = detect_samsung_doppler_scales(arr)
 
-    # ROI: prefer refined ROI from scale detection, else fallback.
-    roi = None
-    if scales.refined_roi is not None:
+    # ROI: use the validated DICOM-boundary candidate first, then visual
+    # scale/dark-band fallbacks.
+    if roi is None and scales.refined_roi is not None:
         x0, y0, x1, y1 = scales.refined_roi
         candidate_roi = DopplerSpectrogramRoi(
             x0=float(x0),
@@ -568,9 +681,9 @@ def try_parse_samsung_tick_calibration(
     candidate = calibration_from_roi_and_baseline(
         roi,
         baseline_y,
-        velocity_span_cm_s=kind.default_velocity_span_cm_s,
+        velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
         time_span_ms=time_span_ms,
-        kind=kind,
+        kind=effective_kind,
     )
     return DopplerCalibrationState(
         roi=candidate.roi,
@@ -583,3 +696,57 @@ def try_parse_samsung_tick_calibration(
         time_from_dicom_tags=True,
         velocity_from_dicom_tags=False,
     )
+
+
+def _samsung_region_roi_fallback(
+    dataset: Dataset,
+    frame: np.ndarray,
+) -> DopplerSpectrogramRoi | None:
+    """Recover a Samsung spectral ROI when the time ruler is unreadable."""
+    regions = dataset.get("SequenceOfUltrasoundRegions") or []
+    if any(is_mmode_region(region) for region in regions):
+        return None
+
+    height, width = frame.shape[:2]
+    candidates = []
+    for region in regions:
+        bounds = _region_bounds(region)
+        if bounds is None:
+            continue
+        x0, y0, x1, y1 = bounds
+        if x1 <= x0 or y1 <= y0:
+            continue
+        candidates.append((y1, x0, y0, x1))
+    if not candidates:
+        return None
+
+    _, x0, _, x1 = max(candidates)
+    spectral_top = max(0.0, min(float(height - 1), max(item[0] for item in candidates)))
+    spectral_bottom = float(max(1, height - max(8, int(height * 0.015))))
+    if spectral_bottom - spectral_top < height * 0.2:
+        return None
+
+    roi = DopplerSpectrogramRoi(
+        x0=max(0.0, min(float(x0), float(width - 1))),
+        y0=spectral_top,
+        width=max(1.0, min(float(width), float(x1)) - max(0.0, min(float(x0), float(width - 1)))),
+        height=spectral_bottom - spectral_top,
+    )
+    grid_lines = detect_doppler_grid_lines(
+        frame,
+        x0=int(roi.x0),
+        y0=int(roi.y0),
+        width=int(roi.width),
+        height=int(roi.height),
+    )
+    if not grid_lines:
+        return None
+    logger.debug(
+        "Samsung region fallback: roi=(%.0f,%.0f,%.0f,%.0f), grid_lines=%d",
+        roi.x0,
+        roi.y0,
+        roi.x1,
+        roi.y1,
+        len(grid_lines),
+    )
+    return roi

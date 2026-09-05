@@ -7,10 +7,47 @@ var state = {
     currentImages: [],
     currentImageIndex: 0,
     currentParams: [],
+    ui: {},
+    renderSeq: 0,
 };
 
 var $ = function (s) { return document.querySelector(s); };
 var $$ = function (s) { return document.querySelectorAll(s); };
+
+/* UI strings from the Python bridge (localized); fall back to English defaults. */
+function t(key, def) {
+    return (state.ui && state.ui[key]) ? state.ui[key] : (def || key);
+}
+
+function escapeHtml(s) {
+    if (!s) return "";
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function escapeAttr(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+/* ===== Static UI text ===== */
+function applyUi() {
+    var el;
+    el = $("#searchInput"); if (el) el.placeholder = t("search_placeholder", "Search...");
+    el = $("#editToggle"); if (el) { el.textContent = "\u270F\uFE0F " + t("edit", "Edit"); el.title = t("edit_title", "Edit mode"); }
+    el = $("#saveBtn"); if (el) el.textContent = "\uD83D\uDCBE " + t("save", "Save");
+    el = $("#cancelBtn"); if (el) el.textContent = "\u2715 " + t("cancel", "Cancel");
+    el = $("#topicsHeader"); if (el) el.textContent = t("anatomy", "Anatomy");
+    el = $("#pathoHint"); if (el) el.textContent = t("select_topic", "Select a topic on the left");
+    el = $("#imageEmptyText"); if (el) el.textContent = t("no_images", "No images");
+    el = $("#modalPrev"); if (el) el.title = t("previous", "Previous");
+    el = $("#modalNext"); if (el) el.title = t("next", "Next");
+    el = $("#modalClose"); if (el) el.title = t("close", "Close (Esc)");
+}
 
 /* ===== Topics ===== */
 function renderTopics(topics) {
@@ -31,38 +68,62 @@ function renderTopics(topics) {
     c.innerHTML = "";
     c.appendChild(fragment);
     // Stats
-    var totalParams = topics.reduce(function (s, t) { return s + t.n_params; }, 0);
-    var totalImages = topics.reduce(function (s, t) { return s + t.n_images; }, 0);
-    $("#statsText").textContent = topics.length + " topics · " + totalParams + " parameters · " + totalImages + " images";
+    var totalParams = topics.reduce(function (s, x) { return s + x.n_params; }, 0);
+    var totalImages = topics.reduce(function (s, x) { return s + x.n_images; }, 0);
+    $("#statsText").textContent = t(
+        "stats",
+        "{topics} topics · {params} parameters · {images} images"
+    ).replace("{topics}", topics.length).replace("{params}", totalParams).replace("{images}", totalImages);
 }
 
-async function selectTopic(slug) {
-    state.selectedTopic = slug;
-    state.selectedPathology = null;
-    renderTopics(state.topics);
-    var data = await bridge.getTopicDetail(slug);
-    if (data.error) return;
-    var pathos = data.pathologies || [];
-    if (pathos.length > 0) {
-        state.selectedPathology = pathos[0].slug;
-    }
-    renderPathologies(pathos, data.name);
-    if (pathos.length > 0) {
-        var pathoData = await bridge.getPathology(slug, pathos[0].slug);
-        if (!pathoData.error) {
-            var split = $(".content-split");
-            split.classList.add("fading-out");
-            requestAnimationFrame(function() {
-                requestAnimationFrame(function() {
-                    renderDescription(pathoData.description);
-                    state.currentParams = pathoData.parameters || [];
-                    renderParams(pathoData);
-                    renderImages(pathoData.images || []);
+function loadPathologyContent(topicSlug, pathoSlug) {
+    var token = ++state.renderSeq;
+    var split = $(".content-split");
+    split.classList.add("fading-out");
+    return bridge.getPathology(topicSlug, pathoSlug).then(function (data) {
+        return new Promise(function (resolve) {
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    if (token !== state.renderSeq) {
+                        // A newer transition owns the cross-fade; do nothing.
+                        resolve();
+                        return;
+                    }
+                    if (!data || data.error) {
+                        split.classList.remove("fading-out");
+                        resolve();
+                        return;
+                    }
+                    renderDescription(data.description);
+                    state.currentParams = data.parameters || [];
+                    renderParams(data, true);
+                    renderImages(data.images || []);
                     split.classList.remove("fading-out");
+                    resolve();
                 });
             });
+        });
+    });
+}
+
+async function selectTopic(slug, preferredPathology) {
+    state.selectedTopic = slug;
+    state.selectedPathology = null;
+    state.renderSeq++;   // invalidate any in-flight content transition
+    renderTopics(state.topics);
+    var data = await bridge.getTopicDetail(slug);
+    if (!data || data.error) return;
+    var pathos = data.pathologies || [];
+    if (pathos.length > 0) {
+        var target = pathos[0].slug;
+        if (preferredPathology && pathos.some(function (p) { return p.slug === preferredPathology; })) {
+            target = preferredPathology;
         }
+        state.selectedPathology = target;
+        renderPathologies(pathos, data.name);
+        await loadPathologyContent(slug, target);
     } else {
+        renderPathologies(pathos, data.name);
         clearContent();
     }
 }
@@ -72,22 +133,25 @@ async function selectTopic(slug) {
 function moveTabIndicator() {
     var bar = $("#pathologyBar");
     var activeBtn = bar.querySelector(".patho-btn.active");
-    var indicator = bar;
     if (activeBtn) {
         var rect = activeBtn.getBoundingClientRect();
         var barRect = bar.getBoundingClientRect();
         bar.style.setProperty("--indicator-left", (rect.left - barRect.left + bar.scrollLeft) + "px");
         bar.style.setProperty("--indicator-width", rect.width + "px");
+        // Track the active tab's row so the underline stays correct on wrap.
+        bar.style.setProperty("--indicator-top", (rect.bottom - barRect.top - 2) + "px");
     } else {
         bar.style.setProperty("--indicator-left", "0px");
         bar.style.setProperty("--indicator-width", "0px");
+        bar.style.setProperty("--indicator-top", "0px");
     }
 }
 
 function renderPathologies(pathologies, topicName) {
     var bar = $("#pathologyBar");
     if (!pathologies || !pathologies.length) {
-        bar.innerHTML = '<span class="empty-hint">No pathologies</span>';
+        bar.innerHTML = '<span class="empty-hint">' + escapeHtml(t("no_pathologies", "No pathologies")) + '</span>';
+        moveTabIndicator();
         return;
     }
     var fragment = document.createDocumentFragment();
@@ -97,7 +161,7 @@ function renderPathologies(pathologies, topicName) {
         btn.setAttribute("data-slug", patho.slug);
         var label = escapeHtml(patho.name);
         if (patho.image_count > 0) {
-            label += ' <span class="patho-badge">🖼' + patho.image_count + '</span>';
+            label += ' <span class="patho-badge">\uD83D\uDDBC' + patho.image_count + '</span>';
         }
         btn.innerHTML = label;
         btn.title = patho.description || patho.name;
@@ -109,47 +173,14 @@ function renderPathologies(pathologies, topicName) {
     requestAnimationFrame(moveTabIndicator);
 }
 
-function updatePathologyActive(newSlug) {
-    $$(".patho-btn").forEach(function (btn) {
-        var isActive = btn.getAttribute("data-slug") === newSlug;
-        btn.classList.toggle("active", isActive);
-    });
-    moveTabIndicator();
-}
-
 async function selectPathology(slug) {
     state.selectedPathology = slug;
-
-    // Synchronously update tab highlight (no DOM rebuild)
+    state.renderSeq++;   // invalidate any in-flight content transition
     $$(".patho-btn").forEach(function (btn) {
-        btn.classList.remove("active");
+        btn.classList.toggle("active", btn.getAttribute("data-slug") === slug);
     });
-    // Find the clicked button and mark active by data-slug
-    var allBtns = $$(".patho-btn");
-    for (var i = 0; i < allBtns.length; i++) {
-        if (allBtns[i].getAttribute("data-slug") === slug) {
-            allBtns[i].classList.add("active");
-            break;
-        }
-    }
-    // Animate indicator to active tab
     moveTabIndicator();
-
-    var data = await bridge.getPathology(state.selectedTopic, slug);
-    if (data.error) return;
-
-    // Cross-fade + slide: fade out, swap content, fade in with slide
-    var split = $(".content-split");
-    split.classList.add("fading-out");
-    requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-            renderDescription(data.description);
-            state.currentParams = data.parameters || [];
-            renderParams(data);
-            renderImages(data.images || []);
-            split.classList.remove("fading-out");
-        });
-    });
+    await loadPathologyContent(state.selectedTopic, slug);
 }
 
 /* ===== Description ===== */
@@ -165,7 +196,7 @@ function renderDescription(desc) {
 }
 
 /* ===== Parameters ===== */
-function renderParams(data) {
+function renderParams(data, animateStagger) {
     var area = $("#paramsArea");
     var head = $("#paramHead");
     var body = $("#paramBody");
@@ -173,20 +204,25 @@ function renderParams(data) {
 
     area.hidden = false;
 
-    // Build new header
-    var hasGrads = data.grad_names && data.grad_names.length > 0;
-    var headers = hasGrads ? ["Parameter"] : ["Parameter", "Norm M", "Norm F"];
-    if (hasGrads) {
-        headers = headers.concat(data.grad_names);
+    var params = data.parameters || [];
+    var gradNames = data.grad_names || [];
+    var hasGradsAny = gradNames.length > 0;
+    // Norm columns show when at least one parameter has no gradations
+    // (covers both pure-flat and mixed pathologies).
+    var hasFlatAny = params.some(function (p) { return !p.has_gradations; });
+    var showNorm = !hasGradsAny || hasFlatAny;
+
+    var headers = [t("col_param", "Parameter")];
+    if (showNorm) {
+        headers.push(t("col_norm_male", "Norm M"));
+        headers.push(t("col_norm_female", "Norm F"));
     }
+    if (hasGradsAny) headers = headers.concat(gradNames);
 
-    // Check if we can reuse existing structure (same headers = no jump)
+    // Reuse existing header structure when unchanged (avoids a jump).
     var existingHeaders = [];
-    head.querySelectorAll("th").forEach(function(th) { existingHeaders.push(th.textContent); });
-    var headersMatch = JSON.stringify(existingHeaders) === JSON.stringify(headers);
-
-    if (!headersMatch) {
-        // Only rebuild header when structure changes
+    head.querySelectorAll("th").forEach(function (th) { existingHeaders.push(th.textContent); });
+    if (JSON.stringify(existingHeaders) !== JSON.stringify(headers)) {
         head.innerHTML = "";
         var hr = document.createElement("tr");
         headers.forEach(function (h) {
@@ -197,107 +233,118 @@ function renderParams(data) {
         head.appendChild(hr);
     }
 
-    // Build body fragment (off-DOM for performance)
+    var colCount = headers.length;
     var fragment = document.createDocumentFragment();
-    if (!data.parameters || !data.parameters.length) {
+
+    if (!params.length) {
         var emptyTr = document.createElement("tr");
         var emptyTd = document.createElement("td");
-        emptyTd.colSpan = hasGrads ? 1 + data.grad_names.length : 3;
-        emptyTd.textContent = "No parameters for this pathology";
+        emptyTd.colSpan = colCount;
+        emptyTd.textContent = t("no_parameters", "No parameters for this pathology");
         emptyTd.className = "patho-desc";
         emptyTd.style.textAlign = "center";
         emptyTr.appendChild(emptyTd);
         fragment.appendChild(emptyTr);
     } else {
         var rowIndex = 0;
-        data.parameters.forEach(function (param) {
+        params.forEach(function (param) {
+            var rowHasGrads = !!(param.has_gradations && param.gradations && param.gradations.length);
             var tr = document.createElement("tr");
             tr.style.setProperty("--row-index", rowIndex++);
+            tr.setAttribute("data-param", param.id);
 
             // Name cell with unit
             var tdName = document.createElement("td");
             tdName.className = "param-name";
-            var nameHtml = '<span class="param-title" data-field="name" data-param="' + escapeHtml(param.id) + '">' + escapeHtml(param.name) + '</span>';
+            var nameHtml = '<span class="param-title" data-field="name" data-param="' + escapeAttr(param.id) + '">' + escapeHtml(param.name) + '</span>';
             if (param.unit) {
-                nameHtml += ' <span class="param-unit" data-field="unit" data-param="' + escapeHtml(param.id) + '">(' + escapeHtml(param.unit) + ')</span>';
+                nameHtml += ' <span class="param-unit" data-field="unit" data-param="' + escapeAttr(param.id) + '">(' + escapeHtml(param.unit) + ')</span>';
             }
             tdName.innerHTML = nameHtml;
             tdName.setAttribute("data-full", param.full_name || param.name);
             if (param.unit) tdName.setAttribute("data-unit", param.unit);
             tr.appendChild(tdName);
 
-            // Norm male / female — only when the pathology has no gradations
-            if (!hasGrads) {
-                var tdM = document.createElement("td");
-                tdM.className = "norm-value";
-                tdM.textContent = param.norm_male || "\u2014";
-                tdM.setAttribute("data-field", "norm_male");
-                tdM.setAttribute("data-param", param.id);
-                tr.appendChild(tdM);
+            // Norm male / female columns (only where the row has no gradations;
+            // placeholder cells for gradation rows keep the grid aligned).
+            if (showNorm) {
+                if (!rowHasGrads) {
+                    var tdM = document.createElement("td");
+                    tdM.className = "norm-value";
+                    tdM.textContent = param.norm_male || "\u2014";
+                    tdM.setAttribute("data-field", "norm_male");
+                    tdM.setAttribute("data-param", param.id);
+                    tr.appendChild(tdM);
 
-                var tdF = document.createElement("td");
-                tdF.className = "norm-value";
-                tdF.textContent = param.norm_female || "\u2014";
-                tdF.setAttribute("data-field", "norm_female");
-                tdF.setAttribute("data-param", param.id);
-                tr.appendChild(tdF);
+                    var tdF = document.createElement("td");
+                    tdF.className = "norm-value";
+                    tdF.textContent = param.norm_female || "\u2014";
+                    tdF.setAttribute("data-field", "norm_female");
+                    tdF.setAttribute("data-param", param.id);
+                    tr.appendChild(tdF);
+                } else {
+                    for (var n = 0; n < 2; n++) {
+                        var tdEmptyNorm = document.createElement("td");
+                        tdEmptyNorm.className = "norm-value norm-empty";
+                        tdEmptyNorm.textContent = "\u2014";
+                        tr.appendChild(tdEmptyNorm);
+                    }
+                }
             }
 
             // Gradation cells
-            if (param.gradations) {
-                param.gradations.forEach(function (gv, gi) {
+            if (hasGradsAny) {
+                var gvals = param.gradations || [];
+                gradNames.forEach(function (gn, gi) {
+                    var gv = gvals[gi] || "\u2014";
                     var td = document.createElement("td");
-                    td.className = "grad-cell";
-                    td.textContent = gv || "\u2014";
-                    td.setAttribute("data-field", "gradation");
-                    td.setAttribute("data-param", param.id);
-                    if (data.grad_names) td.setAttribute("data-grad", data.grad_names[gi]);
-                    if (gv && gv !== "\u2014") {
-                        var name = data.grad_names && data.grad_names[gi];
-                        var cls = gradClassForName(name);
-                        if (cls) td.classList.add(cls);
+                    if (rowHasGrads) {
+                        td.className = "grad-cell";
+                        td.setAttribute("data-field", "gradation");
+                        td.setAttribute("data-param", param.id);
+                        td.setAttribute("data-grad", gn);
+                        if (gv && gv !== "\u2014") {
+                            var cls = gradClassForName(gn);
+                            if (cls) td.classList.add(cls);
+                        }
+                    } else {
+                        td.className = "grad-cell grad-empty";
                     }
+                    td.textContent = gv;
                     tr.appendChild(td);
                 });
             }
 
-            // Pathology description row (below the main row)
-        if (param.pathology_desc) {
+            // Row click → select row + show its source
             tr.addEventListener("click", function () {
                 $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
                 tr.classList.add("selected");
                 showSource(param.source);
             });
-        } else {
-            tr.addEventListener("click", function () {
-                $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
-                tr.classList.add("selected");
-                showSource(param.source);
-            });
-        }
 
-        fragment.appendChild(tr);
+            fragment.appendChild(tr);
 
-        // Pathology description sub-row
-        if (param.pathology_desc) {
-            var descTr = document.createElement("tr");
-            descTr.className = "desc-row";
-            var descTd = document.createElement("td");
-            descTd.className = "patho-desc";
-            descTd.colSpan = 3 + (data.grad_names ? data.grad_names.length : 0);
-            descTd.textContent = param.pathology_desc;
-            descTr.appendChild(descTd);
-            fragment.appendChild(descTr);
-        }
-    });
+            // Pathology description sub-row
+            if (param.pathology_desc) {
+                var descTr = document.createElement("tr");
+                descTr.className = "desc-row";
+                var descTd = document.createElement("td");
+                descTd.className = "patho-desc";
+                descTd.colSpan = colCount;
+                descTd.textContent = param.pathology_desc;
+                descTr.appendChild(descTd);
+                fragment.appendChild(descTr);
+            }
+        });
     }
 
     // Single DOM replacement to avoid micro-jumps
     body.innerHTML = "";
+    body.classList.toggle("stagger", !!animateStagger);
     body.appendChild(fragment);
 
     // Source from first param with source
-    var firstWithSource = data.parameters ? data.parameters.find(function (p) { return p.source; }) : null;
+    var firstWithSource = params.find(function (p) { return p.source; });
     if (firstWithSource) {
         showSource(firstWithSource.source);
     } else {
@@ -308,7 +355,7 @@ function renderParams(data) {
 function showSource(source) {
     var bar = $("#sourceBar");
     if (source) {
-        bar.textContent = "\u{1F4D6} " + source;
+        bar.textContent = "\uD83D\uDCD6 " + source;
         bar.hidden = false;
     } else {
         bar.hidden = true;
@@ -319,6 +366,7 @@ function clearContent() {
     $("#paramsArea").hidden = true;
     $("#descPanel").hidden = true;
     $("#sourceBar").hidden = true;
+    $(".content-split").classList.remove("fading-out");
     clearImages();
 }
 
@@ -393,8 +441,8 @@ function showCurrentImage() {
     next.disabled = idx === images.length - 1;
 
     // Update thumbnail active state
-    thumbs.forEach(function (t, i) {
-        t.classList.toggle("active", i === idx);
+    thumbs.forEach(function (th, i) {
+        th.classList.toggle("active", i === idx);
     });
 }
 
@@ -412,6 +460,7 @@ function openModal(index) {
     if (!state.currentImages.length) return;
     state.currentImageIndex = index;
     renderModalImage();
+    showCurrentImage();
     $("#imageModal").hidden = false;
 }
 
@@ -434,12 +483,14 @@ $("#modalPrev").addEventListener("click", function () {
     if (state.currentImageIndex > 0) {
         state.currentImageIndex--;
         renderModalImage();
+        showCurrentImage();
     }
 });
 $("#modalNext").addEventListener("click", function () {
     if (state.currentImageIndex < state.currentImages.length - 1) {
         state.currentImageIndex++;
         renderModalImage();
+        showCurrentImage();
     }
 });
 $("#modalClose").addEventListener("click", closeModal);
@@ -523,7 +574,8 @@ function enterEditMode() {
     $("#editActions").hidden = false;
     $("#editStatus").textContent = "";
     var editable = document.querySelectorAll(
-        '#paramBody .param-title, #paramBody .param-unit, #paramBody td.norm-value, #paramBody td.grad-cell'
+        '#paramBody .param-title, #paramBody .param-unit, ' +
+        '#paramBody td.norm-value[data-field], #paramBody td.grad-cell[data-field]'
     );
     editable.forEach(function (el) {
         el.setAttribute("contenteditable", "true");
@@ -543,12 +595,31 @@ function exitEditMode() {
 function refreshPathology() {
     if (!state.selectedTopic || !state.selectedPathology) return Promise.resolve();
     return bridge.getPathology(state.selectedTopic, state.selectedPathology).then(function (data) {
-        if (data.error) return;
+        if (!data || data.error) return;
         renderDescription(data.description);
         state.currentParams = data.parameters || [];
-        renderParams(data);
+        renderParams(data, false);
         renderImages(data.images || []);
     });
+}
+
+/* Parse a gradation cell like "♂ 60–63 / ♀ 52–56" into {male, female}. */
+function parseGradationText(text) {
+    var male = null;
+    var female = null;
+    String(text || "").split("/").forEach(function (p) {
+        p = p.trim();
+        if (!p) return;
+        var isMale = p.indexOf("\u2642") >= 0;
+        var isFemale = p.indexOf("\u2640") >= 0;
+        var val = p.replace(/[\u2642\u2640]/g, "").trim();
+        if (!val || val === "\u2014") val = "";
+        if (isMale) male = val;
+        else if (isFemale) female = val;
+        else if (male === null) male = val;   // legacy: first unmarked part
+        else female = val;                    // legacy: second unmarked part
+    });
+    return { male: male, female: female };
 }
 
 async function saveDirtyCells() {
@@ -571,10 +642,12 @@ async function saveDirtyCells() {
         } else if (field === "norm_male" || field === "norm_female") {
             results.push(await bridge.updateParam(state.selectedTopic, state.selectedPathology, paramId, field, text || "\u2014"));
         } else if (field === "gradation") {
-            var parts = text.split(" / ");
+            var parsed = parseGradationText(text);
             results.push(await bridge.updateGradation(
                 state.selectedTopic, state.selectedPathology, paramId,
-                el.getAttribute("data-grad") || "", parts[0] || "", parts[1] || ""
+                el.getAttribute("data-grad") || "",
+                parsed.male === null ? "\u2014" : parsed.male,
+                parsed.female === null ? "\u2014" : parsed.female
             ));
         }
     }
@@ -595,7 +668,7 @@ $("#cancelBtn").addEventListener("click", function () {
     exitEditMode();
     refreshPathology();
 });
-document.querySelector("#paramBody").addEventListener("input", function (e) {
+$("#paramBody").addEventListener("input", function (e) {
     if (!editMode) return;
     var el = e.target.closest ? e.target.closest("[contenteditable]") : null;
     if (el) el.classList.add("dirty");
@@ -603,6 +676,17 @@ document.querySelector("#paramBody").addEventListener("input", function (e) {
 
 /* ===== Search ===== */
 var searchTimeout = null;
+function highlightParam(paramId) {
+    requestAnimationFrame(function () {
+        var tr = document.querySelector('.param-table tbody tr[data-param="' + paramId + '"]');
+        if (!tr) return;
+        tr.scrollIntoView({ block: "center", behavior: "smooth" });
+        $$(".param-table tr.selected").forEach(function (r) { r.classList.remove("selected"); });
+        tr.classList.add("selected", "highlight");
+        setTimeout(function () { tr.classList.remove("highlight"); }, 1600);
+    });
+}
+
 function setupSearch() {
     var inp = $("#searchInput");
     var res = $("#searchResults");
@@ -612,13 +696,19 @@ function setupSearch() {
         if (!q) { res.hidden = true; return; }
         searchTimeout = setTimeout(async function () {
             var hits = await bridge.search(q);
-            if (!hits || !hits.length) {
-                res.innerHTML = '<div class="search-result-item"><span class="search-result-name">Nothing found</span></div>';
+            if (!hits || hits.error) return;
+            if (!hits.length) {
+                res.innerHTML = '<div class="search-result-item"><span class="search-result-name">' +
+                    escapeHtml(t("nothing_found", "Nothing found")) + '</span></div>';
                 res.hidden = false;
                 return;
             }
+            var labels = {
+                topic: "\uD83D\uDCCB " + t("type_topic", "Topic"),
+                pathology: "\uD83D\uDCC4 " + t("type_pathology", "Pathology"),
+                parameter: "\uD83D\uDCCA " + t("type_parameter", "Parameter")
+            };
             var fragment = document.createDocumentFragment();
-            var labels = { topic: "\u{1F4CB} Topic", pathology: "\u{1F4C4} Pathology", parameter: "\u{1F4CA} Parameter" };
             hits.forEach(function (h) {
                 var el = document.createElement("div");
                 el.className = "search-result-item";
@@ -631,10 +721,13 @@ function setupSearch() {
                 el.addEventListener("click", function () {
                     res.hidden = true;
                     inp.value = "";
-                    if (h.type === "topic") selectTopic(h.topic_slug);
-                    else if (h.type === "pathology" || h.type === "parameter") {
-                        selectTopic(h.topic_slug).then(function () {
-                            if (h.patho_slug) selectPathology(h.patho_slug);
+                    if (h.type === "topic") {
+                        selectTopic(h.topic_slug);
+                    } else if (h.type === "pathology") {
+                        selectTopic(h.topic_slug, h.patho_slug);
+                    } else if (h.type === "parameter") {
+                        selectTopic(h.topic_slug, h.patho_slug).then(function () {
+                            highlightParam(h.param_id);
                         });
                     }
                 });
@@ -648,27 +741,18 @@ function setupSearch() {
     inp.addEventListener("blur", function () { setTimeout(function () { res.hidden = true; }, 200); });
 }
 
-/* ===== Age Filter ===== */
-function setupAgeFilter() {
-    var inp = $("#ageInput");
-    inp.addEventListener("input", function () {
-        var age = inp.value.trim();
-        // Age filter is visual-only for now — could be used to highlight age-specific norms
-        // For future: filter parameters by age range if data supports it
-    });
-}
-
-function escapeHtml(s) {
-    if (!s) return "";
-    var d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
-}
-
 /* ===== Keyboard Shortcuts ===== */
+function isTypingTarget(e) {
+    var el = e.target;
+    if (!el) return false;
+    var tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    return !!el.isContentEditable;
+}
+
 function setupKeyboard() {
     document.addEventListener("keydown", function (e) {
-        // Modal navigation
+        // Modal navigation (takes priority)
         if (!$("#imageModal").hidden) {
             if (e.key === "Escape") { closeModal(); return; }
             if (e.key === "ArrowLeft") { e.preventDefault(); $("#modalPrev").click(); return; }
@@ -678,8 +762,10 @@ function setupKeyboard() {
         if (e.ctrlKey && e.key === "f") {
             e.preventDefault();
             $("#searchInput").focus();
+            return;
         }
-        // Escape: clear search
+        // Don't hijack arrows/escape while typing or editing a cell
+        if (isTypingTarget(e)) return;
         if (e.key === "Escape") {
             $("#searchInput").value = "";
             $("#searchResults").hidden = true;
@@ -701,21 +787,65 @@ function setupKeyboard() {
     });
 }
 
-/* ===== Init ===== */
-let _pageInitialized = false;
-async function init() {
-    if (_pageInitialized) return;
-    _pageInitialized = true;
-    await bridge.whenReady();
-    var topics = await bridge.getTopics();
-    renderTopics(topics);
-    setupSearch();
-    setupAgeFilter();
-    setupKeyboard();
+/* ===== Resizable left panel ===== */
+function setupResize() {
+    var handle = $(".resize-handle");
+    var left = $("#panelTopics");
+    var container = $(".main-container");
+    handle.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        document.body.classList.add("resizing");
+        function onMove(ev) {
+            var rect = container.getBoundingClientRect();
+            var w = ev.clientX - rect.left;
+            w = Math.max(130, Math.min(420, w));
+            left.style.width = w + "px";
+        }
+        function onUp() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            document.body.classList.remove("resizing");
+            moveTabIndicator();
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    });
+    window.addEventListener("resize", moveTabIndicator);
+}
 
-    // Auto-select first topic
-    if (topics.length > 0) {
-        selectTopic(topics[0].slug);
+/* ===== Init ===== */
+var _setupDone = false;
+var _initDone = false;
+function setupOnce() {
+    if (_setupDone) return;
+    _setupDone = true;
+    setupSearch();
+    setupKeyboard();
+    setupResize();
+}
+
+async function init(force) {
+    if (_initDone && !force) return;
+    _initDone = true;
+    await bridge.whenReady();
+    setupOnce();
+
+    var ui = await bridge.getUiStrings();
+    if (ui && !ui.error) state.ui = ui;
+    applyUi();
+
+    var topics = await bridge.getTopics();
+    if (!topics || topics.error) return;
+    renderTopics(topics);
+
+    if (topics.length) {
+        var slug = topics[0].slug;
+        if (state.selectedTopic && topics.some(function (x) { return x.slug === state.selectedTopic; })) {
+            slug = state.selectedTopic;
+        }
+        await selectTopic(slug, state.selectedPathology);
+    } else {
+        clearContent();
     }
 }
 

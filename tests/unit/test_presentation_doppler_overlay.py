@@ -148,6 +148,23 @@ class TestHandleClick:
         assert len(overlay._interval_markers) == 1
         assert not overlay.has_pending_interval_start()
 
+    def test_peak_marker_can_be_dragged_and_emits_updated_measurement(self, overlay):
+        overlay.set_axis_mapping(DopplerAxisMapping.from_frame_size(1000.0, 200.0, time_span_ms=1000.0))
+        overlay.set_tool_mode("peak")
+        overlay.handle_click(100.0, 80.0)
+        emitted = []
+        overlay.markers_changed.connect(emitted.append)
+
+        assert overlay.begin_peak_drag(100.0, 80.0) is True
+        assert overlay.move_peak_drag(250.0, 60.0) is True
+        assert overlay.finish_peak_drag() is True
+
+        marker = overlay.get_measurement_dto().peaks[0]
+        assert marker.time_ms == pytest.approx(250.0)
+        assert marker.velocity_cm_s == pytest.approx(40.0)
+        assert emitted
+        assert overlay.finish_peak_drag() is False
+
 
 class TestTraceClick:
     def test_trace_first_click_near_baseline(self, overlay):
@@ -550,6 +567,25 @@ class TestAutoVtiTrace:
         assert len(overlay._traces) == 1
         assert overlay._traces[0].label == "VTI"
         assert overlay._auto_envelope_item is not None
+
+    def test_trace_zone_draws_only_clipped_envelope_and_peak_guide(self, overlay, mock_plot):
+        overlay.set_axis_mapping(_vessel_mapping_with_time())
+        envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50]))
+
+        assert (
+            overlay.apply_auto_vti_trace(
+                envelope,
+                trace_label="VTI MV",
+                time_range_ms=(200.0, 600.0),
+            )
+            is True
+        )
+
+        trace = overlay._traces[0]
+        assert min(point[0] for point in trace.points) >= 200.0
+        assert max(point[0] for point in trace.points) <= 600.0
+        assert overlay._auto_peak_guide_item is not None
+        assert len(mock_plot.items) > 0
 
     def test_short_envelope_returns_false(self, overlay, mock_plot):
         overlay.set_axis_mapping(_vessel_mapping())

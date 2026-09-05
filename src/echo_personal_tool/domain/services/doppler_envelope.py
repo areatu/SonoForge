@@ -310,6 +310,7 @@ def extract_doppler_envelope(
     *,
     preset: str = "normal",
     force_direction: str | None = None,
+    time_range_px: tuple[float, float] | None = None,
 ) -> tuple[tuple[float, float], ...]:
     """Extract the max-velocity envelope on the side with the strongest flow.
 
@@ -337,15 +338,29 @@ def extract_doppler_envelope(
     if patch.size == 0:
         return ()
 
+    if time_range_px is not None:
+        range_start, range_end = sorted(float(value) for value in time_range_px)
+        local_start = max(0, int(np.floor(range_start - x0)))
+        local_end = min(patch.shape[1], int(np.ceil(range_end - x0)) + 1)
+        if local_end - local_start < 2:
+            return ()
+        patch = patch[:, local_start:local_end]
+        x0 += local_start
+        x1 = x0 + patch.shape[1]
+
     baseline_row = int(round(baseline_y_px - y0))
     baseline_row = max(0, min(baseline_row, patch.shape[0] - 1))
 
     if force_direction == "up":
         above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
-        return above[0] if above is not None else ()
+        if above is None or len(above[0]) < max(cfg.min_signal_columns, int(patch.shape[1] * 0.08)):
+            return ()
+        return above[0]
     if force_direction == "down":
         below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)
-        return below[0] if below is not None else ()
+        if below is None or len(below[0]) < max(cfg.min_signal_columns, int(patch.shape[1] * 0.08)):
+            return ()
+        return below[0]
 
     above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
     below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)

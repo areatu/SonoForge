@@ -14,11 +14,6 @@
             <h1>Справочник по ЭхоКГ и УЗИ</h1>
         </div>
         <div class="header-right">
-            <div class="age-filter" id="ageFilter">
-                <label class="age-label">Age:</label>
-                <input type="number" id="ageInput" class="age-input" placeholder="—" min="0" max="120">
-                <span class="age-unit">y</span>
-            </div>
             <div class="search-box">
                 <span class="search-icon">🔍</span>
                 <input type="text" id="searchInput" placeholder="Search..." autocomplete="off">
@@ -37,7 +32,7 @@
         <!-- Left: Topics -->
         <section class="panel panel-left" id="panelTopics">
             <div class="panel-header">
-                <h2>Anatomy</h2>
+                <h2 id="topicsHeader">Anatomy</h2>
             </div>
             <div class="panel-body" id="topicsList"></div>
             <div class="panel-stats" id="statsBar">
@@ -80,7 +75,7 @@
                     <div class="image-gallery" id="imageGallery">
                         <div class="empty-state" id="imageEmpty">
                             <span class="empty-icon">🖼</span>
-                            <p>No images</p>
+                            <p id="imageEmptyText">No images</p>
                         </div>
                         <div class="image-main" id="imageMain" hidden>
                             <img id="mainImage" alt="">

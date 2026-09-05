@@ -1229,5 +1229,22 @@
   "web_ref.load_error": "Ошибка загрузки",
   "web_ref.init_failed": "Веб-интерфейс не загрузился",
   "web_ref.fallback": "Веб-недоступен — Qt-вид",
-  "web_ref.reloading": "Перезагрузка..."
+  "web_ref.reloading": "Перезагрузка...",
+  "web_ref.edit": "Редактировать",
+  "web_ref.edit_title": "Режим редактирования",
+  "web_ref.save": "Сохранить",
+  "web_ref.cancel": "Отмена",
+  "web_ref.anatomy": "Анатомия",
+  "web_ref.select_topic": "Выберите тему слева",
+  "web_ref.no_pathologies": "Нет патологий",
+  "web_ref.no_images": "Нет изображений",
+  "web_ref.no_parameters": "Нет параметров для этой патологии",
+  "web_ref.nothing_found": "Ничего не найдено",
+  "web_ref.type_topic": "Тема",
+  "web_ref.type_pathology": "Патология",
+  "web_ref.type_parameter": "Параметр",
+  "web_ref.previous": "Назад",
+  "web_ref.next": "Вперёд",
+  "web_ref.close": "Закрыть (Esc)",
+  "web_ref.stats": "{topics} тем · {params} параметров · {images} изображений"
 }
