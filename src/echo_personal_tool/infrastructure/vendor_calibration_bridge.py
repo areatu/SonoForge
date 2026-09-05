@@ -78,6 +78,7 @@ def _merge_ge_spectral_regions(
         max(bounds[3] for bounds in candidates),
     )
 
+
 def _samsung_panel_top_from_tags(dataset: Dataset, frame_height: float) -> float | None:
     """Best-guess spectral panel top from mis-tagged Samsung S:1 regions.
 
