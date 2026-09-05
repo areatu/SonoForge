@@ -123,10 +123,14 @@ def smooth_trajectories(
                 s = config.spatial_smoothing * len(idx)
                 if config.quality_weighted_smoothing:
                     s *= float(np.mean(1.0 - weights) + 0.1)
+                s = 0.0 if not np.isfinite(s) or s < 0 else float(s)
                 t_param = np.arange(len(idx), dtype=np.float64)
                 k = min(3, len(idx) - 1)  # spline degree can't exceed n_points - 1
-                cs_x = UnivariateSpline(t_param, pts[:, 0], w=weights, s=s, k=k)
-                cs_y = UnivariateSpline(t_param, pts[:, 1], w=weights, s=s, k=k)
+                try:
+                    cs_x = UnivariateSpline(t_param, pts[:, 0], w=weights, s=s, k=k)
+                    cs_y = UnivariateSpline(t_param, pts[:, 1], w=weights, s=s, k=k)
+                except (ValueError, TypeError):
+                    continue
                 out[t, idx, 0] = cs_x(t_param)
                 out[t, idx, 1] = cs_y(t_param)
 
@@ -137,9 +141,13 @@ def smooth_trajectories(
             s = config.temporal_smoothing * n_frames
             if config.quality_weighted_smoothing:
                 s *= float(np.mean(1.0 - weights) + 0.1)
+            s = 0.0 if not np.isfinite(s) or s < 0 else float(s)
             k = min(3, n_frames - 1)  # spline degree can't exceed n_points - 1
-            cs_x = UnivariateSpline(times, out[:, i, 0], w=weights, s=s, k=k)
-            cs_y = UnivariateSpline(times, out[:, i, 1], w=weights, s=s, k=k)
+            try:
+                cs_x = UnivariateSpline(times, out[:, i, 0], w=weights, s=s, k=k)
+                cs_y = UnivariateSpline(times, out[:, i, 1], w=weights, s=s, k=k)
+            except (ValueError, TypeError):
+                continue
             out[:, i, 0] = cs_x(times)
             out[:, i, 1] = cs_y(times)
     return out
