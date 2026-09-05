@@ -119,7 +119,12 @@ def _tick_score(
     return score, uniformity, median_gap, centers
 
 
-def spectral_band_is_dark(gray: np.ndarray, band_y: float) -> bool:
+def spectral_band_is_dark(
+    gray: np.ndarray,
+    band_y: float,
+    *,
+    check_wide_region: bool = False,
+) -> bool:
     """True when the region above the tick ruler looks like a Doppler spectral band.
 
     The spectral display is a DARK area (near-black background with a bright
@@ -205,6 +210,33 @@ def spectral_band_is_dark(gray: np.ndarray, band_y: float) -> bool:
                 if best_run >= min_dark_height:
                     return True
 
+    # --- Wide region check for inverted detections (bright ruler, dark gaps) ---
+    # When check_wide_region=True, verify a dark band exists in the middle
+    # third of the frame.  B-mode frames have bright tissue everywhere;
+    # a real Doppler dual-spectrum layout always has a dark spectral band
+    # between the B-mode top and the bright ruler at the bottom.
+    if check_wide_region:
+        mid_top = int(h * 0.30)
+        mid_bot = int(h * 0.70)
+        if mid_bot > mid_top:
+            strip = gray[mid_top:mid_bot, x0:x1]
+            if strip.size > 0:
+                col_means = np.mean(strip, axis=1)
+                dark_rows = col_means < _SPECTRAL_BAND_MAX_MEAN
+                if dark_rows.any():
+                    best_run = 0
+                    current_run = 0
+                    for is_dark in dark_rows:
+                        if is_dark:
+                            current_run += 1
+                            best_run = max(best_run, current_run)
+                        else:
+                            current_run = 0
+                    if best_run >= int(h * 0.08):
+                        return True
+            # No dark band in the middle third -> not a Doppler layout
+            return False
+
     return False
 
 
@@ -264,10 +296,17 @@ def detect_ticks(
     band_y = float(best_y0) + _BAND_HEIGHT / 2.0
     # Reject rulers sitting over a bright B-mode-like region: a real Doppler
     # time ruler always has a dark spectral band above it.
-    # Skip the darkness check for inverted detection (bright ruler with dark
-    # gaps) — the ruler itself is the bright band, and the spectral band may
-    # sit further up in the frame (Samsung dual-spectrum layout).
-    if not best_inverted and not spectral_band_is_dark(gray, band_y):
+    # For inverted detections (bright ruler with dark gaps), verify a dark
+    # spectral band exists in the middle third of the frame instead of
+    # checking immediately above the ruler (which IS the bright ruler).
+    if best_inverted:
+        if not spectral_band_is_dark(gray, band_y, check_wide_region=True):
+            logger.debug(
+                "Best tick ruler at y=%d rejected: no dark spectral band in middle of frame (inverted)",
+                best_y0,
+            )
+            return TickDetectionResult(tick_positions=[], spacing_px=0.0, confidence=0.0)
+    elif not spectral_band_is_dark(gray, band_y):
         logger.debug(
             "Best tick ruler at y=%d rejected: region above is bright (B-mode-like)",
             best_y0,
