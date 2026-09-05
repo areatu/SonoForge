@@ -142,6 +142,44 @@ def test_session_store_accumulates_across_merge_calls() -> None:
     assert data.linear_measurements[0].label == "LVEDD"
 
 
+def test_session_store_keeps_simpson_area_curve_by_frame_and_view() -> None:
+    store = StudyMeasurementSessionStore()
+    contours = (
+        Contour(
+            phase="ED",
+            view="A4C",
+            chamber="LV",
+            points=[(0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (0.0, 5.0)],
+            frame_index=4,
+            sop_instance_uid="clip-a",
+        ),
+        Contour(
+            phase="ES",
+            view="A4C",
+            chamber="LV",
+            points=[(0.0, 0.0), (6.0, 0.0), (6.0, 3.0), (0.0, 3.0)],
+            frame_index=9,
+            sop_instance_uid="clip-a",
+        ),
+        Contour(
+            phase="ED",
+            view="A2C",
+            chamber="LV",
+            points=[(0.0, 0.0), (20.0, 0.0), (20.0, 5.0), (0.0, 5.0)],
+            frame_index=4,
+            sop_instance_uid="clip-a",
+        ),
+    )
+
+    store.merge_simpson_areas("study", contours, (0.5, 0.5))
+
+    assert store.get_simpson_area_curve("study", "clip-a", "A4C") == (
+        (4, 12.5),
+        (9, 4.5),
+    )
+    assert store.get_simpson_area_curve("study", "clip-a", "A2C") == ((4, 25.0),)
+
+
 def test_session_store_clear() -> None:
     store = StudyMeasurementSessionStore()
     store.merge_contours(

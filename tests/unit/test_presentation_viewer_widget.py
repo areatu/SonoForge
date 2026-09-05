@@ -677,3 +677,120 @@ class TestVesselCycleCorrection:
         psv, _ = viewer._doppler.get_vessel_values()
         assert psv == pytest.approx(median_psv)
         assert viewer._doppler.vessel_status() == "done"
+
+
+class TestGetLvContourFilters:
+    def test_returns_lv_contour(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10), (20, 20)])
+        viewer._stored_contours.append(c)
+        result = viewer.get_lv_contour()
+        assert result is c
+
+    def test_filters_by_phase(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        ed = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
+        es = Contour(phase="ES", view="A4C", chamber="LV", points=[(20, 20)])
+        viewer._stored_contours.extend([ed, es])
+        result = viewer.get_lv_contour(phase="ES")
+        assert result is es
+
+    def test_filters_by_view(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        a4c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
+        a2c = Contour(phase="ED", view="A2C", chamber="LV", points=[(20, 20)])
+        viewer._stored_contours.extend([a4c, a2c])
+        result = viewer.get_lv_contour(view="A2C")
+        assert result is a2c
+
+    def test_filters_by_phase_and_view(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        ed_a4c = Contour(phase="ED", view="A4C", chamber="LV", points=[(10, 10)])
+        es_a4c = Contour(phase="ES", view="A4C", chamber="LV", points=[(20, 20)])
+        ed_a2c = Contour(phase="ED", view="A2C", chamber="LV", points=[(30, 30)])
+        viewer._stored_contours.extend([ed_a4c, es_a4c, ed_a2c])
+        result = viewer.get_lv_contour(phase="ED", view="A2C")
+        assert result is ed_a2c
+
+    def test_returns_none_when_no_match(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        viewer._stored_contours.append(Contour(phase="ED", view="A4C", chamber="LA"))
+        assert viewer.get_lv_contour(phase="ED", view="A4C") is None
+
+    def test_case_insensitive_phase(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        c = Contour(phase="ed", view="A4C", chamber="LV", points=[(10, 10)])
+        viewer._stored_contours.append(c)
+        result = viewer.get_lv_contour(phase="ED")
+        assert result is c
+
+
+class TestEnsureLvEpicardialContours:
+    def test_creates_lv_epi_from_lv(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        ed = Contour(phase="ED", view="A4C", chamber="LV", points=[(50, 50), (60, 50), (60, 60), (50, 60)])
+        viewer._stored_contours.append(ed)
+        created = viewer.ensure_lv_epicardial_contours(view="A4C")
+        assert len(created) == 1
+        assert created[0].chamber == "LV_EPI"
+        assert created[0].phase == "ED"
+
+    def test_skips_if_epi_already_exists(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        ed = Contour(phase="ED", view="A4C", chamber="LV", points=[(50, 50), (60, 50), (60, 60), (50, 60)])
+        epi = Contour(phase="ED", view="A4C", chamber="LV_EPI", points=[(48, 48), (62, 48), (62, 62), (48, 62)])
+        viewer._stored_contours.extend([ed, epi])
+        created = viewer.ensure_lv_epicardial_contours(view="A4C")
+        assert len(created) == 0
+
+    def test_skips_contour_with_few_points(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        ed = Contour(phase="ED", view="A4C", chamber="LV", points=[(50, 50), (60, 50)])
+        viewer._stored_contours.append(ed)
+        created = viewer.ensure_lv_epicardial_contours(view="A4C")
+        assert len(created) == 0
+
+    def test_adds_to_stored_contours(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        ed = Contour(phase="ED", view="A4C", chamber="LV", points=[(50, 50), (60, 50), (60, 60), (50, 60)])
+        viewer._stored_contours.append(ed)
+        viewer.ensure_lv_epicardial_contours(view="A4C")
+        epi = viewer.get_lv_epicardial_contour(phase="ED", view="A4C")
+        assert epi is not None
+        assert epi.chamber == "LV_EPI"
+
+
+class TestContourPenFor:
+    def test_lv_epi_returns_purple_dashed(self, viewer):
+        from PySide6.QtCore import Qt
+
+        from echo_personal_tool.domain.models.contour import Contour
+
+        c = Contour(phase="ED", view="A4C", chamber="LV_EPI", points=[(10, 10)])
+        pen = viewer._contour_pen_for(c)
+        assert pen.color().name() == "#ab47bc"
+        assert pen.style() == Qt.PenStyle.DashLine
+
+    def test_manual_returns_default_pen(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        c = Contour(phase="ED", view="A4C", chamber="LV", source="manual", points=[(10, 10)])
+        pen = viewer._contour_pen_for(c)
+        assert pen is not None
+
+    def test_ai_returns_ai_pen(self, viewer):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        c = Contour(phase="ED", view="A4C", chamber="LV", source="ai", points=[(10, 10)])
+        pen = viewer._contour_pen_for(c)
+        assert pen is not None

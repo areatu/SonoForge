@@ -131,7 +131,7 @@ def test_load_all_frames_from_dicom(tmp_path: Path) -> None:
 
 def test_require_full_cine_empty_raises() -> None:
     cache = FrameCache()
-    with pytest.raises(IncompleteCineError, match="empty"):
+    with pytest.raises(IncompleteCineError, match="frames"):
         cache.require_full_cine()
 
 

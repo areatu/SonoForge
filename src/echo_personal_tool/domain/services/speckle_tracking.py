@@ -347,6 +347,43 @@ def preprocess_echo_frame(
     return f_uint8.astype(np.float32) / 255.0
 
 
+def estimate_global_translations(
+    frames: np.ndarray,
+    reference_index: int,
+) -> np.ndarray:
+    """Estimate frame-to-reference translation for global motion correction."""
+    if frames.ndim < 3 or len(frames) == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    reference_index = int(np.clip(reference_index, 0, len(frames) - 1))
+    reference = frames[reference_index]
+    if reference.ndim == 3:
+        reference = np.mean(reference[..., :3], axis=2)
+    reference = np.asarray(reference, dtype=np.float32)
+    result = np.zeros((len(frames), 2), dtype=np.float64)
+    for index, frame in enumerate(frames):
+        if index == reference_index:
+            continue
+        current = frame
+        if current.ndim == 3:
+            current = np.mean(current[..., :3], axis=2)
+        current = np.asarray(current, dtype=np.float32)
+        shift, _ = cv2.phaseCorrelate(reference, current)
+        result[index] = (float(shift[0]), float(shift[1]))
+    return result
+
+
+def remove_global_translations(
+    positions: np.ndarray,
+    translations: np.ndarray,
+) -> np.ndarray:
+    """Remove frame-level translation while preserving kernel geometry."""
+    corrected = np.asarray(positions, dtype=np.float64).copy()
+    if corrected.ndim != 3 or len(translations) != corrected.shape[0]:
+        return corrected
+    corrected -= np.asarray(translations, dtype=np.float64)[:, None, :]
+    return corrected
+
+
 def track_cine_bidirectional(
     frames: np.ndarray,
     initial_kernels: list[TrackingKernel],

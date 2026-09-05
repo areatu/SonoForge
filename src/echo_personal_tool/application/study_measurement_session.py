@@ -14,6 +14,7 @@ from echo_personal_tool.domain.models.doppler import (
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 
 
 def merge_doppler_peaks(
@@ -165,6 +166,7 @@ class StudyMeasurementData:
     weight_kg: float | None = None
     mmode_time_per_pixel_ms: float | None = None
     vessel_measurements: tuple[VesselMeasurement, ...] = ()
+    simpson_area_by_frame: tuple[tuple[str, str, int, float], ...] = ()
 
     @property
     def doppler_measurement(self) -> DopplerMeasurementDTO | None:
@@ -199,6 +201,39 @@ class StudyMeasurementSessionStore:
         self._studies[study_uid] = replace(
             data,
             contours=merge_contours(data.contours, incoming),
+        )
+
+    def merge_simpson_areas(
+        self,
+        study_uid: str,
+        incoming: tuple[Contour, ...],
+        pixel_spacing: tuple[float, float],
+    ) -> None:
+        """Store LV cavity area by instance/view/frame for phase fallback."""
+        data = self.get(study_uid)
+        current = {(uid, view, frame): area for uid, view, frame, area in data.simpson_area_by_frame}
+        for contour in incoming:
+            if contour.chamber.upper() != "LV" or contour.frame_index is None or len(contour.points) < 3:
+                continue
+            area = polygon_area_mm2(contour.closed_polygon_points(), pixel_spacing)
+            if area > 0.0:
+                key = (contour.sop_instance_uid or "", contour.view.upper(), contour.frame_index)
+                current[key] = area
+        values = tuple((*key, area) for key, area in sorted(current.items()))
+        self._studies[study_uid] = replace(data, simpson_area_by_frame=values)
+
+    def get_simpson_area_curve(
+        self,
+        study_uid: str,
+        instance_uid: str,
+        view: str,
+    ) -> tuple[tuple[int, float], ...]:
+        """Return frame-sorted Simpson cavity areas for one CINE/view."""
+        target_view = view.upper()
+        return tuple(
+            (frame, area)
+            for uid, stored_view, frame, area in self.get(study_uid).simpson_area_by_frame
+            if uid == instance_uid and stored_view == target_view
         )
 
     def merge_linear_measurements(

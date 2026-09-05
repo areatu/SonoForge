@@ -30,8 +30,10 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
+    estimate_global_translations,
     log_reference_max,
     preprocess_echo_frame,
+    remove_global_translations,
     track_cine_bidirectional,
     track_cine_incremental,
     track_cine_sequential,
@@ -87,6 +89,7 @@ class SpeckleTrackingWorker(QRunnable):
         manual_ed: int | None = None,
         manual_es: int | None = None,
         ecg_waveform=None,
+        simpson_area_curve: tuple[tuple[int, float], ...] = (),
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -98,6 +101,7 @@ class SpeckleTrackingWorker(QRunnable):
         self._manual_ed = manual_ed
         self._manual_es = manual_es
         self._ecg_waveform = ecg_waveform
+        self._simpson_area_curve = simpson_area_curve
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
@@ -124,14 +128,20 @@ class SpeckleTrackingWorker(QRunnable):
                 self._ecg_waveform is not None,
             )
             ed_es_source = "image"
+            ed_es_confidence = 0.5
             r_peak_result = None
 
             if manual_phases:
                 global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
                 global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
+                ed_es_source = "manual"
+                ed_es_confidence = 1.0
             else:
                 # ECG-first policy: use R-peaks when reliable, else image fallback.
-                from echo_personal_tool.domain.services.ecg_ed_es_mapper import detect_ed_es_for_cine
+                from echo_personal_tool.domain.services.ecg_ed_es_mapper import (
+                    detect_ed_es_for_cine,
+                    detect_ed_es_from_area_curve,
+                )
 
                 def image_fallback() -> tuple[int, int]:
                     return detect_ed_es_from_frames(self._frames, self._zone, config)
@@ -140,12 +150,19 @@ class SpeckleTrackingWorker(QRunnable):
                     self._ecg_waveform,
                     self._frame_time_ms,
                     n_frames,
+                    simpson_fallback=lambda: detect_ed_es_from_area_curve(self._simpson_area_curve, n_frames),
                     image_fallback=image_fallback,
                 )
                 global_ed = mapping.ed_frame_index
                 global_es = mapping.es_frame_index
                 ed_es_source = mapping.source
                 r_peak_result = mapping.r_peak_result
+                if mapping.r_peak_result is not None:
+                    ed_es_confidence = float(mapping.r_peak_result.confidence)
+                elif mapping.source == "simpson":
+                    ed_es_confidence = 0.8
+                else:
+                    ed_es_confidence = 0.5
 
             phase_start = min(global_ed, global_es)
             phase_end = max(global_ed, global_es)
@@ -165,7 +182,10 @@ class SpeckleTrackingWorker(QRunnable):
             logger.info("STE: preprocessing frames (CLAHE + log)")
             log_ref = log_reference_max(tracking_frames_raw)
             preprocessed = np.stack(
-                [preprocess_echo_frame(tracking_frames_raw[i], log_ref_max=log_ref) for i in range(tracking_frames_raw.shape[0])]
+                [
+                    preprocess_echo_frame(tracking_frames_raw[i], log_ref_max=log_ref)
+                    for i in range(tracking_frames_raw.shape[0])
+                ]
             )
 
             zone_mask = build_zone_mask(self._zone, preprocessed.shape[1:3])
@@ -227,6 +247,9 @@ class SpeckleTrackingWorker(QRunnable):
                 config.ncc_threshold,
             )
             raw_positions = positions.copy()
+            if config.global_motion_compensation:
+                translations = estimate_global_translations(tracking_frames_raw, local_ed)
+                positions = remove_global_translations(positions, translations)
             smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
             smoothed = apply_motion_model(
                 smoothed,
@@ -444,6 +467,8 @@ class SpeckleTrackingWorker(QRunnable):
                 ecg_waveform=self._ecg_waveform,
                 r_peak_result=r_peak_result,
                 ed_es_source=ed_es_source,
+                ed_es_confidence=ed_es_confidence,
+                ed_es_quality="high" if ed_es_confidence >= 0.8 else "review",
                 ecg_trace_for_display=ecg_trace_display,
             )
             self.signals.finished.emit(result)

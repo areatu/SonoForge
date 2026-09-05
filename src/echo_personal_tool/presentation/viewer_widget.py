@@ -4307,12 +4307,56 @@ class ViewerWidget(QWidget):
     def contours(self) -> list[Contour]:
         return list(self._stored_contours)
 
-    def get_lv_contour(self) -> Contour | None:
-        """Return the first LV contour, or None if no LV contour exists."""
+    def get_lv_contour(self, *, phase: str | None = None, view: str | None = None) -> Contour | None:
+        """Return an LV contour, preferring the requested phase/view."""
         for contour in self._stored_contours:
-            if contour.chamber == "LV":
+            if contour.chamber != "LV":
+                continue
+            if phase is not None and contour.phase.upper() != phase.upper():
+                continue
+            if view is not None and contour.view.upper() != view.upper():
+                continue
+            return contour
+        return None
+
+    def get_lv_epicardial_contour(self, *, phase: str, view: str = "A4C") -> Contour | None:
+        """Return the editable STE epicardial contour for a phase/view."""
+        for contour in self._stored_contours:
+            if (
+                contour.chamber == "LV_EPI"
+                and contour.phase.upper() == phase.upper()
+                and contour.view.upper() == view.upper()
+            ):
                 return contour
         return None
+
+    def ensure_lv_epicardial_contours(self, *, view: str = "A4C") -> list[Contour]:
+        """Create editable epicardial contours from existing LV contours."""
+        from echo_personal_tool.domain.services.myocardial_zone import expand_contour_to_zone
+
+        spacing = self._pixel_spacing() or (1.0, 1.0)
+        thickness_px = 8.0 / max(float(np.mean(spacing)), 1e-6)
+        updated = list(self._stored_contours)
+        created: list[Contour] = []
+        for phase in ("ED", "ES"):
+            endo = self.get_lv_contour(phase=phase, view=view)
+            if endo is None or len(endo.points) < 3 or self.get_lv_epicardial_contour(phase=phase, view=view):
+                continue
+            epi = expand_contour_to_zone(np.asarray(endo.points, dtype=np.float64), thickness_px)
+            created.append(
+                replace(
+                    endo,
+                    chamber="LV_EPI",
+                    points=[(float(x), float(y)) for x, y in epi],
+                    source="ste_auto",
+                    mitral_annulus=None,
+                    apex_landmark=None,
+                )
+            )
+        if created:
+            updated.extend(created)
+            self.apply_contours(updated)
+        return created
 
     def show_speckle_result(self, result: object) -> None:
         """Display speckle tracking overlay from StrainResult."""
@@ -5165,6 +5209,8 @@ class ViewerWidget(QWidget):
             return self._contour_pen_ai
         if contour.source == "model":
             return self._contour_pen_model
+        if contour.chamber.upper() == "LV_EPI":
+            return pg.mkPen("#ab47bc", width=2, style=Qt.PenStyle.DashLine)
         return self._contour_pen_manual
 
     def _contour_xy(

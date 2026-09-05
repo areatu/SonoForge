@@ -59,6 +59,9 @@ class SteResultsDialog(QDialog):
         kernels_accepted: int = 0,
         kernels_rejected: int = 0,
         kernels_total: int = 0,
+        ed_es_source: str = "unknown",
+        ed_es_confidence: float = 0.0,
+        ed_es_quality: str = "unknown",
     ) -> None:
         self._strain_curve.set_strain_data(
             longitudinal,
@@ -72,12 +75,17 @@ class SteResultsDialog(QDialog):
         self._segment_quality.update_results(segment_strain, segment_quality)
 
         # Update warning label
+        warnings: list[str] = []
         if kernels_total > 0 and kernels_rejected > 0:
             accepted_pct = (kernels_accepted / kernels_total) * 100.0
-            self._warning_label.setText(
-                f"Quality Gate: {kernels_accepted}/{kernels_total} kernels accepted ({accepted_pct:.0f}%) "
-                f"— {kernels_rejected} rejected (NCC < threshold)"
+            warnings.append(
+                f"Kernels: {kernels_accepted}/{kernels_total} accepted ({accepted_pct:.0f}%) "
+                f"— {kernels_rejected} rejected"
             )
+        if ed_es_confidence > 0 and ed_es_confidence < 0.5:
+            warnings.append(f"Review ED/ES selection — source={ed_es_source}, confidence={ed_es_confidence:.0%}")
+        if warnings:
+            self._warning_label.setText(" | ".join(warnings))
             self._warning_label.show()
         else:
             self._warning_label.hide()

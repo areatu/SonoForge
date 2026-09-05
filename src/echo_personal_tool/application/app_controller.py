@@ -1147,6 +1147,8 @@ class AppController(QObject):
         self._state_manager.set_contours(contour_tuple, emit=False)
         study_uid = self._resolve_study_uid()
         self._measurement_session.merge_contours(study_uid, contour_tuple)
+        spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
+        self._measurement_session.merge_simpson_areas(study_uid, contour_tuple, spacing)
         self._recompute_measurements()
 
     def on_linear_measurements_changed(self, measurements: object) -> None:
@@ -3293,14 +3295,37 @@ class AppController(QObject):
         pixel_spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
         endo_points = __import__("numpy").array(contour.points, dtype=__import__("numpy").float64)
 
+        epicardial = next(
+            (
+                item
+                for item in self._state_manager.snapshot.contours
+                if item.chamber == "LV_EPI"
+                and item.view == contour.view
+                and item.phase == contour.phase
+                and item.frame_index == contour.frame_index
+            ),
+            None,
+        )
+
         active_config = config or SpeckleConfig.preset_standard()
         zone = create_myocardial_zone(
             endo_points,
             pixel_spacing,
             active_config.wall_thickness_mm,
+            epi_points=(
+                __import__("numpy").array(epicardial.points, dtype=__import__("numpy").float64) if epicardial else None
+            ),
         )
 
         frame_time_ms = self._state_manager.snapshot.frame_time_ms or 33.3
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        simpson_area_curve: tuple[tuple[int, float], ...] = ()
+        if instance is not None:
+            simpson_area_curve = self._measurement_session.get_simpson_area_curve(
+                self._resolve_study_uid(instance),
+                instance.sop_instance_uid,
+                contour.view,
+            )
 
         self.status_message.emit(tr("app.speckle_compute"))
         worker = SpeckleTrackingWorker(
@@ -3312,6 +3337,7 @@ class AppController(QObject):
             config_preset=config_preset,
             manual_ed=manual_ed,
             manual_es=manual_es,
+            simpson_area_curve=simpson_area_curve,
         )
         worker.signals.finished.connect(self._on_speckle_tracking_finished, Qt.ConnectionType.QueuedConnection)
         worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)

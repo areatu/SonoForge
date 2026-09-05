@@ -216,3 +216,24 @@ class TestStrainResult:
         assert result.segment_strain[1] == -0.20
         assert result.drift_compensation_applied is True
         assert result.kernels_total_count == 12
+
+    def test_ed_es_quality_fields(self) -> None:
+        """StrainResult should carry ED/ES quality metadata."""
+        result = StrainResult(
+            longitudinal=np.array([-0.2]),
+            radial=np.array([0.1]),
+            gls=-0.2,
+            ed_es_source="simpson",
+            ed_es_confidence=0.85,
+            ed_es_quality="good",
+        )
+        assert result.ed_es_source == "simpson"
+        assert result.ed_es_confidence == 0.85
+        assert result.ed_es_quality == "good"
+
+    def test_global_motion_compensation_field(self) -> None:
+        """SpeckleConfig should have global_motion_compensation flag."""
+        cfg = SpeckleConfig(global_motion_compensation=False)
+        assert cfg.global_motion_compensation is False
+        cfg2 = SpeckleConfig()
+        assert cfg2.global_motion_compensation is True

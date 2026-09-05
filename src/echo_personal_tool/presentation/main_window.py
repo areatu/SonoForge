@@ -2147,10 +2147,25 @@ class MainWindow(QMainWindow):
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
             return
-        contour = self._viewer.get_lv_contour()
+        contour = self._viewer.get_lv_contour(phase="ED", view="A4C") or self._viewer.get_lv_contour()
         if contour is None:
             self._show_status(tr("status.speckle_no_contour"))
             return
+        created_epi = self._viewer.ensure_lv_epicardial_contours(view=contour.view)
+        if created_epi:
+            self._controller.on_contours_changed(self._viewer.contours())
+            self._show_status("Epicardial contours created — edit nodes if needed, then press STE again")
+            return
+
+        phase_contours = {
+            item.phase.upper(): item
+            for item in self._viewer.contours()
+            if item.chamber == "LV" and item.view.upper() == contour.view.upper() and item.frame_index is not None
+        }
+        if self._manual_ed_frame is None and phase_contours.get("ED") is not None:
+            self._manual_ed_frame = phase_contours["ED"].frame_index
+        if self._manual_es_frame is None and phase_contours.get("ES") is not None:
+            self._manual_es_frame = phase_contours["ES"].frame_index
         current_idx = self._get_current_frame_index() or 0
         cache = self._controller._frame_cache
         n_frames = cache._total_frames if cache else 0
@@ -2218,6 +2233,9 @@ class MainWindow(QMainWindow):
             kernels_accepted=result.kernels_accepted_count,
             kernels_rejected=result.kernels_rejected_count,
             kernels_total=result.kernels_total_count,
+            ed_es_source=result.ed_es_source,
+            ed_es_confidence=result.ed_es_confidence,
+            ed_es_quality=result.ed_es_quality,
         )
         quality_pct = result.tracking_quality_mean * 100.0
         drift = "ON" if result.drift_compensation_applied else "OFF"
@@ -2239,6 +2257,7 @@ class MainWindow(QMainWindow):
             f"GLS: {gls:.1f}%",
             f"Quality: {quality_pct:.0f}%",
             quality_info,
+            f"ED/ES: {result.ed_es_source}",
             f"Drift: {drift}",
             f"Preset: {preset_name}",
         ]

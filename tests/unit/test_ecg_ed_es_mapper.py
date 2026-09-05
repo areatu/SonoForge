@@ -9,6 +9,7 @@ import numpy as np
 from echo_personal_tool.domain.models.ecg import EcgLead, EcgWaveform, RPeakResult
 from echo_personal_tool.domain.services.ecg_ed_es_mapper import (
     detect_ed_es_for_cine,
+    detect_ed_es_from_area_curve,
     map_rpeaks_to_frames,
 )
 
@@ -115,6 +116,17 @@ class TestMapRpeaksToFrames:
 
 
 class TestDetectEdEsForCine:
+    def test_simpson_area_precedes_image_fallback(self) -> None:
+        result = detect_ed_es_for_cine(
+            None,
+            33.3,
+            20,
+            simpson_fallback=lambda: (3, 11),
+            image_fallback=lambda: (5, 15),
+        )
+        assert result.source == "simpson"
+        assert (result.ed_frame_index, result.es_frame_index) == (3, 11)
+
     def test_no_ecg_uses_default(self) -> None:
         result = detect_ed_es_for_cine(None, 33.3, 30)
         assert result.source == "image"
@@ -181,3 +193,14 @@ class TestDetectEdEsForCine:
         result = detect_ed_es_for_cine(None, 33.3, 30, image_fallback=lambda: (100, -5))
         assert result.ed_frame_index == 29
         assert result.es_frame_index == 0
+
+
+def test_detect_ed_es_from_area_curve_uses_extrema() -> None:
+    samples = ((8, 12.0), (2, 24.0), (5, 7.0), (30, 100.0))
+
+    assert detect_ed_es_from_area_curve(samples, n_frames=20) == (2, 5)
+
+
+def test_detect_ed_es_from_area_curve_rejects_flat_or_incomplete_data() -> None:
+    assert detect_ed_es_from_area_curve(((2, 10.0),), n_frames=20) is None
+    assert detect_ed_es_from_area_curve(((2, 10.0), (5, 10.0)), n_frames=20) is None
