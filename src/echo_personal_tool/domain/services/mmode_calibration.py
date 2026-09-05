@@ -16,9 +16,6 @@ def mmode_state_from_panel(
     if panel.kind is not PanelKind.M_MODE:
         return None
 
-    if panel.vertical_mm_per_pixel is None:
-        return None
-
     horizontal_ms = panel.horizontal_ms_per_pixel
     time_from_dicom = horizontal_ms is not None
 
