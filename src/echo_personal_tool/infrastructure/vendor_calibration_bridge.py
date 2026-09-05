@@ -534,8 +534,8 @@ def try_parse_samsung_tick_calibration(
                         edge_dist = min(mid, len(medians) - 1 - mid) / (len(medians) / 2.0)
                         edge_bonus = max(0.0, 1.0 - edge_dist) * 5.0
                         # Penalize if plateau is inside B-mode or ruler zones
-                        in_bmode = (j < bmode_end - search_start)
-                        in_ruler = (i > ruler_start - search_start)
+                        in_bmode = j < bmode_end - search_start
+                        in_ruler = i > ruler_start - search_start
                         zone_penalty = -50.0 if (in_bmode or in_ruler) else 0.0
                         score = gain + edge_bonus + zone_penalty
                         if score > best_score:
