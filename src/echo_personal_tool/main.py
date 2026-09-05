@@ -229,23 +229,16 @@ def main() -> int:
 
     set_language(preferences.language)
 
-    # ── Startup splash (AnythingLLM-style, ~3.4 s) ──────────────────
-    # Shows before the (synchronous) main-window construction and fades
-    # into the maximized window after a pleasant minimum display time.
+    # ── Startup splash (AnythingLLM 1.16-style fullscreen boot, ~3.4 s) ─
+    # Pure black fullscreen window: white logo → “NN%” + white progress bar
+    # → words fading in from blur into focus → fade into the maximized app.
     # Disable with ECHO_NO_SPLASH=1 (tests, screenshots, slow CI).
     splash = None
     if is_splash_enabled():
         from echo_personal_tool.presentation.splash import SplashScreen
 
         splash = SplashScreen(
-            stages=(
-                tr("splash.stage.starting"),
-                tr("splash.stage.engine"),
-                tr("splash.stage.workspace"),
-                tr("splash.stage.ready"),
-            ),
-            tagline=tr("splash.tagline"),
-            theme_mode=preferences.theme_mode,
+            words=tuple(w for w in tr("splash.words").split("|") if w.strip()),
             reduce_motion=preferences.reduce_motion,
         )
         splash.show_and_play()
@@ -259,8 +252,8 @@ def main() -> int:
             splash.close()
         raise
     if splash is not None:
-        # Sync the status line with the real milestone just reached.
-        splash.set_status(tr("splash.stage.workspace"))
+        # Sync the counter with the real milestone just reached.
+        splash.set_progress(46)
         _pump_event_loop(app, frames=2)
 
     if preferences.startup_mode == "last_folder" and preferences.last_opened_folder:

@@ -1,5 +1,10 @@
 # Changelog — Текущая сессия
 
+## [2026-09-05] Splash-заставка переделана под стиль AnythingLLM Desktop 1.16.1 (полноэкранный чёрный boot)
+- **Тип:** feature (изменение дизайна)
+- **Файлы:** `src/echo_personal_tool/presentation/splash.py`, `src/echo_personal_tool/main.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_splash_screen.py`, `docs/splash-preview/`
+- **Суть:** По уточнению пользователя заставка AnythingLLM в 1.16.1 — не компактное окно, а полноэкранный чёрный экран без границ: белый логотип по центру, под ним счётчик «NN%» и тонкая полоса, заполняемая белым; слова по сторонам/под логотипом выходят из прозрачности и gaussian-блюра в фокус каскадом; затем окно закрывается (fade) в главное окно. Реализовано: frameless-окно на всю геометрию экрана, фон `#000`, `_Word` с вложенными эффектами (opacity на обёртке + `QGraphicsBlurEffect` 9→0 px на тексте), авто-прогресс до ~92 % шагами по 420 мс, 100 % только после реального завершения инициализации (`complete_with`), fade 420 мс; учёт reduce-motion; `ECHO_NO_SPLASH=1`. Локали: `splash.words` (RU «Локально|Конфиденциально|Стандарты ASE», EN «Local-first|Private|ASE aligned»). Превью `docs/splash-preview/index.html` обновлено под новый концепт A. Проверено: ruff clean, py_compile.
+
 ## [2026-09-04] Заставка (splash screen) при запуске — дизайн в духе AnythingLLM Desktop
 - **Тип:** feature
 - **Файлы:** `src/echo_personal_tool/presentation/splash.py` (новый), `src/echo_personal_tool/main.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_splash_screen.py` (новый), `docs/splash-preview/` (превью концептов)
