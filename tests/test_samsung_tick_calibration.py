@@ -216,6 +216,7 @@ def test_calibration_on_real_data():
 
 
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_dataset
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import _samsung_region_roi_fallback
 
 
 def _make_samsung_mis_tagged_dataset(frame_height: int = 884) -> Dataset:
@@ -282,6 +283,29 @@ def test_samsung_region_fallback_recovers_panel_without_time_ruler():
     assert state.roi.y1 > 850.0
     assert state.baseline_y_px < 500.0
     assert state.time_span_ms == 0.0
+
+
+def test_samsung_region_fallback_ignores_unrelated_regions(monkeypatch):
+    dataset = _make_samsung_mis_tagged_dataset()
+    unrelated = Dataset()
+    unrelated.RegionSpatialFormat = 1
+    unrelated.RegionDataType = 1
+    unrelated.RegionLocationMinX0 = 20
+    unrelated.RegionLocationMinY0 = 20
+    unrelated.RegionLocationMaxX1 = 200
+    unrelated.RegionLocationMaxY1 = 800
+    dataset.SequenceOfUltrasoundRegions.append(unrelated)
+    frame = np.zeros((884, 1180), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        "echo_personal_tool.infrastructure.vendor_calibration_bridge.detect_doppler_grid_lines",
+        lambda *args, **kwargs: [650.0],
+    )
+
+    roi = _samsung_region_roi_fallback(dataset, frame)
+
+    assert roi is not None
+    assert roi.y0 == 473.0
 
 
 def test_samsung_tick_calibration_prefers_region_top_for_full_panel():
