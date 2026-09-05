@@ -149,9 +149,7 @@ class TestHandleClick:
         assert not overlay.has_pending_interval_start()
 
     def test_peak_marker_can_be_dragged_and_emits_updated_measurement(self, overlay):
-        overlay.set_axis_mapping(
-            DopplerAxisMapping.from_frame_size(1000.0, 200.0, time_span_ms=1000.0)
-        )
+        overlay.set_axis_mapping(DopplerAxisMapping.from_frame_size(1000.0, 200.0, time_span_ms=1000.0))
         overlay.set_tool_mode("peak")
         overlay.handle_click(100.0, 80.0)
         emitted = []
@@ -574,11 +572,14 @@ class TestAutoVtiTrace:
         overlay.set_axis_mapping(_vessel_mapping_with_time())
         envelope = tuple((100.0 + i * 100.0, y) for i, y in enumerate([90, 70, 40, 20, 10, 25, 50]))
 
-        assert overlay.apply_auto_vti_trace(
-            envelope,
-            trace_label="VTI MV",
-            time_range_ms=(200.0, 600.0),
-        ) is True
+        assert (
+            overlay.apply_auto_vti_trace(
+                envelope,
+                trace_label="VTI MV",
+                time_range_ms=(200.0, 600.0),
+            )
+            is True
+        )
 
         trace = overlay._traces[0]
         assert min(point[0] for point in trace.points) >= 200.0
