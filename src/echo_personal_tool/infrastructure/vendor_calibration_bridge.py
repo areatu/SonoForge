@@ -348,7 +348,11 @@ def try_parse_samsung_tick_calibration(
         # validation above is the stronger guard for this vendor-specific
         # fallback, so retry the ruler without the global darkness check.
         relaxed_ticks = detect_ticks(arr, require_dark_band=False)
-        if relaxed_ticks.confidence >= 0.25 and relaxed_ticks.spacing_px > 0.0 and len(relaxed_ticks.tick_positions) >= 5:
+        if (
+            relaxed_ticks.confidence >= 0.25
+            and relaxed_ticks.spacing_px > 0.0
+            and len(relaxed_ticks.tick_positions) >= 5
+        ):
             positions = relaxed_ticks.tick_positions
             visible_width_px = float(positions[-1] - positions[0]) + relaxed_ticks.spacing_px
             frequency_hz = tick_calibration.k_constant * relaxed_ticks.spacing_px
@@ -514,9 +518,9 @@ def try_parse_samsung_tick_calibration(
     candidate = calibration_from_roi_and_baseline(
         roi,
         baseline_y,
-                velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
-                time_span_ms=time_span_ms,
-                kind=effective_kind,
+        velocity_span_cm_s=effective_kind.default_velocity_span_cm_s,
+        time_span_ms=time_span_ms,
+        kind=effective_kind,
     )
     return DopplerCalibrationState(
         roi=candidate.roi,

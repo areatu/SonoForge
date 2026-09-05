@@ -80,6 +80,7 @@ class _PeakScatterItem(pg.ScatterPlotItem):
             return
         ev.ignore()
 
+
 _PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "s_lat", "Vmax", "TR Vmax", "s_prime_rv")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
 _MITRAL_INFLOW_WORKFLOW: tuple[tuple[str, str], ...] = (
@@ -687,7 +688,16 @@ class DopplerOverlayTools(QWidget):
         if len(finalized) < 3:
             return False
         self._append_trace(DopplerTrace(label=trace_label, points=finalized))
-        if trace_label.strip().upper() in {"VTI MV", "VTI MR", "VTI AV", "VTI AR", "VTI TV", "VTI PV", "VTI TR", "VTI PR"}:
+        if trace_label.strip().upper() in {
+            "VTI MV",
+            "VTI MR",
+            "VTI AV",
+            "VTI AR",
+            "VTI TV",
+            "VTI PV",
+            "VTI TR",
+            "VTI PR",
+        }:
             guide_points = tuple(
                 (
                     self._axis_mapping.x_from_time_ms(time_ms),
