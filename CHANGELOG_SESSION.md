@@ -1,5 +1,10 @@
 # Changelog — Текущая сессия
 
+## [2026-09-05] Splash v3: заливка логотипа снизу вверх (волна+брызги) + слова вокруг логотипа; архив вариантов index1/index2
+- **Тип:** feature (изменение дизайна)
+- **Файлы:** `src/echo_personal_tool/presentation/splash.py`, `src/echo_personal_tool/main.py` (комментарий), `src/echo_personal_tool/infrastructure/locales/{ru,en}.json` (без изменений: ключ `splash.words`), `tests/unit/test_splash_screen.py`, `docs/splash-preview/{index.html,index1.html,index2.html,README.md}`
+- **Суть:** По уточнению пользователя: вместо горизонтального progress bar — заполнение логотипа снизу вверх белым цветом. Логотип исходно на слабой непрозрачности (~0.10), по мере прогресса анимированная «водяная» маска (синусоидальная волна + поднимающиеся брызги, 30 fps) заливает логотип белым; при 100 % он полностью белый. Слова (Local-first / Private / ASE aligned) больше не строкой под логотипом, а по отдельности вокруг: выше слева, выше справа, ниже слева; исходно opacity ~0.08 + gaussian-blur 16 px, у каждой пары своя зона прогресса (16–58 / 34–76 / 52–96 %), к финишу полностью читаемы. Qt: `_LogoFill` (QPainterPath-клип с волной, капли), `_Word` (два вложенных эффекта), `_relayout()` позиционирует слова вокруг логотипа. Проценты честные: авто до ~92 %, 100 % — после реальной инициализации; минимум показа 3.4 с; fade 420 мс. **Архив вариантов сохранён отдельными файлами в docs/splash-preview/ и запушен**: `index1.html` (вариант 1 — компактное окно со спиннером, из коммита 2f76f71), `index2.html` (вариант 2 — чёрный boot с горизонтальным баром, из fa44fa8), `index.html` — новый вариант 3; на каждой странице навигация между вариантами. Проверено: ruff clean, py_compile.
+
 ## [2026-09-05] Splash-заставка переделана под стиль AnythingLLM Desktop 1.16.1 (полноэкранный чёрный boot)
 - **Тип:** feature (изменение дизайна)
 - **Файлы:** `src/echo_personal_tool/presentation/splash.py`, `src/echo_personal_tool/main.py`, `src/echo_personal_tool/infrastructure/locales/{ru,en}.json`, `tests/unit/test_splash_screen.py`, `docs/splash-preview/`

@@ -2,166 +2,110 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>SonoForge — Splash Screen Concepts</title>
+<title>SonoForge — Splash v3 (логотип заполняется снизу вверх)</title>
 <style>
   :root {
-    --bg-page: #0a0f16;
-    --panel: #101720;
-    --line: #1f2c3b;
-    --accent: #40e2de;
-    --text: #e8eef5;
-    --dim: #9aabbe;
+    --bg-page: #0a0f16; --panel: #101720; --line: #1f2c3b; --accent: #40e2de;
+    --text: #e8eef5; --dim: #9aabbe;
     --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
     --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background:
-      radial-gradient(1200px 500px at 50% -10%, #12233a 0%, rgba(18,35,58,0) 60%),
-      var(--bg-page);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 14px;
-    line-height: 1.5;
-    padding: 36px 24px 80px;
-  }
-  h1 { font-size: 21px; font-weight: 600; letter-spacing: .2px; margin: 0 0 6px; }
-  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); margin: 0 0 18px; }
-  .sub { color: var(--dim); max-width: 900px; margin: 0 0 4px; }
-  .sub b { color: var(--text); font-weight: 600; }
-  .stage-tag {
-    font-family: var(--mono); font-size: 11px; color: #6e8296;
-    border: 1px solid var(--line); border-radius: 20px; padding: 2px 10px; background: #0d141d;
-  }
-  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
-  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
-  button {
-    font-family: var(--sans); font-size: 12.5px; color: var(--text);
-    background: #16202c; border: 1px solid var(--line); border-radius: 8px;
-    padding: 7px 14px; cursor: pointer; transition: border-color .15s, background .15s;
-  }
-  button:hover { border-color: var(--accent); background: #1a2836; }
-  button.active { border-color: var(--accent); color: var(--accent); }
-  .note {
-    font-size: 12.5px; color: var(--dim); border: 1px dashed #2c3e52; border-radius: 10px;
-    padding: 10px 14px; margin: 14px 0 28px; max-width: 1020px; background: rgba(16,23,32,.6);
-  }
-  .note code { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+  body { margin:0; background: radial-gradient(1200px 500px at 50% -10%, #12233a 0%, rgba(18,35,58,0) 60%), var(--bg-page);
+    color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; padding: 30px 24px 90px; }
+  h1 { font-size: 21px; font-weight: 600; margin: 0 0 6px; }
+  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); margin: 0 0 14px; }
+  .sub { color: var(--dim); max-width: 960px; margin: 0 0 4px; }
+  .sub b { color: var(--text); }
+  header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; }
+  button { font-family: var(--sans); font-size: 12.5px; color: var(--text); background:#16202c; border:1px solid var(--line);
+    border-radius:8px; padding:7px 14px; cursor:pointer; }
+  button:hover { border-color: var(--accent); background:#1a2836; }
+  .arch { display:flex; gap:8px; flex-wrap:wrap; margin: 2px 0 18px; }
+  .arch a { font-size: 12px; color: var(--dim); border:1px dashed #2c3e52; border-radius:20px; padding:4px 12px; text-decoration:none; }
+  .arch a b { color: var(--accent); font-weight:600; }
+  .arch a:hover { border-color: var(--accent); }
 
-  /* ═══ Stage A — fullscreen black boot (AnythingLLM 1.16 style) ═══ */
-  .demo-a {
-    position: relative; width: 820px; max-width: 100%; height: 500px; margin: 0 0 14px;
-    border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
-    background: #07090d;
-  }
-  /* underlying fake application (revealed at the very end) */
-  .mock-app { position: absolute; inset: 0; display: flex; flex-direction: column; background: #0e1826; }
-  .mock-app.light { background: #eef3f9; }
-  .mock-titlebar { height: 40px; flex: 0 0 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: #10213a; border-bottom: 1px solid #1c3350; color: #cdd9e4; font-size: 12.5px; font-weight: 500; }
-  .mock-app.light .mock-titlebar { background: #ffffff; border-color: #d8e2ec; color: #33475c; }
-  .mock-titlebar .winbtn { width: 12px; height: 12px; border-radius: 50%; display: inline-block; opacity: .55; }
-  .mock-body { flex: 1; display: flex; min-height: 0; }
-  .mock-activities { width: 52px; border-right: 1px solid #16283f; background: #0d1a2b; padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
-  .mock-app.light .mock-activities { border-color: #dbe5ee; background: #f6fafd; }
-  .mock-activities span { width: 24px; height: 24px; border-radius: 7px; background: #13253c; }
-  .mock-activities span.on { background: rgba(64,226,222,.22); box-shadow: inset 0 0 0 1px rgba(64,226,222,.5); }
-  .mock-app.light .mock-activities span { background: #d7e3ee; }
-  .mock-viewer { flex: 1; position: relative; overflow: hidden; }
-  .sector { position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%); width: 62%; height: 74%;
-    background: radial-gradient(ellipse at 50% 0%, #0b2233 0%, #09131f 58%, #0b1219 100%); clip-path: polygon(30% 100%, 70% 100%, 100% 0%, 0% 0%);
-    opacity: .9; }
-  .sector::after { content:""; position:absolute; left:0; right:0; bottom:8%; height:1px; background: rgba(255,255,255,.07); }
-  .mock-app.light .sector { background: radial-gradient(ellipse at 50% 0%, #dcebf6 0%, #eef4f9 62%, #e3e9ef 100%); opacity: 1; }
-  .mock-viewer .hud { position: absolute; left: 10px; bottom: 8px; font-family: var(--mono); font-size: 10px; color: #58718a; }
-  .mock-app.light .mock-viewer .hud { color: #7c93a9; }
-  .mock-panel { width: 200px; border-left: 1px solid #16283f; background: #0f1c2e; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .mock-app.light .mock-panel { border-color: #dbe5ee; background: #f9fcff; }
-  .mock-panel .row { height: 14px; border-radius: 4px; background: #15263d; }
-  .mock-app.light .mock-panel .row { background: #dde8f1; }
-  .mock-panel .row.accent { height: 24px; background: rgba(64,226,222,.16); }
-  .mock-strip { height: 74px; flex: 0 0 74px; border-top: 1px solid #16283f; background: #0d1928; display: flex; gap: 8px; align-items: center; padding: 8px 12px; }
-  .mock-app.light .mock-strip { border-color: #dbe5ee; background: #f3f8fc; }
-  .mock-strip .th { width: 64px; height: 100%; border-radius: 6px; background: linear-gradient(#122a40,#0c1a2b); border: 1px solid #172c44; }
-  .mock-app.light .mock-strip .th { background: linear-gradient(#ffffff,#e4edf5); border-color: #d8e2ec; }
+  /* ═══ Stage — black boot with logo fill (variant 3) ═══ */
+  .demo-a { position:relative; width:860px; max-width:100%; height:600px; margin:0 0 12px;
+    border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#07090d; }
+  .mock-app { position:absolute; inset:0; display:flex; flex-direction:column; background:#0e1826; }
+  .mock-app.light { background:#eef3f9; }
+  .mock-titlebar { height:40px; flex:0 0 40px; display:flex; align-items:center; gap:10px; padding:0 14px;
+    background:#10213a; border-bottom:1px solid #1c3350; color:#cdd9e4; font-size:12.5px; font-weight:500; }
+  .mock-app.light .mock-titlebar { background:#fff; border-color:#d8e2ec; color:#33475c; }
+  .mock-titlebar .winbtn { width:12px; height:12px; border-radius:50%; display:inline-block; opacity:.55; }
+  .mock-body { flex:1; display:flex; min-height:0; }
+  .mock-activities { width:52px; border-right:1px solid #16283f; background:#0d1a2b; padding:12px 0; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .mock-app.light .mock-activities { border-color:#dbe5ee; background:#f6fafd; }
+  .mock-activities span { width:24px; height:24px; border-radius:7px; background:#13253c; }
+  .mock-activities span.on { background:rgba(64,226,222,.22); box-shadow:inset 0 0 0 1px rgba(64,226,222,.5); }
+  .mock-viewer { flex:1; position:relative; overflow:hidden; }
+  .sector { position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); width:62%; height:74%;
+    background:radial-gradient(ellipse at 50% 0%, #0b2233 0%, #09131f 58%, #0b1219 100%);
+    clip-path:polygon(30% 100%, 70% 100%, 100% 0%, 0% 0%); opacity:.9; }
+  .mock-app.light .sector { background:radial-gradient(ellipse at 50% 0%, #dcebf6 0%, #eef4f9 62%, #e3e9ef 100%); opacity:1; }
+  .mock-viewer .hud { position:absolute; left:10px; bottom:8px; font-family:var(--mono); font-size:10px; color:#58718a; }
+  .mock-panel { width:200px; border-left:1px solid #16283f; background:#0f1c2e; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .mock-app.light .mock-panel { border-color:#dbe5ee; background:#f9fcff; }
+  .mock-panel .row { height:14px; border-radius:4px; background:#15263d; }
+  .mock-app.light .mock-panel .row { background:#dde8f1; }
+  .mock-panel .row.accent { height:24px; background:rgba(64,226,222,.16); }
+  .mock-strip { height:74px; flex:0 0 74px; border-top:1px solid #16283f; background:#0d1928; display:flex; gap:8px; align-items:center; padding:8px 12px; }
+  .mock-app.light .mock-strip { border-color:#dbe5ee; background:#f3f8fc; }
+  .mock-strip .th { width:64px; height:100%; border-radius:6px; background:linear-gradient(#122a40,#0c1a2b); border:1px solid #172c44; }
+  .mock-app.light .mock-strip .th { background:linear-gradient(#fff,#e4edf5); border-color:#d8e2ec; }
 
-  /* the black fullscreen boot window */
-  .boot {
-    position: absolute; inset: 0; background: #000;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    z-index: 5;
-    transition: opacity .42s cubic-bezier(.22,.61,.36,1);
-  }
-  .boot.gone { opacity: 0; pointer-events: none; }
-  .boot img.logo { width: 200px; height: auto; filter: drop-shadow(0 0 24px rgba(255,255,255,.06)); }
-  .boot-progress { display: flex; align-items: center; gap: 14px; margin-top: 30px; }
-  .boot-bar { width: 190px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.14); overflow: hidden; }
-  .boot-bar i { display: block; height: 100%; width: 0; background: #fff; border-radius: 2px; }
-  .boot-pct { font-size: 12px; color: rgba(255,255,255,.85); width: 34px; font-variant-numeric: tabular-nums; }
-  .boot-words { display: flex; gap: 30px; margin-top: 30px; }
-  .boot-words .bw {
-    font-size: 14px; color: rgba(255,255,255,.9);
-    opacity: 0; filter: blur(9px);
-    transition: opacity .62s cubic-bezier(.22,.61,.36,1), filter .62s cubic-bezier(.22,.61,.36,1);
-  }
-  .boot-words .bw.on { opacity: 1; filter: blur(0); }
+  .boot { position:absolute; inset:0; background:#000; z-index:5;
+    transition:opacity .42s cubic-bezier(.22,.61,.36,1); }
+  .boot.gone { opacity:0; pointer-events:none; }
+  .boot canvas { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); }
+  .pct { position:absolute; left:50%; top:calc(50% + 122px); transform:translateX(-50%);
+    font-size:12px; color:rgba(255,255,255,.75); font-variant-numeric:tabular-nums; font-weight:500; width:40px; text-align:left; }
+  .bw { position:absolute; font-size:14px; color:rgba(255,255,255,.95); white-space:nowrap;
+    transition:none; }
+  .bw.TL { left:calc(50% - 155px); top:calc(50% - 156px); transform:translateX(-100%); }
+  .bw.TR { left:calc(50% + 155px); top:calc(50% - 156px); }
+  .bw.BL { left:calc(50% - 155px); top:calc(50% + 148px); transform:translateX(-100%); }
 
-  .demo-caption { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin: 12px 0 34px; }
-  .demo-caption .badge { font-size: 11px; font-family: var(--mono); border:1px solid rgba(64,226,222,.4); color: var(--accent); border-radius: 20px; padding: 2px 9px; }
+  .demo-caption { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0 30px; }
+  .demo-caption .badge { font-size:11px; font-family:var(--mono); border:1px solid rgba(64,226,222,.4); color:var(--accent); border-radius:20px; padding:2px 9px; }
+  .stage-tag { font-family:var(--mono); font-size:11px; color:#6e8296; border:1px solid var(--line); border-radius:20px; padding:2px 10px; background:#0d141d; }
 
-  /* ═══ concepts B / C ═══ */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin: 10px 0 30px; }
-  .card { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: #0e151e; display: flex; flex-direction: column; }
-  .card .art { height: 240px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .card .meta { padding: 14px 16px; border-top: 1px solid var(--line); background: #101a26; }
-  .card .meta h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
-  .card .meta p { margin: 0 0 8px; font-size: 12.5px; color: var(--dim); }
-  .card .meta .where { font-family: var(--mono); font-size: 11px; color: #6e8296; }
+  .note { font-size:12.5px; color:var(--dim); border:1px dashed #2c3e52; border-radius:10px; padding:10px 14px; margin:0 0 26px; max-width:1020px; background:rgba(16,23,32,.6); }
+  .note code { font-family:var(--mono); font-size:11.5px; color:var(--accent); }
 
-  .art-b { background: radial-gradient(900px 300px at 50% -20%, #0d2b33 0%, rgba(13,43,51,0) 55%), #05090c; flex-direction: column; }
-  .art-b .b-logo { font-size: 22px; font-weight: 600; letter-spacing: 2px; color: #dffcf9; margin-bottom: 18px; }
-  .art-b .b-logo small { display:block; font-size:10px; letter-spacing:3px; color:#3f7f86; margin-top:3px; text-align:center; }
-  .b-list { width: 250px; display: flex; flex-direction: column; gap: 9px; }
-  .b-item { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #8fa8ae; opacity: .4; }
-  .b-item .tick { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid #1e4a50; flex: 0 0 15px; display: flex; align-items: center; justify-content: center; font-size: 9px; }
-  .b-item.done { color: #dffcf9; opacity: 1; }
-  .b-item.done .tick { border-color: var(--accent); background: rgba(64,226,222,.12); color: var(--accent); }
-  .b-bar { margin-top: 18px; width: 250px; height: 3px; border-radius: 2px; background: #12242a; overflow: hidden; }
-  .b-bar i { display:block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; animation: bfill 3s .3s cubic-bezier(.25,.6,.35,1) forwards; }
-  @keyframes bfill { to { width: 100%; } }
-  .b-item:nth-child(1){ animation: bon 1s .2s forwards; }
-  .b-item:nth-child(2){ animation: bon 1s .9s forwards; }
-  .b-item:nth-child(3){ animation: bon 1s 1.6s forwards; }
-  .b-item:nth-child(4){ animation: bon 1s 2.3s forwards; }
-  @keyframes bon { to { opacity: 1; } }
-
-  .art-c { background: linear-gradient(135deg, #eaf1f8 0%, #dbe6f1 100%); }
-  .c-card { width: 320px; background: rgba(255,255,255,.62); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.8); border-radius: 18px; padding: 34px 20px 26px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 18px 50px rgba(30,60,90,.16); }
-  .c-card img { width: 74px; height: 74px; }
-  .c-name { margin-top: 12px; font-size: 20px; font-weight: 600; color: #16283d; }
-  .c-spin { margin-top: 24px; width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(30,90,140,.14); border-top-color: #2b7bb9; animation: spin .95s linear infinite; }
-  .c-status { margin-top: 14px; font-size: 12px; color: #66809a; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  footer { margin-top: 26px; color: #64788c; font-size: 12.5px; max-width: 1020px; }
-  footer code { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:18px; margin:10px 0 30px; }
+  .card { border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#0e151e; }
+  .card .meta { padding:14px 16px; border-top:1px solid var(--line); background:#101a26; }
+  .card .meta h3 { margin:0 0 4px; font-size:14px; font-weight:600; }
+  .card .meta p { margin:0; font-size:12.5px; color:var(--dim); }
+  footer { margin-top:8px; color:#64788c; font-size:12.5px; max-width:1020px; }
+  footer code { font-family:var(--mono); font-size:11.5px; color:var(--accent); }
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <h1>Заставка SonoForge — концепты</h1>
-    <p class="sub">Анимационное превью для <b>splash screen 3–4 с</b>. Концепт <b>A</b> повторяет заставку <b>AnythingLLM Desktop 1.16.1</b>, как вы её описали: полноэкранное чёрное окно без границ → белый логотип → проценты и белая заливка прогресса снизу → слова по сторонам выходят из прозрачности и блюра в фокус → окно закрывается.</p>
+    <h1>SonoForge — заставка · вариант 3: логотип заполняется белым снизу вверх</h1>
+    <p class="sub">Полноэкранный чёрный экран (как AnythingLLM 1.16). Логотип исходно еле виден; по мере прогресса снизу вверх его «заливает» белый — анимированная маска-волна с брызгами; при 100 % логотип полностью белый. Слова <b>Local-first · Private · ASE aligned</b> стоят вокруг логотипа (выше слева/справа, ниже слева) и по мере прогресса выходят из прозрачности и сильного blur в фокус.</p>
   </div>
   <div class="controls">
     <button id="btn-replay">↻ Повторить</button>
-    <button id="btn-lang" class="active">RU</button>
+    <button id="btn-lang">RU</button>
     <button id="btn-theme">Приложение: тёмное / светлое</button>
   </div>
 </header>
 
-<!-- ══════════ A. AnythingLLM 1.16-style fullscreen boot (реализован) ══════════ -->
+<div class="arch">
+  <a href="index.html"><b>3 · заливка логотипа</b> — этот файл (актуальный)</a>
+  <a href="index1.html">1 · компактное окно со спиннером</a>
+  <a href="index2.html">2 · чёрный boot + горизонтальный прогресс-бар</a>
+</div>
+
+<!-- ═══════ A3. logo fill bottom-up ═══════ -->
 <div class="demo-a" id="demoA">
   <div class="mock-app" id="mockApp">
     <div class="mock-titlebar">
@@ -171,172 +115,172 @@
       <span style="margin-left:6px">SonoForge</span>
     </div>
     <div class="mock-body">
-      <div class="mock-activities">
-        <span class="on"></span><span></span><span></span><span></span><span></span>
-      </div>
-      <div class="mock-viewer">
-        <div class="sector"></div>
-        <div class="hud">A4C · ED &nbsp; HR 72 bpm</div>
-      </div>
-      <div class="mock-panel">
-        <div class="row accent"></div><div class="row"></div><div class="row"></div>
-        <div class="row"></div><div class="row"></div><div class="row" style="width:60%"></div>
-      </div>
+      <div class="mock-activities"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+      <div class="mock-viewer"><div class="sector"></div><div class="hud">A4C · ED &nbsp; HR 72 bpm</div></div>
+      <div class="mock-panel"><div class="row accent"></div><div class="row"></div><div class="row"></div>
+        <div class="row"></div><div class="row"></div><div class="row" style="width:60%"></div></div>
     </div>
-    <div class="mock-strip">
-      <div class="th"></div><div class="th"></div><div class="th"></div><div class="th"></div><div class="th"></div>
-    </div>
+    <div class="mock-strip"><div class="th"></div><div class="th"></div><div class="th"></div><div class="th"></div><div class="th"></div></div>
   </div>
 
   <div class="boot" id="bootA">
-    <img class="logo" id="logoA" src="../../src/echo_personal_tool/resources/logo_dark.png" alt="">
-    <div class="boot-progress">
-      <div class="boot-bar"><i id="barFillA"></i></div>
-      <div class="boot-pct" id="pctA">0%</div>
-    </div>
-    <div class="boot-words" id="wordsA"></div>
+    <canvas id="logoCanvas" width="360" height="360"></canvas>
+    <div class="pct" id="pctA">0%</div>
+    <span class="bw TL" id="w0"></span>
+    <span class="bw TR" id="w1"></span>
+    <span class="bw BL" id="w2"></span>
   </div>
 </div>
 
 <div class="demo-caption">
-  <span class="badge">A · РЕАЛИЗОВАНО В КОДЕ (1.16.1-СТИЛЬ)</span>
-  <span class="stage-tag">полный экран · чёрный · без рамок · прогресс 0→92 % авто → 100 % на финише · blur→focus слов ≈ с 1,0 с · fade 420 мс · всего ≈ 3,9 с</span>
+  <span class="badge">A3 · РЕАЛИЗОВАНО В КОДЕ</span>
+  <span class="stage-tag">полный экран · чёрный · логотип: 10% → 100% белый · волна 30 fps · слова: blur 16→0 по зонам прогресса · минимум 3,4 с + fade 420 мс</span>
 </div>
 
-<!-- ══════════ Альтернативные концепты ══════════ -->
-<h2>Ранее предложенные альтернативы</h2>
+<p class="note">💡 <b>Как это соотносится с вашим описанием:</b> «вместо горизонтального progress bar — заполнение логотипа снизу вверх»: белая «вода» с волнистым краем и брызгами поднимается по логотипу (в Qt — <code>QPainterPath</code>-клип с синусоидой + капли, 30 fps); логотип исходно на ~10 % непрозрачности и становится полностью белым к 100 %. Слова стоят по одному вокруг логотипа (слева сверху, справа сверху, слева снизу), исходно непрозрачность ~0,08 и gaussian-blur 16 px; каждая пара «зона старта → зона фокуса» привязана к прогрессу: <code>Local-first 16–58 %</code>, <code>Private 34–76 %</code>, <code>ASE aligned 52–96 %</code>. Проценты честные: авто до ~92 % во время реального старта, 100 % — только после завершения инициализации.</p>
+
+<h2>Ранее предложенные альтернативы (архив вариантов)</h2>
 <div class="grid">
-
-  <div class="card">
-    <div class="art art-b">
-      <div class="b-logo">SONOFORGE<small>ECHOCARDIOGRAPHY WORKSTATION</small></div>
-      <div class="b-list">
-        <div class="b-item"><span class="tick">✓</span>DICOM-ядро и база исследований</div>
-        <div class="b-item"><span class="tick">✓</span>Модули измерений (ASE, M-mode, Doppler)</div>
-        <div class="b-item"><span class="tick">✓</span>AI-сегментация (ONNX)</div>
-        <div class="b-item"><span class="tick">✓</span>Рабочее пространство</div>
-      </div>
-      <div class="b-bar"><i></i></div>
-    </div>
-    <div class="meta">
-      <h3>B · «Консоль УЗИ» — загрузка, как у вендор-сканеров</h3>
-      <p>Чёрный фон, фирменный логотип, чек-лист реальных подсистем (DICOM → ASE → AI → workspace) и тонкий прогресс. Клинически узнаваемо: врачи видят это на Philips/GE каждый день.</p>
-      <div class="where">где: вместо слов-«пилюль» — список с галками слева; тот же модуль <code>splash.py</code></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="art art-c">
-      <div class="c-card">
-        <img src="../../src/echo_personal_tool/resources/logo.png" alt="">
-        <div class="c-name">SonoForge</div>
-        <div class="c-spin"></div>
-        <div class="c-status">Открываю рабочее пространство…</div>
-      </div>
-    </div>
-    <div class="meta">
-      <h3>C · Светлая «glass»-карточка</h3>
-      <p>Белая полупрозрачная карточка с мягкой тенью поверх тёмного рабочего стола, деликатный синий спиннер. Спокойно и «дорого»; удобно для светлых экранов, но ломает тёмную преемственность.</p>
-      <div class="where">где: та же логика, светлые цвета <code>theme_mode=light</code></div>
-    </div>
-  </div>
-
+  <div class="card"><div class="meta">
+    <h3>Вариант 1 — компактное окно со спиннером (архив)</h3>
+    <p>Frameless-окно 520×352 с лого-тайлом, таглайном, спиннером-дугой и статусной строкой. Открыть: <code>index1.html</code></p>
+  </div></div>
+  <div class="card"><div class="meta">
+    <h3>Вариант 2 — чёрный boot + горизонтальный прогресс-бар (архив)</h3>
+    <p>Полноэкранный чёрный экран, белый логотип, «NN%» и белая полоса под ним, слова-строкой снизу. Открыть: <code>index2.html</code></p>
+  </div></div>
 </div>
-
-<p class="note">💡 <b>Соответствие вашему описанию 1.16.1:</b> окно во весь экран и без границ (Qt: frameless + геометрия экрана, фон чистый чёрный <code>#000</code>); в центре белый логотип; под ним — тонкая полоса, заполняемая белым, и счётчик процентов; слова (RU: «Локально · Конфиденциально · Стандарты ASE») появляются по одному — из прозрачности и gaussian-блюра в фокус; затем чёрное окно растворяется (fade) в главное окно приложения. Проценты честные: авто-рост до ~92 % во время старта, 100 % — только когда реальная инициализация завершена. «Слова по сторонам» настраиваются списком <code>splash.words</code> в локалях — скажите, если нужно разнести их строго по левому/правому краю экрана.</p>
 
 <footer>
-  <p><b>Как это сделано в коде:</b><br>
-  <code>src/echo_personal_tool/presentation/splash.py</code> — чёрное полноэкранное окно, логотип, «NN%» + белая полоса, слова <code>_Word</code> с вложенными эффектами (opacity на обёртке, <code>QGraphicsBlurEffect</code> на тексте) и каскадным появлением;<br>
-  <code>src/echo_personal_tool/main.py</code> — показ до сборки <code>MainWindow</code>, <code>set_progress(46)</code> после её создания, <code>complete_with()</code> → 100 % → fade;<br>
-  <code>…/infrastructure/locales/{ru,en}.json</code> — ключ <code>splash.words</code> (разделитель «|»);<br>
-  <code>ECHO_NO_SPLASH=1</code> — выключить (тесты/скриншоты). Тайминги превью повторяют реализацию.</p>
+  <p><b>Код:</b> <code>src/echo_personal_tool/presentation/splash.py</code> (<code>_LogoFill</code> — волна/капли, <code>_Word</code> — opacity+blur вокруг логотипа, <code>_WORD_ZONES</code> — зоны прогресса) · <code>main.py</code> · локали <code>splash.words</code> · <code>ECHO_NO_SPLASH=1</code> — выключить.</p>
 </footer>
 
 <script>
-  const ru = { words: ["Локально", "Конфиденциально", "Стандарты ASE"] };
-  const en = { words: ["Local-first", "Private", "ASE aligned"] };
-  let lang = ru;
-  const AUTO_TARGETS = [8, 18, 30, 44, 58, 72, 84, 92];
-  const timers = [];
+  const LANG = {
+    ru: { words: ["Локально", "Конфиденциально", "Стандарты ASE"] },
+    en: { words: ["Local-first", "Private", "ASE aligned"] }
+  };
+  const ZONES = [[16, 58], [34, 76], [52, 96]];      // progress ranges per word
+  const TARGETS = [8, 18, 30, 44, 58, 72, 84, 92];   // auto steps
+  const STEP_MS = 420, EASE_MS = 380, FADE_MS = 420;
+  const WORD_W = 235, WORD_H = 235;                  // canvas logo draw size
 
-  const boot = document.getElementById("bootA");
-  const barFill = document.getElementById("barFillA");
+  let lang = "ru", timers = [], raf = 0;
+  const boot = document.getElementById("bootA"), canvas = document.getElementById("logoCanvas");
+  const ctx = canvas.getContext("2d");
+  const img = new Image();
+  img.src = "../../src/echo_personal_tool/resources/logo_dark.png";
+
+  // render size of the logo on the canvas (keeps 960:910 ratio)
+  const CW = 300, CH = 300, LO = 235;                 // canvas 300x300, logo 235 wide
+  const LOH = LO * (910 / 960);                       // ≈ 223
+  const LX = (CW - LO) / 2, LY = (CH - LOH) / 2;
   const pctEl = document.getElementById("pctA");
-  const wordsEl = document.getElementById("wordsA");
-  const btnLang = document.getElementById("btn-lang");
+  const wordsEl = [document.getElementById("w0"), document.getElementById("w1"), document.getElementById("w2")];
+  let p = 0, target = 0, animFrom = 0, animTo = 0, animT0 = 0, phase = 0, drops = [], completed = false;
 
-  function clearAll() { while (timers.length) clearTimeout(timers.pop()); }
+  function easeOut(t) { return 1 - Math.pow(1 - t, 2); }
 
-  function easeOutQuad(t) { return 1 - (1 - t) * (1 - t); }
-
-  function animate(from, to, dur, onTick, done) {
-    const t0 = performance.now();
-    const tick = (now) => {
-      const k = Math.min(1, (now - t0) / dur);
-      onTick(from + (to - from) * easeOutQuad(k));
-      if (k < 1) requestAnimationFrame(tick); else if (done) done();
-    };
-    requestAnimationFrame(tick);
+  function setWords() {
+    LANG[lang].words.forEach((w, i) => { wordsEl[i].textContent = w; });
+    renderWords();
+  }
+  function renderWords() {
+    for (let i = 0; i < 3; i++) {
+      const [s, e] = ZONES[i];
+      let t = p <= s ? 0 : Math.min(1, (p - s) / (e - s));
+      const el = wordsEl[i];
+      el.style.opacity = (0.08 + 0.88 * t).toFixed(3);
+      el.style.filter = "blur(" + (16 * (1 - t)).toFixed(1) + "px)";
+    }
   }
 
-  function buildWords() {
-    wordsEl.innerHTML = "";
-    lang.words.forEach((w, i) => {
-      const span = document.createElement("span");
-      span.className = "bw";
-      span.textContent = w;
-      wordsEl.appendChild(span);
-      // stagger like the Qt implementation: 1000 + i*700 ms
-      timers.push(setTimeout(() => span.classList.add("on"), 1000 + i * 700));
-    });
+  function draw() {
+    ctx.clearRect(0, 0, CW, CH);
+    const f = Math.max(0, Math.min(1, p / 100));
+    // faint base
+    ctx.globalAlpha = 0.10 + 0.90 * f;
+    ctx.drawImage(img, LX, LY, LO, LOH);
+    if (f >= 0.995) { ctx.globalAlpha = 1; ctx.drawImage(img, LX, LY, LO, LOH); ctx.globalAlpha = 1; return; }
+    // wavy filled region
+    const edge = LY + LOH * (1 - f);
+    const freq = 2.6, amp = 2.4;
+    const waveY = (x) => edge + amp * Math.sin((x - LX) / LO * Math.PI * 2 * freq + phase);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(LX - 2, edge);
+    for (let x = LX - 2; x <= LX + LO + 2; x += 6) ctx.lineTo(x, waveY(x));
+    ctx.lineTo(LX + LO + 2, CH + 2); ctx.lineTo(LX - 2, CH + 2); ctx.closePath();
+    ctx.clip();
+    ctx.globalAlpha = 0.98; ctx.drawImage(img, LX, LY, LO, LOH);
+    ctx.restore();
+    // droplets
+    for (const d of drops) {
+      const dist = edge - d.y;
+      const a = Math.max(0, 1 - dist / 90);
+      if (a <= 0) continue;
+      ctx.globalAlpha = 0.6 * a;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
+
+  function frame(now) {
+    phase = now / 520;
+    // move droplets upward
+    for (const d of drops) d.y -= d.vy * 0.016;
+    const edge = LY + LOH * (1 - p / 100);
+    drops = drops.filter((d) => edge - d.y < 110);
+    if (p > 0 && p < 100 && Math.random() < 0.45) {
+      drops.push({ x: LX + 6 + Math.random() * (LO - 12), y: edge - 2 - Math.random() * 14,
+                   vy: 0.5 + Math.random() * 0.8, r: 1 + Math.random() * 1.6 });
+    }
+    // ease progress toward target
+    if (p !== target) {
+      const t = Math.min(1, (now - animT0) / EASE_MS);
+      p = animFrom + (animTo - animFrom) * easeOut(t);
+      if (t >= 1) { p = target; }
+    }
+    pctEl.textContent = Math.round(p) + "%";
+    const a = 0.55 + 0.45 * p / 100;
+    pctEl.style.color = "rgba(255,255,255," + a.toFixed(2) + ")";
+    renderWords();
+    draw();
+    raf = requestAnimationFrame(frame);
+  }
+
+  function clearTimers() { while (timers.length) clearTimeout(timers.pop()); }
 
   function play() {
-    clearAll();
+    clearTimers();
     boot.classList.remove("gone");
-    boot.style.opacity = 1;
-    barFill.style.width = "0%";
+    p = 0; target = 0; drops = []; completed = false;
     pctEl.textContent = "0%";
-    buildWords();
-
+    setWords();
     let idx = 0;
-    const stepProgress = () => {
-      if (idx < AUTO_TARGETS.length) {
-        const target = AUTO_TARGETS[idx];
-        idx += 1;
-        animate(parseFloat(pctEl.textContent) || 0, target, 360, (v) => {
-          pctEl.textContent = Math.round(v) + "%";
-          barFill.style.width = v + "%";
-        }, stepProgress);
+    const step = () => {
+      if (completed) return;
+      if (idx < TARGETS.length) {
+        animFrom = p; animTo = TARGETS[idx]; animT0 = performance.now(); target = TARGETS[idx]; idx++;
+        timers.push(setTimeout(step, STEP_MS));
       } else {
-        // real startup finished → jump to 100 %, then fade the window out
-        animate(parseFloat(pctEl.textContent) || 0, 100, 360, (v) => {
-          pctEl.textContent = Math.round(v) + "%";
-          barFill.style.width = v + "%";
-        });
+        completed = true;
+        animFrom = p; animTo = 100; animT0 = performance.now(); target = 100;
         timers.push(setTimeout(() => {
-          boot.style.transition = "opacity .42s cubic-bezier(.22,.61,.36,1)";
           boot.style.opacity = 0;
-          timers.push(setTimeout(play, 1200));
-        }, 1200));
+          timers.push(setTimeout(play, 1400));
+        }, 1600));
       }
     };
-    timers.push(setTimeout(stepProgress, 420));
+    timers.push(setTimeout(step, STEP_MS));
   }
 
-  btnLang.addEventListener("click", () => {
-    lang = lang === ru ? en : ru;
-    btnLang.textContent = lang === ru ? "RU" : "EN";
-    btnLang.classList.add("active");
-    play();
-  });
-  document.getElementById("btn-theme").addEventListener("click", () => {
-    document.getElementById("mockApp").classList.toggle("light");
-    play();
-  });
-  document.getElementById("btn-replay").addEventListener("click", play);
-  play();
+  img.onload = () => { document.getElementById("btn-replay").addEventListener("click", play);
+    document.getElementById("btn-lang").addEventListener("click", () => { lang = lang === "ru" ? "en" : "ru";
+      document.getElementById("btn-lang").textContent = lang.toUpperCase(); play(); });
+    document.getElementById("btn-theme").addEventListener("click", () => { document.getElementById("mockApp").classList.toggle("light"); play(); });
+    play(); requestAnimationFrame(frame);
+  };
 </script>
 </body>
 </html>

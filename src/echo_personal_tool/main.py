@@ -230,8 +230,10 @@ def main() -> int:
     set_language(preferences.language)
 
     # ── Startup splash (AnythingLLM 1.16-style fullscreen boot, ~3.4 s) ─
-    # Pure black fullscreen window: white logo → “NN%” + white progress bar
-    # → words fading in from blur into focus → fade into the maximized app.
+    # Pure black fullscreen window: the logo fills from bottom to top with
+    # white (wavy “water” mask + droplets), “NN%” under it, and words around
+    # the logo sharpening from blur into focus as progress grows; then the
+    # black window fades into the maximized app.
     # Disable with ECHO_NO_SPLASH=1 (tests, screenshots, slow CI).
     splash = None
     if is_splash_enabled():

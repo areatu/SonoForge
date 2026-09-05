@@ -1,4 +1,4 @@
-"""Tests for the AnythingLLM 1.16-style fullscreen startup splash."""
+"""Tests for the AnythingLLM 1.16-style fullscreen startup splash (v3)."""
 
 from __future__ import annotations
 
@@ -27,8 +27,6 @@ def _fast_timings(monkeypatch) -> None:
     monkeypatch.setattr(splash_mod, "MIN_VISIBLE_MS", 200)
     monkeypatch.setattr(splash_mod, "FADE_OUT_MS", 40)
     monkeypatch.setattr(splash_mod, "AUTO_STEP_MS", 50)
-    monkeypatch.setattr(splash_mod, "WORD_START_MS", 30)
-    monkeypatch.setattr(splash_mod, "WORD_STAGGER_MS", 30)
 
 
 class TestSplashStructure:
@@ -50,24 +48,68 @@ class TestSplashStructure:
         assert splash.geometry() == screen.geometry()
         splash._close_splash()
 
-    def test_has_logo_percent_bar_and_word_row(self, qtbot) -> None:
+    def test_has_logo_fill_percent_and_words(self, qtbot) -> None:
         splash = _make_splash(qtbot)
-        assert splash._logo_label.pixmap() is not None and not splash._logo_label.pixmap().isNull()
+        # logo fill widget exists with a real (scaled) logo pixmap
+        assert not splash._fill._pm.isNull()
+        assert splash._fill.width() > 0
         assert splash._percent_label.text() == "0%"
-        assert splash._bar_fill.width() == 0
         assert [w._label.text() for w in splash._word_widgets] == list(WORDS)
 
-    def test_set_progress_updates_counter_and_bar(self, qtbot) -> None:
-        splash = _make_splash(qtbot)
-        splash.set_progress(50)
-        assert splash._percent_label.text() == "50%"
-        assert splash._bar_fill.width() > 0
+    def test_black_background(self, qtbot) -> None:
+        from PySide6.QtGui import QPalette
 
-    def test_words_are_white_labels_on_black_window(self, qtbot) -> None:
         splash = _make_splash(qtbot)
-        assert splash.palette().window().name() == "#000000"
+        assert splash.palette().color(QPalette.ColorRole.Window).name() == "#000000"
+
+    def test_words_start_hidden_and_blurred(self, qtbot) -> None:
+        splash = _make_splash(qtbot)
+        for i, word in enumerate(splash._word_widgets):
+            zone = splash_mod._WORD_ZONES[i]
+            if zone[0] > 0:
+                assert word._opacity_effect.opacity() < 0.15
+                assert word._blur_effect.blurRadius() > 8
+
+
+class TestSplashProgress:
+    def test_words_sharpen_with_progress(self, qtbot) -> None:
+        splash = _make_splash(qtbot)
+        splash.set_progress(100)
+
+        def _sharp() -> bool:
+            return all(w._blur_effect.blurRadius() < 1.0 for w in splash._word_widgets)
+
+        qtbot.waitUntil(_sharp, timeout=2500)
         for word in splash._word_widgets:
-            assert "white" in word._label.styleSheet() or "255,255,255" in word._label.styleSheet()
+            assert word._opacity_effect.opacity() > 0.9
+        splash._close_splash()
+
+    def test_logo_fill_rises_with_progress(self, qtbot) -> None:
+        splash = _make_splash(qtbot)
+        assert splash._fill._progress == 0.0
+        splash.set_progress(50)
+
+        def _half() -> bool:
+            return splash._fill._progress >= 49.9
+
+        qtbot.waitUntil(_half, timeout=2500)
+        assert splash._fill._progress == pytest.approx(50.0, abs=1.0)
+        assert splash._percent_label.text() == "50%"
+        splash.set_progress(100)
+
+        def _full() -> bool:
+            return splash._fill._progress > 99.9
+
+        qtbot.waitUntil(_full, timeout=2500)
+        splash._close_splash()
+
+    def test_words_placed_around_logo(self, qtbot) -> None:
+        splash = _make_splash(qtbot)
+        fill = splash._fill
+        fx, fy = fill.x(), fill.y()
+        for word in splash._word_widgets:
+            # every word lives outside the logo rectangle (above or below)
+            assert word.y() + word.height() < fy or word.y() > fy + fill.height()
 
 
 class TestSplashTimeline:
@@ -81,17 +123,6 @@ class TestSplashTimeline:
 
         qtbot.waitUntil(_advanced, timeout=3000)
         assert splash._percent_label.text() != "0%"
-        splash._close_splash()
-
-    def test_words_fade_in(self, qtbot, monkeypatch) -> None:
-        _fast_timings(monkeypatch)
-        splash = _make_splash(qtbot)
-        splash.show_and_play()
-
-        def _revealed() -> bool:
-            return all(w._opacity.opacity() > 0.9 for w in splash._word_widgets)
-
-        qtbot.waitUntil(_revealed, timeout=3000)
         splash._close_splash()
 
     def test_complete_reveals_window_then_closes(self, qtbot, monkeypatch) -> None:
@@ -108,7 +139,7 @@ class TestSplashTimeline:
         qtbot.waitUntil(lambda: not splash.isVisible(), timeout=3000)
         assert revealed[0] is dummy
 
-    def test_reduce_motion_skips_animations(self, qtbot, monkeypatch) -> None:
+    def test_reduce_motion_shows_words_immediately(self, qtbot, monkeypatch) -> None:
         from PySide6.QtWidgets import QWidget
 
         monkeypatch.setattr(splash_mod, "MIN_VISIBLE_MS", 200)
@@ -116,8 +147,8 @@ class TestSplashTimeline:
         dummy = QWidget()
         qtbot.addWidget(dummy)
         splash.show_and_play()
-        # words are immediately fully opaque & sharp
-        assert all(w._opacity.opacity() == 1.0 for w in splash._word_widgets)
+        for word in splash._word_widgets:
+            assert word._opacity_effect.opacity() == 1.0 or word._opacity_effect.opacity() > 0.95
         revealed: list[QWidget] = []
         splash.complete_with(dummy, on_complete=lambda win: revealed.append(win))
         qtbot.waitUntil(lambda: len(revealed) == 1, timeout=3000)
