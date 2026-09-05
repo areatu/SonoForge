@@ -148,6 +148,7 @@ def detect_ticks(
     pixel_array: np.ndarray,
     roi_bottom_fraction: float | None = None,
     channel_order: str = "rgb",
+    require_dark_band: bool = True,
 ) -> TickDetectionResult:
     """Detect vertical tick marks in the time scale region.
 
@@ -159,6 +160,9 @@ def detect_ticks(
         roi_bottom_fraction: Deprecated, accepted for backwards compatibility.
         channel_order: Color channel order for 3D input: "rgb" (default) or
             "bgr".
+        require_dark_band: Require the usual dark-band guard. Callers that
+            already validated a Samsung Doppler ROI may disable this guard
+            when the composite frame contains bright B-mode above the panel.
 
     Returns:
         TickDetectionResult with positions, spacing, and confidence.
@@ -197,7 +201,7 @@ def detect_ticks(
     band_y = float(best_y0) + _BAND_HEIGHT / 2.0
     # Reject rulers sitting over a bright B-mode-like region: a real Doppler
     # time ruler always has a dark spectral band above it.
-    if not spectral_band_is_dark(gray, band_y):
+    if require_dark_band and not spectral_band_is_dark(gray, band_y):
         logger.debug(
             "Best tick ruler at y=%d rejected: region above is bright (B-mode-like)",
             best_y0,

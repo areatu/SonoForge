@@ -241,6 +241,9 @@ class ContourViewBox(pg.ViewBox):
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_trace_press(ev):
             ev.accept()
             return
+        if self._viewer_widget is not None and self._viewer_widget._handle_doppler_peak_press(ev):
+            ev.accept()
+            return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_vessel_press(ev):
             ev.accept()
             return
@@ -270,6 +273,9 @@ class ContourViewBox(pg.ViewBox):
         if viewer is not None and viewer._handle_doppler_trace_drag(ev):
             ev.accept()
             return
+        if viewer is not None and viewer._handle_doppler_peak_drag(ev):
+            ev.accept()
+            return
         if viewer is not None and viewer._handle_doppler_vessel_drag(ev):
             ev.accept()
             return
@@ -293,6 +299,9 @@ class ContourViewBox(pg.ViewBox):
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_trace_release(ev):
+            ev.accept()
+            return
+        if self._viewer_widget is not None and self._viewer_widget._handle_doppler_peak_release(ev):
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_vessel_release(ev):
@@ -2667,6 +2676,7 @@ class ViewerWidget(QWidget):
         preset: str = "normal",
         *,
         force_direction: str | None = None,
+        time_range_px: tuple[float, float] | None = None,
     ) -> tuple[tuple[float, float], ...]:
         """Extract the spectral envelope from the current Doppler frame."""
         if self._current_frame is None:
@@ -2684,6 +2694,7 @@ class ViewerWidget(QWidget):
             state.baseline_y_px,
             preset=preset,
             force_direction=force_direction,
+            time_range_px=time_range_px,
         )
 
     def start_vti_auto_trace(self, trace_label: str = "VTI") -> bool:
@@ -2729,7 +2740,11 @@ class ViewerWidget(QWidget):
         """
         if self._current_frame is None:
             return False
-        envelope = self._extract_doppler_envelope(force_direction=direction)
+        mapping = self._doppler.axis_mapping()
+        envelope = self._extract_doppler_envelope(
+            force_direction=direction,
+            time_range_px=(mapping.x_from_time_ms(t_start_ms), mapping.x_from_time_ms(t_end_ms)),
+        )
         if not envelope or len(envelope) < 2:
             self._measurement_label.setText(tr("viewer.vessel_auto_trace_failed"))
             self._measurement_label.show()
@@ -2851,7 +2866,9 @@ class ViewerWidget(QWidget):
         if self._current_frame is not None:
             height, width = self._current_frame.shape[:2]
             roi = state.roi.normalized(float(width), float(height))
-            baseline_y = max(roi.y0, min(state.baseline_y_px, roi.y1))
+            # Some Doppler devices place the zero-velocity line above the
+            # detected spectral ROI. Keep that line as the velocity origin.
+            baseline_y = max(0.0, min(float(state.baseline_y_px), float(height - 1)))
             state = DopplerCalibrationState(
                 roi=roi,
                 baseline_y_px=baseline_y,
@@ -3397,7 +3414,22 @@ class ViewerWidget(QWidget):
                     parsed.has_velocity_scale_from_dicom(),
                 )
                 if parsed.has_time_scale_from_dicom() or parsed.has_velocity_scale_from_dicom():
-                    # Full auto-calibration: both scales from DICOM
+                    # The Samsung parser may provide a real ROI/time ruler but
+                    # only a default velocity span. Refine that span from the
+                    # visible vertical tick lattice before applying the state.
+                    if parsed.has_time_scale_from_dicom() and not parsed.velocity_from_dicom_tags:
+                        auto = try_auto_doppler_velocity_calibration(
+                            self._current_frame,
+                            roi=parsed.roi,
+                            baseline_y=parsed.baseline_y_px,
+                            kind=parsed.kind,
+                        )
+                        if auto is not None and auto.confidence >= 0.6:
+                            parsed = replace(
+                                parsed,
+                                velocity_span_cm_s=auto.velocity_span_cm_s,
+                                velocity_from_dicom_tags=False,
+                            )
                     self.apply_doppler_calibration_state(parsed, persist=True)
                     return True
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
@@ -3643,6 +3675,25 @@ class ViewerWidget(QWidget):
             # Trace onset/close and optional click points use click, not press-drag.
         double = hasattr(ev, "double") and ev.double()
         return self._doppler.handle_click(click[0], click[1], double=double)
+
+    def _handle_doppler_peak_press(self, ev) -> bool:
+        if self._doppler_cal_step is not None or self._calibration_active:
+            return False
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click = self._map_view_event(ev)
+        return click is not None and self._doppler.begin_peak_drag(*click)
+
+    def _handle_doppler_peak_drag(self, ev) -> bool:
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        click = self._map_view_event(ev)
+        return click is not None and self._doppler.move_peak_drag(*click)
+
+    def _handle_doppler_peak_release(self, ev) -> bool:
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return False
+        return self._doppler.finish_peak_drag()
 
     def _handle_doppler_trace_press(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:

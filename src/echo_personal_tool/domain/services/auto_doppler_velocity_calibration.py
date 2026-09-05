@@ -16,6 +16,8 @@ from echo_personal_tool.domain.services.velocity_scale_detector import (
 
 _SPECTRAL_SPANS = [50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0]
 _TISSUE_SPANS = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0]
+_SAMSUNG_SPANS = [50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0, 500.0, 600.0, 700.0, 800.0]
+_SAMSUNG_TISSUE_SPANS = [20.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0]
 
 
 def _round_velocity(per_interval: float) -> bool:
@@ -93,6 +95,61 @@ def infer_velocity_span(
     return consistent[0]
 
 
+def infer_samsung_velocity_span(
+    tick_ys: list[float],
+    *,
+    roi: DopplerSpectrogramRoi,
+    kind: DopplerKind = DopplerKind.SPECTRAL,
+) -> float | None:
+    """Infer Samsung RS85 full span from a robust tick lattice.
+
+    Samsung screenshots commonly contain extra short marks and label strokes,
+    so counting all detected ticks is unreliable. The ruler interval is still
+    stable. RS85 uses clinically conventional intervals: approximately
+    30 cm/s for compact scales and 100 cm/s for wide scales. The resulting
+    full span is rounded to the nearest standard panel span.
+    """
+    if len(tick_ys) < 4 or roi.height <= 0.0:
+        return None
+
+    ticks = sorted(float(value) for value in tick_ys)
+    gaps = np.diff(ticks)
+    gaps = gaps[gaps >= max(8.0, roi.height * 0.04)]
+    if len(gaps) < 2:
+        return None
+    spacing = float(np.median(gaps))
+    if spacing <= 0.0:
+        return None
+
+    if kind is DopplerKind.TISSUE:
+        # Tissue Doppler uses a compact scale, commonly labelled 4, 8, 12,
+        # 16... cm/s. Keep this branch separate from PW/CW's 30/100 cm/s
+        # intervals; otherwise tissue velocities are overestimated by a large
+        # factor.
+        # The common Samsung TDI labels are 4, 8, 12, 16... cm/s.
+        interval_candidates = (4.0,)
+        candidate_spans = _SAMSUNG_TISSUE_SPANS
+    else:
+        # Empirical RS85 ruler layout: about 30 cm/s at ~35 px and 100 cm/s at
+        # ~90 px. Keep the thresholds conservative to avoid accepting text noise.
+        if spacing >= 70.0:
+            interval_candidates = (100.0,)
+        elif spacing >= 28.0:
+            interval_candidates = (30.0,)
+        elif spacing >= 15.0:
+            interval_candidates = (20.0,)
+        else:
+            interval_candidates = (10.0,)
+        candidate_spans = _SAMSUNG_SPANS
+
+    raw_candidates = [interval * roi.height / spacing for interval in interval_candidates]
+    raw_span = min(raw_candidates, key=lambda value: min(abs(value - candidate) for candidate in candidate_spans))
+    span = min(candidate_spans, key=lambda candidate: abs(candidate - raw_span))
+    if abs(span - raw_span) / max(raw_span, 1.0) > 0.18:
+        return None
+    return float(span)
+
+
 @dataclass(frozen=True)
 class VelocityAutocalibrationResult:
     velocity_span_cm_s: float
@@ -132,6 +189,8 @@ def try_auto_doppler_velocity_calibration(
         return None
 
     span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=kind)
+    if span is None:
+        span = infer_samsung_velocity_span(tick_ys, roi=roi, kind=kind)
     if span is not None:
         vpp = span / roi.height
         return VelocityAutocalibrationResult(

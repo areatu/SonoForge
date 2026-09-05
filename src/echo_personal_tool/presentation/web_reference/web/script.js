@@ -36,17 +36,17 @@ function escapeAttr(s) {
 
 /* ===== Static UI text ===== */
 function applyUi() {
-    $("#searchInput").placeholder = t("search_placeholder", "Search...");
-    $("#editToggle").textContent = "\u270F\uFE0F " + t("edit", "Edit");
-    $("#editToggle").title = t("edit_title", "Edit mode");
-    $("#saveBtn").textContent = "\uD83D\uDCBE " + t("save", "Save");
-    $("#cancelBtn").textContent = "\u2715 " + t("cancel", "Cancel");
-    $("#topicsHeader").textContent = t("anatomy", "Anatomy");
-    $("#pathoHint").textContent = t("select_topic", "Select a topic on the left");
-    $("#imageEmptyText").textContent = t("no_images", "No images");
-    $("#modalPrev").title = t("previous", "Previous");
-    $("#modalNext").title = t("next", "Next");
-    $("#modalClose").title = t("close", "Close (Esc)");
+    var el;
+    el = $("#searchInput"); if (el) el.placeholder = t("search_placeholder", "Search...");
+    el = $("#editToggle"); if (el) { el.textContent = "\u270F\uFE0F " + t("edit", "Edit"); el.title = t("edit_title", "Edit mode"); }
+    el = $("#saveBtn"); if (el) el.textContent = "\uD83D\uDCBE " + t("save", "Save");
+    el = $("#cancelBtn"); if (el) el.textContent = "\u2715 " + t("cancel", "Cancel");
+    el = $("#topicsHeader"); if (el) el.textContent = t("anatomy", "Anatomy");
+    el = $("#pathoHint"); if (el) el.textContent = t("select_topic", "Select a topic on the left");
+    el = $("#imageEmptyText"); if (el) el.textContent = t("no_images", "No images");
+    el = $("#modalPrev"); if (el) el.title = t("previous", "Previous");
+    el = $("#modalNext"); if (el) el.title = t("next", "Next");
+    el = $("#modalClose"); if (el) el.title = t("close", "Close (Esc)");
 }
 
 /* ===== Topics ===== */
@@ -815,6 +815,7 @@ function setupResize() {
 
 /* ===== Init ===== */
 var _setupDone = false;
+var _initDone = false;
 function setupOnce() {
     if (_setupDone) return;
     _setupDone = true;
@@ -823,7 +824,9 @@ function setupOnce() {
     setupResize();
 }
 
-async function init() {
+async function init(force) {
+    if (_initDone && !force) return;
+    _initDone = true;
     await bridge.whenReady();
     setupOnce();
 

@@ -186,7 +186,7 @@ class WebReferenceWidget(QWidget):
         self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
         self._apply_theme_to_web()
         if self._bridge_ready:
-            self._web_view.page().runJavaScript("if(typeof init==='function')init();")
+            self._web_view.page().runJavaScript("if(typeof init==='function')init(true);")
         else:
             self._init_attempts = 0
             self._try_init_bridge()

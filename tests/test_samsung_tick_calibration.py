@@ -267,6 +267,62 @@ def test_samsung_tick_fallback_returns_none_without_frame():
     assert try_parse_from_dataset(dataset, None) is None
 
 
+def test_samsung_region_fallback_recovers_panel_without_time_ruler():
+    """SF=1 Samsung spectral panels can still yield ROI and baseline."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[475:873, :, :] = 35
+    frame[475:477, :, :] = 150  # baseline at the panel's top edge
+    frame[650:652, 20:1160, :] = 90  # visible velocity grid line
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.roi.y0 == 473.0
+    assert state.roi.y1 > 850.0
+    assert state.baseline_y_px < 500.0
+    assert state.time_span_ms == 0.0
+
+
+def test_samsung_tick_calibration_prefers_region_top_for_full_panel():
+    """Tick-derived ROI must not crop the upper half of a CW panel."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    region = dataset.SequenceOfUltrasoundRegions[0]
+    region.RegionLocationMaxY1 = 393
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[393:873, :, :] = 35
+    frame[393:395, :, :] = 150
+    frame[650:652, 20:1160, :] = 90
+    for x in range(40, 700, 24):
+        frame[845:875, x, :] = 255
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.roi.y0 == 393.0
+    assert state.roi.height > 450.0
+
+
+def test_samsung_tick_fallback_accepts_noisy_but_periodic_ruler():
+    """A validated Samsung panel may have extra marks on its time ruler."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[473:873, :, :] = 35
+    frame[820:822, :, :] = 150
+    frame[650:652, 20:1160, :] = 90
+    # Periodic ruler plus a few unrelated bright marks.
+    for x in range(42, 1085, 42):
+        frame[862:873, x : x + 2, :] = 255
+    for x in (137, 244, 739, 1007):
+        frame[858:873, x : x + 3, :] = 255
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.time_span_ms > 0.0
+    assert state.time_from_dicom_tags is True
+
+
 def test_samsung_tick_fallback_ignores_other_vendors():
     """Tick fallback must not fire for non-Samsung datasets."""
     dataset = Dataset()
