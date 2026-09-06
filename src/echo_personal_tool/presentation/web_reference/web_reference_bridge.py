@@ -66,6 +66,7 @@ def _topic_label(slug: str) -> str:
     labels = _TOPIC_LABELS_RU if get_language() == "ru" else _TOPIC_LABELS_EN
     return labels.get(slug, slug[:6])
 
+
 _TOPIC_ICONS: dict[str, str] = {
     "left_ventricle": "LV01",
     "left_atrium": "LA01",
