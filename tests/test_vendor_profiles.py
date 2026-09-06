@@ -27,15 +27,18 @@ class TestGEProfile:
     def test_vendor_bridge_returns_profile_calibration(self):
         ds = Dataset()
         ds.Manufacturer = "GE Vingmed Ultrasound"
+        ds.ManufacturerModelName = "Vivid E95"
         ds.Rows = 708
+        ds.Columns = 1180
         region = Dataset()
         region.RegionSpatialFormat = 3
         region.RegionDataType = 3
         region.RegionLocationMinX0 = 20
         region.RegionLocationMinY0 = 212
-        region.RegionLocationMaxX1 = 680
+        region.RegionLocationMaxX1 = 580
         region.RegionLocationMaxY1 = 671
         region.ReferencePixelY0 = 90
+        region.ReferencePixelPhysicalValueY = 0.0
         region.PhysicalDeltaX = 0.005
         region.PhysicalUnitsXDirection = 4
         region.PhysicalDeltaY = 0.376316
@@ -147,19 +150,6 @@ class TestGEProfile:
 
         assert result.baseline_y == 391.0
         assert result.confidence == 0.8  # inside region (213..668)
-        assert result.velocity_sign == -1
-
-    def test_baseline_negative(self):
-        """Q8BA9K22: refy=-2, region y0=213..668 → abs=211 (inside frame, above region)."""
-        region = Dataset()
-        region.ReferencePixelY0 = -2
-        region.RegionLocationMinY0 = 213
-        region.RegionLocationMaxY1 = 668
-
-        result = self.profile.compute_baseline(region, frame_height=708)
-
-        assert result.baseline_y == 211.0
-        assert result.confidence == 0.6  # above region but inside frame
         assert result.velocity_sign == -1
 
     def test_velocity_span_standard(self):

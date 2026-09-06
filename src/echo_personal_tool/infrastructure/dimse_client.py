@@ -198,25 +198,39 @@ class PynetdimseClient:
         )
 
     def _c_find(self, query_ds: Dataset, mapper) -> list:  # noqa: ANN001
+        """Run a C-FIND query.
+
+        Unlike previous behaviour (which swallowed errors and returned an
+        empty list — indistinguishable from "no results"), failures such as a
+        refused association, timeout or mid-query connection loss raise
+        :class:`DimseAssociationError`. Callers in auto-fallback mode catch
+        the error and try the next protocol; explicit-source callers surface
+        it to the UI.
+        """
         results: list = []
+        assoc = None
         try:
             assoc = self._associate()
-            try:
-                responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)
-                for status, identifier in responses:
-                    if status is None:
-                        break
-                    if status.Status in (0xFF00, 0xFF01):
-                        if identifier is not None:
-                            results.append(mapper(identifier))
-                    elif status.Status == 0x0000:
-                        break
-            finally:
-                assoc.release()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("C-FIND: association failed: %s", exc)
+            raise DimseAssociationError(f"C-FIND association failed: {exc}") from exc
+        try:
+            responses = assoc.send_c_find(query_ds, StudyRootQueryRetrieveInformationModelFind)
+            for status, identifier in responses:
+                if status is None:
+                    raise DimseAssociationError("C-FIND: connection lost")
+                if status.Status in (0xFF00, 0xFF01):
+                    if identifier is not None:
+                        results.append(mapper(identifier))
+                elif status.Status == 0x0000:
+                    break
         except DimseAssociationError:
-            logger.warning("C-FIND: association failed")
-        except Exception:  # noqa: BLE001
+            raise
+        except Exception as exc:  # noqa: BLE001
             logger.exception("C-FIND failed")
+            raise DimseAssociationError(f"C-FIND failed: {exc}") from exc
+        finally:
+            assoc.release()
         return results
 
     def c_store(self, dicom_bytes: bytes) -> bool:
@@ -323,6 +337,7 @@ class PynetdimseClient:
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Download instances via C-MOVE to embedded Storage SCP."""
         ae = AE(ae_title=self._ae_title)
@@ -362,6 +377,9 @@ class PynetdimseClient:
             warning = 0
 
             for status, _identifier in responses:
+                if is_cancelled is not None and is_cancelled():
+                    assoc.abort()
+                    raise DimseAssociationError("C-MOVE cancelled")
                 if status is None:
                     break
                 if status.Status == 0x0000:
@@ -397,6 +415,7 @@ class PynetdimseClient:
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Download all instances in a series via C-MOVE (series-level query)."""
         ae = AE(ae_title=self._ae_title)
@@ -434,6 +453,9 @@ class PynetdimseClient:
             warning = 0
 
             for status, _identifier in responses:
+                if is_cancelled is not None and is_cancelled():
+                    assoc.abort()
+                    raise DimseAssociationError("C-MOVE cancelled")
                 if status is None:
                     break
                 if status.Status == 0x0000:

@@ -140,6 +140,7 @@ class DimseClient(Protocol):
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Download instances via C-MOVE to embedded Storage SCP."""
         ...
@@ -154,6 +155,7 @@ class DimseClient(Protocol):
         scp_port: int,
         received: dict[str, bytes],
         tls_args: tuple | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CMoveResult:
         """Download all instances in a series via C-MOVE (series-level query)."""
         ...

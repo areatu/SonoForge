@@ -274,8 +274,9 @@ class TestStartNextDownload:
             mock_failed.assert_called_once()
             mock_done.assert_not_called()
 
-    def test_partial_failure_shows_error(self, dialog):
-        """When some studies fail, _on_failed should show error dialog."""
+    def test_partial_failure_keeps_successful_downloads(self, dialog):
+        """When some studies fail but others succeeded, the successful data
+        must be kept (_on_partial_done), NOT wiped via _on_failed."""
         dialog._session_id = "test-session"
         dialog._total_studies = 2
         dialog._completed_downloads = 2
@@ -285,10 +286,12 @@ class TestStartNextDownload:
         with (
             patch.object(dialog, "_on_done") as mock_done,
             patch.object(dialog, "_on_failed") as mock_failed,
+            patch.object(dialog, "_on_partial_done") as mock_partial,
             patch.object(dialog, "_reset_after_download"),
         ):
             dialog._start_next_download()
-            mock_failed.assert_called_once()
+            mock_partial.assert_called_once()
+            mock_failed.assert_not_called()
             mock_done.assert_not_called()
 
     def test_all_success_shows_done(self, dialog):

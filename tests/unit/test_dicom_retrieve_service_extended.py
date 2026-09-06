@@ -13,7 +13,6 @@ from echo_personal_tool.application.services.dicom_retrieve_service import (
     DicomRetrieveService,
     RetrieveError,
     WadoRetrieveAdapter,
-    _wado_reachable,
     make_retrieve_service,
 )
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
@@ -80,25 +79,6 @@ class _MockDimse:
         from echo_personal_tool.domain.ports import CMoveResult
 
         return CMoveResult(completed=0, failed=0, warning=0)
-
-
-# ── _wado_reachable ──────────────────────────────────────────────────
-
-
-def test_wado_reachable_ping_ok() -> None:
-    assert _wado_reachable(_MockWeb(ping_return=True)) is True
-
-
-def test_wado_reachable_ping_fails() -> None:
-    assert _wado_reachable(_MockWeb(ping_return=False)) is False
-
-
-def test_wado_reachable_exception() -> None:
-    class _BadWeb:
-        def ping(self):
-            raise ConnectionError("nope")
-
-    assert _wado_reachable(_BadWeb()) is False
 
 
 # ── DicomRetrieveService ─────────────────────────────────────────────
@@ -184,9 +164,48 @@ def test_make_service_default_source_not_in_adapters() -> None:
 
 
 def test_make_service_auto_wado_only() -> None:
-    """auto mode with only wado adapter, wado ping fails → wado used as auto."""
+    """auto mode with only wado adapter → wado is used."""
     web = _MockWeb(ping_return=False)
     settings = ServerSettings(retrieval_source="auto")
+    svc = make_retrieve_service(settings, web_client=web)
+    result = svc.retrieve_instance(_STUDY, _SERIES, _INSTANCE)
+    assert result == _BYTES
+
+
+def test_auto_falls_back_at_retrieval_time_when_wado_raises() -> None:
+    """Auto fallback happens per-request, not only when a startup ping failed."""
+
+    class _FailingWadoWeb(_MockWeb):
+        def download_instance(self, study_uid, series_uid, instance_uid) -> bytes:
+            raise ConnectionError("wado down mid-session")
+
+    dimse = _MockDimse()
+    settings = ServerSettings(retrieval_source="auto")
+    svc = make_retrieve_service(settings, web_client=_FailingWadoWeb(), dimse_client=dimse)
+    result = svc.retrieve_instance(_STUDY, _SERIES, _INSTANCE)
+    assert result == _BYTES
+
+
+def test_explicit_source_does_not_cross_fallback() -> None:
+    """retrieval_source='dimse' must stay on DIMSE: a failure is reported,
+    not silently rerouted to WADO (the user explicitly configured DIMSE)."""
+    web = _MockWeb()
+    dimse = _MockDimse()
+
+    class _FailingDimse(_MockDimse):
+        def c_get_instance(self, study_uid, series_uid, instance_uid, *, tls_args=None, is_cancelled=None) -> bytes:
+            raise ConnectionError("dimse failed")
+
+    settings = ServerSettings(retrieval_source="dimse")
+    svc = make_retrieve_service(settings, web_client=web, dimse_client=_FailingDimse())
+    with pytest.raises(RetrieveError, match="All retrieval sources failed"):
+        svc.retrieve_instance(_STUDY, _SERIES, _INSTANCE)
+
+
+def test_make_service_configured_source_missing_falls_to_auto() -> None:
+    """retrieval_source='dimse' but only WADO available → auto (WADO) is used."""
+    web = _MockWeb()
+    settings = ServerSettings(retrieval_source="dimse")
     svc = make_retrieve_service(settings, web_client=web)
     result = svc.retrieve_instance(_STUDY, _SERIES, _INSTANCE)
     assert result == _BYTES

@@ -116,7 +116,10 @@ class GEProfile(VendorProfile):
         ref_y_f = float(ref_y)
         min_y = float(region.get("RegionLocationMinY0", 0) or 0)
         max_y = float(region.get("RegionLocationMaxY1", frame_height) or frame_height)
-        region_height = max_y - min_y
+
+        # ReferencePixelY0 is region-relative (DICOM C.8.5.5.1.4.2):
+        # convert to absolute image coordinates.
+        baseline_y = min_y + ref_y_f
 
         # Baseline is region-relative: absolute Y in the image.
         baseline_y = min_y + ref_y_f

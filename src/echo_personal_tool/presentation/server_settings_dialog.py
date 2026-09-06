@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -140,7 +141,8 @@ class ServerSettingsForm(QWidget):
         profiles_row.addStretch()
         form.addRow(tr("server_settings.profiles_label"), profiles_row)
 
-        self.set_settings(load_server_settings())
+        self._settings_cache = load_server_settings()
+        self.set_settings(self._settings_cache)
 
     def _sync_auth_fields(self) -> None:
         basic = self._auth_mode.currentData() == "basic"
@@ -195,7 +197,46 @@ class ServerSettingsForm(QWidget):
         else:
             self._dimse_echo_label.setText(tr("server_settings.dimse_echo_fail", message=message))
 
+    def _preserved_settings(self) -> ServerSettings:
+        """Last loaded/saved settings used to carry fields without a widget."""
+        return getattr(self, "_settings_cache", ServerSettings())
+
+    def port_validation_error(self) -> str | None:
+        """Return a localized error message for invalid port fields, if any."""
+        checks = (
+            (tr("server_settings.dimse_port"), self._dimse_port_edit, 1, 65535),
+            (tr("server_settings.scp_port"), self._dimse_scp_port, 1, 65535),
+        )
+        for label, widget, low, high in checks:
+            text = widget.text().strip()
+            if not text:
+                continue
+            try:
+                value = int(text)
+            except ValueError:
+                return tr("server_settings.port_invalid", field=label, value=text)
+            if not (low <= value <= high):
+                return tr("server_settings.port_out_of_range", field=label, value=text)
+        return None
+
+    @staticmethod
+    def _parse_port(text: str, default: int) -> int:
+        """Parse a port field, falling back to `default` when empty/invalid.
+
+        Invalid text is reported by :meth:`port_validation_error` before
+        saving; this tolerant parse keeps other callers (e.g. profile dialog)
+        from crashing on intermediate user input.
+        """
+        stripped = text.strip()
+        if not stripped:
+            return default
+        try:
+            return int(stripped)
+        except ValueError:
+            return default
+
     def settings(self) -> ServerSettings:
+        preserved = self._preserved_settings()
         return ServerSettings(
             description=self._description_edit.text().strip(),
             url=self._url_edit.text().strip(),
@@ -208,8 +249,9 @@ class ServerSettingsForm(QWidget):
             dimse_ae_title=self._dimse_ae_edit.text().strip() or "ECHO2026",
             dimse_called_ae=self._dimse_called_ae_edit.text().strip() or "ORTHANC",
             dimse_host=self._dimse_host_edit.text().strip() or "127.0.0.1",
-            dimse_port=int(self._dimse_port_edit.text().strip() or "4242"),
+            dimse_port=self._parse_port(self._dimse_port_edit.text(), 4242),
             stow_dicom_web_url=self._stow_url_edit.text().strip(),
+            query_source=preserved.query_source,
             retrieval_source=str(self._retrieval_source_combo.currentData() or "auto"),
             dimse_retrieval_mode="cmove" if self._retrieval_source_combo.currentData() == "cmove" else "cget",
             dimse_use_tls=self._dimse_use_tls.isChecked(),
@@ -218,12 +260,14 @@ class ServerSettingsForm(QWidget):
             dimse_tls_cert_path=self._dimse_tls_cert_path.text().strip(),
             dimse_tls_key_path=self._dimse_tls_key_path.text().strip(),
             dimse_scp_host=self._dimse_scp_host.text().strip() or "127.0.0.1",
-            dimse_scp_port=int(self._dimse_scp_port.text().strip() or "11112"),
+            dimse_scp_port=self._parse_port(self._dimse_scp_port.text(), 11112),
             dimse_scp_ae_title=self._dimse_scp_ae_title.text().strip(),
+            network_timeout=preserved.network_timeout,
             tls_verify=self._tls_verify_check.isChecked(),
         )
 
     def set_settings(self, settings: ServerSettings) -> None:
+        self._settings_cache = settings
         self._description_edit.setText(settings.description)
         self._url_edit.setText(settings.url)
         auth_index = self._auth_mode.findData(settings.auth_mode)
@@ -278,6 +322,10 @@ class ServerSettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def _on_accept(self) -> None:
+        port_error = self._form.port_validation_error()
+        if port_error:
+            QMessageBox.warning(self, tr("server_settings.title"), port_error)
+            return
         save_server_settings(self._form.settings())
         self.accept()
 
