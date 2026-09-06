@@ -289,3 +289,61 @@ def test_cancel_clears_session_and_emits_cancelled(tmp_path: Path) -> None:
     assert capture.cancelled == [session_id]
     assert capture.done == []
     assert not (tmp_path / f"session-{session_id}").exists()
+
+
+class _CancellingRetrieveService:
+    """Minimal retrieve-service stub that triggers worker.cancel() on the
+    first instance download, like a real in-flight WADO request would."""
+
+    default_source = "auto"
+
+    def __init__(self, worker: OrthancDownloadWorker) -> None:
+        self._worker = worker
+        self.cancel_inflight_calls = 0
+        self.cancel_check: object | None = None
+        self.calls = 0
+
+    def set_cancel_check(self, fn) -> None:  # noqa: ANN001
+        self.cancel_check = fn
+
+    def set_cancel_web_hook(self, hook) -> None:  # noqa: ANN001
+        pass
+
+    def cancel_inflight(self) -> None:
+        self.cancel_inflight_calls += 1
+
+    def prefetch_series(self, study_uid: str, series_uid: str) -> None:
+        pass
+
+    def retrieve_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
+        self.calls += 1
+        if self.calls == 1:
+            # Simulate: user pressed Cancel while this request was in flight.
+            self._worker.cancel()
+        return b"instance-data"
+
+
+def test_cancel_reaches_retrieve_service_and_still_clears_session_once(tmp_path: Path) -> None:
+    """worker.cancel() must call retrieve_service.cancel_inflight() (so blocked
+    HTTP sockets are aborted immediately) and clear the session only after all
+    download threads have finished (no dir recreation race)."""
+    cache = OrthancSessionCache(tmp_path)
+    session_id = cache.create_session()
+    capture = _SignalCapture()
+
+    worker = OrthancDownloadWorker(
+        FakeDicomWebClient(FIXTURES),
+        cache,
+        session_id,
+        STUDY_UID,
+        [SERIES_UID],
+    )
+    retrieve = _CancellingRetrieveService(worker)
+    worker._retrieve_service = retrieve
+    capture.connect(worker)
+    worker.run()
+
+    assert retrieve.cancel_inflight_calls >= 1
+    assert capture.cancelled == [session_id]
+    assert capture.done == []
+    assert not (tmp_path / f"session-{session_id}").exists()

@@ -99,3 +99,38 @@ def test_source_combo_persists_on_change(
     dialog._on_source_changed()
     assert load_server_settings().query_source == "dimse"
     assert query_service.source == QuerySource.DIMSE
+
+
+def test_accepts_injected_retrieve_service(make_dialog, tmp_path) -> None:
+    """L4: when the caller injects a shared retrieve service, the dialog must
+    use it and must NOT build another one (which would duplicate the client)."""
+    retrieve = object()  # DicomRetrieveService sentinel
+    with patch(
+        "echo_personal_tool.presentation.orthanc_study_dialog.make_dicom_retrieve_service",
+        side_effect=AssertionError("dialog must not build its own retrieve service when injected"),
+    ) as mock_factory:
+        dialog = make_dialog(
+            FakeDicomWebClient(),
+            OrthancSessionCache(tmp_path),
+            server_settings=ServerSettings(use_mock=True),
+            retrieve_service=retrieve,
+        )
+        mock_factory.assert_not_called()
+    assert dialog._retrieve_service is retrieve
+
+
+def test_builds_own_retrieve_service_when_not_injected(make_dialog, tmp_path) -> None:
+    """Backwards compatibility: without an injected retrieve service and with
+    server settings, the dialog builds one from settings (legacy behaviour)."""
+    retrieve = object()
+    with patch(
+        "echo_personal_tool.presentation.orthanc_study_dialog.make_dicom_retrieve_service",
+        return_value=retrieve,
+    ) as mock_factory:
+        dialog = make_dialog(
+            FakeDicomWebClient(),
+            OrthancSessionCache(tmp_path),
+            server_settings=ServerSettings(use_mock=True),
+        )
+        mock_factory.assert_called_once()
+    assert dialog._retrieve_service is retrieve

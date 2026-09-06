@@ -2809,6 +2809,27 @@ class TestDopplerCalibrationState:
         assert w._doppler_calibration_state is not None
         assert w._doppler_calibration_state.roi == roi
 
+    def test_apply_doppler_calibration_keeps_baseline_above_roi(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((200, 200), dtype=np.uint8))
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerSpectrogramRoi,
+        )
+
+        state = DopplerCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=10.0, y0=80.0, width=180.0, height=100.0),
+            baseline_y_px=20.0,
+            velocity_span_cm_s=400.0,
+        )
+
+        w.apply_doppler_calibration_state(state, persist=False)
+
+        result = w.get_doppler_calibration_state()
+        assert result is not None
+        assert result.baseline_y_px == 20.0
+        assert w._doppler.axis_mapping().baseline_plot_y() == 20.0
+
     def test_apply_doppler_calibration_state_persist(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
