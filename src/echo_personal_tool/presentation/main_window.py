@@ -1111,8 +1111,8 @@ class MainWindow(QMainWindow):
         settings = load_server_settings()
         # Build ONE DICOMweb client and ONE DIMSE client and share them across
         # the query service, the retrieve service and the dialog (L4): avoids
-        # duplicating HTTP connection pools per component. The dialog closes
-        # the shared web client when it shuts down.
+        # duplicating HTTP connection pools per component.  The caller owns the
+        # shared client and closes it after the dialog is dismissed.
         client = make_dicom_web_client(settings)
         dimse_client = make_dimse_client(settings)
         query_service = make_dicom_query_service(settings, web=client, dimse=dimse_client)
@@ -1130,6 +1130,10 @@ class MainWindow(QMainWindow):
             retrieve_service=retrieve_service,
         )
         exec_animated(dialog)
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001
+            pass
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         logger.info(

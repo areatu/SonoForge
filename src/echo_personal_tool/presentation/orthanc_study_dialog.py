@@ -146,6 +146,10 @@ class OrthancStudyDialog(QDialog):
         self._retrieve_service = retrieve_service
         if self._retrieve_service is None and server_settings is not None:
             self._retrieve_service = make_dicom_retrieve_service(server_settings)
+        # When services are injected (L4), the caller owns the shared client
+        # and is responsible for closing it.  The dialog only closes a client
+        # it created itself via the fallback retrieve-service path.
+        self._owns_client = query_service is None and retrieve_service is None
         self._result: tuple[str, str] | None = None
         self._downloading = False
         self._worker: OrthancDownloadWorker | None = None
@@ -371,6 +375,9 @@ class OrthancStudyDialog(QDialog):
 
     def _release_client(self) -> None:
         if self._client_closed:
+            return
+        if not self._owns_client:
+            self._client_closed = True
             return
         if isinstance(self._client, OrthancDicomWebClient):
             self._client.close()
