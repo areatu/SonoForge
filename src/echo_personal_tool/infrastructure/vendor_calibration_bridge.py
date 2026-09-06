@@ -373,6 +373,9 @@ def try_parse_samsung_tick_calibration(
         return None
 
     arr = np.asarray(frame)
+
+    # Samsung convention: positive velocity = upward (inverted DICOM).
+    velocity_sign = profile.compute_baseline(dataset, arr.shape[0]).velocity_sign
     if arr.ndim not in (2, 3):
         return None
 
@@ -418,6 +421,7 @@ def try_parse_samsung_tick_calibration(
                 from_dicom_tags=True,
                 time_from_dicom_tags=True,
                 velocity_from_dicom_tags=False,
+                velocity_sign=velocity_sign,
             )
         baseline_y = detect_baseline_y(arr, fallback_roi)
         candidate = calibration_from_roi_and_baseline(
@@ -437,6 +441,7 @@ def try_parse_samsung_tick_calibration(
             from_dicom_tags=False,
             time_from_dicom_tags=False,
             velocity_from_dicom_tags=False,
+            velocity_sign=velocity_sign,
         )
     if len(tick_result.tick_positions) < 5:
         return None
@@ -701,6 +706,7 @@ def try_parse_samsung_tick_calibration(
         from_dicom_tags=True,
         time_from_dicom_tags=True,
         velocity_from_dicom_tags=False,
+        velocity_sign=velocity_sign,
     )
 
 
