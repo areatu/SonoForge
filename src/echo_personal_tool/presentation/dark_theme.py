@@ -983,11 +983,24 @@ def _apply_theme_direct(
 
 
 def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
-    from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled, animate_widget_opacity
+    from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
+    from PySide6.QtWidgets import QGraphicsOpacityEffect
+
+    from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 
     app = QApplication.instance()
     if app is None:
         return
     _apply_theme_direct(app, widget, font_size, theme)
-    if not _reduce_motion_enabled():
-        animate_widget_opacity(widget, 0.85, 1.0, 150)
+    if _reduce_motion_enabled():
+        return
+    effect = QGraphicsOpacityEffect(widget)
+    widget.setGraphicsEffect(effect)
+    anim = QPropertyAnimation(effect, b"opacity")
+    anim.setDuration(150)
+    anim.setStartValue(0.6)
+    anim.setEndValue(1.0)
+    anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+    QTimer.singleShot(0, anim.start)
+    widget._theme_anim = anim
+    widget._theme_effect = effect

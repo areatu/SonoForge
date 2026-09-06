@@ -243,15 +243,18 @@ class OrthancStudyDialog(QDialog):
         buttons_row.addWidget(self._cancel_btn)
 
         # Custom title bar for frameless dialog
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        p = get_theme_palette()
         self._drag_pos: QPoint | None = None
         title_bar = QWidget()
         title_bar.setFixedHeight(32)
-        title_bar.setStyleSheet("background: #1a2332;")
+        title_bar.setStyleSheet(f"background: {p['bg_dark']};")
         tb_layout = QHBoxLayout(title_bar)
         tb_layout.setContentsMargins(8, 0, 4, 0)
         tb_layout.setSpacing(0)
         title_label = QLabel(tr("dialog.orthanc.title"))
-        title_label.setStyleSheet("color: #f1f5f9; font-weight: bold; border: none;")
+        title_label.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
         tb_layout.addWidget(title_label)
         tb_layout.addStretch(1)
         from echo_personal_tool.presentation.system_bar import _load_icon
