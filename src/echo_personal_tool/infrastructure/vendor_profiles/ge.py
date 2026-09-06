@@ -117,7 +117,10 @@ class GEProfile(VendorProfile):
         ref_y_f = float(ref_y)
         min_y = float(region.get("RegionLocationMinY0", 0) or 0)
         max_y = float(region.get("RegionLocationMaxY1", frame_height) or frame_height)
-        region_height = max_y - min_y
+
+        # ReferencePixelY0 is region-relative (DICOM C.8.5.5.1.4.2):
+        # convert to absolute image coordinates.
+        baseline_y = min_y + ref_y_f
 
         # Check if ReferencePixelPhysicalValueY = 0 (confirms refy = baseline)
         phys_val_y = region.get("ReferencePixelPhysicalValueY")
@@ -128,11 +131,11 @@ class GEProfile(VendorProfile):
             # High confidence: physical value confirms baseline
             confidence = 0.95
             source = "GE: ReferencePixelY0 with PhysicalValueY=0 (confirmed baseline)"
-        elif min_y <= ref_y_f <= max_y:
+        elif min_y <= baseline_y <= max_y:
             # Medium confidence: baseline inside region
             confidence = 0.8
             source = "GE: ReferencePixelY0 inside region"
-        elif 0 <= ref_y_f < min_y:
+        elif 0 <= baseline_y < min_y:
             # Low-medium confidence: baseline above region but within image
             confidence = 0.6
             source = "GE: ReferencePixelY0 above region (shifted baseline)"
@@ -145,16 +148,17 @@ class GEProfile(VendorProfile):
         velocity_sign = -1
 
         logger.debug(
-            "GE baseline: refy=%s, region=[%s,%s], physValY=%s, conf=%.2f",
+            "GE baseline: refy=%s, region=[%s,%s], physValY=%s, conf=%.2f, abs=%.1f",
             ref_y_f,
             min_y,
             max_y,
             phys_val_y,
             confidence,
+            baseline_y,
         )
 
         return BaselineResult(
-            baseline_y=ref_y_f,
+            baseline_y=baseline_y,
             confidence=confidence,
             source=source,
             velocity_sign=velocity_sign,

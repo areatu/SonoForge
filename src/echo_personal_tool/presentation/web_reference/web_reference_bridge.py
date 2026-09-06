@@ -13,31 +13,58 @@ from PySide6.QtCore import QObject, Slot
 from echo_personal_tool.domain.services.reference_data_store import (
     ReferenceDataStore,
 )
+from echo_personal_tool.infrastructure.i18n import get_language
 
 log = logging.getLogger(__name__)
 
 _IMAGES_DIR = Path(__file__).resolve().parents[2] / "resources" / "references" / "images"
 
-_TOPIC_LABELS: dict[str, str] = {
-    "left_ventricle": "",
-    "left_atrium": "",
-    "right_ventricle": "",
-    "right_atrium": "",
-    "mitral_valve": "",
-    "aortic_valve": "",
-    "tricuspid_valve": "",
-    "pulmonary_valve": "",
-    "aorta": "",
-    "prosthetic_valves": "",
-    "other": "",
-    "carotid_arteries": "",
-    "vertebral_arteries": "",
-    "thyroid_gland": "",
-    "kidneys": "",
-    "abdominal_organs": "",
-    "abdominal_aorta": "",
-    "lymph_nodes": "",
+_TOPIC_LABELS_RU: dict[str, str] = {
+    "left_ventricle": "ЛЖ",
+    "left_atrium": "ЛП",
+    "right_ventricle": "ПЖ",
+    "right_atrium": "ПП",
+    "mitral_valve": "МК",
+    "aortic_valve": "АК",
+    "tricuspid_valve": "ТК",
+    "pulmonary_valve": "ПМК",
+    "aorta": "Ао",
+    "prosthetic_valves": "ПК",
+    "other": "...",
+    "carotid_arteries": "СА",
+    "vertebral_arteries": "ПА",
+    "thyroid_gland": "ЩЖ",
+    "kidneys": "Поч",
+    "abdominal_organs": "ОБП",
+    "abdominal_aorta": "БА",
+    "lymph_nodes": "ЛУ",
 }
+
+_TOPIC_LABELS_EN: dict[str, str] = {
+    "left_ventricle": "LV",
+    "left_atrium": "LA",
+    "right_ventricle": "RV",
+    "right_atrium": "RA",
+    "mitral_valve": "MV",
+    "aortic_valve": "AV",
+    "tricuspid_valve": "TV",
+    "pulmonary_valve": "PV",
+    "aorta": "Ao",
+    "prosthetic_valves": "Pr",
+    "other": "...",
+    "carotid_arteries": "CA",
+    "vertebral_arteries": "VA",
+    "thyroid_gland": "Th",
+    "kidneys": "Kd",
+    "abdominal_organs": "Abd",
+    "abdominal_aorta": "AA",
+    "lymph_nodes": "LN",
+}
+
+
+def _topic_label(slug: str) -> str:
+    labels = _TOPIC_LABELS_RU if get_language() == "ru" else _TOPIC_LABELS_EN
+    return labels.get(slug, slug[:6])
 
 _TOPIC_ICONS: dict[str, str] = {
     "left_ventricle": "LV01",
@@ -135,7 +162,7 @@ class WebReferenceBridge(QObject):
                 {
                     "name": t.name,
                     "slug": t.slug,
-                    "label": _TOPIC_LABELS.get(t.slug, t.name[:6]),
+                    "label": _topic_label(t.slug),
                     "icon": _TOPIC_ICONS.get(t.slug, "LV01"),
                     "n_pathologies": n_pathos,
                     "n_params": n_params,
@@ -253,7 +280,7 @@ class WebReferenceBridge(QObject):
             return json.dumps([])
         results = []
         for topic in self._store.get_topics():
-            topic_label = _TOPIC_LABELS.get(topic.slug, topic.name[:6])
+            topic_label = _topic_label(topic.slug)
             if q in topic.name.lower() or q in topic.slug.lower():
                 results.append(
                     {
