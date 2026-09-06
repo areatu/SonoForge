@@ -659,26 +659,18 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border-right: 1px solid {p["border"]};
 }}
 
-/* ── Tab bar custom scroll arrows ───────────────────────────── */
-#tabScrollArrow {{
+/* ── Tool-panel tabs and native overflow controls ───────────── */
+#toolPanel QTabBar::tab {{
+    min-width: 0;
+    padding: 8px 10px;
+    margin-right: 0;
+}}
+#toolPanel QTabBar QToolButton {{
     background: {p["bg_control"]};
-    color: {p["text"]};
     border: 1px solid {p["border"]};
-    border-radius: 4px;
-    font-size: {max(font_size - 2, 10)}px;
-    font-weight: bold;
-    min-width: 22px;
-    max-width: 22px;
-    min-height: 22px;
-    max-height: 22px;
-    padding: 0px;
 }}
-#tabScrollArrow:hover {{
+#toolPanel QTabBar QToolButton:hover {{
     background: {p["bg_button_hover"]};
-    border-color: {p["accent"]};
-}}
-#tabScrollArrow:pressed {{
-    background: {p["bg_button_pressed"]};
 }}
 
 /* ── Focus ring ─────────────────────────────────────────────── */

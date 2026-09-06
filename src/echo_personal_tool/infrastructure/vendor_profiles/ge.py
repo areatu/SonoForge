@@ -94,16 +94,15 @@ class GEProfile(VendorProfile):
         """Compute baseline using GE's inverted velocity convention.
 
         GE convention: positive velocity = upward (toward transducer).
-        The baseline (zero velocity) is at ReferencePixelY0.
+        The baseline (zero velocity) is at ReferencePixelY0, in REGION-RELATIVE
+        coordinates (same as Philips/Samsung/standard DICOM).
 
-        ReferencePixelY0 is in ABSOLUTE image coordinates (not region-relative).
-        It can be:
-        - Inside the region (baseline within the visible band)
-        - Above the region (baseline off-screen, entire band shows one-directional flow)
-        - Negative (baseline above the image top)
+        Evidence (visual check on GE Vivid E95 exports):
+        - Q8BA8BPK  min_y=212 refY=90  -> 302 vs visual line 301.5
+        - Q8BATAG2  min_y=353 refY=187 -> 540 vs visual line 541.0
+        - Q8BA7UHE  min_y=213 refY=178 -> 391 vs visual line 391.0
 
-        The formula: v(y) = (RefY - y) × deltaY
-        where deltaY is positive (PhysicalDeltaY > 0).
+        The formula: v(y) = (RefY_abs - y) × deltaY,  RefY_abs = min_y + refY.
         """
         ref_y = region.get("ReferencePixelY0")
         if ref_y is None:
@@ -117,7 +116,13 @@ class GEProfile(VendorProfile):
         ref_y_f = float(ref_y)
         min_y = float(region.get("RegionLocationMinY0", 0) or 0)
         max_y = float(region.get("RegionLocationMaxY1", frame_height) or frame_height)
-        region_height = max_y - min_y
+
+        # ReferencePixelY0 is region-relative (DICOM C.8.5.5.1.4.2):
+        # convert to absolute image coordinates.
+        baseline_y = min_y + ref_y_f
+
+        # Baseline is region-relative: absolute Y in the image.
+        baseline_y = min_y + ref_y_f
 
         # Check if ReferencePixelPhysicalValueY = 0 (confirms refy = baseline)
         phys_val_y = region.get("ReferencePixelPhysicalValueY")
@@ -128,11 +133,11 @@ class GEProfile(VendorProfile):
             # High confidence: physical value confirms baseline
             confidence = 0.95
             source = "GE: ReferencePixelY0 with PhysicalValueY=0 (confirmed baseline)"
-        elif min_y <= ref_y_f <= max_y:
+        elif min_y <= baseline_y <= max_y:
             # Medium confidence: baseline inside region
             confidence = 0.8
             source = "GE: ReferencePixelY0 inside region"
-        elif 0 <= ref_y_f < min_y:
+        elif 0 <= baseline_y < min_y:
             # Low-medium confidence: baseline above region but within image
             confidence = 0.6
             source = "GE: ReferencePixelY0 above region (shifted baseline)"
@@ -145,16 +150,17 @@ class GEProfile(VendorProfile):
         velocity_sign = -1
 
         logger.debug(
-            "GE baseline: refy=%s, region=[%s,%s], physValY=%s, conf=%.2f",
+            "GE baseline: refy=%s, region=[%s,%s], physValY=%s, conf=%.2f, abs=%.1f",
             ref_y_f,
             min_y,
             max_y,
             phys_val_y,
             confidence,
+            baseline_y,
         )
 
         return BaselineResult(
-            baseline_y=ref_y_f,
+            baseline_y=baseline_y,
             confidence=confidence,
             source=source,
             velocity_sign=velocity_sign,

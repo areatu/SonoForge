@@ -47,7 +47,9 @@ from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_query_service,
+    make_dicom_retrieve_service,
     make_dicom_web_client,
+    make_dimse_client,
 )
 from echo_personal_tool.infrastructure.server_settings import load_server_settings
 from echo_personal_tool.infrastructure.user_preferences import (
@@ -1107,16 +1109,31 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
         settings = load_server_settings()
+        # Build ONE DICOMweb client and ONE DIMSE client and share them across
+        # the query service, the retrieve service and the dialog (L4): avoids
+        # duplicating HTTP connection pools per component.  The caller owns the
+        # shared client and closes it after the dialog is dismissed.
         client = make_dicom_web_client(settings)
-        query_service = make_dicom_query_service(settings)
+        dimse_client = make_dimse_client(settings)
+        query_service = make_dicom_query_service(settings, web=client, dimse=dimse_client)
+        retrieve_service = make_dicom_retrieve_service(
+            settings,
+            web_client=client,
+            dimse_client=dimse_client,
+        )
         dialog = OrthancStudyDialog(
             client,
             self._orthanc_cache,
             self,
             server_settings=settings,
             query_service=query_service,
+            retrieve_service=retrieve_service,
         )
         exec_animated(dialog)
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001
+            pass
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         logger.info(

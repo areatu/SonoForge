@@ -10,6 +10,7 @@ from echo_personal_tool.infrastructure.fake_dimse_client import FakeDimseClient
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_query_service,
+    make_dicom_retrieve_service,
     make_dicom_web_client,
     make_dimse_client,
     make_upload_targets,
@@ -47,6 +48,55 @@ def test_make_dicom_query_service_uses_settings_source() -> None:
     assert svc.source == QuerySource.DIMSE
     studies = svc.query_studies()
     assert len(studies) >= 1
+
+
+# ── L4: client injection (single shared web/DIMSE client across components) ──
+
+
+def test_make_dicom_query_service_accepts_injected_clients() -> None:
+    web = FakeDicomWebClient()
+    dimse = FakeDimseClient()
+    svc = make_dicom_query_service(
+        ServerSettings(use_mock=True, query_source="dicomweb"),
+        web=web,
+        dimse=dimse,
+    )
+    assert svc._web is web
+    assert svc._dimse is dimse
+    assert svc.query_studies()  # injected clients are functional
+
+
+def test_make_dicom_retrieve_service_accepts_injected_clients() -> None:
+    web = FakeDicomWebClient()
+    dimse = FakeDimseClient()
+    svc = make_dicom_retrieve_service(
+        ServerSettings(use_mock=True, retrieval_source="wado"),
+        web_client=web,
+        dimse_client=dimse,
+    )
+    # The very same instances are wired into the retrieve adapters.
+    assert svc._adapters["wado"]._client is web
+    assert svc._adapters["dimse"]._client is dimse
+    assert svc.default_source == "wado"
+
+
+def test_make_dicom_retrieve_service_cancel_hook_uses_injected_web() -> None:
+    """The cancel hook must abort in-flight requests of the *injected* client,
+    otherwise worker.cancel() would close a pool nobody downloads through."""
+    web = OrthancDicomWebClient("http://127.0.0.1:8042/dicom-web")
+    try:
+        svc = make_dicom_retrieve_service(
+            ServerSettings(
+                use_mock=False,
+                url="http://127.0.0.1:8042/dicom-web",
+                retrieval_source="wado",
+            ),
+            web_client=web,
+        )
+        assert svc._adapters["wado"]._client is web
+        assert svc._cancel_web_hook == web.cancel_inflight
+    finally:
+        web.close()
 
 
 def test_make_upload_targets_stow() -> None:

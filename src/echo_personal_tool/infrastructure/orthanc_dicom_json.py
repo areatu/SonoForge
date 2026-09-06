@@ -44,6 +44,18 @@ def tag_value(item: dict, tag: str, default: str = "") -> str:
     return str(first)
 
 
+def _as_int(value: str) -> int | None:
+    """Parse an integer tag value, returning None on non-numeric values.
+
+    A malformed NumberOfSeriesRelatedInstances must not break the parsing
+    of the whole series list.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_studies(payload: list[dict]) -> list[StudyInfo]:
     return [
         StudyInfo(
@@ -64,7 +76,7 @@ def parse_series(payload: list[dict], study_uid: str) -> list[SeriesInfo]:
             study_uid=study_uid,
             modality=tag_value(item, TAG_MODALITY),
             description=tag_value(item, TAG_SERIES_DESCRIPTION),
-            instance_count=(int(c) if (c := tag_value(item, TAG_NUMBER_OF_SERIES_RELATED_INSTANCES)) else None),
+            instance_count=_as_int(tag_value(item, TAG_NUMBER_OF_SERIES_RELATED_INSTANCES)) or None,
         )
         for item in payload
     ]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pydicom.dataset import Dataset
 
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import try_parse_with_vendor_profile
 from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor
 from echo_personal_tool.infrastructure.vendor_profiles.detector import detect_vendor
 from echo_personal_tool.infrastructure.vendor_profiles.ge import GEProfile
@@ -22,6 +23,56 @@ class TestGEProfile:
 
     def test_vendor_property(self):
         assert self.profile.vendor == Vendor.GE
+
+    def test_vendor_bridge_returns_profile_calibration(self):
+        ds = Dataset()
+        ds.Manufacturer = "GE Vingmed Ultrasound"
+        ds.ManufacturerModelName = "Vivid E95"
+        ds.Rows = 708
+        ds.Columns = 1180
+        region = Dataset()
+        region.RegionSpatialFormat = 3
+        region.RegionDataType = 3
+        region.RegionLocationMinX0 = 20
+        region.RegionLocationMinY0 = 212
+        region.RegionLocationMaxX1 = 580
+        region.RegionLocationMaxY1 = 671
+        region.ReferencePixelY0 = 90
+        region.ReferencePixelPhysicalValueY = 0.0
+        region.PhysicalDeltaX = 0.005
+        region.PhysicalUnitsXDirection = 4
+        region.PhysicalDeltaY = 0.376316
+        region.PhysicalUnitsYDirection = 7
+        ds.SequenceOfUltrasoundRegions = [region]
+
+        result = try_parse_with_vendor_profile(ds)
+
+        assert result is not None
+        assert result.baseline_y_px == 302.0
+        assert result.velocity_sign == -1
+
+    def test_vendor_bridge_sets_standard_sign_for_philips(self):
+        ds = Dataset()
+        ds.Manufacturer = "Philips Healthcare"
+        ds.Rows = 600
+        region = Dataset()
+        region.RegionSpatialFormat = 3
+        region.RegionDataType = 3
+        region.RegionLocationMinX0 = 20
+        region.RegionLocationMinY0 = 100
+        region.RegionLocationMaxX1 = 580
+        region.RegionLocationMaxY1 = 500
+        region.ReferencePixelY0 = 200
+        region.PhysicalDeltaX = 0.005
+        region.PhysicalUnitsXDirection = 4
+        region.PhysicalDeltaY = -0.25
+        region.PhysicalUnitsYDirection = 7
+        ds.SequenceOfUltrasoundRegions = [region]
+
+        result = try_parse_with_vendor_profile(ds)
+
+        assert result is not None
+        assert result.velocity_sign == 1
 
     def test_vendor_keywords(self):
         assert "ge" in self.profile.vendor_keywords
@@ -48,7 +99,7 @@ class TestGEProfile:
         assert self.profile.matches_dataset(ds) is True
 
     def test_baseline_inside_region(self):
-        """Q8BA5Q8Q: refy=228, region y0=212..671, physValY=0.0"""
+        """Q8BA5Q8Q: refy=228, region y0=212..671, physValY=0.0 → abs=440."""
         region = Dataset()
         region.ReferencePixelY0 = 228
         region.ReferencePixelPhysicalValueY = 0.0
@@ -57,13 +108,13 @@ class TestGEProfile:
 
         result = self.profile.compute_baseline(region, frame_height=708)
 
-        assert result.baseline_y == 228.0
+        assert result.baseline_y == 212.0 + 228.0
         assert result.confidence >= 0.9
         assert result.velocity_sign == -1  # GE inverted convention
         assert "PhysicalValueY=0" in result.source
 
     def test_baseline_above_region(self):
-        """Q8BA8BPK: refy=90, region y0=212..671, baseline above region."""
+        """Q8BA8BPK: refy=90, region y0=212..671 → abs=302 (visual line ~301.5)."""
         region = Dataset()
         region.ReferencePixelY0 = 90
         region.RegionLocationMinY0 = 212
@@ -71,21 +122,34 @@ class TestGEProfile:
 
         result = self.profile.compute_baseline(region, frame_height=708)
 
-        assert result.baseline_y == 90.0
-        assert result.confidence >= 0.4
+        assert result.baseline_y == 302.0
+        assert result.confidence == 0.8  # inside region (212..671)
         assert result.velocity_sign == -1
 
-    def test_baseline_negative(self):
-        """Q8BA9K22: refy=-2, baseline outside image."""
+    def test_baseline_above_region_2(self):
+        """Q8BATAG2: refy=187, region y0=353..668 → abs=540 (visual line ~541)."""
         region = Dataset()
-        region.ReferencePixelY0 = -2
+        region.ReferencePixelY0 = 187
+        region.RegionLocationMinY0 = 353
+        region.RegionLocationMaxY1 = 668
+
+        result = self.profile.compute_baseline(region, frame_height=708)
+
+        assert result.baseline_y == 540.0
+        assert result.confidence == 0.8  # inside region (353..668)
+        assert result.velocity_sign == -1
+
+    def test_baseline_above_region_3(self):
+        """Q8BA7UHE: refy=178, region y0=213..668 → abs=391 (visual line ~391)."""
+        region = Dataset()
+        region.ReferencePixelY0 = 178
         region.RegionLocationMinY0 = 213
         region.RegionLocationMaxY1 = 668
 
         result = self.profile.compute_baseline(region, frame_height=708)
 
-        assert result.baseline_y == -2.0
-        assert result.confidence < 0.5
+        assert result.baseline_y == 391.0
+        assert result.confidence == 0.8  # inside region (213..668)
         assert result.velocity_sign == -1
 
     def test_velocity_span_standard(self):

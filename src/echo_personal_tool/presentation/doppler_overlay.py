@@ -35,6 +35,52 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
 _TRACE_MIN_SAMPLE_PX = 4.0
 
+
+class _PeakScatterItem(pg.ScatterPlotItem):
+    """Scatter item that owns Vpeak drag events instead of the ViewBox."""
+
+    def __init__(self, owner) -> None:
+        super().__init__(
+            size=10,
+            pen=pg.mkPen("#ff6f00", width=2),
+            brush=pg.mkBrush("#ffb74d"),
+            symbol="o",
+        )
+        self._owner = owner
+        # Let the ViewBox own the press/drag sequence. ScatterPlotItem can
+        # consume the initial press without forwarding a drag event.
+        self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.setAcceptHoverEvents(True)
+
+    def mousePressEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            ev.ignore()
+            return
+        view = self.getViewBox()
+        point = view.mapSceneToView(ev.scenePos()) if view is not None else None
+        if point is None or not self._owner.begin_peak_drag(float(point.x()), float(point.y())):
+            ev.ignore()
+            return
+        ev.accept()
+
+    def mouseDragEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() != Qt.MouseButton.LeftButton:
+            ev.ignore()
+            return
+        view = self.getViewBox()
+        point = view.mapSceneToView(ev.scenePos()) if view is not None else None
+        if point is None or not self._owner.move_peak_drag(float(point.x()), float(point.y())):
+            ev.ignore()
+            return
+        ev.accept()
+
+    def mouseReleaseEvent(self, ev) -> None:  # type: ignore[override]
+        if ev.button() == Qt.MouseButton.LeftButton and self._owner.finish_peak_drag():
+            ev.accept()
+            return
+        ev.ignore()
+
+
 _PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "s_lat", "Vmax", "TR Vmax", "s_prime_rv")
 _INTERVAL_LABELS = ("DT", "IVRT", "AT")
 _MITRAL_INFLOW_WORKFLOW: tuple[tuple[str, str], ...] = (
@@ -76,12 +122,7 @@ class DopplerOverlayTools(QWidget):
         self._baseline_item.setZValue(6)
         self._plot.addItem(self._baseline_item)
 
-        self._peak_scatter = pg.ScatterPlotItem(
-            size=10,
-            pen=pg.mkPen("#ff6f00", width=2),
-            brush=pg.mkBrush("#ffb74d"),
-            symbol="o",
-        )
+        self._peak_scatter = _PeakScatterItem(self)
         self._peak_scatter.setZValue(20)
         self._plot.addItem(self._peak_scatter)
 
@@ -103,6 +144,7 @@ class DopplerOverlayTools(QWidget):
         self._interval_label_index = 0
         self._trace_label = "VTI"
         self._peak_markers: list[DopplerPeakMarker] = []
+        self._peak_drag_index: int | None = None
         self._interval_markers: list[DopplerIntervalMarker] = []
         self._traces: list[DopplerTrace] = []
         self._single_shot_peak = True
@@ -126,6 +168,7 @@ class DopplerOverlayTools(QWidget):
         self._vessel_points: pg.ScatterPlotItem | None = None
         self._vessel_text_item: pg.TextItem | None = None
         self._auto_envelope_item: pg.PlotDataItem | None = None
+        self._auto_peak_guide_item: pg.PlotDataItem | None = None
         self._vessel_cycle_band: pg.PlotDataItem | None = None
         self._vessel_cycle_text: pg.TextItem | None = None
 
@@ -344,6 +387,7 @@ class DopplerOverlayTools(QWidget):
 
     def clear_measurements(self, *, keep_calibration_graphics: bool = False) -> None:
         self._peak_markers.clear()
+        self._peak_drag_index = None
         self._interval_markers.clear()
         self._traces.clear()
         self._peak_scatter.setData([], [])
@@ -386,6 +430,44 @@ class DopplerOverlayTools(QWidget):
         time_ms = self._axis_mapping.time_ms_from_x(x_px)
         velocity_cm_s = self._axis_mapping.velocity_cm_s_from_y(y_px)
         return self._handle_mapped_click(time_ms, velocity_cm_s, x_px=x_px, y_px=y_px)
+
+    def begin_peak_drag(self, x_px: float, y_px: float) -> bool:
+        """Start moving the nearest existing peak marker."""
+        if self._tool_mode != "none":
+            return False
+        for index in reversed(range(len(self._peak_markers))):
+            marker = self._peak_markers[index]
+            marker_xy = (
+                self._axis_mapping.x_from_time_ms(marker.time_ms),
+                self._axis_mapping.y_from_velocity_cm_s(marker.velocity_cm_s),
+            )
+            if _near_point(x_px, y_px, marker_xy):
+                self._peak_drag_index = index
+                return True
+        return False
+
+    def move_peak_drag(self, x_px: float, y_px: float) -> bool:
+        """Move the active peak and emit updated physical measurements."""
+        if self._peak_drag_index is None:
+            return False
+        index = self._peak_drag_index
+        self._peak_markers[index] = DopplerPeakMarker(
+            label=self._peak_markers[index].label,
+            time_ms=self._axis_mapping.time_ms_from_x(float(x_px)),
+            velocity_cm_s=self._axis_mapping.velocity_cm_s_from_y(float(y_px)),
+        )
+        self._refresh_peak_scatter()
+        self._emit_markers_changed()
+        return True
+
+    def finish_peak_drag(self) -> bool:
+        if self._peak_drag_index is None:
+            return False
+        self._peak_drag_index = None
+        return True
+
+    def has_peak_drag(self) -> bool:
+        return self._peak_drag_index is not None
 
     def set_vessel_mode(self) -> None:
         self.set_tool_mode("none")
@@ -463,6 +545,30 @@ class DopplerOverlayTools(QWidget):
             except Exception:  # noqa: BLE001
                 pass
             self._auto_envelope_item = None
+        if self._auto_peak_guide_item is not None:
+            try:
+                self._plot.removeItem(self._auto_peak_guide_item)
+            except Exception:  # noqa: BLE001
+                pass
+            self._auto_peak_guide_item = None
+
+    def _show_auto_peak_guide(self, envelope: tuple[tuple[float, float], ...]) -> None:
+        if not envelope:
+            return
+        baseline_y = self._baseline_plot_y_px()
+        if self._envelope_below_baseline(envelope):
+            peak_index = max(range(len(envelope)), key=lambda index: envelope[index][1])
+        else:
+            peak_index = min(range(len(envelope)), key=lambda index: envelope[index][1])
+        peak_x, peak_y = envelope[peak_index]
+        item = pg.PlotDataItem(
+            [peak_x, peak_x],
+            [baseline_y, peak_y],
+            pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine),
+        )
+        item.setZValue(26)
+        self._plot.addItem(item)
+        self._auto_peak_guide_item = item
 
     def apply_auto_trace(
         self,
@@ -538,13 +644,7 @@ class DopplerOverlayTools(QWidget):
         self._clear_auto_envelope()
         if not envelope or len(envelope) < 2:
             return False
-        xs = [p[0] for p in envelope]
         ys = [p[1] for p in envelope]
-        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
-        item.setZValue(24)
-        self._plot.addItem(item)
-        self._auto_envelope_item = item
-
         clipped = envelope
         if time_range_ms is not None:
             t_start, t_end = time_range_ms
@@ -561,6 +661,13 @@ class DopplerOverlayTools(QWidget):
                 if len(clipped) < 3:
                     return False
 
+        xs = [p[0] for p in clipped]
+        ys = [p[1] for p in clipped]
+        item = pg.PlotDataItem(xs, ys, pen=pg.mkPen("#00e5ff", width=2))
+        item.setZValue(24)
+        self._plot.addItem(item)
+        self._auto_envelope_item = item
+
         mapped = [
             (
                 self._axis_mapping.time_ms_from_x(point[0]),
@@ -568,11 +675,37 @@ class DopplerOverlayTools(QWidget):
             )
             for point in clipped
         ]
-        filtered = filter_velocity_spikes(mapped)
+        roi = self._axis_mapping.roi
+        max_velocity = self._axis_mapping.velocity_span_cm_s
+        if roi is not None:
+            max_velocity = max(
+                max_velocity,
+                abs(self._axis_mapping.velocity_cm_s_from_y(roi.y0)),
+                abs(self._axis_mapping.velocity_cm_s_from_y(roi.y1)),
+            )
+        filtered = filter_velocity_spikes(mapped, max_velocity_cm_s=max_velocity)
         finalized = finalize_vti_trace_points(filtered)
         if len(finalized) < 3:
             return False
         self._append_trace(DopplerTrace(label=trace_label, points=finalized))
+        if trace_label.strip().upper() in {
+            "VTI MV",
+            "VTI MR",
+            "VTI AV",
+            "VTI AR",
+            "VTI TV",
+            "VTI PV",
+            "VTI TR",
+            "VTI PR",
+        }:
+            guide_points = tuple(
+                (
+                    self._axis_mapping.x_from_time_ms(time_ms),
+                    self._axis_mapping.y_from_velocity_cm_s(velocity_cm_s),
+                )
+                for time_ms, velocity_cm_s in finalized
+            )
+            self._show_auto_peak_guide(guide_points)
         self._tool_mode = "none"
         self.markers_changed.emit(self._build_measurement_dto())
         return True
@@ -801,6 +934,7 @@ class DopplerOverlayTools(QWidget):
         self._trace_stroke_active = False
         self._trace_suppress_click = False
         self._trace_last_plot_xy = None
+        self._peak_drag_index = None
         self._trace_item.setData([], [])
         self._clear_interval_preview()
         self._clear_autovti_region()

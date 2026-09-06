@@ -63,7 +63,7 @@ class _StudyItem(QTreeWidgetItem):
 
 
 class _StudyQuerySignals(QObject):
-    finished = Signal(object)  # list[StudyInfo]
+    finished = Signal(object, object)  # (list[StudyInfo] | None, error_message | None)
 
 
 class _StudyQueryWorker(QRunnable):
@@ -76,13 +76,15 @@ class _StudyQueryWorker(QRunnable):
         self.setAutoDelete(True)
 
     def run(self) -> None:
+        error = None
         try:
             studies = self._query_fn()
         except Exception as exc:  # noqa: BLE001
             log.warning("[DLG] study query failed: %s", exc)
             studies = []
+            error = str(exc)
         try:
-            self._signals.finished.emit(studies)
+            self._signals.finished.emit(studies, error)
         except RuntimeError:
             log.debug("[DLG] study query worker: signal already deleted, skipping emit")
 
@@ -127,6 +129,7 @@ class OrthancStudyDialog(QDialog):
         username: str | None = None,
         password: str | None = None,
         query_service=None,  # DicomQueryService | None
+        retrieve_service=None,  # DicomRetrieveService | None
     ) -> None:
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -137,7 +140,16 @@ class OrthancStudyDialog(QDialog):
         self._username = username
         self._password = password
         self._query_service = query_service
-        self._retrieve_service = make_dicom_retrieve_service(server_settings) if server_settings is not None else None
+        # The caller may inject a retrieve service sharing the same HTTP/DIMSE
+        # clients (L4). Fall back to building one from settings for callers
+        # that do not provide it (kept for backwards compatibility).
+        self._retrieve_service = retrieve_service
+        if self._retrieve_service is None and server_settings is not None:
+            self._retrieve_service = make_dicom_retrieve_service(server_settings)
+        # When services are injected (L4), the caller owns the shared client
+        # and is responsible for closing it.  The dialog only closes a client
+        # it created itself via the fallback retrieve-service path.
+        self._owns_client = query_service is None and retrieve_service is None
         self._result: tuple[str, str] | None = None
         self._downloading = False
         self._worker: OrthancDownloadWorker | None = None
@@ -231,15 +243,18 @@ class OrthancStudyDialog(QDialog):
         buttons_row.addWidget(self._cancel_btn)
 
         # Custom title bar for frameless dialog
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        p = get_theme_palette()
         self._drag_pos: QPoint | None = None
         title_bar = QWidget()
         title_bar.setFixedHeight(32)
-        title_bar.setStyleSheet("background: #1a2332;")
+        title_bar.setStyleSheet(f"background: {p['bg_dark']};")
         tb_layout = QHBoxLayout(title_bar)
         tb_layout.setContentsMargins(8, 0, 4, 0)
         tb_layout.setSpacing(0)
         title_label = QLabel(tr("dialog.orthanc.title"))
-        title_label.setStyleSheet("color: #f1f5f9; font-weight: bold; border: none;")
+        title_label.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
         tb_layout.addWidget(title_label)
         tb_layout.addStretch(1)
         from echo_personal_tool.presentation.system_bar import _load_icon
@@ -273,6 +288,9 @@ class OrthancStudyDialog(QDialog):
     def _load_studies_async(self) -> None:
         """Query studies in a background thread to avoid blocking the UI."""
         if not self._is_alive():
+            return
+        if not self._query_source_available():
+            self._status_label.setText(tr("orthanc.dimse_disabled"))
             return
         text = self._search_edit.text().strip()
         patient_name = text or None
@@ -361,6 +379,9 @@ class OrthancStudyDialog(QDialog):
     def _release_client(self) -> None:
         if self._client_closed:
             return
+        if not self._owns_client:
+            self._client_closed = True
+            return
         if isinstance(self._client, OrthancDicomWebClient):
             self._client.close()
             self._client_closed = True
@@ -371,9 +392,49 @@ class OrthancStudyDialog(QDialog):
             self._query_service.source = QuerySource(source_val)
         if source_val:
             self._persist_query_source(str(source_val))
-        # Show info if DIMSE selected — download via C-GET
-        if source_val == "dimse":
-            self._status_label.setText(tr("orthanc.dimse_info_banner"))
+        self._show_source_hint(str(source_val))
+
+    @staticmethod
+    def _retrieval_source_label(value: str) -> str:
+        """Human-readable label of the *actual* download source in settings."""
+        return {
+            "wado": "WADO-RS",
+            "dimse": "C-GET",
+            "cmove": "C-MOVE",
+            "auto": "Auto",
+        }.get(value, value)
+
+    def _show_source_hint(self, source_val: str) -> None:
+        """Show an honest status hint about what the current source means.
+
+        The combo only switches the *query* protocol; the download protocol
+        is controlled separately by settings.retrieval_source, so the hint
+        reports both instead of claiming "download via C-GET" unconditionally.
+        """
+        if self._downloading:
+            return  # never clobber the download progress status
+        if source_val != "dimse":
+            return
+        if not self._query_source_available():
+            self._status_label.setText(tr("orthanc.dimse_disabled"))
+            return
+        retrieval = self._retrieval_source_label(
+            self._server_settings.retrieval_source if self._server_settings is not None else "auto"
+        )
+        self._status_label.setText(tr("orthanc.dimse_info_banner", retrieval=retrieval))
+
+    def _query_source_available(self) -> bool:
+        """True when the currently selected query source can actually run.
+
+        DIMSE requires either mock mode or DIMSE enabled in server settings;
+        otherwise a search would silently return an empty list.
+        """
+        source_val = self._source_combo.currentData()
+        if source_val != "dimse":
+            return True
+        if self._server_settings is None:
+            return True
+        return self._server_settings.use_mock or self._server_settings.dimse_enabled
 
     def _persist_query_source(self, source_val: str) -> None:
         if source_val not in {s.value for s in QuerySource}:
@@ -386,12 +447,30 @@ class OrthancStudyDialog(QDialog):
         if self._server_settings is not None:
             self._server_settings = replace(self._server_settings, query_source=source_val)
 
-    def _on_studies_loaded(self, studies: list) -> None:
+    def _on_studies_loaded(self, studies: list, error: str | None = None) -> None:
         if not self._is_alive():
             return
-        log.info("[DLG] _on_studies_loaded: count=%d", len(studies))
-        self._build_study_tree(studies)
-        self._filter_studies_by_date(self._date_filter_combo.currentData())
+        log.info("[DLG] _on_studies_loaded: count=%d error=%s", len(studies), error)
+        self._tree.blockSignals(True)
+        self._tree.clear()
+        if error and not studies:
+            # Server unreachable / auth failure / DIMSE refused — surface the
+            # reason instead of showing an empty "Ready" list.
+            error_item = QTreeWidgetItem(["", "", tr("orthanc.find_error", message=error[:200])])
+            error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
+            self._tree.addTopLevelItem(error_item)
+            self._status_label.setText(tr("orthanc.find_error", message=error[:200]))
+            self._tree.blockSignals(False)
+            self._update_load_button()
+            return
+        self._tree.blockSignals(False)
+        if studies:
+            self._build_study_tree(studies)
+            self._filter_studies_by_date(self._date_filter_combo.currentData())
+        if error:
+            self._status_label.setText(tr("orthanc.find_error", message=error[:200]))
+        elif not studies:
+            self._status_label.setText(tr("orthanc.ready"))
         self._update_load_button()
 
     def _build_study_tree(self, studies: list) -> None:
@@ -552,10 +631,16 @@ class OrthancStudyDialog(QDialog):
         self._save_disk_btn.setEnabled(has_checked)
 
     def _collect_all_checked_series(self) -> list[tuple[str, list[str]]]:
-        """Collect all (study_uid, series_uids) pairs across all studies."""
+        """Collect all (study_uid, series_uids) pairs across visible studies.
+
+        Studies hidden by the date filter are skipped: their checked series
+        are invisible to the user and must not be silently downloaded.
+        """
         result: list[tuple[str, list[str]]] = []
         for index in range(self._tree.topLevelItemCount()):
             study_item = self._tree.topLevelItem(index)
+            if study_item.isHidden():
+                continue
             study_uid = study_item.data(0, _STUDY_UID_ROLE)
             checked: list[str] = []
             for child_index in range(study_item.childCount()):
@@ -581,6 +666,10 @@ class OrthancStudyDialog(QDialog):
         self._session_id = session_id
         self._downloading = True
         self._close_pending = False
+        # A fresh download batch must not inherit StudyMetadata from a previous
+        # (possibly partially failed) batch whose session files were removed.
+        self._downloaded_studies = []
+        self._result = None
         set_button_loading(self._load_btn, True, "…")
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
         self._cancel_btn.setEnabled(True)
@@ -621,6 +710,8 @@ class OrthancStudyDialog(QDialog):
         self._session_id = session_id
         self._downloading = True
         self._close_pending = False
+        self._downloaded_studies = []
+        self._result = None
         self._save_to_disk_path = directory
         set_button_loading(self._save_disk_btn, True, "…")
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
@@ -634,6 +725,7 @@ class OrthancStudyDialog(QDialog):
 
         self._pending_downloads = list(all_series)
         self._completed_downloads = 0
+        self._failed_downloads = 0
         self._total_studies = len(all_series)
         self._start_next_download_to_disk()
 
@@ -645,10 +737,18 @@ class OrthancStudyDialog(QDialog):
             self._total_studies,
         )
         if not self._pending_downloads:
-            if self._failed_downloads > 0 and self._session_id is not None:
-                self._on_failed("", tr("orthanc.partial_failed"))
-            elif self._session_id is not None:
-                first_study = self._result[1] if self._result else ""
+            if self._session_id is None:
+                return
+            if self._failed_downloads > 0:
+                if self._completed_downloads > self._failed_downloads:
+                    # Some studies succeeded: keep them (do not wipe the whole
+                    # session) and let the user open the successful ones.
+                    self._on_partial_done()
+                else:
+                    # Nothing succeeded — discard the session and report.
+                    self._on_failed("", tr("orthanc.partial_failed"))
+            else:
+                first_study = self._downloaded_studies[0].study_uid if self._downloaded_studies else ""
                 self._on_done(self._session_id, first_study)
             return
 
@@ -688,10 +788,13 @@ class OrthancStudyDialog(QDialog):
             self._total_studies,
         )
         if not self._pending_downloads:
-            all_ok = self._completed_downloads == self._total_studies
-            if all_ok and self._session_id is not None:
-                self._on_disk_download_done()
-            elif self._session_id is not None:
+            if self._session_id is None:
+                return
+            if self._completed_downloads > self._failed_downloads:
+                # Copy whatever was downloaded successfully — a partial batch
+                # must not silently discard the studies that did succeed.
+                self._on_disk_download_done(partial=self._failed_downloads > 0)
+            else:
                 self._on_failed("", tr("orthanc.partial_failed"))
             return
 
@@ -807,13 +910,17 @@ class OrthancStudyDialog(QDialog):
         )
         self._start_next_download_to_disk()
 
-    def _on_disk_download_done(self) -> None:
+    def _on_disk_download_done(self, *, partial: bool = False) -> None:
         """Handle completion of all downloads to disk — copy files from cache to target."""
         if not self._is_alive():
             return
-        log.info("[DLG] _on_disk_download_done: path=%s", self._save_to_disk_path)
+        log.info(
+            "[DLG] _on_disk_download_done: path=%s partial=%s",
+            self._save_to_disk_path,
+            partial,
+        )
 
-        # Copy files from cache to user-selected directory
+        # Copy files from cache to user-selected directory (whatever succeeded)
         copied_count = 0
         if self._session_id is not None:
             session_dir = self._cache.session_path(self._session_id)
@@ -837,12 +944,28 @@ class OrthancStudyDialog(QDialog):
         self._reset_after_download()
         self._session_id = None
         self._progress.setValue(self._progress.maximum())
-        self._status_label.setText(tr("orthanc.disk_download_complete", path=self._save_to_disk_path))
-        QMessageBox.information(
-            self,
-            tr("orthanc.download_complete"),
-            tr("orthanc.disk_download_complete", path=self._save_to_disk_path),
-        )
+        if partial:
+            saved = self._completed_downloads - self._failed_downloads
+            message = tr(
+                "orthanc.disk_download_partial",
+                path=self._save_to_disk_path,
+                saved=str(saved),
+                total=str(self._total_studies),
+            )
+            self._status_label.setText(message)
+            QMessageBox.warning(
+                self,
+                tr("orthanc.download_error.title"),
+                message,
+            )
+        else:
+            message = tr("orthanc.disk_download_complete", path=self._save_to_disk_path)
+            self._status_label.setText(message)
+            QMessageBox.information(
+                self,
+                tr("orthanc.download_complete"),
+                message,
+            )
         self.accept()
 
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
@@ -853,13 +976,49 @@ class OrthancStudyDialog(QDialog):
         self._failed_downloads += 1
         self._status_label.setText(
             tr(
-                "orthanc.series_error_status",
+                "orthanc.series_error",
                 current=self._completed_downloads,
                 total=self._total_studies,
                 message=message,
             )
         )
         self._start_next_download()
+
+    def _on_partial_done(self) -> None:
+        """Some queued studies failed but at least one succeeded.
+
+        Keep the session (and the parsed StudyMetadata) so the successfully
+        downloaded studies can be opened, and clearly warn about the rest.
+        """
+        if not self._is_alive():
+            return
+        saved = self._completed_downloads - self._failed_downloads
+        log.warning(
+            "[DLG] _on_partial_done: saved=%d failed=%d total=%d",
+            saved,
+            self._failed_downloads,
+            self._total_studies,
+        )
+        self._reset_after_download()
+        if self._session_id is None:
+            return
+        session_id = self._session_id
+        self._session_id = None
+        first_study = self._downloaded_studies[0].study_uid if self._downloaded_studies else ""
+        self._result = (session_id, first_study)
+        self._progress.setValue(self._progress.maximum())
+        message = tr(
+            "orthanc.partial_done",
+            saved=str(saved),
+            total=str(self._total_studies),
+        )
+        self._status_label.setText(message)
+        QMessageBox.warning(
+            self,
+            tr("orthanc.download_error.title"),
+            message,
+        )
+        self.accept()
 
     def _on_done(self, session_id: str, study_uid: str) -> None:
         if not self._is_alive():
@@ -887,6 +1046,7 @@ class OrthancStudyDialog(QDialog):
         if self._session_id is not None:
             self._cache.clear_session(self._session_id)
             self._session_id = None
+        self._downloaded_studies = []
         self._progress.hide()
         self._tree.setEnabled(True)
         self._find_btn.setEnabled(True)
