@@ -182,8 +182,7 @@ def test_require_full_cine_raises_on_partial():
     frames = np.zeros((10, 32, 32), dtype=np.uint8)
     cache.load(Path("fake.dcm"), frames)
     cache.set_current(5)
-    # Partial cache with no valid source → load_all_frames raises
-    with pytest.raises((IncompleteCineError, FileNotFoundError, OSError)):
+    with pytest.raises(IncompleteCineError):
         cache.require_full_cine()
 
 
