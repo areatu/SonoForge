@@ -470,6 +470,37 @@ def try_parse_samsung_tick_calibration(
         return None
 
     h, w = arr.shape[:2]
+
+    def _ruler_is_plausible(result) -> bool:
+        """Ruler sanity: enough ticks, wide span, plausible spacing/band."""
+        if len(result.tick_positions) < 5:
+            return False
+        positions_s = sorted(result.tick_positions)
+        span_frac = (positions_s[-1] - positions_s[0]) / float(w) if w > 0 else 0.0
+        if span_frac < 0.5:
+            return False
+        if not (10.0 <= result.spacing_px <= 120.0):
+            return False
+        if result.band_y < h * 0.85:
+            return False
+        return True
+
+    # Luminance-converted color frames wash out colored ruler ticks, so the
+    # best-scoring band can be a false periodic structure (labels, panel
+    # borders) with implausible spacing. Retry with a higher brightness
+    # threshold — it keeps only the bright major ticks — before rejecting.
+    if not _ruler_is_plausible(tick_result):
+        retry = detect_ticks(arr, brightness_threshold=90)
+        if retry is not None and _ruler_is_plausible(retry):
+            logger.debug(
+                "Samsung tick: primary ruler implausible (spacing=%.1f), "
+                "high-threshold retry: spacing=%.1f n=%d",
+                tick_result.spacing_px,
+                retry.spacing_px,
+                len(retry.tick_positions),
+            )
+            tick_result = retry
+
     tick_positions = sorted(tick_result.tick_positions)
     span_x_px = float(tick_positions[-1] - tick_positions[0])
     span_x_frac = span_x_px / float(w) if w > 0 else 0.0

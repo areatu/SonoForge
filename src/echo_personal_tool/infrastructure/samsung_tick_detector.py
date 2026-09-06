@@ -65,6 +65,7 @@ def _tick_score(
     band_height: int,
     *,
     invert: bool = False,
+    brightness_threshold: int | None = None,
 ) -> tuple | None:
     """Score a horizontal band as a candidate tick ruler.
 
@@ -76,13 +77,14 @@ def _tick_score(
     Returns (score, uniformity, median_gap, tick_centers) or None if the band
     does not hold a plausible ruler.
     """
+    threshold = _BRIGHTNESS_THRESHOLD if brightness_threshold is None else brightness_threshold
     h, w = gray.shape
     y1 = min(h, y0 + band_height)
     band = gray[y0:y1, :]
     if invert:
-        cnt = (band < _BRIGHTNESS_THRESHOLD).sum(axis=0)
+        cnt = (band < threshold).sum(axis=0)
     else:
-        cnt = (band > _BRIGHTNESS_THRESHOLD).sum(axis=0)
+        cnt = (band > threshold).sum(axis=0)
     cols = np.where(cnt >= _MIN_VERTICAL_HITS)[0]
     if len(cols) < _MIN_TICKS:
         return None
@@ -245,6 +247,7 @@ def detect_ticks(
     roi_bottom_fraction: float | None = None,
     channel_order: str = "rgb",
     require_dark_band: bool = True,
+    brightness_threshold: int | None = None,
 ) -> TickDetectionResult:
     """Detect vertical tick marks in the time scale region.
 
@@ -259,6 +262,9 @@ def detect_ticks(
         require_dark_band: Require the usual dark-band guard. Callers that
             already validated a Samsung Doppler ROI may disable this guard
             when the composite frame contains bright B-mode above the panel.
+        brightness_threshold: Grayscale level considered "on". Defaults to
+            ``_BRIGHTNESS_THRESHOLD``. A higher value keeps only the bright
+            major ticks and ignores dim colored noise.
 
     Returns:
         TickDetectionResult with positions, spacing, and confidence.
@@ -284,7 +290,13 @@ def detect_ticks(
     scan_top = int(h * (1.0 - _BOTTOM_SCAN_FRACTION))
     for invert in (False, True):
         for y0 in range(scan_top, max(scan_top + 1, h - _BAND_HEIGHT + 1), _SCAN_STEP_PX):
-            cand = _tick_score(gray, y0, _BAND_HEIGHT, invert=invert)
+            cand = _tick_score(
+                gray,
+                y0,
+                _BAND_HEIGHT,
+                invert=invert,
+                brightness_threshold=brightness_threshold,
+            )
             if cand is None:
                 continue
             if best is None or cand[0] > best[0]:
