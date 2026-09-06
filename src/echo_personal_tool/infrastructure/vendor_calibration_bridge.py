@@ -493,8 +493,7 @@ def try_parse_samsung_tick_calibration(
         retry = detect_ticks(arr, brightness_threshold=90)
         if retry is not None and _ruler_is_plausible(retry):
             logger.debug(
-                "Samsung tick: primary ruler implausible (spacing=%.1f), "
-                "high-threshold retry: spacing=%.1f n=%d",
+                "Samsung tick: primary ruler implausible (spacing=%.1f), high-threshold retry: spacing=%.1f n=%d",
                 tick_result.spacing_px,
                 retry.spacing_px,
                 len(retry.tick_positions),
@@ -746,7 +745,7 @@ def try_parse_samsung_tick_calibration(
             else:
                 detected_baseline = detect_baseline_y(arr, roi)
                 if detected_baseline is not None:
-                        baseline_y = float(detected_baseline)
+                    baseline_y = float(detected_baseline)
         except Exception:
             logger.debug("Samsung tick fallback: baseline detection failed")
 

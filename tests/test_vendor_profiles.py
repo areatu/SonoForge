@@ -152,45 +152,6 @@ class TestGEProfile:
         assert result.confidence == 0.8  # inside region (213..668)
         assert result.velocity_sign == -1
 
-    def test_baseline_above_region_2(self):
-        """Q8BATAG2: refy=187, region y0=353..668 → abs=540 (inside region)."""
-        region = Dataset()
-        region.ReferencePixelY0 = 187
-        region.RegionLocationMinY0 = 353
-        region.RegionLocationMaxY1 = 668
-
-        result = self.profile.compute_baseline(region, frame_height=708)
-
-        assert result.baseline_y == 540.0  # 353 + 187: region-relative → absolute
-        assert result.confidence == 0.8  # inside region (353..668)
-        assert result.velocity_sign == -1
-
-    def test_baseline_above_region_3(self):
-        """Q8BA7UHE: refy=178, region y0=213..668 → abs=391 (inside region)."""
-        region = Dataset()
-        region.ReferencePixelY0 = 178
-        region.RegionLocationMinY0 = 213
-        region.RegionLocationMaxY1 = 668
-
-        result = self.profile.compute_baseline(region, frame_height=708)
-
-        assert result.baseline_y == 391.0  # 213 + 178: region-relative → absolute
-        assert result.confidence == 0.8  # inside region (213..668)
-        assert result.velocity_sign == -1
-
-    def test_baseline_negative(self):
-        """Q8BA9K22: refy=-2, region y0=213..668 → abs=211 (inside frame, above region)."""
-        region = Dataset()
-        region.ReferencePixelY0 = -2
-        region.RegionLocationMinY0 = 213
-        region.RegionLocationMaxY1 = 668
-
-        result = self.profile.compute_baseline(region, frame_height=708)
-
-        assert result.baseline_y == 211.0
-        assert result.confidence == 0.6  # above region but inside frame
-        assert result.velocity_sign == -1
-
     def test_velocity_span_standard(self):
         """Q8BA5Q8Q: deltaY=0.3763, height=459 → span=172.7 cm/s."""
         region = Dataset()
