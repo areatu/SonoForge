@@ -18,6 +18,7 @@ from echo_personal_tool.domain.models.doppler_roi import (
     DopplerSpectrogramRoi,
 )
 from echo_personal_tool.domain.services.doppler_baseline import detect_baseline_y
+from echo_personal_tool.domain.services.doppler_baseline_evidence import detect_baseline_robust
 from echo_personal_tool.domain.services.doppler_calibration import calibration_from_roi_and_baseline
 from echo_personal_tool.domain.services.doppler_grid_detector import detect_doppler_grid_lines
 from echo_personal_tool.domain.services.roi_validator import validate_doppler_roi
@@ -311,6 +312,24 @@ def try_parse_with_vendor_profile(
     )
 
 
+def _evidence_baseline(arr: np.ndarray, roi: DopplerSpectrogramRoi) -> float | None:
+    """Evidence-fusion baseline (bright line + envelope foot cues).
+
+    Returns the fused baseline Y or None when the estimate is unconvincing
+    (low confidence or outside the ROI).
+    """
+    try:
+        estimate = detect_baseline_robust(arr, roi)
+    except Exception:
+        return None
+    if estimate is None or estimate.confidence < 0.5:
+        return None
+    y = float(estimate.y)
+    if not (roi.y0 <= y <= roi.y1):
+        return None
+    return y
+
+
 def get_vendor_info(dataset: Dataset) -> dict[str, str | Vendor]:
     """Get vendor information from dataset for debugging/logging.
 
@@ -403,7 +422,9 @@ def try_parse_samsung_tick_calibration(
             visible_width_px = float(positions[-1] - positions[0]) + relaxed_ticks.spacing_px
             frequency_hz = tick_calibration.k_constant * relaxed_ticks.spacing_px
             time_span_ms = (1000.0 / frequency_hz) * visible_width_px
-            baseline_y = detect_baseline_y(arr, fallback_roi)
+            baseline_y = _evidence_baseline(arr, fallback_roi)
+            if baseline_y is None:
+                baseline_y = detect_baseline_y(arr, fallback_roi)
             candidate = calibration_from_roi_and_baseline(
                 fallback_roi,
                 baseline_y,
@@ -423,7 +444,9 @@ def try_parse_samsung_tick_calibration(
                 velocity_from_dicom_tags=False,
                 velocity_sign=velocity_sign,
             )
-        baseline_y = detect_baseline_y(arr, fallback_roi)
+        baseline_y = _evidence_baseline(arr, fallback_roi)
+        if baseline_y is None:
+            baseline_y = detect_baseline_y(arr, fallback_roi)
         candidate = calibration_from_roi_and_baseline(
             fallback_roi,
             baseline_y,
@@ -601,79 +624,90 @@ def try_parse_samsung_tick_calibration(
         logger.debug("Samsung tick: no valid ROI detected, giving up")
         return None
 
-    baseline_y = roi.y0 + roi.height / 2.0
-    try:
-        # For Samsung dual-spectrum frames, the ROI spans from the B-mode
-        # area to the ruler.  The baseline is ALWAYS a visible horizontal
-        # line drawn in the Doppler band — the only such line.
-        #
-        # The baseline appears as a "median plateau": consecutive rows
-        # where the median brightness stays constant (< 2 units).  We
-        # score each plateau by how much it stands out from its
-        # neighbors (gain) — the baseline is brighter than the dark
-        # spectral area (q222-style) or sits in a gradient zone near
-        # the ruler (q111-style).  A bonus is given to plateaus closer
-        # to the ROI edges (top or bottom), since baseline is often
-        # near a boundary.
-        gray = arr.astype(np.float32)
-        if gray.ndim == 3:
-            gray = 0.299 * gray[..., 0] + 0.587 * gray[..., 1] + 0.114 * gray[..., 2]
-        x0 = int(max(0, roi.x0))
-        x1 = int(min(gray.shape[1], roi.x0 + roi.width))
-        y0 = int(max(0, roi.y0))
-        y1 = int(min(gray.shape[0], roi.y0 + roi.height))
-        if x1 > x0 and y1 > y0:
-            roi_h = y1 - y0
-            search_start = int(roi_h * 0.05)
-            search_end = int(roi_h * 0.98)
-            # B-mode transition zone (top ~15%) and ruler zone (bottom ~5%)
-            # get lower scores so the baseline (which sits at a spectral
-            # band edge) is not drowned out by B-mode plateaus.
-            bmode_end = int(roi_h * 0.15)
-            ruler_start = int(roi_h * 0.95)
-            if search_end > search_start + 10:
-                medians = []
-                for i in range(search_start, search_end):
-                    medians.append(float(np.median(gray[y0 + i, x0:x1])))
-                medians = np.array(medians)
+    baseline_y = _evidence_baseline(arr, roi)
+    if baseline_y is not None:
+        logger.debug(
+            "Samsung tick: baseline from evidence fusion: y=%.1f",
+            baseline_y,
+        )
+    else:
+        baseline_y = roi.y0 + roi.height / 2.0
+        try:
+            # For Samsung dual-spectrum frames, the ROI spans from the B-mode
+            # area to the ruler.  The baseline is ALWAYS a visible horizontal
+            # line drawn in the Doppler band — the only such line.
+            #
+            # The baseline appears as a "median plateau": consecutive rows
+            # where the median brightness stays constant (< 2 units).  We
+            # score each plateau by how much it stands out from its
+            # neighbors (gain) — the baseline is brighter than the dark
+            # spectral area (q222-style) or sits in a gradient zone near
+            # the ruler (q111-style).  A bonus is given to plateaus closer
+            # to the ROI edges (top or bottom), since baseline is often
+            # near a boundary.
+            gray = arr.astype(np.float32)
+            if gray.ndim == 3:
+                gray = 0.299 * gray[..., 0] + 0.587 * gray[..., 1] + 0.114 * gray[..., 2]
+            x0 = int(max(0, roi.x0))
+            x1 = int(min(gray.shape[1], roi.x0 + roi.width))
+            y0 = int(max(0, roi.y0))
+            y1 = int(min(gray.shape[0], roi.y0 + roi.height))
+            if x1 > x0 and y1 > y0:
+                roi_h = y1 - y0
+                search_start = int(roi_h * 0.05)
+                search_end = int(roi_h * 0.98)
+                # B-mode transition zone (top ~15%) and ruler zone (bottom ~5%)
+                # get lower scores so the baseline (which sits at a spectral
+                # band edge) is not drowned out by B-mode plateaus.
+                bmode_end = int(roi_h * 0.15)
+                ruler_start = int(roi_h * 0.95)
+                if search_end > search_start + 10:
+                    medians = []
+                    for i in range(search_start, search_end):
+                        medians.append(float(np.median(gray[y0 + i, x0:x1])))
+                    medians = np.array(medians)
 
-                # Find plateaus
-                best_row = -1
-                best_score = -999.0
-                i = 0
-                while i < len(medians):
-                    j = i
-                    while j + 1 < len(medians) and abs(medians[j + 1] - medians[i]) < 2.0:
-                        j += 1
-                    plateau_len = j - i + 1
-                    if plateau_len >= 2:
-                        above = medians[max(0, i - 1)] if i > 0 else medians[i]
-                        below = medians[min(len(medians) - 1, j + 1)] if j < len(medians) - 1 else medians[i]
-                        gain = medians[i] - (above + below) / 2.0
-                        # Score: gain + edge proximity bonus.  The baseline
-                        # is often at the top or bottom of the spectral band.
-                        # Penalize plateaus inside the B-mode or ruler zones
-                        # so that edge baselines in the spectral band win.
-                        mid = (i + j) / 2.0
-                        edge_dist = min(mid, len(medians) - 1 - mid) / (len(medians) / 2.0)
-                        edge_bonus = max(0.0, 1.0 - edge_dist) * 5.0
-                        # Penalize if plateau is inside B-mode or ruler zones
-                        in_bmode = j < bmode_end - search_start
-                        in_ruler = i > ruler_start - search_start
-                        zone_penalty = -50.0 if (in_bmode or in_ruler) else 0.0
-                        score = gain + edge_bonus + zone_penalty
-                        if score > best_score:
-                            best_score = score
-                            best_row = search_start + mid
-                    i = j + 1
+                    # Find plateaus
+                    best_row = -1
+                    best_score = -999.0
+                    i = 0
+                    while i < len(medians):
+                        j = i
+                        while j + 1 < len(medians) and abs(medians[j + 1] - medians[i]) < 2.0:
+                            j += 1
+                        plateau_len = j - i + 1
+                        if plateau_len >= 2:
+                            above = medians[max(0, i - 1)] if i > 0 else medians[i]
+                            below = medians[min(len(medians) - 1, j + 1)] if j < len(medians) - 1 else medians[i]
+                            gain = medians[i] - (above + below) / 2.0
+                            # Score: gain + edge proximity bonus.  The baseline
+                            # is often at the top or bottom of the spectral band.
+                            # Penalize plateaus inside the B-mode or ruler zones
+                            # so that edge baselines in the spectral band win.
+                            mid = (i + j) / 2.0
+                            edge_dist = min(mid, len(medians) - 1 - mid) / (len(medians) / 2.0)
+                            edge_bonus = max(0.0, 1.0 - edge_dist) * 5.0
+                            # Penalize if plateau is inside B-mode or ruler zones
+                            in_bmode = j < bmode_end - search_start
+                            in_ruler = i > ruler_start - search_start
+                            zone_penalty = -50.0 if (in_bmode or in_ruler) else 0.0
+                            score = gain + edge_bonus + zone_penalty
+                            if score > best_score:
+                                best_score = score
+                                best_row = search_start + mid
+                        i = j + 1
 
-                if best_row >= 0:
-                    baseline_y = float(y0 + best_row) + 0.5
-                    logger.debug(
-                        "Samsung tick: baseline from plateau: y=%.1f (score=%.1f)",
-                        baseline_y,
-                        best_score,
-                    )
+                    if best_row >= 0:
+                        baseline_y = float(y0 + best_row) + 0.5
+                        logger.debug(
+                            "Samsung tick: baseline from plateau: y=%.1f (score=%.1f)",
+                            baseline_y,
+                            best_score,
+                        )
+                    else:
+                        detected_baseline = detect_baseline_y(arr, roi)
+                        if detected_baseline is not None:
+                            baseline_y = float(detected_baseline)
                 else:
                     detected_baseline = detect_baseline_y(arr, roi)
                     if detected_baseline is not None:
@@ -681,13 +715,9 @@ def try_parse_samsung_tick_calibration(
             else:
                 detected_baseline = detect_baseline_y(arr, roi)
                 if detected_baseline is not None:
-                    baseline_y = float(detected_baseline)
-        else:
-            detected_baseline = detect_baseline_y(arr, roi)
-            if detected_baseline is not None:
-                baseline_y = float(detected_baseline)
-    except Exception:
-        logger.debug("Samsung tick fallback: baseline detection failed")
+                        baseline_y = float(detected_baseline)
+        except Exception:
+            logger.debug("Samsung tick fallback: baseline detection failed")
 
     candidate = calibration_from_roi_and_baseline(
         roi,
