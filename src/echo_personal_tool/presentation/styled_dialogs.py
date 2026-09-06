@@ -230,13 +230,15 @@ def _style_dialog(dialog: QFileDialog) -> None:
     """)
 
 
-def theme_button_box_icons(box: QDialogButtonBox) -> None:
+def theme_button_box_icons(box: QDialogButtonBox, *, refresh: bool = False) -> None:
     """Add theme-contrast icons to standard OK / Cancel buttons.
 
-    A green-tinted checkmark (✓) is added to the **OK** button and a
+    A themed checkmark (✓) is added to the **OK** button and a
     contrasting close / cross (✗) icon to **Cancel** / **Close**.
     Icons use *text_dim* color — light on dark themes, dark on light themes —
-    so they are visible regardless of the active palette.
+    so they are visible regardless of the active palette. Pass ``refresh=True``
+    after a palette change on a box whose icons are managed by this helper.
+    Otherwise existing (possibly custom) icons are kept.
 
     Mirrors the icon styling already present in the *Open folder…* dialog's
     :func:`_style_dialog`, extending it to custom QDialogButtonBox buttons.
@@ -267,16 +269,16 @@ def theme_button_box_icons(box: QDialogButtonBox) -> None:
         return QIcon(pixmap)
 
     ok_btn = box.button(QDialogButtonBox.StandardButton.Ok)
-    if ok_btn is not None and ok_btn.icon().isNull():
+    if ok_btn is not None and (refresh or ok_btn.icon().isNull()):
         ok_btn.setIcon(_svg_icon("ok"))
         ok_btn.setIconSize(QSize(16, 16))
 
     cancel_btn = box.button(QDialogButtonBox.StandardButton.Cancel)
-    if cancel_btn is not None and cancel_btn.icon().isNull():
+    if cancel_btn is not None and (refresh or cancel_btn.icon().isNull()):
         cancel_btn.setIcon(_svg_icon("close"))
         cancel_btn.setIconSize(QSize(16, 16))
 
     close_btn = box.button(QDialogButtonBox.StandardButton.Close)
-    if close_btn is not None and close_btn.icon().isNull():
+    if close_btn is not None and (refresh or close_btn.icon().isNull()):
         close_btn.setIcon(_svg_icon("close"))
-        close_btn.setIconSize(Qt.QSize(16, 16))
+        close_btn.setIconSize(QSize(16, 16))

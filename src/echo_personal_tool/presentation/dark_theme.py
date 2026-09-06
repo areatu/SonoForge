@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
@@ -252,6 +252,11 @@ def _resolve_theme(mode: str) -> dict[str, str]:
 
 def build_clinical_stylesheet(font_size: int = 13, *, theme: str = "dark") -> str:
     p = _resolve_theme(theme)
+    icon_theme = "light" if p in (_LIGHT, _VS_CODE_LIGHT) else "dark"
+    icons = Path(__file__).resolve().parent.parent / "resources" / "icons"
+    arrow_up = (icons / f"chevron_up_{icon_theme}.svg").as_posix()
+    arrow_down = (icons / f"chevron_down_{icon_theme}.svg").as_posix()
+    check = (icons / f"check_{icon_theme}.svg").as_posix()
     return f"""
 /* ── Global ──────────────────────────────────────────────────── */
 QWidget {{
@@ -277,7 +282,7 @@ QScrollBar:vertical {{
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: {p["accent_tab"]};
+    background: {p["border"]};
     min-height: 30px;
     border-radius: 5px;
 }}
@@ -293,7 +298,7 @@ QScrollBar:horizontal {{
     margin: 0;
 }}
 QScrollBar::handle:horizontal {{
-    background: {p["accent_tab"]};
+    background: {p["border"]};
     min-width: 30px;
     border-radius: 5px;
 }}
@@ -378,14 +383,14 @@ QPushButton:checked, QToolButton:checked {{
 }}
 QPushButton:disabled, QToolButton:disabled {{
     color: {p["text_dim"]};
-    opacity: 0.45;
+    background: {p["bg_control"]};
 }}
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QCheckBox:disabled {{
     color: {p["text_dim"]};
-    opacity: 0.45;
+    background: {p["bg_control"]};
 }}
 QPushButton:focus, QToolButton:focus {{
-    outline: none;
+    border-color: {p["accent"]};
 }}
 
 /* ── GroupBox ───────────────────────────────────────────────── */
@@ -421,7 +426,7 @@ QScrollBar:vertical {{
     width: 10px;
 }}
 QScrollBar::handle:vertical {{
-    background: {p["accent_tab"]};
+    background: {p["border"]};
     border-radius: 6px;
     min-height: 24px;
 }}
@@ -433,7 +438,7 @@ QScrollBar:horizontal {{
     height: 10px;
 }}
 QScrollBar::handle:horizontal {{
-    background: {p["accent_tab"]};
+    background: {p["border"]};
     border-radius: 6px;
     min-width: 24px;
 }}
@@ -484,13 +489,57 @@ QProgressBar::chunk {{
 }}
 
 /* ── SpinBox ────────────────────────────────────────────────── */
-QSpinBox {{
+QSpinBox, QDoubleSpinBox {{
     background: {p["bg_control"]};
     border: 1px solid {p["border"]};
     border-radius: 4px;
-    padding: 2px 6px;
+    padding: 3px 22px 3px 6px;
 }}
-QSpinBox:focus {{
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 18px;
+    border-left: 1px solid {p["border"]};
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 18px;
+    border-left: 1px solid {p["border"]};
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: url("{arrow_up}");
+    width: 10px;
+    height: 10px;
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: url("{arrow_down}");
+    width: 10px;
+    height: 10px;
+}}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: {p["bg_button_hover"]};
+}}
+QComboBox {{
+    background: {p["bg_control"]};
+    border: 1px solid {p["border"]};
+    border-radius: 4px;
+    padding: 4px 24px 4px 8px;
+}}
+QComboBox:focus {{
+    border-color: {p["accent"]};
+}}
+QComboBox::drop-down {{
+    width: 24px;
+    border: none;
+}}
+QComboBox::down-arrow {{
+    image: url("{arrow_down}");
+    width: 12px;
+    height: 12px;
+}}
+QSpinBox:focus, QDoubleSpinBox:focus {{
     border-color: {p["accent_tab"]};
 }}
 
@@ -506,8 +555,12 @@ QCheckBox::indicator {{
     background: {p["bg_control"]};
 }}
 QCheckBox::indicator:checked {{
-    background: {p["text"]};
-    border-color: {p["text"]};
+    background: {p["bg_button_hover"]};
+    border-color: {p["accent"]};
+    image: url("{check}");
+}}
+QCheckBox::indicator:hover, QCheckBox:focus::indicator {{
+    border-color: {p["accent"]};
 }}
 
 /* ── Tree/View CheckBox indicators ──────────────────────────── */
@@ -527,6 +580,63 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border: 1px solid {p["accent_tab"]};
 }}
 
+/* ── Settings ───────────────────────────────────────────────── */
+#userPreferencesDialog {{
+    border: 1px solid {p["border"]};
+}}
+#settingsNavigation {{
+    background: {p["bg_dark"]};
+    border: none;
+    border-right: 1px solid {p["border"]};
+    border-radius: 0;
+    padding: 8px 0;
+}}
+#settingsNavigation::item {{
+    padding: 10px 12px;
+    border-left: 3px solid transparent;
+}}
+#settingsNavigation::item:selected {{
+    background: {p["bg_control"]};
+    color: {p["text"]};
+    border-left-color: {p["accent"]};
+}}
+#settingsNavigation::item:hover:!selected {{
+    background: {p["bg_button_hover"]};
+}}
+#settingsFooter {{
+    border-top: 1px solid {p["border"]};
+}}
+#preferencesTitleBar QPushButton {{
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+}}
+#preferencesTitleBar QPushButton:hover {{
+    background: {p["reset_bg1"]};
+}}
+#layoutPreview {{
+    background: {p["bg_dark"]};
+    border: 1px solid {p["border"]};
+    border-radius: 6px;
+}}
+#layoutPreviewPanel {{
+    background: {p["bg_control"]};
+    border: 1px solid {p["border"]};
+    border-radius: 3px;
+    padding: 4px;
+    font-size: {max(font_size - 1, 10)}px;
+}}
+#layoutPreviewViewer {{
+    background: {p["bg_dark"]};
+    border: 1px solid {p["accent"]};
+    border-radius: 3px;
+    padding: 4px;
+}}
+QPushButton:default {{
+    border-color: {p["accent"]};
+}}
+
 /* ── SystemBar ──────────────────────────────────────────────── */
 #systemBar {{
     background: {p["bg_control"]};
@@ -544,6 +654,12 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     padding: 2px 10px;
     font-size: {max(font_size - 1, 11)}px;
     font-weight: 500;
+}}
+#systemBarContext, #systemBarActions {{
+    background: transparent;
+}}
+#systemBar QPushButton#referencesButton {{
+    border-color: {p["accent"]};
 }}
 #systemBar QPushButton#resetButton {{
     background: {p["reset_bg1"]};
@@ -572,7 +688,7 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     background: transparent;
     padding: 0;
 }}
-#windowControls QPushButton:hover {{
+#windowControls QPushButton:hover, #windowControls QPushButton:focus {{
     background: {p["bg_button"]};
 }}
 #windowControls QPushButton#closeButton:hover {{
@@ -659,26 +775,23 @@ QTreeWidget::indicator:unchecked, QTreeView::indicator:unchecked {{
     border-right: 1px solid {p["border"]};
 }}
 
-/* ── Tab bar custom scroll arrows ───────────────────────────── */
-#tabScrollArrow {{
+/* ── Tool-panel tabs and native overflow controls ───────────── */
+#toolPanel QTabBar::tab {{
+    min-width: 0;
+    padding: 8px 10px;
+    margin-right: 0;
+}}
+#toolPanel QTabBar QToolButton {{
     background: {p["bg_control"]};
-    color: {p["text"]};
     border: 1px solid {p["border"]};
-    border-radius: 4px;
-    font-size: {max(font_size - 2, 10)}px;
-    font-weight: bold;
-    min-width: 22px;
-    max-width: 22px;
-    min-height: 22px;
-    max-height: 22px;
-    padding: 0px;
+    border-radius: 3px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 24px;
+    padding: 0;
 }}
-#tabScrollArrow:hover {{
+#toolPanel QTabBar QToolButton:hover {{
     background: {p["bg_button_hover"]};
-    border-color: {p["accent"]};
-}}
-#tabScrollArrow:pressed {{
-    background: {p["bg_button_pressed"]};
 }}
 
 /* ── Focus ring ─────────────────────────────────────────────── */
@@ -809,7 +922,7 @@ QMenu::item {{
     background: transparent;
 }}
 QMenu::item:selected {{
-    background: {p["accent_tab"]};
+    background: {p["bg_button_hover"]};
     color: {p["text"]};
 }}
 QMenu::item:disabled {{
@@ -848,7 +961,11 @@ def _apply_theme_direct(
     font_size: int,
     theme: str,
 ) -> None:
-    app.setStyleSheet(build_clinical_stylesheet(font_size, theme=theme))
+    stylesheet = build_clinical_stylesheet(font_size, theme=theme)
+    # Reapplying an identical app-wide sheet repolishes every open/hidden
+    # dialog. Avoid that work when a window is opened without a theme change.
+    if app.styleSheet() != stylesheet:
+        app.setStyleSheet(stylesheet)
     p = _resolve_theme(theme)
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor(p["bg_panel"]))
@@ -866,22 +983,11 @@ def _apply_theme_direct(
 
 
 def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
+    from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled, animate_widget_opacity
+
     app = QApplication.instance()
     if app is None:
         return
-    effect = QGraphicsOpacityEffect(widget)
-    widget.setGraphicsEffect(effect)
-    anim = QPropertyAnimation(effect, b"opacity")
-    anim.setDuration(150)
-    anim.setStartValue(0.6)
-    anim.setEndValue(1.0)
-    anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
-
-    def _apply() -> None:
-        _apply_theme_direct(app, widget, font_size, theme)
-        effect.setOpacity(0.6)
-        anim.start()
-
-    QTimer.singleShot(0, _apply)
-    widget._theme_anim = anim
-    widget._theme_effect = effect
+    _apply_theme_direct(app, widget, font_size, theme)
+    if not _reduce_motion_enabled():
+        animate_widget_opacity(widget, 0.85, 1.0, 150)

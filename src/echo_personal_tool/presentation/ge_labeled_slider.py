@@ -83,6 +83,12 @@ class TopLabeledSlider(QWidget):
         layout.setSpacing(4)
         layout.addWidget(self._title)
         layout.addWidget(self._slider)
+        self._title.setBuddy(self._slider)
+        self.set_label(label)
+
+    def set_label(self, label: str) -> None:
+        self._title.setText(label)
+        self._slider.setAccessibleName(label)
 
     def slider(self) -> QSlider:
         return self._slider
