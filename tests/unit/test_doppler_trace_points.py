@@ -115,6 +115,11 @@ class TestFilterVelocitySpikes:
         assert result[2][1] <= 400.0
         assert result[2][1] != 999.0
 
+    def test_default_max_clamp(self):
+        points = [(1.0, 500.0), (2.0, 510.0), (3.0, 520.0)]
+        result = filter_velocity_spikes(points)
+        assert all(abs(velocity) <= 400.0 for _, velocity in result)
+
     def test_negative_velocities(self):
         points = [
             (1.0, -50.0),
@@ -165,6 +170,11 @@ class TestFilterVelocitySpikesAdaptive:
         points = [(0.0, 50.0), (10.0, 55.0), (20.0, 999.0), (30.0, 52.0), (40.0, 48.0)]
         result = filter_velocity_spikes(points, max_velocity_cm_s=400.0)
         assert result[2][1] <= 400.0
+
+    def test_explicit_high_limit_preserves_high_velocity(self):
+        points = [(0.0, -490.0), (10.0, -480.0), (20.0, -470.0)]
+        result = filter_velocity_spikes(points, max_velocity_cm_s=600.0)
+        assert result[0][1] == -490.0
 
     def test_k_mad_parameter(self):
         points = [(0.0, 50.0), (10.0, 55.0), (20.0, 120.0), (30.0, 52.0), (40.0, 48.0)]

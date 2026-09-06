@@ -18,11 +18,11 @@
     --warning: #fb923c;
     --danger: #f87171;
     --info: #f97316;
-    --shadow-md: none;
-    --shadow-lg: none;
-    --radius-sm: 2px;
-    --radius-md: 0px;
-    --radius-lg: 0px;
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.55);
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
     --transition-fast: 0.15s ease;
     --transition-normal: 0.25s ease;
     --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -50,8 +50,8 @@
     --warning: #d97706;
     --danger: #dc2626;
     --info: #ea580c;
-    --shadow-md: none;
-    --shadow-lg: none;
+    --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.12);
+    --shadow-lg: 0 8px 28px rgba(15, 23, 42, 0.18);
 }
 
 /* ── VS Code Dark theme ──────────────────────────────────────── */
@@ -189,7 +189,7 @@ body {
     background: var(--bg-surface); border: 1px solid var(--border);
     border-radius: var(--radius-md); color: var(--text-secondary);
     font-size: 12px; cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 .edit-toggle:hover { border-color: var(--accent); color: var(--text-primary); }
 .edit-toggle.active { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -197,7 +197,8 @@ body {
 .save-btn, .cancel-btn {
     height: 28px; padding: 0 10px; border-radius: var(--radius-md);
     font-size: 12px; cursor: pointer; border: 1px solid var(--border);
-    transition: all var(--transition-fast); flex-shrink: 0;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    flex-shrink: 0;
 }
 .save-btn { background: rgba(34, 197, 94, 0.15); color: var(--success); border-color: rgba(34, 197, 94, 0.4); }
 .save-btn:hover { background: rgba(34, 197, 94, 0.3); }
@@ -245,14 +246,17 @@ body {
     border: none; border-radius: var(--radius-sm);
     color: var(--text-secondary); font-size: 13px;
     cursor: pointer; text-align: left;
-    transition: all var(--transition-fast);
-    transform: scale(1);
+    transition: background var(--transition-fast), color var(--transition-fast);
 }
-.topic-btn:hover { background: var(--bg-hover); color: var(--text-primary); transform: scale(1.02); }
-.topic-btn:active { transform: scale(0.98); }
+.topic-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .topic-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
-.topic-btn .topic-icon { font-size: 12px; flex-shrink: 0; width: 18px; text-align: center; opacity: 0.7; }
-.topic-btn.active .topic-icon { opacity: 1; }
+.topic-btn .topic-icon {
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+    min-width: 22px; padding: 1px 4px; text-align: center;
+    background: var(--bg-hover); color: var(--text-secondary);
+    border-radius: 4px; line-height: 1.4; letter-spacing: 0.2px;
+}
+.topic-btn.active .topic-icon { background: rgba(255, 255, 255, 0.22); color: #fff; }
 .topic-btn .topic-badge {
     margin-left: auto; font-size: 10px; padding: 0 4px;
     background: rgba(255,255,255,0.15); border-radius: 8px;
@@ -269,16 +273,19 @@ body {
     position: relative;
     --indicator-left: 0px;
     --indicator-width: 0px;
+    --indicator-top: 0px;
 }
 .pathology-bar::after {
     content: "";
     position: absolute;
-    bottom: 0;
+    top: var(--indicator-top);
     left: var(--indicator-left);
     width: var(--indicator-width);
     height: 2px;
     background: var(--accent);
-    transition: left 0.25s cubic-bezier(0.23, 1, 0.32, 1), width 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+    transition: left 0.25s cubic-bezier(0.23, 1, 0.32, 1),
+        width 0.25s cubic-bezier(0.23, 1, 0.32, 1),
+        top 0.25s cubic-bezier(0.23, 1, 0.32, 1);
     pointer-events: none;
 }
 .empty-hint { font-size: 12px; color: var(--text-muted); }
@@ -287,7 +294,8 @@ body {
     padding: 4px 10px; background: transparent;
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     color: var(--text-secondary); font-size: 12px;
-    cursor: pointer; transition: all var(--transition-fast);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
     white-space: nowrap;
     position: relative;
 }
@@ -302,9 +310,8 @@ body {
     display: flex; align-items: flex-start; gap: 8px;
     padding: 8px 12px; background: var(--bg-surface);
     border-bottom: 1px solid var(--border); flex-shrink: 0;
-    animation: slideDown 0.2s ease-out;
+    animation: fadeIn 0.2s ease-out;
 }
-@keyframes slideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 100px; } }
 .desc-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
 .desc-text { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
 
@@ -325,8 +332,8 @@ body {
 .params-area { display: flex; flex-direction: column; flex: 1; }
 .table-scroll { flex: 1; overflow-y: auto; }
 
-/* ===== Staggered Row Entry ===== */
-.param-table tbody tr {
+/* ===== Staggered Row Entry (only on fresh selection, not on refresh) ===== */
+.param-table tbody.stagger tr {
     opacity: 0;
     transform: translateY(8px);
     animation: rowFadeIn 0.18s ease forwards;
@@ -355,6 +362,19 @@ body {
 .param-table td.param-name { font-weight: 600; color: var(--text-primary); white-space: normal; width: 40%; font-size: 13px; }
 .param-table td.norm-value { color: var(--accent); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 .param-table td.grad-cell { text-align: left; font-size: 12px; font-weight: 600; }
+.param-table td.norm-empty,
+.param-table td.grad-empty { color: var(--text-muted); opacity: 0.45; font-weight: normal; }
+
+/* Flash highlight for a parameter reached from search */
+.param-table tr.highlight td { animation: paramFlash 1.4s ease; }
+@keyframes paramFlash {
+    0% { background: var(--accent-subtle); }
+    60% { background: var(--accent-subtle); }
+    100% { background: transparent; }
+}
+
+/* While dragging the splitter, avoid text selection */
+body.resizing { cursor: col-resize; user-select: none; }
 .param-table td.patho-desc {
     font-size: 12px; color: var(--text-caption); white-space: normal;
     max-width: 240px; padding: 4px 10px;
@@ -420,7 +440,7 @@ body {
     width: 48px; height: 48px; flex-shrink: 0;
     border-radius: var(--radius-sm); overflow: hidden;
     border: 2px solid transparent; cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: opacity var(--transition-fast), border-color var(--transition-fast);
     opacity: 0.6;
 }
 .image-thumb:hover { opacity: 0.9; border-color: var(--text-muted); }
@@ -435,7 +455,7 @@ body {
     width: 26px; height: 22px; display: flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--border); border-radius: 3px;
     color: var(--text-secondary); font-size: 12px; cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 .nav-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent); }
 .nav-btn:disabled { opacity: 0.3; cursor: default; }
@@ -467,21 +487,20 @@ body {
     display: flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--border); border-radius: 3px;
     color: var(--text-secondary); font-size: 14px; cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 .modal-close:hover { background: #e81123; color: #fff; border-color: #e81123; }
 #modalImage {
     max-width: 92%; max-height: 88%;
-    object-fit: contain; cursor: default;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    cursor: default;
     animation: modalImageIn 0.25s cubic-bezier(0.23, 1, 0.32, 1);
 }
 @keyframes modalImageIn {
     from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
-}
-    object-fit: contain; border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-lg);
-    cursor: zoom-out;
 }
 
 /* ── Light theme overrides for specific elements ─────────────── */

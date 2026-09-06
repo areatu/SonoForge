@@ -1234,5 +1234,22 @@
   "orthanc.partial_done": "Загружено {saved}/{total} исследований. Остальные завершились ошибкой — успешные доступны для открытия.",
   "orthanc.disk_download_partial": "Сохранено {saved}/{total} исследований в {path}. Остальные завершились ошибкой.",
   "server_settings.port_invalid": "«{value}» — некорректное число в поле «{field}». Введите порт от 1 до 65535.",
-  "server_settings.port_out_of_range": "Порт «{value}» в поле «{field}» вне диапазона 1–65535."
+  "server_settings.port_out_of_range": "Порт «{value}» в поле «{field}» вне диапазона 1–65535.",
+  "web_ref.edit": "Редактировать",
+  "web_ref.edit_title": "Режим редактирования",
+  "web_ref.save": "Сохранить",
+  "web_ref.cancel": "Отмена",
+  "web_ref.anatomy": "Анатомия",
+  "web_ref.select_topic": "Выберите тему слева",
+  "web_ref.no_pathologies": "Нет патологий",
+  "web_ref.no_images": "Нет изображений",
+  "web_ref.no_parameters": "Нет параметров для этой патологии",
+  "web_ref.nothing_found": "Ничего не найдено",
+  "web_ref.type_topic": "Тема",
+  "web_ref.type_pathology": "Патология",
+  "web_ref.type_parameter": "Параметр",
+  "web_ref.previous": "Назад",
+  "web_ref.next": "Вперёд",
+  "web_ref.close": "Закрыть (Esc)",
+  "web_ref.stats": "{topics} тем · {params} параметров · {images} изображений"
 }

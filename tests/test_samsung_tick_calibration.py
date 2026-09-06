@@ -216,6 +216,7 @@ def test_calibration_on_real_data():
 
 
 from echo_personal_tool.infrastructure.dicom_doppler_calibration import try_parse_from_dataset
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import _samsung_region_roi_fallback
 
 
 def _make_samsung_mis_tagged_dataset(frame_height: int = 884) -> Dataset:
@@ -265,6 +266,85 @@ def test_samsung_tick_fallback_returns_none_without_frame():
     """No frame pixels -> no tick fallback (parse stays None for mis-tagged)."""
     dataset = _make_samsung_mis_tagged_dataset()
     assert try_parse_from_dataset(dataset, None) is None
+
+
+def test_samsung_region_fallback_recovers_panel_without_time_ruler():
+    """SF=1 Samsung spectral panels can still yield ROI and baseline."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[475:873, :, :] = 35
+    frame[475:477, :, :] = 150  # baseline at the panel's top edge
+    frame[650:652, 20:1160, :] = 90  # visible velocity grid line
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.roi.y0 == 473.0
+    assert state.roi.y1 > 850.0
+    assert state.baseline_y_px < 500.0
+    assert state.time_span_ms == 0.0
+
+
+def test_samsung_region_fallback_ignores_unrelated_regions(monkeypatch):
+    dataset = _make_samsung_mis_tagged_dataset()
+    unrelated = Dataset()
+    unrelated.RegionSpatialFormat = 1
+    unrelated.RegionDataType = 1
+    unrelated.RegionLocationMinX0 = 20
+    unrelated.RegionLocationMinY0 = 20
+    unrelated.RegionLocationMaxX1 = 200
+    unrelated.RegionLocationMaxY1 = 800
+    dataset.SequenceOfUltrasoundRegions.append(unrelated)
+    frame = np.zeros((884, 1180), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        "echo_personal_tool.infrastructure.vendor_calibration_bridge.detect_doppler_grid_lines",
+        lambda *args, **kwargs: [650.0],
+    )
+
+    roi = _samsung_region_roi_fallback(dataset, frame)
+
+    assert roi is not None
+    assert roi.y0 == 473.0
+
+
+def test_samsung_tick_calibration_prefers_region_top_for_full_panel():
+    """Tick-derived ROI must not crop the upper half of a CW panel."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    region = dataset.SequenceOfUltrasoundRegions[0]
+    region.RegionLocationMaxY1 = 393
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[393:873, :, :] = 35
+    frame[393:395, :, :] = 150
+    frame[650:652, 20:1160, :] = 90
+    for x in range(40, 700, 24):
+        frame[845:875, x, :] = 255
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.roi.y0 == 393.0
+    assert state.roi.height > 450.0
+
+
+def test_samsung_tick_fallback_accepts_noisy_but_periodic_ruler():
+    """A validated Samsung panel may have extra marks on its time ruler."""
+    dataset = _make_samsung_mis_tagged_dataset()
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[473:873, :, :] = 35
+    frame[820:822, :, :] = 150
+    frame[650:652, 20:1160, :] = 90
+    # Periodic ruler plus a few unrelated bright marks.
+    for x in range(42, 1085, 42):
+        frame[862:873, x : x + 2, :] = 255
+    for x in (137, 244, 739, 1007):
+        frame[858:873, x : x + 3, :] = 255
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    assert state.time_span_ms > 0.0
+    assert state.time_from_dicom_tags is True
 
 
 def test_samsung_tick_fallback_ignores_other_vendors():
@@ -364,3 +444,89 @@ def test_samsung_tick_fallback_rejects_bmode_frame():
     saved as Doppler (the tick fallback must not fire on a bright bottom)."""
     dataset = _make_samsung_mis_tagged_dataset()
     assert try_parse_from_dataset(dataset, _bmode_frame_with_fake_ruler()) is None
+
+
+def test_detect_ticks_rejects_bright_bmode_with_dark_gaps():
+    """Regression: bright B-mode frame with periodic dark gaps on a ruler
+    must be rejected — the inverted detector should not accept it as a
+    real Doppler time ruler without a dark spectral band in the middle."""
+    frame = np.full((200, 800, 3), 180, dtype=np.uint8)
+    # Bright ruler at bottom with dark gaps (periodic vertical lines)
+    frame[160:167, :, :] = 220
+    frame[160:167, 100:700:50, :] = 10
+    result = detect_ticks(frame)
+    assert result.confidence == 0.0
+    assert len(result.tick_positions) == 0
+
+
+# ---------------------------------------------------------------------------
+# Samsung tick calibration hardening (fix branch)
+# ---------------------------------------------------------------------------
+
+
+def _make_doppler_frame_with_ruler(
+    height: int = 884,
+    width: int = 1180,
+    panel_top: int = 393,
+    spacing: int = 36,
+    ruler_y: int = 874,
+) -> np.ndarray:
+    """Realistic RS85 Doppler frame: dark panel + bottom ruler + panel boundary
+    at ``panel_top`` (used as the mis-tagged S:1 max_y)."""
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    frame[panel_top:ruler_y, :, :] = 40  # dark spectral panel
+    for x in range(40, width - 40, spacing):
+        frame[ruler_y - 15 : ruler_y, x, :] = 255  # ruler ticks
+    return frame
+
+
+def _make_samsung_dataset(max_y: int = 393) -> Dataset:
+    dataset = _make_samsung_mis_tagged_dataset()
+    dataset.SequenceOfUltrasoundRegions[0].RegionLocationMaxY1 = max_y
+    return dataset
+
+
+def test_samsung_tick_rejects_short_span():
+    """A left-scale / ECG strip with a short periodic run (30% width) must not
+    be treated as a Doppler ruler (real RS85 rulers span 86-88%)."""
+    dataset = _make_samsung_dataset()
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    # ticks only on the left 30% (like B-mode depth/ECG scale)
+    for x in range(40, 340, 24):
+        frame[845:875, x, :] = 255
+
+    assert try_parse_from_dataset(dataset, frame) is None
+
+
+def test_samsung_tick_rejects_implausible_spacing():
+    """Spacing 310 px is not a real Samsung ruler (36-60 px) — B-mode label
+    columns can look periodic at huge pitch."""
+    dataset = _make_samsung_dataset()
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[474:873, :, :] = 40
+    for x in range(40, 1180, 310):
+        frame[845:875, x, :] = 255
+
+    assert try_parse_from_dataset(dataset, frame) is None
+
+
+def test_samsung_tick_uses_panel_top_from_tags_and_baseline_inside():
+    """Fallback-2 must use the mis-tagged S:1 max_y as panel top and place the
+    ROI bottom on the ruler, so the visible baseline stays inside."""
+    dataset = _make_samsung_dataset(max_y=393)  # RS85 real value
+    frame = np.zeros((884, 1180, 3), dtype=np.uint8)
+    frame[393:874, :, :] = 40  # dark panel below the 393 boundary
+    for x in range(40, 1140, 36):
+        frame[858:874, x, :] = 255  # ruler ticks
+    # very thin bright uniform line = baseline, right at the panel top
+    frame[392:394, 40:1140, :] = 210
+
+    state = try_parse_from_dataset(dataset, frame)
+
+    assert state is not None
+    roi = state.roi
+    assert roi.y0 == 393.0  # from the mis-tagged S:1 max_y
+    assert roi.y1 >= 866.0  # includes the ruler (band_y=856 + 10px margin)
+    assert roi.y0 <= state.baseline_y_px <= (roi.y0 + roi.height)
+    assert state.time_span_ms > 0
+    assert state.has_time_scale_from_dicom()

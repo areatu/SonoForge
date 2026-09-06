@@ -22,7 +22,7 @@ class EnvelopePreset:
 
 
 VESSEL_ENVELOPE_PRESETS: dict[str, EnvelopePreset] = {
-    "low": EnvelopePreset(k=2.5, median_window=3, savgol_window=5, savgol_polyorder=2),
+    "low": EnvelopePreset(k=2.5, median_window=3, savgol_window=5, savgol_polyorder=2, min_signal_columns=3),
     "normal": EnvelopePreset(k=3.8, median_window=5, savgol_window=7, savgol_polyorder=2),
     "high": EnvelopePreset(k=5.5, median_window=7, savgol_window=7, savgol_polyorder=2),
 }
@@ -202,7 +202,14 @@ def _extract_side(
         return None
     # Floor so a clean (all-black) edge strip does not collapse the threshold
     # to zero and let faint speckle into the trace mask.
-    threshold = max(threshold, peak * _MIN_SIGNAL_FRACTION)
+    # Use adaptive floor: for weak signals (peak < 3x threshold), lower the
+    # floor to avoid rejecting valid but faint envelope pixels.
+    signal_strength = peak / max(threshold, 1.0)
+    if signal_strength < 3.0:
+        floor_frac = max(0.03, _MIN_SIGNAL_FRACTION * signal_strength / 3.0)
+    else:
+        floor_frac = _MIN_SIGNAL_FRACTION
+    threshold = max(threshold, peak * floor_frac)
     threshold = min(threshold, peak * 0.9)
 
     signal = pos > threshold
@@ -243,10 +250,16 @@ def _extract_side(
             energy += float(pos[col_mask, c].max())
 
     valid_mask = rows >= 0
-    if int(valid_mask.sum()) < cfg.min_signal_columns:
+    valid_count = int(valid_mask.sum())
+    if valid_count < cfg.min_signal_columns:
         return None
     c0 = int(np.argmax(valid_mask))
     c1 = int(valid_mask.size - 1 - np.argmax(valid_mask[::-1]))
+    span = c1 - c0 + 1
+    # Continuity: fraction of valid columns in the active range.  A smooth
+    # envelope with few gaps scores higher than a fragmented one with the
+    # same total energy.
+    continuity = valid_count / span if span > 0 else 0.0
 
     cols = np.arange(c0, c1 + 1, dtype=np.float64)
     band = rows[c0 : c1 + 1]
@@ -284,9 +297,10 @@ def _extract_side(
         prev = (px, py)
     if len(points) < 2:
         return None
-    # Score by signal energy (sum of per-column peak intensities) so a side
-    # whose threshold collapsed to faint speckle does not outrank a real flow.
-    return tuple(points), energy
+    # Score combines signal energy and continuity so a smooth envelope with
+    # few gaps outranks a fragmented one even when total energy is similar.
+    score = energy * (0.5 + 0.5 * continuity)
+    return tuple(points), score
 
 
 def extract_doppler_envelope(
@@ -296,6 +310,7 @@ def extract_doppler_envelope(
     *,
     preset: str = "normal",
     force_direction: str | None = None,
+    time_range_px: tuple[float, float] | None = None,
 ) -> tuple[tuple[float, float], ...]:
     """Extract the max-velocity envelope on the side with the strongest flow.
 
@@ -323,15 +338,29 @@ def extract_doppler_envelope(
     if patch.size == 0:
         return ()
 
+    if time_range_px is not None:
+        range_start, range_end = sorted(float(value) for value in time_range_px)
+        local_start = max(0, int(np.floor(range_start - x0)))
+        local_end = min(patch.shape[1], int(np.ceil(range_end - x0)) + 1)
+        if local_end - local_start < 2:
+            return ()
+        patch = patch[:, local_start:local_end]
+        x0 += local_start
+        x1 = x0 + patch.shape[1]
+
     baseline_row = int(round(baseline_y_px - y0))
     baseline_row = max(0, min(baseline_row, patch.shape[0] - 1))
 
     if force_direction == "up":
         above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
-        return above[0] if above is not None else ()
+        if above is None or len(above[0]) < max(cfg.min_signal_columns, int(patch.shape[1] * 0.08)):
+            return ()
+        return above[0]
     if force_direction == "down":
         below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)
-        return below[0] if below is not None else ()
+        if below is None or len(below[0]) < max(cfg.min_signal_columns, int(patch.shape[1] * 0.08)):
+            return ()
+        return below[0]
 
     above = _extract_side(patch, baseline_row, cfg, above=True, x0=x0, y0=y0)
     below = _extract_side(patch, baseline_row, cfg, above=False, x0=x0, y0=y0)

@@ -167,6 +167,18 @@ class TestExtractDopplerEnvelope:
         xs = [pt[0] for pt in result]
         assert xs == sorted(xs)
 
+    def test_time_range_limits_envelope_to_selected_zone(self):
+        gray = _vessel_spectrum()
+        result = extract_doppler_envelope(
+            gray,
+            _roi(w=120, h=80),
+            baseline_y_px=50.0,
+            time_range_px=(40.0, 70.0),
+        )
+        assert result
+        assert min(point[0] for point in result) >= 40.0
+        assert max(point[0] for point in result) <= 70.0
+
     def test_envelope_follows_top_edge(self):
         gray = _vessel_spectrum(edge_row=20)
         result = extract_doppler_envelope(gray, _roi(w=120, h=80), baseline_y_px=50.0)
