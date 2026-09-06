@@ -115,6 +115,11 @@ class TestFilterVelocitySpikes:
         assert result[2][1] <= 400.0
         assert result[2][1] != 999.0
 
+    def test_default_max_clamp(self):
+        points = [(1.0, 500.0), (2.0, 510.0), (3.0, 520.0)]
+        result = filter_velocity_spikes(points)
+        assert all(abs(velocity) <= 400.0 for _, velocity in result)
+
     def test_negative_velocities(self):
         points = [
             (1.0, -50.0),

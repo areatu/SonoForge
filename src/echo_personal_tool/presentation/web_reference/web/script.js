@@ -109,9 +109,10 @@ function loadPathologyContent(topicSlug, pathoSlug) {
 async function selectTopic(slug, preferredPathology) {
     state.selectedTopic = slug;
     state.selectedPathology = null;
-    state.renderSeq++;   // invalidate any in-flight content transition
+    var topicToken = ++state.renderSeq;   // invalidate in-flight topic/content requests
     renderTopics(state.topics);
     var data = await bridge.getTopicDetail(slug);
+    if (topicToken !== state.renderSeq) return;
     if (!data || data.error) return;
     var pathos = data.pathologies || [];
     if (pathos.length > 0) {
@@ -660,6 +661,15 @@ async function saveDirtyCells() {
     await refreshPathology();
 }
 
+/* ===== Age Filter ===== */
+function setupAgeFilter() {
+    var inp = $("#ageInput");
+    if (!inp) return;
+    inp.addEventListener("input", function () {
+        // Reserved for age-specific reference ranges when the data supports it.
+    });
+}
+
 $("#editToggle").addEventListener("click", function () {
     if (editMode) { exitEditMode(); } else { enterEditMode(); }
 });
@@ -820,6 +830,7 @@ function setupOnce() {
     if (_setupDone) return;
     _setupDone = true;
     setupSearch();
+    setupAgeFilter();
     setupKeyboard();
     setupResize();
 }

@@ -24,7 +24,7 @@ class TestMModeCalibrationRegression:
         dy: float = 0.1,
         dx: float = 10.0,
         units_y: int = 3,
-        units_x: int = 4,
+        units_x: int = 3,
     ) -> UltrasoundPanel:
         return UltrasoundPanel(
             kind=kind,
@@ -128,6 +128,7 @@ class TestMModeCalibrationStateRegression:
         state = MmodeCalibrationState(
             roi=DopplerSpectrogramRoi(x0=0, y0=0, width=300, height=200),
             vertical_mm_per_pixel=0.1,
+            horizontal_ms_per_pixel=5.0,
         )
         assert state.is_complete() is True
 

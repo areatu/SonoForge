@@ -229,9 +229,10 @@ def try_auto_doppler_velocity_calibration(
     if len(tick_ys) < 4:
         return None
 
+    # Samsung's ruler conventions require vendor identification. This generic
+    # service has no dataset/vendor context, so do not guess a Samsung scale
+    # from an otherwise ambiguous layout.
     span = infer_velocity_span(tick_ys, baseline_y, roi=roi, kind=kind)
-    if span is None:
-        span = infer_samsung_velocity_span(tick_ys, roi=roi, kind=kind)
     if span is not None:
         vpp = span / roi.height
         return VelocityAutocalibrationResult(

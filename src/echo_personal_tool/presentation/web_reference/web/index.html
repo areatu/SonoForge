@@ -14,6 +14,11 @@
             <h1>Справочник по ЭхоКГ и УЗИ</h1>
         </div>
         <div class="header-right">
+            <div class="age-filter" id="ageFilter">
+                <label class="age-label" for="ageInput">Age:</label>
+                <input type="number" id="ageInput" class="age-input" placeholder="—" min="0" max="120">
+                <span class="age-unit">y</span>
+            </div>
             <div class="search-box">
                 <span class="search-icon">🔍</span>
                 <input type="text" id="searchInput" placeholder="Search..." autocomplete="off">

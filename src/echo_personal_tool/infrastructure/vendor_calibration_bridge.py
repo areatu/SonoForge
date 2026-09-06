@@ -267,7 +267,13 @@ def try_parse_with_vendor_profile(
     time_span_ms = time_result.span_ms if time_result else None
 
     # 6. Compute baseline using vendor profile
-    baseline_y = _compute_baseline_with_profile(profile, best_region, frame_height, frame, roi)
+    baseline_y, velocity_sign = _compute_baseline_with_profile(
+        profile,
+        best_region,
+        frame_height,
+        frame,
+        roi,
+    )
     if profile.vendor is Vendor.GE:
         # GE screen exports may encode ReferencePixelY0 relative to the left
         # split region, while the visible zero line belongs to the merged
@@ -367,6 +373,9 @@ def try_parse_samsung_tick_calibration(
         return None
 
     arr = np.asarray(frame)
+
+    # Samsung convention: positive velocity = upward (inverted DICOM).
+    velocity_sign = profile.compute_baseline(dataset, arr.shape[0]).velocity_sign
     if arr.ndim not in (2, 3):
         return None
 
@@ -412,6 +421,7 @@ def try_parse_samsung_tick_calibration(
                 from_dicom_tags=True,
                 time_from_dicom_tags=True,
                 velocity_from_dicom_tags=False,
+                velocity_sign=velocity_sign,
             )
         baseline_y = detect_baseline_y(arr, fallback_roi)
         candidate = calibration_from_roi_and_baseline(
@@ -431,6 +441,7 @@ def try_parse_samsung_tick_calibration(
             from_dicom_tags=False,
             time_from_dicom_tags=False,
             velocity_from_dicom_tags=False,
+            velocity_sign=velocity_sign,
         )
     if len(tick_result.tick_positions) < 5:
         return None
@@ -695,6 +706,7 @@ def try_parse_samsung_tick_calibration(
         from_dicom_tags=True,
         time_from_dicom_tags=True,
         velocity_from_dicom_tags=False,
+        velocity_sign=velocity_sign,
     )
 
 
@@ -716,12 +728,23 @@ def _samsung_region_roi_fallback(
         x0, y0, x1, y1 = bounds
         if x1 <= x0 or y1 <= y0:
             continue
-        candidates.append((y1, x0, y0, x1))
+        spatial = int(region.get("RegionSpatialFormat", 0) or 0)
+        data_type = int(region.get("RegionDataType", 0) or 0)
+        width_fraction = (x1 - x0) / width if width > 0 else 0.0
+        is_doppler_region = is_spectral_doppler_region(region) or is_maybe_doppler_from_units(region)
+        # The panel boundary is expected in the middle 30%-75% of the frame;
+        # scale strips and lower overlays are not valid spectral-panel tops.
+        if not 0.30 * height <= y1 <= 0.75 * height or width_fraction < 0.60:
+            continue
+        is_mis_tagged_panel = spatial == 1 and data_type in (0, 1, 3, 4, 0x10, 0x11)
+        if not (is_doppler_region or is_mis_tagged_panel):
+            continue
+        candidates.append((width_fraction, y1, x0, y0, x1))
     if not candidates:
         return None
 
-    _, x0, _, x1 = max(candidates)
-    spectral_top = max(0.0, min(float(height - 1), max(item[0] for item in candidates)))
+    _, spectral_top, x0, _, x1 = max(candidates)
+    spectral_top = max(0.0, min(float(height - 1), spectral_top))
     spectral_bottom = float(max(1, height - max(8, int(height * 0.015))))
     if spectral_bottom - spectral_top < height * 0.2:
         return None

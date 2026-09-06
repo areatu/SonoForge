@@ -104,3 +104,19 @@ def test_orchestrator_returns_none_when_no_ticks() -> None:
         result = try_auto_doppler_velocity_calibration(frame, roi=roi, baseline_y=200.0, kind=DopplerKind.SPECTRAL)
 
     assert result is None
+
+
+def test_orchestrator_does_not_guess_samsung_scale_without_vendor_context() -> None:
+    roi = DopplerSpectrogramRoi(x0=40, y0=0, width=540, height=400)
+    frame = np.zeros((400, 640), dtype=np.uint8)
+    ticks = [40.0, 80.0, 120.0, 160.0, 200.0, 240.0, 280.0, 320.0, 360.0]
+
+    mod = "echo_personal_tool.domain.services.auto_doppler_velocity_calibration"
+    with (
+        patch(mod + ".find_best_scale_column", return_value=[]),
+        patch(mod + ".detect_velocity_scale_ticks", return_value=[]),
+        patch(mod + ".detect_doppler_grid_lines", return_value=ticks),
+    ):
+        result = try_auto_doppler_velocity_calibration(frame, roi=roi, baseline_y=200.0)
+
+    assert result is None

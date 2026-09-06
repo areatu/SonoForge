@@ -185,7 +185,13 @@ def _build_encapsulated_frame_index(
     kwargs: dict = {"number_of_frames": frame_count}
     if extended_offsets is not None:
         kwargs["extended_offsets"] = extended_offsets
-    frames = list(generate_frames(pixel_data, **kwargs))
+    try:
+        frames = list(generate_frames(pixel_data, **kwargs))
+    except (struct.error, ValueError, TypeError) as exc:
+        logger.debug("Encapsulated frame index failed (%s), trying raw parse", exc)
+        if len(pixel_data) >= 8:
+            return [pixel_data], None
+        raise ValueError("Pixel data too small for encapsulated frame parsing") from exc
     if not frames:
         raise ValueError("Encapsulated pixel data contains no frames")
     if len(frames) != frame_count:

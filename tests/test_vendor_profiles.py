@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pydicom.dataset import Dataset
 
+from echo_personal_tool.infrastructure.vendor_calibration_bridge import try_parse_with_vendor_profile
 from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor
 from echo_personal_tool.infrastructure.vendor_profiles.detector import detect_vendor
 from echo_personal_tool.infrastructure.vendor_profiles.ge import GEProfile
@@ -22,6 +23,53 @@ class TestGEProfile:
 
     def test_vendor_property(self):
         assert self.profile.vendor == Vendor.GE
+
+    def test_vendor_bridge_returns_profile_calibration(self):
+        ds = Dataset()
+        ds.Manufacturer = "GE Vingmed Ultrasound"
+        ds.Rows = 708
+        region = Dataset()
+        region.RegionSpatialFormat = 3
+        region.RegionDataType = 3
+        region.RegionLocationMinX0 = 20
+        region.RegionLocationMinY0 = 212
+        region.RegionLocationMaxX1 = 680
+        region.RegionLocationMaxY1 = 671
+        region.ReferencePixelY0 = 90
+        region.PhysicalDeltaX = 0.005
+        region.PhysicalUnitsXDirection = 4
+        region.PhysicalDeltaY = 0.376316
+        region.PhysicalUnitsYDirection = 7
+        ds.SequenceOfUltrasoundRegions = [region]
+
+        result = try_parse_with_vendor_profile(ds)
+
+        assert result is not None
+        assert result.baseline_y_px == 302.0
+        assert result.velocity_sign == -1
+
+    def test_vendor_bridge_sets_standard_sign_for_philips(self):
+        ds = Dataset()
+        ds.Manufacturer = "Philips Healthcare"
+        ds.Rows = 600
+        region = Dataset()
+        region.RegionSpatialFormat = 3
+        region.RegionDataType = 3
+        region.RegionLocationMinX0 = 20
+        region.RegionLocationMinY0 = 100
+        region.RegionLocationMaxX1 = 580
+        region.RegionLocationMaxY1 = 500
+        region.ReferencePixelY0 = 200
+        region.PhysicalDeltaX = 0.005
+        region.PhysicalUnitsXDirection = 4
+        region.PhysicalDeltaY = -0.25
+        region.PhysicalUnitsYDirection = 7
+        ds.SequenceOfUltrasoundRegions = [region]
+
+        result = try_parse_with_vendor_profile(ds)
+
+        assert result is not None
+        assert result.velocity_sign == 1
 
     def test_vendor_keywords(self):
         assert "ge" in self.profile.vendor_keywords
