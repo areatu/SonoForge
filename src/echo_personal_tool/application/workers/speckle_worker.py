@@ -18,6 +18,7 @@ from echo_personal_tool.domain.models.speckle import (
 )
 from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,
+    choose_clinical_gls,
     compute_aha_segment_strain,
     compute_gls_from_segments,
 )
@@ -41,6 +42,7 @@ from echo_personal_tool.domain.services.speckle_tracking import (
 )
 from echo_personal_tool.domain.services.strain_computation import (
     apply_drift_compensation,
+    assess_strain_plausibility,
     compute_gls,
     compute_strain_rate,
     compute_weighted_longitudinal_strain_gl,
@@ -340,8 +342,19 @@ class SpeckleTrackingWorker(QRunnable):
             window_long = compute_weighted_longitudinal_strain_gl(
                 smoothed, local_ed, self._pixel_spacing, endo_indices, ed_ncc
             )
-            if config.drift_compensation:
+            # Drift compensation is only meaningful when the tracked window
+            # actually closes back to a diastolic baseline (i.e. the window
+            # extends past end-systole into the next cycle). For the typical
+            # systolic window ED..ES the strain at ES is the systolic peak and
+            # must NOT be forced back to zero — doing so erases the measured
+            # deformation (issue #3). Skip it and report drift honestly.
+            drift_applied = bool(config.drift_compensation) and phase_end > global_es
+            if drift_applied:
                 window_long = apply_drift_compensation(window_long, local_ed, local_es)
+            else:
+                logger.info(
+                    "STE: drift compensation skipped (systolic window ends at ES, no baseline to close)"
+                )
 
             longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 
@@ -445,21 +458,45 @@ class SpeckleTrackingWorker(QRunnable):
                         float(es_ncc_for_gate[idx]),
                     )
 
-            # Compute quality-gated GLS using segment strains
-            if segment_strain:
-                gls_quality_gated = compute_gls_from_segments(
-                    segment_strain,
-                    segment_quality,
-                    min_quality=config.min_segment_quality,
-                )
-                # Use quality-gated GLS if available, otherwise fallback to curve-based GLS
-                if gls_quality_gated != 0.0:
-                    logger.info(
-                        "STE GLS: curve-based=%.2f%%, quality-gated=%.2f%%",
-                        gls,
-                        gls_quality_gated,
-                    )
-                    gls = gls_quality_gated
+            # Clinical GLS: prefer the mean of well-tracked segment strains over
+            # the raw curve peak, but only when segment coverage is adequate.
+            gls_curve = gls
+            gls, gls_source = choose_clinical_gls(
+                gls_curve,
+                segment_strain,
+                segment_quality,
+                min_segment_quality=config.min_segment_quality,
+            )
+            logger.info(
+                "STE GLS: curve-based=%.2f%%, clinical(segments)=%.2f%% -> gls=%.2f%% (%s)",
+                gls_curve,
+                compute_gls_from_segments(segment_strain, segment_quality, min_quality=config.min_segment_quality),
+                gls,
+                gls_source,
+            )
+
+            # Honest QC: NCC fidelity alone can read >90% while the deformation
+            # curve is physiologically impossible (issue #3). Combine tracking
+            # quality with coverage and a physiology check into one score.
+            phys_ok, phys_reasons = assess_strain_plausibility(
+                longitudinal,
+                radial,
+                global_ed,
+                global_es,
+            )
+            coverage = n_accepted / n_kernels if n_kernels else 0.0
+            qc_overall = tracking_quality_mean * coverage
+            if not phys_ok:
+                qc_overall = min(qc_overall, 0.5)
+            qc_overall = float(np.clip(qc_overall, 0.0, 1.0))
+            logger.info(
+                "STE QC: ncc=%.3f coverage=%.2f physiology_ok=%s reasons=%s -> qc=%.2f",
+                tracking_quality_mean,
+                coverage,
+                phys_ok,
+                phys_reasons,
+                qc_overall,
+            )
             raw_phase_positions = np.full((n_frames, n_kernels, 2), np.nan)
             raw_phase_positions[phase_start : phase_end + 1] = raw_positions
             tracked_positions_all = np.full((n_frames, n_kernels, 2), np.nan)
@@ -528,8 +565,12 @@ class SpeckleTrackingWorker(QRunnable):
                 es_valid_mask=es_valid,
                 segment_strain=segment_strain,
                 segment_quality=segment_quality,
-                drift_compensation_applied=bool(config.drift_compensation),
+                drift_compensation_applied=drift_applied,
                 tracking_quality_mean=tracking_quality_mean,
+                qc_score=qc_overall,
+                qc_physiology_ok=phys_ok,
+                qc_physiology_reasons=tuple(phys_reasons),
+                gls_source=gls_source,
                 tracking_window_start=phase_start,
                 tracking_window_end=phase_end,
                 ncc_threshold=config.ncc_threshold,

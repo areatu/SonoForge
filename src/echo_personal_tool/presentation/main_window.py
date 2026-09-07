@@ -2245,7 +2245,8 @@ class MainWindow(QMainWindow):
         if not isinstance(result, StrainResult):
             return
         gls = result.gls
-        quality_pct = result.tracking_quality_mean * 100.0
+        ncc_pct = result.tracking_quality_mean * 100.0
+        qc_pct = result.qc_score * 100.0
         drift = "ON" if result.drift_compensation_applied else "OFF"
         preset_name = self._format_speckle_preset_name(result.config_preset)
 
@@ -2261,9 +2262,17 @@ class MainWindow(QMainWindow):
         else:
             quality_info = ""
 
+        # Honest QC: NCC alone can read >90% while the deformation is
+        # implausible; the combined QC score and physiology check are shown
+        # alongside it so users are not misled (issue #3).
+        qc_info = f"QC: {qc_pct:.0f}%"
+        if not result.qc_physiology_ok and result.qc_physiology_reasons:
+            qc_info += f" [⚠ {result.qc_physiology_reasons[0]}]"
+
         status_parts = [
             f"GLS: {gls:.1f}%",
-            f"NCC: {quality_pct:.0f}%",
+            qc_info,
+            f"NCC: {ncc_pct:.0f}%",
             quality_info,
             f"ED/ES: {result.ed_es_source}",
             f"Drift: {drift}",

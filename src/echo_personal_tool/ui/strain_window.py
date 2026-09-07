@@ -1093,6 +1093,11 @@ class StrainWindow(QMainWindow):
 
         # ── Meta bar ────────────────────────────────────────────────────────
         parts: list[str] = [f"GLS {result.gls:.1f}%"]
+        if result.qc_score:
+            qc = f"QC {result.qc_score * 100.0:.0f}%"
+            if not result.qc_physiology_ok and result.qc_physiology_reasons:
+                qc += f" (⚠ {result.qc_physiology_reasons[0]})"
+            parts.append(qc)
         if result.tracking_quality_mean:
             parts.append(f"NCC {result.tracking_quality_mean * 100.0:.0f}%")
         total_k = result.kernels_total_count
@@ -1131,11 +1136,11 @@ class StrainWindow(QMainWindow):
             a2c_segs = [v for k, v in result.segment_strain.items() if 7 <= k <= 11]
             dao_segs = [v for k, v in result.segment_strain.items() if k >= 12]
             if a4c_segs:
-                gls_a4c = float(np.min(a4c_segs))
+                gls_a4c = float(np.mean(a4c_segs))
             if a2c_segs:
-                gls_a2c = float(np.min(a2c_segs))
+                gls_a2c = float(np.mean(a2c_segs))
             if dao_segs:
-                gls_dao = float(np.min(dao_segs))
+                gls_dao = float(np.mean(dao_segs))
 
         # Update summary table
         self._summary.update_values(

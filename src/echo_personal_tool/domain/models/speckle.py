@@ -145,6 +145,14 @@ class StrainResult:
     kernels_accepted_count: int = 0
     kernels_rejected_count: int = 0
     kernels_total_count: int = 0
+    # QC fields: honest measurement quality separate from raw NCC fidelity.
+    # ``tracking_quality_mean`` stays the NCC mean; ``qc_score`` additionally
+    # folds in kernel coverage and a physiological plausibility check, so it can
+    # be low even when NCC reads >90% (issue #3).
+    qc_score: float = 0.0
+    qc_physiology_ok: bool = True
+    qc_physiology_reasons: tuple[str, ...] = ()
+    gls_source: str = "curve"
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None

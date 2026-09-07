@@ -76,7 +76,13 @@ def compute_aha_segment_strain(
     kernels: list[TrackingKernel],
     ncc_scores: np.ndarray,
 ) -> tuple[dict[int, float], dict[int, float]]:
-    """Return (segment_strain, segment_quality) — strain=min per segment, quality=mean ncc."""
+    """Return (segment_strain, segment_quality).
+
+    Per-segment strain is the **mean** of the strains of the endocardial
+    kernels that belong to the segment (a single mis-tracked kernel must not
+    dominate the segmental value). Per-segment quality is the mean NCC of those
+    same kernels. Epicardial kernels (layer != "endo") are excluded.
+    """
     segment_strains: dict[int, list[float]] = {}
     segment_ncc: dict[int, list[float]] = {}
 
@@ -87,7 +93,7 @@ def compute_aha_segment_strain(
         segment_strains.setdefault(seg, []).append(float(per_kernel_strain[idx]))
         segment_ncc.setdefault(seg, []).append(float(ncc_scores[idx]))
 
-    segment_strain = {seg: min(values) for seg, values in segment_strains.items()}
+    segment_strain = {seg: float(np.mean(values)) for seg, values in segment_strains.items()}
     segment_quality = {seg: float(np.mean(values)) for seg, values in segment_ncc.items()}
     return segment_strain, segment_quality
 
@@ -97,9 +103,11 @@ def compute_gls_from_segments(
     segment_quality: dict[int, float],
     min_quality: float = 0.4,
 ) -> float:
-    """Mean of segment strains passing quality threshold; if none pass, use all.
+    """Clinical GLS as the mean of the segmental strains passing the quality gate.
 
-    Clinical GLS uses the most negative (minimum) segment strain among valid segments.
+    Segments whose quality is below ``min_quality`` are excluded; if none pass,
+    the mean over all measured segments is used. Returns 0.0 when no segment
+    strains are available.
     """
     if not segment_strain:
         return 0.0
@@ -107,4 +115,35 @@ def compute_gls_from_segments(
     passing = [strain for seg, strain in segment_strain.items() if segment_quality.get(seg, 0.0) >= min_quality]
     if not passing:
         passing = list(segment_strain.values())
-    return float(np.min(passing))
+    return float(np.mean(passing))
+
+
+def choose_clinical_gls(
+    curve_gls: float,
+    segment_strain: dict[int, float],
+    segment_quality: dict[int, float],
+    min_segment_quality: float = 0.4,
+    min_segments: int = 3,
+) -> tuple[float, str]:
+    """Pick the GLS to report from the curve-based and segment-based estimates.
+
+    The curve-based GLS (peak of the global strain curve between ED and ES) is
+    used as the primary value unless at least ``min_segments`` segments have
+    acceptable quality — then the clinical segment-mean GLS replaces it. This
+    avoids reporting the single worst segment (old ``np.min`` behaviour) and
+    also avoids trusting segments when coverage is too low.
+
+    Returns ``(gls, source)`` where source is ``"curve"`` or ``"segments"``.
+    """
+    if not segment_strain or not segment_quality:
+        return curve_gls, "curve"
+    passing = [seg for seg, q in segment_quality.items() if q >= min_segment_quality]
+    if len(passing) < min_segments:
+        return curve_gls, "curve"
+    values = [segment_strain[seg] for seg in passing if seg in segment_strain]
+    if not values:
+        return curve_gls, "curve"
+    seg_gls = float(np.mean(values))
+    if seg_gls == 0.0:
+        return curve_gls, "curve"
+    return seg_gls, "segments"

@@ -99,6 +99,61 @@ def compute_gls(
     return float(np.min(segment))
 
 
+def assess_strain_plausibility(
+    longitudinal: np.ndarray,
+    radial: np.ndarray | None,
+    ed_index: int,
+    es_index: int,
+) -> tuple[bool, list[str]]:
+    """Physiological plausibility checks for the strain curves.
+
+    Longitudinal strain over the ED..ES systolic window must shorten (negative
+    peak), with the peak reached at or near end-systole; radial strain (when
+    available) must thicken (positive). The checks separate hard failures from
+    soft warnings so callers can report an honest QC score instead of deriving
+    "quality" from NCC alone (issue #3: NCC>90% while the deformation curve is
+    physiologically impossible).
+
+    Returns ``(plausible, reasons)``. ``plausible`` is False only for hard
+    failures; ``reasons`` lists every finding, hard ones first.
+    """
+    reasons: list[str] = []
+    if longitudinal is None or longitudinal.size == 0:
+        return False, ["no longitudinal strain curve"]
+
+    start, end = int(min(ed_index, es_index)), int(max(ed_index, es_index))
+    window = longitudinal[start : end + 1]
+    finite = window[np.isfinite(window)]
+    if finite.size == 0:
+        return False, ["strain window has no finite values"]
+
+    peak = float(np.min(finite))
+    if peak > -1.0:
+        # No meaningful systolic shortening (GLS ≈ 0 or positive).
+        reasons.append(f"no systolic shortening (peak {peak:.1f}%)")
+
+    # The most negative longitudinal strain should occur at/near ES.
+    argmin_global = start + int(np.nanargmin(np.where(np.isnan(window), np.inf, window)))
+    mid = start + (end - start) / 2.0
+    if argmin_global < mid - (end - start) * 0.15:
+        reasons.append("strain peak occurs before mid-systole — check ED/ES or tracking")
+
+    if peak < -45.0:
+        reasons.append(f"implausibly large strain ({peak:.1f}%)")
+
+    if radial is not None and radial.size > 0:
+        rwin = radial[start : end + 1]
+        rfinite = rwin[np.isfinite(rwin)]
+        if rfinite.size > 0:
+            rpeak = float(np.max(rfinite))
+            if rpeak <= 0.0:
+                reasons.append("no radial thickening (radial peak <= 0%)")
+
+    hard = [r for r in reasons if r.startswith("no ")]
+    plausible = not hard
+    return plausible, reasons
+
+
 def compute_weighted_longitudinal_strain_gl(
     positions: np.ndarray,
     ed_index: int,
