@@ -60,6 +60,14 @@ jobs:
         if: runner.os != 'Linux'
         run: pytest tests/unit/ -q --tb=line --no-header -m "not gui"
 
+      # Linux: end-to-end 720p cine playback SLOs (real AppController + ViewerWidget,
+      # offscreen). Kept out of tests/unit/ on purpose: it plays two synthetic cines for
+      # 4 s each, and the thresholds in the module are the acceptance criteria from
+      # docs/bench/2026-09-06-cine-720p-playback-audit.md section 4.3.
+      - name: Run 720p cine playback bench (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
+
       # Linux: upload coverage to Coveralls
       # GITHUB_TOKEN works on Dependabot PRs where COVERALLS_REPO_TOKEN is unavailable
       - name: Upload coverage to Coveralls
