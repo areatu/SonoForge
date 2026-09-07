@@ -149,6 +149,36 @@ class TestMainWindow:
     def test_on_instance_selected_non_instance(self, main_window):
         main_window._on_instance_selected("not an instance")
 
+    def test_on_instance_selected_clears_ste_results(self, main_window):
+        """Switching to another file must drop the previous clip's STE overlay
+        and close its strain window, so kernels/contours don't leak onto the
+        new cine (issue: dots visible on every frame of every clip)."""
+        from PySide6.QtWidgets import QWidget
+
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        instance = InstanceMetadata(
+            sop_instance_uid="1.2.3.4",
+            series_uid="series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="",
+            media_format="dicom",
+            path=None,
+        )
+        viewer = main_window._viewer
+        viewer._speckle_result = object()  # simulate a finished STE run
+        strain_win = QWidget()
+        main_window._strain_window = strain_win
+
+        main_window._on_instance_selected(instance)
+
+        assert viewer._speckle_result is None  # overlay state fully dropped
+        assert main_window._strain_window is None  # results window closed
+        main_window._controller.load_instance.assert_called_once_with(instance)
+
     def test_on_frame_load_failed(self, main_window):
         with patch("echo_personal_tool.presentation.main_window.QMessageBox"):
             main_window._on_frame_load_failed("error msg")

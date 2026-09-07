@@ -1282,6 +1282,16 @@ class MainWindow(QMainWindow):
         label = _loaded_file_label(selected)
         self._system_bar.set_study_context(label)
         self._viewer.set_results_overlay("")
+        # STE results belong to the previous clip: drop tracked kernels,
+        # contours and the strain window when switching to another file so
+        # nothing leaks onto the new cine (issue: contours/dots visible on
+        # every frame of every clip). Re-selecting the same instance keeps
+        # the results.
+        if previous is None or previous.sop_instance_uid != selected.sop_instance_uid:
+            self._viewer.clear_speckle_overlay()
+            if self._strain_window is not None:
+                self._strain_window.close()
+                self._strain_window = None
         self._controller.load_instance(selected)
 
     def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
