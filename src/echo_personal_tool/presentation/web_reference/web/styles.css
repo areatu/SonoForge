@@ -344,7 +344,7 @@ body {
 }
 
 /* ===== Parameter Table ===== */
-.param-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.param-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
 .param-table th {
     position: sticky; top: 0; background: var(--bg-secondary);
     padding: 7px 10px; text-align: left; font-weight: 600; font-size: 12px;
@@ -354,7 +354,7 @@ body {
 }
 .param-table td {
     padding: 7px 10px; border-bottom: 1px solid var(--border);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: background var(--transition-fast);
 }
 .param-table tr:hover td { background: var(--bg-hover); }

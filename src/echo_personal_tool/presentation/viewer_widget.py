@@ -678,6 +678,11 @@ class ViewerWidget(QWidget):
     mmode_column_ready = Signal(object, object)  # (column: np.ndarray, frame_index: int)
     mmode_line_completed = Signal(object, object)  # (start: tuple, end: tuple)
 
+    context_calibration_bmode_requested = Signal()
+    context_doppler_calibration_requested = Signal()
+    context_properties_requested = Signal()
+    context_reset_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._graphics = pg.GraphicsLayoutWidget()
@@ -1535,9 +1540,29 @@ class ViewerWidget(QWidget):
         self._position_overlay_labels()
 
     def _show_save_context_menu(self, ev) -> None:
+        from echo_personal_tool.presentation.system_bar import _load_icon
+
         menu = QMenu(self)
         menu.addAction(tr("viewer.context_save_as"), self._save_viewer_image)
         self._add_gold_export_actions(menu)
+        menu.addSeparator()
+        menu.addAction(
+            _load_icon("tune"),
+            tr("system_bar.calibration_bmode"),
+            self.context_calibration_bmode_requested.emit,
+        )
+        menu.addAction(
+            _load_icon("show_chart"),
+            tr("system_bar.calibration_doppler"),
+            self.context_doppler_calibration_requested.emit,
+        )
+        menu.addAction(tr("tool_panel.properties"), self.context_properties_requested.emit)
+        menu.addSeparator()
+        menu.addAction(
+            _load_icon("refresh"),
+            tr("system_bar.reset"),
+            self.context_reset_requested.emit,
+        )
         menu.exec(QCursor.pos())
 
     def _add_gold_export_actions(self, menu: QMenu) -> None:

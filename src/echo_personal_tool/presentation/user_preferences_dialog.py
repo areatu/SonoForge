@@ -107,9 +107,21 @@ class UserPreferencesDialog(QDialog):
         self._on_apply = on_apply
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        self.resize(780, 560)
         self._drag_pos = None
         current = load_user_preferences()
+
+        # Adaptive sizing: cap at 80% of screen, minimum 500x400
+        from PySide6.QtGui import QGuiApplication
+
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:
+            geo = screen.availableGeometry()
+            max_w = int(geo.width() * 0.80)
+            max_h = int(geo.height() * 0.85)
+        else:
+            max_w, max_h = 780, 560
+        self.setMinimumSize(500, 400)
+        self.resize(min(780, max_w), min(560, max_h))
 
         # Custom title bar
         title_bar = QWidget()

@@ -57,3 +57,4 @@ class MeasurementAction(StrEnum):
     VESSEL_ACCEPT = "vessel_accept"
     VESSEL_STENOSIS_DIAMETER = "vessel_stenosis_diameter"
     VESSEL_STENOSIS_AREA = "vessel_stenosis_area"
+    HEART_RATE = "heart_rate"

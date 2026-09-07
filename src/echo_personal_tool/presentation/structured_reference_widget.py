@@ -1046,7 +1046,7 @@ class StructuredReferenceWidget(QWidget):
         header = table.horizontalHeader()
         for c in range(n_cols):
             header.setSectionResizeMode(c, QHeaderView.ResizeMode.Interactive)
-            header.resizeSection(c, 120 if c == 0 else 100)
+            header.resizeSection(c, 140 if c == 0 else 110)
 
         if show_norm_columns:
             if single_norm:

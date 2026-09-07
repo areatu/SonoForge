@@ -163,6 +163,11 @@ class MeasureTab(QWidget):
         self._layout.addWidget(self._bsa_label, stretch=0)
         self._layout.addWidget(self._metrics_results_gap, stretch=0)
         self._layout.addWidget(self._auto_play_check, stretch=0)
+
+        self._auto_results_spacer = QWidget()
+        self._auto_results_spacer.setFixedHeight(8)
+        self._layout.addWidget(self._auto_results_spacer, stretch=0)
+
         self._layout.addWidget(results_wrap, stretch=0)
 
     def _sync_patient_metrics_lift(self) -> None:
@@ -248,11 +253,8 @@ class ToolPanel(QWidget):
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
 
-        from echo_personal_tool.infrastructure.i18n import tr
-
         self._tabs.addTab(self.measure, "Measures")
         self._tabs.addTab(self.controls, "Controls")
-        self._tabs.addTab(self._properties_panel, tr("tool_panel.properties"))
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
 
         self.measure.action_requested.connect(self.action_requested.emit)
@@ -341,9 +343,6 @@ class ToolPanel(QWidget):
         self.measure.reload_text()
         self._tabs.setTabText(0, tr("tool_panel.measures"))
         self._tabs.setTabText(1, tr("tool_panel.controls"))
-        props_idx = self._tabs.indexOf(self._properties_panel)
-        if props_idx != -1:
-            self._tabs.setTabText(props_idx, tr("tool_panel.properties"))
 
     def set_dicom_inspector_visible(self, visible: bool) -> None:
         """Show/hide the DICOM Tags tab."""
@@ -362,6 +361,22 @@ class ToolPanel(QWidget):
     def load_dicom_inspector(self, path) -> None:
         """Load DICOM tags from a file path into the inspector."""
         self._tag_inspector.load_instance(path)
+
+    def show_properties_tab(self) -> None:
+        """Switch to the Properties tab and make it visible if hidden."""
+        props_idx = self._tabs.indexOf(self._properties_panel)
+        if props_idx == -1:
+            from echo_personal_tool.infrastructure.i18n import tr
+
+            self._tabs.addTab(self._properties_panel, tr("tool_panel.properties"))
+            props_idx = self._tabs.indexOf(self._properties_panel)
+        self._tabs.setCurrentIndex(props_idx)
+
+    def hide_properties_tab(self) -> None:
+        """Remove the Properties tab if it was temporarily added."""
+        props_idx = self._tabs.indexOf(self._properties_panel)
+        if props_idx != -1:
+            self._tabs.removeTab(props_idx)
 
     @property
     def properties_panel(self) -> PropertiesPanel:

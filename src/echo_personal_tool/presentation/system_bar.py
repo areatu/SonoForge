@@ -258,18 +258,15 @@ class SystemBar(QWidget):
 
         self._actions_widget = QWidget()
         self._actions_widget.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Maximum,
             QSizePolicy.Policy.Preferred,
         )
         actions_layout = QHBoxLayout(self._actions_widget)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(6)
         for button in (
-            self._btn_settings,
             btn_caliper,
-            btn_calibration,
-            btn_doppler_calibration,
-            btn_heart_rate,
+            self._btn_settings,
             self._btn_references,
             btn_reset,
             self._btn_layout,

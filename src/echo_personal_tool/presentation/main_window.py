@@ -233,6 +233,10 @@ class MainWindow(QMainWindow):
         self._viewer.mmode_column_ready.connect(self._on_mmode_column_ready)
         self._viewer.mmode_line_completed.connect(self._on_mmode_line_completed)
         self._viewer.vessel_accept_requested.connect(self._on_vessel_accept_requested)
+        self._viewer.context_calibration_bmode_requested.connect(self._on_calibration_requested)
+        self._viewer.context_doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
+        self._viewer.context_properties_requested.connect(self._show_properties_tab)
+        self._viewer.context_reset_requested.connect(self._on_reset_measurements_requested)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
@@ -800,6 +804,9 @@ class MainWindow(QMainWindow):
     def _show_user_preferences(self) -> None:
         show_user_preferences_dialog(self, on_apply=self._apply_user_preferences)
 
+    def _show_properties_tab(self) -> None:
+        self._tool_panel.show_properties_tab()
+
     def _apply_user_preferences(self, preferences: UserPreferences) -> None:
         self._user_preferences = preferences
         if not preferences.results_overlay_custom_position:
@@ -1281,6 +1288,9 @@ class MainWindow(QMainWindow):
                 self._mmode_widget.clear_calibration()
             # Restart M-mode line placement for new file
             self._viewer.start_mmode_line()
+
+        # Hide properties tab when switching files
+        self._tool_panel.hide_properties_tab()
 
         label = _loaded_file_label(selected)
         self._system_bar.set_study_context(label)
@@ -1847,6 +1857,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.TEICHHOLZ_ED: self._on_teichholz_ed_from_menu,
             MeasurementAction.TEICHHOLZ_ES: self._on_teichholz_es_from_menu,
             MeasurementAction.AREA_COMPARE: self._on_area_compare_requested,
+            MeasurementAction.HEART_RATE: self._on_heart_rate_requested,
         }
         if action == MeasurementAction.CALIPER:
             self._on_caliper_requested(extra or None)
