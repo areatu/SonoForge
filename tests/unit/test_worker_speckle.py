@@ -7,7 +7,9 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pydicom
 import pytest
+from pydicom.dataset import Dataset, FileMetaDataset
 
 pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
@@ -25,6 +27,31 @@ from echo_personal_tool.domain.models.speckle import (
     StrainResult,
     TrackingKernel,
 )
+
+
+def _write_dicom_cine(tmp_path, n_frames: int = 10):
+    """Write an uncompressed n-frame 32x32 DICOM clip and return its path."""
+    meta = FileMetaDataset()
+    meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+    ds = Dataset()
+    ds.file_meta = meta
+    ds.preamble = b"\x00" * 128
+    ds.is_little_endian = True
+    ds.is_implicit_VR = False
+    ds.SOPInstanceUID = "1.2.3.4.5"
+    ds.SeriesInstanceUID = "1.2.3.4.6"
+    ds.StudyInstanceUID = "1.2.3.4.7"
+    ds.Modality = "US"
+    ds.Rows = 32
+    ds.Columns = 32
+    ds.BitsAllocated = 8
+    ds.SamplesPerPixel = 1
+    ds.PixelRepresentation = 0
+    ds.NumberOfFrames = n_frames
+    ds.PixelData = np.random.randint(0, 256, (n_frames, 32, 32), dtype=np.uint8).tobytes()
+    path = tmp_path / f"cine_{n_frames}.dcm"
+    pydicom.dcmwrite(path, ds)
+    return path
 
 
 @pytest.fixture(scope="module")
@@ -282,6 +309,7 @@ class TestSpeckleTrackingWorkerRun:
                 frame_time_ms=33.3,
                 manual_ed=0,
                 manual_es=5,
+                config=SpeckleConfig(tracking_mode="sequential"),
             )
             finished = []
             worker.signals.finished.connect(lambda r: finished.append(r))
@@ -289,6 +317,257 @@ class TestSpeckleTrackingWorkerRun:
 
             assert len(finished) == 1
             assert isinstance(finished[0], StrainResult)
+            assert finished[0].frame_time_ms == 33.3
+
+    @patch("echo_personal_tool.application.workers.speckle_worker.assign_aha_segments")
+    @patch("echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone")
+    def test_run_decodes_full_cine_from_source_when_frames_none(
+        self, mock_kernels, mock_assign, tmp_path
+    ):
+        """Issue #1: STE must work even when the frame cache does not hold the
+        whole cine (large clips are evicted by the memory budget).  With
+        ``frames=None`` the worker decodes the full clip from ``source_path``."""
+        mock_kernels.return_value = [
+            TrackingKernel(center=(10.0, 10.0), radius=4, node_index=0, layer="endo"),
+            TrackingKernel(center=(15.0, 15.0), radius=4, node_index=1, layer="epi"),
+        ]
+        mock_assign.return_value = list(mock_kernels.return_value)
+
+        path = _write_dicom_cine(tmp_path, n_frames=10)
+        zone = _make_zone()
+        n_kernels = 2
+
+        patches = {
+            "preprocess_echo_frame": MagicMock(return_value=np.zeros((32, 32), dtype=np.uint8)),
+            "build_zone_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
+            "track_cine_incremental": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
+            "extract_trajectories": MagicMock(
+                return_value=(
+                    np.full((6, n_kernels, 2), 10.0),
+                    np.full((6, n_kernels), 0.9),
+                )
+            ),
+            "interpolate_invalid_kernels": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "smooth_trajectories": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "apply_motion_model": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "compute_weighted_longitudinal_strain_gl": MagicMock(
+                return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])
+            ),
+            "compute_weighted_radial_strain_gl": MagicMock(return_value=np.array([0.0, 2.0, 5.0, 2.0, 0.0, 0.0])),
+            "compute_strain_rate": MagicMock(return_value=np.zeros(10)),
+            "estimate_heart_rate_fft": MagicMock(return_value=72.0),
+            "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
+            "compute_gls": MagicMock(return_value=-15.0),
+            "apply_drift_compensation": MagicMock(return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])),
+            "compute_aha_segment_strain": MagicMock(return_value=({1: -15.0}, {1: 0.8})),
+        }
+
+        patch_targets = {
+            "preprocess_echo_frame": patches["preprocess_echo_frame"],
+            "build_zone_mask": patches["build_zone_mask"],
+            "track_cine_incremental": patches["track_cine_incremental"],
+            "extract_trajectories": patches["extract_trajectories"],
+            "interpolate_invalid_kernels": patches["interpolate_invalid_kernels"],
+            "smooth_trajectories": patches["smooth_trajectories"],
+            "apply_motion_model": patches["apply_motion_model"],
+            "compute_weighted_longitudinal_strain_gl": patches["compute_weighted_longitudinal_strain_gl"],
+            "compute_weighted_radial_strain_gl": patches["compute_weighted_radial_strain_gl"],
+            "compute_strain_rate": patches["compute_strain_rate"],
+            "estimate_heart_rate_fft": patches["estimate_heart_rate_fft"],
+            "build_myocardial_roi_mask": patches["build_myocardial_roi_mask"],
+            "compute_gls": patches["compute_gls"],
+            "apply_drift_compensation": patches["apply_drift_compensation"],
+            "compute_aha_segment_strain": patches["compute_aha_segment_strain"],
+        }
+        from contextlib import ExitStack
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
+                    MagicMock(return_value=(0, 5)),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.application.workers.speckle_worker.track_cine_sequential",
+                    MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
+                )
+            )
+            for name, target in patch_targets.items():
+                stack.enter_context(
+                    patch(f"echo_personal_tool.application.workers.speckle_worker.{name}", target)
+                )
+            worker = SpeckleTrackingWorker(
+                frames=None,  # cache does not hold the full cine
+                zone=zone,
+                pixel_spacing=(0.5, 0.5),
+                frame_time_ms=33.3,
+                manual_ed=0,
+                manual_es=5,
+                source_path=path,
+                media_format="dicom",
+                config=SpeckleConfig(tracking_mode="sequential"),
+            )
+            finished = []
+            errors = []
+            worker.signals.finished.connect(lambda r: finished.append(r))
+            worker.signals.error.connect(lambda m: errors.append(m))
+            worker.run()
+
+            assert not errors, errors
+            # The worker decoded the whole clip from disk on its own thread.
+            assert worker._frames is not None and worker._frames.shape[0] == 10
+            assert len(finished) == 1
+            assert isinstance(finished[0], StrainResult)
+            assert finished[0].frame_time_ms == 33.3
+
+    def test_run_with_frames_none_and_no_source_emits_error(self):
+        zone = _make_zone()
+        worker = SpeckleTrackingWorker(
+            frames=None,
+            zone=zone,
+            pixel_spacing=(0.5, 0.5),
+            manual_ed=0,
+            manual_es=5,
+            source_path=None,
+        )
+        errors = []
+        worker.signals.error.connect(lambda m: errors.append(m))
+        worker.run()
+        assert len(errors) == 1
+
+
+# ── cine frames + real ECG carried on the result ──────────────────
+
+
+class TestResultCarriesCineAndEcg:
+    """Regression tests for the STE window data plumbing:
+
+    * the cine frames the worker tracked on travel on ``StrainResult.cine_frames``
+      so the results window can always animate kernels, even when the main
+      viewer's frame cache no longer holds the whole clip;
+    * a real DICOM ECG is read from the source path on the worker thread and
+      reaches the result (``ecg_waveform`` / ``ecg_trace_for_display``) so the
+      strip is shown for clips that carry an ECG.
+    """
+
+    def _patches(self, n_kernels: int = 2) -> dict:
+        return {
+            "preprocess_echo_frame": MagicMock(return_value=np.zeros((32, 32), dtype=np.uint8)),
+            "build_zone_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
+            "track_cine_incremental": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
+            "extract_trajectories": MagicMock(
+                return_value=(
+                    np.full((6, n_kernels, 2), 10.0),
+                    np.full((6, n_kernels), 0.9),
+                )
+            ),
+            "interpolate_invalid_kernels": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "smooth_trajectories": MagicMock(return_value=np.full((6, n_kernels, 2), 10.0)),
+            "compute_weighted_longitudinal_strain_gl": MagicMock(
+                return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])
+            ),
+            "compute_weighted_radial_strain_gl": MagicMock(return_value=np.array([0.0, 2.0, 5.0, 2.0, 0.0, 0.0])),
+            "compute_strain_rate": MagicMock(return_value=np.zeros(10)),
+            "estimate_heart_rate_fft": MagicMock(return_value=72.0),
+            "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
+            "compute_gls": MagicMock(return_value=-15.0),
+            "compute_aha_segment_strain": MagicMock(return_value=({1: -15.0}, {1: 0.8})),
+        }
+
+    def _run(self, *, frames, ecg_mock, source_path=None):
+        from contextlib import ExitStack
+
+        zone = _make_zone()
+        patches = self._patches()
+        with ExitStack() as stack:
+            mock_kernels = [
+                TrackingKernel(center=(16.0, 12.0), radius=4, node_index=0, layer="endo"),
+                TrackingKernel(center=(16.0, 20.0), radius=4, node_index=1, layer="epi"),
+            ]
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone",
+                    return_value=list(mock_kernels),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.application.workers.speckle_worker.assign_aha_segments",
+                    return_value=list(mock_kernels),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.application.workers.speckle_worker.detect_ed_es_from_frames",
+                    MagicMock(return_value=(0, 5)),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.infrastructure.dicom_session.read_ecg_waveform",
+                    ecg_mock,
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "echo_personal_tool.application.workers.speckle_worker.track_cine_sequential",
+                    MagicMock(return_value=[MagicMock(displacements=np.zeros((6, 2, 2)))]),
+                )
+            )
+            for name, target in patches.items():
+                stack.enter_context(
+                    patch(f"echo_personal_tool.application.workers.speckle_worker.{name}", target)
+                )
+            worker = SpeckleTrackingWorker(
+                frames=frames,
+                zone=zone,
+                pixel_spacing=(0.5, 0.5),
+                manual_ed=0,
+                manual_es=5,
+                source_path=source_path,
+                media_format="dicom",
+                config=SpeckleConfig(tracking_mode="sequential"),
+            )
+            finished = []
+            errors = []
+            worker.signals.finished.connect(lambda r: finished.append(r))
+            worker.signals.error.connect(lambda m: errors.append(m))
+            worker.run()
+            assert not errors, errors
+            assert len(finished) == 1
+            return finished[0]
+
+    def test_result_carries_cine_frames_and_real_ecg(self, tmp_path):
+        """Frames passed in from cache plus a real ECG read from the source."""
+        path = _write_dicom_cine(tmp_path, n_frames=10)
+        fake_trace = np.sin(np.linspace(0, 6, 200))
+        ecg = MagicMock()
+        ecg.primary_lead.name = "II"
+        ecg.leads = []  # primary lead not in leads → lead_index 0 fallback
+        ecg.as_voltage_mv.return_value = fake_trace
+
+        result = self._run(frames=_make_frames(), ecg_mock=MagicMock(return_value=ecg), source_path=path)
+
+        # cine frames travelled with the result (STE-window animation)
+        assert result.cine_frames is not None
+        assert result.cine_frames.shape[0] == 10
+        # real ECG reached the result (STE-window strip)
+        assert result.ecg_waveform is ecg
+        assert result.ecg_trace_for_display is not None
+        assert len(result.ecg_trace_for_display) == 200
+
+    def test_no_ecg_in_source_leaves_fields_none(self, tmp_path):
+        """A DICOM without a waveform keeps the strip hidden (no synthetic ECG)."""
+        path = _write_dicom_cine(tmp_path, n_frames=10)
+        result = self._run(
+            frames=_make_frames(),
+            ecg_mock=MagicMock(return_value=None),
+            source_path=path,
+        )
+        assert result.ecg_waveform is None
+        assert result.ecg_trace_for_display is None
 
 
 # ── _dump_ste_debug ───────────────────────────────────────────────

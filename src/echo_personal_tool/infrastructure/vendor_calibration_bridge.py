@@ -492,13 +492,24 @@ def try_parse_samsung_tick_calibration(
     if not _ruler_is_plausible(tick_result):
         retry = detect_ticks(arr, brightness_threshold=90)
         if retry is not None and _ruler_is_plausible(retry):
-            logger.debug(
-                "Samsung tick: primary ruler implausible (spacing=%.1f), high-threshold retry: spacing=%.1f n=%d",
-                tick_result.spacing_px,
-                retry.spacing_px,
-                len(retry.tick_positions),
-            )
-            tick_result = retry
+            # Additional gate for retry: real Samsung rulers span ≥70% of
+            # frame width. A retry that only barely passes the 50% threshold
+            # is likely a false periodic structure on a bright B-mode frame.
+            positions_r = sorted(retry.tick_positions)
+            retry_span_frac = (positions_r[-1] - positions_r[0]) / float(w) if w > 0 else 0.0
+            if retry_span_frac < 0.70:
+                logger.debug(
+                    "Samsung tick: high-threshold retry REJECTED — span %.0f%% < 70%%",
+                    100.0 * retry_span_frac,
+                )
+            else:
+                logger.debug(
+                    "Samsung tick: primary ruler implausible (spacing=%.1f), high-threshold retry: spacing=%.1f n=%d",
+                    tick_result.spacing_px,
+                    retry.spacing_px,
+                    len(retry.tick_positions),
+                )
+                tick_result = retry
 
     tick_positions = sorted(tick_result.tick_positions)
     span_x_px = float(tick_positions[-1] - tick_positions[0])

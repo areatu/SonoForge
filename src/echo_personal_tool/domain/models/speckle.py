@@ -69,15 +69,27 @@ class SpeckleConfig:
     # Forward-backward closure error, as a fraction of ``search_radius``; a
     # match whose round trip exceeds this is rejected.
     closure_error_threshold: float = 0.5
+    # When False (default), the tracker never pushes kernels toward
+    # physiologically "expected" radial directions — motion comes only from the
+    # NCC block matching. Setting this to True lets apply_motion_model gently
+    # nudge endo/epi kernels that contradict contraction, which can mask poor
+    # matches but also fabricate motion that is not present in the image.
+    physiology_prior: bool = False
 
     @classmethod
     def preset_standard(cls) -> SpeckleConfig:
+        # tracking_mode="border": vendor-style wall-border propagation. The ED
+        # endo/epi contours are tracked frame-to-frame and kernels stay between
+        # the moving borders, instead of independent kernels confined to the
+        # static ED band (which froze systolic motion and let dots blow through
+        # the epicardium). Measured on gold clips: better ES wall containment
+        # and less catastrophic mis-tracking than "sequential".
         return cls(
             kernel_size=12,
             search_radius=8,
             bidirectional=True,
             drift_compensation=True,
-            tracking_mode="sequential",
+            tracking_mode="border",
             ncc_threshold=0.3,
             outlier_sigma=0,
         )
@@ -145,9 +157,22 @@ class StrainResult:
     kernels_accepted_count: int = 0
     kernels_rejected_count: int = 0
     kernels_total_count: int = 0
+    # QC fields: honest measurement quality separate from raw NCC fidelity.
+    # ``tracking_quality_mean`` stays the NCC mean; ``qc_score`` additionally
+    # folds in kernel coverage and a physiological plausibility check, so it can
+    # be low even when NCC reads >90% (issue #3).
+    qc_score: float = 0.0
+    qc_physiology_ok: bool = True
+    qc_physiology_reasons: tuple[str, ...] = ()
+    gls_source: str = "curve"
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None
+    frame_time_ms: float = 33.3
+    # The cine frames (N,H,W[,C]) that tracking ran on, so the results window
+    # can always animate kernels over the real ultrasound without depending on
+    # the main viewer's frame cache still holding the whole clip.
+    cine_frames: np.ndarray | None = None
     ed_es_source: str = "image"
     ed_es_confidence: float = 0.0
     ed_es_quality: str = "unknown"

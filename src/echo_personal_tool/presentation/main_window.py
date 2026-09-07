@@ -65,7 +65,6 @@ from echo_personal_tool.presentation.measurement_results_dialog import Measureme
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
-from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
@@ -147,6 +146,9 @@ class MainWindow(QMainWindow):
         self._last_overlay_state: ViewerState | None = None
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
+        self._ste_position: str = "A4C"
+        self._strain_result_for_window: object | None = None
+        self._strain_frames_for_window: np.ndarray | None = None
         self._layout_config = self._load_layout_state()
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
@@ -234,7 +236,6 @@ class MainWindow(QMainWindow):
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
-        self._ste_dialog: SteResultsDialog | None = None
         self._strain_window: StrainWindow | None = None
 
         self._tool_panel = ToolPanel()
@@ -1284,6 +1285,20 @@ class MainWindow(QMainWindow):
         label = _loaded_file_label(selected)
         self._system_bar.set_study_context(label)
         self._viewer.set_results_overlay("")
+        # STE results belong to the previous clip: drop tracked kernels,
+        # contours and the strain window when switching to another file so
+        # nothing leaks onto the new cine (issue: contours/dots visible on
+        # every frame of every clip). Re-selecting the same instance keeps
+        # the results.
+        if previous is None or previous.sop_instance_uid != selected.sop_instance_uid:
+            self._viewer.clear_speckle_overlay()
+            if self._strain_window is not None:
+                self._strain_window.close()
+                self._strain_window = None
+            # Manual ED/ES frames belong to the previous clip: drop them so the
+            # next STE run detects frames for the new file (issue #5).
+            self._manual_ed_frame = None
+            self._manual_es_frame = None
         self._controller.load_instance(selected)
 
     def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
@@ -1822,6 +1837,10 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_FAC: self._on_rv_fac,
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
+            MeasurementAction.STRAIN_CURVES: self._on_strain_curves_requested,
+            MeasurementAction.STE_VIEW_A4C: lambda: self._on_ste_view_selected("A4C"),
+            MeasurementAction.STE_VIEW_A2C: lambda: self._on_ste_view_selected("A2C"),
+            MeasurementAction.STE_VIEW_A3C: lambda: self._on_ste_view_selected("A3C"),
             MeasurementAction.MMODE: self._toggle_mmode,
             MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
             MeasurementAction.MMODE_TIME_HR: self._on_mmode_time_hr_from_menu,
@@ -2042,8 +2061,6 @@ class MainWindow(QMainWindow):
         self._viewer.clear_doppler_calibration_display(keep_time_scale=True)
         self._viewer.clear_doppler_measurements()
         self._viewer.clear_speckle_overlay()
-        if self._ste_dialog is not None:
-            self._ste_dialog.clear()
         if self._strain_window is not None:
             self._strain_window.close()
             self._strain_window = None
@@ -2164,7 +2181,15 @@ class MainWindow(QMainWindow):
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
             return
-        contour = self._viewer.get_lv_contour(phase="ED", view="A4C") or self._viewer.get_lv_contour()
+        # Respect the position chosen with the Стрейн toolbar buttons: the ED
+        # contour of that view is used when present (the A4C preference here is
+        # only a fallback for the historical default).
+        ste_view = (self._ste_position or "A4C").upper()
+        contour = (
+            self._viewer.get_lv_contour(phase="ED", view=ste_view)
+            or self._viewer.get_lv_contour(phase="ED", view="A4C")
+            or self._viewer.get_lv_contour()
+        )
         if contour is None:
             self._show_status(tr("status.speckle_no_contour"))
             return
@@ -2179,10 +2204,24 @@ class MainWindow(QMainWindow):
             for item in self._viewer.contours()
             if item.chamber == "LV" and item.view.upper() == contour.view.upper() and item.frame_index is not None
         }
-        if self._manual_ed_frame is None and phase_contours.get("ED") is not None:
+        ed_from_contour = self._manual_ed_frame is None and phase_contours.get("ED") is not None
+        es_from_contour = self._manual_es_frame is None and phase_contours.get("ES") is not None
+        if ed_from_contour:
             self._manual_ed_frame = phase_contours["ED"].frame_index
-        if self._manual_es_frame is None and phase_contours.get("ES") is not None:
+        if es_from_contour:
             self._manual_es_frame = phase_contours["ES"].frame_index
+        ed_pinned = self._manual_ed_frame is not None
+        es_pinned = self._manual_es_frame is not None
+        if ed_from_contour and es_from_contour:
+            ed_es_hint = "Manual — from EDV/ESV contours"
+        elif ed_from_contour:
+            ed_es_hint = "ED pinned from EDV contour; ES auto-detected"
+        elif es_from_contour:
+            ed_es_hint = "ES pinned from ESV contour; ED auto-detected"
+        elif ed_pinned and es_pinned:
+            ed_es_hint = "Manual frames (auto-detect disabled)"
+        else:
+            ed_es_hint = "Auto-detect: ECG → Simpson area → image"
         current_idx = self._get_current_frame_index() or 0
         cache = self._controller._frame_cache
         n_frames = cache._total_frames if cache else 0
@@ -2192,6 +2231,8 @@ class MainWindow(QMainWindow):
             manual_ed=self._manual_ed_frame,
             manual_es=self._manual_es_frame,
             n_frames=n_frames,
+            ed_es_hint=ed_es_hint,
+            initial_view=contour.view,
         )
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
@@ -2200,6 +2241,7 @@ class MainWindow(QMainWindow):
             return
         config = settings.get_config()
         config_preset = settings.selected_preset_name()
+        self._ste_position = settings.selected_view()
         self._manual_ed_frame = settings.manual_ed
         self._manual_es_frame = settings.manual_es
         self._viewer.clear_speckle_overlay()
@@ -2216,19 +2258,23 @@ class MainWindow(QMainWindow):
             manual_es=self._manual_es_frame,
         )
 
-    def _ensure_ste_dialog(self) -> SteResultsDialog:
-        if self._ste_dialog is None:
-            self._ste_dialog = SteResultsDialog(self)
-        return self._ste_dialog
-
     def _ensure_strain_window(self) -> StrainWindow:
         if self._strain_window is None:
-            self._strain_window = StrainWindow(self)
+            # Top-level window (no parent) so it is raised above a maximized or
+            # fullscreen main window instead of only becoming visible after the
+            # main window is closed.
+            self._strain_window = StrainWindow()
             self._strain_window.closed.connect(self._on_strain_window_closed)
         return self._strain_window
 
     def _on_strain_window_closed(self) -> None:
         self._strain_window = None
+        # The smoothing slider is a child of the viewer; without this it stays
+        # visible after the strain window closes (issue #1).
+        try:
+            self._viewer._ste_sensitivity.hide()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _on_speckle_result_ready(self, result: object) -> None:
         from echo_personal_tool.domain.models.speckle import StrainResult
@@ -2236,25 +2282,8 @@ class MainWindow(QMainWindow):
         if not isinstance(result, StrainResult):
             return
         gls = result.gls
-        dialog = self._ensure_ste_dialog()
-        dialog.update_results(
-            result.longitudinal,
-            result.radial,
-            result.segment_strain,
-            result.segment_quality,
-            gls=gls,
-            ed_index=result.ed_index,
-            es_index=result.es_index,
-            window_start=result.tracking_window_start,
-            window_end=result.tracking_window_end,
-            kernels_accepted=result.kernels_accepted_count,
-            kernels_rejected=result.kernels_rejected_count,
-            kernels_total=result.kernels_total_count,
-            ed_es_source=result.ed_es_source,
-            ed_es_confidence=result.ed_es_confidence,
-            ed_es_quality=result.ed_es_quality,
-        )
-        quality_pct = result.tracking_quality_mean * 100.0
+        ncc_pct = result.tracking_quality_mean * 100.0
+        qc_pct = result.qc_score * 100.0
         drift = "ON" if result.drift_compensation_applied else "OFF"
         preset_name = self._format_speckle_preset_name(result.config_preset)
 
@@ -2270,9 +2299,17 @@ class MainWindow(QMainWindow):
         else:
             quality_info = ""
 
+        # Honest QC: NCC alone can read >90% while the deformation is
+        # implausible; the combined QC score and physiology check are shown
+        # alongside it so users are not misled (issue #3).
+        qc_info = f"QC: {qc_pct:.0f}%"
+        if not result.qc_physiology_ok and result.qc_physiology_reasons:
+            qc_info += f" [⚠ {result.qc_physiology_reasons[0]}]"
+
         status_parts = [
             f"GLS: {gls:.1f}%",
-            f"Quality: {quality_pct:.0f}%",
+            qc_info,
+            f"NCC: {ncc_pct:.0f}%",
             quality_info,
             f"ED/ES: {result.ed_es_source}",
             f"Drift: {drift}",
@@ -2281,8 +2318,43 @@ class MainWindow(QMainWindow):
         self._show_status(" | ".join(filter(None, status_parts)))
         self._viewer.show_speckle_result(result)
 
-        # Open StrainWindow
-        self._ensure_strain_window().show_result(result)
+        # The cine frames the worker actually tracked on travel with the
+        # result, so the results window can always animate kernels over the
+        # ultrasound even when the main viewer's cache dropped frames. Falls
+        # back to the cache for older result objects.
+        frames: np.ndarray | None = getattr(result, "cine_frames", None)
+        if frames is None:
+            try:
+                frames = self._controller._frame_cache.require_full_cine()
+            except Exception:  # noqa: BLE001
+                frames = None
+        # Keep the last result so the "Strain curves" button can reopen it
+        self._strain_result_for_window = result
+        self._strain_frames_for_window = frames
+        window = self._ensure_strain_window()
+        window.set_position(self._ste_position)
+        window.show_result(result, frames=frames)
+
+    def _on_ste_view_selected(self, view: str) -> None:
+        """Record which apical view (A4C/A2C/A3C) the current clip represents.
+
+        The choice is remembered on the main window and forwarded to the STE
+        settings dialog (which the contours were drawn on), the results-window
+        position label and the JSON export.
+        """
+        self._ste_position = view.upper()
+        self._show_status(tr("status.strain_pos_selected", view=self._ste_position))
+
+    def _on_strain_curves_requested(self) -> None:
+        """Reopen the strain window on the curves page (issue #6)."""
+        result = self._strain_result_for_window
+        if result is None:
+            self._show_status("Сначала запустите Speckle Tracking — нет данных для графиков")
+            return
+        window = self._ensure_strain_window()
+        window.set_position(self._ste_position)
+        window.show_result(result, frames=self._strain_frames_for_window)
+        window.show_curves()
 
     @staticmethod
     def _format_speckle_preset_name(preset_name: str) -> str:

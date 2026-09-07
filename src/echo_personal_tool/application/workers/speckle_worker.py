@@ -18,6 +18,7 @@ from echo_personal_tool.domain.models.speckle import (
 )
 from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,
+    choose_clinical_gls,
     compute_aha_segment_strain,
     compute_gls_from_segments,
 )
@@ -30,6 +31,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
+    clamp_trajectories_to_wall,
     estimate_global_translations,
     log_reference_max,
     preprocess_echo_frame,
@@ -40,6 +42,7 @@ from echo_personal_tool.domain.services.speckle_tracking import (
 )
 from echo_personal_tool.domain.services.strain_computation import (
     apply_drift_compensation,
+    assess_strain_plausibility,
     compute_gls,
     compute_strain_rate,
     compute_weighted_longitudinal_strain_gl,
@@ -53,6 +56,49 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
+    """Decode the full clip from disk on the worker thread.
+
+    Used when the playback frame cache only holds a sliding window (large
+    cines exceed the memory budget and get evicted), so speckle tracking no
+    longer depends on the whole clip being pre-cached.
+
+    Returns a stacked (N, H, W) or (N, H, W, C) uint8 array.
+    """
+    path = Path(path)
+    if media_format == "dicom":
+        from echo_personal_tool.infrastructure.dicom_session import (
+            get_thread_dicom_session,
+        )
+
+        session = get_thread_dicom_session()
+        session.open(path)
+        try:
+            all_frames = session.decode_all_frames()
+        finally:
+            session.release_heavy()
+    elif media_format == "mp4":
+        import cv2
+
+        cap = cv2.VideoCapture(str(path))
+        try:
+            all_frames = []
+            while True:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                all_frames.append(frame)
+        finally:
+            cap.release()
+    else:
+        raise RuntimeError(f"Cannot decode full cine from media format {media_format!r}")
+
+    frames_list = list(all_frames)
+    if not frames_list:
+        raise RuntimeError("No frames decoded from source")
+    return np.stack(frames_list)
 
 
 def _embed_window_curve(
@@ -71,6 +117,56 @@ def _embed_window_curve(
     return full
 
 
+def _resolve_partial_manual_anchors(
+    *,
+    manual_ed: int | None,
+    manual_es: int | None,
+    auto_ed: int,
+    auto_es: int,
+    n_frames: int,
+) -> tuple[int, int, str | None]:
+    """Combine one-sided manual ED/ES anchors with automatic detection.
+
+    When the user pinned only ED (e.g. an EDV contour) or only ES (an ESV
+    contour), that anchor wins over ECG/Simpson/image and the other side keeps
+    the automatic candidate. If the auto candidate lands on the wrong side of
+    the pinned anchor (or on it), the free side is moved to a default systolic
+    span so the returned pair always satisfies ``ed < es`` and ``ed != es``.
+
+    Returns ``(ed, es, source)`` where ``source`` is None for a fully automatic
+    pair (caller keeps the mapping source) and "manual_ed+auto"/"manual_es+auto"
+    for a partial-manual pair.
+    """
+    if n_frames <= 1:
+        return 0, 0, None
+    last = n_frames - 1
+
+    ed = int(np.clip(manual_ed if manual_ed is not None else auto_ed, 0, last))
+    es = int(np.clip(manual_es if manual_es is not None else auto_es, 0, last))
+
+    source: str | None = None
+    if manual_ed is not None and manual_es is None:
+        source = "manual_ed+auto"
+    elif manual_es is not None and manual_ed is None:
+        source = "manual_es+auto"
+
+    if ed == es:
+        if source == "manual_ed+auto" and ed < last:
+            es = min(last, ed + max(1, (last - ed) // 3))
+        elif source == "manual_es+auto" and ed > 0:
+            ed = max(0, es - max(1, es // 3))
+        else:
+            es = min(last, ed + max(1, (last - ed) // 3))
+    elif ed > es:
+        # Trust the pinned anchor and re-position the auto side.
+        if source == "manual_ed+auto":
+            es = min(last, ed + max(1, (last - ed) // 3))
+        elif source == "manual_es+auto":
+            ed = max(0, es - max(1, es // 3))
+
+    return ed, es, source
+
+
 class SpeckleTrackingSignals(QObject):
     finished = Signal(object)
     error = Signal(str)
@@ -80,7 +176,7 @@ class SpeckleTrackingSignals(QObject):
 class SpeckleTrackingWorker(QRunnable):
     def __init__(
         self,
-        frames: np.ndarray,
+        frames: np.ndarray | None,
         zone: MyocardialZone,
         pixel_spacing: tuple[float, float],
         frame_time_ms: float = 33.3,
@@ -90,6 +186,12 @@ class SpeckleTrackingWorker(QRunnable):
         manual_es: int | None = None,
         ecg_waveform=None,
         simpson_area_curve: tuple[tuple[int, float], ...] = (),
+        source_path: Path | str | None = None,
+        media_format: str = "dicom",
+        # Optional separate path from which a real DICOM ECG waveform is read
+        # on this worker thread when ``ecg_waveform`` was not supplied (so a
+        # real ECG is available even when the cine came from the frame cache).
+        ecg_source_path: Path | str | None = None,
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -102,13 +204,39 @@ class SpeckleTrackingWorker(QRunnable):
         self._manual_es = manual_es
         self._ecg_waveform = ecg_waveform
         self._simpson_area_curve = simpson_area_curve
+        self._source_path = source_path
+        self._media_format = media_format
+        self._ecg_source_path = ecg_source_path
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
     def run(self) -> None:
         try:
             config = self._config or SpeckleConfig.preset_standard()
+            if self._frames is None:
+                # Full cine is not fully cached (evicted by the memory budget).
+                # Decode it from source here on the worker thread instead of
+                # forcing the user to reload the whole clip.
+                if self._source_path is None:
+                    raise RuntimeError("No source available to load the full cine")
+                self._frames = _load_full_cine_frames(self._source_path, self._media_format)
             n_frames = int(self._frames.shape[0])
+
+            # Real ECG: prefer an explicitly supplied waveform; otherwise read
+            # it from the DICOM source on this worker thread. Kept None when the
+            # clip carries no ECG, so the STE window hides the strip (no
+            # synthetic placeholder is ever drawn).
+            if self._ecg_waveform is None:
+                ecg_path = self._ecg_source_path or self._source_path
+                if ecg_path is not None and self._media_format == "dicom":
+                    try:
+                        from echo_personal_tool.infrastructure.dicom_session import (
+                            read_ecg_waveform,
+                        )
+
+                        self._ecg_waveform = read_ecg_waveform(ecg_path)
+                    except Exception:  # noqa: BLE001 — no ECG is not fatal
+                        self._ecg_waveform = None
 
             lv_center = tuple(np.mean(self._zone.endo_points, axis=0).tolist())
             avg_spacing = np.mean(self._pixel_spacing)
@@ -119,7 +247,9 @@ class SpeckleTrackingWorker(QRunnable):
             )
             kernels = assign_aha_segments(kernels, lv_center=lv_center, view="A4C")
 
-            manual_phases = self._manual_ed is not None and self._manual_es is not None
+            manual_ed_given = self._manual_ed is not None
+            manual_es_given = self._manual_es is not None
+            fully_manual = manual_ed_given and manual_es_given
             logger.info(
                 "STE: manual_ed=%s manual_es=%s n_frames=%d ecg=%s",
                 self._manual_ed,
@@ -127,17 +257,17 @@ class SpeckleTrackingWorker(QRunnable):
                 n_frames,
                 self._ecg_waveform is not None,
             )
-            ed_es_source = "image"
             ed_es_confidence = 0.5
             r_peak_result = None
 
-            if manual_phases:
+            if fully_manual:
                 global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
                 global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
                 ed_es_source = "manual"
                 ed_es_confidence = 1.0
             else:
-                # ECG-first policy: use R-peaks when reliable, else image fallback.
+                # ECG-first policy: use R-peaks when reliable, else Simpson area
+                # curve, else image fallback.
                 from echo_personal_tool.domain.services.ecg_ed_es_mapper import (
                     detect_ed_es_for_cine,
                     detect_ed_es_from_area_curve,
@@ -153,8 +283,8 @@ class SpeckleTrackingWorker(QRunnable):
                     simpson_fallback=lambda: detect_ed_es_from_area_curve(self._simpson_area_curve, n_frames),
                     image_fallback=image_fallback,
                 )
-                global_ed = mapping.ed_frame_index
-                global_es = mapping.es_frame_index
+                auto_ed = mapping.ed_frame_index
+                auto_es = mapping.es_frame_index
                 ed_es_source = mapping.source
                 r_peak_result = mapping.r_peak_result
                 if mapping.r_peak_result is not None:
@@ -163,6 +293,21 @@ class SpeckleTrackingWorker(QRunnable):
                     ed_es_confidence = 0.8
                 else:
                     ed_es_confidence = 0.5
+
+                # One-sided manual anchors: the user pinned one frame (usually
+                # the EDV or ESV contour), the other side keeps the automatic
+                # detection. A pinned anchor always wins over ECG/Simpson/image
+                # so drawn EDV/ESV contours are honoured.
+                global_ed, global_es, partial_source = _resolve_partial_manual_anchors(
+                    manual_ed=self._manual_ed,
+                    manual_es=self._manual_es,
+                    auto_ed=auto_ed,
+                    auto_es=auto_es,
+                    n_frames=n_frames,
+                )
+                if partial_source is not None:
+                    ed_es_source = partial_source
+                    ed_es_confidence = 0.8  # manual side is exact, auto side needs review
 
             phase_start = min(global_ed, global_es)
             phase_end = max(global_ed, global_es)
@@ -201,7 +346,27 @@ class SpeckleTrackingWorker(QRunnable):
                     config,
                     search_radius=max(config.search_radius, 24),
                 )
-            if config.tracking_mode == "incremental":
+            # Vendor-style border propagation: only well-posed when the window
+            # starts at ED and runs to ES (the last frame of the window).
+            is_border_mode = bool(
+                config.tracking_mode == "border"
+                and local_ed == 0
+                and local_es == int(preprocessed.shape[0]) - 1
+            )
+            border_propagation = None
+            if is_border_mode:
+                from echo_personal_tool.domain.services.border_tracking import (
+                    propagate_wall_borders,
+                )
+
+                border_propagation = propagate_wall_borders(
+                    preprocessed,
+                    self._zone.endo_points,
+                    self._zone.epi_points,
+                    config,
+                )
+                tracking_results = None
+            elif config.tracking_mode == "incremental":
                 tracking_results = track_cine_incremental(
                     preprocessed,
                     kernels,
@@ -212,13 +377,20 @@ class SpeckleTrackingWorker(QRunnable):
                     wall_thickness_px=wall_thickness_px,
                 )
             elif config.tracking_mode == "sequential":
+                # NOTE: no static ED zone_mask here — gating every target match
+                # against the ED-frame wall band invalidates endo kernels that
+                # correctly follow the contracting wall inward past the ED
+                # endo, freezing them at ED positions. Validity is decided by
+                # NCC + bidirectional closure; the (relaxed) wall clamp below
+                # keeps layer order and stops wild jumps.
                 tracking_results = track_cine_sequential(
                     preprocessed,
                     kernels,
                     ed_index=track_ed_index,
                     config=config,
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
-                    zone_mask=zone_mask,
+                    wall_inward_slack=1.4,
+                    wall_outward_slack=0.0,
                 )
             else:
                 tracking_results = track_cine_bidirectional(
@@ -229,7 +401,7 @@ class SpeckleTrackingWorker(QRunnable):
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                 )
 
-            if not manual_phases and global_ed == global_es:
+            if not fully_manual and global_ed == global_es and tracking_results is not None:
                 new_local_ed, new_local_es = auto_detect_ed_es(tracking_results, kernels, self._pixel_spacing)
                 new_local_ed = int(np.clip(new_local_ed, 0, int(preprocessed.shape[0]) - 1))
                 new_local_es = int(np.clip(new_local_es, 0, int(preprocessed.shape[0]) - 1))
@@ -239,25 +411,58 @@ class SpeckleTrackingWorker(QRunnable):
                 local_es = new_local_es
 
             self.signals.progress.emit(70, 100)
-            positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)
-            positions = interpolate_invalid_kernels(
-                positions,
-                ncc_matrix,
-                kernels,
-                config.ncc_threshold,
-            )
-            raw_positions = positions.copy()
-            if config.global_motion_compensation:
-                translations = estimate_global_translations(tracking_frames_raw, local_ed)
-                positions = remove_global_translations(positions, translations)
-            smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
-            smoothed = apply_motion_model(
-                smoothed,
-                ncc_matrix,
-                kernels,
-                track_ed_index,
-                config.ncc_threshold,
-            )
+            if border_propagation is not None:
+                # Border-propagation result: kernels are reconstructed between
+                # the propagated endo/epi borders, which are already spatially
+                # regularized each frame. Skip independent-kernel interpolation,
+                # smoothing, motion-model and the static-band clamp entirely.
+                kernels = assign_aha_segments(
+                    border_propagation["kernels"],
+                    lv_center=tuple(np.mean(self._zone.endo_points, axis=0).tolist()),
+                    view="A4C",
+                )
+                positions = border_propagation["positions"]
+                ncc_matrix = border_propagation["ncc"]
+                raw_positions = positions.copy()
+                smoothed = positions
+            else:
+                positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)
+                positions = interpolate_invalid_kernels(
+                    positions,
+                    ncc_matrix,
+                    kernels,
+                    config.ncc_threshold,
+                )
+                raw_positions = positions.copy()
+                if config.global_motion_compensation:
+                    translations = estimate_global_translations(tracking_frames_raw, local_ed)
+                    positions = remove_global_translations(positions, translations)
+                smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
+                if config.physiology_prior:
+                    # Optional physiological push (default OFF): without it,
+                    # motion comes only from the NCC matches. A synthetic
+                    # inward/outward nudge makes poor matches look plausible but
+                    # also fabricates deformation that is not in the image.
+                    smoothed = apply_motion_model(
+                        smoothed,
+                        ncc_matrix,
+                        kernels,
+                        track_ed_index,
+                        config.ncc_threshold,
+                    )
+                # Radial containment: keep layer order and prevent spurious
+                # spikes across the wall. The epicardium is a near-hard outer
+                # wall — during systole the epi barely moves — while inward
+                # slack lets the wall thicken/contract without being erased by
+                # the ED baseline.
+                smoothed, n_clamped = clamp_trajectories_to_wall(
+                    smoothed,
+                    kernels,
+                    track_ed_index,
+                    inward_slack=1.4,
+                    outward_slack=0.0,
+                )
+                logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]
@@ -268,8 +473,19 @@ class SpeckleTrackingWorker(QRunnable):
             window_long = compute_weighted_longitudinal_strain_gl(
                 smoothed, local_ed, self._pixel_spacing, endo_indices, ed_ncc
             )
-            if config.drift_compensation:
+            # Drift compensation is only meaningful when the tracked window
+            # actually closes back to a diastolic baseline (i.e. the window
+            # extends past end-systole into the next cycle). For the typical
+            # systolic window ED..ES the strain at ES is the systolic peak and
+            # must NOT be forced back to zero — doing so erases the measured
+            # deformation (issue #3). Skip it and report drift honestly.
+            drift_applied = bool(config.drift_compensation) and phase_end > global_es
+            if drift_applied:
                 window_long = apply_drift_compensation(window_long, local_ed, local_es)
+            else:
+                logger.info(
+                    "STE: drift compensation skipped (systolic window ends at ES, no baseline to close)"
+                )
 
             longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 
@@ -373,21 +589,45 @@ class SpeckleTrackingWorker(QRunnable):
                         float(es_ncc_for_gate[idx]),
                     )
 
-            # Compute quality-gated GLS using segment strains
-            if segment_strain:
-                gls_quality_gated = compute_gls_from_segments(
-                    segment_strain,
-                    segment_quality,
-                    min_quality=config.min_segment_quality,
-                )
-                # Use quality-gated GLS if available, otherwise fallback to curve-based GLS
-                if gls_quality_gated != 0.0:
-                    logger.info(
-                        "STE GLS: curve-based=%.2f%%, quality-gated=%.2f%%",
-                        gls,
-                        gls_quality_gated,
-                    )
-                    gls = gls_quality_gated
+            # Clinical GLS: prefer the mean of well-tracked segment strains over
+            # the raw curve peak, but only when segment coverage is adequate.
+            gls_curve = gls
+            gls, gls_source = choose_clinical_gls(
+                gls_curve,
+                segment_strain,
+                segment_quality,
+                min_segment_quality=config.min_segment_quality,
+            )
+            logger.info(
+                "STE GLS: curve-based=%.2f%%, clinical(segments)=%.2f%% -> gls=%.2f%% (%s)",
+                gls_curve,
+                compute_gls_from_segments(segment_strain, segment_quality, min_quality=config.min_segment_quality),
+                gls,
+                gls_source,
+            )
+
+            # Honest QC: NCC fidelity alone can read >90% while the deformation
+            # curve is physiologically impossible (issue #3). Combine tracking
+            # quality with coverage and a physiology check into one score.
+            phys_ok, phys_reasons = assess_strain_plausibility(
+                longitudinal,
+                radial,
+                global_ed,
+                global_es,
+            )
+            coverage = n_accepted / n_kernels if n_kernels else 0.0
+            qc_overall = tracking_quality_mean * coverage
+            if not phys_ok:
+                qc_overall = min(qc_overall, 0.5)
+            qc_overall = float(np.clip(qc_overall, 0.0, 1.0))
+            logger.info(
+                "STE QC: ncc=%.3f coverage=%.2f physiology_ok=%s reasons=%s -> qc=%.2f",
+                tracking_quality_mean,
+                coverage,
+                phys_ok,
+                phys_reasons,
+                qc_overall,
+            )
             raw_phase_positions = np.full((n_frames, n_kernels, 2), np.nan)
             raw_phase_positions[phase_start : phase_end + 1] = raw_positions
             tracked_positions_all = np.full((n_frames, n_kernels, 2), np.nan)
@@ -424,10 +664,15 @@ class SpeckleTrackingWorker(QRunnable):
 
             last = tracking_results[-1] if tracking_results else None
 
-            # Prepare ECG trace for display
+            # Prepare ECG trace for display (primary lead, matching the main
+            # viewer's ECG strip so the strip and the STE window agree).
             ecg_trace_display = None
             if self._ecg_waveform is not None:
-                ecg_trace_display = self._ecg_waveform.as_voltage_mv()
+                lead = self._ecg_waveform.primary_lead
+                lead_index = 0
+                if lead is not None and lead in self._ecg_waveform.leads:
+                    lead_index = self._ecg_waveform.leads.index(lead)
+                ecg_trace_display = self._ecg_waveform.as_voltage_mv(lead_index)
 
             result = StrainResult(
                 longitudinal=longitudinal,
@@ -456,8 +701,12 @@ class SpeckleTrackingWorker(QRunnable):
                 es_valid_mask=es_valid,
                 segment_strain=segment_strain,
                 segment_quality=segment_quality,
-                drift_compensation_applied=bool(config.drift_compensation),
+                drift_compensation_applied=drift_applied,
                 tracking_quality_mean=tracking_quality_mean,
+                qc_score=qc_overall,
+                qc_physiology_ok=phys_ok,
+                qc_physiology_reasons=tuple(phys_reasons),
+                gls_source=gls_source,
                 tracking_window_start=phase_start,
                 tracking_window_end=phase_end,
                 ncc_threshold=config.ncc_threshold,
@@ -466,6 +715,8 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels_total_count=n_kernels,
                 ecg_waveform=self._ecg_waveform,
                 r_peak_result=r_peak_result,
+                frame_time_ms=self._frame_time_ms,
+                cine_frames=self._frames,
                 ed_es_source=ed_es_source,
                 ed_es_confidence=ed_es_confidence,
                 ed_es_quality="high" if ed_es_confidence >= 0.8 else "review",

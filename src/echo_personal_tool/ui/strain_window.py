@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSlider,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -109,7 +110,9 @@ class CinePanel(QWidget):
         header.addWidget(self._info_label)
         layout.addLayout(header)
 
-        # PyQtGraph plot widget
+        # PyQtGraph plot widget. Image coordinates (x=column, y=row, origin at
+        # the top-left) are used for contours/kernels, so the view is inverted
+        # like the main echo viewer.
         self._plot = pg.PlotWidget()
         self._plot.setBackground("black")
         self._plot.hideAxis("left")
@@ -117,7 +120,25 @@ class CinePanel(QWidget):
         self._plot.setAspectLocked(True)
         self._plot.setMouseEnabled(x=False, y=False)
         self._plot.setMinimumHeight(200)
+        self._plot.getViewBox().invertY(True)
+
+        # Real ultrasound frame under the overlays
+        self._image_item = pg.ImageItem(axisOrder="row-major")
+        self._image_item.setAutoDownsample(False)
+        self._image_item.setOpts(smooth=True)
+        self._image_item.setZValue(0)
+        self._image_item.hide()
+        self._plot.addItem(self._image_item)
+        self._frames: np.ndarray | None = None
+
         layout.addWidget(self._plot, stretch=2)
+
+        # Frame scrubber (enabled when cine frames are supplied)
+        self._frame_slider = QSlider(Qt.Orientation.Horizontal)
+        self._frame_slider.setRange(0, 0)
+        self._frame_slider.setEnabled(False)
+        self._frame_slider.valueChanged.connect(self._on_frame_slider)
+        layout.addWidget(self._frame_slider)
 
         # ECG trace area
         self._ecg_plot = pg.PlotWidget()
@@ -128,8 +149,13 @@ class CinePanel(QWidget):
         self._ecg_plot.setMinimumHeight(40)
         layout.addWidget(self._ecg_plot, stretch=0)
 
-        # Bottom row: HR + frame counter
+        # Bottom row: play + HR + frame counter
         footer = QHBoxLayout()
+        self._play_btn = QPushButton(tr("strain.play"))
+        self._play_btn.setFixedWidth(100)
+        self._play_btn.setEnabled(False)
+        self._play_btn.clicked.connect(self._toggle_play)
+        footer.addWidget(self._play_btn)
         self._hr_label = QLabel("HR: --")
         self._hr_label.setStyleSheet("color: #4caf50; font-size: 10px;")
         footer.addWidget(self._hr_label)
@@ -138,6 +164,11 @@ class CinePanel(QWidget):
         self._frame_label.setStyleSheet("color: #9e9e9e; font-size: 10px;")
         footer.addWidget(self._frame_label)
         layout.addLayout(footer)
+
+        # Playback timer for contour/kernel animation
+        self._play_timer = QTimer(self)
+        self._play_timer.setInterval(100)
+        self._play_timer.timeout.connect(self._on_play_tick)
 
         # Contour items
         self._ed_contour_item: pg.PlotDataItem | None = None
@@ -152,6 +183,20 @@ class CinePanel(QWidget):
         self._kernel_positions: np.ndarray | None = None
         self._selected_kernel_idx: int | None = None
         self._edit_mode: bool = False
+
+        # Per-frame tracking overlay (animation)
+        self._tracked_positions_all: np.ndarray | None = None
+        self._kernel_layers: list[str] = []
+        self._tracked_ed_index: int = 0
+        self._tracked_es_index: int = 0
+        self._anim_contour_item: pg.PlotDataItem | None = None
+        self._anim_scatter: pg.ScatterPlotItem | None = None
+
+        # ECG state
+        self._ecg_data: np.ndarray | None = None
+        self._ecg_time_ms: np.ndarray | None = None
+        self._ecg_frame_time_ms: float = 33.3
+        self._ecg_rpeak_items: list[pg.InfiniteLine] = []
 
         # Enable mouse events for kernel editing
         self._plot.scene().sigMouseClicked.connect(self._on_mouse_clicked)
@@ -168,6 +213,144 @@ class CinePanel(QWidget):
 
     def set_frame(self, current: int, total: int) -> None:
         self._frame_label.setText(f"{current}/{total}")
+
+    def set_frames(self, frames: np.ndarray | None, index: int = 0) -> None:
+        """Set the cine frame buffer and show the frame at ``index``."""
+        self._frames = frames
+        if frames is None or frames.ndim < 3 or frames.shape[0] == 0:
+            self._image_item.hide()
+            self._frame_slider.setEnabled(False)
+            self._frame_slider.setRange(0, 0)
+            self._play_btn.setEnabled(False)
+            self._stop_playback()
+            return
+        last = frames.shape[0] - 1
+        self._frame_slider.setRange(0, last)
+        self._frame_slider.setEnabled(True)
+        self._play_btn.setEnabled(frames.shape[0] > 1)
+        self._show_frame(int(np.clip(index, 0, last)))
+
+    def _on_frame_slider(self, value: int) -> None:
+        self._show_frame(int(value))
+
+    def _show_frame(self, index: int) -> None:
+        if self._frames is None or not (0 <= index < self._frames.shape[0]):
+            return
+        img = self._frames[index]
+        self._image_item.setImage(np.ascontiguousarray(img), autoLevels=True)
+        self._image_item.show()
+        h, w = img.shape[:2]
+        self._plot.setRange(xRange=(0, w), yRange=(0, h), padding=0.0)
+        self.set_frame(index + 1, self._frames.shape[0])
+        self._update_ecg_marker(index)
+        self._render_tracked_frame(index)
+
+    # ── Playback (contour/kernel animation) ────────────────────────────────
+
+    def _toggle_play(self) -> None:
+        if self._play_timer.isActive():
+            self._stop_playback()
+            return
+        if self._frames is None or self._frames.shape[0] < 2:
+            return
+        if self._frame_slider.value() >= self._frame_slider.maximum():
+            self._frame_slider.setValue(self._frame_slider.minimum())
+        self._play_btn.setText(tr("strain.pause"))
+        self._play_timer.start()
+
+    def _on_play_tick(self) -> None:
+        if self._frames is None:
+            self._stop_playback()
+            return
+        nxt = self._frame_slider.value() + 1
+        if nxt > self._frame_slider.maximum():
+            nxt = self._frame_slider.minimum()
+        self._frame_slider.setValue(nxt)
+
+    def _stop_playback(self) -> None:
+        self._play_timer.stop()
+        self._play_btn.setText(tr("strain.play"))
+
+    # ── Per-frame tracked overlay (animated kernels + live contour) ────────
+
+    def set_tracked_overlay(
+        self,
+        positions_all: np.ndarray | None,
+        layers: list[str] | None = None,
+        ed_index: int = 0,
+        es_index: int = 0,
+    ) -> None:
+        """Enable per-frame kernel/contour animation from the full-cine tracking."""
+        self._tracked_positions_all = positions_all
+        self._kernel_layers = layers or []
+        self._tracked_ed_index = ed_index
+        self._tracked_es_index = es_index
+        if positions_all is not None and positions_all.ndim == 3:
+            self._render_tracked_frame(self._frame_slider.value())
+
+    def _render_tracked_frame(self, index: int) -> None:
+        if self._tracked_positions_all is None or self._tracked_positions_all.ndim != 3:
+            return
+        pos = self._tracked_positions_all
+        if index < 0 or index >= pos.shape[0]:
+            return
+        if self._anim_contour_item is not None:
+            self._plot.removeItem(self._anim_contour_item)
+            self._anim_contour_item = None
+        if self._anim_scatter is not None:
+            self._plot.removeItem(self._anim_scatter)
+            self._anim_scatter = None
+
+        frame_pos = pos[index]  # (K, 2)
+        k = frame_pos.shape[0]
+        layers = self._kernel_layers
+        valid = ~(np.isnan(frame_pos[:, 0]) | np.isnan(frame_pos[:, 1]))
+        if not valid.any():
+            return
+
+        # Live endo contour (thin yellow) through valid endo kernels
+        endo_idx = [i for i in range(k) if i < len(layers) and layers[i] == "endo" and valid[i]]
+        if len(endo_idx) >= 3:
+            pts = frame_pos[endo_idx]
+            smoothed = _smooth_contour(pts, n_output=64)
+            x = np.append(smoothed[:, 0], smoothed[0, 0])
+            y = np.append(smoothed[:, 1], smoothed[0, 1])
+            self._anim_contour_item = pg.PlotDataItem(x, y, pen=pg.mkPen("#ffd54f", width=1))
+            self._anim_contour_item.setZValue(6)
+            self._plot.addItem(self._anim_contour_item)
+
+        # Kernels colored by layer (green=endo, yellow=mid, blue=epi, red=lost)
+        brushes = []
+        for i in range(k):
+            if not valid[i]:
+                brushes.append(pg.mkBrush(255, 0, 0, 220))
+            elif i < len(layers) and layers[i] == "endo":
+                brushes.append(pg.mkBrush(76, 175, 80, 220))
+            elif i < len(layers) and layers[i] == "epi":
+                brushes.append(pg.mkBrush(66, 165, 245, 220))
+            else:
+                brushes.append(pg.mkBrush(255, 213, 79, 220))
+        self._anim_scatter = pg.ScatterPlotItem(
+            x=frame_pos[valid, 0],
+            y=frame_pos[valid, 1],
+            pen=None,
+            brush=brushes,
+            symbol="s",
+            size=4,
+        )
+        self._anim_scatter.setZValue(10)
+        self._plot.addItem(self._anim_scatter)
+
+    # ── ECG strip ───────────────────────────────────────────────────────────
+
+    def set_ecg_visible(self, visible: bool) -> None:
+        """Show/hide the ECG trace row (hidden when the clip has no ECG)."""
+        self._ecg_plot.setVisible(visible)
+
+    def _update_ecg_marker(self, frame_index: int) -> None:
+        if self._ecg_marker is None or self._ecg_frame_time_ms <= 0:
+            return
+        self._ecg_marker.setPos(float(frame_index) * self._ecg_frame_time_ms)
 
     def show_contour(self, points: np.ndarray, color: str = "#ff1744", smooth: bool = True) -> None:
         """Draw closed contour on the plot with optional cubic spline smoothing."""
@@ -375,35 +558,95 @@ class CinePanel(QWidget):
             self._plot.addItem(text_item)
             self._segment_labels.append(text_item)
 
-    def show_ecg_trace(self, ecg_data: np.ndarray | None, frame_time_ms: float = 33.3, current_frame: int = 0) -> None:
-        """Display ECG trace with frame marker."""
+    def show_ecg_trace(
+        self,
+        ecg_data: np.ndarray | None,
+        frame_time_ms: float = 33.3,
+        current_frame: int = 0,
+        *,
+        ecg_sample_rate: float | None = None,
+        r_peak_times_ms: np.ndarray | None = None,
+        ed_frame: int | None = None,
+        es_frame: int | None = None,
+    ) -> None:
+        """Display ECG trace with frame marker, R-peaks and ED/ES markers.
+
+        Only real ECG data should be passed (never a synthetic one); callers
+        hide the strip via :meth:`set_ecg_visible` when no ECG is available.
+        """
         if self._ecg_item is not None:
             self._ecg_plot.removeItem(self._ecg_item)
             self._ecg_item = None
         if self._ecg_marker is not None:
             self._ecg_plot.removeItem(self._ecg_marker)
             self._ecg_marker = None
+        for item in self._ecg_rpeak_items:
+            self._ecg_plot.removeItem(item)
+        self._ecg_rpeak_items.clear()
+        for item in getattr(self, "_ecg_phase_items", []):
+            self._ecg_plot.removeItem(item)
+        self._ecg_phase_items = []
 
         if ecg_data is None or len(ecg_data) == 0:
+            self._ecg_data = None
+            self._ecg_time_ms = None
             return
 
         n = len(ecg_data)
-        t = np.arange(n) * frame_time_ms
+        if ecg_sample_rate and ecg_sample_rate > 0:
+            t = np.arange(n) / ecg_sample_rate * 1000.0
+        else:
+            t = np.arange(n) * frame_time_ms
+        self._ecg_data = ecg_data
+        self._ecg_time_ms = t
+        self._ecg_frame_time_ms = max(float(frame_time_ms), 0.001)
 
         pen = pg.mkPen("#4caf50", width=1)
         self._ecg_item = pg.PlotDataItem(t, ecg_data, pen=pen)
         self._ecg_plot.addItem(self._ecg_item)
 
-        # Frame marker
-        marker_x = current_frame * frame_time_ms
+        # R-peak markers (real QRS phases)
+        if r_peak_times_ms is not None:
+            for rt in r_peak_times_ms:
+                line = pg.InfiniteLine(
+                    pos=float(rt),
+                    angle=90,
+                    pen=pg.mkPen("#ff6f00", width=1, style=Qt.PenStyle.DotLine),
+                )
+                line.setZValue(15)
+                self._ecg_plot.addItem(line)
+                self._ecg_rpeak_items.append(line)
+
+        # ED (green) / ES (yellow) phase markers
+        self._ecg_phase_items = []
+        if ed_frame is not None:
+            line = pg.InfiniteLine(
+                pos=ed_frame * self._ecg_frame_time_ms,
+                angle=90,
+                pen=pg.mkPen("#00e676", width=1, style=Qt.PenStyle.DashLine),
+            )
+            self._ecg_plot.addItem(line)
+            self._ecg_phase_items.append(line)
+        if es_frame is not None:
+            line = pg.InfiniteLine(
+                pos=es_frame * self._ecg_frame_time_ms,
+                angle=90,
+                pen=pg.mkPen("#ffd54f", width=1, style=Qt.PenStyle.DashLine),
+            )
+            self._ecg_plot.addItem(line)
+            self._ecg_phase_items.append(line)
+
+        # Frame marker (moves with playback)
+        marker_x = current_frame * self._ecg_frame_time_ms
         self._ecg_marker = pg.InfiniteLine(
-            pos=marker_x, angle=90, pen=pg.mkPen("#ffd54f", width=1, style=Qt.PenStyle.DashLine)
+            pos=marker_x, angle=90, pen=pg.mkPen("#ff1744", width=1, style=Qt.PenStyle.DashLine)
         )
         self._ecg_plot.addItem(self._ecg_marker)
 
         self._ecg_plot.setXRange(0, t[-1] if len(t) > 0 else 1000)
 
     def clear(self) -> None:
+        self._stop_playback()
         if self._ed_contour_item is not None:
             self._plot.removeItem(self._ed_contour_item)
             self._ed_contour_item = None
@@ -413,6 +656,13 @@ class CinePanel(QWidget):
         if self._kernel_scatter is not None:
             self._plot.removeItem(self._kernel_scatter)
             self._kernel_scatter = None
+        if self._anim_contour_item is not None:
+            self._plot.removeItem(self._anim_contour_item)
+            self._anim_contour_item = None
+        if self._anim_scatter is not None:
+            self._plot.removeItem(self._anim_scatter)
+            self._anim_scatter = None
+        self._tracked_positions_all = None
         for item in self._segment_labels:
             self._plot.removeItem(item)
         self._segment_labels.clear()
@@ -422,6 +672,14 @@ class CinePanel(QWidget):
         if self._ecg_marker is not None:
             self._ecg_plot.removeItem(self._ecg_marker)
             self._ecg_marker = None
+        for item in self._ecg_rpeak_items:
+            self._ecg_plot.removeItem(item)
+        self._ecg_rpeak_items.clear()
+        for item in getattr(self, "_ecg_phase_items", []):
+            self._ecg_plot.removeItem(item)
+        self._ecg_phase_items = []
+        self._ecg_data = None
+        self._ecg_time_ms = None
         self._info_label.setText("")
         self._hr_label.setText("HR: --")
         self._frame_label.setText("--/--")
@@ -749,6 +1007,7 @@ class ControlPanel(QWidget):
     display_mode_changed = Signal(str)  # "contour", "curves", "sr", "peak"
     strain_metric_changed = Signal(str)  # "deformation", "strain_rate", "peak"
     qc_segment_toggled = Signal(int, bool)  # segment_id, accepted
+    position_selected = Signal(str)  # "A4C" | "A2C" | "A3C"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -828,6 +1087,30 @@ class ControlPanel(QWidget):
 
         group_views.setLayout(views_layout)
         layout.addWidget(group_views)
+
+        # Position (view) selection — which clip the contours came from
+        group_position = QGroupBox(tr("strain.position"))
+        group_position.setStyleSheet("QGroupBox { font-weight: bold; color: #e0e0e0; }")
+        position_layout = QVBoxLayout()
+
+        self._pos_a4c = QRadioButton("A4C")
+        self._pos_a4c.setChecked(True)
+        self._pos_a4c.setStyleSheet("color: #e0e0e0;")
+        self._pos_a4c.toggled.connect(lambda c: self.position_selected.emit("A4C") if c else None)
+        position_layout.addWidget(self._pos_a4c)
+
+        self._pos_a2c = QRadioButton("A2C")
+        self._pos_a2c.setStyleSheet("color: #e0e0e0;")
+        self._pos_a2c.toggled.connect(lambda c: self.position_selected.emit("A2C") if c else None)
+        position_layout.addWidget(self._pos_a2c)
+
+        self._pos_a3c = QRadioButton(tr("strain.position_a3c"))
+        self._pos_a3c.setStyleSheet("color: #e0e0e0;")
+        self._pos_a3c.toggled.connect(lambda c: self.position_selected.emit("A3C") if c else None)
+        position_layout.addWidget(self._pos_a3c)
+
+        group_position.setLayout(position_layout)
+        layout.addWidget(group_position)
 
         # Quality info
         group_quality = QGroupBox("Quality Gate")
@@ -915,6 +1198,14 @@ class ControlPanel(QWidget):
         else:
             self._rejected_label.setText("")
 
+    def set_position(self, view: str) -> None:
+        """Set the selected position radio without re-emitting."""
+        view = view.upper()
+        radio = {"A4C": self._pos_a4c, "A2C": self._pos_a2c, "A3C": self._pos_a3c}.get(view)
+        if radio is not None:
+            with QSignalBlocker(radio):
+                radio.setChecked(True)
+
 
 class StrainWindow(QMainWindow):
     """Separate window for STE strain visualization with quad-view layout."""
@@ -926,6 +1217,14 @@ class StrainWindow(QMainWindow):
         self.setWindowTitle("Strain Analysis")
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
+        try:
+            from PySide6.QtCore import QSettings
+
+            geo = QSettings("SonoForge", "StrainWindow").value("geometry")
+            if geo is not None:
+                self.restoreGeometry(geo)
+        except Exception:  # noqa: BLE001
+            pass
 
         # Central widget
         central = QWidget()
@@ -943,6 +1242,7 @@ class StrainWindow(QMainWindow):
         self._control.display_mode_changed.connect(self._on_display_mode_changed)
         self._control.strain_metric_changed.connect(self._on_strain_metric_changed)
         self._control.qc_segment_toggled.connect(self._on_qc_segment_toggled)
+        self._control.position_selected.connect(self._on_position_selected)
         self._control._btn_undo.clicked.connect(self._undo_kernel_move)
         self._control._btn_redo.clicked.connect(self._redo_kernel_move)
         self._control._btn_save.clicked.connect(self._save_json)
@@ -951,9 +1251,21 @@ class StrainWindow(QMainWindow):
         self._control._btn_close.clicked.connect(self.close)
         splitter.addWidget(self._control)
 
-        # Content area
+        # Content area: meta bar on top, stacked views + summary below
         content = QWidget()
-        content_layout = QHBoxLayout(content)
+        content_outer = QVBoxLayout(content)
+        content_outer.setContentsMargins(0, 0, 0, 0)
+        content_outer.setSpacing(3)
+
+        self._meta_label = QLabel("")
+        self._meta_label.setStyleSheet(
+            "QLabel { color: #cfd8dc; font-size: 11px; font-weight: bold; "
+            "background: #16212b; padding: 3px 8px; border-radius: 3px; }"
+        )
+        content_outer.addWidget(self._meta_label)
+
+        content_inner = QWidget()
+        content_layout = QHBoxLayout(content_inner)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(4)
 
@@ -988,6 +1300,8 @@ class StrainWindow(QMainWindow):
         self._summary = SummaryTable()
         content_layout.addWidget(self._summary, stretch=1)
 
+        content_outer.addWidget(content_inner, stretch=1)
+
         splitter.addWidget(content)
         splitter.setSizes([180, 1220])
 
@@ -995,6 +1309,7 @@ class StrainWindow(QMainWindow):
 
         # State
         self._result: StrainResult | None = None
+        self._position: str = "A4C"
         self._qc_accepted_segments: set[int] = set(range(1, 18))  # All segments accepted by default
 
         # Undo/Redo stacks for kernel movements
@@ -1004,9 +1319,53 @@ class StrainWindow(QMainWindow):
         # Connect panel signals
         self._panel_a4c.kernel_moved.connect(lambda idx, x, y: self._on_kernel_moved("A4C", idx, x, y))
 
-    def show_result(self, result: StrainResult) -> None:
-        """Display strain results in quad-view layout."""
+    def show_result(self, result: StrainResult, *, frames: np.ndarray | None = None) -> None:
+        """Display strain results in the STE window.
+
+        Args:
+            result: computed StrainResult.
+            frames: optional full cine (N, H, W[, C]) used as the ultrasound
+                background of the A4C panel. Positions in the result are in the
+                same pixel coordinate space, so overlays line up with the image.
+        """
         self._result = result
+
+        disp_idx: int | None = None
+        n_all = len(result.longitudinal) if result.longitudinal is not None else 0
+        if frames is not None and frames.ndim >= 3 and frames.shape[0] == n_all:
+            ed = result.ed_index
+            if 0 <= ed < frames.shape[0]:
+                disp_idx = ed
+
+        # ── Meta bar ────────────────────────────────────────────────────────
+        parts: list[str] = [f"GLS {result.gls:.1f}%"]
+        if result.qc_score:
+            qc = f"QC {result.qc_score * 100.0:.0f}%"
+            if not result.qc_physiology_ok and result.qc_physiology_reasons:
+                qc += f" (⚠ {result.qc_physiology_reasons[0]})"
+            parts.append(qc)
+        if result.tracking_quality_mean:
+            parts.append(f"NCC {result.tracking_quality_mean * 100.0:.0f}%")
+        total_k = result.kernels_total_count
+        if total_k:
+            parts.append(f"kernels {result.kernels_accepted_count}/{total_k}")
+        source_map = {
+            "manual": "manual",
+            "manual_ed+auto": "manual ED + auto ES",
+            "manual_es+auto": "manual ES + auto ED",
+            "ecg": "ECG",
+            "simpson": "Simpson",
+            "image": "image",
+            "image_fallback": "image",
+        }
+        source_label = source_map.get(result.ed_es_source, result.ed_es_source)
+        parts.append(f"ED/ES {result.ed_index}/{result.es_index} ({source_label})")
+        parts.append(f"Позиция: {self._position}")
+        if result.drift_compensation_applied:
+            parts.append("drift on")
+        if result.heart_rate_bpm > 0:
+            parts.append(f"HR {result.heart_rate_bpm:.0f} bpm")
+        self._meta_label.setText("   |   ".join(parts))
 
         # Update quality gate info
         self._control.update_quality(
@@ -1024,11 +1383,11 @@ class StrainWindow(QMainWindow):
             a2c_segs = [v for k, v in result.segment_strain.items() if 7 <= k <= 11]
             dao_segs = [v for k, v in result.segment_strain.items() if k >= 12]
             if a4c_segs:
-                gls_a4c = float(np.min(a4c_segs))
+                gls_a4c = float(np.mean(a4c_segs))
             if a2c_segs:
-                gls_a2c = float(np.min(a2c_segs))
+                gls_a2c = float(np.mean(a2c_segs))
             if dao_segs:
-                gls_dao = float(np.min(dao_segs))
+                gls_dao = float(np.mean(dao_segs))
 
         # Update summary table
         self._summary.update_values(
@@ -1080,26 +1439,81 @@ class StrainWindow(QMainWindow):
         # HR and frame info
         self._panel_a4c.set_hr(result.heart_rate_bpm)
         n_frames = len(result.longitudinal) if result.longitudinal is not None else 0
-        self._panel_a4c.set_frame(result.es_index, n_frames)
+        # Real ultrasound background (frame where kernels/ED contour are anchored)
+        self._panel_a4c.set_frames(frames, index=disp_idx if disp_idx is not None else 0)
+        self._panel_a4c.set_frame((disp_idx if disp_idx is not None else result.es_index) + 1, n_frames)
 
-        # ECG trace (use real ECG if available, otherwise synthetic)
-        if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0:
+        # Per-frame animated overlay (kernels + live endo contour follow the wall)
+        layers = [k.layer for k in result.kernels]
+        self._panel_a4c.set_tracked_overlay(
+            result.tracked_positions_all,
+            layers=layers,
+            ed_index=result.ed_index,
+            es_index=result.es_index,
+        )
+
+        # ECG trace: real DICOM ECG only. No real ECG → strip hidden entirely
+        # (no synthetic placeholder — issue #2).
+        has_ecg = result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0
+        if has_ecg:
             ecg = result.ecg_trace_for_display
+            sample_rate: float | None = None
+            if result.ecg_waveform is not None and result.ecg_waveform.primary_lead is not None:
+                sample_rate = float(result.ecg_waveform.primary_lead.sampling_frequency)
+            r_peak_times: np.ndarray | None = None
+            if result.r_peak_result is not None and result.r_peak_result.r_peak_times_ms is not None:
+                r_peak_times = result.r_peak_result.r_peak_times_ms
+            self._panel_a4c.show_ecg_trace(
+                ecg,
+                frame_time_ms=result.frame_time_ms,
+                current_frame=result.es_index,
+                ecg_sample_rate=sample_rate,
+                r_peak_times_ms=r_peak_times,
+                ed_frame=result.ed_index,
+                es_frame=result.es_index,
+            )
+            self._panel_a4c.set_ecg_visible(True)
         else:
-            ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
-        self._panel_a4c.show_ecg_trace(ecg, current_frame=result.es_index)
+            self._panel_a4c.set_ecg_visible(False)
 
-        # Placeholder panels — show same data for now
-        self._panel_a2c.set_title_info(f"GLS: {result.gls:.1f}%")
-        self._panel_dao.set_title_info(f"GLS: {result.gls:.1f}%")
+        # A2C/DAO are not analysed in the single-view pass
+        self._panel_a2c.set_title_info(tr("strain.no_data"))
+        self._panel_dao.set_title_info(tr("strain.no_data"))
 
-        # Update curves view
+        # Update curves view (ECG strip hidden there too when absent)
         self._curves_view.set_strain_data(result)
 
         if not self.isVisible():
             self.show()
         self.raise_()
         self.activateWindow()
+
+    def set_position(self, view: str) -> None:
+        """Record which echo view (A4C/A2C/A3C) the contours came from."""
+        view = view.upper()
+        if view not in ("A4C", "A2C", "A3C"):
+            return
+        self._position = view
+        self._control.set_position(view)
+        self._curves_view.set_active_view(view)
+        if self._result is not None:
+            parts = self._meta_label.text().split("   |   ")
+            parts = [p for p in parts if not p.startswith("Позиция:")]
+            parts.append(f"Позиция: {self._position}")
+            self._meta_label.setText("   |   ".join(parts))
+
+    def show_curves(self) -> None:
+        """Switch the stacked view to the strain-curves page."""
+        self._stacked.setCurrentIndex(1)
+        self._control._mode_curves.setChecked(True)
+        if self._result is not None:
+            self._curves_view.set_strain_data(self._result)
+
+    def _on_position_selected(self, view: str) -> None:
+        self._position = view
+        self._curves_view.set_active_view(view)
+        if self._result is not None and self._stacked.currentIndex() == 1:
+            self._curves_view.set_strain_data(self._result)
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
         """Generate synthetic ECG trace for visualization."""
@@ -1361,6 +1775,7 @@ class StrainWindow(QMainWindow):
         data = {
             "gls": self._result.gls,
             "heart_rate_bpm": self._result.heart_rate_bpm,
+            "position": self._position,
             "ed_index": self._result.ed_index,
             "es_index": self._result.es_index,
             "kernels_accepted": self._result.kernels_accepted_count,
@@ -1446,5 +1861,12 @@ class StrainWindow(QMainWindow):
         logger.info("Exported CSV to %s", path)
 
     def closeEvent(self, event) -> None:
+        try:
+            from PySide6.QtCore import QSettings
+
+            settings = QSettings("SonoForge", "StrainWindow")
+            settings.setValue("geometry", self.saveGeometry())
+        except Exception:  # noqa: BLE001
+            pass
         self.closed.emit()
         super().closeEvent(event)

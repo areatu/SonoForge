@@ -4452,12 +4452,68 @@ class ViewerWidget(QWidget):
     def contours(self) -> list[Contour]:
         return list(self._stored_contours)
 
-    def get_lv_contour(self) -> Contour | None:
-        """Return the first LV contour, or None if no LV contour exists."""
+    def get_lv_contour(self, *, phase: str | None = None, view: str | None = None) -> Contour | None:
+        """Return an LV contour, preferring the requested phase/view.
+
+        With no filters this matches the historical behaviour (first LV
+        contour), so existing callers keep working.
+        """
         for contour in self._stored_contours:
-            if contour.chamber == "LV":
+            if contour.chamber != "LV":
+                continue
+            if phase is not None and (contour.phase or "").upper() != phase.upper():
+                continue
+            if view is not None and (contour.view or "").upper() != view.upper():
+                continue
+            return contour
+        return None
+
+    def get_lv_epicardial_contour(self, *, phase: str, view: str = "A4C") -> Contour | None:
+        """Return the editable STE epicardial contour for a phase/view."""
+        for contour in self._stored_contours:
+            if (
+                contour.chamber == "LV_EPI"
+                and (contour.phase or "").upper() == phase.upper()
+                and (contour.view or "").upper() == view.upper()
+            ):
                 return contour
         return None
+
+    def ensure_lv_epicardial_contours(self, *, view: str = "A4C") -> list[Contour]:
+        """Create editable epicardial contours from existing endocardial LV contours.
+
+        For every phase (ED/ES) that has an endo contour but no LV_EPI contour,
+        generate the epicardium by expanding the endo along its outward normals
+        by the standard wall thickness (8 mm). Existing LV_EPI contours are
+        never overwritten.
+        """
+        from echo_personal_tool.domain.services.myocardial_zone import expand_contour_to_zone
+
+        spacing = self._pixel_spacing() or (1.0, 1.0)
+        thickness_px = 8.0 / max(float(np.mean(spacing)), 1e-6)
+        updated = list(self._stored_contours)
+        created: list[Contour] = []
+        for phase in ("ED", "ES"):
+            endo = self.get_lv_contour(phase=phase, view=view)
+            if endo is None or len(endo.points) < 3:
+                continue
+            if self.get_lv_epicardial_contour(phase=phase, view=view) is not None:
+                continue
+            epi = expand_contour_to_zone(np.asarray(endo.points, dtype=np.float64), thickness_px)
+            created.append(
+                replace(
+                    endo,
+                    chamber="LV_EPI",
+                    points=[(float(x), float(y)) for x, y in epi],
+                    source="ste_auto",
+                    mitral_annulus=None,
+                    apex_landmark=None,
+                )
+            )
+        if created:
+            updated.extend(created)
+            self.apply_contours(updated)
+        return created
 
     def show_speckle_result(self, result: object) -> None:
         """Display speckle tracking overlay from StrainResult."""
@@ -4501,7 +4557,6 @@ class ViewerWidget(QWidget):
             compute_weighted_radial_strain_gl,
         )
         from echo_personal_tool.domain.services.tracking_smoothing import (
-            apply_motion_model,
             re_smooth_trajectories,
         )
 
@@ -4510,26 +4565,29 @@ class ViewerWidget(QWidget):
         if raw is None or ncc is None:
             return
 
-        smoothed = re_smooth_trajectories(raw, ncc, result.kernels, smoothness)
-        smoothed = apply_motion_model(
-            smoothed,
-            ncc,
-            result.kernels,
-            result.ed_index - result.tracking_window_start,
-            result.ncc_threshold,
-        )
+        # raw/ncc are full-cine arrays with NaN outside the tracked window;
+        # smoothing must run on the window slice only (splines and the
+        # Savitzky-Golay filter cannot handle NaN rows).  No motion model is
+        # applied here: it is gated off in the worker by default (issue #7,
+        # honest tracking) and would fabricate displacement on re-smooth.
+        ws = int(result.tracking_window_start)
+        we = int(result.tracking_window_end)
+        raw_win = raw[ws : we + 1]
+        ncc_win = ncc[ws : we + 1]
+        if raw_win.size == 0 or not np.all(np.isfinite(raw_win)):
+            return
+        smoothed = re_smooth_trajectories(raw_win, ncc_win, result.kernels, smoothness)
 
         n_frames = raw.shape[0]
         tracked = np.full_like(raw, np.nan)
-        tracked[:] = smoothed
-        result.tracked_positions_all = tracked
+        tracked[ws : we + 1] = smoothed
 
         ps = self._current_state.pixel_spacing if self._current_state else (1.0, 1.0)
         endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
         epi_indices = [i for i, k in enumerate(result.kernels) if k.layer == "epi"]
         local_ed = result.ed_index - result.tracking_window_start
         local_es = result.es_index - result.tracking_window_start
-        ed_ncc = ncc[local_ed].copy() if local_ed < n_frames else np.ones(ncc.shape[1])
+        ed_ncc = ncc_win[local_ed].copy() if local_ed < len(ncc_win) else np.ones(ncc.shape[1])
 
         window_long = compute_weighted_longitudinal_strain_gl(smoothed, local_ed, ps, endo_indices, ed_ncc)
         if result.drift_compensation_applied:
@@ -4567,6 +4625,7 @@ class ViewerWidget(QWidget):
             longitudinal=longitudinal,
             radial=radial,
             gls=compute_gls(window_long, local_ed, local_es),
+            tracked_positions_all=tracked,
             tracked_es_positions=smoothed[local_es].copy()
             if local_es < smoothed.shape[0]
             else result.tracked_es_positions,
@@ -5310,6 +5369,8 @@ class ViewerWidget(QWidget):
             return self._contour_pen_ai
         if contour.source == "model":
             return self._contour_pen_model
+        if contour.chamber.upper() == "LV_EPI":
+            return pg.mkPen("#ab47bc", width=2, style=Qt.PenStyle.DashLine)
         return self._contour_pen_manual
 
     def _contour_xy(

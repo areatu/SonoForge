@@ -16,6 +16,7 @@ from echo_personal_tool.domain.services.ultrasound_region_physics import (
     is_spectral_doppler_region,
     region_physical_deltas,
 )
+from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
 
 _SPATIAL_FORMAT_MAP = {
     1: "B-mode",
@@ -195,7 +196,8 @@ def extract_properties_snapshot(
         except TypeError:
             pass
 
-    number_of_frames = int(dataset.get("NumberOfFrames", 1) or 1)
+    pixel_data = bytes(dataset.PixelData) if hasattr(dataset, "PixelData") else None
+    number_of_frames = infer_dicom_frame_count(dataset, pixel_data=pixel_data)
 
     # Timing
     frame_time_ms = _frame_time_ms(dataset)

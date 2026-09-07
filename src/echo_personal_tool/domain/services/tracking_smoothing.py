@@ -175,11 +175,12 @@ def apply_motion_model(
 ) -> np.ndarray:
     """Apply physiological motion model constraints during systole.
 
-    During systole (t > ed_index) both the endocardium and the epicardium move
-    inward (toward the LV cavity centre); the endocardium moves more, which
-    manifests as wall thickening. The constraint only corrects kernels that
-    moved in the opposite (outward) direction, gently pulling them back without
-    overriding the actual tracking results.
+    During systole (t > ed_index):
+    - Endo kernels should move toward LV center (inward)
+    - Epi kernels should move away from LV center (outward)
+
+    The constraint gently pulls positions toward physiologically expected
+    directions without overriding the actual tracking results.
 
     Args:
         positions: (n_frames, n_kernels, 2) smoothed positions.
@@ -217,8 +218,10 @@ def apply_motion_model(
             disp_along_center = np.dot(displacement, to_center)
 
             kernel = kernels[i]
-            if kernel.layer in ("endo", "epi"):
+            if kernel.layer == "endo":
                 expected_sign = 1.0
+            elif kernel.layer == "epi":
+                expected_sign = -1.0
             else:
                 continue
 

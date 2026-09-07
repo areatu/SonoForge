@@ -30,8 +30,12 @@ class SteSensitivityOverlay(QWidget):
         layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(4)
 
-        header = QLabel("Сглаживание")
+        header = QLabel("Сглаживание кривых")
         header.setObjectName("steOverlayHeader")
+        header.setToolTip(
+            "Степень сглаживания траекторий спеклов: больше — кривые плавнее, "
+            "меньше — ближе к исходным данным отслеживания. Применяется сразу."
+        )
         layout.addWidget(header)
 
         row = QHBoxLayout()
@@ -46,12 +50,18 @@ class SteSensitivityOverlay(QWidget):
         self._slider.setValue(100)
         self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
         self._slider.setMinimumWidth(140)
+        self._slider.setToolTip(
+            "Повторное сглаживание кривых деформации. "
+            "Влево — ближе к данным (меньше сглаживания), вправо — плавнее."
+        )
         self._slider.valueChanged.connect(self._on_slider_moved)
 
         self._reset_btn = QLabel("↺")
         self._reset_btn.setObjectName("steOverlayReset")
         self._reset_btn.setFixedSize(20, 20)
         self._reset_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._reset_btn.setToolTip("Сбросить сглаживание к значению 1.0")
+        self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         from PySide6.QtGui import QFont
 
         font = QFont()
@@ -76,6 +86,20 @@ class SteSensitivityOverlay(QWidget):
         self._slider.setValue(int(value * 100))
         self._value_label.setText(f"{value:.1f}")
         self._updating = False
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton and self.childAt(event.position().toPoint()) is self._reset_btn:
+            self._reset_smoothness()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def _reset_smoothness(self) -> None:
+        self._updating = True
+        self._slider.setValue(100)
+        self._value_label.setText("1.0")
+        self._updating = False
+        self.smoothness_changed.emit(1.0)
 
     def _on_slider_moved(self, raw: int) -> None:
         if self._updating:

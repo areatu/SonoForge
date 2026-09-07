@@ -1816,6 +1816,79 @@ class TestSpeckleOverlayDeep:
         # Should not raise
         w._refresh_speckle_overlay_for_current_frame()
 
+    def test_ste_smoothness_replaces_frozen_result(self, qtbot) -> None:
+        """Moving the smoothness slider must not crash on the frozen StrainResult
+        dataclass and must re-smooth only the tracked window (regression: direct
+        attribute assignment raised FrozenInstanceError, and NaN rows outside the
+        window were fed into the spline/Savitzky-Golay filters)."""
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult, TrackingKernel
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        n_frames, n_kern = 20, 12
+        kernels = [
+            TrackingKernel(
+                center=(32.0, 32.0),
+                node_index=i,
+                layer="endo" if i < 4 else ("mid" if i < 8 else "epi"),
+                radius=4,
+                arc_length_param=i / (n_kern - 1),
+            )
+            for i in range(n_kern)
+        ]
+        # raw/ncc full-cine arrays with NaN outside the tracked window
+        raw = np.full((n_frames, n_kern, 2), np.nan)
+        ncc = np.full((n_frames, n_kern), np.nan)
+        ws, we = 4, 14
+        rng = np.random.default_rng(3)
+        raw[ws : we + 1] = rng.normal(30, 2, (we - ws + 1, n_kern, 2))
+        ncc[ws : we + 1] = 0.9
+        result = StrainResult(
+            longitudinal=np.zeros(n_frames),
+            radial=np.zeros(n_frames),
+            gls=-15.0,
+            ed_index=4,
+            es_index=14,
+            kernels=kernels,
+            tracked_positions_all=raw.copy(),
+            raw_tracked_positions=raw,
+            ncc_all_frames=ncc,
+            tracking_window_start=ws,
+            tracking_window_end=we,
+            tracked_ed_positions=raw[ws].copy(),
+            tracked_es_positions=raw[we].copy(),
+        )
+        w._speckle_result = result
+
+        w._on_ste_smoothness_changed(1.0)  # previously raised FrozenInstanceError
+
+        new_result = w._speckle_result
+        assert new_result is not result  # immutable: replaced, not mutated
+        assert new_result.tracked_positions_all.shape == raw.shape
+        assert np.all(np.isfinite(new_result.tracked_positions_all[ws : we + 1]))
+        assert np.all(np.isnan(new_result.tracked_positions_all[:ws]))
+        assert np.all(np.isnan(new_result.tracked_positions_all[we + 1 :]))
+
+    def test_ste_smoothness_guards_missing_window(self, qtbot) -> None:
+        """A result without raw positions must be ignored, not crash."""
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        result = StrainResult(
+            longitudinal=np.zeros(5),
+            radial=np.zeros(5),
+            gls=0.0,
+            kernels=[],
+            raw_tracked_positions=None,
+        )
+        w._speckle_result = result
+        w._on_ste_smoothness_changed(1.0)  # must not raise
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Scroll debounce

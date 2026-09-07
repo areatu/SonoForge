@@ -174,7 +174,19 @@ class LocalMediaDirectoryScanner:
             self._log_scan_error(path, ValueError("Missing Study/Series UID"))
             return None
 
-        return map_instance_metadata(dataset, path=path)
+        pixel_data = None
+        if "NumberOfFrames" not in dataset:
+            # The header read skipped pixels; a vendor may have omitted
+            # (0028,0008) NumberOfFrames on a genuinely multi-frame clip.  Do a
+            # one-off full read so the frame count can be inferred from pixels.
+            try:
+                full = pydicom.dcmread(path, force=True)
+            except Exception:  # noqa: BLE001
+                full = None
+            if full is not None and hasattr(full, "PixelData"):
+                pixel_data = bytes(full.PixelData)
+
+        return map_instance_metadata(dataset, path=path, pixel_data=pixel_data)
 
     def _read_study_uid(self, path: Path) -> str | None:
         try:

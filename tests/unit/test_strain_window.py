@@ -214,6 +214,75 @@ class TestCinePanel:
         assert panel._hr_label.text() == "HR: --"
         assert panel._frame_label.text() == "--/--"
 
+    def test_set_tracked_overlay_renders_and_plays(self):
+        panel = self._make_panel()
+        frames = np.zeros((10, 100, 100), dtype=np.uint8)
+        panel.set_frames(frames, index=0)
+        pos = np.zeros((10, 6, 2))
+        for f in range(10):
+            for k in range(6):
+                pos[f, k] = [20 + k * 10, 30 + f]
+        layers = ["endo", "endo", "endo", "mid", "mid", "epi"]
+        panel.set_tracked_overlay(pos, layers=layers, ed_index=0, es_index=5)
+        assert panel._anim_scatter is not None
+        assert panel._anim_contour_item is not None  # >= 3 endo kernels
+
+        # scrubbing moves the animated overlay
+        panel._show_frame(3)
+        assert panel._anim_scatter is not None
+
+        # play toggles the timer and advances frames
+        panel._toggle_play()
+        assert panel._play_timer.isActive()
+        panel._toggle_play()
+        assert not panel._play_timer.isActive()
+
+        # clear removes animated items
+        panel.clear()
+        assert panel._anim_scatter is None
+        assert panel._anim_contour_item is None
+        assert panel._tracked_positions_all is None
+
+    def test_set_tracked_overlay_nan_frame_renders_red_only(self):
+        panel = self._make_panel()
+        frames = np.zeros((5, 100, 100), dtype=np.uint8)
+        panel.set_frames(frames, index=0)
+        pos = np.full((5, 4, 2), np.nan)
+        for k in range(4):
+            pos[0, k] = [10 + k * 10, 20]
+        panel.set_tracked_overlay(pos, layers=["endo", "endo", "mid", "epi"])
+        panel._show_frame(1)  # all-NaN frame → nothing drawn
+        assert panel._anim_scatter is None
+
+    def test_set_ecg_visible(self):
+        panel = self._make_panel()
+        panel.set_ecg_visible(False)
+        assert panel._ecg_plot.isHidden()
+        panel.set_ecg_visible(True)
+        assert not panel._ecg_plot.isHidden()
+
+    def test_show_ecg_trace_with_sample_rate_and_markers(self):
+        panel = self._make_panel()
+        ecg = np.sin(np.arange(100) / 5.0)
+        panel.show_ecg_trace(
+            ecg,
+            frame_time_ms=33.3,
+            current_frame=3,
+            ecg_sample_rate=500.0,
+            r_peak_times_ms=np.array([200.0, 800.0]),
+            ed_frame=1,
+            es_frame=5,
+        )
+        assert panel._ecg_item is not None
+        assert len(panel._ecg_rpeak_items) == 2
+        assert len(panel._ecg_phase_items) == 2
+        # real time axis: 500 Hz → last sample at 198 ms
+        assert panel._ecg_time_ms[-1] == pytest.approx(198.0)
+
+        # frame marker moves when the frame changes
+        panel._update_ecg_marker(7)
+        assert panel._ecg_marker.pos().x() == pytest.approx(7 * 33.3)
+
     def test_on_mouse_clicked_not_edit_mode(self):
         panel = self._make_panel()
         # Should not crash when edit_mode is False
@@ -450,6 +519,27 @@ class TestStrainWindow:
         assert 5 not in w._qc_accepted_segments
         w._on_qc_segment_toggled(5, True)
         assert 5 in w._qc_accepted_segments
+
+    def test_set_position(self):
+        w = self._make_window()
+        assert w._position == "A4C"
+        w.set_position("A2C")
+        assert w._position == "A2C"
+        assert w._control._pos_a2c.isChecked()
+        # invalid view is ignored
+        w.set_position("XX")
+        assert w._position == "A2C"
+
+    def test_position_radio_updates_state(self):
+        w = self._make_window()
+        w._control._pos_a3c.setChecked(True)
+        assert w._position == "A3C"
+
+    def test_show_curves_switches_stacked(self):
+        w = self._make_window()
+        w.show_curves()
+        assert w._stacked.currentIndex() == 1
+        assert w._control._mode_curves.isChecked()
 
     def test_generate_synthetic_ecg(self):
         w = self._make_window()

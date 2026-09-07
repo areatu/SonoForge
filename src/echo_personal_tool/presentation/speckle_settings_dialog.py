@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QLabel,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -32,6 +33,8 @@ class SpeckleSettingsDialog(QDialog):
         manual_ed: int | None = None,
         manual_es: int | None = None,
         n_frames: int = 0,
+        ed_es_hint: str | None = None,
+        initial_view: str = "A4C",
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("dialog.speckle_settings.title"))
@@ -45,6 +48,15 @@ class SpeckleSettingsDialog(QDialog):
         self._mode_combo.addItem("Sequential (frame-to-frame)", "sequential")
         self._mode_combo.addItem("Incremental (ED-anchored, legacy)", "incremental")
         self._mode_combo.addItem("Bidirectional (ED-anchored, legacy)", "bidirectional")
+
+        # Position (echo view) the contours were drawn on: A4C / A2C / A3C
+        self._view_combo = QComboBox(self)
+        self._view_combo.addItem("A4C", "A4C")
+        self._view_combo.addItem("A2C", "A2C")
+        self._view_combo.addItem(tr("strain.position_a3c"), "A3C")
+        idx = self._view_combo.findData(initial_view.upper())
+        if idx >= 0:
+            self._view_combo.setCurrentIndex(idx)
 
         self._drift_compensation_check = QCheckBox(self)
         self._drift_compensation_check.setChecked(True)
@@ -78,6 +90,7 @@ class SpeckleSettingsDialog(QDialog):
         self._es_auto_check.toggled.connect(lambda checked: self._es_spin.setEnabled(not checked))
 
         form = QFormLayout()
+        form.addRow(tr("strain.position") + ":", self._view_combo)
         form.addRow("Preset:", self._preset_combo)
         form.addRow("Tracking mode:", self._mode_combo)
         form.addRow("Drift compensation:", self._drift_compensation_check)
@@ -87,6 +100,15 @@ class SpeckleSettingsDialog(QDialog):
         form.addRow("ED frame:", self._ed_spin)
         form.addRow(self._es_auto_check)
         form.addRow("ES frame:", self._es_spin)
+
+        self._source_hint_label = QLabel(ed_es_hint or "")
+        self._source_hint_label.setWordWrap(True)
+        self._source_hint_label.setStyleSheet(
+            "QLabel { color: #90caf9; background: #12283f; "
+            "padding: 4px 8px; border-radius: 4px; font-size: 11px; }"
+        )
+        if ed_es_hint:
+            form.addRow(self._source_hint_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -99,6 +121,10 @@ class SpeckleSettingsDialog(QDialog):
 
     def selected_preset_name(self) -> str:
         return str(self._preset_combo.currentData())
+
+    def selected_view(self) -> str:
+        """Position (A4C/A2C/A3C) the user will draw contours on."""
+        return str(self._view_combo.currentData())
 
     @property
     def manual_ed(self) -> int | None:

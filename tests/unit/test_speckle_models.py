@@ -139,7 +139,7 @@ class TestSpeckleConfig:
         assert cfg.search_radius == 8
         assert cfg.bidirectional is True
         assert cfg.drift_compensation is True
-        assert cfg.tracking_mode == "sequential"
+        assert cfg.tracking_mode == "border"
         assert cfg.ncc_threshold == 0.3
 
     def test_preset_research(self) -> None:
