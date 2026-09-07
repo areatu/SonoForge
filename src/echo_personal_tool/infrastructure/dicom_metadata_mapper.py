@@ -10,6 +10,7 @@ from pydicom.dataset import Dataset
 
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.domain.services.pixel_spacing_resolver import resolve_pixel_spacing
+from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
 
 
 def _parse_study_datetime(study_date: str | None, study_time: str | None) -> datetime:
@@ -58,9 +59,11 @@ def _safe_float(value) -> float | None:
         return None
 
 
-def map_instance_metadata(dataset: Dataset, path: Path | None = None) -> InstanceMetadata:
+def map_instance_metadata(
+    dataset: Dataset, path: Path | None = None, *, pixel_data: bytes | None = None
+) -> InstanceMetadata:
     """Convert a DICOM dataset (header or full) to InstanceMetadata."""
-    number_of_frames = int(dataset.get("NumberOfFrames", 1) or 1)
+    number_of_frames = infer_dicom_frame_count(dataset, pixel_data=pixel_data)
     series_description = str(dataset.get("SeriesDescription", "") or "").strip()
     spacing, spacing_source = _pixel_spacing(dataset)
     return InstanceMetadata(

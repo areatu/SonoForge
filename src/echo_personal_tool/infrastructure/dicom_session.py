@@ -32,6 +32,8 @@ import numpy as np
 import pydicom
 from pydicom.encaps import generate_frames, parse_basic_offsets
 
+from echo_personal_tool.infrastructure.dicom_frame_count import infer_dicom_frame_count
+
 logger = logging.getLogger(__name__)
 
 _thread_local = threading.local()
@@ -527,7 +529,13 @@ class DicomSession:
         # Metadata straight from the file: stop_before_pixels only reads the header, so
         # opening a 332 MB cine no longer means reading 332 MB into RAM.
         self._metadata = pydicom.dcmread(str(resolved), stop_before_pixels=True, force=True)
-        self._frame_count = int(getattr(self._metadata, "NumberOfFrames", 1))
+        self._frame_count = infer_dicom_frame_count(self._metadata)
+        if self._frame_count <= 1:
+            # Vendors sometimes omit (0028,0008) NumberOfFrames on genuinely
+            # multi-frame clips; recover the count from the pixel bytes.
+            pixel_data = _extract_pixel_data_from_bytes(resolved.read_bytes())
+            if pixel_data:
+                self._frame_count = infer_dicom_frame_count(self._metadata, pixel_data=pixel_data)
         tsuid = str(getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1"))
         self._transfer_syntax_uid = tsuid
         self._extended_offsets = _extended_offsets_from_metadata(self._metadata)
