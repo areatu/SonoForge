@@ -53,11 +53,15 @@ def create_myocardial_zone(
     endo_points: np.ndarray,
     pixel_spacing: tuple[float, float],
     thickness_mm: float = 8.0,
+    epi_points: np.ndarray | None = None,
 ) -> MyocardialZone:
     avg_spacing = (pixel_spacing[0] + pixel_spacing[1]) / 2.0
     thickness_px = thickness_mm / avg_spacing
     endo_points = resample_contour(endo_points, n_points=128)
-    epi_points = expand_contour_to_zone(endo_points, thickness_px)
+    if epi_points is None:
+        epi_points = expand_contour_to_zone(endo_points, thickness_px)
+    else:
+        epi_points = resample_contour(np.asarray(epi_points, dtype=np.float64), n_points=128)
     return MyocardialZone(
         endo_points=endo_points,
         epi_points=epi_points,

@@ -58,15 +58,16 @@ class SpeckleConfig:
     wall_thickness_mm: float = 8.0
     bidirectional: bool = True
     ed_anchored: bool = True
-    tracking_mode: str = "incremental"
+    tracking_mode: str = "sequential"
     spatial_smoothing: float = 1.0
     temporal_smoothing: float = 1.0
     quality_weighted_smoothing: bool = True
     drift_compensation: bool = True
+    global_motion_compensation: bool = True
     min_segment_quality: float = 0.4
     min_kernel_quality: float = 0.3
-    multi_cycle_average: bool = True
-    contour_resample_points: int = 128
+    # Forward-backward closure error, as a fraction of ``search_radius``; a
+    # match whose round trip exceeds this is rejected.
     closure_error_threshold: float = 0.5
 
     @classmethod
@@ -76,7 +77,7 @@ class SpeckleConfig:
             search_radius=8,
             bidirectional=True,
             drift_compensation=True,
-            tracking_mode="incremental",
+            tracking_mode="sequential",
             ncc_threshold=0.3,
             outlier_sigma=0,
         )
@@ -88,6 +89,7 @@ class SpeckleConfig:
             search_radius=18,
             spatial_smoothing=1.2,
             temporal_smoothing=1.1,
+            tracking_mode="sequential",
         )
 
     @classmethod
@@ -147,4 +149,6 @@ class StrainResult:
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None
     ed_es_source: str = "image"
+    ed_es_confidence: float = 0.0
+    ed_es_quality: str = "unknown"
     ecg_trace_for_display: np.ndarray | None = None

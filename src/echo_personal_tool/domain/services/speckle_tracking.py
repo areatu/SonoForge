@@ -164,10 +164,16 @@ def track_frame_pair(
                 valid_mask[i] = False
 
     if config.outlier_sigma > 0 and valid_mask.sum() > 3:
-        disp_magnitudes = np.linalg.norm(displacements, axis=1)
-        max_displacement = config.search_radius * 0.8
-        too_far = disp_magnitudes > max_displacement
-        valid_mask &= ~too_far
+        # Spatial consistency: flag kernels whose displacement vector deviates
+        # from the median of the valid population (robust MAD z-score). This
+        # catches "jumped-to-search-boundary" matches while leaving coherent
+        # whole-wall motion (e.g. the large ED→ES displacement) untouched.
+        valid_disp = displacements[valid_mask]
+        med = np.median(valid_disp, axis=0)
+        dev = np.linalg.norm(valid_disp - med, axis=1)
+        mad = np.median(np.abs(dev - np.median(dev))) + 1e-9
+        z = dev / (1.4826 * mad)
+        valid_mask[valid_mask] &= z <= config.outlier_sigma
 
     return TrackingResult(
         frame_index=0,
@@ -216,22 +222,101 @@ def build_zone_mask(
     return mask.astype(bool)
 
 
+def _outward_normals(points: np.ndarray) -> np.ndarray:
+    """Unit normals pointing away from the contour centroid (outward for the LV).
+
+    For the open A4C endocardial contour the centroid lies inside the LV cavity,
+    so flipping each normal away from the centroid yields the epicardial
+    direction. This mirrors ``SpeckleOverlay.show_myocardial_zone_dynamic`` and
+    avoids the septal-lateral midpoint heuristic used by ``myocardial_zone``.
+    """
+    pts = np.asarray(points, dtype=np.float64)
+    n = len(pts)
+    if n < 2:
+        return np.zeros_like(pts)
+    tangents = np.zeros_like(pts)
+    tangents[0] = pts[1] - pts[0]
+    tangents[-1] = pts[-1] - pts[-2]
+    tangents[1:-1] = pts[2:] - pts[:-2]
+    normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    norms[norms < 1e-10] = 1.0
+    normals = normals / norms
+    to_center = np.mean(pts, axis=0) - pts
+    dot = np.sum(normals * to_center, axis=1)
+    normals[dot > 0] *= -1.0
+    return normals
+
+
 def build_zone_mask_from_kernels(
     kernel_positions: np.ndarray,
     layer_mask: np.ndarray,
     frame_shape: tuple[int, int],
     wall_thickness_px: int = 20,
+    epi_layer_mask: np.ndarray | None = None,
 ) -> np.ndarray:
+    """Build the myocardial ring mask from tracked kernel positions.
+
+    Reconstructs endo/epi contours and subtracts the endocardial polygon from
+    the epicardial one — the same geometry as ``build_zone_mask``. If no
+    epicardial layer is available, the endo contour is expanded outward along
+    smooth normals.
+
+    The previous convex-hull approach is kept only as a last-resort fallback:
+    for the open A4C contour the convex hull of the endo border wraps around the
+    LV cavity, so the mask covered mostly blood pool instead of myocardium.
+    """
     h, w = frame_shape
-    mask = np.zeros((h, w), dtype=np.uint8)
-    endo_pts = kernel_positions[layer_mask].astype(np.int32)
+    endo_pts = np.asarray(kernel_positions[layer_mask], dtype=np.float64)
     if len(endo_pts) < 3:
         return np.zeros((h, w), dtype=bool)
-    hull = cv2.convexHull(endo_pts)
-    cv2.fillPoly(mask, [hull], 1)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (wall_thickness_px, wall_thickness_px))
-    dilated = cv2.dilate(mask, kernel, iterations=1)
-    return dilated.astype(bool)
+
+    epi_pts: np.ndarray | None = None
+    if epi_layer_mask is not None and int(epi_layer_mask.sum()) >= 3:
+        epi_pts = np.asarray(kernel_positions[epi_layer_mask], dtype=np.float64)
+
+    if epi_pts is None:
+        epi_pts = endo_pts + _outward_normals(endo_pts) * float(wall_thickness_px)
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+    epi_poly = np.round(epi_pts).astype(np.int32)
+    endo_poly = np.round(endo_pts).astype(np.int32)
+    cv2.fillPoly(mask, [epi_poly], 1)
+    cv2.fillPoly(mask, [endo_poly], 0)
+    mask = mask.astype(bool)
+
+    # Slight dilation so the constraint stays lenient to epi motion/noise.
+    pad = max(2, int(wall_thickness_px // 8))
+    structuring = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1, 2 * pad + 1))
+    if mask.any():
+        mask = cv2.dilate(mask.astype(np.uint8), structuring, iterations=1).astype(bool)
+    else:
+        # Last-resort fallback for degenerate geometry (few collinear points).
+        hull = cv2.convexHull(endo_poly)
+        if hull is not None and len(hull) >= 3:
+            cv2.fillPoly(mask.astype(np.uint8), [hull], 1)
+            mask = cv2.dilate(mask.astype(np.uint8), structuring, iterations=1).astype(bool)
+    return mask
+
+
+def log_reference_max(frames: np.ndarray, percentile: float = 99.0) -> float:
+    """Robust global intensity reference for per-cine log compression.
+
+    A per-frame ``log1p(f) / log1p(f.max())`` normalization re-scales every
+    frame to its own maximum and destroys inter-frame brightness consistency
+    (the speckle pattern contrast changes from frame to frame). Instead, use a
+    single high-percentile value computed over the whole cine so the dynamic
+    range mapping is identical for all frames.
+    """
+    flat: list[np.ndarray] = []
+    for frame in frames:
+        f = frame
+        if f.ndim == 3 and f.shape[2] >= 3:
+            f = np.mean(f[:, :, :3].astype(np.float64), axis=2)
+        flat.append(np.asarray(f, dtype=np.float64).ravel())
+    if not flat:
+        return 1.0
+    return float(np.percentile(np.concatenate(flat), percentile))
 
 
 def preprocess_echo_frame(
@@ -240,18 +325,63 @@ def preprocess_echo_frame(
     clahe_grid: int = 8,
     log_compress: bool = True,
     median_ksize: int = 3,
+    log_ref_max: float | None = None,
 ) -> np.ndarray:
+    """Preprocess a B-mode frame for block matching.
+
+    Log compression (optionally against a global ``log_ref_max`` reference, see
+    ``log_reference_max``), CLAHE contrast equalization, then a small median
+    blur. Output is a float32 image in [0, 1].
+    """
     f = frame.copy()
     if f.ndim == 3 and f.shape[2] >= 3:
         f = np.mean(f[:, :, :3].astype(np.float64), axis=2).astype(np.float32)
     if log_compress and f.max() > 0:
-        f = np.log1p(f.astype(np.float64)) / np.log1p(f.max())
+        denom = np.log1p(float(log_ref_max)) if log_ref_max is not None else np.log1p(f.max())
+        f = np.log1p(f.astype(np.float64)) / max(denom, 1e-9)
     f_uint8 = np.clip(f * 255, 0, 255).astype(np.uint8)
     clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(clahe_grid, clahe_grid))
     f_uint8 = clahe.apply(f_uint8)
     if median_ksize > 1:
         f_uint8 = cv2.medianBlur(f_uint8, median_ksize)
     return f_uint8.astype(np.float32) / 255.0
+
+
+def estimate_global_translations(
+    frames: np.ndarray,
+    reference_index: int,
+) -> np.ndarray:
+    """Estimate frame-to-reference translation for global motion correction."""
+    if frames.ndim < 3 or len(frames) == 0:
+        return np.zeros((0, 2), dtype=np.float64)
+    reference_index = int(np.clip(reference_index, 0, len(frames) - 1))
+    reference = frames[reference_index]
+    if reference.ndim == 3:
+        reference = np.mean(reference[..., :3], axis=2)
+    reference = np.asarray(reference, dtype=np.float32)
+    result = np.zeros((len(frames), 2), dtype=np.float64)
+    for index, frame in enumerate(frames):
+        if index == reference_index:
+            continue
+        current = frame
+        if current.ndim == 3:
+            current = np.mean(current[..., :3], axis=2)
+        current = np.asarray(current, dtype=np.float32)
+        shift, _ = cv2.phaseCorrelate(reference, current)
+        result[index] = (float(shift[0]), float(shift[1]))
+    return result
+
+
+def remove_global_translations(
+    positions: np.ndarray,
+    translations: np.ndarray,
+) -> np.ndarray:
+    """Remove frame-level translation while preserving kernel geometry."""
+    corrected = np.asarray(positions, dtype=np.float64).copy()
+    if corrected.ndim != 3 or len(translations) != corrected.shape[0]:
+        return corrected
+    corrected -= np.asarray(translations, dtype=np.float64)[:, None, :]
+    return corrected
 
 
 def track_cine_bidirectional(
@@ -305,7 +435,7 @@ def track_cine_bidirectional(
             for i in range(n_kernels):
                 if v_fwd[i] and bwd.valid_mask[i]:
                     closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - ed_centers[i]))
-                    if closure_err > config.search_radius * 0.8:
+                    if closure_err > config.closure_error_threshold * config.search_radius:
                         valid_all[t, i] = False
                     else:
                         ncc_all[t, i] = (w_fwd[i] + bwd.ncc_scores[i]) / 2.0
@@ -368,6 +498,7 @@ def track_cine_incremental(
     ed_frame = frames[ed_index]
     frame_shape = frames.shape[1:3]
     endo_mask = np.array([k.layer == "endo" for k in initial_kernels], dtype=bool)
+    epi_mask = np.array([k.layer == "epi" for k in initial_kernels], dtype=bool)
 
     coarse_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
     coarse_ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
@@ -451,14 +582,21 @@ def track_cine_incremental(
                 endo_mask,
                 frame_shape,
                 wall_thickness_px,
+                epi_layer_mask=epi_mask,
             )
+            if progressive_mask.any():
+                frame_mask: np.ndarray | None = progressive_mask
+            elif zone_mask is not None:
+                frame_mask = zone_mask
+            else:
+                frame_mask = None
 
             match = track_frame_from_reference(
                 ed_frame,
                 frames[t],
                 interp_kernels,
                 config,
-                progressive_mask,
+                frame_mask,
             )
 
             final_positions[t] = match.kernel_positions
@@ -481,7 +619,7 @@ def track_cine_incremental(
                 for i in range(n_kernels):
                     if match.valid_mask[i] and bwd.valid_mask[i]:
                         closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - current_ed_centers[i]))
-                        if closure_err > config.search_radius * 0.8:
+                        if closure_err > config.closure_error_threshold * config.search_radius:
                             final_valid[t, i] = False
                         else:
                             final_ncc[t, i] = (match.ncc_scores[i] + bwd.ncc_scores[i]) / 2.0
@@ -508,6 +646,111 @@ def track_cine_incremental(
                 ncc_scores=final_ncc[t],
                 valid_mask=final_valid[t],
                 kernel_positions=final_positions[t],
+                reference_frame=ed_index,
+            )
+        )
+    return results
+
+
+def track_cine_sequential(
+    frames: np.ndarray,
+    initial_kernels: list[TrackingKernel],
+    ed_index: int,
+    config: SpeckleConfig,
+    progress_callback: Callable[[int, int], None] | None = None,
+    zone_mask: np.ndarray | None = None,
+) -> list[TrackingResult]:
+    """Frame-to-frame tracking with per-step re-anchoring.
+
+    Matches every frame against its immediate predecessor instead of jumping
+    from ED. Inter-frame myocardial motion is small (sub-pixel to a couple of
+    pixels), so NCC stays high through the whole cycle and the myocardial zone
+    is followed accurately. ED-anchored modes decorrelate near end-systole
+    because the speckle pattern changes with the large accumulated displacement
+    (and out-of-plane motion), after which invalid kernels are merely
+    interpolated rather than tracked.
+
+    Invalid kernels keep their last known position so they can re-lock on the
+    next frame; optional forward-backward consistency (``config.bidirectional``)
+    rejects kernels whose round trip does not close.
+
+    Returns one ``TrackingResult`` per frame except ``ed_index``; displacements
+    and positions are anchored to ED (positions are shifted so the ED frame
+    coincides with the initial kernel centers).
+    """
+    n_frames = frames.shape[0]
+    ed_index = int(np.clip(ed_index, 0, n_frames - 1))
+    n_kernels = len(initial_kernels)
+    ed_centers = np.array([k.center for k in initial_kernels], dtype=np.float64)
+
+    positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
+    ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
+    valid = np.zeros((n_frames, n_kernels), dtype=bool)
+    positions[0] = ed_centers
+    ncc[0] = 1.0
+    valid[0] = True
+
+    current = list(initial_kernels)
+
+    for i in range(n_frames - 1):
+        match = track_frame_pair(frames[i], frames[i + 1], current, config, zone_mask)
+
+        prev_pos = positions[i]
+        for j in range(n_kernels):
+            positions[i + 1, j] = match.kernel_positions[j] if match.valid_mask[j] else prev_pos[j]
+        ncc[i + 1] = match.ncc_scores
+        valid[i + 1] = match.valid_mask
+
+        if config.bidirectional:
+            bwd_kernels = [
+                TrackingKernel(
+                    center=(float(positions[i + 1, j, 0]), float(positions[i + 1, j, 1])),
+                    node_index=k.node_index,
+                    layer=k.layer,
+                    radius=k.radius,
+                    aha_segment=k.aha_segment,
+                    arc_length_param=k.arc_length_param,
+                )
+                for j, k in enumerate(current)
+            ]
+            bwd = track_frame_pair(frames[i + 1], frames[i], bwd_kernels, config, zone_mask)
+            for j in range(n_kernels):
+                if valid[i + 1, j] and bwd.valid_mask[j]:
+                    closure_err = float(np.linalg.norm(bwd.kernel_positions[j] - prev_pos[j]))
+                    if closure_err > config.closure_error_threshold * config.search_radius:
+                        valid[i + 1, j] = False
+                    else:
+                        ncc[i + 1, j] = (ncc[i + 1, j] + bwd.ncc_scores[j]) / 2.0
+
+        current = [
+            TrackingKernel(
+                center=(float(positions[i + 1, j, 0]), float(positions[i + 1, j, 1])),
+                node_index=k.node_index,
+                layer=k.layer,
+                radius=k.radius,
+                aha_segment=k.aha_segment,
+                arc_length_param=k.arc_length_param,
+            )
+            for j, k in enumerate(current)
+        ]
+
+        if progress_callback:
+            progress_callback(i + 1, n_frames - 1)
+
+    # Zero out any drift accumulated before ED so ED is the exact anchor.
+    positions -= (positions[ed_index] - ed_centers)[None, :, :]
+
+    results: list[TrackingResult] = []
+    for t in range(n_frames):
+        if t == ed_index:
+            continue
+        results.append(
+            TrackingResult(
+                frame_index=t,
+                displacements=positions[t] - positions[ed_index],
+                ncc_scores=ncc[t],
+                valid_mask=valid[t],
+                kernel_positions=positions[t],
                 reference_frame=ed_index,
             )
         )

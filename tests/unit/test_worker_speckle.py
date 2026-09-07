@@ -181,6 +181,7 @@ class TestSpeckleTrackingWorkerRun:
         patches = {
             "detect_ed_es_from_frames": MagicMock(return_value=(0, 5)),
             "track_cine_incremental": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
+            "track_cine_sequential": MagicMock(return_value=[MagicMock(displacements=np.zeros((6, n_kernels, 2)))]),
             "preprocess_echo_frame": MagicMock(return_value=np.zeros((32, 32), dtype=np.uint8)),
             "build_zone_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "extract_trajectories": MagicMock(
@@ -212,6 +213,10 @@ class TestSpeckleTrackingWorkerRun:
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.track_cine_incremental",
                 patches["track_cine_incremental"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.track_cine_sequential",
+                patches["track_cine_sequential"],
             ),
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.preprocess_echo_frame",
