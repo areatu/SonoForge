@@ -1,4 +1,13 @@
-"""Unified query service: DICOMweb, DIMSE, or Auto fallback."""
+"""Unified query service: DICOMweb, DIMSE, or Auto fallback.
+
+Error semantics (consistent across studies/series/instances):
+- explicit source (DICOMWEB / DIMSE): a failed query raises — the caller
+  (background dialog worker) surfaces the error to the UI instead of
+  confusing "server down" with "no results";
+- AUTO: the first working protocol wins; empty results from DICOMweb fall
+  back to DIMSE; if every protocol raises, the last error propagates;
+- a missing client is NOT an error: it yields an empty result.
+"""
 
 from __future__ import annotations
 
@@ -39,24 +48,16 @@ class DicomQueryService:
         patient_id: str | None = None,
         study_date: str | None = None,
     ) -> list[StudyInfo]:
+        kwargs = {
+            "patient_name": patient_name,
+            "patient_id": patient_id,
+            "study_date": study_date,
+        }
         if self._source == QuerySource.DIMSE:
-            return self._dimse_query_studies(
-                patient_name=patient_name,
-                patient_id=patient_id,
-                study_date=study_date,
-            )
+            return self._dimse_query_studies(**kwargs)
         if self._source == QuerySource.DICOMWEB:
-            return self._web_query_studies(
-                patient_name=patient_name,
-                patient_id=patient_id,
-                study_date=study_date,
-            )
-        # AUTO: try web first, fallback to dimse
-        return self._auto_query_studies(
-            patient_name=patient_name,
-            patient_id=patient_id,
-            study_date=study_date,
-        )
+            return self._web_query_studies(**kwargs)
+        return self._auto_query_studies(**kwargs)
 
     def query_series(self, study_uid: str) -> list[SeriesInfo]:
         if self._source == QuerySource.DIMSE and self._dimse is not None:
@@ -119,28 +120,41 @@ class DicomQueryService:
     def _web_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
         if self._web is None:
             return []
-        try:
-            return self._web.query_studies(**kwargs)
-        except Exception:  # noqa: BLE001
-            logger.debug("DICOMweb query_studies failed", exc_info=True)
-            return []
+        return self._web.query_studies(**kwargs)
 
     def _dimse_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
         if self._dimse is None:
             return []
-        try:
-            return self._dimse.c_find_studies(**kwargs)
-        except Exception:  # noqa: BLE001
-            logger.debug("DIMSE c_find_studies failed", exc_info=True)
-            return []
+        return self._dimse.c_find_studies(**kwargs)
 
     def _auto_query_studies(self, **kwargs) -> list[StudyInfo]:  # noqa: ANN003
-        # Try DICOMweb first
-        results = self._web_query_studies(**kwargs)
-        if results:
-            return results
-        # Fallback to DIMSE if available
+        # Try DICOMweb first; empty-but-successful results still fall back to
+        # DIMSE when available. An authoritative answer (non-empty result, or
+        # an empty answer from a protocol that actually responded) wins over a
+        # failure of the *other* protocol; an error is raised only when every
+        # attempted protocol failed.
+        errors: list[Exception] = []
+        web_answered_empty = False
+        if self._web is not None:
+            try:
+                results = self._web.query_studies(**kwargs)
+                if results:
+                    return results
+                web_answered_empty = True
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("DICOMweb query_studies failed", exc_info=True)
+                errors.append(exc)
+
         if self._dimse is not None:
-            logger.info("DICOMweb returned empty, falling back to DIMSE")
-            return self._dimse_query_studies(**kwargs)
+            try:
+                logger.info("DICOMweb returned no results, falling back to DIMSE")
+                return self._dimse.c_find_studies(**kwargs)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("DIMSE c_find_studies fallback failed", exc_info=True)
+                errors.append(exc)
+
+        # The DIMSE fallback probe failed, but DICOMweb itself answered with
+        # an empty result — trust that authoritative "no studies" answer.
+        if errors and not web_answered_empty:
+            raise errors[-1]
         return []
