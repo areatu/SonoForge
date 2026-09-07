@@ -78,7 +78,6 @@ jobs:
           file: coverage.xml
           format: cobertura
           flag-name: unittests
-          parallel: true
 
   build:
     needs: [lint, test]
