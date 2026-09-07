@@ -530,6 +530,9 @@ class TestBorderTracking:
         )
 
         out = propagate_wall_borders(frames, endo0, epi0, cfg)
+        from echo_personal_tool.domain.services.border_tracking import resample_closed
+
+        endo_r = resample_closed(endo0, 64)
         endo_last = out["endo"][-1]
         epi_last = out["epi"][-1]
         center = np.mean(endo_last, axis=0)
@@ -538,7 +541,7 @@ class TestBorderTracking:
         # endo stayed inside epi (wall never inverts)
         assert bool(np.all(r_p > r_e))
         # borders moved right with the texture (translation is along axis 0)
-        shift_err = np.median(np.abs((endo_last - endo0)[:, 0] - total_shift))
+        shift_err = np.median(np.abs((endo_last - endo_r)[:, 0] - total_shift))
         assert shift_err < 3.0
         assert np.all(np.isfinite(out["positions"]))
         assert out["positions"].shape == (len(frames), len(out["kernels"]), 2)
@@ -552,6 +555,70 @@ class TestBorderTracking:
         # closed loop perimeter ~ 40 units -> spacing of one unit
         seg = np.linalg.norm(np.diff(np.vstack([out, out[:1]]), axis=0), axis=1)
         assert abs(seg.mean() - 1.0) < 1e-3
+
+    def test_clamp_outward_blocks_radial_blowout(self) -> None:
+        """Outward motion past the ED radius + slack must be clamped; inward free."""
+        from echo_personal_tool.domain.services.border_tracking import _clamp_outward
+
+        center = np.array([64.0, 64.0])
+        ang = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+        r0 = np.full(8, 20.0)
+        pts = center + np.column_stack([np.cos(ang), np.sin(ang)]) * 30.0  # +10 outward
+        out = _clamp_outward(pts, center, r0, slack=2.0)
+        radii = np.linalg.norm(out - center, axis=1)
+        assert np.all(radii <= 22.0 + 1e-9)
+        # inward motion stays untouched
+        inward = center + np.column_stack([np.cos(ang), np.sin(ang)]) * 15.0
+        out_in = _clamp_outward(inward, center, r0, slack=2.0)
+        assert np.allclose(out_in, inward)
+
+    def test_expanding_wall_phantom_never_crosses_drawn_epi(self) -> None:
+        """If the texture expands outward radially about the LV center (systolic
+        wall motion without global translation), the epi border must still
+        respect the drawn ED epicardium (+ slack) and stay outside the endo."""
+        from scipy.ndimage import map_coordinates
+
+        rng = np.random.default_rng(11)
+        h = w = 128
+        texture = rng.normal(110, 26, (h, w)).astype(np.float32)
+        c = np.array([52.0, 64.0])
+        ang = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+        endo0 = c + 14.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        epi0 = c + 20.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        # frames: texture radially expanded about c (pure growth, no bulk motion)
+        yy, xx = np.mgrid[0:h, 0:w]
+        frames = np.zeros((5, h, w), dtype=np.float32)
+        for t in range(5):
+            z = 1.0 + 0.12 * t  # +12%/frame so the epi exceeds the slack quickly
+            src_r = np.sqrt((xx - c[0]) ** 2 + (yy - c[1]) ** 2) / z
+            src_a = np.arctan2(yy - c[1], xx - c[0])
+            frames[t] = map_coordinates(
+                texture, (c[1] + src_r * np.sin(src_a), c[0] + src_r * np.cos(src_a)), order=1, mode="nearest"
+            )
+
+        cfg = SpeckleConfig(
+            kernel_size=12,
+            search_radius=8,
+            pyramid_levels=3,
+            bidirectional=False,
+            ncc_threshold=0.3,
+            tracking_mode="border",
+        )
+        from echo_personal_tool.domain.services.border_tracking import propagate_wall_borders
+
+        from echo_personal_tool.domain.services.border_tracking import (
+            propagate_wall_borders,
+            resample_closed,
+        )
+
+        out = propagate_wall_borders(frames, endo0, epi0, cfg, outward_slack_px=2.0)
+        center = np.mean(resample_closed(endo0, 64), axis=0)
+        epi_r0 = np.linalg.norm(resample_closed(epi0, 64) - center, axis=1)
+        for t in range(len(frames)):
+            r_epi = np.linalg.norm(out["epi"][t] - center, axis=1)
+            r_endo = np.linalg.norm(out["endo"][t] - center, axis=1)
+            assert np.all(r_epi <= epi_r0 + 2.0 + 1e-6), f"frame {t}: epi crossed drawn epicardium"
+            assert np.all(r_epi > r_endo), f"frame {t}: wall inverted"
 
 
 class TestGlobalMotionCompensation:

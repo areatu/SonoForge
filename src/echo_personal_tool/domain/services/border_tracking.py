@@ -150,8 +150,9 @@ def propagate_wall_borders(
     epi0: np.ndarray,
     config: SpeckleConfig,
     *,
-    n_nodes: int = 48,
+    n_nodes: int = 64,
     min_thickness_px: float = 2.0,
+    outward_slack_px: float = 2.0,
 ) -> dict:
     """Track the wall borders through ``frames``.
 
@@ -171,6 +172,21 @@ def propagate_wall_borders(
     endo = resample_closed(endo0, n_nodes)
     epi = resample_closed(epi0, n_nodes)
     n_frames = int(frames.shape[0])
+    # Fixed ED reference geometry: during systole the epicardium barely moves
+    # and must never blow outward past the user-drawn contour. Both borders
+    # are clamped radially against their ED radii (per node) so they may move
+    # inward freely (contraction/thickening) but not outward beyond a small
+    # slack — this stops cumulative outward drift of weak NCC matches from
+    # pushing kernels through the drawn epicardium (issue #7, user-visible).
+    lv_center = np.mean(endo, axis=0)
+    r_endo0 = np.linalg.norm(endo - lv_center, axis=1)
+    r_epi0 = np.linalg.norm(epi - lv_center, axis=1)
+    # Small estimated bulk motion (<= ``translation_threshold_px``) is treated
+    # as local NCC noise/drift and clamped hard against the fixed ED contour;
+    # only a genuinely large translation (whole heart swinging) follows the
+    # translated envelope instead — otherwise the drawn epicardium stays the
+    # absolute outer bound and kernels cannot cross it.
+    translation_threshold_px = 3.0
     ncc_thr = float(config.ncc_threshold)
 
     kernels, layer_edges = build_border_kernels(
@@ -216,6 +232,20 @@ def propagate_wall_borders(
             )
         e_new = _smooth_contour(e_new, max(5, int(0.12 * n_nodes) | 1), e_ncc, ncc_thr)
         p_new = _smooth_contour(p_new, max(5, int(0.12 * n_nodes) | 1), p_ncc, ncc_thr)
+        # Robust bulk motion of the epi border (median of Cartesian
+        # displacements): a true translation shifts all nodes in the same
+        # direction and is kept; a uniform radial expansion points in many
+        # directions and its median is ~0, so it is not absorbed.  For small
+        # median motion the borders are clamped radially against the FIXED ED
+        # contour (the drawn epicardium stays the outer envelope); only a
+        # large translation follows the translated envelope.
+        t_global = np.median(p_new - epi, axis=0)
+        if float(np.linalg.norm(t_global)) <= translation_threshold_px:
+            e_new = _clamp_outward(e_new, lv_center, r_endo0, outward_slack_px)
+            p_new = _clamp_outward(p_new, lv_center, r_epi0, outward_slack_px)
+        else:
+            e_new = _clamp_outward(e_new, lv_center + t_global, r_endo0, outward_slack_px)
+            p_new = _clamp_outward(p_new, lv_center + t_global, r_epi0, outward_slack_px)
         # enforce per-node ordering epi outside endo with a minimal thickness
         center = np.mean(e_new, axis=0)
         for j in range(n_nodes):
@@ -258,6 +288,29 @@ def propagate_wall_borders(
         "kernels": kernels,
         "layer_edges": layer_edges,
     }
+
+
+def _clamp_outward(
+    pts: np.ndarray, center: np.ndarray, r0: np.ndarray, slack: float
+) -> np.ndarray:
+    """Clamp contour points so they never move outward past their ED radius.
+
+    Inward motion (systolic contraction/thickening) is free; outward motion is
+    limited to ``slack`` pixels beyond the ED radius.  The reference is the
+    fixed ED LV center so the drawn endo/epi contours stay the outer envelope
+    through the whole window.
+    """
+    v = pts - center
+    r = np.linalg.norm(v, axis=1)
+    limit = r0 + slack
+    over = r > limit
+    if not np.any(over):
+        return pts
+    out = pts.copy()
+    safe = r[over] > 1e-9
+    idx = np.where(over)[0][safe]
+    out[idx] = center + v[idx] * (limit[idx] / r[idx])[:, None]
+    return out
 
 
 def _match_point(
