@@ -75,6 +75,10 @@ class FrameTickRecord:
     timestamp: float
     phase: str
     elapsed_ms: float = 0.0
+    # Frames decoded ahead of the playhead when this frame went on screen, and how many
+    # seconds of playback that is at the cine's frame time. -1 = caller did not report it.
+    buffered_frames: int = -1
+    buffer_seconds: float = -1.0
 
 
 @dataclass
@@ -268,7 +272,14 @@ class PlaybackDiagnostics:
             self._rss_start_mb,
         )
 
-    def on_frame_tick(self, frame_index: int, *, phase: str = "ok") -> None:
+    def on_frame_tick(
+        self,
+        frame_index: int,
+        *,
+        phase: str = "ok",
+        buffered_frames: int | None = None,
+        frame_time_ms: float | None = None,
+    ) -> None:
         if not self.enabled:
             return
         now = time.perf_counter()

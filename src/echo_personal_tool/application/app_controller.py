@@ -6,6 +6,8 @@ import dataclasses
 import logging
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 from time import perf_counter
@@ -191,9 +193,19 @@ class AppController(QObject):
         self._timer.timeout.connect(self._advance_playback)
         if sys.platform == "win32":
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        # Cadence reference for playback: the moment the last frame tick STARTED.
+        # _reschedule_playback_timer() schedules the next tick at (mark + interval), so the
+        # time spent emitting the frame is compensated instead of being added to the period.
         self._last_frame_shown_at: float = 0.0
+        # True while _advance_playback() emits a frame itself. The state_changed signal that
+        # emission triggers must not re-arm the playback timer (see _on_state_changed()).
+        self._advancing_frame = False
         self._playback_warmup_pending = False
         self._playback_poll_interval_ms = 16
+        # True while the playback timer is polling for frames instead of pacing them (a tick
+        # found the next frame missing, or the buffer is still warming up). Cleared by the
+        # next paced reschedule; read by _wake_playback_timer().
+        self._playback_poll_pending = False
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
         self._loaded_source_path: Path | None = None
@@ -1269,18 +1281,54 @@ class AppController(QObject):
         )
 
     def _reschedule_playback_timer(self, *, poll: bool = False) -> None:
-        delay_ms = (
-            self._playback_poll_interval_ms if poll or self._playback_warmup_pending else self._playback_interval_ms()
-        )
-        if not poll and not self._playback_warmup_pending and self._last_frame_shown_at > 0:
+        polling = poll or self._playback_warmup_pending
+        self._playback_poll_pending = polling
+        delay_ms = self._playback_poll_interval_ms if polling else self._playback_interval_ms()
+        if not polling and self._last_frame_shown_at > 0:
             elapsed_ms = (perf_counter() - self._last_frame_shown_at) * 1000.0
             delay_ms = max(1, int(delay_ms - elapsed_ms))
         self._timer.setInterval(delay_ms)
         if not self._timer.isActive():
             self._timer.start()
 
+    def _diag_frame_tick(self, frame_index: int, *, phase: str, buffered_frames: int) -> None:
+        """Record one displayed (or missed) frame together with the buffer behind it.
+
+        A buffer counted in frames means nothing on its own - five frames is 0.4 s at
+        12 fps and 0.08 s at 60 - so the tick carries the frame time as well and the
+        report converts it to seconds.
+        """
+        if _playback_diag is None or not _playback_diag.enabled:
+            return
+        _playback_diag.on_frame_tick(
+            frame_index,
+            phase=phase,
+            buffered_frames=buffered_frames,
+            frame_time_ms=self._state_manager.snapshot.frame_time_ms,
+        )
+
+    @contextmanager
+    def _own_frame_advance(self) -> Iterator[None]:
+        """Mark the enclosed emission as driven by ``_advance_playback``.
+
+        ``step_frame()`` / ``set_frame()`` emit ``state_changed``; without this flag
+        ``_on_state_changed`` would overwrite the playback interval that
+        ``_advance_playback`` just calibrated, which costs one spurious timer wake-up
+        per frame and re-arms the cadence from the wrong reference point.
+        """
+        self._advancing_frame = True
+        try:
+            yield
+        finally:
+            self._advancing_frame = False
+
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
+            return
+        if self._advancing_frame:
+            # Playback advanced the frame itself and owns the timer schedule; only make sure
+            # the decoded frame request is up to date.
+            self._request_frame_if_needed(state)
             return
         self._timer.setInterval(self._playback_interval_ms(state))
         if state.is_playing and not self._pending_decode_id and not self._playback_warmup_pending:
@@ -1923,11 +1971,16 @@ class AppController(QObject):
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
         self._prefetch_cooldown_until = perf_counter() + 5.0
         self.status_message.emit(tr("status.prefetch_failed", message=message))
 
     def _advance_playback(self) -> None:
         _t0 = perf_counter() if _FREEZE_DIAG else 0
+        # Taken before any rendering: every frame emitted by this tick stamps
+        # _last_frame_shown_at with it, so _reschedule_playback_timer() subtracts the work
+        # this tick already did from the next delay (period = max(interval, work)).
+        tick_started_at = perf_counter()
         state = self._state_manager.snapshot
         if not state.is_playing:
             return
@@ -1971,11 +2024,13 @@ class AppController(QObject):
 
             if self._frame_cache.is_loaded(next_idx):
                 self._frame_cache.set_current(next_idx)
-                self.step_frame(1)
-                self._last_frame_shown_at = perf_counter()
+                with self._own_frame_advance():
+                    self.step_frame(1)
+                self._last_frame_shown_at = tick_started_at
                 # ── Playback diagnostics: frame tick ──
-                if _playback_diag is not None:
-                    _playback_diag.on_frame_tick(next_idx, phase="cache_hit")
+                self._diag_frame_tick(
+                    next_idx, phase="cache_hit", buffered_frames=self._frame_cache.loaded_ahead(next_idx)
+                )
                 self._prefetch_playback_buffer(next_idx)
                 self._reschedule_playback_timer()
                 if _FREEZE_DIAG:
@@ -2010,9 +2065,15 @@ class AppController(QObject):
             next_next = (next_idx + 1) % total
             if self._frame_cache.is_loaded(next_next):
                 self._frame_cache.set_current(next_next)
-                self._state_manager.set_frame(next_next)
-                self._emit_cached_frame(next_next)
-                self._last_frame_shown_at = perf_counter()
+                with self._own_frame_advance():
+                    self._state_manager.set_frame(next_next)
+                    self._emit_cached_frame(next_next)
+                self._last_frame_shown_at = tick_started_at
+                # A displayed frame that never counted as a tick made "frames shown" and
+                # the jitter stats disagree with what the user saw.
+                self._diag_frame_tick(
+                    next_next, phase="skip_next", buffered_frames=self._frame_cache.loaded_ahead(next_next)
+                )
                 self._prefetch_playback_buffer(next_next)
                 self._reschedule_playback_timer()
                 return
@@ -2023,9 +2084,13 @@ class AppController(QObject):
                 skip_to = self._frame_cache.nearest_loaded_ahead(current)
                 if skip_to is not None:
                     self._frame_cache.set_current(skip_to)
-                    self._state_manager.set_frame(skip_to)
-                    self._emit_cached_frame(skip_to)
-                    self._last_frame_shown_at = perf_counter()
+                    with self._own_frame_advance():
+                        self._state_manager.set_frame(skip_to)
+                        self._emit_cached_frame(skip_to)
+                    self._last_frame_shown_at = tick_started_at
+                    self._diag_frame_tick(
+                        skip_to, phase="lag_skip", buffered_frames=self._frame_cache.loaded_ahead(skip_to)
+                    )
                     self._prefetch_playback_buffer(skip_to)
                     self._reschedule_playback_timer()
                     return
@@ -2046,8 +2111,9 @@ class AppController(QObject):
         if self._pending_load_id != 0:
             self._reschedule_playback_timer(poll=True)
             return
-        self.step_frame(1)
-        self._last_frame_shown_at = perf_counter()
+        with self._own_frame_advance():
+            self.step_frame(1)
+        self._last_frame_shown_at = tick_started_at
         self._reschedule_playback_timer()
 
     def _load_playback_frame(self, frame_index: int) -> None:
