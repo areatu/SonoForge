@@ -343,13 +343,24 @@ class AppController(QObject):
         self._thread_pool.start(worker)
 
     def _deferred_gc_collect(self) -> None:
+        """Collect the cycles a drained worker set left behind - throttled, never mid-playback.
+
+        Frame pixels die by refcount the moment the worker drops them, so this only ever
+        reclaims reference cycles. Running it on every drain spawned a thread and a gen-0
+        pass that competes for the GIL with the decode pool several times per second during
+        playback - steady wakeups on exactly the weak machines the low-end profile targets,
+        for memory that was already free.
+        """
+        if self._state_manager.snapshot.is_playing:
+            return
+        now = perf_counter()
+        if now - self._last_gc_collect_at < _GC_MIN_INTERVAL_SEC:
+            return
+        self._last_gc_collect_at = now
         import gc
         import threading
 
-        def _bg_collect():
-            gc.collect(generation=0)
-
-        threading.Thread(target=_bg_collect, daemon=True).start()
+        threading.Thread(target=gc.collect, args=(0,), daemon=True).start()
 
     @property
     def studies(self) -> list[StudyMetadata]:
@@ -2273,17 +2284,18 @@ class AppController(QObject):
                     )
                     self._diag_frame_counter += 1
                     if self._diag_frame_counter % 50 == 0:
-                        import os as _os
+                        # psutil, not /proc/<pid>/status: this diagnostic silently
+                        # printed nothing on Windows, the main deployment target.
+                        from echo_personal_tool.infrastructure.playback_diagnostics import (
+                            peak_rss_mb,
+                            process_rss_mb,
+                        )
 
-                        proc = _os.getpid()
-                        try:
-                            with open(f"/proc/{proc}/status") as _f:
-                                for line in _f:
-                                    if line.startswith("VmRSS:"):
-                                        _diag_log.warning("[mem] %s", line.strip())
-                                        break
-                        except Exception:
-                            pass
+                        _diag_log.warning(
+                            "[mem] RSS=%.0f MB peak=%.0f MB",
+                            process_rss_mb(),
+                            peak_rss_mb(),
+                        )
                         _diag_log.warning(
                             "[mem] cache_frames=%d cache_bytes=%.1fMB live_workers=%d",
                             len(self._frame_cache._frame_store),

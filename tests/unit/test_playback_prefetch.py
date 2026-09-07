@@ -856,3 +856,66 @@ def test_pause_clears_the_poll_flag(qapp, tmp_path) -> None:
     assert controller._playback_warmup_pending is False
 
 
+# ── Deferred GC: throttled, and never while the cadence is running ────────────────
+
+
+class _SyncThread:
+    """Runs the target inline so a test never races a real background thread."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+        self._target = target
+        self._args = tuple(args)
+        self._kwargs = kwargs or {}
+
+    def start(self) -> None:
+        self._target(*self._args, **self._kwargs)
+
+
+@pytest.fixture
+def gc_recorder(monkeypatch):
+    passes: list[tuple] = []
+    monkeypatch.setattr(threading, "Thread", _SyncThread)
+    monkeypatch.setattr(gc, "collect", lambda *a, **k: passes.append(a or (2,)))
+    return passes
+
+
+# Assertions key off `_last_gc_collect_at`, which is stamped only when this controller
+# actually dispatches a collection: other controllers left over from earlier tests in this
+# module can drain their own worker sets (and collect) while the event loop turns.
+
+
+def test_deferred_gc_is_skipped_while_playing(qapp, tmp_path, gc_recorder) -> None:
+    controller = _playing_controller(tmp_path)
+
+    controller._deferred_gc_collect()
+
+    assert controller._last_gc_collect_at == 0.0
+
+
+def test_deferred_gc_throttles_between_drains(qapp, tmp_path, gc_recorder) -> None:
+    controller = _playing_controller(tmp_path, playing=False)
+
+    controller._deferred_gc_collect()
+    first = controller._last_gc_collect_at
+    controller._deferred_gc_collect()
+
+    assert first > 0.0
+    assert controller._last_gc_collect_at == first
+    assert gc_recorder[-1] == (0,)  # generation 0 only, not a full collection
+
+    controller._last_gc_collect_at -= _GC_MIN_INTERVAL_SEC + 0.1
+    controller._deferred_gc_collect()
+
+    assert controller._last_gc_collect_at > first
+
+
+def test_deferred_gc_runs_when_paused_again(qapp, tmp_path, gc_recorder) -> None:
+    controller = _playing_controller(tmp_path)
+    controller._deferred_gc_collect()
+    assert controller._last_gc_collect_at == 0.0
+
+    controller._state_manager._is_playing = False
+    controller._deferred_gc_collect()
+
+    assert controller._last_gc_collect_at > 0.0
+    assert gc_recorder[-1] == (0,)

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 
@@ -37,12 +38,64 @@ import psutil
 _LOG = logging.getLogger("echo_personal_tool.playback_diag")
 _ENABLED = os.environ.get("ECHO_PLAYBACK_DIAG", "0") == "1"
 
+_PROCESS: psutil.Process | None = None
 
-def _rss_mb() -> float:
-    try:
-        return psutil.Process().memory_info().rss / 1e6
-    except Exception:
+
+def _process() -> psutil.Process | None:
+    """One Process handle for the lifetime of the app (psutil caches nothing itself)."""
+    global _PROCESS
+    if _PROCESS is None:
+        try:
+            _PROCESS = psutil.Process()
+        except Exception:  # noqa: BLE001
+            return None
+    return _PROCESS
+
+
+def process_rss_mb() -> float:
+    """Resident set of this process in MB.
+
+    psutil, not ``/proc/<pid>/status``: the diagnostics that read /proc silently reported
+    nothing on Windows, the main deployment target, so memory blowups there were invisible.
+    """
+    proc = _process()
+    if proc is None:
         return 0.0
+    try:
+        return proc.memory_info().rss / 1e6
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def peak_rss_mb() -> float:
+    """Peak resident set where the OS reports one, else the current RSS.
+
+    Windows exposes it as ``peak_wset``; POSIX through ``resource.ru_maxrss`` - a module
+    that does not exist on Windows, which is why the freeze-diagnostic dump used to raise
+    ImportError (and stop reporting) exactly there.
+    """
+    proc = _process()
+    if proc is None:
+        return 0.0
+    try:
+        info = proc.memory_info()
+    except Exception:  # noqa: BLE001
+        return 0.0
+    peak = getattr(info, "peak_wset", 0) or 0
+    if peak:
+        return peak / 1e6
+    try:
+        import resource
+
+        ru_maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports KiB, macOS reports bytes; psutil's rss is bytes, so keep MB (1e6).
+        peak_bytes = ru_maxrss if sys.platform == "darwin" else ru_maxrss * 1024
+        return peak_bytes / 1e6
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+_rss_mb = process_rss_mb
 
 
 def _numpy_memory_report() -> dict[str, object]:
