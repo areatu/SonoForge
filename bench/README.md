@@ -12,6 +12,7 @@
 | `la/` | Бенчмарки для LA (left atrium) сегментации |
 | `la/reports/` | Отчёты по LA бенчмаркам |
 | `reports/` | Общие отчёты (LV baseline, finetuned, smoothing) |
+| `cine720/` | Измерительный комплект плавности cine-playback 1280×720 (см. `cine720/README.md` и `docs/bench/2026-09-06-cine-720p-playback-audit.md`) |
 
 ## Метрики
 
