@@ -349,7 +349,7 @@ class SpeckleTrackingWorker(QRunnable):
                     config=config,
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                     wall_inward_slack=1.4,
-                    wall_outward_slack=0.9,
+                    wall_outward_slack=0.0,
                 )
             else:
                 tracking_results = track_cine_bidirectional(
@@ -395,15 +395,16 @@ class SpeckleTrackingWorker(QRunnable):
                     config.ncc_threshold,
                 )
             # Radial containment: keep layer order and prevent spurious spikes
-            # across the wall, while allowing the whole wall to follow real
-            # systolic motion (relaxed inward slack so genuine contraction is
-            # not erased by the ED baseline).
+            # across the wall. The epicardium is a near-hard outer wall — during
+            # systole the epi barely moves (it cannot blow outward through the
+            # user-drawn epicardium) — while inward slack lets the wall thicken
+            # and contract without being erased by the ED baseline.
             smoothed, n_clamped = clamp_trajectories_to_wall(
                 smoothed,
                 kernels,
                 track_ed_index,
                 inward_slack=1.4,
-                outward_slack=0.9,
+                outward_slack=0.0,
             )
             logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
