@@ -155,6 +155,46 @@ class TestStrainCurvesView:
         # Should have non-zero values (QRS complexes)
         assert np.count_nonzero(ecg) > 0
 
+    def _make_result(self, ecg: np.ndarray | None = None):
+        from dataclasses import replace as dc_replace
+
+        from echo_personal_tool.domain.models.speckle import StrainResult, TrackingKernel
+
+        n, k = 12, 6
+        positions = np.zeros((n, k, 2))
+        for t in range(n):
+            for i in range(k):
+                positions[t, i] = [10 + i * 5, 40 + t]
+        kernels = [TrackingKernel(center=(10 + i * 5, 40), node_index=i, layer="endo", aha_segment=i + 1) for i in range(k)]
+        base = StrainResult(
+            longitudinal=np.zeros(n),
+            radial=np.zeros(n),
+            gls=-15.0,
+            segment_strain={1: -18.0, 2: -16.0, 3: -15.0, 4: -14.0, 5: -13.0, 6: -12.0},
+            kernels=kernels,
+            per_kernel_longitudinal=np.zeros((k, n)),
+            tracked_positions_all=positions,
+            ed_index=0,
+            es_index=6,
+            frame_time_ms=33.3,
+        )
+        return dc_replace(base, ecg_trace_for_display=ecg)
+
+    def test_set_strain_data_no_ecg_hides_strips(self):
+        view = self._make_view()
+        view.set_strain_data(self._make_result(ecg=None))
+        assert view._panel_a4c._ecg_plot.isHidden()
+        # GLS header is filled from A4C segment strains
+        assert "GLS" in view._panel_a4c._gls_label.text()
+        # empty views show no ECG either
+        assert view._panel_a2c._ecg_plot.isHidden()
+
+    def test_set_strain_data_real_ecg_shows_strip(self):
+        view = self._make_view()
+        view.set_strain_data(self._make_result(ecg=np.sin(np.arange(200) / 10.0)))
+        assert not view._panel_a4c._ecg_plot.isHidden()
+        assert view._panel_a4c._ecg_item is not None
+
 
 class TestConstants:
     def test_segment_colors_keys(self):

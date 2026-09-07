@@ -168,6 +168,7 @@ class StrainResult:
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None
+    frame_time_ms: float = 33.3
     ed_es_source: str = "image"
     ed_es_confidence: float = 0.0
     ed_es_quality: str = "unknown"

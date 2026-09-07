@@ -38,6 +38,7 @@ class MeasurementAction(StrEnum):
     LAV_4C_AUTO = "lav_4c_auto"
     LAV_4C_AI_PLUS = "lav_4c_ai_plus"
     SPECKLE_TRACKING = "speckle_tracking"
+    STRAIN_CURVES = "strain_curves"
     MMODE = "mmode"
     MMODE_CALIPER = "mmode_caliper"
     MMODE_TIME_HR = "mmode_time_hr"

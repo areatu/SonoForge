@@ -172,12 +172,70 @@ class TestMainWindow:
         viewer._speckle_result = object()  # simulate a finished STE run
         strain_win = QWidget()
         main_window._strain_window = strain_win
+        main_window._manual_ed_frame = 3
+        main_window._manual_es_frame = 8
 
         main_window._on_instance_selected(instance)
 
         assert viewer._speckle_result is None  # overlay state fully dropped
         assert main_window._strain_window is None  # results window closed
+        # Manual ED/ES frames belong to the old clip and must not leak onto the
+        # new one (issue #5: STE kept the previous file's frames).
+        assert main_window._manual_ed_frame is None
+        assert main_window._manual_es_frame is None
         main_window._controller.load_instance.assert_called_once_with(instance)
+
+    def test_on_instance_selected_same_instance_keeps_manual_frames(self, main_window):
+        """Re-selecting the same clip must NOT reset manual ED/ES frames."""
+        from echo_personal_tool.domain.models.metadata import InstanceMetadata
+
+        instance = InstanceMetadata(
+            sop_instance_uid="1.2.3.4",
+            series_uid="series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="",
+            media_format="dicom",
+            path=None,
+        )
+        main_window._manual_ed_frame = 3
+        main_window._manual_es_frame = 8
+        # the currently loaded clip IS this instance → no switch
+        from dataclasses import replace as dc_replace
+
+        main_window._controller.state_manager.snapshot = dc_replace(
+            main_window._controller.state_manager.snapshot,
+            instance=instance,
+        )
+        main_window._on_instance_selected(instance)
+        assert main_window._manual_ed_frame == 3
+        assert main_window._manual_es_frame == 8
+
+    def test_on_strain_window_closed_hides_smoothing_overlay(self, main_window):
+        """Closing the strain window must hide the viewer's smoothing slider
+        (issue #1: the slider stayed at bottom-left after closing STE)."""
+        main_window._strain_window = object()
+        main_window._on_strain_window_closed()
+        assert main_window._strain_window is None
+        assert not main_window._viewer._ste_sensitivity.isVisible()
+
+    def test_strain_curves_action_reopens_window_in_curves_mode(self, main_window):
+        """The 'Strain curves' button reopens the results window on the curves
+        page (issue #6: no entry point from the main window to the graph)."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        result = StrainResult(longitudinal=np.zeros(5), radial=np.zeros(5), gls=-15.0)
+        main_window._strain_result_for_window = result
+        main_window._on_strain_curves_requested()
+        assert main_window._strain_window is not None
+        assert main_window._strain_window._stacked.currentIndex() == 1
+
+    def test_strain_curves_action_no_result_shows_status(self, main_window):
+        main_window._strain_result_for_window = None
+        main_window._on_strain_curves_requested()
+        assert main_window._strain_window is None
 
     def test_on_frame_load_failed(self, main_window):
         with patch("echo_personal_tool.presentation.main_window.QMessageBox"):

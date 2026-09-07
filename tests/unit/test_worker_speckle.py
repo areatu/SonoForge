@@ -317,6 +317,7 @@ class TestSpeckleTrackingWorkerRun:
 
             assert len(finished) == 1
             assert isinstance(finished[0], StrainResult)
+            assert finished[0].frame_time_ms == 33.3
 
     @patch("echo_personal_tool.application.workers.speckle_worker.assign_aha_segments")
     @patch("echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone")
@@ -419,6 +420,7 @@ class TestSpeckleTrackingWorkerRun:
             assert worker._frames is not None and worker._frames.shape[0] == 10
             assert len(finished) == 1
             assert isinstance(finished[0], StrainResult)
+            assert finished[0].frame_time_ms == 33.3
 
     def test_run_with_frames_none_and_no_source_emits_error(self):
         zone = _make_zone()

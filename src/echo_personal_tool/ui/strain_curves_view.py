@@ -33,12 +33,12 @@ SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
 }
 
 SEGMENT_NAMES_RU: dict[int, str] = {
-    1: tr("strain.seg_basal_septal"),
-    2: tr("strain.seg_basal_lateral"),
-    3: tr("strain.seg_mid_septal"),
-    4: tr("strain.seg_mid_lateral"),
-    5: tr("strain.seg_apical_septal"),
-    6: tr("strain.seg_apical_lateral"),
+    1: tr("strain.seg_basal_sept"),
+    2: tr("strain.seg_basal_lat"),
+    3: tr("strain.seg_mid_sept"),
+    4: tr("strain.seg_mid_lat"),
+    5: tr("strain.seg_apical_sept"),
+    6: tr("strain.seg_apical_lat"),
 }
 
 # View segment ranges
@@ -66,10 +66,16 @@ class SegmentCurvePanel(QWidget):
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(2)
 
-        # Title
+        # Title: view name + GLS value
+        header = QHBoxLayout()
         title_label = QLabel(title)
         title_label.setStyleSheet("font-weight: bold; color: #e0e0e0; font-size: 11px;")
-        layout.addWidget(title_label)
+        header.addWidget(title_label)
+        header.addStretch()
+        self._gls_label = QLabel("")
+        self._gls_label.setStyleSheet("color: #ffd54f; font-weight: bold; font-size: 12px;")
+        header.addWidget(self._gls_label)
+        layout.addLayout(header)
 
         # Segment labels row
         self._labels_layout = QHBoxLayout()
@@ -91,13 +97,14 @@ class SegmentCurvePanel(QWidget):
 
         layout.addWidget(self._plot, stretch=1)
 
-        # ECG trace
+        # ECG trace (hidden when the clip has no real ECG)
         self._ecg_plot = pg.PlotWidget()
         self._ecg_plot.setBackground("black")
         self._ecg_plot.hideAxis("left")
         self._ecg_plot.hideAxis("bottom")
         self._ecg_plot.setMaximumHeight(40)
         self._ecg_plot.setMinimumHeight(30)
+        self._ecg_plot.setVisible(False)
         layout.addWidget(self._ecg_plot, stretch=0)
 
     def set_strain_data(
@@ -125,13 +132,13 @@ class SegmentCurvePanel(QWidget):
             return
         max_len = max(all_lengths)
 
-        # Plot each segment curve
+        # Plot each segment curve (thin 1px lines, vendor style)
         for seg_id, strain_curve in segment_strains.items():
             if seg_id not in SEGMENT_COLORS:
                 continue
             color = SEGMENT_COLORS[seg_id]
             x = np.arange(len(strain_curve)) * frame_time_ms
-            pen = pg.mkPen(color, width=1.5)
+            pen = pg.mkPen(color, width=1)
             curve = self._plot.plot(x, strain_curve, pen=pen)
             self._curves[seg_id] = curve
 
@@ -143,7 +150,7 @@ class SegmentCurvePanel(QWidget):
                 curves_array[i, : len(curve)] = curve
             mean_curve = np.nanmean(curves_array, axis=0)
             x_mean = np.arange(max_len) * frame_time_ms
-            pen_mean = pg.mkPen(255, 255, 255, width=2, style=Qt.PenStyle.DashLine)
+            pen_mean = pg.mkPen(255, 255, 255, width=1.5, style=Qt.PenStyle.DashLine)
             self._mean_curve = self._plot.plot(x_mean, mean_curve, pen=pen_mean)
 
         # ES marker
@@ -157,11 +164,37 @@ class SegmentCurvePanel(QWidget):
         )
         self._plot.addItem(self._es_marker)
 
-        # Set X range
+        # Set X range (timeline) and auto-scale Y to the actual data
         self._plot.setXRange(0, max_len * frame_time_ms, padding=0.02)
+        self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=True)
 
-    def set_ecg_trace(self, ecg_data: np.ndarray, frame_time_ms: float = 33.3, current_frame: int = 0) -> None:
-        """Display ECG trace with frame marker."""
+    def set_gls(self, gls: float | None) -> None:
+        """Show the view's GLS value in the header (large, vendor style)."""
+        if gls is None:
+            self._gls_label.setText("")
+        else:
+            self._gls_label.setText(f"GLS {gls:.1f}%")
+
+    def set_ecg_visible(self, visible: bool) -> None:
+        """Show/hide the ECG trace row (hidden when no real ECG)."""
+        self._ecg_plot.setVisible(visible)
+        if not visible:
+            if self._ecg_item is not None:
+                self._ecg_plot.removeItem(self._ecg_item)
+                self._ecg_item = None
+            if self._ecg_marker is not None:
+                self._ecg_plot.removeItem(self._ecg_marker)
+                self._ecg_marker = None
+
+    def set_ecg_trace(
+        self,
+        ecg_data: np.ndarray,
+        frame_time_ms: float = 33.3,
+        current_frame: int = 0,
+        *,
+        ecg_sample_rate: float | None = None,
+    ) -> None:
+        """Display ECG trace with frame marker (real ECG only)."""
         if self._ecg_item is not None:
             self._ecg_plot.removeItem(self._ecg_item)
             self._ecg_item = None
@@ -170,10 +203,14 @@ class SegmentCurvePanel(QWidget):
             self._ecg_marker = None
 
         if ecg_data is None or len(ecg_data) == 0:
+            self.set_ecg_visible(False)
             return
 
         n = len(ecg_data)
-        t = np.arange(n) * frame_time_ms
+        if ecg_sample_rate and ecg_sample_rate > 0:
+            t = np.arange(n) / ecg_sample_rate * 1000.0
+        else:
+            t = np.arange(n) * frame_time_ms
 
         pen = pg.mkPen("#4caf50", width=1)
         self._ecg_item = self._ecg_plot.plot(t, ecg_data, pen=pen)
@@ -287,26 +324,49 @@ class StrainCurvesView(QWidget):
                             seg_strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
                     segment_curves[seg_id] = seg_strain
 
-        # ECG trace (use real ECG if available, otherwise synthetic)
-        if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0:
+        # ECG trace: real DICOM ECG only — no synthetic placeholder. When the
+        # clip has no ECG the strip rows are hidden entirely.
+        has_ecg = result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0
+        ecg_sample_rate: float | None = None
+        if has_ecg:
             ecg = result.ecg_trace_for_display
+            if result.ecg_waveform is not None and result.ecg_waveform.primary_lead is not None:
+                ecg_sample_rate = float(result.ecg_waveform.primary_lead.sampling_frequency)
         else:
-            ecg = self._generate_synthetic_ecg(n_frames, result.heart_rate_bpm)
+            ecg = None
 
-        # Update A4C panel
-        a4c_curves = {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A4C"]}
-        self._panel_a4c.set_strain_data(a4c_curves, result.ed_index, result.es_index, frame_time_ms)
-        self._panel_a4c.set_ecg_trace(ecg, frame_time_ms, result.es_index)
+        def _gls_for(seg_ids: list[int]) -> float | None:
+            values = [result.segment_strain[s] for s in seg_ids if s in (result.segment_strain or {})]
+            return float(np.mean(values)) if values else None
 
-        # Update A2C panel
-        a2c_curves = {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A2C"]}
-        self._panel_a2c.set_strain_data(a2c_curves, result.ed_index, result.es_index, frame_time_ms)
-        self._panel_a2c.set_ecg_trace(ecg, frame_time_ms, result.es_index)
+        def _update_panel(panel: SegmentCurvePanel, seg_ids: list[int], curves: dict[int, np.ndarray]) -> None:
+            panel.set_gls(_gls_for(seg_ids))
+            if curves:
+                panel.set_strain_data(curves, result.ed_index, result.es_index, frame_time_ms)
+                if ecg is not None:
+                    panel.set_ecg_visible(True)
+                    panel.set_ecg_trace(ecg, frame_time_ms, result.es_index, ecg_sample_rate=ecg_sample_rate)
+                else:
+                    panel.set_ecg_visible(False)
+            else:
+                panel.clear()
+                panel.set_ecg_visible(False)
 
-        # Update DAO panel
-        dao_curves = {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["DAO"]}
-        self._panel_dao.set_strain_data(dao_curves, result.ed_index, result.es_index, frame_time_ms)
-        self._panel_dao.set_ecg_trace(ecg, frame_time_ms, result.es_index)
+        _update_panel(
+            self._panel_a4c,
+            VIEW_SEGMENTS["A4C"],
+            {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A4C"]},
+        )
+        _update_panel(
+            self._panel_a2c,
+            VIEW_SEGMENTS["A2C"],
+            {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A2C"]},
+        )
+        _update_panel(
+            self._panel_dao,
+            VIEW_SEGMENTS["DAO"],
+            {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["DAO"]},
+        )
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
         """Generate synthetic ECG trace."""

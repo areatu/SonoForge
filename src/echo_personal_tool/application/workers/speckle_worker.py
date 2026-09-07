@@ -643,10 +643,15 @@ class SpeckleTrackingWorker(QRunnable):
 
             last = tracking_results[-1] if tracking_results else None
 
-            # Prepare ECG trace for display
+            # Prepare ECG trace for display (primary lead, matching the main
+            # viewer's ECG strip so the strip and the STE window agree).
             ecg_trace_display = None
             if self._ecg_waveform is not None:
-                ecg_trace_display = self._ecg_waveform.as_voltage_mv()
+                lead = self._ecg_waveform.primary_lead
+                lead_index = 0
+                if lead is not None and lead in self._ecg_waveform.leads:
+                    lead_index = self._ecg_waveform.leads.index(lead)
+                ecg_trace_display = self._ecg_waveform.as_voltage_mv(lead_index)
 
             result = StrainResult(
                 longitudinal=longitudinal,
@@ -689,6 +694,7 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels_total_count=n_kernels,
                 ecg_waveform=self._ecg_waveform,
                 r_peak_result=r_peak_result,
+                frame_time_ms=self._frame_time_ms,
                 ed_es_source=ed_es_source,
                 ed_es_confidence=ed_es_confidence,
                 ed_es_quality="high" if ed_es_confidence >= 0.8 else "review",

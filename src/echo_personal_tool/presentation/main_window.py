@@ -146,6 +146,9 @@ class MainWindow(QMainWindow):
         self._last_overlay_state: ViewerState | None = None
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
+        self._ste_position: str = "A4C"
+        self._strain_result_for_window: object | None = None
+        self._strain_frames_for_window: np.ndarray | None = None
         self._layout_config = self._load_layout_state()
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
@@ -1292,6 +1295,10 @@ class MainWindow(QMainWindow):
             if self._strain_window is not None:
                 self._strain_window.close()
                 self._strain_window = None
+            # Manual ED/ES frames belong to the previous clip: drop them so the
+            # next STE run detects frames for the new file (issue #5).
+            self._manual_ed_frame = None
+            self._manual_es_frame = None
         self._controller.load_instance(selected)
 
     def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
@@ -1830,6 +1837,7 @@ class MainWindow(QMainWindow):
             MeasurementAction.RV_FAC: self._on_rv_fac,
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
+            MeasurementAction.STRAIN_CURVES: self._on_strain_curves_requested,
             MeasurementAction.MMODE: self._toggle_mmode,
             MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
             MeasurementAction.MMODE_TIME_HR: self._on_mmode_time_hr_from_menu,
@@ -2213,6 +2221,7 @@ class MainWindow(QMainWindow):
             manual_es=self._manual_es_frame,
             n_frames=n_frames,
             ed_es_hint=ed_es_hint,
+            initial_view=contour.view,
         )
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
@@ -2221,6 +2230,7 @@ class MainWindow(QMainWindow):
             return
         config = settings.get_config()
         config_preset = settings.selected_preset_name()
+        self._ste_position = settings.selected_view()
         self._manual_ed_frame = settings.manual_ed
         self._manual_es_frame = settings.manual_es
         self._viewer.clear_speckle_overlay()
@@ -2248,6 +2258,12 @@ class MainWindow(QMainWindow):
 
     def _on_strain_window_closed(self) -> None:
         self._strain_window = None
+        # The smoothing slider is a child of the viewer; without this it stays
+        # visible after the strain window closes (issue #1).
+        try:
+            self._viewer._ste_sensitivity.hide()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _on_speckle_result_ready(self, result: object) -> None:
         from echo_personal_tool.domain.models.speckle import StrainResult
@@ -2297,7 +2313,23 @@ class MainWindow(QMainWindow):
             frames = self._controller._frame_cache.require_full_cine()
         except Exception:  # noqa: BLE001
             frames = None
-        self._ensure_strain_window().show_result(result, frames=frames)
+        # Keep the last result so the "Strain curves" button can reopen it
+        self._strain_result_for_window = result
+        self._strain_frames_for_window = frames
+        window = self._ensure_strain_window()
+        window.set_position(self._ste_position)
+        window.show_result(result, frames=frames)
+
+    def _on_strain_curves_requested(self) -> None:
+        """Reopen the strain window on the curves page (issue #6)."""
+        result = self._strain_result_for_window
+        if result is None:
+            self._show_status("Сначала запустите Speckle Tracking — нет данных для графиков")
+            return
+        window = self._ensure_strain_window()
+        window.set_position(self._ste_position)
+        window.show_result(result, frames=self._strain_frames_for_window)
+        window.show_curves()
 
     @staticmethod
     def _format_speckle_preset_name(preset_name: str) -> str:
