@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QLabel,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -32,6 +33,7 @@ class SpeckleSettingsDialog(QDialog):
         manual_ed: int | None = None,
         manual_es: int | None = None,
         n_frames: int = 0,
+        ed_es_hint: str | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("dialog.speckle_settings.title"))
@@ -87,6 +89,15 @@ class SpeckleSettingsDialog(QDialog):
         form.addRow("ED frame:", self._ed_spin)
         form.addRow(self._es_auto_check)
         form.addRow("ES frame:", self._es_spin)
+
+        self._source_hint_label = QLabel(ed_es_hint or "")
+        self._source_hint_label.setWordWrap(True)
+        self._source_hint_label.setStyleSheet(
+            "QLabel { color: #90caf9; background: #12283f; "
+            "padding: 4px 8px; border-radius: 4px; font-size: 11px; }"
+        )
+        if ed_es_hint:
+            form.addRow(self._source_hint_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)

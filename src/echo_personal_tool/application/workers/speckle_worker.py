@@ -71,6 +71,56 @@ def _embed_window_curve(
     return full
 
 
+def _resolve_partial_manual_anchors(
+    *,
+    manual_ed: int | None,
+    manual_es: int | None,
+    auto_ed: int,
+    auto_es: int,
+    n_frames: int,
+) -> tuple[int, int, str | None]:
+    """Combine one-sided manual ED/ES anchors with automatic detection.
+
+    When the user pinned only ED (e.g. an EDV contour) or only ES (an ESV
+    contour), that anchor wins over ECG/Simpson/image and the other side keeps
+    the automatic candidate. If the auto candidate lands on the wrong side of
+    the pinned anchor (or on it), the free side is moved to a default systolic
+    span so the returned pair always satisfies ``ed < es`` and ``ed != es``.
+
+    Returns ``(ed, es, source)`` where ``source`` is None for a fully automatic
+    pair (caller keeps the mapping source) and "manual_ed+auto"/"manual_es+auto"
+    for a partial-manual pair.
+    """
+    if n_frames <= 1:
+        return 0, 0, None
+    last = n_frames - 1
+
+    ed = int(np.clip(manual_ed if manual_ed is not None else auto_ed, 0, last))
+    es = int(np.clip(manual_es if manual_es is not None else auto_es, 0, last))
+
+    source: str | None = None
+    if manual_ed is not None and manual_es is None:
+        source = "manual_ed+auto"
+    elif manual_es is not None and manual_ed is None:
+        source = "manual_es+auto"
+
+    if ed == es:
+        if source == "manual_ed+auto" and ed < last:
+            es = min(last, ed + max(1, (last - ed) // 3))
+        elif source == "manual_es+auto" and ed > 0:
+            ed = max(0, es - max(1, es // 3))
+        else:
+            es = min(last, ed + max(1, (last - ed) // 3))
+    elif ed > es:
+        # Trust the pinned anchor and re-position the auto side.
+        if source == "manual_ed+auto":
+            es = min(last, ed + max(1, (last - ed) // 3))
+        elif source == "manual_es+auto":
+            ed = max(0, es - max(1, es // 3))
+
+    return ed, es, source
+
+
 class SpeckleTrackingSignals(QObject):
     finished = Signal(object)
     error = Signal(str)
@@ -119,7 +169,9 @@ class SpeckleTrackingWorker(QRunnable):
             )
             kernels = assign_aha_segments(kernels, lv_center=lv_center, view="A4C")
 
-            manual_phases = self._manual_ed is not None and self._manual_es is not None
+            manual_ed_given = self._manual_ed is not None
+            manual_es_given = self._manual_es is not None
+            fully_manual = manual_ed_given and manual_es_given
             logger.info(
                 "STE: manual_ed=%s manual_es=%s n_frames=%d ecg=%s",
                 self._manual_ed,
@@ -127,17 +179,17 @@ class SpeckleTrackingWorker(QRunnable):
                 n_frames,
                 self._ecg_waveform is not None,
             )
-            ed_es_source = "image"
             ed_es_confidence = 0.5
             r_peak_result = None
 
-            if manual_phases:
+            if fully_manual:
                 global_ed = int(np.clip(self._manual_ed, 0, n_frames - 1))
                 global_es = int(np.clip(self._manual_es, 0, n_frames - 1))
                 ed_es_source = "manual"
                 ed_es_confidence = 1.0
             else:
-                # ECG-first policy: use R-peaks when reliable, else image fallback.
+                # ECG-first policy: use R-peaks when reliable, else Simpson area
+                # curve, else image fallback.
                 from echo_personal_tool.domain.services.ecg_ed_es_mapper import (
                     detect_ed_es_for_cine,
                     detect_ed_es_from_area_curve,
@@ -153,8 +205,8 @@ class SpeckleTrackingWorker(QRunnable):
                     simpson_fallback=lambda: detect_ed_es_from_area_curve(self._simpson_area_curve, n_frames),
                     image_fallback=image_fallback,
                 )
-                global_ed = mapping.ed_frame_index
-                global_es = mapping.es_frame_index
+                auto_ed = mapping.ed_frame_index
+                auto_es = mapping.es_frame_index
                 ed_es_source = mapping.source
                 r_peak_result = mapping.r_peak_result
                 if mapping.r_peak_result is not None:
@@ -163,6 +215,21 @@ class SpeckleTrackingWorker(QRunnable):
                     ed_es_confidence = 0.8
                 else:
                     ed_es_confidence = 0.5
+
+                # One-sided manual anchors: the user pinned one frame (usually
+                # the EDV or ESV contour), the other side keeps the automatic
+                # detection. A pinned anchor always wins over ECG/Simpson/image
+                # so drawn EDV/ESV contours are honoured.
+                global_ed, global_es, partial_source = _resolve_partial_manual_anchors(
+                    manual_ed=self._manual_ed,
+                    manual_es=self._manual_es,
+                    auto_ed=auto_ed,
+                    auto_es=auto_es,
+                    n_frames=n_frames,
+                )
+                if partial_source is not None:
+                    ed_es_source = partial_source
+                    ed_es_confidence = 0.8  # manual side is exact, auto side needs review
 
             phase_start = min(global_ed, global_es)
             phase_end = max(global_ed, global_es)
@@ -229,7 +296,7 @@ class SpeckleTrackingWorker(QRunnable):
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                 )
 
-            if not manual_phases and global_ed == global_es:
+            if not fully_manual and global_ed == global_es:
                 new_local_ed, new_local_es = auto_detect_ed_es(tracking_results, kernels, self._pixel_spacing)
                 new_local_ed = int(np.clip(new_local_ed, 0, int(preprocessed.shape[0]) - 1))
                 new_local_es = int(np.clip(new_local_es, 0, int(preprocessed.shape[0]) - 1))

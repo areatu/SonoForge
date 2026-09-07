@@ -2179,10 +2179,24 @@ class MainWindow(QMainWindow):
             for item in self._viewer.contours()
             if item.chamber == "LV" and item.view.upper() == contour.view.upper() and item.frame_index is not None
         }
-        if self._manual_ed_frame is None and phase_contours.get("ED") is not None:
+        ed_from_contour = self._manual_ed_frame is None and phase_contours.get("ED") is not None
+        es_from_contour = self._manual_es_frame is None and phase_contours.get("ES") is not None
+        if ed_from_contour:
             self._manual_ed_frame = phase_contours["ED"].frame_index
-        if self._manual_es_frame is None and phase_contours.get("ES") is not None:
+        if es_from_contour:
             self._manual_es_frame = phase_contours["ES"].frame_index
+        ed_pinned = self._manual_ed_frame is not None
+        es_pinned = self._manual_es_frame is not None
+        if ed_from_contour and es_from_contour:
+            ed_es_hint = "Manual — from EDV/ESV contours"
+        elif ed_from_contour:
+            ed_es_hint = "ED pinned from EDV contour; ES auto-detected"
+        elif es_from_contour:
+            ed_es_hint = "ES pinned from ESV contour; ED auto-detected"
+        elif ed_pinned and es_pinned:
+            ed_es_hint = "Manual frames (auto-detect disabled)"
+        else:
+            ed_es_hint = "Auto-detect: ECG → Simpson area → image"
         current_idx = self._get_current_frame_index() or 0
         cache = self._controller._frame_cache
         n_frames = cache._total_frames if cache else 0
@@ -2192,6 +2206,7 @@ class MainWindow(QMainWindow):
             manual_ed=self._manual_ed_frame,
             manual_es=self._manual_es_frame,
             n_frames=n_frames,
+            ed_es_hint=ed_es_hint,
         )
         from echo_personal_tool.presentation.ui_animations import exec_animated
 
