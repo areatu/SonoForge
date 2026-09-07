@@ -494,6 +494,66 @@ class TestSequentialTracking:
         assert seen.get("outward_slack") == 0.4
 
 
+class TestBorderTracking:
+    def _translated_wall_phantom(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+        """Continuous speckle texture translating rightwards; borders are only
+        geometric circles inside it (both sides of the borders carry texture)."""
+        from scipy.ndimage import shift as ndimage_shift
+
+        rng = np.random.default_rng(7)
+        h = w = 128
+        texture = rng.normal(110, 26, (h, w)).astype(np.float32)
+        n_frames = 6
+        shift = 2.0
+        frames = np.zeros((n_frames, h, w), dtype=np.float32)
+        for t in range(n_frames):
+            frames[t] = ndimage_shift(texture, (0, shift * t), order=1, mode="nearest")
+        c = np.array([52.0, 64.0])
+        ang = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+        endo0 = c + 14.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        epi0 = c + 20.0 * np.column_stack([np.cos(ang), np.sin(ang)])
+        return frames, endo0, epi0, shift * (n_frames - 1)
+
+    def test_propagates_borders_and_preserves_order(self) -> None:
+        """Borders must follow the texture and never invert endo/epi order."""
+        frames, endo0, epi0, total_shift = self._translated_wall_phantom()
+        cfg = SpeckleConfig(
+            kernel_size=12,
+            search_radius=8,
+            pyramid_levels=3,
+            bidirectional=False,
+            ncc_threshold=0.3,
+            tracking_mode="border",
+        )
+        from echo_personal_tool.domain.services.border_tracking import (
+            propagate_wall_borders,
+        )
+
+        out = propagate_wall_borders(frames, endo0, epi0, cfg)
+        endo_last = out["endo"][-1]
+        epi_last = out["epi"][-1]
+        center = np.mean(endo_last, axis=0)
+        r_e = np.linalg.norm(endo_last - center, axis=1)
+        r_p = np.linalg.norm(epi_last - center, axis=1)
+        # endo stayed inside epi (wall never inverts)
+        assert bool(np.all(r_p > r_e))
+        # borders moved right with the texture (translation is along axis 0)
+        shift_err = np.median(np.abs((endo_last - endo0)[:, 0] - total_shift))
+        assert shift_err < 3.0
+        assert np.all(np.isfinite(out["positions"]))
+        assert out["positions"].shape == (len(frames), len(out["kernels"]), 2)
+
+    def test_resample_closed_equal_arc(self) -> None:
+        from echo_personal_tool.domain.services.border_tracking import resample_closed
+
+        square = np.array([[0, 0], [10, 0], [10, 10], [0, 10]], dtype=float)
+        out = resample_closed(square, 40)
+        assert out.shape == (40, 2)
+        # closed loop perimeter ~ 40 units -> spacing of one unit
+        seg = np.linalg.norm(np.diff(np.vstack([out, out[:1]]), axis=0), axis=1)
+        assert abs(seg.mean() - 1.0) < 1e-3
+
+
 class TestGlobalMotionCompensation:
     def test_estimate_translations_identity(self) -> None:
         """Identical frames should yield zero translation for the reference frame."""

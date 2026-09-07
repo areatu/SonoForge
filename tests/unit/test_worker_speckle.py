@@ -309,6 +309,7 @@ class TestSpeckleTrackingWorkerRun:
                 frame_time_ms=33.3,
                 manual_ed=0,
                 manual_es=5,
+                config=SpeckleConfig(tracking_mode="sequential"),
             )
             finished = []
             worker.signals.finished.connect(lambda r: finished.append(r))
@@ -405,6 +406,7 @@ class TestSpeckleTrackingWorkerRun:
                 manual_es=5,
                 source_path=path,
                 media_format="dicom",
+                config=SpeckleConfig(tracking_mode="sequential"),
             )
             finished = []
             errors = []

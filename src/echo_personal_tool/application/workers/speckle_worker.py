@@ -325,7 +325,27 @@ class SpeckleTrackingWorker(QRunnable):
                     config,
                     search_radius=max(config.search_radius, 24),
                 )
-            if config.tracking_mode == "incremental":
+            # Vendor-style border propagation: only well-posed when the window
+            # starts at ED and runs to ES (the last frame of the window).
+            is_border_mode = bool(
+                config.tracking_mode == "border"
+                and local_ed == 0
+                and local_es == int(preprocessed.shape[0]) - 1
+            )
+            border_propagation = None
+            if is_border_mode:
+                from echo_personal_tool.domain.services.border_tracking import (
+                    propagate_wall_borders,
+                )
+
+                border_propagation = propagate_wall_borders(
+                    preprocessed,
+                    self._zone.endo_points,
+                    self._zone.epi_points,
+                    config,
+                )
+                tracking_results = None
+            elif config.tracking_mode == "incremental":
                 tracking_results = track_cine_incremental(
                     preprocessed,
                     kernels,
@@ -360,7 +380,7 @@ class SpeckleTrackingWorker(QRunnable):
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
                 )
 
-            if not fully_manual and global_ed == global_es:
+            if not fully_manual and global_ed == global_es and tracking_results is not None:
                 new_local_ed, new_local_es = auto_detect_ed_es(tracking_results, kernels, self._pixel_spacing)
                 new_local_ed = int(np.clip(new_local_ed, 0, int(preprocessed.shape[0]) - 1))
                 new_local_es = int(np.clip(new_local_es, 0, int(preprocessed.shape[0]) - 1))
@@ -370,43 +390,58 @@ class SpeckleTrackingWorker(QRunnable):
                 local_es = new_local_es
 
             self.signals.progress.emit(70, 100)
-            positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)
-            positions = interpolate_invalid_kernels(
-                positions,
-                ncc_matrix,
-                kernels,
-                config.ncc_threshold,
-            )
-            raw_positions = positions.copy()
-            if config.global_motion_compensation:
-                translations = estimate_global_translations(tracking_frames_raw, local_ed)
-                positions = remove_global_translations(positions, translations)
-            smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
-            if config.physiology_prior:
-                # Optional physiological push (default OFF): without it, motion
-                # comes only from the NCC matches. A synthetic inward/outward
-                # nudge makes poor matches look plausible but also fabricates
-                # deformation that is not in the image.
-                smoothed = apply_motion_model(
-                    smoothed,
+            if border_propagation is not None:
+                # Border-propagation result: kernels are reconstructed between
+                # the propagated endo/epi borders, which are already spatially
+                # regularized each frame. Skip independent-kernel interpolation,
+                # smoothing, motion-model and the static-band clamp entirely.
+                kernels = assign_aha_segments(
+                    border_propagation["kernels"],
+                    lv_center=tuple(np.mean(self._zone.endo_points, axis=0).tolist()),
+                    view="A4C",
+                )
+                positions = border_propagation["positions"]
+                ncc_matrix = border_propagation["ncc"]
+                raw_positions = positions.copy()
+                smoothed = positions
+            else:
+                positions, ncc_matrix = extract_trajectories(tracking_results, kernels, ed_index=track_ed_index)
+                positions = interpolate_invalid_kernels(
+                    positions,
                     ncc_matrix,
                     kernels,
-                    track_ed_index,
                     config.ncc_threshold,
                 )
-            # Radial containment: keep layer order and prevent spurious spikes
-            # across the wall. The epicardium is a near-hard outer wall — during
-            # systole the epi barely moves (it cannot blow outward through the
-            # user-drawn epicardium) — while inward slack lets the wall thicken
-            # and contract without being erased by the ED baseline.
-            smoothed, n_clamped = clamp_trajectories_to_wall(
-                smoothed,
-                kernels,
-                track_ed_index,
-                inward_slack=1.4,
-                outward_slack=0.0,
-            )
-            logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
+                raw_positions = positions.copy()
+                if config.global_motion_compensation:
+                    translations = estimate_global_translations(tracking_frames_raw, local_ed)
+                    positions = remove_global_translations(positions, translations)
+                smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
+                if config.physiology_prior:
+                    # Optional physiological push (default OFF): without it,
+                    # motion comes only from the NCC matches. A synthetic
+                    # inward/outward nudge makes poor matches look plausible but
+                    # also fabricates deformation that is not in the image.
+                    smoothed = apply_motion_model(
+                        smoothed,
+                        ncc_matrix,
+                        kernels,
+                        track_ed_index,
+                        config.ncc_threshold,
+                    )
+                # Radial containment: keep layer order and prevent spurious
+                # spikes across the wall. The epicardium is a near-hard outer
+                # wall — during systole the epi barely moves — while inward
+                # slack lets the wall thicken/contract without being erased by
+                # the ED baseline.
+                smoothed, n_clamped = clamp_trajectories_to_wall(
+                    smoothed,
+                    kernels,
+                    track_ed_index,
+                    inward_slack=1.4,
+                    outward_slack=0.0,
+                )
+                logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]

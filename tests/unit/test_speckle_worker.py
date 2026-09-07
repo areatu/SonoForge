@@ -24,6 +24,10 @@ class TestSpeckleConfigDefaults:
         assert SpeckleConfig.preset_research().physiology_prior is False
         assert SpeckleConfig.preset_debug().physiology_prior is False
 
+    def test_standard_preset_uses_border_tracking(self) -> None:
+        """The default STE preset is the vendor-style border propagation."""
+        assert SpeckleConfig.preset_standard().tracking_mode == "border"
+
 
 @pytest.fixture()
 def synthetic_dicom_cine(tmp_path):

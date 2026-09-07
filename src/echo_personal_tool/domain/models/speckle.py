@@ -78,12 +78,18 @@ class SpeckleConfig:
 
     @classmethod
     def preset_standard(cls) -> SpeckleConfig:
+        # tracking_mode="border": vendor-style wall-border propagation. The ED
+        # endo/epi contours are tracked frame-to-frame and kernels stay between
+        # the moving borders, instead of independent kernels confined to the
+        # static ED band (which froze systolic motion and let dots blow through
+        # the epicardium). Measured on gold clips: better ES wall containment
+        # and less catastrophic mis-tracking than "sequential".
         return cls(
             kernel_size=12,
             search_radius=8,
             bidirectional=True,
             drift_compensation=True,
-            tracking_mode="sequential",
+            tracking_mode="border",
             ncc_threshold=0.3,
             outlier_sigma=0,
         )
