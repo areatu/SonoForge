@@ -2341,8 +2341,7 @@ class AppController(QObject):
             self._prefetch_playback_buffer(current)
             self._reschedule_playback_timer(poll=True)
             # ── Playback diagnostics: cache miss ──
-            if _playback_diag is not None:
-                _playback_diag.on_frame_tick(current, phase="cache_miss")
+            self._diag_frame_tick(current, phase="cache_miss", buffered_frames=ahead)
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[advance] frame=%d cache_miss prefetch_pending elapsed=%.2fms",

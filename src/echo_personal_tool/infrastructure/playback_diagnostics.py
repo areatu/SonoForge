@@ -243,6 +243,36 @@ class PlaybackReport:
                 if avg_per_frame > 0
                 else "    throughput:    inf"
             )
+            shown = sum(1 for t in self.frame_ticks if t.phase != "cache_miss")
+            if shown:
+                lines.append(f"    frames shown:  {shown}")
+                lines.append(f"    decode amplification: {total_decoded / shown:.2f} decoded per frame shown")
+
+        # Prefetch round trip (submit -> cached on the UI thread)
+        if self.batch_round_trips:
+            rt = sorted(r.elapsed_ms for r in self.batch_round_trips)
+            p95 = rt[max(0, int(len(rt) * 0.95) - 1)]
+            lines.append("")
+            lines.append("  Batch round trip (submit -> cached on the UI thread):")
+            lines.append(f"    runs:          {len(rt)}")
+            lines.append(f"    frames:        {sum(r.count for r in self.batch_round_trips)}")
+            lines.append(f"    avg:           {sum(rt) / len(rt):.1f} ms")
+            lines.append(f"    p95:           {p95:.1f} ms")
+            lines.append(f"    max:           {rt[-1]:.1f} ms")
+
+        # Buffer depth, in frames and in seconds of playback
+        buffered = [t for t in self.frame_ticks if t.buffered_frames >= 0]
+        if buffered:
+            ahead = [t.buffered_frames for t in buffered]
+            secs = [t.buffer_seconds for t in buffered if t.buffer_seconds >= 0]
+            lines.append("")
+            lines.append("  Playback buffer (decoded frames ahead of the playhead):")
+            lines.append(
+                f"    avg:           {sum(ahead) / len(ahead):.1f} frames"
+                + (f" ({sum(secs) / len(secs):.2f} s)" if secs else "")
+            )
+            lines.append(f"    min:           {min(ahead)} frames" + (f" ({min(secs):.2f} s)" if secs else ""))
+            lines.append(f"    empty at tick: {sum(1 for a in ahead if a == 0)}/{len(ahead)}")
 
         # Memory
         lines.append("")
@@ -367,11 +397,16 @@ class PlaybackDiagnostics:
         if rss > self._rss_peak_mb:
             self._rss_peak_mb = rss
 
+        buffer_seconds = -1.0
+        if buffered_frames is not None and buffered_frames >= 0 and frame_time_ms:
+            buffer_seconds = buffered_frames * frame_time_ms / 1000.0
         tick = FrameTickRecord(
             frame_index=frame_index,
             timestamp=now,
             phase=phase,
             elapsed_ms=elapsed_ms,
+            buffered_frames=-1 if buffered_frames is None else buffered_frames,
+            buffer_seconds=buffer_seconds,
         )
         self._ticks.append(tick)
 
@@ -484,6 +519,7 @@ class PlaybackDiagnostics:
                 wall_clock_jitter_ms=[],
                 instance_switches=[],
                 prefetch_cancel_count=0,
+                batch_round_trips=[],
             )
         self._rss_end_mb = _rss_mb()
         total_ms = sum(t.elapsed_ms for t in self._ticks) if self._ticks else 0.0
@@ -500,6 +536,7 @@ class PlaybackDiagnostics:
             wall_clock_jitter_ms=list(self._wall_jitter),
             instance_switches=list(self._instance_switches),
             prefetch_cancel_count=self._prefetch_cancels,
+            batch_round_trips=list(self._round_trips),
         )
         _LOG.info("\n%s", report.summary())
         self._active = False
