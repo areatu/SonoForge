@@ -533,7 +533,16 @@ class DicomSession:
         if self._frame_count <= 1:
             # Vendors sometimes omit (0028,0008) NumberOfFrames on genuinely
             # multi-frame clips; recover the count from the pixel bytes.
-            pixel_data = _extract_pixel_data_from_bytes(resolved.read_bytes())
+            raw = resolved.read_bytes()
+            pixel_data = _extract_pixel_data_from_bytes(raw)
+            if not pixel_data:
+                # Encapsulated (JPEG/J2K) uses undefined-length pixel data
+                # which the simple tag scanner cannot locate.  Fall back to
+                # a full pydicom parse for the pixel blob.
+                full_ds = pydicom.dcmread(BytesIO(raw), force=True)
+                pd_tag = getattr(full_ds, "PixelData", None)
+                if pd_tag is not None:
+                    pixel_data = bytes(pd_tag)
             if pixel_data:
                 self._frame_count = infer_dicom_frame_count(self._metadata, pixel_data=pixel_data)
         tsuid = str(getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1"))
