@@ -626,3 +626,233 @@ def test_tune_playback_cache_leaves_small_frames_alone(qapp, tmp_path) -> None:
     assert cache.memory_budget == before
 
 
+# ── Leading-static scan: sampled comparison, exact for identical frames ───────────
+
+
+def _scan_controller(tmp_path, frames: list) -> AppController:
+    controller = AppController()
+    path = tmp_path / "x.dcm"
+    path.write_bytes(b"\x00")
+    controller._frame_cache.set_total_frames(path, total=len(frames))
+    for i, frame in enumerate(frames):
+        if frame is not None:
+            controller._frame_cache.put(i, frame)
+    return controller
+
+
+def test_leading_static_scan_counts_near_identical_frames(qapp, tmp_path) -> None:
+    base = np.zeros((64, 64, 3), dtype=np.uint8)
+    noisy = base.copy()
+    noisy[10:14, 10:14] = 1  # mean |diff| over the frame ~0.004: visually frozen
+    frames = [base, base.copy(), noisy, np.full((64, 64, 3), 200, dtype=np.uint8)]
+    controller = _scan_controller(tmp_path, frames)
+
+    leading = controller._detect_leading_static_from_cache(tmp_path / "x.dcm", total=len(frames))
+
+    assert leading == 2
+
+
+def test_leading_static_scan_promotes_before_subtracting(qapp, tmp_path) -> None:
+    # 0 -> 255 must read as a maximal difference. Unsigned subtraction would wrap it
+    # to 1 and silently swallow real motion at the head of the cine.
+    frames = [
+        np.zeros((32, 32, 3), dtype=np.uint8),
+        np.zeros((32, 32, 3), dtype=np.uint8),
+        np.full((32, 32, 3), 255, dtype=np.uint8),
+    ]
+    controller = _scan_controller(tmp_path, frames)
+
+    leading = controller._detect_leading_static_from_cache(tmp_path / "x.dcm", total=len(frames))
+
+    assert leading == 1
+
+
+def test_leading_static_scan_handles_uint16(qapp, tmp_path) -> None:
+    frames = [
+        np.full((32, 32), 1000, dtype=np.uint16),
+        np.full((32, 32), 1000, dtype=np.uint16),
+        np.full((32, 32), 1001, dtype=np.uint16),  # diff 1.0 == threshold: still static
+        np.full((32, 32), 60000, dtype=np.uint16),
+    ]
+    controller = _scan_controller(tmp_path, frames)
+
+    leading = controller._detect_leading_static_from_cache(tmp_path / "x.dcm", total=len(frames))
+
+    assert leading == 2
+
+
+def test_leading_static_scan_stops_at_the_frame_cap(qapp, tmp_path) -> None:
+    frames = [np.zeros((16, 16, 3), dtype=np.uint8) for _ in range(40)]
+    controller = _scan_controller(tmp_path, frames)
+
+    leading = controller._detect_leading_static_from_cache(tmp_path / "x.dcm", total=len(frames))
+
+    assert leading == _LEADING_STATIC_MAX_FRAMES - 1
+
+
+def test_leading_static_scan_stops_at_a_cache_gap(qapp, tmp_path) -> None:
+    frames = [
+        np.zeros((16, 16, 3), dtype=np.uint8),
+        np.zeros((16, 16, 3), dtype=np.uint8),
+        None,  # evicted: the scan must not look past the hole
+        np.zeros((16, 16, 3), dtype=np.uint8),
+    ]
+    controller = _scan_controller(tmp_path, frames)
+
+    leading = controller._detect_leading_static_from_cache(tmp_path / "x.dcm", total=len(frames))
+
+    assert leading == 1
+
+
+def test_leading_static_scan_needs_frame_zero(qapp, tmp_path) -> None:
+    controller = AppController()
+    path = tmp_path / "x.dcm"
+    path.write_bytes(b"\x00")
+    controller._frame_cache.set_total_frames(path, total=4)
+    controller._frame_cache.put(1, np.zeros((16, 16, 3), dtype=np.uint8))
+
+    assert controller._detect_leading_static_from_cache(path, total=4) == 0
+
+
+# ── Event-driven playback wake-ups (replacing blind 16 ms polling) ────────────────
+
+
+def _playing_controller(tmp_path, frames: int = 12, *, playing: bool = True) -> AppController:
+    controller = AppController()
+    controller._playback_config = PlaybackConfig(
+        prefetch_radius=3,
+        min_buffer=2,
+        batch_size=3,
+        max_lag_frames=10,
+        evict_window=30,
+        scroll_debounce_ms=80,
+        scroll_batch_size=3,
+    )
+    controller._prefetch_playback_buffer = lambda *a, **k: None
+    mp4 = tmp_path / "c.mp4"
+    mp4.write_bytes(b"\x00")
+    inst = _mp4_instance(mp4, frames=frames)
+    controller._current_instance = inst
+    controller._frame_cache.set_total_frames(mp4, frames)
+    controller._state_manager.set_instance(inst, total_frames=frames, frame_time_ms=33.3)
+    controller._state_manager._is_playing = playing
+    controller._pending_decode_id = 0
+    controller._pending_load_id = 0
+    controller._prefetch_load_id = 0
+    controller._leading_static_frames[mp4.resolve()] = 0
+    return controller
+
+
+def test_wake_playback_timer_arms_an_immediate_tick_while_polling(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    controller._reschedule_playback_timer(poll=True)
+    assert controller._playback_poll_pending is True
+    assert controller._timer.interval() == controller._playback_poll_interval_ms
+
+    controller._wake_playback_timer()
+
+    assert controller._timer.interval() == 1
+
+
+def test_wake_playback_timer_stays_out_of_paced_playback(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    controller._reschedule_playback_timer()
+    paced = controller._timer.interval()
+
+    controller._wake_playback_timer()
+
+    assert controller._playback_poll_pending is False
+    assert controller._timer.interval() == paced
+
+
+def test_wake_playback_timer_is_quiet_while_paused(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path, playing=False)
+    controller._playback_poll_pending = True
+    controller._timer.setInterval(controller._playback_poll_interval_ms)
+
+    controller._wake_playback_timer()
+
+    assert controller._timer.interval() == controller._playback_poll_interval_ms
+
+
+def test_batch_delivery_wakes_the_playback_timer(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    controller._prefetch_load_id = 5
+    controller._reschedule_playback_timer(poll=True)
+    controller._timer.setInterval(controller._playback_poll_interval_ms)
+
+    controller._on_prefetch_batch_loaded(
+        5,
+        controller._current_instance.path,
+        [(1, np.full((4, 4), 1, dtype=np.uint8))],
+    )
+
+    assert controller._frame_cache.is_loaded(1)
+    assert controller._timer.interval() == 1
+
+
+def test_leading_scan_delivery_wakes_the_playback_timer(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    controller._prefetch_load_id = 9
+    controller._reschedule_playback_timer(poll=True)
+    controller._timer.setInterval(controller._playback_poll_interval_ms)
+
+    controller._on_leading_scan_batch_loaded(
+        9,
+        controller._current_instance.path.resolve(),
+        controller._frame_cache.frame_count(),
+        [(1, np.zeros((4, 4), dtype=np.uint8))],
+    )
+
+    assert controller._frame_cache.is_loaded(1)
+    assert controller._timer.interval() == 1
+
+
+def test_wake_up_before_the_cadence_does_not_advance_twice(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    for i in range(4):
+        controller._frame_cache.put(i, np.full((4, 4), i, dtype=np.uint8))
+    controller._state_manager.set_frame(0)
+    controller._last_frame_shown_at = perf_counter()
+    controller._reschedule_playback_timer(poll=True)
+
+    controller._wake_playback_timer()
+    controller._advance_playback()
+
+    # The tick only re-aims the timer: the next frame is still not due.
+    assert controller.state_manager.snapshot.current_frame_index == 0
+    assert controller._timer.interval() > 1
+
+
+def test_warmup_completion_starts_the_cadence_immediately(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    for i in range(4):
+        controller._frame_cache.put(i, np.full((4, 4), i, dtype=np.uint8))
+    controller._state_manager.set_frame(0)
+    controller._playback_warmup_pending = True
+    controller._last_frame_shown_at = perf_counter() - 1.0
+    controller._reschedule_playback_timer(poll=True)
+
+    controller._advance_playback()
+
+    assert controller._playback_warmup_pending is False
+    assert controller._playback_poll_pending is True
+    assert controller._timer.interval() == 1
+
+    controller._advance_playback()
+
+    # No extra frame interval is paid for the buffer that just finished filling.
+    assert controller.state_manager.snapshot.current_frame_index == 1
+
+
+def test_pause_clears_the_poll_flag(qapp, tmp_path) -> None:
+    controller = _playing_controller(tmp_path)
+    controller._reschedule_playback_timer(poll=True)
+    assert controller._playback_poll_pending is True
+
+    controller.set_playing(False)
+
+    assert controller._playback_poll_pending is False
+    assert controller._playback_warmup_pending is False
+
+

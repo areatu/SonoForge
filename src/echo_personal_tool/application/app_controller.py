@@ -434,6 +434,7 @@ class AppController(QObject):
         prefetch_was_active = self._prefetch_load_id != 0
         self._invalidate_prefetch()
         self._playback_warmup_pending = False
+        self._playback_poll_pending = False
 
         if _playback_diag is not None:
             _playback_diag.on_instance_switch_start(
@@ -630,15 +631,35 @@ class AppController(QObject):
         self.frame_load_failed.emit("Series not found in study")
 
     def _detect_leading_static_from_cache(self, path: Path, total: int) -> int:
+        """How many frames at the start of the cine are visually identical to frame 0.
+
+        Runs on the main thread when Play is pressed, so it is sampled (see
+        _LEADING_STATIC_STRIDE) and short-circuits on byte-identical frames, which is the
+        common case for a frozen prefix.
+        """
         if not self._frame_cache.is_loaded(0):
             return 0
-        ref = self._frame_cache.get(0).astype(np.float32, copy=False)
+        stride = _LEADING_STATIC_STRIDE
+        ref_full = self._frame_cache.get(0)
+        ref_sample = ref_full[::stride, ::stride]
+        # int16 already holds a uint8 difference without wrapping; wider dtypes
+        # promote to int32. Exact, and far cheaper than the float32 temporaries
+        # this replaces.
+        diff_dtype = np.promote_types(ref_full.dtype, np.int16)
         leading = 0
-        for idx in range(1, min(total, 16)):
+        for idx in range(1, min(total, _LEADING_STATIC_MAX_FRAMES)):
             if not self._frame_cache.is_loaded(idx):
                 break
-            diff = float(np.mean(np.abs(self._frame_cache.get(idx).astype(np.float32, copy=False) - ref)))
-            if diff > 1.0:
+            frame = self._frame_cache.get(idx)
+            if np.array_equal(frame, ref_full):
+                # Byte-identical frames (the usual frozen prefix) are cheaper to
+                # memcmp whole than through a strided view, which walks the frame
+                # at cache-line granularity.
+                leading = idx
+                continue
+            sample = frame[::stride, ::stride]
+            diff = float(np.mean(np.abs(sample.astype(diff_dtype) - ref_sample.astype(diff_dtype))))
+            if diff > _LEADING_STATIC_DIFF_THRESHOLD:
                 break
             leading = idx
         return leading
@@ -698,6 +719,7 @@ class AppController(QObject):
         # Always cache frames even for stale requests.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
+        self._wake_playback_timer()
         if path not in self._leading_static_frames:
             leading = self._detect_leading_static_from_cache(path, total)
             self._leading_static_frames[path] = leading
@@ -741,6 +763,7 @@ class AppController(QObject):
         else:
             self._invalidate_prefetch()
             self._playback_warmup_pending = False
+            self._playback_poll_pending = False
         self._state_manager.set_playing(is_playing)
         if is_playing:
             # ── Playback diagnostics: start ──
@@ -1342,6 +1365,20 @@ class AppController(QObject):
             elapsed_ms = (perf_counter() - self._last_frame_shown_at) * 1000.0
             delay_ms = max(1, int(delay_ms - elapsed_ms))
         self._timer.setInterval(delay_ms)
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def _wake_playback_timer(self) -> None:
+        """Fire the playback tick on the next event-loop iteration.
+
+        Poll mode re-checks every 16 ms, so a frame that landed 1 ms after a miss still cost
+        up to 16 ms of frozen video - half the frame interval at 30 fps, on exactly the weak
+        machines where misses happen. Delivery is the event to react to; the tick itself
+        decides whether to advance (its interval guard keeps the cadence) or wait again.
+        """
+        if not self._playback_poll_pending or not self._state_manager.snapshot.is_playing:
+            return
+        self._timer.setInterval(1)
         if not self._timer.isActive():
             self._timer.start()
 
@@ -2151,6 +2188,7 @@ class AppController(QObject):
         # needed if playback catches up to that region.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
+        self._wake_playback_timer()
         if self._state_manager.snapshot.is_playing:
             current = self._state_manager.snapshot.current_frame_index
             self._prefetch_playback_buffer(current)
@@ -2187,8 +2225,13 @@ class AppController(QObject):
                 ahead = self._frame_cache.loaded_ahead(current)
                 if ahead >= cfg.min_buffer:
                     self._playback_warmup_pending = False
-                    self._last_frame_shown_at = perf_counter()
-                    self._reschedule_playback_timer()
+                    # Waiting for the buffer already held the first frame on screen for
+                    # longer than one interval, so the cadence starts on the next event-loop
+                    # pass instead of paying a second full interval before the first advance.
+                    # Poll mode stays armed: the tick decides, and wake-ups still shorten it.
+                    self._last_frame_shown_at = 0.0
+                    self._reschedule_playback_timer(poll=True)
+                    self._wake_playback_timer()
                     return
             self._reschedule_playback_timer(poll=True)
             return
