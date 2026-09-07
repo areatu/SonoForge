@@ -1,1 +1,1 @@
-"""Bundled DejaVu font files (see DEJAVU-LICENSE.txt)."""
+"""Bundled UI fonts (Golos Text OFL, JetBrains Mono, DejaVu)."""

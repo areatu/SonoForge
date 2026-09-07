@@ -1,4 +1,4 @@
-"""Register bundled TTF fonts (DejaVu, Inter, JetBrains Mono)."""
+"""Register bundled TTF fonts (Golos Text, JetBrains Mono)."""
 
 from __future__ import annotations
 
@@ -8,16 +8,15 @@ from pathlib import Path
 
 from PySide6.QtGui import QFont, QFontDatabase
 
-FONT_FAMILY_UI = "Inter"
+FONT_FAMILY_UI = "Golos Text"
 FONT_FAMILY_MONO = "JetBrains Mono"
 DEFAULT_UI_POINT_SIZE = 13
 
 _FONT_FILES = (
-    "Inter-Regular.ttf",
-    "Inter-Bold.ttf",
-    "Inter-SemiBold.ttf",
-    "Inter-Medium.ttf",
-    "InterDisplay-Regular.ttf",
+    "GolosText-Regular.ttf",
+    "GolosText-Medium.ttf",
+    "GolosText-SemiBold.ttf",
+    "GolosText-Bold.ttf",
     "JetBrainsMono-Regular.ttf",
     "JetBrainsMono-Bold.ttf",
 )
@@ -54,7 +53,7 @@ def mono_font(*, point_size: int = DEFAULT_UI_POINT_SIZE, bold: bool = False) ->
 
 def report_cyrillic_font_path() -> Path:
     """Stable on-disk path for ReportLab PDF export."""
-    return _resolved_font_path("Inter-Regular.ttf")
+    return _resolved_font_path("GolosText-Regular.ttf")
 
 
 @lru_cache(maxsize=len(_FONT_FILES))

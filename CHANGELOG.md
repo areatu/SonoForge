@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-09-08
+
+### Design
+- `feat(ui)`: replace Inter with Golos Text (ParaType / Google Fonts, OFL) for UI, section titles, and reports — Cyrillic drawn for Russian screens
+
+---
+
 ## 2026-08-23
 
 ### Features

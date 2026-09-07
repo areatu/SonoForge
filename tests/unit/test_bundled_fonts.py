@@ -1,4 +1,4 @@
-"""Tests for bundled DejaVu fonts."""
+"""Tests for bundled Golos Text / JetBrains Mono fonts."""
 
 from __future__ import annotations
 

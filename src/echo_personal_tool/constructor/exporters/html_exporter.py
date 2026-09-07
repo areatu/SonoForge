@@ -185,7 +185,7 @@ def _format_norm(norm) -> str:
 
 
 _CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ── Design Tokens (DESIGN.md: VUNO-inspired clinical) ── */
 :root {
@@ -204,7 +204,7 @@ _CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Golos Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg-dark);
   color: var(--text);
   line-height: 1.4;
@@ -252,7 +252,7 @@ h4 {
   border-radius: 2px;
   background: var(--bg-control);
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Golos Text', sans-serif;
   font-size: 13px;
 }
 .search-box input::placeholder { color: var(--text-dim); }
