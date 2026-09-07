@@ -45,15 +45,16 @@ def test_ordered_positions_are_left_untouched() -> None:
 def test_epicardium_pulled_back_inside_band() -> None:
     kernels, positions = _synthetic_ring()
     bad = positions.copy()
-    # One epi kernel jumped far outward (into the neighbouring wall/outside).
+    # One epi kernel jumped far outward along its own ray (radial drift).
+    c = np.array([100.0, 100.0])
     epi_id = next(i for i, k in enumerate(kernels) if k.layer == "epi" and k.node_index == 3)
-    bad[epi_id] = positions[epi_id] * 4.0  # ~ (400,400) — far outside
+    bad[epi_id] = c + (positions[epi_id] - c) * 4.0
     out, changed = clamp_kernels_to_wall_band(bad, kernels, positions)
     assert changed >= 1
     for i in range(0, len(kernels), 3):  # per column
-        r_endo = np.linalg.norm(out[i] - np.array([100.0, 100.0]))
-        r_mid = np.linalg.norm(out[i + 1] - np.array([100.0, 100.0]))
-        r_epi = np.linalg.norm(out[i + 2] - np.array([100.0, 100.0]))
+        r_endo = np.linalg.norm(out[i] - c)
+        r_mid = np.linalg.norm(out[i + 1] - c)
+        r_epi = np.linalg.norm(out[i + 2] - c)
         assert r_endo < r_mid < r_epi, f"column {i // 3} order broken"
 
 
@@ -70,6 +71,39 @@ def test_inverted_layers_are_reordered() -> None:
     col_pts = out[col]
     radii = np.linalg.norm(col_pts - c, axis=1)
     assert radii[0] < radii[1] < radii[2]
+
+
+def test_sequential_loop_keeps_kernels_in_band(monkeypatch) -> None:
+    from echo_personal_tool.domain.services import speckle_tracking as st
+
+    kernels, ed_pos = _synthetic_ring(n_cols=6)
+    frames = np.zeros((4, 220, 220), dtype=np.float32)
+
+    def _fake_pair(ref, tgt, kernels_, config, zone_mask=None):
+        from echo_personal_tool.domain.models.speckle import TrackingResult
+
+        n = len(kernels_)
+        pos = np.array([k.center for k in kernels_], dtype=np.float64)
+        c = np.array([100.0, 100.0])
+        epi_id = next(i for i, k in enumerate(kernels_) if k.layer == "epi" and k.node_index == 2)
+        pos[epi_id] = c + (pos[epi_id] - c) * 5.0  # radial jump far outside the wall
+        return TrackingResult(
+            frame_index=0,
+            displacements=np.zeros((n, 2)),
+            ncc_scores=np.ones(n),
+            valid_mask=np.ones(n, dtype=bool),
+            kernel_positions=pos,
+        )
+
+    monkeypatch.setattr(st, "track_frame_pair", _fake_pair)
+    config = st.SpeckleConfig(tracking_mode="sequential", bidirectional=False)
+    results = st.track_cine_sequential(frames, kernels, ed_index=0, config=config)
+    last = next(r for r in results if r.frame_index == 3).kernel_positions
+    c = np.array([100.0, 100.0])
+    for i in range(0, len(kernels), 3):
+        radii = np.linalg.norm(last[i : i + 3] - c, axis=1)
+        assert radii[0] < radii[1] < radii[2], f"column {i // 3} layer order inverted"
+        assert radii[2] < 32.5, "epi kernel escaped the wall band"
 
 
 def test_trajectory_clamp_preserves_ed_and_shape() -> None:

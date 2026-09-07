@@ -702,6 +702,15 @@ def track_cine_sequential(
         ncc[i + 1] = match.ncc_scores
         valid[i + 1] = match.valid_mask
 
+        # Radial containment in the loop: pull matched (and held) kernels back
+        # into the wall band so a locked-on kernel cannot cross the endo/epi
+        # boundaries on the next step, and layer order never inverts.
+        positions[i + 1], _ = clamp_kernels_to_wall_band(
+            positions[i + 1],
+            initial_kernels,
+            ed_centers,
+        )
+
         if config.bidirectional:
             bwd_kernels = [
                 TrackingKernel(
