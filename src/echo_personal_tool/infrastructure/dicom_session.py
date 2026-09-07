@@ -65,6 +65,12 @@ def _stat_signature(path: Path) -> tuple[int, int] | None:
 
 
 def _cleanup_all_sessions() -> None:
+    """Release all sessions at exit.
+
+    Uses ``_force_release_heavy()`` instead of ``release_heavy()`` to avoid blocking on
+    per-session locks that a still-running worker thread may hold.  The
+    process is about to die anyway; we just want to drop large buffers.
+    """
     with _sessions_lock:
         sessions = list(_all_sessions)
         _all_sessions.clear()
@@ -72,7 +78,7 @@ def _cleanup_all_sessions() -> None:
         _session_registry.clear()
     for session in sessions:
         try:
-            session.release()
+            session._force_release_heavy()
         except Exception:
             pass
 
@@ -189,9 +195,9 @@ def release_stale_sessions(exclude: DicomSession | None = None) -> None:
     NEVER freed → unbounded growth to 8+ GiB.
 
     Sessions stay registered after being released: they keep their parsed metadata and can
-    be re-warmed cheaply.  Per-session locks are taken only after ``_sessions_lock`` has
-    been dropped, because ``DicomSession.open()`` calls this while holding its own lock —
-    nesting them the other way round would deadlock.
+    be re-warmed cheaply.  This function must be called *outside* any per-session
+    ``_lock`` — ``DicomSession.open()`` calls it before acquiring its own lock to
+    prevent ABBA deadlocks when two threads open different files concurrently.
     """
     with _sessions_lock:
         stale = [s for s in _all_sessions if s is not exclude]
@@ -484,22 +490,35 @@ class DicomSession:
             return True
         return _stat_signature(resolved) == self._open_stat
 
-    @_synchronized
     def open(self, path: Path | str) -> None:
+        """Open a DICOM file, releasing heavy buffers from other sessions first.
+
+        The public entry point is intentionally NOT ``@_synchronized``: calling
+        ``release_stale_sessions()`` while holding ``self._lock`` creates an
+        ABBA deadlock when two threads open different files concurrently — each
+        holds its own session lock and waits for the other's inside
+        ``release_heavy()``.  Splitting the method lets us release stale
+        sessions *before* acquiring our lock.
+        """
         resolved = Path(path).resolve()
+        # Fast path: same file, pixels still loaded → nothing to do.
+        # ``_has_loadable_pixels()`` is ``@_synchronized`` so it briefly acquires
+        # and releases ``self._lock``; the worst case of reading ``_open_path``
+        # without the lock is a redundant ``release_stale_sessions`` call.
+        if self._open_path == resolved and self._metadata is not None and self._has_loadable_pixels():
+            return
+        # Release heavy buffers in ALL other cached sessions *outside* our lock
+        # so that two concurrent ``open()`` calls cannot deadlock.
+        release_stale_sessions(exclude=self)
+        self._open_impl(resolved)
+
+    @_synchronized
+    def _open_impl(self, resolved: Path) -> None:
+        # Re-check under the lock: another thread may have opened the same file
+        # while we were waiting for the lock (or inside release_stale_sessions).
         if self._open_path == resolved and self._metadata is not None and self._stat_matches(resolved):
-            # Reopening the SAME file. If a previous release_heavy() freed the
-            # heavy pixel buffers on this session, we MUST reload
-            # raw bytes, otherwise _decode_single_frame() would later hit
-            # _pixel_data_raw=None → TypeError.  Only early-return when the
-            # decode buffers are still alive.
             if self._has_loadable_pixels():
                 return
-        else:
-            # When switching to a different file (or when the file changed on disk),
-            # release heavy buffers in ALL other cached sessions, so only the active
-            # file stays resident.
-            release_stale_sessions(exclude=self)
         self.release()
         if not resolved.is_file():
             raise FileNotFoundError(f"DICOM file not found: {resolved}")
@@ -818,6 +837,20 @@ class DicomSession:
         the full cine for the life of a pooled thread (was the cause of
         multi-GB growth).  A read-only _frames view keeps its backing buffer
         alive on its own, so no materialize copy is needed.
+        """
+        self._raw_bytes = None
+        self._pixel_data_raw = None
+        self._encapsulated_frames = None
+        self._bot_offsets = None
+        self._frames = None
+        self._first_frame = None
+
+    def _force_release_heavy(self) -> None:
+        """Drop large buffers without acquiring the lock (atexit cleanup only).
+
+        Called from ``_cleanup_all_sessions`` when the process is about to die.
+        Worker threads may still hold ``_lock`` — blocking here would hang the
+        interpreter shutdown.  GIL protects against torn pointer writes.
         """
         self._raw_bytes = None
         self._pixel_data_raw = None
