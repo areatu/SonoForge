@@ -65,7 +65,6 @@ from echo_personal_tool.presentation.measurement_results_dialog import Measureme
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
-from echo_personal_tool.presentation.ste_results_dialog import SteResultsDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
@@ -234,7 +233,6 @@ class MainWindow(QMainWindow):
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
-        self._ste_dialog: SteResultsDialog | None = None
         self._strain_window: StrainWindow | None = None
 
         self._tool_panel = ToolPanel()
@@ -2042,8 +2040,6 @@ class MainWindow(QMainWindow):
         self._viewer.clear_doppler_calibration_display(keep_time_scale=True)
         self._viewer.clear_doppler_measurements()
         self._viewer.clear_speckle_overlay()
-        if self._ste_dialog is not None:
-            self._ste_dialog.clear()
         if self._strain_window is not None:
             self._strain_window.close()
             self._strain_window = None
@@ -2231,14 +2227,12 @@ class MainWindow(QMainWindow):
             manual_es=self._manual_es_frame,
         )
 
-    def _ensure_ste_dialog(self) -> SteResultsDialog:
-        if self._ste_dialog is None:
-            self._ste_dialog = SteResultsDialog(self)
-        return self._ste_dialog
-
     def _ensure_strain_window(self) -> StrainWindow:
         if self._strain_window is None:
-            self._strain_window = StrainWindow(self)
+            # Top-level window (no parent) so it is raised above a maximized or
+            # fullscreen main window instead of only becoming visible after the
+            # main window is closed.
+            self._strain_window = StrainWindow()
             self._strain_window.closed.connect(self._on_strain_window_closed)
         return self._strain_window
 
@@ -2251,24 +2245,6 @@ class MainWindow(QMainWindow):
         if not isinstance(result, StrainResult):
             return
         gls = result.gls
-        dialog = self._ensure_ste_dialog()
-        dialog.update_results(
-            result.longitudinal,
-            result.radial,
-            result.segment_strain,
-            result.segment_quality,
-            gls=gls,
-            ed_index=result.ed_index,
-            es_index=result.es_index,
-            window_start=result.tracking_window_start,
-            window_end=result.tracking_window_end,
-            kernels_accepted=result.kernels_accepted_count,
-            kernels_rejected=result.kernels_rejected_count,
-            kernels_total=result.kernels_total_count,
-            ed_es_source=result.ed_es_source,
-            ed_es_confidence=result.ed_es_confidence,
-            ed_es_quality=result.ed_es_quality,
-        )
         quality_pct = result.tracking_quality_mean * 100.0
         drift = "ON" if result.drift_compensation_applied else "OFF"
         preset_name = self._format_speckle_preset_name(result.config_preset)
@@ -2287,7 +2263,7 @@ class MainWindow(QMainWindow):
 
         status_parts = [
             f"GLS: {gls:.1f}%",
-            f"Quality: {quality_pct:.0f}%",
+            f"NCC: {quality_pct:.0f}%",
             quality_info,
             f"ED/ES: {result.ed_es_source}",
             f"Drift: {drift}",
@@ -2296,8 +2272,13 @@ class MainWindow(QMainWindow):
         self._show_status(" | ".join(filter(None, status_parts)))
         self._viewer.show_speckle_result(result)
 
-        # Open StrainWindow
-        self._ensure_strain_window().show_result(result)
+        # Open the single STE results window with the cine frames as background
+        frames: np.ndarray | None = None
+        try:
+            frames = self._controller._frame_cache.require_full_cine()
+        except Exception:  # noqa: BLE001
+            frames = None
+        self._ensure_strain_window().show_result(result, frames=frames)
 
     @staticmethod
     def _format_speckle_preset_name(preset_name: str) -> str:

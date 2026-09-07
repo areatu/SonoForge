@@ -190,3 +190,41 @@ class TestSpeckleLaunchFlow:
         contour_arg = captured["args"][0]
         assert contour_arg.chamber == "LV"
         assert contour_arg.phase == "ED"
+
+    def test_result_opens_single_top_level_strain_window(self, main_window) -> None:
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        result = StrainResult(
+            longitudinal=np.zeros(10),
+            radial=np.zeros(10),
+            gls=-18.5,
+            ed_index=2,
+            es_index=6,
+            tracking_quality_mean=0.9,
+            kernels_total_count=96,
+            kernels_accepted_count=80,
+            kernels_rejected_count=16,
+            tracking_window_start=0,
+            tracking_window_end=9,
+            ed_es_source="manual",
+            ed_es_confidence=1.0,
+            drift_compensation_applied=True,
+            heart_rate_bpm=70.0,
+            config_preset="standard",
+        )
+        frames = np.zeros((10, 200, 200), dtype=np.uint8)
+        main_window._controller._frame_cache.require_full_cine = MagicMock(return_value=frames)
+
+        # The result opens exactly one parentless StrainWindow (top-level) so
+        # it shows above a maximized/fullscreen main window, and no separate
+        # SteResultsDialog is created anymore.
+        main_window._on_speckle_result_ready(result)
+
+        win = main_window._strain_window
+        assert win is not None
+        assert win.parent() is None, "results window must be top-level to appear above the main window"
+        meta = win._meta_label.text()
+        assert "GLS -18.5%" in meta
+        assert "ED/ES 2/6 (manual)" in meta
