@@ -3,12 +3,53 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
+import pydicom
+from pydicom.dataset import Dataset, FileMetaDataset
 
 from echo_personal_tool.application.workers.speckle_worker import (
     SpeckleTrackingSignals,
     SpeckleTrackingWorker,
     _embed_window_curve,
+    _load_full_cine_frames,
 )
+
+
+@pytest.fixture()
+def synthetic_dicom_cine(tmp_path):
+    """Write an uncompressed 10-frame 32x32 DICOM clip and return its path."""
+    meta = FileMetaDataset()
+    meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+    ds = Dataset()
+    ds.file_meta = meta
+    ds.preamble = b"\x00" * 128
+    ds.is_little_endian = True
+    ds.is_implicit_VR = False
+    ds.SOPInstanceUID = "1.2.3.4.5"
+    ds.SeriesInstanceUID = "1.2.3.4.6"
+    ds.StudyInstanceUID = "1.2.3.4.7"
+    ds.Modality = "US"
+    ds.Rows = 32
+    ds.Columns = 32
+    ds.BitsAllocated = 8
+    ds.SamplesPerPixel = 1
+    ds.PixelRepresentation = 0
+    ds.NumberOfFrames = 10
+    ds.PixelData = np.random.randint(0, 256, (10, 32, 32), dtype=np.uint8).tobytes()
+    path = tmp_path / "cine.dcm"
+    pydicom.dcmwrite(path, ds)
+    return path
+
+
+class TestLoadFullCineFrames:
+    def test_decodes_dicom_from_disk(self, synthetic_dicom_cine) -> None:
+        frames = _load_full_cine_frames(synthetic_dicom_cine, "dicom")
+        assert frames.shape[0] == 10
+        assert frames.ndim == 3
+
+    def test_unknown_format_raises(self, synthetic_dicom_cine) -> None:
+        with pytest.raises(RuntimeError):
+            _load_full_cine_frames(synthetic_dicom_cine, "png")
 
 
 class TestEmbedWindowCurve:

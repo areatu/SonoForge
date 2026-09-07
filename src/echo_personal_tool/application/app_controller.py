@@ -3621,12 +3621,16 @@ class AppController(QObject):
             create_myocardial_zone,
         )
 
-        # Use cached frames directly — load_all_frames is too slow for main thread
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        # Use cached frames when the whole cine is already resident; otherwise
+        # the worker decodes the full clip from source on its own thread (the
+        # cache only holds a sliding window for large cines under the memory
+        # budget, so requiring the full cine up-front failed with a reload
+        # prompt even for a valid multi-frame clip).
         try:
             frames = self._frame_cache.require_full_cine()
         except RuntimeError:
-            self.status_message.emit(tr("app.speckle_reload_cine"))
-            return
+            frames = None
 
         if contour is None:
             self.status_message.emit(tr("app.speckle_draw_contour"))
@@ -3664,7 +3668,6 @@ class AppController(QObject):
         )
 
         frame_time_ms = self._state_manager.snapshot.frame_time_ms or 33.3
-        instance = self._current_instance or self._state_manager.snapshot.instance
         simpson_area_curve: tuple[tuple[int, float], ...] = ()
         if instance is not None:
             simpson_area_curve = self._measurement_session.get_simpson_area_curve(
@@ -3672,6 +3675,20 @@ class AppController(QObject):
                 instance.sop_instance_uid,
                 contour.view,
             )
+
+        source_path = None
+        if frames is None:
+            if (
+                instance is not None
+                and instance.path is not None
+                and instance.media_format in ("dicom", "mp4")
+            ):
+                # Decode the full clip inside the worker thread.
+                source_path = instance.path
+                self.status_message.emit(tr("app.speckle_loading_full_cine"))
+            else:
+                self.status_message.emit(tr("app.speckle_reload_cine"))
+                return
 
         self.status_message.emit(tr("app.speckle_compute"))
         worker = SpeckleTrackingWorker(
@@ -3684,6 +3701,8 @@ class AppController(QObject):
             manual_ed=manual_ed,
             manual_es=manual_es,
             simpson_area_curve=simpson_area_curve,
+            source_path=source_path,
+            media_format=instance.media_format if instance is not None else "dicom",
         )
         worker.signals.finished.connect(self._on_speckle_tracking_finished, Qt.ConnectionType.QueuedConnection)
         worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)

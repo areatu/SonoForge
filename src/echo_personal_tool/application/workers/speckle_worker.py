@@ -58,6 +58,49 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
 logger = logging.getLogger(__name__)
 
 
+def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
+    """Decode the full clip from disk on the worker thread.
+
+    Used when the playback frame cache only holds a sliding window (large
+    cines exceed the memory budget and get evicted), so speckle tracking no
+    longer depends on the whole clip being pre-cached.
+
+    Returns a stacked (N, H, W) or (N, H, W, C) uint8 array.
+    """
+    path = Path(path)
+    if media_format == "dicom":
+        from echo_personal_tool.infrastructure.dicom_session import (
+            get_thread_dicom_session,
+        )
+
+        session = get_thread_dicom_session()
+        session.open(path)
+        try:
+            all_frames = session.decode_all_frames()
+        finally:
+            session.release_heavy()
+    elif media_format == "mp4":
+        import cv2
+
+        cap = cv2.VideoCapture(str(path))
+        try:
+            all_frames = []
+            while True:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                all_frames.append(frame)
+        finally:
+            cap.release()
+    else:
+        raise RuntimeError(f"Cannot decode full cine from media format {media_format!r}")
+
+    frames_list = list(all_frames)
+    if not frames_list:
+        raise RuntimeError("No frames decoded from source")
+    return np.stack(frames_list)
+
+
 def _embed_window_curve(
     window_curve: np.ndarray,
     n_frames: int,
@@ -133,7 +176,7 @@ class SpeckleTrackingSignals(QObject):
 class SpeckleTrackingWorker(QRunnable):
     def __init__(
         self,
-        frames: np.ndarray,
+        frames: np.ndarray | None,
         zone: MyocardialZone,
         pixel_spacing: tuple[float, float],
         frame_time_ms: float = 33.3,
@@ -143,6 +186,8 @@ class SpeckleTrackingWorker(QRunnable):
         manual_es: int | None = None,
         ecg_waveform=None,
         simpson_area_curve: tuple[tuple[int, float], ...] = (),
+        source_path: Path | str | None = None,
+        media_format: str = "dicom",
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -155,12 +200,21 @@ class SpeckleTrackingWorker(QRunnable):
         self._manual_es = manual_es
         self._ecg_waveform = ecg_waveform
         self._simpson_area_curve = simpson_area_curve
+        self._source_path = source_path
+        self._media_format = media_format
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
     def run(self) -> None:
         try:
             config = self._config or SpeckleConfig.preset_standard()
+            if self._frames is None:
+                # Full cine is not fully cached (evicted by the memory budget).
+                # Decode it from source here on the worker thread instead of
+                # forcing the user to reload the whole clip.
+                if self._source_path is None:
+                    raise RuntimeError("No source available to load the full cine")
+                self._frames = _load_full_cine_frames(self._source_path, self._media_format)
             n_frames = int(self._frames.shape[0])
 
             lv_center = tuple(np.mean(self._zone.endo_points, axis=0).tolist())

@@ -34,6 +34,7 @@
   "app.speckle_contour_not_found": "speckle tracking: контур LV не найден",
   "app.speckle_draw_contour": "speckle tracking: нарисуйте контур LV",
   "app.speckle_error": "speckle tracking ошибка: {message}",
+  "app.speckle_loading_full_cine": "Speckle tracking: загрузка полной cine-последовательности…",
   "app.speckle_not_enough_frames": "speckle tracking: недостаточно кадров",
   "app.speckle_reload_cine": "Speckle tracking: загрузите полную cine-последовательность",
   "ase_refs.add_document": "Добавить документ...",
