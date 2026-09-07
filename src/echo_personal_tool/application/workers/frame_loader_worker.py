@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
+from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 from echo_personal_tool.infrastructure.image_reader import ImageReader
 from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
@@ -26,10 +27,27 @@ except ImportError:
     _playback_diag = None  # type: ignore[assignment]
 
 
+# Files the decode gate serialises. DICOM and still images are random-access: one frame
+# costs the same wherever it sits, so a single decoder per file plus priority hand-off is
+# a pure win (720p scroll: RGB 6.6 -> 3.3 ms, JPEG 16.6 -> 7.7 ms).
+# Video containers are seek-bound instead - interleaving an interactive target into a
+# sequential batch makes both sides re-seek, which measured *slower* than letting the pool
+# run them concurrently (MJPEG 720p MP4 scroll: 44.5 ms gated vs 37.1 ms ungated), so mp4
+# keeps going straight to the pool.
+GATED_MEDIA_FORMATS = frozenset({"dicom", "jpeg", "png"})
+
+
 class FrameLoaderSignals(QObject):
     finished = Signal(np.ndarray)
     batch_finished = Signal(list)
+    # (frame count, decode milliseconds) measured inside the worker: the controller sizes
+    # prefetch batches from real decode cost, not from round-trip latency that also
+    # contains pool queueing and event-loop delay.
+    batch_decoded = Signal(int, float)
     failed = Signal(str)
+    # Emitted when a parked request is superseded by a newer interactive one and never
+    # decoded (see decode_gate.DecodeGate). No pixels and no error - just bookkeeping.
+    cancelled = Signal()
 
 
 class FrameLoaderWorker(QRunnable):
@@ -57,9 +75,48 @@ class FrameLoaderWorker(QRunnable):
         self._batch_size = batch_size
         self.signals = FrameLoaderSignals()
         self.setAutoDelete(False)
+        # Assigned by AppController._start_frame_loader(). Left as None the worker decodes
+        # immediately, which keeps standalone construction (tests, one-off scripts) working.
+        self.decode_gate: DecodeGate | None = None
+        self.priority: DecodePriority = DecodePriority.PLAYBACK
+
+    @property
+    def decode_path(self) -> Path:
+        """File this worker decodes - the gate's single-flight key."""
+        return self._path
+
+    def cancel_parked(self) -> None:
+        """Report that this request was superseded before it ever decoded."""
+        try:
+            self.signals.cancelled.emit()
+        except RuntimeError:
+            # Receiver already deleted - nothing to release.
+            pass
 
     @Slot()
     def run(self) -> None:
+        gate = self.decode_gate if self._media_format in GATED_MEDIA_FORMATS else None
+        if gate is None:
+            self._decode_request()
+            return
+        if not gate.enter(self):
+            # Another worker already owns this file: we are parked and will be adopted by
+            # it, which emits our signals from that thread (all receivers are queued).
+            return
+        current: FrameLoaderWorker = self
+        try:
+            while True:
+                current._decode_request()
+                nxt = gate.next_parked(current)
+                if nxt is None:
+                    break
+                current = nxt
+        finally:
+            # Defensive: never leave a parked request unserved if the loop broke early.
+            for orphan in gate.release(current):
+                orphan._decode_request()
+
+    def _decode_request(self) -> None:
         _t0 = time.perf_counter() if _FREEZE_DIAG else 0
         try:
             if self._batch_size > 0 and self._media_format in ("dicom", "mp4"):

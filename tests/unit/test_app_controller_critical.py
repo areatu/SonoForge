@@ -49,6 +49,7 @@ class _FakeWorker:
             finished=_FakeSignal(),
             failed=_FakeSignal(),
             batch_finished=_FakeSignal(),
+            batch_decoded=_FakeSignal(),
             timed_out=_FakeSignal(),
         )
         self.setAutoDelete = lambda x: None

@@ -17,6 +17,7 @@ import psutil
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
@@ -300,6 +301,21 @@ class AppController(QObject):
         self._live_workers.discard(worker)
         if len(self._live_workers) == 0:
             QTimer.singleShot(0, self._deferred_gc_collect)
+
+    def _start_frame_loader(self, worker: FrameLoaderWorker, priority: DecodePriority) -> None:
+        """Hand a frame decode to the per-file gate and start it on the pool.
+
+        The worker still goes to the thread pool (so pool-level bookkeeping and the
+        retained-worker guards are unchanged); if another worker already owns the file it
+        parks in the gate's priority queue and is decoded by the owner instead of blocking
+        a second pool thread on the session lock.
+        """
+        worker.decode_gate = self._decode_gate
+        worker.priority = priority
+        # A request superseded while parked never emits finished/failed, so release the
+        # retained worker here to keep _live_workers from growing while scrubbing.
+        worker.signals.cancelled.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
 
     def _deferred_gc_collect(self) -> None:
         import gc
@@ -646,7 +662,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.BACKGROUND)
 
     def _on_leading_scan_batch_loaded(self, request_id: int, path: Path, total: int, frames: list) -> None:
         is_current = request_id == self._prefetch_load_id
@@ -1682,7 +1698,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.INTERACTIVE)
 
     def _start_scroll_target_load(self, target: int, *, scroll: bool = False) -> None:
         if self._current_instance is None or self._current_instance.path is None:
@@ -1727,7 +1743,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.INTERACTIVE)
 
     def _mark_scroll_active(self) -> None:
         self._scroll_active = True
@@ -1818,7 +1834,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.NEIGHBORS)
 
     def _format_doppler_summary(self, dto: DopplerMeasurementDTO) -> str:
         peaks = len(dto.peaks)
@@ -3131,7 +3147,7 @@ class AppController(QObject):
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
 
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.BACKGROUND)
 
     def _on_neighbor_frame_loaded(
         self,

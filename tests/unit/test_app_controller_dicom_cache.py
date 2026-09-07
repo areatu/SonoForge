@@ -288,7 +288,9 @@ def test_scroll_batch_sets_target_frame(
             self._batch_size = batch_size
             self.signals = SimpleNamespace(
                 batch_finished=_FakeSignal(),
+                batch_decoded=_FakeSignal(),
                 failed=_FakeSignal(),
+                cancelled=_FakeSignal(),
             )
             started.append(self)
 
