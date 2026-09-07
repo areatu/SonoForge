@@ -554,6 +554,19 @@ def test_tune_playback_cache_grows_budget_and_window(qapp, tmp_path) -> None:
     """A flat 64 MB budget is 0.36 s of 720p RGB; the target needs room for a full second."""
     controller = AppController()
     controller._cache_ram_cap_bytes = 512 * 1024 * 1024
+    # Pinned, not detected: the profile depends on the machine the tests run on (HIGH_END
+    # prefetches 1.5 s of playback, LOW_END 1.0 s), and the target is exactly what the
+    # tuning below is checked against.
+    controller._playback_config = PlaybackConfig(
+        prefetch_radius=5,
+        min_buffer=3,
+        batch_size=5,
+        max_lag_frames=2,
+        evict_window=12,
+        scroll_debounce_ms=80,
+        scroll_batch_size=3,
+        prefetch_seconds=1.0,
+    )
     cache = controller._frame_cache
     cache.set_total_frames(tmp_path / "c.dcm", total=120)
     cache.put(0, _frame_720p_rgb())

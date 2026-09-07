@@ -176,6 +176,14 @@ def test_open_reloads_when_the_file_changed_on_disk(tmp_path: Path) -> None:
     session.open(path)
     assert session.frame_count == 3
 
+    # The uncompressed pixel block is mapped (dicom_session._map_pixel_data), and Windows
+    # denies write access to a file while a section is mapped over it (ERROR_USER_MAPPED_FILE,
+    # which surfaces as OSError EINVAL from open(path, "wb")). Replacing a loaded file
+    # therefore starts with releasing it - the contract documented in the audit, section 4.2.
+    # Switching instances does this on its own (release_stale_sessions -> release_heavy).
+    session.release_heavy()
+    assert session._pixel_data_raw is None, "the mapping must be gone before the rewrite"
+
     write_synthetic_multiframe_dicom(path, frame_count=6, rows=16, cols=16)
     session.open(path)
 
