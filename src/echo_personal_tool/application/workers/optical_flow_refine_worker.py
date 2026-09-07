@@ -112,7 +112,7 @@ class OpticalFlowRefineWorker(QRunnable):
             get_thread_dicom_session,
         )
 
-        session = get_thread_dicom_session()
+        session = get_thread_dicom_session(self._source_path)
         session.open(self._source_path)
         try:
             all_frames = session.decode_all_frames()

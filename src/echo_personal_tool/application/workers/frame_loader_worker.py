@@ -84,19 +84,40 @@ class FrameLoaderWorker(QRunnable):
                 (time.perf_counter() - _t0) * 1000,
             )
 
+    def _drain_higher_priority(self) -> None:
+        """Decode parked requests that outrank this one (called between batch frames).
+
+        Without it a prefetch batch would hold the file for its whole length and an
+        interactive scroll target would wait longer than the per-frame session lock ever
+        made it wait. Ungated formats (mp4) skip it: they never own the file, and probing
+        the gate between frames disturbed the read order enough to cost tens of ms per
+        batch on seek-bound video.
+        """
+        gate = self.decode_gate
+        if gate is None or self._media_format not in GATED_MEDIA_FORMATS:
+            return
+        while True:
+            urgent = gate.steal(self)
+            if urgent is None:
+                return
+            urgent._decode_request()
+
     def _run_single(self) -> None:
         _t0 = time.perf_counter()
         if self._media_format == "mp4":
-            reader = get_thread_video_reader()
+            reader = get_thread_video_reader(self._path)
             reader.open(self._path)
             pixels = reader.read_frame(self._frame_index)
         elif self._media_format in ("jpeg", "png"):
             pixels = ImageReader().read_pixels(self._path)
         else:
-            session = get_thread_dicom_session()
+            session = get_thread_dicom_session(self._path)
             session.open(self._path)
             pixels = session.decode_single_frame(self._frame_index)
-            session.release_heavy()
+            # No release_heavy() here: the session is shared per file and must stay warm.
+            # Dropping the pixel buffers after every call made each decode re-read the whole
+            # file (184-219 ms per batch at 1280x720). open() releases the buffers of the
+            # *other* cached sessions when the user switches to a different file.
         _elapsed_ms = (time.perf_counter() - _t0) * 1000.0
         # ── Playback diagnostics: single decode ──
         if _playback_diag is not None:
@@ -112,27 +133,32 @@ class FrameLoaderWorker(QRunnable):
         _batch_t0 = time.perf_counter()
 
         if self._media_format == "mp4":
-            reader = get_thread_video_reader()
+            reader = get_thread_video_reader(self._path)
             reader.open(self._path)
             for i in range(self._frame_index, end):
                 pixels = reader.read_frame(i)
                 results.append((i, pixels))
+                self._drain_higher_priority()
         elif self._media_format == "dicom":
-            # Sequential decode on a single session.
-            session = get_thread_dicom_session()
+            # Sequential decode on the shared per-file session (kept warm between batches).
+            session = get_thread_dicom_session(self._path)
             session.open(self._path)
             actual_count = session.frame_count
             end = min(end, actual_count)
             for i in range(self._frame_index, end):
                 pixels = session.decode_single_frame(i)
                 results.append((i, pixels))
-            session.release_heavy()
+                self._drain_higher_priority()
 
         _batch_elapsed_ms = (time.perf_counter() - _batch_t0) * 1000.0
         # ── Playback diagnostics: decode batch ──
         if _playback_diag is not None:
             _playback_diag.on_decode_batch(self._frame_index, len(results), _batch_elapsed_ms)
 
+        try:
+            self.signals.batch_decoded.emit(len(results), _batch_elapsed_ms)
+        except RuntimeError:
+            pass
         try:
             self.signals.batch_finished.emit(results)
         except RuntimeError:

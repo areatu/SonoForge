@@ -150,21 +150,33 @@ class AppController(QObject):
     ) -> None:
         super().__init__()
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
+        # One decoding worker per file + priority ordering of the parked requests
+        # (see decode_gate.DecodeGate): the shared per-file session/reader serialises
+        # concurrent decodes anyway, so parallel workers only burned pool threads and
+        # let a prefetch batch delay the frame the user scrolled to.
+        self._decode_gate = DecodeGate()
         self._state_manager = StateManager()
         self._measurement_session = StudyMeasurementSessionStore()
         self._current_study_uid: str | None = None
         self._segmenter = segmenter or OnnxInferenceEngine()
         self._playback_config: PlaybackConfig = detect_playback_config()
-        # Adaptive memory budget: cap at UserPreferences.playback_max_cache_mb
-        # (default 64 MB; high-end systems can raise to 128 MB via preferences),
-        # but never use more than 8% of available physical RAM.
-        # On a weak PC with 8 GB total RAM and ~2 GB available, 8% = 160 MB,
-        # so the binding cap is playback_max_cache_mb (64 MB).
+        # Adaptive memory budget: start at UserPreferences.playback_max_cache_mb
+        # (default 64 MB; high-end systems can raise it via preferences) and never exceed
+        # 8% of the physical RAM available at startup.
+        #
+        # The preference is a floor for tuning, not a ceiling: 64 MB holds 23 frames of
+        # 1280x720 RGB, and because the emergency trim halves the budget only ~11 of them
+        # are retained - 0.36 s of buffer at 30 fps. Now that a cine's pixel block is
+        # mapped instead of read into RAM (dicom_session._map_pixel_data), the frame cache
+        # is the dominant consumer of anonymous memory during playback, so
+        # _tune_playback_cache() grows it to what prefetch_seconds of the loaded cine
+        # actually needs - always inside _cache_ram_cap_bytes.
         try:
             _available = psutil.virtual_memory().available
             _adaptive_bytes = int(_available * 0.08)
         except Exception:
             _adaptive_bytes = 2 * 1024 * 1024 * 1024  # fallback: 2 GB
+        self._cache_ram_cap_bytes: int = _adaptive_bytes
         _prefs = load_user_preferences()
         _max_cache_bytes = min(
             _prefs.playback_max_cache_mb * 1024 * 1024,
@@ -2245,8 +2257,12 @@ class AppController(QObject):
         self._frame_cache.load(path, frames)
         from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
-        get_thread_dicom_session().release()
-        if self._frame_cache.memory_bytes() > _FRAME_CACHE_WARN_BYTES:
+        get_thread_dicom_session(path).release()
+        # A bulk load may legitimately exceed the playback budget (it is the whole cine in
+        # one array); warn when it goes past 1.5x, which is where the store stops being
+        # bounded by the tuning in _tune_playback_cache(). The old absolute 512 MB
+        # threshold was unreachable at the 64 MB default, so the warning never fired.
+        if self._frame_cache.memory_bytes() > int(self._frame_cache.memory_budget * _CACHE_WARN_BUDGET_FACTOR):
             size_mb = self._frame_cache.memory_bytes() / (1024 * 1024)
             self.status_message.emit(tr("status.dicom_cache_warning", size_mb=f"{size_mb:.1f}"))
 

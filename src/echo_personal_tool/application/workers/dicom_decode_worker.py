@@ -41,7 +41,7 @@ class DicomDecodeWorker(QRunnable):
     def run(self) -> None:
         t0 = time.perf_counter()
         try:
-            session = get_thread_dicom_session()
+            session = get_thread_dicom_session(self._path)
             session.open(self._path)
 
             t_meta = time.perf_counter()

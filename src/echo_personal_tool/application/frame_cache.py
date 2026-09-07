@@ -242,7 +242,7 @@ class FrameCache:
             # Video file — use existing video reader
             from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
-            reader = get_thread_video_reader()
+            reader = get_thread_video_reader(source)
             reader.open(source)
             frames = []
             for i in range(self._total_frames):
@@ -252,7 +252,7 @@ class FrameCache:
             # DICOM — load frame by frame
             from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
-            session = get_thread_dicom_session()
+            session = get_thread_dicom_session(source)
             session.open(source)
             frames = []
             for i in range(self._total_frames):

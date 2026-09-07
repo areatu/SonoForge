@@ -127,9 +127,13 @@ class TestRunSingle:
         worker.run()
 
         assert len(finished) == 1
+        # The session is looked up per file path so pooled workers share one warm session.
+        mock_get_session.assert_called_once_with(Path("/tmp/src.dcm"))
         session.open.assert_called_once_with(Path("/tmp/src.dcm"))
         session.decode_single_frame.assert_called_once_with(2)
-        session.release_heavy.assert_called_once()
+        # Heavy buffers must stay resident: releasing them per call made every decode
+        # re-read the whole file (see docs/bench/2026-09-06-cine-720p-playback-audit.md §3.1).
+        session.release_heavy.assert_not_called()
 
 
 # ── _run_batch ─────────────────────────────────────────────────────
@@ -180,7 +184,9 @@ class TestRunBatch:
 
         assert len(batch_results) == 1
         assert len(batch_results[0]) == 4
-        session.release_heavy.assert_called_once()
+        mock_get_session.assert_called_once_with(Path("/tmp/src.dcm"))
+        # Batch decode keeps the shared session warm for the next batch.
+        session.release_heavy.assert_not_called()
 
     @patch("echo_personal_tool.application.workers.frame_loader_worker.get_thread_dicom_session")
     def test_batch_dicom_clips_to_actual_count(self, mock_get_session):
