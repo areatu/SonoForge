@@ -188,6 +188,10 @@ class SpeckleTrackingWorker(QRunnable):
         simpson_area_curve: tuple[tuple[int, float], ...] = (),
         source_path: Path | str | None = None,
         media_format: str = "dicom",
+        # Optional separate path from which a real DICOM ECG waveform is read
+        # on this worker thread when ``ecg_waveform`` was not supplied (so a
+        # real ECG is available even when the cine came from the frame cache).
+        ecg_source_path: Path | str | None = None,
     ) -> None:
         super().__init__()
         self._frames = frames
@@ -202,6 +206,7 @@ class SpeckleTrackingWorker(QRunnable):
         self._simpson_area_curve = simpson_area_curve
         self._source_path = source_path
         self._media_format = media_format
+        self._ecg_source_path = ecg_source_path
         self.signals = SpeckleTrackingSignals()
         self.setAutoDelete(True)
 
@@ -216,6 +221,22 @@ class SpeckleTrackingWorker(QRunnable):
                     raise RuntimeError("No source available to load the full cine")
                 self._frames = _load_full_cine_frames(self._source_path, self._media_format)
             n_frames = int(self._frames.shape[0])
+
+            # Real ECG: prefer an explicitly supplied waveform; otherwise read
+            # it from the DICOM source on this worker thread. Kept None when the
+            # clip carries no ECG, so the STE window hides the strip (no
+            # synthetic placeholder is ever drawn).
+            if self._ecg_waveform is None:
+                ecg_path = self._ecg_source_path or self._source_path
+                if ecg_path is not None and self._media_format == "dicom":
+                    try:
+                        from echo_personal_tool.infrastructure.dicom_session import (
+                            read_ecg_waveform,
+                        )
+
+                        self._ecg_waveform = read_ecg_waveform(ecg_path)
+                    except Exception:  # noqa: BLE001 — no ECG is not fatal
+                        self._ecg_waveform = None
 
             lv_center = tuple(np.mean(self._zone.endo_points, axis=0).tolist())
             avg_spacing = np.mean(self._pixel_spacing)
@@ -695,6 +716,7 @@ class SpeckleTrackingWorker(QRunnable):
                 ecg_waveform=self._ecg_waveform,
                 r_peak_result=r_peak_result,
                 frame_time_ms=self._frame_time_ms,
+                cine_frames=self._frames,
                 ed_es_source=ed_es_source,
                 ed_es_confidence=ed_es_confidence,
                 ed_es_quality="high" if ed_es_confidence >= 0.8 else "review",

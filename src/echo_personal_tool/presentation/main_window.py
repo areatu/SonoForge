@@ -1838,6 +1838,9 @@ class MainWindow(QMainWindow):
             MeasurementAction.AUTO_SEGMENT: self._request_auto_segment_shortcut,
             MeasurementAction.SPECKLE_TRACKING: self._on_speckle_tracking_requested,
             MeasurementAction.STRAIN_CURVES: self._on_strain_curves_requested,
+            MeasurementAction.STE_VIEW_A4C: lambda: self._on_ste_view_selected("A4C"),
+            MeasurementAction.STE_VIEW_A2C: lambda: self._on_ste_view_selected("A2C"),
+            MeasurementAction.STE_VIEW_A3C: lambda: self._on_ste_view_selected("A3C"),
             MeasurementAction.MMODE: self._toggle_mmode,
             MeasurementAction.MMODE_CALIPER: self._on_mmode_caliper_requested,
             MeasurementAction.MMODE_TIME_HR: self._on_mmode_time_hr_from_menu,
@@ -2178,7 +2181,15 @@ class MainWindow(QMainWindow):
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
             return
-        contour = self._viewer.get_lv_contour(phase="ED", view="A4C") or self._viewer.get_lv_contour()
+        # Respect the position chosen with the Стрейн toolbar buttons: the ED
+        # contour of that view is used when present (the A4C preference here is
+        # only a fallback for the historical default).
+        ste_view = (self._ste_position or "A4C").upper()
+        contour = (
+            self._viewer.get_lv_contour(phase="ED", view=ste_view)
+            or self._viewer.get_lv_contour(phase="ED", view="A4C")
+            or self._viewer.get_lv_contour()
+        )
         if contour is None:
             self._show_status(tr("status.speckle_no_contour"))
             return
@@ -2307,18 +2318,32 @@ class MainWindow(QMainWindow):
         self._show_status(" | ".join(filter(None, status_parts)))
         self._viewer.show_speckle_result(result)
 
-        # Open the single STE results window with the cine frames as background
-        frames: np.ndarray | None = None
-        try:
-            frames = self._controller._frame_cache.require_full_cine()
-        except Exception:  # noqa: BLE001
-            frames = None
+        # The cine frames the worker actually tracked on travel with the
+        # result, so the results window can always animate kernels over the
+        # ultrasound even when the main viewer's cache dropped frames. Falls
+        # back to the cache for older result objects.
+        frames: np.ndarray | None = getattr(result, "cine_frames", None)
+        if frames is None:
+            try:
+                frames = self._controller._frame_cache.require_full_cine()
+            except Exception:  # noqa: BLE001
+                frames = None
         # Keep the last result so the "Strain curves" button can reopen it
         self._strain_result_for_window = result
         self._strain_frames_for_window = frames
         window = self._ensure_strain_window()
         window.set_position(self._ste_position)
         window.show_result(result, frames=frames)
+
+    def _on_ste_view_selected(self, view: str) -> None:
+        """Record which apical view (A4C/A2C/A3C) the current clip represents.
+
+        The choice is remembered on the main window and forwarded to the STE
+        settings dialog (which the contours were drawn on), the results-window
+        position label and the JSON export.
+        """
+        self._ste_position = view.upper()
+        self._show_status(tr("status.strain_pos_selected", view=self._ste_position))
 
     def _on_strain_curves_requested(self) -> None:
         """Reopen the strain window on the curves page (issue #6)."""

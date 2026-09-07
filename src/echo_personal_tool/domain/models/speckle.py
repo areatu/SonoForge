@@ -169,6 +169,10 @@ class StrainResult:
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None
     frame_time_ms: float = 33.3
+    # The cine frames (N,H,W[,C]) that tracking ran on, so the results window
+    # can always animate kernels over the real ultrasound without depending on
+    # the main viewer's frame cache still holding the whole clip.
+    cine_frames: np.ndarray | None = None
     ed_es_source: str = "image"
     ed_es_confidence: float = 0.0
     ed_es_quality: str = "unknown"

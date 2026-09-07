@@ -221,6 +221,50 @@ class TestMainWindow:
         assert main_window._strain_window is None
         assert not main_window._viewer._ste_sensitivity.isVisible()
 
+    def test_speckle_result_carries_cine_frames_into_strain_window(self, main_window):
+        """The cine frames the worker tracked on must reach the STE window via
+        ``StrainResult.cine_frames`` even when the viewer's frame cache has
+        dropped the clip (evicted under the memory budget) — otherwise the
+        contour/kernel animation has no background and never shows motion."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+
+        cine = np.zeros((6, 200, 200), dtype=np.uint8)
+        result = StrainResult(
+            longitudinal=np.zeros(6),
+            radial=np.zeros(6),
+            gls=-18.0,
+            ed_index=1,
+            es_index=4,
+            cine_frames=cine,
+        )
+        # Cache claims it does NOT hold the full cine — the result itself must
+        # provide the frames.
+        main_window._controller._frame_cache = MagicMock()
+        main_window._controller._frame_cache.require_full_cine.side_effect = RuntimeError("incomplete")
+
+        main_window._on_speckle_result_ready(result)
+
+        win = main_window._strain_window
+        assert win is not None
+        panel_frames = win._panel_a4c._frames
+        assert panel_frames is cine
+        assert win._panel_a4c._frame_slider.maximum() == 5
+        assert main_window._strain_frames_for_window is cine
+
+    def test_ste_view_buttons_set_analysis_position(self, main_window):
+        """The Стрейн toolbar A4C/A2C/A3C buttons record the active view; the
+        next Speckle Tracking launch prefers contours of that view."""
+        from echo_personal_tool.presentation.measurement_action import MeasurementAction
+
+        main_window._on_measure_action(MeasurementAction.STE_VIEW_A2C, "A4C", "ED")
+        assert main_window._ste_position == "A2C"
+
+        main_window._on_measure_action(MeasurementAction.STE_VIEW_A3C, "A4C", "ED")
+        assert main_window._ste_position == "A3C"
+
+        main_window._on_measure_action(MeasurementAction.STE_VIEW_A4C, "A4C", "ED")
+        assert main_window._ste_position == "A4C"
+
     def test_strain_curves_action_reopens_window_in_curves_mode(self, main_window):
         """The 'Strain curves' button reopens the results window on the curves
         page (issue #6: no entry point from the main window to the graph)."""

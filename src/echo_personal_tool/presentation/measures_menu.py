@@ -178,8 +178,10 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     (
         "menu.strain_group",
         (
+            _btn("menu.strain_pos_a4c", MeasurementAction.STE_VIEW_A4C),
+            _btn("menu.strain_pos_a2c", MeasurementAction.STE_VIEW_A2C),
+            _btn("menu.strain_pos_a3c", MeasurementAction.STE_VIEW_A3C),
             _btn("menu.speckle_tracking", MeasurementAction.SPECKLE_TRACKING, view="A4C"),
-            _btn("menu.strain_curves", MeasurementAction.STRAIN_CURVES, view="A4C"),
         ),
     ),
     (

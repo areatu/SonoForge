@@ -3690,6 +3690,17 @@ class AppController(QObject):
                 self.status_message.emit(tr("app.speckle_reload_cine"))
                 return
 
+        # Real ECG source (DICOM waveform) — always passed so the worker reads
+        # the ECG on its own thread even when the cine came from the frame
+        # cache; a clip without ECG simply yields None and the strip is hidden.
+        ecg_source_path = None
+        if (
+            instance is not None
+            and instance.path is not None
+            and instance.media_format == "dicom"
+        ):
+            ecg_source_path = instance.path
+
         self.status_message.emit(tr("app.speckle_compute"))
         worker = SpeckleTrackingWorker(
             frames=frames,
@@ -3703,6 +3714,7 @@ class AppController(QObject):
             simpson_area_curve=simpson_area_curve,
             source_path=source_path,
             media_format=instance.media_format if instance is not None else "dicom",
+            ecg_source_path=ecg_source_path,
         )
         worker.signals.finished.connect(self._on_speckle_tracking_finished, Qt.ConnectionType.QueuedConnection)
         worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)
