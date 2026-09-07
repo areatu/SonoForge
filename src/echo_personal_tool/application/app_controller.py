@@ -110,12 +110,37 @@ _file_handler.setLevel(logging.WARNING)
 _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_file_handler)
 
-_FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
+# Warn about the frame cache when a bulk load takes it this far past its budget.
+_CACHE_WARN_BUDGET_FACTOR = 1.5
 
 # Cines with at most this many frames are considered "short": prefetched in
 # full (when they fit in the frame cache) so loop wrap-around, rewind, and
 # start-from-first-frame never hit an un-cached frame.
 _SMALL_CINE_MAX_FRAMES = 60
+
+# Leading-static scan (skipping a frozen prefix when Play is pressed at frame 0).
+# Floor between two deferred gen-0 collections (see _deferred_gc_collect).
+_GC_MIN_INTERVAL_SEC = 2.0
+
+_LEADING_STATIC_MAX_FRAMES = 16
+# Row/column stride for the comparison. Full 720p frames as float32 cost 13.8-14.4 ms on
+# the main thread for the whole scan and 11 MB of temporaries per frame; every 4th row and
+# column keeps 57k of 2.7M pixels, the mean absolute difference stays unbiased on a static
+# prefix, and all the decision does is move the playback start by up to 15 frames.
+_LEADING_STATIC_STRIDE = 4
+_LEADING_STATIC_DIFF_THRESHOLD = 1.0
+
+# Prefetch batch sizing. A run of 1-2 frames cannot amortise one QThreadPool round-trip
+# (submit -> decode gate -> decode -> queued signals back to the UI thread), so the floor
+# is a quarter second of playback; the ceiling keeps a single run from holding the decode
+# gate long enough to delay the frame the user just scrolled to.
+_MIN_PREFETCH_BATCH_SECONDS = 0.25
+_MIN_PREFETCH_BATCH_FRAMES = 4
+_MAX_ADAPTIVE_BATCH = 32
+_DECODE_EMA_ALPHA = 0.3
+# Staleness budget per requested frame on top of _PREFETCH_TIMEOUT_SEC (see
+# _prefetch_timeout_sec).
+_PREFETCH_TIMEOUT_PER_FRAME_SEC = 0.05
 
 # ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
@@ -644,6 +669,7 @@ class AppController(QObject):
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id
         self._prefetch_load_id = request_id
+        self._prefetch_load_count = len(batch)
         worker = FrameLoaderWorker(
             path,
             frame_index=batch[0],
@@ -668,6 +694,7 @@ class AppController(QObject):
         is_current = request_id == self._prefetch_load_id
         if is_current:
             self._prefetch_load_id = 0
+            self._prefetch_load_count = 0
         # Always cache frames even for stale requests.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
@@ -682,6 +709,7 @@ class AppController(QObject):
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
         self._leading_static_frames[path] = 0
         if self._state_manager.snapshot.is_playing:
             current = self._state_manager.snapshot.current_frame_index
@@ -1850,6 +1878,9 @@ class AppController(QObject):
     def _invalidate_prefetch(self) -> None:
         self._prefetch_request_id += 1
         self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
+        # Whatever the timer was waiting for is stale now; the next tick re-arms it.
+        self._playback_poll_pending = False
         if self._prefetch_request_id > 1:
             if _playback_diag is not None:
                 _playback_diag.on_prefetch_cancel(reason="file_switch_or_seek")
@@ -1864,10 +1895,11 @@ class AppController(QObject):
         if perf_counter() < self._prefetch_cooldown_until:
             return
         if self._prefetch_load_id != 0:
-            # Stale prefetch guard: if the worker hasn't completed within
-            # _PREFETCH_TIMEOUT_SEC, force-clear it to prevent playback stall.
+            # Stale prefetch guard: if the worker hasn't completed within the timeout,
+            # force-clear it to prevent a playback stall. The timeout scales with the frames
+            # that run asked for (see _prefetch_timeout_sec).
             stale_sec = perf_counter() - self._prefetch_load_started_at
-            if stale_sec < self._PREFETCH_TIMEOUT_SEC:
+            if stale_sec < self._prefetch_timeout_sec():
                 if _FREEZE_DIAG:
                     _diag_log.warning(
                         "[prefetch] center=%d BLOCKED by pending_load_id=%d (%.1fs old)",
@@ -1884,7 +1916,6 @@ class AppController(QObject):
                 )
             self._prefetch_load_id = 0
 
-        cfg = self._playback_config
         total = self._frame_cache.frame_count()
         if total <= 0:
             return
@@ -1900,20 +1931,40 @@ class AppController(QObject):
             start = unloaded[0]
             batch = len(unloaded)
         else:
+            target = self._prefetch_target_frames()
             ahead = self._frame_cache.loaded_ahead(center)
-            if ahead >= cfg.prefetch_radius:
+            if ahead >= target:
+                return
+            # Refill hysteresis. Topping the buffer up by one frame per tick costs one
+            # thread-pool round-trip per displayed frame: 246 single-frame runs in 6 s of
+            # 720p playback, each paying submit + decode gate + queued signal delivery for
+            # ~2 ms of actual decoding. Waiting for the low-water mark and refilling to the
+            # target in one run does the same decode work with ~7x fewer runs, and the
+            # runway left at the mark still covers that refill many times over while
+            # decoding keeps up with playback (when it does not, the batch shrinks - see
+            # _min_prefetch_batch).
+            if ahead >= max(1, target // 2):
                 return
             start = (center + 1 + ahead) % total
             if start == center:
                 return
-            slots_remaining = cfg.prefetch_radius - ahead
-            batch = min(self._adaptive_batch_size, slots_remaining, total)
+            # Floor the run at a quarter second of playback. min(batch_size, radius - ahead)
+            # produced 1-2 frame runs: 368 decode runs for 368 displayed frames on a
+            # 120-frame 720p cine, i.e. one thread-pool round-trip amortised over a single
+            # ~2 ms decode. `target - ahead` still bounds the run, so the floor cannot push
+            # frames past what the cache retains.
+            batch = min(
+                max(self._min_prefetch_batch(), self._adaptive_batch_size),
+                target - ahead,
+                total,
+            )
             if batch <= 0:
                 return
 
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id
         self._prefetch_load_id = request_id
+        self._prefetch_load_count = batch
         self._prefetch_load_started_at = perf_counter()
         self._prefetch_batch_start = perf_counter()
 
@@ -1931,6 +1982,12 @@ class AppController(QObject):
         )
 
         worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        # Worker-side decode cost: the signal that drives prefetch batch sizing.
+        if hasattr(worker.signals, "batch_decoded"):
+            worker.signals.batch_decoded.connect(
+                partial(self._on_prefetch_decode_timing, request_id),
+                Qt.ConnectionType.QueuedConnection,
+            )
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -1942,39 +1999,144 @@ class AppController(QObject):
                 batch,
                 self._thread_pool.activeThreadCount(),
             )
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.PLAYBACK)
+
+    def _prefetch_timeout_sec(self) -> float:
+        """Staleness budget for the in-flight prefetch run.
+
+        A 32-frame batch of 720p JPEG legitimately takes about a second on a weak machine;
+        force-clearing it at the flat 1 s mark would start a second run decoding the same
+        frames and double the load on exactly the machine that is already behind.
+        """
+        return max(self._PREFETCH_TIMEOUT_SEC, _PREFETCH_TIMEOUT_PER_FRAME_SEC * self._prefetch_load_count)
+
+    def _prefetch_target_frames(self) -> int:
+        """Buffer depth in frames: cfg.prefetch_seconds of playback, capped by cache room.
+
+        cfg.prefetch_radius counts frames, and 5-10 frames is only 0.08-0.33 s at 30-60 fps
+        — one slow decode batch consumes it. Seconds scale with the frame rate instead, and
+        the retention cap keeps the target inside what FrameCache actually keeps.
+        """
+        cfg = self._playback_config
+        fps = self._playback_fps()
+        target = max(cfg.prefetch_radius, int(round(cfg.prefetch_seconds * fps)))
+        self._tune_playback_cache(target)
+        # Never aim past what the cache can retain. Frames decoded beyond the eviction
+        # window or the memory budget are dropped before the playhead reaches them and then
+        # decoded a second time: with a 17-frame target against a 12-frame window a 60-frame
+        # MONO16 cine decoded 835 frames to show 368.
+        retain = min(self._frame_cache.evict_window, self._frame_cache.capacity_frames())
+        target = min(target, max(1, retain))
+        total = self._frame_cache.frame_count()
+        if total > 0:
+            target = min(target, total)
+        return max(1, target)
+
+    def _tune_playback_cache(self, want_frames: int) -> None:
+        """Size the frame cache's budget and window for `want_frames` of the loaded cine.
+
+        Both limits used to be flat: a 64 MB budget and a 12-frame window, chosen before
+        720p existed in the product. At 2.76 MB per frame that is 0.36 s of buffer no
+        matter how much RAM is free, so the seconds-based prefetch target could never be
+        reached. The budget grows to what the target needs (`FrameCache.budget_for_frames`)
+        and never past the share of available RAM taken at startup; the window grows with
+        it so eviction does not discard what prefetch just decoded.
+        """
+        cache = self._frame_cache
+        if want_frames <= 0:
+            return
+        frame_bytes = int(cache.average_frame_bytes())
+        if frame_bytes <= 0:
+            return
+        total = cache.frame_count()
+        if 0 < total <= _SMALL_CINE_MAX_FRAMES:
+            # A short cine is worth holding whole: loop wrap, rewind and scrubbing then
+            # never decode a frame twice, and require_full_cine() (speckle tracking) stops
+            # raising IncompleteCineError at 720p. The RAM cap below still decides whether
+            # the machine can afford it.
+            want_frames = max(want_frames, total)
+        budget = cache.memory_budget
+        needed = cache.budget_for_frames(want_frames)
+        if needed > budget:
+            cache.set_memory_budget(min(needed, self._cache_ram_cap_bytes))
+            budget = cache.memory_budget
+        if cache.evict_window < want_frames:
+            cache.set_evict_window(min(want_frames, max(1, budget // frame_bytes)))
+
+    def _min_prefetch_batch(self) -> int:
+        """Smallest prefetch run worth a thread-pool round-trip.
+
+        A quarter second of playback while decoding keeps up. When a frame costs more than
+        the frame interval the floor drops to a few frames: a run only delivers its pixels
+        once the whole batch is decoded, so on a machine that is already behind a long run
+        would delay the frame nearest the playhead instead of protecting it.
+        """
+        floor = max(_MIN_PREFETCH_BATCH_FRAMES, int(round(_MIN_PREFETCH_BATCH_SECONDS * self._playback_fps())))
+        interval_ms = float(self._playback_interval_ms())
+        if self._prefetch_ema_decode_ms > interval_ms > 0:
+            return _MIN_PREFETCH_BATCH_FRAMES
+        return floor
+
+    def _playback_fps(self) -> float:
+        """Current playback frame rate, speed multiplier included (30 fps when unknown)."""
+        interval_ms = self._playback_interval_ms()
+        return 1000.0 / interval_ms if interval_ms > 0 else 30.0
+
+    def _on_prefetch_decode_timing(self, request_id: int, count: int, ms: float) -> None:
+        """Adapt prefetch batch size to the worker-side decode cost per frame.
+
+        Grow when a frame decodes in less than half the frame interval — one worker thread
+        can then stay ahead of playback, so longer runs mean fewer round-trips and a deeper
+        buffer. Shrink when a frame costs more than the interval — a long run only delays
+        the frames nearest the playhead. Between the two thresholds the size holds still,
+        which is the hysteresis that keeps it from oscillating.
+        """
+        if request_id != self._prefetch_request_id or count <= 0 or ms <= 0:
+            return
+        per_frame_ms = ms / count
+        prev = self._prefetch_ema_decode_ms
+        self._prefetch_ema_decode_ms = (
+            per_frame_ms if prev <= 0 else _DECODE_EMA_ALPHA * per_frame_ms + (1 - _DECODE_EMA_ALPHA) * prev
+        )
+        interval_ms = float(self._playback_interval_ms())
+        if interval_ms <= 0:
+            return
+        ema = self._prefetch_ema_decode_ms
+        if 2.0 * ema < interval_ms and self._adaptive_batch_size < _MAX_ADAPTIVE_BATCH:
+            self._adaptive_batch_size += 2
+        elif ema > interval_ms and self._adaptive_batch_size > self._min_prefetch_batch():
+            self._adaptive_batch_size -= 1
 
     def _on_prefetch_batch_loaded(self, request_id: int, path: Path, frames: list) -> None:
         is_current = request_id == self._prefetch_load_id
         if is_current:
             total_ms = (perf_counter() - self._prefetch_load_started_at) * 1000.0
             self._prefetch_load_id = 0
+            self._prefetch_load_count = 0
             if self._current_instance is None or self._current_instance.path != path:
                 return
-            # Adaptive batch sizing: EMA of batch latency
+            # Wall-clock cost of the run (submit -> last frame back on the UI thread), kept
+            # for diagnostics only. Batch sizing is driven by worker-side decode time
+            # instead (_on_prefetch_decode_timing): this number also contains pool queueing
+            # and event-loop delivery, so feeding it back shrank batches to 2 frames
+            # whenever the UI thread was busy rendering — a loop back into itself.
             batch_elapsed_ms = 0.0
             if self._prefetch_batch_start > 0:
-                elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
-                batch_elapsed_ms = elapsed_ms
+                batch_elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
                 self._prefetch_batch_start = 0.0
-                alpha = 0.3
-                self._prefetch_ema_latency_ms = alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
-                cfg = self._playback_config
-                if self._prefetch_ema_latency_ms < 10 and self._adaptive_batch_size < 16:
-                    self._adaptive_batch_size += 2
-                elif self._prefetch_ema_latency_ms > 60 and self._adaptive_batch_size > 2:
-                    self._adaptive_batch_size -= 1
-            # ── Playback diagnostics: decode batch ──
+            # ── Playback diagnostics: prefetch round trip ──
+            # The worker already recorded this run's decode cost (on_decode_batch); logging
+            # it here as well counted every frame twice in the report.
             if _playback_diag is not None and batch_elapsed_ms > 0:
-                _playback_diag.on_decode_batch(frames[0][0] if frames else 0, len(frames), batch_elapsed_ms)
+                _playback_diag.on_batch_round_trip(frames[0][0] if frames else 0, len(frames), batch_elapsed_ms)
             if _FREEZE_DIAG:
                 _diag_log.warning(
-                    "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f ema=%.1fms batch_size=%d",
+                    "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f decode_ema=%.2fms/frame batch=%d",
                     request_id,
                     len(frames),
-                    elapsed_ms if self._prefetch_batch_start == 0 else 0,
+                    batch_elapsed_ms,
                     total_ms,
-                    self._prefetch_ema_latency_ms,
+                    self._prefetch_ema_decode_ms,
                     self._adaptive_batch_size,
                 )
         else:

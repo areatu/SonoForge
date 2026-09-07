@@ -83,6 +83,23 @@ class FrameTickRecord:
 
 @dataclass
 class DecodeBatchRecord:
+    """Worker-side decode cost of one prefetch run."""
+
+    start_idx: int
+    count: int
+    elapsed_ms: float
+
+
+@dataclass
+class BatchRoundTripRecord:
+    """Submit -> frames cached on the UI thread, for the same run.
+
+    Kept apart from DecodeBatchRecord on purpose: both used to be appended to
+    ``decode_batches``, so every prefetch run was counted twice and the report claimed
+    878 decoded frames for 369 displayed ones. The round trip also contains pool queueing
+    and event-loop delivery, which is what batch sizing must *not* be fed back from.
+    """
+
     start_idx: int
     count: int
     elapsed_ms: float
@@ -112,6 +129,7 @@ class PlaybackReport:
     wall_clock_jitter_ms: list[float]
     instance_switches: list[InstanceSwitchRecord] = field(default_factory=list)
     prefetch_cancel_count: int = 0
+    batch_round_trips: list[BatchRoundTripRecord] = field(default_factory=list)
 
     def summary(self) -> str:
         lines: list[str] = []
@@ -230,6 +248,7 @@ class PlaybackDiagnostics:
         self._frame_count: int = 0
         self._ticks: list[FrameTickRecord] = []
         self._decode_batches: list[DecodeBatchRecord] = []
+        self._round_trips: list[BatchRoundTripRecord] = []
         self._numpy_snapshots: list[dict[str, object]] = []
         self._rss_start_mb: float = 0.0
         self._rss_end_mb: float = 0.0
@@ -258,6 +277,7 @@ class PlaybackDiagnostics:
         self._target_interval_ms = 1000.0 / fps_target if fps_target > 0 else 33.3
         self._ticks.clear()
         self._decode_batches.clear()
+        self._round_trips.clear()
         self._numpy_snapshots.clear()
         self._wall_jitter.clear()
         self._rss_start_mb = _rss_mb()
@@ -322,6 +342,18 @@ class PlaybackDiagnostics:
             count,
             elapsed_ms,
             1000.0 * count / elapsed_ms if elapsed_ms > 0 else 0,
+        )
+
+    def on_batch_round_trip(self, start_idx: int, count: int, elapsed_ms: float) -> None:
+        """One prefetch run measured submit -> cached on the UI thread (see the record)."""
+        if not self.enabled:
+            return
+        self._round_trips.append(BatchRoundTripRecord(start_idx=start_idx, count=count, elapsed_ms=elapsed_ms))
+        _LOG.info(
+            "[PLAYBACK_DIAG] batch_round_trip  start=%d  count=%d  elapsed=%.1f ms",
+            start_idx,
+            count,
+            elapsed_ms,
         )
 
     def snapshot_memory(self) -> None:

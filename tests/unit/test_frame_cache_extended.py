@@ -37,9 +37,10 @@ def test_put_evicts_when_exceeding_double_window() -> None:
     """put() triggers eviction when sorted_keys > evict_window * 2."""
     cache = FrameCache(evict_window=3, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=50)
-    # Manually put more than 6 frames
+    # Manually put more than 6 frames. Frame size matters: the "keep the whole cine"
+    # guard in _evict() measures the observed size, so tiny frames are never evicted.
     for i in range(8):
-        cache.put(i, np.zeros((2, 2), dtype=np.uint8))
+        cache.put(i, np.zeros((512, 512), dtype=np.uint8))
     # Should have evicted some frames
     assert len([k for k in range(8) if cache.is_loaded(k)]) <= 7
 
@@ -59,8 +60,9 @@ def test_pin_prevents_eviction() -> None:
 def test_unpin_allows_eviction() -> None:
     cache = FrameCache(evict_window=5, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=30)
+    # Frames big enough that 30 of them exceed the budget (see test_put_evicts_...)
     for i in range(15):
-        cache.put(i, np.ones((2, 2), dtype=np.uint8) * i)
+        cache.put(i, np.ones((512, 512), dtype=np.uint8) * i)
     cache.pin(0)
     cache.unpin(0)
     cache.set_current(10)
@@ -193,8 +195,9 @@ def test_clear_resets_all_state() -> None:
 def test_memory_bytes_after_eviction() -> None:
     cache = FrameCache(evict_window=3, max_cache_bytes=1_000_000)
     cache.set_total_frames(Path("x.dcm"), total=20)
+    # Frames big enough that 20 of them exceed the budget (see test_put_evicts_...)
     for i in range(20):
-        cache.put(i, np.ones((8, 8), dtype=np.uint8))
+        cache.put(i, np.ones((512, 512), dtype=np.uint8))
     full_mem = cache.memory_bytes()
     cache.set_current(15)
     assert cache.memory_bytes() < full_mem

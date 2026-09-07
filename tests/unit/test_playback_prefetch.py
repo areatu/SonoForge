@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import gc
+import threading
 from pathlib import Path
+from time import perf_counter
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -9,7 +12,11 @@ import pytest
 pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
-from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.app_controller import (
+    _GC_MIN_INTERVAL_SEC,
+    _LEADING_STATIC_MAX_FRAMES,
+    AppController,
+)
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.infrastructure.system_profiler import PlaybackConfig
 
@@ -75,7 +82,10 @@ def test_prefetch_starts_batch_worker(qapp, monkeypatch, tmp_path) -> None:
     controller._prefetch_playback_buffer(0)
 
     assert len(started) == 1
-    assert started[0]._batch_size == 3
+    # Not cfg.batch_size=3: a prefetch run is floored at a quarter second of playback
+    # (0.25 s / 33.3 ms = 8 frames at this frame rate) so one thread-pool round-trip
+    # amortises over more than a couple of frames.
+    assert started[0]._batch_size == 8
     assert started[0]._frame_index == 1
 
 
@@ -99,6 +109,9 @@ def test_prefetch_skipped_when_buffer_full(qapp, monkeypatch, tmp_path) -> None:
         evict_window=30,
         scroll_debounce_ms=80,
         scroll_batch_size=3,
+        # 0.1 s at 33.3 ms/frame -> a 3-frame target, so the 4 cached frames below
+        # really are "buffer full" (the default 1.0 s would ask for 30).
+        prefetch_seconds=0.1,
     )
     mp4 = tmp_path / "c.mp4"
     mp4.write_bytes(b"\x00")
@@ -143,6 +156,9 @@ def test_prefetch_batch_capped_by_radius(qapp, monkeypatch, tmp_path) -> None:
         evict_window=30,
         scroll_debounce_ms=80,
         scroll_batch_size=3,
+        # 0.15 s at 33.3 ms/frame rounds to 4, so the target stays at the radius floor
+        # of 5 and the batch is capped by the 4 free slots ahead of the playhead.
+        prefetch_seconds=0.15,
     )
     controller._adaptive_batch_size = 8
     mp4 = tmp_path / "c.mp4"
@@ -247,7 +263,9 @@ def test_prefetch_small_cine_too_big_falls_back_to_radius(qapp, monkeypatch, tmp
     controller._prefetch_playback_buffer(0)
 
     assert len(started) == 1
-    assert started[0]._batch_size == 5
+    # Windowed path, not one 44-frame run: the 5 MB cap holds 32 of these 160 KB frames,
+    # so the 1 s target (30 frames) is allowed but the batch stays at the adaptive size.
+    assert started[0]._batch_size == 8
     assert started[0]._frame_index == 1
 
 
@@ -377,62 +395,119 @@ def test_prefetch_cancelled_on_pause(qapp, monkeypatch, tmp_path) -> None:
     assert controller._prefetch_load_id == 0
 
 
-def test_adaptive_batch_increases_on_fast_prefetch(qapp, monkeypatch, tmp_path) -> None:
+def _timing_controller(tmp_path, batch_size: int = 8) -> AppController:
+    """Controller wired for decode-timing tests: 33.3 ms/frame, request id 7 in flight."""
     controller = AppController()
     controller._playback_config = PlaybackConfig(
         prefetch_radius=10,
         min_buffer=2,
-        batch_size=4,
+        batch_size=batch_size,
         max_lag_frames=2,
         evict_window=30,
         scroll_debounce_ms=80,
         scroll_batch_size=3,
     )
-    controller._adaptive_batch_size = 4
+    controller._adaptive_batch_size = batch_size
     mp4 = tmp_path / "c.mp4"
     mp4.write_bytes(b"\x00")
     inst = _mp4_instance(mp4)
     controller._current_instance = inst
-    controller._prefetch_load_id = 1
-    t0 = 1000.0
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.perf_counter",
-        lambda: t0 + 0.001,
-    )
-    controller._prefetch_batch_start = t0
-    controller._prefetch_ema_latency_ms = 0.0
-    frames = [(2, np.zeros((4, 4), dtype=np.uint8))]
-    controller._on_prefetch_batch_loaded(1, mp4, frames)
+    controller._state_manager.set_instance(inst, total_frames=30, frame_time_ms=33.3)
+    controller._prefetch_request_id = 7
+    return controller
+
+
+def test_prefetch_target_capped_by_memory_capacity(qapp, tmp_path) -> None:
+    """A budget that retains 7 frames must not be asked to buffer 30 of them.
+
+    Tuning raises the budget and the window first, so the cap only binds once the share of
+    available RAM (`_cache_ram_cap_bytes`) is reached - which is the case worth covering:
+    frames decoded past what the cache retains are decoded twice.
+    """
+    controller = _timing_controller(tmp_path)
+    controller._cache_ram_cap_bytes = 4_000_000
+    cache = controller._frame_cache
+    cache.set_total_frames(Path("c.mp4"), total=120)
+    cache._max_cache_bytes = 4_000_000
+    cache.put(0, np.zeros((512, 512), dtype=np.uint8))  # 262 KB -> 2 MB trim target
+
+    assert cache.capacity_frames() == 7  # half of 4 MB is the trim target
+    assert controller._prefetch_target_frames() == 7
+
+
+def test_adaptive_batch_grows_when_decode_keeps_up(qapp, tmp_path) -> None:
+    """2 ms/frame against a 33.3 ms interval: one worker stays ahead, so runs may grow."""
+    controller = _timing_controller(tmp_path, batch_size=4)
+
+    controller._on_prefetch_decode_timing(7, count=4, ms=8.0)
+
+    assert controller._prefetch_ema_decode_ms == pytest.approx(2.0)
     assert controller._adaptive_batch_size == 6
 
 
-def test_adaptive_batch_decreases_on_slow_prefetch(qapp, monkeypatch, tmp_path) -> None:
-    controller = AppController()
-    controller._playback_config = PlaybackConfig(
-        prefetch_radius=10,
-        min_buffer=2,
-        batch_size=8,
-        max_lag_frames=2,
-        evict_window=30,
-        scroll_debounce_ms=80,
-        scroll_batch_size=3,
-    )
-    controller._adaptive_batch_size = 8
-    mp4 = tmp_path / "c.mp4"
-    mp4.write_bytes(b"\x00")
-    inst = _mp4_instance(mp4)
-    controller._current_instance = inst
-    controller._prefetch_load_id = 2
-    controller._prefetch_ema_latency_ms = 80.0
-    t0 = 1000.0
-    monkeypatch.setattr(
-        "echo_personal_tool.application.app_controller.perf_counter",
-        lambda: t0 + 0.2,
-    )
-    controller._prefetch_batch_start = t0
-    frames = [(3, np.zeros((4, 4), dtype=np.uint8))]
-    controller._on_prefetch_batch_loaded(2, mp4, frames)
-    assert controller._adaptive_batch_size == 7
+def test_adaptive_batch_shrinks_when_decode_falls_behind(qapp, tmp_path) -> None:
+    """40 ms/frame against a 33.3 ms interval: decode cannot keep up, so runs shorten."""
+    controller = _timing_controller(tmp_path, batch_size=16)
+
+    controller._on_prefetch_decode_timing(7, count=2, ms=80.0)
+
+    assert controller._prefetch_ema_decode_ms == pytest.approx(40.0)
+    assert controller._adaptive_batch_size == 15
+
+
+def test_adaptive_batch_holds_inside_the_hysteresis_band(qapp, tmp_path) -> None:
+    """Between half an interval and a full interval per frame the size must not move."""
+    controller = _timing_controller(tmp_path, batch_size=8)
+
+    controller._on_prefetch_decode_timing(7, count=4, ms=80.0)  # 20 ms/frame
+
+    assert controller._adaptive_batch_size == 8
+
+
+def test_adaptive_batch_growth_is_capped(qapp, tmp_path) -> None:
+    """One run must not hold the decode gate so long that a scroll waits for it."""
+    controller = _timing_controller(tmp_path, batch_size=32)
+
+    controller._on_prefetch_decode_timing(7, count=8, ms=1.0)
+
+    assert controller._adaptive_batch_size == 32
+
+
+def test_adaptive_batch_shrink_stops_at_the_slow_decode_floor(qapp, tmp_path) -> None:
+    """Decode slower than playback shrinks runs, but only down to a few frames.
+
+    A run delivers its pixels after the whole batch is decoded, so long runs delay the
+    frame nearest the playhead; the floor keeps shrinking from bringing token runs back.
+    """
+    controller = _timing_controller(tmp_path, batch_size=8)
+
+    for _ in range(12):
+        controller._on_prefetch_decode_timing(7, count=1, ms=500.0)  # 500 ms/frame
+
+    assert controller._min_prefetch_batch() == 4
+    assert controller._adaptive_batch_size == 4
+
+
+def test_round_trip_floor_applies_while_decode_keeps_up(qapp, tmp_path) -> None:
+    """A size shrunk during a slow patch must not keep producing 1-2 frame runs."""
+    controller = _timing_controller(tmp_path, batch_size=8)
+    controller._adaptive_batch_size = 2
+
+    controller._on_prefetch_decode_timing(7, count=8, ms=8.0)  # 1 ms/frame
+
+    assert controller._min_prefetch_batch() == 8
+    assert max(controller._min_prefetch_batch(), controller._adaptive_batch_size) == 8
+
+
+def test_decode_timing_ignores_a_superseded_request(qapp, tmp_path) -> None:
+    """A stale worker must not steer the batch size of the prefetch that replaced it."""
+    controller = _timing_controller(tmp_path, batch_size=8)
+    controller._prefetch_request_id = 9
+
+    controller._on_prefetch_decode_timing(7, count=4, ms=8.0)
+
+    assert controller._prefetch_ema_decode_ms == 0.0
+    assert controller._adaptive_batch_size == 8
 
 
 def test_advance_playback_double_next_skip(qapp, tmp_path) -> None:
