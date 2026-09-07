@@ -541,3 +541,88 @@ def test_advance_playback_double_next_skip(qapp, tmp_path) -> None:
     controller._advance_playback()
 
     assert controller.state_manager.snapshot.current_frame_index == 2
+
+
+# ── Cache sizing for the loaded cine ──────────────────────────────────────────────
+
+
+def _frame_720p_rgb() -> np.ndarray:
+    return np.zeros((720, 1280, 3), dtype=np.uint8)  # 2.76 MB, one 720p RGB frame
+
+
+def test_tune_playback_cache_grows_budget_and_window(qapp, tmp_path) -> None:
+    """A flat 64 MB budget is 0.36 s of 720p RGB; the target needs room for a full second."""
+    controller = AppController()
+    controller._cache_ram_cap_bytes = 512 * 1024 * 1024
+    cache = controller._frame_cache
+    cache.set_total_frames(tmp_path / "c.dcm", total=120)
+    cache.put(0, _frame_720p_rgb())
+
+    controller._tune_playback_cache(30)
+
+    frame_bytes = 720 * 1280 * 3
+    # x2 because the emergency trim stops at half the budget.
+    assert cache.memory_budget == cache.budget_for_frames(30) == 2 * 30 * frame_bytes
+    assert cache.evict_window == 30
+    assert controller._prefetch_target_frames() == 30
+
+
+def test_tune_playback_cache_holds_a_short_cine_completely(qapp, tmp_path) -> None:
+    """A 60-frame cine is worth caching whole: loop, rewind and scrub then never re-decode."""
+    controller = AppController()
+    controller._cache_ram_cap_bytes = 512 * 1024 * 1024
+    cache = controller._frame_cache
+    cache.set_total_frames(tmp_path / "c.dcm", total=60)
+    cache.put(0, _frame_720p_rgb())
+
+    controller._tune_playback_cache(30)
+
+    assert cache.memory_budget == cache.budget_for_frames(60)
+    assert cache.can_fit_full_cine()
+    assert cache.evict_window == 60
+
+
+def test_tune_playback_cache_short_cine_yields_to_the_ram_cap(qapp, tmp_path) -> None:
+    """A machine that cannot afford the whole cine still gets the deepest buffer it can."""
+    controller = AppController()
+    controller._cache_ram_cap_bytes = 80 * 1024 * 1024
+    cache = controller._frame_cache
+    cache.set_total_frames(tmp_path / "c.dcm", total=60)
+    cache.put(0, _frame_720p_rgb())
+
+    controller._tune_playback_cache(30)
+
+    assert cache.memory_budget == 80 * 1024 * 1024
+    assert not cache.can_fit_full_cine()
+    assert controller._prefetch_target_frames() == cache.capacity_frames()
+
+
+def test_tune_playback_cache_respects_the_ram_cap(qapp, tmp_path) -> None:
+    """The share of available RAM taken at startup is a hard ceiling."""
+    controller = AppController()
+    controller._cache_ram_cap_bytes = 40 * 1024 * 1024
+    cache = controller._frame_cache
+    cache.set_total_frames(tmp_path / "c.dcm", total=120)
+    cache.put(0, _frame_720p_rgb())
+
+    controller._tune_playback_cache(30)
+
+    assert cache.memory_budget == 40 * 1024 * 1024
+    # 40 MB holds ~7 of these frames after the half-budget trim, so the target follows.
+    assert controller._prefetch_target_frames() == cache.capacity_frames()
+
+
+def test_tune_playback_cache_leaves_small_frames_alone(qapp, tmp_path) -> None:
+    """A cine that already fits must not have its budget inflated."""
+    controller = AppController()
+    controller._cache_ram_cap_bytes = 512 * 1024 * 1024
+    cache = controller._frame_cache
+    before = cache.memory_budget
+    cache.set_total_frames(tmp_path / "c.dcm", total=30)
+    cache.put(0, np.zeros((64, 64), dtype=np.uint8))
+
+    controller._tune_playback_cache(30)
+
+    assert cache.memory_budget == before
+
+

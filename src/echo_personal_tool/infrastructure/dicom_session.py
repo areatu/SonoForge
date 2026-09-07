@@ -239,7 +239,9 @@ def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
             else:
                 length = struct.unpack_from("<I", raw, pos + 4)[0]
                 data_start = pos + 8
-            return raw[data_start : data_start + length]
+            if length in (0xFFFFFFFF, 0x7FFFFFFF):
+                return None  # encapsulated: the caller needs the fragment index anyway
+            return (data_start, length)
 
         group = struct.unpack_from("<H", raw, pos)[0]
         vr_bytes = raw[pos + 4 : pos + 6]
@@ -266,6 +268,37 @@ def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
             break
         pos = data_start + length
     return None
+
+
+def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
+    """Value of the PixelData element as bytes (a copy), or None if it cannot be located."""
+    span = _scan_pixel_data_span(raw)
+    if span is None:
+        return None
+    start, length = span
+    return raw[start : start + length]
+
+
+def _pixel_data_span_from_header(path: Path) -> tuple[int, int] | None:
+    """(offset, length) of the PixelData value, reading only a header prefix of the file.
+
+    The element length comes from its tag, so the pixels never have to be resident to know
+    where they start. None when the tag is not inside the prefix (a large sequence ahead of
+    the pixels), the length is undefined, or the element does not fit the file on disk.
+    """
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as fh:
+            prefix = fh.read(min(size, _HEADER_SCAN_BYTES))
+    except OSError:
+        return None
+    span = _scan_pixel_data_span(prefix)
+    if span is None:
+        return None
+    start, length = span
+    if start + length > size:
+        return None
+    return (start, length)
 
 
 def _extended_offsets_from_metadata(
@@ -378,10 +411,19 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
 
 
 def _decode_uncompressed_frame(
-    pixel_data: bytes, offset: int, size: int, rows: int, cols: int, bytes_per_pixel: int
+    pixel_data: bytes | np.ndarray,
+    offset: int,
+    size: int,
+    rows: int,
+    cols: int,
+    bytes_per_pixel: int,
 ) -> np.ndarray:
     """Decode single uncompressed frame. Returns OWNED WRITABLE array.
-    This is the ONLY copy for single-frame path."""
+    This is the ONLY copy for single-frame path.
+
+    ``pixel_data`` is either a bytes object or a read-only memory map of the pixel block;
+    for the map the slice is a view, so this copy is the only allocation per frame.
+    """
     raw = pixel_data[offset : offset + size]
     if bytes_per_pixel == 1:
         return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
@@ -473,6 +515,15 @@ class DicomSession:
         self._is_uncompressed = tsuid in _UNCOMPRESSED_SYNTAXES
         if self._is_uncompressed:
             self._compute_frame_slices()
+            if self._map_pixel_data(resolved):
+                # Pixels stay on disk, mapped rather than resident: the OS pages in what a
+                # decode touches and can drop those clean pages again under pressure. The
+                # old path read the whole file and then copied the pixel block out of it,
+                # which put a 120-frame 720p cine in RAM twice (peak RSS ~1.0 GB).
+                return
+        # Encapsulated (compressed) pixel data, or a file that cannot be mapped: fall back
+        # to holding the bytes, which the fragment index needs anyway.
+        self._raw_bytes = resolved.read_bytes()
 
     def _compute_frame_slices(self) -> None:
         ds = self._metadata
@@ -507,9 +558,39 @@ class DicomSession:
             return None
         return parse_waveform_from_dicom(self._metadata)
 
+    def _map_pixel_data(self, path: Path) -> bool:
+        """Map the uncompressed pixel block instead of copying it into RAM.
+
+        Returns False when the element cannot be located from the header prefix, is shorter
+        than the frames need, or the mapping fails (network share, exotic filesystem); the
+        caller then falls back to reading the file. The map is released by dropping the
+        reference (release_heavy) - never by closing it, because arrays handed to callers
+        may still be views into it.
+        """
+        if not self._is_uncompressed or not self._frame_slices:
+            return False
+        span = _pixel_data_span_from_header(path)
+        if span is None:
+            return False
+        start, length = span
+        if length < self._frame_count * self._frame_slices[0][1]:
+            return False
+        try:
+            mapped = np.memmap(path, dtype=np.uint8, mode="r", offset=start, shape=(length,))
+        except (OSError, ValueError) as exc:
+            logger.debug("Pixel data mapping failed for %s (%s); reading the file instead", path, exc)
+            return False
+        self._pixel_data_raw = mapped
+        return True
+
+    @_synchronized
     def _ensure_pixel_data(self) -> None:
-        """Load raw pixel data bytes, avoiding a second pydicom parse when possible."""
+        """Make the pixel block available, avoiding a second pydicom parse when possible."""
         if self._pixel_data_raw is not None:
+            return
+        # Uncompressed cines are re-mapped from disk - also after release_heavy(), which is
+        # now free of I/O instead of a full-file read.
+        if self._is_uncompressed and self._open_path is not None and self._map_pixel_data(self._open_path):
             return
         if self._raw_bytes is None:
             return
@@ -652,13 +733,15 @@ class DicomSession:
         # If a compressed frame cannot be fast-decoded we still need the full
         # file here, so reload it from disk (cached until release_heavy()).
         if self._raw_bytes is None:
-            if self._open_path is not None and Path(self._open_path).is_file():
-                self._raw_bytes = Path(self._open_path).read_bytes()
-            else:
-                raise ValueError(
-                    "Cannot decode fallback: raw bytes are not available. "
-                    "The file may have no pixel data or heavy buffers were released."
-                )
+            with self._fallback_lock:
+                if self._raw_bytes is None:
+                    if self._open_path is not None and Path(self._open_path).is_file():
+                        self._raw_bytes = Path(self._open_path).read_bytes()
+                    else:
+                        raise ValueError(
+                            "Cannot decode fallback: raw bytes are not available. "
+                            "The file may have no pixel data or heavy buffers were released."
+                        )
 
         full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
         # Ensure file_meta exists with Transfer Syntax UID

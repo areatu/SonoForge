@@ -416,12 +416,18 @@ class FrameCache:
         keys = self._sorted_keys
         if not keys:
             return
-        # Keep the whole cine when it could fit under the memory cap even at
-        # the minimum frame size. Window-based eviction would otherwise drop
-        # frames needed for loop wrap-around (e.g. a 55-frame clip with a
-        # 20-frame window evicts the tail on the first step and the head near
-        # the end), stalling playback at ~3/4 and at the end without looping.
-        if self._total_frames * _MIN_FRAME_SIZE_BYTES <= self._max_cache_bytes:
+        # Keep the whole cine when it fits under the memory cap at the observed frame
+        # size. Window-based eviction would otherwise drop frames needed for loop
+        # wrap-around (e.g. a 55-frame clip with a 20-frame window evicts the tail on the
+        # first step and the head near the end), stalling playback at ~3/4 and at the end
+        # without looping.
+        #
+        # The estimate has to be the observed frame size: with the VGA constant a 720p cine
+        # (2.76 MB per frame, 4.6x larger) always looked like it fitted - 60 frames
+        # "weighed" 36.9 MB against a 64 MB budget - so window eviction never ran, the
+        # cache grew until _evict_to_memory_limit() dumped half of it, and the store
+        # oscillated 33 <-> 66 MB while every wrap and rewind missed.
+        if self._total_frames * self.average_frame_bytes() <= self._max_cache_bytes:
             return
         # Frames outside [lo, hi] are evicted, except the wrap-around head
         # frames (0..wrap_head) that playback needs when looping past the end.

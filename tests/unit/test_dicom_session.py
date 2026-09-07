@@ -335,3 +335,90 @@ def test_readonly_materialization_on_release_heavy(tmp_path: Path) -> None:
     # decode_single_frame must still work after heavy buffers are freed (reload path).
     reframe = session.decode_single_frame(2)
     assert reframe.shape == (32, 32), "decode_single_frame should reload after release_heavy"
+
+
+# ── Mapped pixel residency: opening a cine must not put it in RAM ──────────────────
+
+
+def test_open_maps_uncompressed_pixels_instead_of_reading(tmp_path: Path) -> None:
+    """A 332 MB cine used to be read (and its pixel block copied) just to be opened."""
+    path = tmp_path / "cine.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=64, cols=64)
+    session = DicomSession()
+
+    session.open(path)
+
+    assert session._raw_bytes is None, "the file must not be read to open it"
+    assert isinstance(session._pixel_data_raw, np.memmap), "uncompressed pixels are mapped"
+
+    frame = session.decode_single_frame(3)
+
+    assert frame.shape == (64, 64)
+    assert frame.flags.writeable, "the caller must own a writable copy, not a view of the map"
+    session.release()
+
+
+def test_bulk_decode_of_mapped_cine_is_a_view(tmp_path: Path) -> None:
+    """M-mode/STE ask for every frame at once; over a map that costs no memory."""
+    path = tmp_path / "cine.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=64, cols=64)
+    session = DicomSession()
+    session.open(path)
+
+    frames = session.decode_all_frames()
+    single = session.decode_single_frame(2)
+
+    assert frames.shape == (6, 64, 64)
+    assert not frames.flags.writeable
+    assert np.array_equal(frames[2], single)
+    session.release()
+
+
+def test_release_heavy_remaps_without_reading_the_file(tmp_path: Path) -> None:
+    """Re-warming a session after release_heavy() must not cost a full-file read."""
+    path = tmp_path / "cine.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=4, rows=32, cols=32)
+    session = DicomSession()
+    session.open(path)
+    before = session.decode_single_frame(1).copy()
+
+    session.release_heavy()
+    assert session._pixel_data_raw is None
+
+    after = session.decode_single_frame(1)
+
+    assert np.array_equal(before, after)
+    assert session._raw_bytes is None, "re-warming maps again instead of reading the file"
+    assert isinstance(session._pixel_data_raw, np.memmap)
+    session.release()
+
+
+def test_compressed_cine_still_reads_bytes(tmp_path: Path) -> None:
+    """Encapsulated pixel data needs real bytes for the fragment index, so it is not mapped."""
+    path = tmp_path / "jpeg.dcm"
+    write_synthetic_jpeg_multiframe_dicom(path, frame_count=3, rows=32, cols=32)
+    session = DicomSession()
+
+    session.open(path)
+
+    assert session._raw_bytes is not None
+    assert not isinstance(session._pixel_data_raw, np.memmap)
+
+    frame = session.decode_single_frame(0)
+    assert frame.shape[:2] == (32, 32)
+    session.release()
+
+
+def test_truncated_pixel_block_is_not_mapped(tmp_path: Path) -> None:
+    """An element that does not fit the file on disk must fall back to the old read path."""
+    path = tmp_path / "truncated.dcm"
+    write_synthetic_multiframe_dicom(path, frame_count=6, rows=64, cols=64)
+    full = path.read_bytes()
+    path.write_bytes(full[: len(full) - 1024])
+
+    session = DicomSession()
+    session.open(path)  # must not raise
+
+    assert session._raw_bytes is not None, "falls back to reading what is there"
+    assert not isinstance(session._pixel_data_raw, np.memmap)
+    session.release()
