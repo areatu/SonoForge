@@ -4557,7 +4557,6 @@ class ViewerWidget(QWidget):
             compute_weighted_radial_strain_gl,
         )
         from echo_personal_tool.domain.services.tracking_smoothing import (
-            apply_motion_model,
             re_smooth_trajectories,
         )
 
@@ -4566,26 +4565,29 @@ class ViewerWidget(QWidget):
         if raw is None or ncc is None:
             return
 
-        smoothed = re_smooth_trajectories(raw, ncc, result.kernels, smoothness)
-        smoothed = apply_motion_model(
-            smoothed,
-            ncc,
-            result.kernels,
-            result.ed_index - result.tracking_window_start,
-            result.ncc_threshold,
-        )
+        # raw/ncc are full-cine arrays with NaN outside the tracked window;
+        # smoothing must run on the window slice only (splines and the
+        # Savitzky-Golay filter cannot handle NaN rows).  No motion model is
+        # applied here: it is gated off in the worker by default (issue #7,
+        # honest tracking) and would fabricate displacement on re-smooth.
+        ws = int(result.tracking_window_start)
+        we = int(result.tracking_window_end)
+        raw_win = raw[ws : we + 1]
+        ncc_win = ncc[ws : we + 1]
+        if raw_win.size == 0 or not np.all(np.isfinite(raw_win)):
+            return
+        smoothed = re_smooth_trajectories(raw_win, ncc_win, result.kernels, smoothness)
 
         n_frames = raw.shape[0]
         tracked = np.full_like(raw, np.nan)
-        tracked[:] = smoothed
-        result.tracked_positions_all = tracked
+        tracked[ws : we + 1] = smoothed
 
         ps = self._current_state.pixel_spacing if self._current_state else (1.0, 1.0)
         endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
         epi_indices = [i for i, k in enumerate(result.kernels) if k.layer == "epi"]
         local_ed = result.ed_index - result.tracking_window_start
         local_es = result.es_index - result.tracking_window_start
-        ed_ncc = ncc[local_ed].copy() if local_ed < n_frames else np.ones(ncc.shape[1])
+        ed_ncc = ncc_win[local_ed].copy() if local_ed < len(ncc_win) else np.ones(ncc.shape[1])
 
         window_long = compute_weighted_longitudinal_strain_gl(smoothed, local_ed, ps, endo_indices, ed_ncc)
         if result.drift_compensation_applied:
@@ -4623,6 +4625,7 @@ class ViewerWidget(QWidget):
             longitudinal=longitudinal,
             radial=radial,
             gls=compute_gls(window_long, local_ed, local_es),
+            tracked_positions_all=tracked,
             tracked_es_positions=smoothed[local_es].copy()
             if local_es < smoothed.shape[0]
             else result.tracked_es_positions,
