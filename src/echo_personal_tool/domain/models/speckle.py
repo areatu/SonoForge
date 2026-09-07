@@ -69,6 +69,12 @@ class SpeckleConfig:
     # Forward-backward closure error, as a fraction of ``search_radius``; a
     # match whose round trip exceeds this is rejected.
     closure_error_threshold: float = 0.5
+    # When False (default), the tracker never pushes kernels toward
+    # physiologically "expected" radial directions — motion comes only from the
+    # NCC block matching. Setting this to True lets apply_motion_model gently
+    # nudge endo/epi kernels that contradict contraction, which can mask poor
+    # matches but also fabricate motion that is not present in the image.
+    physiology_prior: bool = False
 
     @classmethod
     def preset_standard(cls) -> SpeckleConfig:

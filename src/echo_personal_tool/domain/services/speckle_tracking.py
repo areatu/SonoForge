@@ -660,6 +660,9 @@ def track_cine_sequential(
     config: SpeckleConfig,
     progress_callback: Callable[[int, int], None] | None = None,
     zone_mask: np.ndarray | None = None,
+    *,
+    wall_inward_slack: float = 0.45,
+    wall_outward_slack: float = 0.4,
 ) -> list[TrackingResult]:
     """Frame-to-frame tracking with per-step re-anchoring.
 
@@ -702,13 +705,15 @@ def track_cine_sequential(
         ncc[i + 1] = match.ncc_scores
         valid[i + 1] = match.valid_mask
 
-        # Radial containment in the loop: pull matched (and held) kernels back
-        # into the wall band so a locked-on kernel cannot cross the endo/epi
-        # boundaries on the next step, and layer order never inverts.
+        # Radial containment in the loop: keep layer order and reject spurious
+        # spikes, but allow the whole wall to follow real systolic motion — the
+        # ED baseline must not erase genuine contraction (relaxed inward slack).
         positions[i + 1], _ = clamp_kernels_to_wall_band(
             positions[i + 1],
             initial_kernels,
             ed_centers,
+            inward_slack=wall_inward_slack,
+            outward_slack=wall_outward_slack,
         )
 
         if config.bidirectional:

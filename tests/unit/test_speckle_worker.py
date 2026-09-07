@@ -13,6 +13,16 @@ from echo_personal_tool.application.workers.speckle_worker import (
     _embed_window_curve,
     _load_full_cine_frames,
 )
+from echo_personal_tool.domain.models.speckle import SpeckleConfig
+
+
+class TestSpeckleConfigDefaults:
+    def test_physiology_prior_off_by_default(self) -> None:
+        """The synthetic physiological push must never run unless opted in."""
+        assert SpeckleConfig().physiology_prior is False
+        assert SpeckleConfig.preset_standard().physiology_prior is False
+        assert SpeckleConfig.preset_research().physiology_prior is False
+        assert SpeckleConfig.preset_debug().physiology_prior is False
 
 
 @pytest.fixture()

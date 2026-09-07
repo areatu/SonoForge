@@ -444,6 +444,55 @@ class TestSequentialTracking:
         assert results[-1].reference_frame == 0
         assert results[-1].kernel_positions.shape == (len(kernels), 2)
 
+    def test_sequential_forwards_relaxed_wall_slack(self) -> None:
+        """Issue #7: systolic tracking must let the wall contract instead of
+        pinning kernels to the ED band. The worker asks for a relaxed inward
+        slack and the sequential loop must honour it in the in-loop clamp."""
+        from unittest.mock import patch
+
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=False)
+        seen: dict[str, object] = {}
+
+        def _fake_clamp(frame_positions, _kernels, _ed_positions, **kwargs):
+            seen.update(kwargs)
+            return frame_positions, 0
+
+        with patch(
+            "echo_personal_tool.domain.services.speckle_tracking.clamp_kernels_to_wall_band",
+            side_effect=_fake_clamp,
+        ):
+            track_cine_sequential(
+                frames,
+                kernels,
+                ed_index=0,
+                config=config,
+                wall_inward_slack=1.4,
+                wall_outward_slack=0.9,
+            )
+        assert seen.get("inward_slack") == 1.4
+        assert seen.get("outward_slack") == 0.9
+
+    def test_default_wall_slack_keeps_prior_behaviour(self) -> None:
+        """Direct callers that omit the slacks keep the original tight band."""
+        from unittest.mock import patch
+
+        frames, kernels, _amp = self._decorrelated_cine()
+        config = SpeckleConfig(kernel_size=12, search_radius=8, bidirectional=False)
+        seen: dict[str, object] = {}
+
+        def _fake_clamp(frame_positions, _kernels, _ed_positions, **kwargs):
+            seen.update(kwargs)
+            return frame_positions, 0
+
+        with patch(
+            "echo_personal_tool.domain.services.speckle_tracking.clamp_kernels_to_wall_band",
+            side_effect=_fake_clamp,
+        ):
+            track_cine_sequential(frames, kernels, ed_index=0, config=config)
+        assert seen.get("inward_slack") == 0.45
+        assert seen.get("outward_slack") == 0.4
+
 
 class TestGlobalMotionCompensation:
     def test_estimate_translations_identity(self) -> None:

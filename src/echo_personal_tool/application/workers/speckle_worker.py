@@ -336,13 +336,20 @@ class SpeckleTrackingWorker(QRunnable):
                     wall_thickness_px=wall_thickness_px,
                 )
             elif config.tracking_mode == "sequential":
+                # NOTE: no static ED zone_mask here — gating every target match
+                # against the ED-frame wall band invalidates endo kernels that
+                # correctly follow the contracting wall inward past the ED
+                # endo, freezing them at ED positions. Validity is decided by
+                # NCC + bidirectional closure; the (relaxed) wall clamp below
+                # keeps layer order and stops wild jumps.
                 tracking_results = track_cine_sequential(
                     preprocessed,
                     kernels,
                     ed_index=track_ed_index,
                     config=config,
                     progress_callback=lambda cur, tot: self.signals.progress.emit(int((cur / max(tot, 1)) * 70), 100),
-                    zone_mask=zone_mask,
+                    wall_inward_slack=1.4,
+                    wall_outward_slack=0.9,
                 )
             else:
                 tracking_results = track_cine_bidirectional(
@@ -375,16 +382,29 @@ class SpeckleTrackingWorker(QRunnable):
                 translations = estimate_global_translations(tracking_frames_raw, local_ed)
                 positions = remove_global_translations(positions, translations)
             smoothed = smooth_trajectories(positions, ncc_matrix, kernels, config)
-            smoothed = apply_motion_model(
+            if config.physiology_prior:
+                # Optional physiological push (default OFF): without it, motion
+                # comes only from the NCC matches. A synthetic inward/outward
+                # nudge makes poor matches look plausible but also fabricates
+                # deformation that is not in the image.
+                smoothed = apply_motion_model(
+                    smoothed,
+                    ncc_matrix,
+                    kernels,
+                    track_ed_index,
+                    config.ncc_threshold,
+                )
+            # Radial containment: keep layer order and prevent spurious spikes
+            # across the wall, while allowing the whole wall to follow real
+            # systolic motion (relaxed inward slack so genuine contraction is
+            # not erased by the ED baseline).
+            smoothed, n_clamped = clamp_trajectories_to_wall(
                 smoothed,
-                ncc_matrix,
                 kernels,
                 track_ed_index,
-                config.ncc_threshold,
+                inward_slack=1.4,
+                outward_slack=0.9,
             )
-            # Radial containment: pull kernels that drifted across the endo/epi
-            # band back onto the wall (fixes visible speckle/contour crossing).
-            smoothed, n_clamped = clamp_trajectories_to_wall(smoothed, kernels, track_ed_index)
             logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
