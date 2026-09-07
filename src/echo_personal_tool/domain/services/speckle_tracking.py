@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from collections.abc import Callable
 
 import cv2
@@ -755,6 +756,158 @@ def track_cine_sequential(
             )
         )
     return results
+
+
+def _node_columns(kernels: list[TrackingKernel]) -> dict[int, dict[str, int]]:
+    """Map each node index to its per-layer kernel indices."""
+    columns: dict[int, dict[str, int]] = defaultdict(dict)
+    for idx, kernel in enumerate(kernels):
+        columns[kernel.node_index][kernel.layer] = idx
+    return columns
+
+
+def _radial_center(positions: np.ndarray, kernel_ids: list[int]) -> np.ndarray:
+    if not kernel_ids:
+        return np.zeros(2, dtype=np.float64)
+    pts = positions[np.asarray(kernel_ids, dtype=int)]
+    if pts.ndim != 2 or len(pts) == 0:
+        return np.zeros(2, dtype=np.float64)
+    return np.median(pts, axis=0)
+
+
+def clamp_kernels_to_wall_band(
+    frame_positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    ed_positions: np.ndarray,
+    *,
+    inward_slack: float = 0.45,
+    outward_slack: float = 0.4,
+    min_gap_px: float = 1.0,
+    changed_eps: float = 0.25,
+) -> tuple[np.ndarray, int]:
+    """Constrain one frame of kernel positions inside the myocardial wall band.
+
+    Every kernel column (same ``node_index``) must satisfy
+
+        r(endo) < r(mid) < r(epi)
+
+    along the outward normal of the wall, and the whole column must stay inside
+    a band derived from the ED positions: endo may move inward by up to
+    ``inward_slack`` wall thicknesses (systolic thickening), epi may drift
+    outward by up to ``outward_slack`` thicknesses. Kernels that left the band
+    (or inverted their radial order) are pulled back along the local normal,
+    which prevents the visible speckle/contour crossing when frames are
+    scrubbed and stabilises radial strain.
+
+    Args:
+        frame_positions: (N_kernels, 2) kernel centers for one frame.
+        kernels: kernel descriptors (layer + node_index).
+        ed_positions: (N_kernels, 2) ED-frame kernel centers used as the
+            wall-band baseline.
+        changed_eps: only displacements larger than this (px) count as clamped.
+
+    Returns:
+        (clamped_positions, n_changed).
+    """
+    frame_positions = np.asarray(frame_positions, dtype=np.float64).copy()
+    ed_positions = np.asarray(ed_positions, dtype=np.float64)
+    columns = _node_columns(kernels)
+    layers_by_idx: dict[str, list[int]] = defaultdict(list)
+    for idx, kernel in enumerate(kernels):
+        layers_by_idx[kernel.layer].append(idx)
+
+    if frame_positions.shape[0] == 0:
+        return frame_positions, 0
+
+    ed_center = _radial_center(ed_positions, layers_by_idx.get("mid", []) or layers_by_idx.get("endo", []))
+    frame_center = _radial_center(frame_positions, layers_by_idx.get("mid", []) or layers_by_idx.get("endo", []))
+
+    changed = 0
+    for node_id, layer_ids in columns.items():
+        endo_id = layer_ids.get("endo")
+        mid_id = layer_ids.get("mid")
+        epi_id = layer_ids.get("epi")
+        if endo_id is None or epi_id is None:
+            continue
+
+        # Wall-band baselines at ED, per radial column.
+        ed_endo = ed_positions[endo_id]
+        ed_epi = ed_positions[epi_id]
+        r_endo0 = float(np.linalg.norm(ed_endo - ed_center))
+        r_epi0 = float(np.linalg.norm(ed_epi - ed_center))
+        thickness0 = max(r_epi0 - r_endo0, 2.0)
+        low = r_endo0 - inward_slack * thickness0
+        high = r_epi0 + outward_slack * thickness0
+        gap = max(min_gap_px, thickness0 * 0.05)
+
+        # Radial direction of the current wall column.
+        anchor_id = mid_id if mid_id is not None else endo_id
+        anchor = frame_positions[anchor_id]
+        radial = anchor - frame_center
+        norm = float(np.linalg.norm(radial))
+        if norm < 1e-6:
+            # Degenerate column: fall back to the epi direction.
+            radial = frame_positions[epi_id] - frame_center
+            norm = float(np.linalg.norm(radial))
+            if norm < 1e-6:
+                continue
+        u = radial / norm
+
+        def _t(kernel_id: int | None) -> float | None:
+            if kernel_id is None:
+                return None
+            return float(np.dot(frame_positions[kernel_id] - frame_center, u))
+
+        t_endo = _t(endo_id)
+        t_mid = _t(mid_id)
+        t_epi = _t(epi_id)
+        if t_endo is None or t_epi is None:
+            continue
+
+        # Sequential clipping guarantees t_endo < t_mid < t_epi inside [low, high].
+        new_t_endo = min(max(t_endo, low), high - 2.0 * gap)
+        new_t_mid = min(max(t_mid if t_mid is not None else new_t_endo, new_t_endo + gap), high - gap)
+        new_t_epi = min(max(t_epi, new_t_mid + gap), high)
+
+        for kernel_id, new_t in ((endo_id, new_t_endo), (mid_id, new_t_mid), (epi_id, new_t_epi)):
+            if kernel_id is None:
+                continue
+            old = frame_positions[kernel_id].copy()
+            projected = frame_positions[kernel_id] + u * (new_t - float(np.dot(frame_positions[kernel_id] - frame_center, u)))
+            frame_positions[kernel_id] = projected
+            if float(np.linalg.norm(projected - old)) > changed_eps:
+                changed += 1
+
+    return frame_positions, changed
+
+
+def clamp_trajectories_to_wall(
+    positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    ed_index: int,
+    **kwargs: object,
+) -> tuple[np.ndarray, int]:
+    """Apply the wall-band clamp to every frame of a trajectory stack.
+
+    Args:
+        positions: (T, N_kernels, 2) kernel centers over the tracking window.
+        kernels: kernel descriptors.
+        ed_index: index of the ED frame (band baseline).
+
+    Returns:
+        (clamped_positions, total_changed) where total_changed counts kernel
+        moves larger than the epsilon threshold across all frames.
+    """
+    out = np.asarray(positions, dtype=np.float64).copy()
+    if out.ndim != 3 or out.shape[0] == 0:
+        return out, 0
+    ed_positions = out[min(int(ed_index), out.shape[0] - 1)]
+    total_changed = 0
+    for t in range(out.shape[0]):
+        clamped, changed = clamp_kernels_to_wall_band(out[t], kernels, ed_positions, **kwargs)
+        out[t] = clamped
+        total_changed += changed
+    return out, total_changed
 
 
 def track_cine(

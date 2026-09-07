@@ -30,6 +30,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
+    clamp_trajectories_to_wall,
     estimate_global_translations,
     log_reference_max,
     preprocess_echo_frame,
@@ -325,6 +326,10 @@ class SpeckleTrackingWorker(QRunnable):
                 track_ed_index,
                 config.ncc_threshold,
             )
+            # Radial containment: pull kernels that drifted across the endo/epi
+            # band back onto the wall (fixes visible speckle/contour crossing).
+            smoothed, n_clamped = clamp_trajectories_to_wall(smoothed, kernels, track_ed_index)
+            logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]
