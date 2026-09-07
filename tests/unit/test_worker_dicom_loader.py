@@ -66,6 +66,8 @@ class TestDicomLoaderWorkerRun:
 
         assert len(finished) == 1
         assert finished[0].shape == (64, 64)
+        mock_get_session.assert_called_once_with(Path("/tmp/src.dcm"))
         session.open.assert_called_once_with(Path("/tmp/src.dcm"))
         session.decode_single_frame.assert_called_once_with(0)
-        session.release_heavy.assert_called_once()
+        # Shared per-path session stays warm between worker calls.
+        session.release_heavy.assert_not_called()

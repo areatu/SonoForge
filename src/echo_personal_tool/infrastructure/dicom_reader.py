@@ -76,7 +76,7 @@ class DicomReaderImpl:
         if cached is not None:
             return cached
         validate_dicom_header(path)
-        session = get_thread_dicom_session()
+        session = get_thread_dicom_session(path)
         session.open(path)
         pixels = session.read_frame(frame_index)
         _pixel_cache.put(path, frame_index, pixels)

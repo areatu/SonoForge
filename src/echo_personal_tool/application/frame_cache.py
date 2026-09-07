@@ -21,6 +21,15 @@ _logger = logging.getLogger(__name__)
 _DEFAULT_EVICT_WINDOW = 40
 _MAX_CACHE_MEMORY_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB cap
 _MIN_FRAME_SIZE_BYTES = 640 * 480 * 2  # ~600 KB — at least one VGA uint8 frame
+# Share of the emergency-eviction capacity kept ahead of the playhead; the rest is kept
+# behind it so rewind and loop wrap-around do not always miss.
+_FORWARD_ARC_FRACTION = 0.75
+# Where the emergency trim stops, as a share of the budget. Half is deliberate: it leaves
+# room for a whole prefetch run to land before the next trim, and the store may legally sit
+# anywhere between the trim target and the budget, so a window wider than capacity_frames()
+# still pays off (measured: 44 frames retained on a 720p RGB cine versus 35 at 3/4, and
+# 423 decoded frames for 368 displayed versus 577).
+_EMERGENCY_TRIM_FRACTION = 0.5
 
 
 class FrameCache:
@@ -55,10 +64,21 @@ class FrameCache:
         if not self._frame_store:
             return None
         if len(self._frame_store) == self._total_frames:
-            self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            self._cached_frames = self._stack_full_cine()
         else:
             self._cached_frames = np.stack([self._frame_store[i] for i in self._sorted_keys])
         return self._cached_frames
+
+    def _stack_full_cine(self) -> np.ndarray:
+        """Stack every frame and rebind the store to views into that stack.
+
+        Keeping the per-frame arrays *and* the stack doubles residency - 166 MB twice for a
+        60-frame 720p cine - while M-mode and speckle tracking ask for the stack and
+        playback keeps reading single frames. Views make it one copy with two shapes.
+        """
+        stacked = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        self._frame_store = {i: stacked[i] for i in range(self._total_frames)}
+        return stacked
 
     def is_ready(self, path: Path) -> bool:
         return (
@@ -125,6 +145,19 @@ class FrameCache:
         n = min(length, total)
         return {(base + i) % total for i in range(n)}
 
+    def _backward_arc(self, length: int) -> set[int]:
+        """Indexes of the `length` frames behind the playhead, wrapping at the start.
+
+        Rewind, backward scrubbing and the loop wrap-around read these; an eviction that
+        keeps only the forward arc guarantees a miss the moment the user goes back.
+        """
+        total = self._total_frames
+        if total <= 0 or length <= 0:
+            return set()
+        base = self._current_index % total
+        n = min(length, total)
+        return {(base - i) % total for i in range(1, n + 1)}
+
     def _evict_to_memory_limit(self) -> None:
         """Evict frames until memory is under the cap.
 
@@ -136,10 +169,11 @@ class FrameCache:
         """
         if not self._sorted_keys:
             return
-        target = self._max_cache_bytes // 2
+        target = int(self._max_cache_bytes * _EMERGENCY_TRIM_FRACTION)  # half the budget
         avg = self._memory_bytes / len(self._sorted_keys)
         capacity = max(2, int(target // avg) + 1) if avg > 0 else 2
-        keep = self._forward_arc(capacity)
+        forward = max(1, int(capacity * _FORWARD_ARC_FRACTION))
+        keep = self._forward_arc(forward) | self._backward_arc(capacity - forward)
         for k in list(self._sorted_keys):
             if self._memory_bytes <= target:
                 break
@@ -168,7 +202,76 @@ class FrameCache:
         return self._total_frames
 
     def memory_bytes(self) -> int:
-        return sum(f.nbytes for f in self._frame_store.values())
+        """Bytes held by the cached frames.
+
+        ``_memory_bytes`` is maintained by every mutation of the store, so this is O(1);
+        re-summing the store made diagnostics walk the whole cache on every call.
+        """
+        return self._memory_bytes
+
+    @property
+    def memory_budget(self) -> int:
+        """Byte ceiling for the cached frames (see set_memory_budget)."""
+        return self._max_cache_bytes
+
+    def set_memory_budget(self, budget_bytes: int) -> None:
+        """Raise or lower the byte ceiling.
+
+        Growing is what lets a 720p cine buffer a second of playback instead of a third;
+        the caller is responsible for staying inside the machine's RAM share. Shrinking
+        below what is already held is left to the next put(), which trims as before.
+        """
+        self._max_cache_bytes = max(budget_bytes, _MIN_FRAME_SIZE_BYTES)
+
+    def set_evict_window(self, window: int) -> None:
+        """Set the LRU half-width around the playhead.
+
+        The window must not undercut the prefetch target: frames decoded further ahead than
+        it are evicted before the playhead can reach them, so a deep buffer would decode
+        the same frames over and over.
+        """
+        self._evict_window = max(1, int(window))
+
+    @property
+    def evict_window(self) -> int:
+        """Half-width of the LRU window around the playhead.
+
+        Frames decoded further ahead than this are dropped again before the playhead can
+        reach them, so it is a hard limit on how deep a prefetch may aim.
+        """
+        return self._evict_window
+
+    def average_frame_bytes(self) -> float:
+        """Observed mean size of one cached frame.
+
+        Falls back to the VGA constant while nothing is loaded, which is the conservative
+        answer: it assumes big frames, so sizing decisions do not over-commit the budget.
+        """
+        if self._frame_store:
+            return self._memory_bytes / len(self._frame_store)
+        return float(_MIN_FRAME_SIZE_BYTES)
+
+    def capacity_frames(self) -> int:
+        """Frames the budget can hold at the observed size without an emergency trim.
+
+        Measured against the trim target rather than the full budget: a prefetch aimed past
+        it decodes frames that are dropped again before the playhead reaches them (measured
+        as 26 decoded frames per displayed frame on a 720p RGB cine).
+        """
+        avg = self.average_frame_bytes()
+        if avg <= 0:
+            return 0
+        return max(1, int((self._max_cache_bytes * _EMERGENCY_TRIM_FRACTION) // avg))
+
+    def budget_for_frames(self, frames: int) -> int:
+        """Byte budget that retains `frames` of the current average size.
+
+        The inverse of capacity_frames(): callers sizing the cache for a buffer depth in
+        seconds ask this instead of re-deriving the trim fraction.
+        """
+        if frames <= 0:
+            return 0
+        return int(frames * self.average_frame_bytes() / _EMERGENCY_TRIM_FRACTION)
 
     def can_fit_full_cine(self) -> bool:
         """True if the whole cine at the observed (or minimum) frame size fits
@@ -179,11 +282,7 @@ class FrameCache:
         """
         if self._total_frames <= 0:
             return False
-        if self._frame_store:
-            avg = self._memory_bytes / len(self._frame_store)
-        else:
-            avg = _MIN_FRAME_SIZE_BYTES
-        return self._total_frames * avg <= self._max_cache_bytes
+        return self._total_frames * self.average_frame_bytes() <= self._max_cache_bytes
 
     def is_loaded(self, index: int) -> bool:
         return index in self._frame_store
@@ -212,7 +311,7 @@ class FrameCache:
                 f"Only {len(self._frame_store)}/{self._total_frames} frames loaded. "
                 "Reload full cine before speckle tracking."
             )
-        self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        self._cached_frames = self._stack_full_cine()
         return self._cached_frames
 
     def load_all_frames(self) -> np.ndarray:
@@ -228,7 +327,7 @@ class FrameCache:
         if self._cached_frames is not None and len(self._frame_store) == self._total_frames:
             return self._cached_frames
         if len(self._frame_store) == self._total_frames:
-            self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+            self._cached_frames = self._stack_full_cine()
             return self._cached_frames
 
         # Need to load missing frames from source
@@ -242,7 +341,7 @@ class FrameCache:
             # Video file — use existing video reader
             from echo_personal_tool.infrastructure.video_reader import get_thread_video_reader
 
-            reader = get_thread_video_reader()
+            reader = get_thread_video_reader(source)
             reader.open(source)
             frames = []
             for i in range(self._total_frames):
@@ -252,7 +351,7 @@ class FrameCache:
             # DICOM — load frame by frame
             from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
-            session = get_thread_dicom_session()
+            session = get_thread_dicom_session(source)
             session.open(source)
             frames = []
             for i in range(self._total_frames):
@@ -317,12 +416,18 @@ class FrameCache:
         keys = self._sorted_keys
         if not keys:
             return
-        # Keep the whole cine when it could fit under the memory cap even at
-        # the minimum frame size. Window-based eviction would otherwise drop
-        # frames needed for loop wrap-around (e.g. a 55-frame clip with a
-        # 20-frame window evicts the tail on the first step and the head near
-        # the end), stalling playback at ~3/4 and at the end without looping.
-        if self._total_frames * _MIN_FRAME_SIZE_BYTES <= self._max_cache_bytes:
+        # Keep the whole cine when it fits under the memory cap at the observed frame
+        # size. Window-based eviction would otherwise drop frames needed for loop
+        # wrap-around (e.g. a 55-frame clip with a 20-frame window evicts the tail on the
+        # first step and the head near the end), stalling playback at ~3/4 and at the end
+        # without looping.
+        #
+        # The estimate has to be the observed frame size: with the VGA constant a 720p cine
+        # (2.76 MB per frame, 4.6x larger) always looked like it fitted - 60 frames
+        # "weighed" 36.9 MB against a 64 MB budget - so window eviction never ran, the
+        # cache grew until _evict_to_memory_limit() dumped half of it, and the store
+        # oscillated 33 <-> 66 MB while every wrap and rewind missed.
+        if self._total_frames * self.average_frame_bytes() <= self._max_cache_bytes:
             return
         # Frames outside [lo, hi] are evicted, except the wrap-around head
         # frames (0..wrap_head) that playback needs when looping past the end.

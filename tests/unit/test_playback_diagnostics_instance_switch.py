@@ -6,9 +6,12 @@ from unittest.mock import patch
 
 import pytest
 
+from echo_personal_tool.infrastructure import playback_diagnostics as pd
 from echo_personal_tool.infrastructure.playback_diagnostics import (
     InstanceSwitchRecord,
     PlaybackDiagnostics,
+    peak_rss_mb,
+    process_rss_mb,
 )
 
 
@@ -68,3 +71,36 @@ def test_instance_switch_disabled_when_diag_off() -> None:
     assert diag._instance_switch_start == 0.0
     result = diag.on_instance_switch_end()
     assert result is None
+
+
+# ── Memory telemetry that also works on Windows (no /proc, no `resource`) ─────────
+
+
+def test_process_rss_mb_reads_psutil() -> None:
+    assert process_rss_mb() > 1.0
+
+
+def test_peak_rss_mb_is_at_least_the_working_set() -> None:
+    # Windows answers with peak_wset, POSIX with ru_maxrss; both must be plausible and
+    # must never be the 0.0 that a swallowed ImportError used to produce.
+    assert peak_rss_mb() > 1.0
+
+
+def test_rss_helpers_degrade_to_zero_without_a_process(monkeypatch) -> None:
+    monkeypatch.setattr(pd, "_PROCESS", None)
+    monkeypatch.setattr(pd, "_process", lambda: None)
+
+    assert process_rss_mb() == 0.0
+    assert peak_rss_mb() == 0.0
+
+
+def test_rss_helpers_survive_a_failing_psutil(monkeypatch) -> None:
+    class _Boom:
+        def memory_info(self):
+            raise RuntimeError("psutil unavailable")
+
+    monkeypatch.setattr(pd, "_PROCESS", None)
+    monkeypatch.setattr(pd, "_process", lambda: _Boom())
+
+    assert process_rss_mb() == 0.0
+    assert peak_rss_mb() == 0.0

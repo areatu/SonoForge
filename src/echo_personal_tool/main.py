@@ -35,17 +35,23 @@ if os.environ.get("ECHO_FREEZE_DIAG") == "1":
         _mem_log.warning("[mem_top] === Top 10 allocations ===")
         for stat in top[:10]:
             _mem_log.warning("[mem_top] %s", stat)
-        import resource
+        from echo_personal_tool.infrastructure.playback_diagnostics import (
+            peak_rss_mb,
+            process_rss_mb,
+        )
 
-        rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+        # `resource` does not exist on Windows: psutil covers both (see peak_rss_mb).
+        rss_mb = process_rss_mb()
+        peak_mb = peak_rss_mb()
         # Count live numpy arrays and their total size
         import numpy as _np
 
         np_arrays = [o for o in gc.get_objects() if isinstance(o, _np.ndarray)]
         np_bytes = sum(a.nbytes for a in np_arrays)
         _mem_log.warning(
-            "[mem_top] RSS=%.0f MB numpy_arrays=%d numpy_MB=%.0f GC_objects=%d",
+            "[mem_top] RSS=%.0f MB peak_RSS=%.0f MB numpy_arrays=%d numpy_MB=%.0f GC_objects=%d",
             rss_mb,
+            peak_mb,
             len(np_arrays),
             np_bytes / (1024 * 1024),
             len(gc.get_objects()),
@@ -178,12 +184,20 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("SonoForge")
 
-    # Enable OpenGL hardware acceleration for pyqtgraph texture uploads.
-    # On Windows with ANGLE this ensures GPU texture upload instead of software rendering.
+    # OpenGL for the pyqtgraph viewport - only when a real GPU backs it. On software GL
+    # (llvmpipe in a VM, WARP over RDP, GDI Generic without a driver) the GL viewport is
+    # slower than Qt's raster paint engine for the 2D blits this viewer does, and in
+    # pyqtgraph 0.13/0.14 `useOpenGL` only changes the viewport: ImageItem keeps going
+    # through QImage + QPainter either way. ECHO_USE_OPENGL=0|1 overrides the probe.
     try:
         import pyqtgraph as pg
 
-        pg.setConfigOptions(useOpenGL=True)
+        from echo_personal_tool.infrastructure.system_profiler import (
+            detect_opengl_capability,
+        )
+
+        use_opengl, _reason = detect_opengl_capability()
+        pg.setConfigOptions(useOpenGL=use_opengl)
     except Exception:
         pass
 

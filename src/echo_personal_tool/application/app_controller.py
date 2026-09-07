@@ -6,6 +6,8 @@ import dataclasses
 import logging
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
 from time import perf_counter
@@ -15,6 +17,7 @@ import psutil
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
 from echo_personal_tool.application.study_measurement_session import (
@@ -107,12 +110,37 @@ _file_handler.setLevel(logging.WARNING)
 _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_file_handler)
 
-_FRAME_CACHE_WARN_BYTES = 512 * 1024 * 1024
+# Warn about the frame cache when a bulk load takes it this far past its budget.
+_CACHE_WARN_BUDGET_FACTOR = 1.5
 
 # Cines with at most this many frames are considered "short": prefetched in
 # full (when they fit in the frame cache) so loop wrap-around, rewind, and
 # start-from-first-frame never hit an un-cached frame.
 _SMALL_CINE_MAX_FRAMES = 60
+
+# Leading-static scan (skipping a frozen prefix when Play is pressed at frame 0).
+# Floor between two deferred gen-0 collections (see _deferred_gc_collect).
+_GC_MIN_INTERVAL_SEC = 2.0
+
+_LEADING_STATIC_MAX_FRAMES = 16
+# Row/column stride for the comparison. Full 720p frames as float32 cost 13.8-14.4 ms on
+# the main thread for the whole scan and 11 MB of temporaries per frame; every 4th row and
+# column keeps 57k of 2.7M pixels, the mean absolute difference stays unbiased on a static
+# prefix, and all the decision does is move the playback start by up to 15 frames.
+_LEADING_STATIC_STRIDE = 4
+_LEADING_STATIC_DIFF_THRESHOLD = 1.0
+
+# Prefetch batch sizing. A run of 1-2 frames cannot amortise one QThreadPool round-trip
+# (submit -> decode gate -> decode -> queued signals back to the UI thread), so the floor
+# is a quarter second of playback; the ceiling keeps a single run from holding the decode
+# gate long enough to delay the frame the user just scrolled to.
+_MIN_PREFETCH_BATCH_SECONDS = 0.25
+_MIN_PREFETCH_BATCH_FRAMES = 4
+_MAX_ADAPTIVE_BATCH = 32
+_DECODE_EMA_ALPHA = 0.3
+# Staleness budget per requested frame on top of _PREFETCH_TIMEOUT_SEC (see
+# _prefetch_timeout_sec).
+_PREFETCH_TIMEOUT_PER_FRAME_SEC = 0.05
 
 # ── Freeze diagnostics (set ECHO_FREEZE_DIAG=1 to enable) ────────────
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
@@ -150,21 +178,33 @@ class AppController(QObject):
     ) -> None:
         super().__init__()
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
+        # One decoding worker per file + priority ordering of the parked requests
+        # (see decode_gate.DecodeGate): the shared per-file session/reader serialises
+        # concurrent decodes anyway, so parallel workers only burned pool threads and
+        # let a prefetch batch delay the frame the user scrolled to.
+        self._decode_gate = DecodeGate()
         self._state_manager = StateManager()
         self._measurement_session = StudyMeasurementSessionStore()
         self._current_study_uid: str | None = None
         self._segmenter = segmenter or OnnxInferenceEngine()
         self._playback_config: PlaybackConfig = detect_playback_config()
-        # Adaptive memory budget: cap at UserPreferences.playback_max_cache_mb
-        # (default 64 MB; high-end systems can raise to 128 MB via preferences),
-        # but never use more than 8% of available physical RAM.
-        # On a weak PC with 8 GB total RAM and ~2 GB available, 8% = 160 MB,
-        # so the binding cap is playback_max_cache_mb (64 MB).
+        # Adaptive memory budget: start at UserPreferences.playback_max_cache_mb
+        # (default 64 MB; high-end systems can raise it via preferences) and never exceed
+        # 8% of the physical RAM available at startup.
+        #
+        # The preference is a floor for tuning, not a ceiling: 64 MB holds 23 frames of
+        # 1280x720 RGB, and because the emergency trim halves the budget only ~11 of them
+        # are retained - 0.36 s of buffer at 30 fps. Now that a cine's pixel block is
+        # mapped instead of read into RAM (dicom_session._map_pixel_data), the frame cache
+        # is the dominant consumer of anonymous memory during playback, so
+        # _tune_playback_cache() grows it to what prefetch_seconds of the loaded cine
+        # actually needs - always inside _cache_ram_cap_bytes.
         try:
             _available = psutil.virtual_memory().available
             _adaptive_bytes = int(_available * 0.08)
         except Exception:
             _adaptive_bytes = 2 * 1024 * 1024 * 1024  # fallback: 2 GB
+        self._cache_ram_cap_bytes: int = _adaptive_bytes
         _prefs = load_user_preferences()
         _max_cache_bytes = min(
             _prefs.playback_max_cache_mb * 1024 * 1024,
@@ -179,9 +219,19 @@ class AppController(QObject):
         self._timer.timeout.connect(self._advance_playback)
         if sys.platform == "win32":
             self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        # Cadence reference for playback: the moment the last frame tick STARTED.
+        # _reschedule_playback_timer() schedules the next tick at (mark + interval), so the
+        # time spent emitting the frame is compensated instead of being added to the period.
         self._last_frame_shown_at: float = 0.0
+        # True while _advance_playback() emits a frame itself. The state_changed signal that
+        # emission triggers must not re-arm the playback timer (see _on_state_changed()).
+        self._advancing_frame = False
         self._playback_warmup_pending = False
         self._playback_poll_interval_ms = 16
+        # True while the playback timer is polling for frames instead of pacing them (a tick
+        # found the next frame missing, or the buffer is still warming up). Cleared by the
+        # next paced reschedule; read by _wake_playback_timer().
+        self._playback_poll_pending = False
         self._studies: list[StudyMetadata] = []
         self._current_instance: InstanceMetadata | None = None
         self._loaded_source_path: Path | None = None
@@ -203,17 +253,26 @@ class AppController(QObject):
         self._thumbnail_instances: dict[str, InstanceMetadata] = {}
         self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
         self._current_frame_pixels: np.ndarray | None = None
+        # Instance the cine time-scale ROI was already detected for (see
+        # _maybe_cache_cine_roi_from_frame); detection costs 14-38 ms at 720p.
+        self._cine_roi_probe_key: tuple[str, str | None] | None = None
         self._leading_static_frames: dict[Path, int] = {}
         self._batch_load_id: int = 0
         self._mmode_active = False
         self._batch_target_frame: int = 0
         self._prefetch_request_id: int = 0
         self._prefetch_load_id: int = 0
+        # Frames requested by the in-flight prefetch run; the staleness timeout scales with
+        # it because a 32-frame batch legitimately takes far longer than a 2-frame one and
+        # force-clearing it would start a second run decoding the same frames.
+        self._prefetch_load_count: int = 0
         self._prefetch_load_started_at: float = 0.0
         self._prefetch_batch_start: float = 0.0
-        self._prefetch_ema_latency_ms: float = 0.0
+        # EMA of the worker-side decode cost per frame (ms) — see _on_prefetch_decode_timing.
+        self._prefetch_ema_decode_ms: float = 0.0
         self._prefetch_cooldown_until: float = 0.0
         self._diag_frame_counter: int = 0
+        self._last_gc_collect_at: float = 0.0
         self._adaptive_batch_size: int = self._playback_config.batch_size
         self._scroll_load_id: int = 0
         self._scroll_load_started_at: float = 0.0
@@ -268,14 +327,40 @@ class AppController(QObject):
         if len(self._live_workers) == 0:
             QTimer.singleShot(0, self._deferred_gc_collect)
 
+    def _start_frame_loader(self, worker: FrameLoaderWorker, priority: DecodePriority) -> None:
+        """Hand a frame decode to the per-file gate and start it on the pool.
+
+        The worker still goes to the thread pool (so pool-level bookkeeping and the
+        retained-worker guards are unchanged); if another worker already owns the file it
+        parks in the gate's priority queue and is decoded by the owner instead of blocking
+        a second pool thread on the session lock.
+        """
+        worker.decode_gate = self._decode_gate
+        worker.priority = priority
+        # A request superseded while parked never emits finished/failed, so release the
+        # retained worker here to keep _live_workers from growing while scrubbing.
+        worker.signals.cancelled.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        self._thread_pool.start(worker)
+
     def _deferred_gc_collect(self) -> None:
+        """Collect the cycles a drained worker set left behind - throttled, never mid-playback.
+
+        Frame pixels die by refcount the moment the worker drops them, so this only ever
+        reclaims reference cycles. Running it on every drain spawned a thread and a gen-0
+        pass that competes for the GIL with the decode pool several times per second during
+        playback - steady wakeups on exactly the weak machines the low-end profile targets,
+        for memory that was already free.
+        """
+        if self._state_manager.snapshot.is_playing:
+            return
+        now = perf_counter()
+        if now - self._last_gc_collect_at < _GC_MIN_INTERVAL_SEC:
+            return
+        self._last_gc_collect_at = now
         import gc
         import threading
 
-        def _bg_collect():
-            gc.collect(generation=0)
-
-        threading.Thread(target=_bg_collect, daemon=True).start()
+        threading.Thread(target=gc.collect, args=(0,), daemon=True).start()
 
     @property
     def studies(self) -> list[StudyMetadata]:
@@ -360,6 +445,7 @@ class AppController(QObject):
         prefetch_was_active = self._prefetch_load_id != 0
         self._invalidate_prefetch()
         self._playback_warmup_pending = False
+        self._playback_poll_pending = False
 
         if _playback_diag is not None:
             _playback_diag.on_instance_switch_start(
@@ -399,6 +485,7 @@ class AppController(QObject):
         self._pending_source_path = None
         self._pending_frame_index = None
         self._current_frame_pixels = None
+        self._cine_roi_probe_key = None
         self._segment_in_progress = False
         self._state_manager.set_instance(
             instance,
@@ -555,15 +642,35 @@ class AppController(QObject):
         self.frame_load_failed.emit("Series not found in study")
 
     def _detect_leading_static_from_cache(self, path: Path, total: int) -> int:
+        """How many frames at the start of the cine are visually identical to frame 0.
+
+        Runs on the main thread when Play is pressed, so it is sampled (see
+        _LEADING_STATIC_STRIDE) and short-circuits on byte-identical frames, which is the
+        common case for a frozen prefix.
+        """
         if not self._frame_cache.is_loaded(0):
             return 0
-        ref = self._frame_cache.get(0).astype(np.float32, copy=False)
+        stride = _LEADING_STATIC_STRIDE
+        ref_full = self._frame_cache.get(0)
+        ref_sample = ref_full[::stride, ::stride]
+        # int16 already holds a uint8 difference without wrapping; wider dtypes
+        # promote to int32. Exact, and far cheaper than the float32 temporaries
+        # this replaces.
+        diff_dtype = np.promote_types(ref_full.dtype, np.int16)
         leading = 0
-        for idx in range(1, min(total, 16)):
+        for idx in range(1, min(total, _LEADING_STATIC_MAX_FRAMES)):
             if not self._frame_cache.is_loaded(idx):
                 break
-            diff = float(np.mean(np.abs(self._frame_cache.get(idx).astype(np.float32, copy=False) - ref)))
-            if diff > 1.0:
+            frame = self._frame_cache.get(idx)
+            if np.array_equal(frame, ref_full):
+                # Byte-identical frames (the usual frozen prefix) are cheaper to
+                # memcmp whole than through a strided view, which walks the frame
+                # at cache-line granularity.
+                leading = idx
+                continue
+            sample = frame[::stride, ::stride]
+            diff = float(np.mean(np.abs(sample.astype(diff_dtype) - ref_sample.astype(diff_dtype))))
+            if diff > _LEADING_STATIC_DIFF_THRESHOLD:
                 break
             leading = idx
         return leading
@@ -594,6 +701,7 @@ class AppController(QObject):
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id
         self._prefetch_load_id = request_id
+        self._prefetch_load_count = len(batch)
         worker = FrameLoaderWorker(
             path,
             frame_index=batch[0],
@@ -612,15 +720,17 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.BACKGROUND)
 
     def _on_leading_scan_batch_loaded(self, request_id: int, path: Path, total: int, frames: list) -> None:
         is_current = request_id == self._prefetch_load_id
         if is_current:
             self._prefetch_load_id = 0
+            self._prefetch_load_count = 0
         # Always cache frames even for stale requests.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
+        self._wake_playback_timer()
         if path not in self._leading_static_frames:
             leading = self._detect_leading_static_from_cache(path, total)
             self._leading_static_frames[path] = leading
@@ -632,6 +742,7 @@ class AppController(QObject):
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
         self._leading_static_frames[path] = 0
         if self._state_manager.snapshot.is_playing:
             current = self._state_manager.snapshot.current_frame_index
@@ -663,6 +774,7 @@ class AppController(QObject):
         else:
             self._invalidate_prefetch()
             self._playback_warmup_pending = False
+            self._playback_poll_pending = False
         self._state_manager.set_playing(is_playing)
         if is_playing:
             # ── Playback diagnostics: start ──
@@ -1257,18 +1369,68 @@ class AppController(QObject):
         )
 
     def _reschedule_playback_timer(self, *, poll: bool = False) -> None:
-        delay_ms = (
-            self._playback_poll_interval_ms if poll or self._playback_warmup_pending else self._playback_interval_ms()
-        )
-        if not poll and not self._playback_warmup_pending and self._last_frame_shown_at > 0:
+        polling = poll or self._playback_warmup_pending
+        self._playback_poll_pending = polling
+        delay_ms = self._playback_poll_interval_ms if polling else self._playback_interval_ms()
+        if not polling and self._last_frame_shown_at > 0:
             elapsed_ms = (perf_counter() - self._last_frame_shown_at) * 1000.0
             delay_ms = max(1, int(delay_ms - elapsed_ms))
         self._timer.setInterval(delay_ms)
         if not self._timer.isActive():
             self._timer.start()
 
+    def _wake_playback_timer(self) -> None:
+        """Fire the playback tick on the next event-loop iteration.
+
+        Poll mode re-checks every 16 ms, so a frame that landed 1 ms after a miss still cost
+        up to 16 ms of frozen video - half the frame interval at 30 fps, on exactly the weak
+        machines where misses happen. Delivery is the event to react to; the tick itself
+        decides whether to advance (its interval guard keeps the cadence) or wait again.
+        """
+        if not self._playback_poll_pending or not self._state_manager.snapshot.is_playing:
+            return
+        self._timer.setInterval(1)
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def _diag_frame_tick(self, frame_index: int, *, phase: str, buffered_frames: int) -> None:
+        """Record one displayed (or missed) frame together with the buffer behind it.
+
+        A buffer counted in frames means nothing on its own - five frames is 0.4 s at
+        12 fps and 0.08 s at 60 - so the tick carries the frame time as well and the
+        report converts it to seconds.
+        """
+        if _playback_diag is None or not _playback_diag.enabled:
+            return
+        _playback_diag.on_frame_tick(
+            frame_index,
+            phase=phase,
+            buffered_frames=buffered_frames,
+            frame_time_ms=self._state_manager.snapshot.frame_time_ms,
+        )
+
+    @contextmanager
+    def _own_frame_advance(self) -> Iterator[None]:
+        """Mark the enclosed emission as driven by ``_advance_playback``.
+
+        ``step_frame()`` / ``set_frame()`` emit ``state_changed``; without this flag
+        ``_on_state_changed`` would overwrite the playback interval that
+        ``_advance_playback`` just calibrated, which costs one spurious timer wake-up
+        per frame and re-arms the cadence from the wrong reference point.
+        """
+        self._advancing_frame = True
+        try:
+            yield
+        finally:
+            self._advancing_frame = False
+
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
+            return
+        if self._advancing_frame:
+            # Playback advanced the frame itself and owns the timer schedule; only make sure
+            # the decoded frame request is up to date.
+            self._request_frame_if_needed(state)
             return
         self._timer.setInterval(self._playback_interval_ms(state))
         if state.is_playing and not self._pending_decode_id and not self._playback_warmup_pending:
@@ -1612,7 +1774,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.INTERACTIVE)
 
     def _start_scroll_target_load(self, target: int, *, scroll: bool = False) -> None:
         if self._current_instance is None or self._current_instance.path is None:
@@ -1657,7 +1819,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.INTERACTIVE)
 
     def _mark_scroll_active(self) -> None:
         self._scroll_active = True
@@ -1748,7 +1910,7 @@ class AppController(QObject):
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.NEIGHBORS)
 
     def _format_doppler_summary(self, dto: DopplerMeasurementDTO) -> str:
         peaks = len(dto.peaks)
@@ -1764,6 +1926,9 @@ class AppController(QObject):
     def _invalidate_prefetch(self) -> None:
         self._prefetch_request_id += 1
         self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
+        # Whatever the timer was waiting for is stale now; the next tick re-arms it.
+        self._playback_poll_pending = False
         if self._prefetch_request_id > 1:
             if _playback_diag is not None:
                 _playback_diag.on_prefetch_cancel(reason="file_switch_or_seek")
@@ -1778,10 +1943,11 @@ class AppController(QObject):
         if perf_counter() < self._prefetch_cooldown_until:
             return
         if self._prefetch_load_id != 0:
-            # Stale prefetch guard: if the worker hasn't completed within
-            # _PREFETCH_TIMEOUT_SEC, force-clear it to prevent playback stall.
+            # Stale prefetch guard: if the worker hasn't completed within the timeout,
+            # force-clear it to prevent a playback stall. The timeout scales with the frames
+            # that run asked for (see _prefetch_timeout_sec).
             stale_sec = perf_counter() - self._prefetch_load_started_at
-            if stale_sec < self._PREFETCH_TIMEOUT_SEC:
+            if stale_sec < self._prefetch_timeout_sec():
                 if _FREEZE_DIAG:
                     _diag_log.warning(
                         "[prefetch] center=%d BLOCKED by pending_load_id=%d (%.1fs old)",
@@ -1798,7 +1964,6 @@ class AppController(QObject):
                 )
             self._prefetch_load_id = 0
 
-        cfg = self._playback_config
         total = self._frame_cache.frame_count()
         if total <= 0:
             return
@@ -1814,20 +1979,40 @@ class AppController(QObject):
             start = unloaded[0]
             batch = len(unloaded)
         else:
+            target = self._prefetch_target_frames()
             ahead = self._frame_cache.loaded_ahead(center)
-            if ahead >= cfg.prefetch_radius:
+            if ahead >= target:
+                return
+            # Refill hysteresis. Topping the buffer up by one frame per tick costs one
+            # thread-pool round-trip per displayed frame: 246 single-frame runs in 6 s of
+            # 720p playback, each paying submit + decode gate + queued signal delivery for
+            # ~2 ms of actual decoding. Waiting for the low-water mark and refilling to the
+            # target in one run does the same decode work with ~7x fewer runs, and the
+            # runway left at the mark still covers that refill many times over while
+            # decoding keeps up with playback (when it does not, the batch shrinks - see
+            # _min_prefetch_batch).
+            if ahead >= max(1, target // 2):
                 return
             start = (center + 1 + ahead) % total
             if start == center:
                 return
-            slots_remaining = cfg.prefetch_radius - ahead
-            batch = min(self._adaptive_batch_size, slots_remaining, total)
+            # Floor the run at a quarter second of playback. min(batch_size, radius - ahead)
+            # produced 1-2 frame runs: 368 decode runs for 368 displayed frames on a
+            # 120-frame 720p cine, i.e. one thread-pool round-trip amortised over a single
+            # ~2 ms decode. `target - ahead` still bounds the run, so the floor cannot push
+            # frames past what the cache retains.
+            batch = min(
+                max(self._min_prefetch_batch(), self._adaptive_batch_size),
+                target - ahead,
+                total,
+            )
             if batch <= 0:
                 return
 
         self._prefetch_request_id += 1
         request_id = self._prefetch_request_id
         self._prefetch_load_id = request_id
+        self._prefetch_load_count = batch
         self._prefetch_load_started_at = perf_counter()
         self._prefetch_batch_start = perf_counter()
 
@@ -1845,6 +2030,12 @@ class AppController(QObject):
         )
 
         worker.signals.failed.connect(partial(self._on_prefetch_failed, request_id), Qt.ConnectionType.QueuedConnection)
+        # Worker-side decode cost: the signal that drives prefetch batch sizing.
+        if hasattr(worker.signals, "batch_decoded"):
+            worker.signals.batch_decoded.connect(
+                partial(self._on_prefetch_decode_timing, request_id),
+                Qt.ConnectionType.QueuedConnection,
+            )
         self._retain_worker(worker)
         worker.signals.batch_finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
@@ -1856,39 +2047,144 @@ class AppController(QObject):
                 batch,
                 self._thread_pool.activeThreadCount(),
             )
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.PLAYBACK)
+
+    def _prefetch_timeout_sec(self) -> float:
+        """Staleness budget for the in-flight prefetch run.
+
+        A 32-frame batch of 720p JPEG legitimately takes about a second on a weak machine;
+        force-clearing it at the flat 1 s mark would start a second run decoding the same
+        frames and double the load on exactly the machine that is already behind.
+        """
+        return max(self._PREFETCH_TIMEOUT_SEC, _PREFETCH_TIMEOUT_PER_FRAME_SEC * self._prefetch_load_count)
+
+    def _prefetch_target_frames(self) -> int:
+        """Buffer depth in frames: cfg.prefetch_seconds of playback, capped by cache room.
+
+        cfg.prefetch_radius counts frames, and 5-10 frames is only 0.08-0.33 s at 30-60 fps
+        — one slow decode batch consumes it. Seconds scale with the frame rate instead, and
+        the retention cap keeps the target inside what FrameCache actually keeps.
+        """
+        cfg = self._playback_config
+        fps = self._playback_fps()
+        target = max(cfg.prefetch_radius, int(round(cfg.prefetch_seconds * fps)))
+        self._tune_playback_cache(target)
+        # Never aim past what the cache can retain. Frames decoded beyond the eviction
+        # window or the memory budget are dropped before the playhead reaches them and then
+        # decoded a second time: with a 17-frame target against a 12-frame window a 60-frame
+        # MONO16 cine decoded 835 frames to show 368.
+        retain = min(self._frame_cache.evict_window, self._frame_cache.capacity_frames())
+        target = min(target, max(1, retain))
+        total = self._frame_cache.frame_count()
+        if total > 0:
+            target = min(target, total)
+        return max(1, target)
+
+    def _tune_playback_cache(self, want_frames: int) -> None:
+        """Size the frame cache's budget and window for `want_frames` of the loaded cine.
+
+        Both limits used to be flat: a 64 MB budget and a 12-frame window, chosen before
+        720p existed in the product. At 2.76 MB per frame that is 0.36 s of buffer no
+        matter how much RAM is free, so the seconds-based prefetch target could never be
+        reached. The budget grows to what the target needs (`FrameCache.budget_for_frames`)
+        and never past the share of available RAM taken at startup; the window grows with
+        it so eviction does not discard what prefetch just decoded.
+        """
+        cache = self._frame_cache
+        if want_frames <= 0:
+            return
+        frame_bytes = int(cache.average_frame_bytes())
+        if frame_bytes <= 0:
+            return
+        total = cache.frame_count()
+        if 0 < total <= _SMALL_CINE_MAX_FRAMES:
+            # A short cine is worth holding whole: loop wrap, rewind and scrubbing then
+            # never decode a frame twice, and require_full_cine() (speckle tracking) stops
+            # raising IncompleteCineError at 720p. The RAM cap below still decides whether
+            # the machine can afford it.
+            want_frames = max(want_frames, total)
+        budget = cache.memory_budget
+        needed = cache.budget_for_frames(want_frames)
+        if needed > budget:
+            cache.set_memory_budget(min(needed, self._cache_ram_cap_bytes))
+            budget = cache.memory_budget
+        if cache.evict_window < want_frames:
+            cache.set_evict_window(min(want_frames, max(1, budget // frame_bytes)))
+
+    def _min_prefetch_batch(self) -> int:
+        """Smallest prefetch run worth a thread-pool round-trip.
+
+        A quarter second of playback while decoding keeps up. When a frame costs more than
+        the frame interval the floor drops to a few frames: a run only delivers its pixels
+        once the whole batch is decoded, so on a machine that is already behind a long run
+        would delay the frame nearest the playhead instead of protecting it.
+        """
+        floor = max(_MIN_PREFETCH_BATCH_FRAMES, int(round(_MIN_PREFETCH_BATCH_SECONDS * self._playback_fps())))
+        interval_ms = float(self._playback_interval_ms())
+        if self._prefetch_ema_decode_ms > interval_ms > 0:
+            return _MIN_PREFETCH_BATCH_FRAMES
+        return floor
+
+    def _playback_fps(self) -> float:
+        """Current playback frame rate, speed multiplier included (30 fps when unknown)."""
+        interval_ms = self._playback_interval_ms()
+        return 1000.0 / interval_ms if interval_ms > 0 else 30.0
+
+    def _on_prefetch_decode_timing(self, request_id: int, count: int, ms: float) -> None:
+        """Adapt prefetch batch size to the worker-side decode cost per frame.
+
+        Grow when a frame decodes in less than half the frame interval — one worker thread
+        can then stay ahead of playback, so longer runs mean fewer round-trips and a deeper
+        buffer. Shrink when a frame costs more than the interval — a long run only delays
+        the frames nearest the playhead. Between the two thresholds the size holds still,
+        which is the hysteresis that keeps it from oscillating.
+        """
+        if request_id != self._prefetch_request_id or count <= 0 or ms <= 0:
+            return
+        per_frame_ms = ms / count
+        prev = self._prefetch_ema_decode_ms
+        self._prefetch_ema_decode_ms = (
+            per_frame_ms if prev <= 0 else _DECODE_EMA_ALPHA * per_frame_ms + (1 - _DECODE_EMA_ALPHA) * prev
+        )
+        interval_ms = float(self._playback_interval_ms())
+        if interval_ms <= 0:
+            return
+        ema = self._prefetch_ema_decode_ms
+        if 2.0 * ema < interval_ms and self._adaptive_batch_size < _MAX_ADAPTIVE_BATCH:
+            self._adaptive_batch_size += 2
+        elif ema > interval_ms and self._adaptive_batch_size > self._min_prefetch_batch():
+            self._adaptive_batch_size -= 1
 
     def _on_prefetch_batch_loaded(self, request_id: int, path: Path, frames: list) -> None:
         is_current = request_id == self._prefetch_load_id
         if is_current:
             total_ms = (perf_counter() - self._prefetch_load_started_at) * 1000.0
             self._prefetch_load_id = 0
+            self._prefetch_load_count = 0
             if self._current_instance is None or self._current_instance.path != path:
                 return
-            # Adaptive batch sizing: EMA of batch latency
+            # Wall-clock cost of the run (submit -> last frame back on the UI thread), kept
+            # for diagnostics only. Batch sizing is driven by worker-side decode time
+            # instead (_on_prefetch_decode_timing): this number also contains pool queueing
+            # and event-loop delivery, so feeding it back shrank batches to 2 frames
+            # whenever the UI thread was busy rendering — a loop back into itself.
             batch_elapsed_ms = 0.0
             if self._prefetch_batch_start > 0:
-                elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
-                batch_elapsed_ms = elapsed_ms
+                batch_elapsed_ms = (perf_counter() - self._prefetch_batch_start) * 1000.0
                 self._prefetch_batch_start = 0.0
-                alpha = 0.3
-                self._prefetch_ema_latency_ms = alpha * elapsed_ms + (1 - alpha) * self._prefetch_ema_latency_ms
-                cfg = self._playback_config
-                if self._prefetch_ema_latency_ms < 10 and self._adaptive_batch_size < 16:
-                    self._adaptive_batch_size += 2
-                elif self._prefetch_ema_latency_ms > 60 and self._adaptive_batch_size > 2:
-                    self._adaptive_batch_size -= 1
-            # ── Playback diagnostics: decode batch ──
+            # ── Playback diagnostics: prefetch round trip ──
+            # The worker already recorded this run's decode cost (on_decode_batch); logging
+            # it here as well counted every frame twice in the report.
             if _playback_diag is not None and batch_elapsed_ms > 0:
-                _playback_diag.on_decode_batch(frames[0][0] if frames else 0, len(frames), batch_elapsed_ms)
+                _playback_diag.on_batch_round_trip(frames[0][0] if frames else 0, len(frames), batch_elapsed_ms)
             if _FREEZE_DIAG:
                 _diag_log.warning(
-                    "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f ema=%.1fms batch_size=%d",
+                    "[prefetch_batch] req=%d frames=%d batch_ms=%.1f total_ms=%.0f decode_ema=%.2fms/frame batch=%d",
                     request_id,
                     len(frames),
-                    elapsed_ms if self._prefetch_batch_start == 0 else 0,
+                    batch_elapsed_ms,
                     total_ms,
-                    self._prefetch_ema_latency_ms,
+                    self._prefetch_ema_decode_ms,
                     self._adaptive_batch_size,
                 )
         else:
@@ -1903,6 +2199,7 @@ class AppController(QObject):
         # needed if playback catches up to that region.
         for idx, pixels in frames:
             self._frame_cache.put(idx, pixels)
+        self._wake_playback_timer()
         if self._state_manager.snapshot.is_playing:
             current = self._state_manager.snapshot.current_frame_index
             self._prefetch_playback_buffer(current)
@@ -1911,11 +2208,16 @@ class AppController(QObject):
         if request_id != self._prefetch_load_id:
             return
         self._prefetch_load_id = 0
+        self._prefetch_load_count = 0
         self._prefetch_cooldown_until = perf_counter() + 5.0
         self.status_message.emit(tr("status.prefetch_failed", message=message))
 
     def _advance_playback(self) -> None:
         _t0 = perf_counter() if _FREEZE_DIAG else 0
+        # Taken before any rendering: every frame emitted by this tick stamps
+        # _last_frame_shown_at with it, so _reschedule_playback_timer() subtracts the work
+        # this tick already did from the next delay (period = max(interval, work)).
+        tick_started_at = perf_counter()
         state = self._state_manager.snapshot
         if not state.is_playing:
             return
@@ -1934,8 +2236,13 @@ class AppController(QObject):
                 ahead = self._frame_cache.loaded_ahead(current)
                 if ahead >= cfg.min_buffer:
                     self._playback_warmup_pending = False
-                    self._last_frame_shown_at = perf_counter()
-                    self._reschedule_playback_timer()
+                    # Waiting for the buffer already held the first frame on screen for
+                    # longer than one interval, so the cadence starts on the next event-loop
+                    # pass instead of paying a second full interval before the first advance.
+                    # Poll mode stays armed: the tick decides, and wake-ups still shorten it.
+                    self._last_frame_shown_at = 0.0
+                    self._reschedule_playback_timer(poll=True)
+                    self._wake_playback_timer()
                     return
             self._reschedule_playback_timer(poll=True)
             return
@@ -1959,11 +2266,13 @@ class AppController(QObject):
 
             if self._frame_cache.is_loaded(next_idx):
                 self._frame_cache.set_current(next_idx)
-                self.step_frame(1)
-                self._last_frame_shown_at = perf_counter()
+                with self._own_frame_advance():
+                    self.step_frame(1)
+                self._last_frame_shown_at = tick_started_at
                 # ── Playback diagnostics: frame tick ──
-                if _playback_diag is not None:
-                    _playback_diag.on_frame_tick(next_idx, phase="cache_hit")
+                self._diag_frame_tick(
+                    next_idx, phase="cache_hit", buffered_frames=self._frame_cache.loaded_ahead(next_idx)
+                )
                 self._prefetch_playback_buffer(next_idx)
                 self._reschedule_playback_timer()
                 if _FREEZE_DIAG:
@@ -1975,17 +2284,18 @@ class AppController(QObject):
                     )
                     self._diag_frame_counter += 1
                     if self._diag_frame_counter % 50 == 0:
-                        import os as _os
+                        # psutil, not /proc/<pid>/status: this diagnostic silently
+                        # printed nothing on Windows, the main deployment target.
+                        from echo_personal_tool.infrastructure.playback_diagnostics import (
+                            peak_rss_mb,
+                            process_rss_mb,
+                        )
 
-                        proc = _os.getpid()
-                        try:
-                            with open(f"/proc/{proc}/status") as _f:
-                                for line in _f:
-                                    if line.startswith("VmRSS:"):
-                                        _diag_log.warning("[mem] %s", line.strip())
-                                        break
-                        except Exception:
-                            pass
+                        _diag_log.warning(
+                            "[mem] RSS=%.0f MB peak=%.0f MB",
+                            process_rss_mb(),
+                            peak_rss_mb(),
+                        )
                         _diag_log.warning(
                             "[mem] cache_frames=%d cache_bytes=%.1fMB live_workers=%d",
                             len(self._frame_cache._frame_store),
@@ -1998,9 +2308,15 @@ class AppController(QObject):
             next_next = (next_idx + 1) % total
             if self._frame_cache.is_loaded(next_next):
                 self._frame_cache.set_current(next_next)
-                self._state_manager.set_frame(next_next)
-                self._emit_cached_frame(next_next)
-                self._last_frame_shown_at = perf_counter()
+                with self._own_frame_advance():
+                    self._state_manager.set_frame(next_next)
+                    self._emit_cached_frame(next_next)
+                self._last_frame_shown_at = tick_started_at
+                # A displayed frame that never counted as a tick made "frames shown" and
+                # the jitter stats disagree with what the user saw.
+                self._diag_frame_tick(
+                    next_next, phase="skip_next", buffered_frames=self._frame_cache.loaded_ahead(next_next)
+                )
                 self._prefetch_playback_buffer(next_next)
                 self._reschedule_playback_timer()
                 return
@@ -2011,9 +2327,13 @@ class AppController(QObject):
                 skip_to = self._frame_cache.nearest_loaded_ahead(current)
                 if skip_to is not None:
                     self._frame_cache.set_current(skip_to)
-                    self._state_manager.set_frame(skip_to)
-                    self._emit_cached_frame(skip_to)
-                    self._last_frame_shown_at = perf_counter()
+                    with self._own_frame_advance():
+                        self._state_manager.set_frame(skip_to)
+                        self._emit_cached_frame(skip_to)
+                    self._last_frame_shown_at = tick_started_at
+                    self._diag_frame_tick(
+                        skip_to, phase="lag_skip", buffered_frames=self._frame_cache.loaded_ahead(skip_to)
+                    )
                     self._prefetch_playback_buffer(skip_to)
                     self._reschedule_playback_timer()
                     return
@@ -2021,8 +2341,7 @@ class AppController(QObject):
             self._prefetch_playback_buffer(current)
             self._reschedule_playback_timer(poll=True)
             # ── Playback diagnostics: cache miss ──
-            if _playback_diag is not None:
-                _playback_diag.on_frame_tick(current, phase="cache_miss")
+            self._diag_frame_tick(current, phase="cache_miss", buffered_frames=ahead)
             if _FREEZE_DIAG:
                 _diag_log.warning(
                     "[advance] frame=%d cache_miss prefetch_pending elapsed=%.2fms",
@@ -2034,8 +2353,9 @@ class AppController(QObject):
         if self._pending_load_id != 0:
             self._reschedule_playback_timer(poll=True)
             return
-        self.step_frame(1)
-        self._last_frame_shown_at = perf_counter()
+        with self._own_frame_advance():
+            self.step_frame(1)
+        self._last_frame_shown_at = tick_started_at
         self._reschedule_playback_timer()
 
     def _load_playback_frame(self, frame_index: int) -> None:
@@ -2245,8 +2565,12 @@ class AppController(QObject):
         self._frame_cache.load(path, frames)
         from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
 
-        get_thread_dicom_session().release()
-        if self._frame_cache.memory_bytes() > _FRAME_CACHE_WARN_BYTES:
+        get_thread_dicom_session(path).release()
+        # A bulk load may legitimately exceed the playback budget (it is the whole cine in
+        # one array); warn when it goes past 1.5x, which is where the store stops being
+        # bounded by the tuning in _tune_playback_cache(). The old absolute 512 MB
+        # threshold was unreachable at the 64 MB default, so the warning never fired.
+        if self._frame_cache.memory_bytes() > int(self._frame_cache.memory_budget * _CACHE_WARN_BUDGET_FACTOR):
             size_mb = self._frame_cache.memory_bytes() / (1024 * 1024)
             self.status_message.emit(tr("status.dicom_cache_warning", size_mb=f"{size_mb:.1f}"))
 
@@ -2327,9 +2651,31 @@ class AppController(QObject):
         frame: np.ndarray,
         frame_index: int,
     ) -> None:
+        """Detect the cine time-scale ROI once per instance, from the first emitted frame.
+
+        ``resolve_cine_segment_roi_xyxy()`` converts the frame to grayscale and runs the
+        tick detector: 14.4-14.9 ms per 720p frame (23.3 ms on noisy RGB, 38.1 ms on
+        uint16), so it must not sit in the playback tick.
+
+        - DICOM never uses the result: ``_frozen_cine_segment_roi()`` and
+          ``_cache_cine_segment_roi()`` both refuse ``media_format == "dicom"`` (DICOM
+          resolves the ROI from tags in ``_resolve_segment_roi_bounds()``), so the old
+          ``is not None`` guard never tripped and detection ran on every frame only to be
+          thrown away.
+        - For cine files whose frame yields no ROI the guard never tripped either, so
+          detection was retried every frame; the probe key makes it once per instance.
+        """
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom":
+            return
+        probe_key = (str(instance.path), instance.sop_instance_uid)
+        if self._cine_roi_probe_key == probe_key:
+            return
+        self._cine_roi_probe_key = probe_key
         if self._frozen_cine_segment_roi() is not None:
             return
         roi = resolve_cine_segment_roi_xyxy(frame)
+        logger.debug("cine segment ROI from frame %d: %s", frame_index, roi)
         self._cache_cine_segment_roi(roi)
 
     def _resolve_segment_roi_bounds(
@@ -3017,7 +3363,7 @@ class AppController(QObject):
         worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
 
-        self._thread_pool.start(worker)
+        self._start_frame_loader(worker, DecodePriority.BACKGROUND)
 
     def _on_neighbor_frame_loaded(
         self,

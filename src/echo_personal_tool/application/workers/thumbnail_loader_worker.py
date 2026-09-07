@@ -108,7 +108,7 @@ class ThumbnailLoaderWorker(QRunnable):
         try:
             frame_index = thumbnail_frame_index(self._number_of_frames)
             if self._media_format == "mp4":
-                reader = get_thread_video_reader()
+                reader = get_thread_video_reader(self._path)
                 reader.open(self._path)
                 pixels = reader.read_frame(frame_index)
             elif self._media_format in ("jpeg", "png"):

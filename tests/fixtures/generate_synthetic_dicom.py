@@ -147,12 +147,19 @@ def write_synthetic_multiframe_dicom(
     frame_count: int = 10,
     rows: int = 64,
     cols: int = 64,
+    samples_per_pixel: int = 1,
+    moving: bool = False,
     study_uid: str | None = None,
     series_uid: str | None = None,
     sop_uid: str | None = None,
     series_description: str = "Synthetic multiframe A4C",
 ) -> Path:
-    """Write a multiframe grayscale US DICOM file."""
+    """Write a multiframe US DICOM file.
+
+    ``samples_per_pixel=3`` writes RGB24 (planar configuration 0) instead of MONOCHROME2.
+    ``moving=True`` shifts the pattern by a few columns per frame; the default pattern only
+    differs in one marker pixel, which a playback test would read as a frozen prefix.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     study_uid = study_uid or generate_uid()
     series_uid = series_uid or generate_uid()
@@ -176,8 +183,11 @@ def write_synthetic_multiframe_dicom(
     ds.StudyTime = "120000"
     ds.PatientName = "Synthetic^Patient"
     ds.PatientID = "SYN001"
-    ds.SamplesPerPixel = 1
-    ds.PhotometricInterpretation = "MONOCHROME2"
+    rgb = samples_per_pixel == 3
+    ds.SamplesPerPixel = 3 if rgb else 1
+    ds.PhotometricInterpretation = "RGB" if rgb else "MONOCHROME2"
+    if rgb:
+        ds.PlanarConfiguration = 0
     ds.Rows = rows
     ds.Columns = cols
     ds.BitsAllocated = 8
@@ -191,8 +201,13 @@ def write_synthetic_multiframe_dicom(
     for frame_index in range(frame_count):
         gradient = np.linspace(0, 255, cols, dtype=np.uint8)
         frame = np.tile(gradient, (rows, 1))
+        if moving:
+            frame = np.roll(frame, (frame_index * 3) % max(1, cols), axis=1)
         frame[0, 0] = frame_index  # unique marker per frame
-        frames.append(frame)
+        if rgb:
+            frames.append(np.dstack([frame, np.roll(frame, max(1, cols // 3), axis=1), 255 - frame]).astype(np.uint8))
+        else:
+            frames.append(frame)
     stacked = np.stack(frames, axis=0)
     ds.PixelData = stacked.tobytes()
     ds.save_as(path, write_like_original=False)

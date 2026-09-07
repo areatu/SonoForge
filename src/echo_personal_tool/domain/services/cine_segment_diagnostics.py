@@ -229,7 +229,7 @@ def format_diagnostic_report(report: CineSegmentDiagnosticReport) -> str:
 
 
 def load_video_frame(path: Path, frame_index: int) -> np.ndarray:
-    reader = get_thread_video_reader()
+    reader = get_thread_video_reader(path)
     reader.open(path)
     try:
         return reader.read_frame(frame_index)

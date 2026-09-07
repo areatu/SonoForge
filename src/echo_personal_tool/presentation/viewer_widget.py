@@ -1797,12 +1797,11 @@ class ViewerWidget(QWidget):
             self._cached_lut_key = None
         channel_order = "rgb" if media_format == "dicom" else "bgr"
 
-        levels_key = (
-            self._dr_slider.value(),
-            self._window_slider.value(),
-            self._level_slider.value(),
-        )
-        self._cached_levels_key = levels_key
+        # NOTE: _cached_levels_key is deliberately NOT written here. It records the slider
+        # values the cached display levels belong to, so only _update_levels() may set it.
+        # Stamping it per frame made the freshness check inside _update_levels() trivially
+        # true (and, with the key order the two methods used to disagree on, permanently
+        # false), so the W/L window was either frozen or recomputed on every frame.
 
         if self._is_color_frame:
             frame_data_ptr = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
@@ -7413,6 +7412,19 @@ class ViewerWidget(QWidget):
             )
 
     @_prof
+    def _levels_sliders_key(self) -> tuple[int, int, int]:
+        """Canonical cache key for the display levels: (window, level, dynamic range).
+
+        Single source of truth for the key order: the levels cache never hit while the
+        writer and the reader disagreed about it, and `compute_display_levels()` (a
+        full-frame percentile pass, 12.7-19.7 ms at 720p) ran on every single frame.
+        """
+        return (
+            self._window_slider.value(),
+            self._level_slider.value(),
+            self._dr_slider.value(),
+        )
+
     def _update_levels(self) -> None:
         if self._current_frame is None or not self._window_level_enabled:
             return
@@ -7421,11 +7433,7 @@ class ViewerWidget(QWidget):
             return
 
         # Cache key: slider values
-        sliders_key = (
-            self._window_slider.value(),
-            self._level_slider.value(),
-            self._dr_slider.value(),
-        )
+        sliders_key = self._levels_sliders_key()
 
         # Use cached levels if sliders haven't changed
         if (
@@ -7514,18 +7522,38 @@ class ViewerWidget(QWidget):
         return self._display_buffers[0]
 
     def _is_levels_outlier(self, low: float, high: float, frame: np.ndarray) -> bool:
-        """Check if computed levels indicate an outlier frame (too dark/bright/flat)."""
+        """Check if computed levels indicate an outlier frame (too dark/bright/flat).
+
+        The thresholds are defined on the 8-bit display scale and normalised to the
+        frame's dtype. MONOCHROME2 cine arrives as uint16 (mean ~15000 in fixtures,
+        600-3000 in real ultrasound), so comparing raw values against 5/250 classified
+        every 16-bit frame as an outlier: the levels were never cached and the W/L window
+        was recomputed - and visibly drifted - on every frame.
+        """
+        arr = np.asarray(frame)
+        if arr.size == 0:
+            return True
+        if arr.dtype.kind in "iu":
+            info = np.iinfo(arr.dtype)
+            low_bound = float(info.min)
+            full_scale = float(info.max) - low_bound
+        else:
+            low_bound = 0.0
+            full_scale = 255.0
+        to_8bit = 255.0 / max(full_scale, 1.0)
+
         # Check 1: Range too narrow (likely a near-empty or saturated frame)
-        pixel_range = high - low
+        pixel_range = (high - low) * to_8bit
         if pixel_range < 10.0:
             return True
+        # float32 halves the bandwidth of the two full-frame passes below
+        flat = arr.astype(np.float32, copy=False).ravel()
         # Check 2: Mean brightness too extreme
-        flat = np.asarray(frame, dtype=np.float64).ravel()
-        mean_val = float(np.mean(flat))
+        mean_val = (float(flat.mean()) - low_bound) * to_8bit
         if mean_val < 5.0 or mean_val > 250.0:
             return True
         # Check 3: Too little variation (flat image)
-        std_val = float(np.std(flat))
+        std_val = float(flat.std()) * to_8bit
         if std_val < 3.0:
             return True
         return False

@@ -1,14 +1,31 @@
-"""Thread-local DICOM session: read bytes once, decode frames lazily/parallel."""
+"""DICOM session cache: read bytes once per file, decode frames lazily/parallel.
+
+Sessions are keyed by resolved file path and shared by the whole process.  They used to be
+cached in ``threading.local()``, which silently never worked on the pool threads that
+actually decode frames: PySide6 enters a ``QRunnable.run()`` override with
+``PyGILState_Ensure`` and leaves it with ``PyGILState_Release``, which destroys the thread
+state — and with it every ``threading.local()`` value — for threads not created by the
+``threading`` module.  Every pooled call therefore built a brand-new session and re-read the
+whole file (measured at 1280×720: 184–219 ms per 2–8 frame batch, of which ~16 ms was real
+decoding; 192–638 ms per scrub step; peak RSS ~1 GB for a single 332 MB cine).
+
+A shared session is guarded by a re-entrant lock, so concurrent workers serialise on the
+same file instead of each paying for its I/O.  See
+``docs/bench/2026-09-06-cine-720p-playback-audit.md`` §3.1.
+"""
 
 from __future__ import annotations
 
 import atexit
+import functools
 import logging
 import struct
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
+from typing import Any, TypeVar, cast
 
 import cv2
 import numpy as np
@@ -18,19 +35,52 @@ from pydicom.encaps import generate_frames, parse_basic_offsets
 logger = logging.getLogger(__name__)
 
 _thread_local = threading.local()
+_session_registry: dict[str, DicomSession] = {}
+_registry_lock = threading.RLock()
 _all_sessions: list[DicomSession] = []
 _sessions_lock = threading.Lock()
 _cleanup_registered = False
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _synchronized(method: _F) -> _F:
+    """Serialise calls to a shared session (one instance per file, used from a pool)."""
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return cast(_F, wrapper)
+
+
+def _stat_signature(path: Path) -> tuple[int, int] | None:
+    """(size, mtime_ns) of *path*, or None when it cannot be stat'ed."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return (info.st_size, info.st_mtime_ns)
+
 
 def _cleanup_all_sessions() -> None:
+    """Release all sessions at exit.
+
+    Uses ``_force_release_heavy()`` instead of ``release_heavy()`` to avoid blocking on
+    per-session locks that a still-running worker thread may hold.  The
+    process is about to die anyway; we just want to drop large buffers.
+    """
     with _sessions_lock:
-        for session in _all_sessions:
-            try:
-                session.release()
-            except Exception:
-                pass
+        sessions = list(_all_sessions)
         _all_sessions.clear()
+    with _registry_lock:
+        _session_registry.clear()
+    for session in sessions:
+        try:
+            session._force_release_heavy()
+        except Exception:
+            pass
 
 
 _UNCOMPRESSED_SYNTAXES = frozenset(
@@ -52,60 +102,119 @@ _JPEG2000_SYNTAXES = frozenset(
 
 _MAX_DECODE_WORKERS = 4
 _PIXEL_DATA_TAG = struct.pack("<HH", 0x7FE0, 0x0010)
+# How much of a file is read to *locate* the PixelData element. The value itself is mapped
+# rather than read: for an uncompressed cine it is the whole file (332 MB for 120 frames of
+# 1280x720 RGB), while its tag sits within the first kilobyte.
+_HEADER_SCAN_BYTES = 4 * 1024 * 1024
 
 
 _max_sessions = 10
 
 
-def get_thread_dicom_session() -> DicomSession:
+def _track_session(session: DicomSession) -> list[DicomSession]:
+    """Add *session* to the cleanup list, returning the sessions pruned out of it.
+
+    Pruning happens here (and not while holding ``_sessions_lock``) so that the registry
+    lock and the per-session locks are never acquired in a nested, order-inverted way.
+    """
     global _cleanup_registered
+    pruned: list[DicomSession] = []
+    with _sessions_lock:
+        _all_sessions.append(session)
+        # Prune oldest sessions to prevent unbounded growth.
+        while len(_all_sessions) > _max_sessions:
+            pruned.append(_all_sessions.pop(0))
+        if not _cleanup_registered:
+            atexit.register(_cleanup_all_sessions)
+            _cleanup_registered = True
+    return pruned
+
+
+def _forget_registry_entry(session: DicomSession) -> None:
+    with _registry_lock:
+        for key, candidate in list(_session_registry.items()):
+            if candidate is session:
+                del _session_registry[key]
+
+
+def _drop_pruned(pruned: list[DicomSession]) -> None:
+    for old in pruned:
+        _forget_registry_entry(old)
+        try:
+            old.release()
+        except Exception:
+            pass
+
+
+def get_dicom_session(path: Path | str) -> DicomSession:
+    """Return the process-wide session cached for *path*, creating it on first use.
+
+    Keying by resolved path (instead of by thread) is what makes "read the file once"
+    true for pooled workers — see the module docstring.
+    """
+    key = str(Path(path).resolve())
+    with _registry_lock:
+        session = _session_registry.get(key)
+        if session is not None:
+            return session
+        session = DicomSession()
+        _session_registry[key] = session
+    _drop_pruned(_track_session(session))
+    return session
+
+
+def get_thread_dicom_session(path: Path | str | None = None) -> DicomSession:
+    """Return the shared session for *path*, or a thread-local one when *path* is None.
+
+    The path-less form is kept for callers that pick the file later and for tests; pass the
+    path whenever it is known so the session cache can do its job.
+    """
+    if path is not None:
+        return get_dicom_session(path)
     session = getattr(_thread_local, "dicom_session", None)
     if session is None:
         session = DicomSession()
         _thread_local.dicom_session = session
-        with _sessions_lock:
-            _all_sessions.append(session)
-            # Prune oldest sessions to prevent unbounded growth.
-            while len(_all_sessions) > _max_sessions:
-                old = _all_sessions.pop(0)
-                try:
-                    old.release()
-                except Exception:
-                    pass
-        if not _cleanup_registered:
-            atexit.register(_cleanup_all_sessions)
-            _cleanup_registered = True
+        _drop_pruned(_track_session(session))
     return session
 
 
 def read_ecg_waveform(path: Path | str):
     """Return the ECG waveform stored in a DICOM file (None when absent)."""
-    session = get_thread_dicom_session()
+    session = get_thread_dicom_session(path)
     session.open(path)
     return session.waveform
 
 
 def release_stale_sessions(exclude: DicomSession | None = None) -> None:
-    """Free heavy buffers from ALL thread-local sessions except *exclude*.
+    """Free heavy buffers from ALL cached sessions except *exclude*.
 
     After _ensure_pixel_data() runs, _raw_bytes is set to None but
-    _pixel_data_raw (19 MiB) and _encapsulated_frames remain.  The old
-    check ``s._raw_bytes is not None`` skipped these sessions, so heavy
-    buffers were NEVER freed → unbounded growth to 8+ GiB.
+    _pixel_data_raw and _encapsulated_frames remain.  The old check
+    ``s._raw_bytes is not None`` skipped these sessions, so heavy buffers were
+    NEVER freed → unbounded growth to 8+ GiB.
+
+    Sessions stay registered after being released: they keep their parsed metadata and can
+    be re-warmed cheaply.  This function must be called *outside* any per-session
+    ``_lock`` — ``DicomSession.open()`` calls it before acquiring its own lock to
+    prevent ABBA deadlocks when two threads open different files concurrently.
     """
-    alive: list[DicomSession] = []
     with _sessions_lock:
-        for s in _all_sessions:
-            if s is not exclude:
-                s.release_heavy()
-            else:
-                alive.append(s)
-        _all_sessions.clear()
-        _all_sessions.extend(alive)
+        stale = [s for s in _all_sessions if s is not exclude]
+    for session in stale:
+        try:
+            session.release_heavy()
+        except Exception:
+            pass
 
 
-def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
-    """Scan raw DICOM bytes for PixelData tag and extract its value. No pydicom parse."""
+def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:
+    """Locate the PixelData value in raw DICOM bytes as (offset, length). No pydicom parse.
+
+    Returns a span instead of the value so callers can map or slice it without copying -
+    for an uncompressed cine the value is essentially the whole file. None when the element
+    is encapsulated (undefined length) or cannot be parsed.
+    """
     pos = 132  # skip 128-byte preamble + "DICM"
     while pos + 8 <= len(raw):
         tag = raw[pos : pos + 4]
@@ -136,7 +245,9 @@ def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
             else:
                 length = struct.unpack_from("<I", raw, pos + 4)[0]
                 data_start = pos + 8
-            return raw[data_start : data_start + length]
+            if length in (0xFFFFFFFF, 0x7FFFFFFF):
+                return None  # encapsulated: the caller needs the fragment index anyway
+            return (data_start, length)
 
         group = struct.unpack_from("<H", raw, pos)[0]
         vr_bytes = raw[pos + 4 : pos + 6]
@@ -163,6 +274,37 @@ def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
             break
         pos = data_start + length
     return None
+
+
+def _extract_pixel_data_from_bytes(raw: bytes) -> bytes | None:
+    """Value of the PixelData element as bytes (a copy), or None if it cannot be located."""
+    span = _scan_pixel_data_span(raw)
+    if span is None:
+        return None
+    start, length = span
+    return raw[start : start + length]
+
+
+def _pixel_data_span_from_header(path: Path) -> tuple[int, int] | None:
+    """(offset, length) of the PixelData value, reading only a header prefix of the file.
+
+    The element length comes from its tag, so the pixels never have to be resident to know
+    where they start. None when the tag is not inside the prefix (a large sequence ahead of
+    the pixels), the length is undefined, or the element does not fit the file on disk.
+    """
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as fh:
+            prefix = fh.read(min(size, _HEADER_SCAN_BYTES))
+    except OSError:
+        return None
+    span = _scan_pixel_data_span(prefix)
+    if span is None:
+        return None
+    start, length = span
+    if start + length > size:
+        return None
+    return (start, length)
 
 
 def _extended_offsets_from_metadata(
@@ -275,10 +417,19 @@ def _decode_fragment_cv2(fragment: bytes, rows: int, cols: int) -> np.ndarray | 
 
 
 def _decode_uncompressed_frame(
-    pixel_data: bytes, offset: int, size: int, rows: int, cols: int, bytes_per_pixel: int
+    pixel_data: bytes | np.ndarray,
+    offset: int,
+    size: int,
+    rows: int,
+    cols: int,
+    bytes_per_pixel: int,
 ) -> np.ndarray:
     """Decode single uncompressed frame. Returns OWNED WRITABLE array.
-    This is the ONLY copy for single-frame path."""
+    This is the ONLY copy for single-frame path.
+
+    ``pixel_data`` is either a bytes object or a read-only memory map of the pixel block;
+    for the map the slice is a view, so this copy is the only allocation per frame.
+    """
     raw = pixel_data[offset : offset + size]
     if bytes_per_pixel == 1:
         return np.frombuffer(raw, dtype=np.uint8).reshape(rows, cols).copy()
@@ -289,14 +440,23 @@ def _decode_uncompressed_frame(
 
 class DicomSession:
     def __init__(self) -> None:
+        # Guards every public entry point: a session is shared by all threads that work
+        # with the same file, so its buffers must not be swapped underneath a decoder.
+        self._lock = threading.RLock()
+        # Separate lock for the pydicom fallback reload: it runs inside decode worker
+        # threads while the caller may already hold _lock (RLock is not cross-thread).
+        self._fallback_lock = threading.Lock()
         self._open_path: Path | None = None
+        self._open_stat: tuple[int, int] | None = None
         self._raw_bytes: bytes | None = None
         self._metadata: pydicom.Dataset | None = None
         self._frame_count: int = 0
         self._frames: np.ndarray | None = None
         self._is_uncompressed: bool = True
         self._frame_slices: list[tuple[int, int]] | None = None
-        self._pixel_data_raw: bytes | None = None
+        # Pixel block of the open file: a read-only np.memmap for uncompressed cines (no
+        # copy in RAM), bytes for encapsulated ones (the fragment index needs real bytes).
+        self._pixel_data_raw: bytes | np.ndarray | None = None
         self._encapsulated_frames: list[bytes] | None = None
         self._bot_offsets: list[int] | None = None
         self._extended_offsets: tuple[bytes, bytes] | None = None
@@ -304,15 +464,18 @@ class DicomSession:
         self._first_frame: np.ndarray | None = None
 
     @property
+    @_synchronized
     def frame_count(self) -> int:
         if self._frames is not None:
             return int(self._frames.shape[0])
         return self._frame_count
 
     @property
+    @_synchronized
     def is_decoded(self) -> bool:
         return self._frames is not None and self._frames.shape[0] == self._frame_count
 
+    @_synchronized
     def _has_loadable_pixels(self) -> bool:
         """Return True if heavy pixel bytes are still held for the open file."""
         if self._raw_bytes is not None or self._pixel_data_raw is not None:
@@ -321,28 +484,49 @@ class DicomSession:
             return True
         return False
 
+    def _stat_matches(self, resolved: Path) -> bool:
+        """True when the file on disk is still the one this session parsed."""
+        if self._open_stat is None:
+            return True
+        return _stat_signature(resolved) == self._open_stat
+
     def open(self, path: Path | str) -> None:
+        """Open a DICOM file, releasing heavy buffers from other sessions first.
+
+        The public entry point is intentionally NOT ``@_synchronized``: calling
+        ``release_stale_sessions()`` while holding ``self._lock`` creates an
+        ABBA deadlock when two threads open different files concurrently — each
+        holds its own session lock and waits for the other's inside
+        ``release_heavy()``.  Splitting the method lets us release stale
+        sessions *before* acquiring our lock.
+        """
         resolved = Path(path).resolve()
-        if self._open_path == resolved and self._metadata is not None:
-            # Reopening the SAME file. If a previous release_heavy() freed the
-            # heavy pixel buffers on this thread-local session, we MUST reload
-            # raw bytes, otherwise _decode_single_frame() would later hit
-            # _pixel_data_raw=None → TypeError.  Only early-return when the
-            # decode buffers are still alive.
+        # Fast path: same file, pixels still loaded → nothing to do.
+        # ``_has_loadable_pixels()`` is ``@_synchronized`` so it briefly acquires
+        # and releases ``self._lock``; the worst case of reading ``_open_path``
+        # without the lock is a redundant ``release_stale_sessions`` call.
+        if self._open_path == resolved and self._metadata is not None and self._has_loadable_pixels():
+            return
+        # Release heavy buffers in ALL other cached sessions *outside* our lock
+        # so that two concurrent ``open()`` calls cannot deadlock.
+        release_stale_sessions(exclude=self)
+        self._open_impl(resolved)
+
+    @_synchronized
+    def _open_impl(self, resolved: Path) -> None:
+        # Re-check under the lock: another thread may have opened the same file
+        # while we were waiting for the lock (or inside release_stale_sessions).
+        if self._open_path == resolved and self._metadata is not None and self._stat_matches(resolved):
             if self._has_loadable_pixels():
                 return
-        else:
-            # When switching to a different file, release heavy buffers in ALL
-            # other thread-local sessions.  This is now safe because
-            # release_stale_sessions() no longer checks _raw_bytes — it frees
-            # _pixel_data_raw and _encapsulated_frames too.
-            release_stale_sessions(exclude=self)
         self.release()
         if not resolved.is_file():
             raise FileNotFoundError(f"DICOM file not found: {resolved}")
         self._open_path = resolved
-        self._raw_bytes = resolved.read_bytes()
-        self._metadata = pydicom.dcmread(BytesIO(self._raw_bytes), stop_before_pixels=True, force=True)
+        self._open_stat = _stat_signature(resolved)
+        # Metadata straight from the file: stop_before_pixels only reads the header, so
+        # opening a 332 MB cine no longer means reading 332 MB into RAM.
+        self._metadata = pydicom.dcmread(str(resolved), stop_before_pixels=True, force=True)
         self._frame_count = int(getattr(self._metadata, "NumberOfFrames", 1))
         tsuid = str(getattr(self._metadata.file_meta, "TransferSyntaxUID", "1.2.840.10008.1.2.1"))
         self._transfer_syntax_uid = tsuid
@@ -350,6 +534,15 @@ class DicomSession:
         self._is_uncompressed = tsuid in _UNCOMPRESSED_SYNTAXES
         if self._is_uncompressed:
             self._compute_frame_slices()
+            if self._map_pixel_data(resolved):
+                # Pixels stay on disk, mapped rather than resident: the OS pages in what a
+                # decode touches and can drop those clean pages again under pressure. The
+                # old path read the whole file and then copied the pixel block out of it,
+                # which put a 120-frame 720p cine in RAM twice (peak RSS ~1.0 GB).
+                return
+        # Encapsulated (compressed) pixel data, or a file that cannot be mapped: fall back
+        # to holding the bytes, which the fragment index needs anyway.
+        self._raw_bytes = resolved.read_bytes()
 
     def _compute_frame_slices(self) -> None:
         ds = self._metadata
@@ -365,6 +558,7 @@ class DicomSession:
         frame_size = rows * cols * bytes_per_pixel
         self._frame_slices = [(i * frame_size, frame_size) for i in range(self._frame_count)]
 
+    @_synchronized
     def annotations(self) -> tuple:
         """Extract calipers and contours from DICOM Graphic Annotation."""
         if self._metadata is None:
@@ -372,6 +566,7 @@ class DicomSession:
         return read_annotations_from_dicom(self._metadata)
 
     @property
+    @_synchronized
     def waveform(self):
         """Extract ECG waveform from DICOM WaveformSequence (lazy)."""
         from echo_personal_tool.infrastructure.dicom_waveform_parser import (
@@ -382,9 +577,39 @@ class DicomSession:
             return None
         return parse_waveform_from_dicom(self._metadata)
 
+    def _map_pixel_data(self, path: Path) -> bool:
+        """Map the uncompressed pixel block instead of copying it into RAM.
+
+        Returns False when the element cannot be located from the header prefix, is shorter
+        than the frames need, or the mapping fails (network share, exotic filesystem); the
+        caller then falls back to reading the file. The map is released by dropping the
+        reference (release_heavy) - never by closing it, because arrays handed to callers
+        may still be views into it.
+        """
+        if not self._is_uncompressed or not self._frame_slices:
+            return False
+        span = _pixel_data_span_from_header(path)
+        if span is None:
+            return False
+        start, length = span
+        if length < self._frame_count * self._frame_slices[0][1]:
+            return False
+        try:
+            mapped = np.memmap(path, dtype=np.uint8, mode="r", offset=start, shape=(length,))
+        except (OSError, ValueError) as exc:
+            logger.debug("Pixel data mapping failed for %s (%s); reading the file instead", path, exc)
+            return False
+        self._pixel_data_raw = mapped
+        return True
+
+    @_synchronized
     def _ensure_pixel_data(self) -> None:
-        """Load raw pixel data bytes, avoiding a second pydicom parse when possible."""
+        """Make the pixel block available, avoiding a second pydicom parse when possible."""
         if self._pixel_data_raw is not None:
+            return
+        # Uncompressed cines are re-mapped from disk - also after release_heavy(), which is
+        # now free of I/O instead of a full-file read.
+        if self._is_uncompressed and self._open_path is not None and self._map_pixel_data(self._open_path):
             return
         if self._raw_bytes is None:
             return
@@ -432,6 +657,7 @@ class DicomSession:
             return None
         return self._encapsulated_frames[index]
 
+    @_synchronized
     def decode_first_frame(self) -> np.ndarray:
         """Decode only the first frame for fast initial display."""
         if self._open_path is None:
@@ -441,6 +667,7 @@ class DicomSession:
         self._first_frame = np.ascontiguousarray(frame)
         return self._first_frame
 
+    @_synchronized
     def decode_all_frames(self) -> np.ndarray:
         """Decode all frames, returning the full (N,H,W) or (N,H,W,C) array."""
         if self._open_path is None:
@@ -525,13 +752,15 @@ class DicomSession:
         # If a compressed frame cannot be fast-decoded we still need the full
         # file here, so reload it from disk (cached until release_heavy()).
         if self._raw_bytes is None:
-            if self._open_path is not None and Path(self._open_path).is_file():
-                self._raw_bytes = Path(self._open_path).read_bytes()
-            else:
-                raise ValueError(
-                    "Cannot decode fallback: raw bytes are not available. "
-                    "The file may have no pixel data or heavy buffers were released."
-                )
+            with self._fallback_lock:
+                if self._raw_bytes is None:
+                    if self._open_path is not None and Path(self._open_path).is_file():
+                        self._raw_bytes = Path(self._open_path).read_bytes()
+                    else:
+                        raise ValueError(
+                            "Cannot decode fallback: raw bytes are not available. "
+                            "The file may have no pixel data or heavy buffers were released."
+                        )
 
         full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
         # Ensure file_meta exists with Transfer Syntax UID
@@ -560,6 +789,7 @@ class DicomSession:
         frames = stack_pixel_array(pixel_array)
         return np.ascontiguousarray(frames[index])
 
+    @_synchronized
     def decode_single_frame(self, index: int) -> np.ndarray:
         """Decode a single frame on demand without decoding all frames."""
         if self._open_path is None:
@@ -567,6 +797,7 @@ class DicomSession:
         self._ensure_pixel_data()
         return self._decode_single_frame(index)
 
+    @_synchronized
     def read_frame(self, frame_index: int) -> np.ndarray:
         """Return frame array. MAY BE READ-ONLY. Caller MUST NOT modify in-place.
         Decoder already guarantees owned contiguous memory for single frames,
@@ -581,8 +812,10 @@ class DicomSession:
         self._ensure_pixel_data()
         return self._decode_single_frame(frame_index)  # Writable owned copy
 
+    @_synchronized
     def release(self) -> None:
         self._open_path = None
+        self._open_stat = None
         self._raw_bytes = None
         self._metadata = None
         self._frame_count = 0
@@ -595,6 +828,7 @@ class DicomSession:
         self._transfer_syntax_uid = "1.2.840.10008.1.2.1"
         self._first_frame = None
 
+    @_synchronized
     def release_heavy(self) -> None:
         """Free large buffers while keeping metadata for future re-open.
 
@@ -603,6 +837,20 @@ class DicomSession:
         the full cine for the life of a pooled thread (was the cause of
         multi-GB growth).  A read-only _frames view keeps its backing buffer
         alive on its own, so no materialize copy is needed.
+        """
+        self._raw_bytes = None
+        self._pixel_data_raw = None
+        self._encapsulated_frames = None
+        self._bot_offsets = None
+        self._frames = None
+        self._first_frame = None
+
+    def _force_release_heavy(self) -> None:
+        """Drop large buffers without acquiring the lock (atexit cleanup only).
+
+        Called from ``_cleanup_all_sessions`` when the process is about to die.
+        Worker threads may still hold ``_lock`` — blocking here would hang the
+        interpreter shutdown.  GIL protects against torn pointer writes.
         """
         self._raw_bytes = None
         self._pixel_data_raw = None

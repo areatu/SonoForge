@@ -1,12 +1,25 @@
-"""OpenCV-based MP4 video reader with keyframe index and ring buffer."""
+"""OpenCV-based MP4 video reader with keyframe index and ring buffer.
+
+Readers are keyed by resolved file path and shared by the whole process.  Caching them in
+``threading.local()`` never worked on the pool threads that read frames: PySide6 releases the
+GIL with ``PyGILState_Release`` after ``QRunnable.run()``, which destroys the thread state and
+its thread-locals for threads not created by ``threading``.  Every batch therefore re-opened
+the capture and rebuilt the keyframe index (up to 60 seek+read probes).
+
+``cv2.VideoCapture`` is not thread-safe, so a shared reader serialises access with a lock.
+See ``docs/bench/2026-09-06-cine-720p-playback-audit.md`` §3.1.
+"""
 
 from __future__ import annotations
 
 import atexit
 import bisect
+import functools
 import threading
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar, cast
 
 import cv2
 import numpy as np
@@ -15,37 +28,92 @@ RING_BUFFER_SIZE = 50
 _KEYFRAME_SCAN_MAX_STEP = 120
 _max_readers = 10
 _thread_local = threading.local()
+_reader_registry: dict[str, VideoReader] = {}
+_registry_lock = threading.RLock()
 _all_readers: list[VideoReader] = []
+_readers_lock = threading.Lock()
 _cleanup_registered = False
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _synchronized(method: _F) -> _F:
+    """Serialise calls to a shared reader (cv2.VideoCapture is not thread-safe)."""
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return cast(_F, wrapper)
 
 
 def _cleanup_all_readers() -> None:
-    for reader in _all_readers:
+    with _readers_lock:
+        readers = list(_all_readers)
+        _all_readers.clear()
+    with _registry_lock:
+        _reader_registry.clear()
+    for reader in readers:
         try:
             reader.release()
         except Exception:
             pass
-    _all_readers.clear()
 
 
-def get_thread_video_reader() -> VideoReader:
-    """Return a VideoReader cached on the current worker thread."""
+def _track_reader(reader: VideoReader) -> list[VideoReader]:
+    """Add *reader* to the cleanup list, returning the readers pruned out of it."""
     global _cleanup_registered
+    pruned: list[VideoReader] = []
+    with _readers_lock:
+        _all_readers.append(reader)
+        # Prune oldest readers to prevent unbounded growth.
+        while len(_all_readers) > _max_readers:
+            pruned.append(_all_readers.pop(0))
+        if not _cleanup_registered:
+            atexit.register(_cleanup_all_readers)
+            _cleanup_registered = True
+    return pruned
+
+
+def _drop_pruned(pruned: list[VideoReader]) -> None:
+    for old in pruned:
+        with _registry_lock:
+            for key, candidate in list(_reader_registry.items()):
+                if candidate is old:
+                    del _reader_registry[key]
+        try:
+            old.release()
+        except Exception:
+            pass
+
+
+def get_video_reader(path: Path | str) -> VideoReader:
+    """Return the process-wide reader cached for *path*, creating it on first use."""
+    key = str(Path(path).resolve())
+    with _registry_lock:
+        reader = _reader_registry.get(key)
+        if reader is not None:
+            return reader
+        reader = VideoReader()
+        _reader_registry[key] = reader
+    _drop_pruned(_track_reader(reader))
+    return reader
+
+
+def get_thread_video_reader(path: Path | str | None = None) -> VideoReader:
+    """Return the shared reader for *path*, or a thread-local one when *path* is None.
+
+    The path-less form is kept for callers that pick the file later and for tests; pass the
+    path whenever it is known so the capture and the keyframe index stay warm.
+    """
+    if path is not None:
+        return get_video_reader(path)
     reader = getattr(_thread_local, "video_reader", None)
     if reader is None:
         reader = VideoReader()
         _thread_local.video_reader = reader
-        _all_readers.append(reader)
-        # Prune oldest readers to prevent unbounded growth.
-        while len(_all_readers) > _max_readers:
-            old = _all_readers.pop(0)
-            try:
-                old.release()
-            except Exception:
-                pass
-        if not _cleanup_registered:
-            atexit.register(_cleanup_all_readers)
-            _cleanup_registered = True
+        _drop_pruned(_track_reader(reader))
     return reader
 
 
@@ -53,6 +121,7 @@ class VideoReader:
     """Reads MP4 frames via OpenCV with keyframe-aware seek and ring buffer."""
 
     def __init__(self, buffer_size: int = RING_BUFFER_SIZE) -> None:
+        self._lock = threading.RLock()
         self._buffer_size = buffer_size
         self._buffer: dict[int, np.ndarray] = {}
         self._buffer_order: deque[int] = deque()
@@ -64,18 +133,22 @@ class VideoReader:
         self._keyframe_index: list[int] | None = None
 
     @property
+    @_synchronized
     def frame_count(self) -> int:
         return self._frame_count
 
     @property
+    @_synchronized
     def fps(self) -> float:
         return self._fps
 
     @property
+    @_synchronized
     def keyframe_index(self) -> list[int]:
         self._ensure_keyframe_index()
         return list(self._keyframe_index or [0])
 
+    @_synchronized
     def open(self, path: Path | str) -> None:
         resolved = Path(path).resolve()
         if self._capture is not None and self._open_path == resolved:
@@ -90,6 +163,7 @@ class VideoReader:
         self._fps = float(capture.get(cv2.CAP_PROP_FPS))
         self._keyframe_index = None
 
+    @_synchronized
     def read_frame(self, index: int) -> np.ndarray:
         if self._capture is None:
             raise RuntimeError("Video is not open; call open() first")
@@ -110,12 +184,14 @@ class VideoReader:
         self._seek_via_keyframe(index)
         return self.get_buffered_frame(index)
 
+    @_synchronized
     def get_buffered_frame(self, index: int) -> np.ndarray:
         frame = self._buffer.get(index)
         if frame is None:
             raise KeyError(f"Frame {index} is not in the ring buffer")
         return frame
 
+    @_synchronized
     def release(self) -> None:
         if self._capture is not None:
             self._capture.release()
@@ -131,6 +207,7 @@ class VideoReader:
     def __enter__(self) -> VideoReader:
         return self
 
+    @_synchronized
     def __exit__(self, *_args: object) -> None:
         self.release()
 
