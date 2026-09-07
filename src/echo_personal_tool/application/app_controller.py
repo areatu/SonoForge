@@ -227,17 +227,26 @@ class AppController(QObject):
         self._thumbnail_instances: dict[str, InstanceMetadata] = {}
         self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
         self._current_frame_pixels: np.ndarray | None = None
+        # Instance the cine time-scale ROI was already detected for (see
+        # _maybe_cache_cine_roi_from_frame); detection costs 14-38 ms at 720p.
+        self._cine_roi_probe_key: tuple[str, str | None] | None = None
         self._leading_static_frames: dict[Path, int] = {}
         self._batch_load_id: int = 0
         self._mmode_active = False
         self._batch_target_frame: int = 0
         self._prefetch_request_id: int = 0
         self._prefetch_load_id: int = 0
+        # Frames requested by the in-flight prefetch run; the staleness timeout scales with
+        # it because a 32-frame batch legitimately takes far longer than a 2-frame one and
+        # force-clearing it would start a second run decoding the same frames.
+        self._prefetch_load_count: int = 0
         self._prefetch_load_started_at: float = 0.0
         self._prefetch_batch_start: float = 0.0
-        self._prefetch_ema_latency_ms: float = 0.0
+        # EMA of the worker-side decode cost per frame (ms) — see _on_prefetch_decode_timing.
+        self._prefetch_ema_decode_ms: float = 0.0
         self._prefetch_cooldown_until: float = 0.0
         self._diag_frame_counter: int = 0
+        self._last_gc_collect_at: float = 0.0
         self._adaptive_batch_size: int = self._playback_config.batch_size
         self._scroll_load_id: int = 0
         self._scroll_load_started_at: float = 0.0
@@ -423,6 +432,7 @@ class AppController(QObject):
         self._pending_source_path = None
         self._pending_frame_index = None
         self._current_frame_pixels = None
+        self._cine_roi_probe_key = None
         self._segment_in_progress = False
         self._state_manager.set_instance(
             instance,
@@ -2409,9 +2419,31 @@ class AppController(QObject):
         frame: np.ndarray,
         frame_index: int,
     ) -> None:
+        """Detect the cine time-scale ROI once per instance, from the first emitted frame.
+
+        ``resolve_cine_segment_roi_xyxy()`` converts the frame to grayscale and runs the
+        tick detector: 14.4-14.9 ms per 720p frame (23.3 ms on noisy RGB, 38.1 ms on
+        uint16), so it must not sit in the playback tick.
+
+        - DICOM never uses the result: ``_frozen_cine_segment_roi()`` and
+          ``_cache_cine_segment_roi()`` both refuse ``media_format == "dicom"`` (DICOM
+          resolves the ROI from tags in ``_resolve_segment_roi_bounds()``), so the old
+          ``is not None`` guard never tripped and detection ran on every frame only to be
+          thrown away.
+        - For cine files whose frame yields no ROI the guard never tripped either, so
+          detection was retried every frame; the probe key makes it once per instance.
+        """
+        instance = self._current_instance
+        if instance is None or instance.media_format == "dicom":
+            return
+        probe_key = (str(instance.path), instance.sop_instance_uid)
+        if self._cine_roi_probe_key == probe_key:
+            return
+        self._cine_roi_probe_key = probe_key
         if self._frozen_cine_segment_roi() is not None:
             return
         roi = resolve_cine_segment_roi_xyxy(frame)
+        logger.debug("cine segment ROI from frame %d: %s", frame_index, roi)
         self._cache_cine_segment_roi(roi)
 
     def _resolve_segment_roi_bounds(
