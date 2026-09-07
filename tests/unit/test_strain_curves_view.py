@@ -38,11 +38,12 @@ class TestSegmentCurvePanel:
         assert panel._curves == {}
 
     def test_set_strain_data_single_segment(self):
+        """Vendor style: the bold global curve is drawn even for one segment."""
         panel = self._make_panel()
         data = {1: np.array([0.0, -5.0, -10.0])}
         panel.set_strain_data(data, ed_index=0, es_index=2, frame_time_ms=33.3)
         assert 1 in panel._curves
-        assert panel._mean_curve is None  # single segment → no mean
+        assert panel._mean_curve is not None  # global curve always drawn
 
     def test_set_strain_data_multiple_segments_creates_mean(self):
         panel = self._make_panel()
@@ -54,12 +55,22 @@ class TestSegmentCurvePanel:
         assert 1 in panel._curves
         assert 2 in panel._curves
         assert panel._mean_curve is not None
+        # global curve is white and bold (vendor emphasis)
+        pen = panel._mean_curve.opts["pen"]
+        assert pen.width() >= 2
 
-    def test_set_strain_data_ignored_segment(self):
+    def test_empty_data_shows_placeholder_not_empty_grid(self):
         panel = self._make_panel()
-        data = {99: np.array([0.0, -5.0])}
-        panel.set_strain_data(data)
+        panel.set_strain_data({})
+        assert panel._curves == {}
+        assert panel._mean_curve is None
+        assert panel._stack.currentWidget() is panel._placeholder
+
+    def test_ignored_segments_leave_placeholder(self):
+        panel = self._make_panel()
+        panel.set_strain_data({99: np.array([0.0, -5.0])})
         assert 99 not in panel._curves
+        assert panel._stack.currentWidget() is panel._placeholder
 
     def test_set_strain_data_clears_old_curves(self):
         panel = self._make_panel()
@@ -194,6 +205,20 @@ class TestStrainCurvesView:
         view.set_strain_data(self._make_result(ecg=np.sin(np.arange(200) / 10.0)))
         assert not view._panel_a4c._ecg_plot.isHidden()
         assert view._panel_a4c._ecg_item is not None
+
+    def test_set_strain_data_analysed_view_only(self):
+        """Vendor style: only the analysed view stays; A2C/DAO collapse so the
+        curve gets the whole height instead of empty placeholder stacks."""
+        view = self._make_view()
+        view.set_strain_data(self._make_result(ecg=None))
+        # A4C (analysed) panel: curves + global curve + GLS header visible
+        assert not view._panel_a4c.isHidden()
+        assert len(view._panel_a4c._curves) >= 1
+        assert view._panel_a4c._mean_curve is not None
+        assert "GLS" in view._panel_a4c._gls_label.text()
+        # A2C/DAO were not analysed → hidden, not empty grids
+        assert view._panel_a2c.isHidden()
+        assert view._panel_dao.isHidden()
 
 
 class TestConstants:

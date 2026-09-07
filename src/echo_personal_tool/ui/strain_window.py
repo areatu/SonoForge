@@ -1495,6 +1495,7 @@ class StrainWindow(QMainWindow):
             return
         self._position = view
         self._control.set_position(view)
+        self._curves_view.set_active_view(view)
         if self._result is not None:
             parts = self._meta_label.text().split("   |   ")
             parts = [p for p in parts if not p.startswith("Позиция:")]
@@ -1510,6 +1511,9 @@ class StrainWindow(QMainWindow):
 
     def _on_position_selected(self, view: str) -> None:
         self._position = view
+        self._curves_view.set_active_view(view)
+        if self._result is not None and self._stacked.currentIndex() == 1:
+            self._curves_view.set_strain_data(self._result)
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
         """Generate synthetic ECG trace for visualization."""

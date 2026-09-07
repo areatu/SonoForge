@@ -1,4 +1,19 @@
-"""Strain curves view — per-segment curves with ECG, Clinical-style layout."""
+"""Strain curves view — vendor-style per-segment deformation graphs.
+
+Design follows the reference curves of commercial STE packages
+(GE EchoPAC / QLAB look):
+  * one graph per analysed view, stacked vertically;
+  * the GLOBAL (mean) curve is drawn bold white on top of thin, translucent
+    segment curves — the eye reads the global deformation first;
+  * the segment legend sits INSIDE the top-right corner of each graph with the
+    short clinical names (БазПерг, СрПерг, …) and a colour chip, exactly like
+    the vendor windows;
+  * strain is plotted from ED (0 %) over the cardiac cycle; a dashed zero
+    reference line and an end-systole marker are drawn;
+  * a real-ECG trace strip (when present) is aligned under the graph on the
+    same time axis, with a moving frame marker;
+  * views without data show a clean placeholder instead of an empty grid.
+"""
 
 from __future__ import annotations
 
@@ -22,14 +37,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Segment colors matching Clinical style
+# Vendor-style per-segment palette (A4C 6-segment scheme used by our tracker).
+# Basal / mid / apical rings follow the strain bull's-eye colour families
+# (yellow-orange, cyan-magenta, green-blue) used by clinical packages.
 SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
-    1: (0, 200, 255),  # БазПерг - cyan
-    2: (0, 150, 255),  # Базбок - blue
-    3: (0, 255, 100),  # СрПерг - green
-    4: (255, 255, 0),  # Србок - yellow
-    5: (255, 100, 0),  # АпПер - orange
-    6: (255, 0, 100),  # АпЛат - pink
+    1: (255, 235, 59),   # БазПерг  — yellow
+    2: (255, 152, 0),    # Базбок   — orange
+    3: (38, 198, 218),   # СрПерг   — cyan
+    4: (233, 30, 99),    # Србок    — magenta
+    5: (102, 187, 106),  # АпПер    — green
+    6: (66, 165, 245),   # АпЛат    — blue
 }
 
 SEGMENT_NAMES_RU: dict[int, str] = {
@@ -37,7 +54,7 @@ SEGMENT_NAMES_RU: dict[int, str] = {
     2: tr("strain.seg_basal_lat"),
     3: tr("strain.seg_mid_sept"),
     4: tr("strain.seg_mid_lat"),
-    5: tr("strain.seg_apical_sept"),
+    5: tr("strain.seg_apical_septal"),
     6: tr("strain.seg_apical_lat"),
 }
 
@@ -48,9 +65,16 @@ VIEW_SEGMENTS: dict[str, list[int]] = {
     "DAO": [12, 13, 14, 15, 16],
 }
 
+# White global curve colour
+_GLOBAL_COLOR = (255, 255, 255)
+
 
 class SegmentCurvePanel(QWidget):
-    """Single panel showing per-segment strain curves for one view."""
+    """One vendor-style deformation graph for a single view.
+
+    Header row: view name (left) + GLS (right). The graph itself carries a
+    top-right legend, a bold white global curve and thin segment curves.
+    """
 
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -61,51 +85,72 @@ class SegmentCurvePanel(QWidget):
         self._ecg_item: pg.PlotDataItem | None = None
         self._ecg_marker: pg.InfiniteLine | None = None
         self._label_items: list[pg.TextItem] = []
+        self._legend: pg.LegendItem | None = None
+        self._placeholder: QLabel | None = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
 
-        # Title: view name + GLS value
+        # ── Header: «A4C · Продольная деформация»  +  GLS ────────────────
         header = QHBoxLayout()
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; color: #e0e0e0; font-size: 11px;")
+        title_label.setStyleSheet("font-weight: bold; color: #eceff1; font-size: 13px;")
         header.addWidget(title_label)
+        metric_label = QLabel(tr("strain.metric_deformation").lower())
+        metric_label.setStyleSheet("color: #90a4ae; font-size: 11px;")
+        header.addWidget(metric_label)
         header.addStretch()
         self._gls_label = QLabel("")
-        self._gls_label.setStyleSheet("color: #ffd54f; font-weight: bold; font-size: 12px;")
+        self._gls_label.setStyleSheet("color: #ffd54f; font-weight: bold; font-size: 15px;")
         header.addWidget(self._gls_label)
         layout.addLayout(header)
 
-        # Segment labels row
-        self._labels_layout = QHBoxLayout()
-        self._labels_layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(self._labels_layout)
-
-        # Main curve plot
+        # ── Graph ─────────────────────────────────────────────────────────
         self._plot = pg.PlotWidget()
-        self._plot.setBackground("black")
-        self._plot.setLabel("left", "%")
+        self._plot.setBackground("#0b0e11")
+        self._plot.setLabel("left", tr("strain.axis_pct"))
         self._plot.setLabel("bottom", tr("strain.time_axis"))
-        self._plot.showGrid(x=True, y=True, alpha=0.2)
-        self._plot.setMinimumHeight(120)
-        self._plot.setMaximumHeight(200)
+        self._plot.showGrid(x=True, y=True, alpha=0.15)
+        self._plot.setMinimumHeight(200)
+        self._plot.setMouseEnabled(x=False, y=False)
 
-        # Zero line
-        pen_zero = pg.mkPen("#666666", style=Qt.PenStyle.DashLine)
+        # Subdued y ticks — strain is negative in systole, so the y axis is
+        # auto-scaled to the data (vendor graphs put the 0 line mid-way).
+        self._plot.getAxis("left").setTextPen("#90a4ae")
+        self._plot.getAxis("bottom").setTextPen("#90a4ae")
+
+        # Zero reference line
+        pen_zero = pg.mkPen("#37474f", width=1, style=Qt.PenStyle.DashLine)
         self._plot.addItem(pg.InfiniteLine(pos=0, angle=0, pen=pen_zero))
 
-        layout.addWidget(self._plot, stretch=1)
+        # Placeholder for empty views ("нет данных")
+        self._placeholder = QLabel(tr("strain.no_data"))
+        self._placeholder.setStyleSheet("color: #546e7a; font-size: 12px;")
+        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._placeholder.setMinimumHeight(200)
 
-        # ECG trace (hidden when the clip has no real ECG)
+        # Wrap plot + placeholder in a stack so the empty view looks clean.
+        from PySide6.QtWidgets import QStackedLayout
+
+        self._stack = QStackedLayout()
+        self._stack.addWidget(self._plot)
+        self._stack.addWidget(self._placeholder)
+        container = QWidget()
+        container.setLayout(self._stack)
+        layout.addWidget(container, stretch=1)
+
+        # ── ECG strip (hidden unless a real ECG exists) ────────────────────
         self._ecg_plot = pg.PlotWidget()
-        self._ecg_plot.setBackground("black")
+        self._ecg_plot.setBackground("#0b0e11")
         self._ecg_plot.hideAxis("left")
         self._ecg_plot.hideAxis("bottom")
-        self._ecg_plot.setMaximumHeight(40)
-        self._ecg_plot.setMinimumHeight(30)
+        self._ecg_plot.setMaximumHeight(46)
+        self._ecg_plot.setMinimumHeight(36)
         self._ecg_plot.setVisible(False)
         layout.addWidget(self._ecg_plot, stretch=0)
+
+    # ── data ──────────────────────────────────────────────────────────────
 
     def set_strain_data(
         self,
@@ -114,69 +159,117 @@ class SegmentCurvePanel(QWidget):
         es_index: int = 0,
         frame_time_ms: float = 33.3,
     ) -> None:
-        """Plot per-segment strain curves."""
-        # Clear old curves
-        for curve in self._curves.values():
-            self._plot.removeItem(curve)
-        self._curves.clear()
-        if self._mean_curve is not None:
-            self._plot.removeItem(self._mean_curve)
-            self._mean_curve = None
+        """Plot per-segment strain curves + bold global curve (vendor style)."""
+        self._clear_plot_items()
+        self._stack.setCurrentWidget(self._plot)
+        self._legend = None
 
         if not segment_strains:
+            self._stack.setCurrentWidget(self._placeholder)
             return
 
-        # Find common frame range
-        all_lengths = [len(v) for v in segment_strains.values()]
-        if not all_lengths:
+        max_len = max(len(v) for v in segment_strains.values())
+        if max_len < 2:
             return
-        max_len = max(all_lengths)
 
-        # Plot each segment curve (thin 1px lines, vendor style)
+        x = np.arange(max_len) * frame_time_ms
+
+        # Thin, translucent segment curves (drawn first, under the global one)
         for seg_id, strain_curve in segment_strains.items():
             if seg_id not in SEGMENT_COLORS:
                 continue
             color = SEGMENT_COLORS[seg_id]
-            x = np.arange(len(strain_curve)) * frame_time_ms
-            pen = pg.mkPen(color, width=1)
-            curve = self._plot.plot(x, strain_curve, pen=pen)
+            # Normalize every curve to the same x-grid
+            xx = np.arange(len(strain_curve)) * frame_time_ms
+            curve = self._plot.plot(xx, strain_curve, pen=pg.mkPen(color, width=1))
+            curve.setOpacity(0.75)
+            curve.setZValue(2)
             self._curves[seg_id] = curve
 
-        # Compute and plot mean curve
-        if len(segment_strains) > 1:
-            # Align to common length
-            curves_array = np.full((len(segment_strains), max_len), np.nan)
-            for i, curve in enumerate(segment_strains.values()):
-                curves_array[i, : len(curve)] = curve
-            mean_curve = np.nanmean(curves_array, axis=0)
-            x_mean = np.arange(max_len) * frame_time_ms
-            pen_mean = pg.mkPen(255, 255, 255, width=1.5, style=Qt.PenStyle.DashLine)
-            self._mean_curve = self._plot.plot(x_mean, mean_curve, pen=pen_mean)
+        if not self._curves:
+            self._stack.setCurrentWidget(self._placeholder)
+            return
 
-        # ES marker
+        # Global (mean) curve — bold white, vendor emphasis
+        raw_curves = [(seg_id, c) for seg_id, c in segment_strains.items() if seg_id in SEGMENT_COLORS]
+        curves_array = np.full((len(raw_curves), max_len), np.nan)
+        for i, (seg_id, strain_curve) in enumerate(raw_curves):
+            curves_array[i, : len(strain_curve)] = strain_curve
+        mean_curve = np.nanmean(curves_array, axis=0)
+        self._mean_curve = self._plot.plot(
+            x,
+            mean_curve,
+            pen=pg.mkPen(_GLOBAL_COLOR, width=2.2),
+        )
+        self._mean_curve.setZValue(3)
+
+        # Legend inside the graph top-right corner (vendor position)
+        self._legend = pg.LegendItem(offset=(4, 4))
+        self._legend.setParentItem(self._plot.getPlotItem())
+        self._legend.anchor(itemPos=(1, 0), parentPos=(1, 0), offset=(-6, 4))
+        self._legend.setBrush(pg.mkBrush(20, 26, 32, 210))
+        self._legend.setPen(pg.mkPen("#37474f"))
+        for seg_id in sorted(self._curves):
+            sample = pg.PlotDataItem(pen=pg.mkPen(SEGMENT_COLORS[seg_id], width=3))
+            self._legend.addItem(sample, SEGMENT_NAMES_RU.get(seg_id, f"Seg{seg_id}"))
+        mean_sample = pg.PlotDataItem(pen=pg.mkPen(_GLOBAL_COLOR, width=3))
+        self._legend.addItem(mean_sample, tr("strain.legend_global"))
+
+        # End-systole marker (dashed vertical line, like the vendor's phase bar)
         if self._es_marker is not None:
             self._plot.removeItem(self._es_marker)
         es_x = es_index * frame_time_ms
         self._es_marker = pg.InfiniteLine(
             pos=es_x,
             angle=90,
-            pen=pg.mkPen("#ffd54f", width=2, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen("#ffd54f", width=1, style=Qt.PenStyle.DashLine),
         )
+        self._es_marker.setZValue(4)
         self._plot.addItem(self._es_marker)
 
-        # Set X range (timeline) and auto-scale Y to the actual data
+        # Time axis aligned with the ECG strip
         self._plot.setXRange(0, max_len * frame_time_ms, padding=0.02)
+        # Auto-scale Y with a small margin — keeps 0 in view and fits the curve
         self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=True)
+        self._plot.setYRange(
+            *self._auto_y_bounds(np.concatenate([c for _, c in raw_curves if len(c)]), mean_curve)
+        )
+
+    @staticmethod
+    def _auto_y_bounds(seg_flat: np.ndarray, mean: np.ndarray) -> tuple[float, float]:
+        """Vendor-style y range: from a little above 0 down to the curve min."""
+        finite = np.concatenate([seg_flat[~np.isnan(seg_flat)] if seg_flat.size else np.array([]), mean[~np.isnan(mean)]])
+        if finite.size == 0:
+            return (-10.0, 0.0)
+        lo = float(np.nanmin(finite))
+        hi = float(np.nanmax(finite))
+        span = max(hi - lo, 1.0)
+        # pad ~6 %; keep the strain dip visually dominant, 0 line always inside
+        lo -= span * 0.05
+        hi += span * 0.06
+        return (lo, max(hi, 0.0))
+
+    def _clear_plot_items(self) -> None:
+        for curve in self._curves.values():
+            self._plot.removeItem(curve)
+        self._curves.clear()
+        if self._mean_curve is not None:
+            self._plot.removeItem(self._mean_curve)
+            self._mean_curve = None
+        if self._legend is not None:
+            self._plot.removeItem(self._legend)
+            self._legend = None
 
     def set_gls(self, gls: float | None) -> None:
-        """Show the view's GLS value in the header (large, vendor style)."""
+        """Show the view's GLS value in the header (large, yellow)."""
         if gls is None:
             self._gls_label.setText("")
         else:
             self._gls_label.setText(f"GLS {gls:.1f}%")
 
+    # ── ECG ───────────────────────────────────────────────────────────────
+
     def set_ecg_visible(self, visible: bool) -> None:
-        """Show/hide the ECG trace row (hidden when no real ECG)."""
         self._ecg_plot.setVisible(visible)
         if not visible:
             if self._ecg_item is not None:
@@ -194,7 +287,7 @@ class SegmentCurvePanel(QWidget):
         *,
         ecg_sample_rate: float | None = None,
     ) -> None:
-        """Display ECG trace with frame marker (real ECG only)."""
+        """Display the real ECG strip aligned to the strain time axis."""
         if self._ecg_item is not None:
             self._ecg_plot.removeItem(self._ecg_item)
             self._ecg_item = None
@@ -215,7 +308,6 @@ class SegmentCurvePanel(QWidget):
         pen = pg.mkPen("#4caf50", width=1)
         self._ecg_item = self._ecg_plot.plot(t, ecg_data, pen=pen)
 
-        # Frame marker
         marker_x = current_frame * frame_time_ms
         self._ecg_marker = pg.InfiniteLine(
             pos=marker_x,
@@ -224,15 +316,16 @@ class SegmentCurvePanel(QWidget):
         )
         self._ecg_plot.addItem(self._ecg_marker)
 
-        self._ecg_plot.setXRange(0, t[-1] if len(t) > 0 else 1000)
+        # Same time span as the strain plot so the strips line up
+        self._ecg_plot.setXRange(0, t[-1] if len(t) > 0 else 1000, padding=0.02)
+
+    def set_ecg_marker_frame(self, frame_index: int, frame_time_ms: float = 33.3) -> None:
+        """Move the ECG frame marker (used by animation in the cine panel)."""
+        if self._ecg_marker is not None and frame_time_ms > 0:
+            self._ecg_marker.setPos(float(frame_index) * frame_time_ms)
 
     def clear(self) -> None:
-        for curve in self._curves.values():
-            self._plot.removeItem(curve)
-        self._curves.clear()
-        if self._mean_curve is not None:
-            self._plot.removeItem(self._mean_curve)
-            self._mean_curve = None
+        self._clear_plot_items()
         if self._es_marker is not None:
             self._plot.removeItem(self._es_marker)
             self._es_marker = None
@@ -242,143 +335,198 @@ class SegmentCurvePanel(QWidget):
         if self._ecg_marker is not None:
             self._ecg_plot.removeItem(self._ecg_marker)
             self._ecg_marker = None
+        self._stack.setCurrentWidget(self._placeholder)
 
 
 class StrainCurvesView(QWidget):
-    """Full strain curves view with 3 panels (A4C, A2C, DAO) + segment labels."""
+    """Vendor-style strain curves — analysed view panels stacked vertically."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(10)
 
-        # Title
-        title = QLabel("Strain Curves")
-        title.setStyleSheet("font-weight: bold; color: #e0e0e0; font-size: 12px;")
-        layout.addWidget(title)
-
-        # Segment legend
-        legend_layout = QHBoxLayout()
-        for seg_id in [1, 2, 3, 4, 5, 6]:
-            color = SEGMENT_COLORS.get(seg_id, (255, 255, 255))
-            name = SEGMENT_NAMES_RU.get(seg_id, f"Seg{seg_id}")
-            lbl = QLabel(f"■ {name}")
-            lbl.setStyleSheet(f"color: rgb({color[0]},{color[1]},{color[2]}); font-size: 10px;")
-            legend_layout.addWidget(lbl)
-        lbl_mean = QLabel("┅ Mean")
-        lbl_mean.setStyleSheet("color: #ffffff; font-size: 10px;")
-        legend_layout.addWidget(lbl_mean)
-        legend_layout.addStretch()
-        layout.addLayout(legend_layout)
-
-        # Three panels
+        # Panels: only the views that exist are populated; the rest show the
+        # clean «нет данных» placeholder (single-view analysis = only A4C).
         self._panel_a4c = SegmentCurvePanel("A4C")
         self._panel_a2c = SegmentCurvePanel("A2C")
-        self._panel_dao = SegmentCurvePanel("DAO (A3C)")
+        self._panel_dao = SegmentCurvePanel(tr("strain.view_dao"))
 
         layout.addWidget(self._panel_a4c, stretch=1)
         layout.addWidget(self._panel_a2c, stretch=1)
         layout.addWidget(self._panel_dao, stretch=1)
+
+        # Which panels correspond to the currently analysed position. Only the
+        # analysed view holds data; the others collapse to a clean placeholder.
+        self._active_view: str = "A4C"
+        self._visible_when_data: dict[str, SegmentCurvePanel] = {
+            "A4C": self._panel_a4c,
+            "A2C": self._panel_a2c,
+            "DAO": self._panel_dao,
+        }
+        # Before any result: show clean placeholders, not empty grids.
+        for panel in self._visible_when_data.values():
+            panel.clear()
+
+    def set_active_view(self, view: str) -> None:
+        """Mark which view the result belongs to (A4C/A2C/A3C)."""
+        view = view.upper()
+        if view not in ("A4C", "A2C", "A3C"):
+            return
+        self._active_view = "DAO" if view == "A3C" else view
 
     def set_strain_data(
         self,
         result: StrainResult,
         frame_time_ms: float = 33.3,
     ) -> None:
-        """Update all panels with strain data from StrainResult."""
+        """Update the panels with per-segment strain curves from the result."""
         if result.segment_strain is None or result.per_kernel_longitudinal is None:
+            self.clear()
             return
 
-        # Compute per-segment strain curves
-        # Group kernels by segment
-        segment_kernels: dict[int, list[int]] = {}
-        for i, kernel in enumerate(result.kernels):
-            if kernel.layer == "endo" and kernel.aha_segment > 0:
-                segment_kernels.setdefault(kernel.aha_segment, []).append(i)
-
-        # For each segment, compute mean strain curve from kernel strains
-        segment_curves: dict[int, np.ndarray] = {}
         n_frames = len(result.longitudinal) if result.longitudinal is not None else 0
+        segment_curves = self._segment_curves_from_tracking(result, n_frames)
 
-        if result.tracked_positions_all is not None and n_frames > 0:
-            ed_positions = result.tracked_positions_all[result.ed_index] if result.ed_index < n_frames else None
-            if ed_positions is not None:
-                for seg_id, kernel_indices in segment_kernels.items():
-                    # Compute per-segment longitudinal strain curve
-                    seg_strain = np.zeros(n_frames)
-                    for t in range(n_frames):
-                        frame_positions = result.tracked_positions_all[t]
-                        if frame_positions is None:
-                            continue
-                        # Compute arc length change for this segment
-                        ed_pts = ed_positions[kernel_indices]
-                        t_pts = frame_positions[kernel_indices]
-                        if len(ed_pts) < 2:
-                            continue
-                        l0 = np.sum(np.linalg.norm(np.diff(ed_pts, axis=0), axis=1))
-                        lt = np.sum(np.linalg.norm(np.diff(t_pts, axis=0), axis=1))
-                        if l0 > 1e-6:
-                            ratio = lt / l0
-                            seg_strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
-                    segment_curves[seg_id] = seg_strain
-
-        # ECG trace: real DICOM ECG only — no synthetic placeholder. When the
-        # clip has no ECG the strip rows are hidden entirely.
-        has_ecg = result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) > 0
+        ecg = result.ecg_trace_for_display if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) else None
         ecg_sample_rate: float | None = None
-        if has_ecg:
-            ecg = result.ecg_trace_for_display
-            if result.ecg_waveform is not None and result.ecg_waveform.primary_lead is not None:
-                ecg_sample_rate = float(result.ecg_waveform.primary_lead.sampling_frequency)
-        else:
-            ecg = None
+        if ecg is not None and result.ecg_waveform is not None and result.ecg_waveform.primary_lead is not None:
+            ecg_sample_rate = float(result.ecg_waveform.primary_lead.sampling_frequency)
 
         def _gls_for(seg_ids: list[int]) -> float | None:
             values = [result.segment_strain[s] for s in seg_ids if s in (result.segment_strain or {})]
             return float(np.mean(values)) if values else None
 
-        def _update_panel(panel: SegmentCurvePanel, seg_ids: list[int], curves: dict[int, np.ndarray]) -> None:
-            panel.set_gls(_gls_for(seg_ids))
-            if curves:
-                panel.set_strain_data(curves, result.ed_index, result.es_index, frame_time_ms)
-                if ecg is not None:
-                    panel.set_ecg_visible(True)
-                    panel.set_ecg_trace(ecg, frame_time_ms, result.es_index, ecg_sample_rate=ecg_sample_rate)
-                else:
-                    panel.set_ecg_visible(False)
-            else:
+        # Vendor look: the analysed view gets the whole height; the other
+        # panels hide instead of leaving half-empty placeholder stacks.
+        for panel in self._visible_when_data.values():
+            panel.show()
+        analysed = self._visible_when_data.get(self._active_view, self._panel_a4c)
+        seg_ids = VIEW_SEGMENTS.get(self._active_view, VIEW_SEGMENTS["A4C"])
+        active_curves = {k: v for k, v in segment_curves.items() if k in seg_ids}
+        self._update_panel(
+            analysed,
+            _gls_for(seg_ids),
+            active_curves,
+            result,
+            frame_time_ms,
+            ecg,
+            ecg_sample_rate,
+        )
+        for panel in self._visible_when_data.values():
+            if panel is not analysed:
                 panel.clear()
+                panel.set_gls(None)
                 panel.set_ecg_visible(False)
+                panel.hide()
 
-        _update_panel(
-            self._panel_a4c,
-            VIEW_SEGMENTS["A4C"],
-            {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A4C"]},
-        )
-        _update_panel(
-            self._panel_a2c,
-            VIEW_SEGMENTS["A2C"],
-            {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["A2C"]},
-        )
-        _update_panel(
-            self._panel_dao,
-            VIEW_SEGMENTS["DAO"],
-            {k: v for k, v in segment_curves.items() if k in VIEW_SEGMENTS["DAO"]},
-        )
+    @staticmethod
+    def _segment_curves_from_tracking(
+        result: StrainResult,
+        n_frames: int,
+    ) -> dict[int, np.ndarray]:
+        """Mean per-segment longitudinal curve from the tracked kernels.
+
+        Kernels of one AHA segment are connected in arc order and the relative
+        arc-length change is integrated frame by frame (Green–Lagrange
+        longitudinal strain of the segment).
+        """
+        if result.tracked_positions_all is None or n_frames == 0:
+            return {}
+
+        segment_kernels: dict[int, list[int]] = {}
+        for i, kernel in enumerate(result.kernels):
+            if kernel.layer == "endo" and kernel.aha_segment > 0:
+                segment_kernels.setdefault(kernel.aha_segment, []).append(i)
+
+        # Reference ED positions for sorting kernels in arc order per segment
+        ed = result.ed_index
+        if not (0 <= ed < n_frames):
+            return {}
+        ed_pos = result.tracked_positions_all[ed]
+
+        segment_curves: dict[int, np.ndarray] = {}
+        all_endo = [i for i, k in enumerate(result.kernels) if k.layer == "endo" and k.aha_segment > 0]
+        for seg_id, kernel_indices in segment_kernels.items():
+            if len(kernel_indices) < 1:
+                continue
+            if len(kernel_indices) == 1:
+                # Single-kernel segment: connect it through its neighbours on
+                # the whole endo arc so its strain is still well defined.
+                order = sorted(all_endo, key=lambda i: (ed_pos[i, 0], ed_pos[i, 1]))
+                pos = order.index(kernel_indices[0])
+                pair = (order[max(pos - 1, 0)], order[min(pos + 1, len(order) - 1)])
+                if pair[0] == pair[1]:
+                    continue
+                kernel_indices = list(pair)
+            else:
+                kernel_indices = sorted(kernel_indices, key=lambda i: ed_pos[i, 1])
+
+            def _arc(idx_list: list[int], t: int) -> float:
+                pts = result.tracked_positions_all[t][idx_list]
+                if np.any(np.isnan(pts)):
+                    return np.nan
+                return float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+
+            l0 = _arc(kernel_indices, ed)
+            if l0 is None or not np.isfinite(l0) or l0 <= 1e-6:
+                # Fall back to a global curve from the whole endo contour
+                all_idx = sorted(all_endo, key=lambda i: ed_pos[i, 1])
+                l0 = _arc(all_idx, ed)
+                kernel_indices = all_idx
+            curve = np.zeros(n_frames)
+            for t in range(n_frames):
+                lt = _arc(kernel_indices, t)
+                if np.isfinite(lt) and l0 > 1e-6:
+                    curve[t] = 0.5 * ((lt / l0) ** 2 - 1.0) * 100.0
+            segment_curves[seg_id] = curve
+        return segment_curves
+
+    def _update_panel(
+        self,
+        panel: SegmentCurvePanel,
+        gls: float | None,
+        curves: dict[int, np.ndarray],
+        result: StrainResult,
+        frame_time_ms: float,
+        ecg: np.ndarray | None,
+        ecg_sample_rate: float | None,
+    ) -> None:
+        panel.set_gls(gls)
+        if curves:
+            panel.set_strain_data(curves, result.ed_index, result.es_index, frame_time_ms)
+            if ecg is not None:
+                panel.set_ecg_visible(True)
+                panel.set_ecg_trace(ecg, frame_time_ms, result.es_index, ecg_sample_rate=ecg_sample_rate)
+            else:
+                panel.set_ecg_visible(False)
+        else:
+            panel.clear()
+            panel.set_ecg_visible(False)
+
+    def clear(self) -> None:
+        self._panel_a4c.clear()
+        self._panel_a2c.clear()
+        self._panel_dao.clear()
+        for panel in (self._panel_a4c, self._panel_a2c, self._panel_dao):
+            panel.show()
 
     def _generate_synthetic_ecg(self, n_frames: int, hr_bpm: float) -> np.ndarray:
-        """Generate synthetic ECG trace."""
+        """Legacy helper (no longer used by the curves view).
+
+        Real DICOM ECG is displayed when present; this generator is kept only
+        so callers/tests that still reference it keep working. Nothing in the
+        UI calls it — synthetic ECG is never drawn (issue #2).
+        """
         if n_frames < 2 or hr_bpm <= 0:
             return np.zeros(max(n_frames, 100))
-
         frame_time_s = 33.3 / 1000.0
         hr_hz = hr_bpm / 60.0
-        period_frames = int(1.0 / (hr_hz * frame_time_s))
-
-        ecg = np.zeros(n_frames)
-        for i in range(n_frames):
+        period_frames = max(int(1.0 / (hr_hz * frame_time_s)), 1)
+        ecg = np.zeros(max(n_frames, 100))
+        for i in range(len(ecg)):
             phase = (i % period_frames) / period_frames
             if 0.0 <= phase < 0.1:
                 ecg[i] = 0.15 * np.sin(np.pi * phase / 0.1)
@@ -390,10 +538,4 @@ class StrainCurvesView(QWidget):
                 ecg[i] = -0.2
             elif 0.35 <= phase < 0.5:
                 ecg[i] = 0.3 * np.sin(np.pi * (phase - 0.35) / 0.15)
-
-        return ecg
-
-    def clear(self) -> None:
-        self._panel_a4c.clear()
-        self._panel_a2c.clear()
-        self._panel_dao.clear()
+        return ecg[: max(n_frames, 100)]
