@@ -205,7 +205,15 @@ class FrameCache:
     def require_full_cine(self) -> np.ndarray:
         if self._cached_frames is not None:
             return self._cached_frames
-        return self.load_all_frames()
+        if not self._frame_store or self._total_frames == 0:
+            raise IncompleteCineError("Frame cache is empty")
+        if len(self._frame_store) != self._total_frames:
+            raise IncompleteCineError(
+                f"Only {len(self._frame_store)}/{self._total_frames} frames loaded. "
+                "Reload full cine before speckle tracking."
+            )
+        self._cached_frames = np.stack([self._frame_store[i] for i in range(self._total_frames)])
+        return self._cached_frames
 
     def load_all_frames(self) -> np.ndarray:
         """Load all frames from source if not already cached.
