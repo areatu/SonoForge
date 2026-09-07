@@ -227,27 +227,41 @@ class SegmentCurvePanel(QWidget):
         self._es_marker.setZValue(4)
         self._plot.addItem(self._es_marker)
 
-        # Time axis aligned with the ECG strip
+        # Time axis aligned with the ECG strip; the y range is set explicitly
+        # (and auto-range disabled afterwards) so the curve fills most of the
+        # plot height and stays centred, instead of hugging an edge.
         self._plot.setXRange(0, max_len * frame_time_ms, padding=0.02)
-        # Auto-scale Y with a small margin — keeps 0 in view and fits the curve
-        self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=True)
+        self._plot.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         self._plot.setYRange(
-            *self._auto_y_bounds(np.concatenate([c for _, c in raw_curves if len(c)]), mean_curve)
+            *self._auto_y_bounds(np.concatenate([c for _, c in raw_curves if len(c)]), mean_curve),
+            padding=0.0,
         )
 
     @staticmethod
     def _auto_y_bounds(seg_flat: np.ndarray, mean: np.ndarray) -> tuple[float, float]:
-        """Vendor-style y range: from a little above 0 down to the curve min."""
+        """Y range sized so the curves fill most of the plot height, centered.
+
+        Symmetric padding around the data span keeps the zero line inside and
+        the curve centred — the deformation occupies the majority of the
+        window instead of hugging one edge.
+        """
         finite = np.concatenate([seg_flat[~np.isnan(seg_flat)] if seg_flat.size else np.array([]), mean[~np.isnan(mean)]])
         if finite.size == 0:
             return (-10.0, 0.0)
         lo = float(np.nanmin(finite))
         hi = float(np.nanmax(finite))
         span = max(hi - lo, 1.0)
-        # pad ~6 %; keep the strain dip visually dominant, 0 line always inside
-        lo -= span * 0.05
-        hi += span * 0.06
-        return (lo, max(hi, 0.0))
+        pad = span * 0.13
+        lo -= pad
+        hi += pad
+        # Centring fallbacks: keep the zero line in view and a sensible band
+        # when the data barely moves (e.g. flat tracking).
+        if hi - lo < 8.0:
+            mid = (hi + lo) / 2.0
+            lo, hi = mid - 4.0, mid + 4.0
+        if lo > 0.0:
+            lo = -1.0
+        return (lo, hi)
 
     def _clear_plot_items(self) -> None:
         for curve in self._curves.values():
