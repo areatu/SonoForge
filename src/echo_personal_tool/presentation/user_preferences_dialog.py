@@ -375,7 +375,10 @@ class UserPreferencesDialog(QDialog):
         tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()
-        tabs.addTab(self._server_form, tr("preferences.tab_server"))
+        server_scroll = QScrollArea()
+        server_scroll.setWidgetResizable(True)
+        server_scroll.setWidget(self._server_form)
+        tabs.addTab(server_scroll, tr("preferences.tab_server"))
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
