@@ -11,7 +11,6 @@ from echo_personal_tool.domain.models.speckle import SpeckleConfig, StrainResult
 from echo_personal_tool.domain.services.aha_segments import choose_clinical_gls
 from echo_personal_tool.domain.services.strain_computation import assess_strain_plausibility
 
-
 # ── physiological plausibility check ──────────────────────────────
 
 

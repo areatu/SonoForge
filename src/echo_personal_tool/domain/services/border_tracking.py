@@ -26,9 +26,8 @@ import numpy as np
 
 from echo_personal_tool.domain.models.speckle import SpeckleConfig, TrackingKernel
 from echo_personal_tool.domain.services.speckle_tracking import (
-    build_gaussian_pyramid,
     block_match_single,
-    preprocess_echo_frame,
+    build_gaussian_pyramid,
 )
 
 logger = logging.getLogger(__name__)

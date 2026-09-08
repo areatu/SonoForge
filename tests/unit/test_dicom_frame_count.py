@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pydicom
-import pytest
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.encaps import encapsulate
 

@@ -604,8 +604,6 @@ class TestBorderTracking:
             ncc_threshold=0.3,
             tracking_mode="border",
         )
-        from echo_personal_tool.domain.services.border_tracking import propagate_wall_borders
-
         from echo_personal_tool.domain.services.border_tracking import (
             propagate_wall_borders,
             resample_closed,

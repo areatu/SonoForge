@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 import pydicom
+import pytest
 from pydicom.dataset import Dataset, FileMetaDataset
 
 from echo_personal_tool.application.workers.speckle_worker import (
