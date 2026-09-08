@@ -365,6 +365,133 @@ def test_embed_echonet_mask_uses_linear_interpolation() -> None:
     assert set(np.unique(embedded)).issubset({0, 1})
 
 
+def test_papillary_mask_cleanup_bbox_angle_follows_top_bottom_centroids() -> None:
+    """Without a hint, SE rotation uses top/bottom centroids, not a fixed 90°."""
+    height, width = 80, 80
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for y in range(10, 70):
+        cx = 20 + int(0.6 * (y - 10))
+        mask[y, max(0, cx - 8) : min(width, cx + 8)] = 1
+    mask[38:48, 35:48] = 0  # mid-cavity gap so SE orientation matters
+    ys, xs = np.where(mask > 0)
+    top_y, bottom_y = int(ys.min()), int(ys.max())
+    top = (float(xs[ys == top_y].mean()), float(top_y))
+    bottom = (float(xs[ys == bottom_y].mean()), float(bottom_y))
+    mid_x = float(xs.mean())
+    cleaned_default = papillary_mask_cleanup(mask)
+    cleaned_bbox = papillary_mask_cleanup(mask, long_axis_hint=(top, bottom))
+    cleaned_vertical = papillary_mask_cleanup(
+        mask,
+        long_axis_hint=((mid_x, float(top_y)), (mid_x, float(bottom_y))),
+    )
+    assert np.array_equal(cleaned_default, cleaned_bbox)
+    assert not np.array_equal(cleaned_default, cleaned_vertical)
+
+
+def test_lv_cavity_mask_to_open_arc_two_pass() -> None:
+    from echo_personal_tool.domain.services.segmentation_service import lv_cavity_mask_to_open_arc
+
+    height, width = 120, 80
+    mask = np.zeros((height, width), dtype=np.uint8)
+    mask[15:105, 20:60] = 1
+    mask[50:70, 32:48] = 0  # papillary-like notch
+    open_points, annulus, apex, cleaned = lv_cavity_mask_to_open_arc(
+        mask,
+        original_shape=(height, width),
+        phase="ED",
+    )
+    assert len(open_points) >= 4
+    assert annulus[0][0] < annulus[1][0]
+    assert int(np.count_nonzero(cleaned)) >= 80
+    assert cleaned[60, 40] == 1
+
+
+def test_lv_cavity_mask_to_open_arc_apex_matches_simpson_tip() -> None:
+    from echo_personal_tool.domain.services.contour_geometry import apex_point
+    from echo_personal_tool.domain.services.segmentation_service import lv_cavity_mask_to_open_arc
+
+    height, width = 160, 100
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for y in range(20, 140):
+        cx = 30 + int(0.35 * (y - 20))
+        mask[y, max(0, cx - 18) : min(width, cx + 18)] = 1
+    open_points, annulus, apex, _cleaned = lv_cavity_mask_to_open_arc(
+        mask,
+        original_shape=(height, width),
+        phase="ED",
+    )
+    expected = apex_point(open_points, annulus)
+    assert apex == expected
+    assert math.hypot(apex[0] - expected[0], apex[1] - expected[1]) < 1.0
+
+
+def test_lv_cavity_mask_to_open_arc_pass2_hint_is_ma_mid_to_simpson_apex(monkeypatch) -> None:
+    from echo_personal_tool.domain.services import segmentation_service as seg
+    from echo_personal_tool.domain.services.contour_geometry import apex_point
+
+    hints: list[tuple[tuple[float, float], tuple[float, float]] | None] = []
+    real = seg.papillary_mask_cleanup
+
+    def _spy(mask, *, phase=None, long_axis_hint=None):
+        hints.append(long_axis_hint)
+        return real(mask, phase=phase, long_axis_hint=long_axis_hint)
+
+    monkeypatch.setattr(seg, "papillary_mask_cleanup", _spy)
+
+    height, width = 120, 80
+    mask = np.zeros((height, width), dtype=np.uint8)
+    mask[15:105, 20:60] = 1
+    open_points, annulus, apex, _cleaned = seg.lv_cavity_mask_to_open_arc(
+        mask,
+        original_shape=(height, width),
+        phase="ED",
+    )
+    assert len(hints) >= 2
+    assert hints[0] is None
+    assert hints[1] is not None
+    ma_mid, hinted_apex = hints[1]
+    first = real(mask, phase="ED")
+    pts1, ann1, _seed1 = seg.open_arc_from_cavity_mask(
+        first,
+        original_shape=(height, width),
+        num_nodes=32,
+        view_hint="A4C",
+    )
+    canon1 = apex_point(pts1, ann1)
+    septal1, lateral1 = ann1
+    expected_mid = (
+        (septal1[0] + lateral1[0]) / 2.0,
+        (septal1[1] + lateral1[1]) / 2.0,
+    )
+    assert ma_mid == expected_mid
+    assert hinted_apex == canon1
+    assert apex == apex_point(open_points, annulus)
+
+
+def test_lv_cavity_mask_to_open_arc_keeps_pass1_when_pass2_overgrows(monkeypatch) -> None:
+    from echo_personal_tool.domain.services import segmentation_service as seg
+
+    real = seg.papillary_mask_cleanup
+
+    def _inflate(mask, *, phase=None, long_axis_hint=None):
+        if long_axis_hint is None:
+            return real(mask, phase=phase, long_axis_hint=long_axis_hint)
+        return np.ones_like(mask, dtype=np.uint8)
+
+    monkeypatch.setattr(seg, "papillary_mask_cleanup", _inflate)
+
+    height, width = 120, 80
+    mask = np.zeros((height, width), dtype=np.uint8)
+    mask[15:105, 20:60] = 1
+    _open_points, _annulus, _apex, cleaned = seg.lv_cavity_mask_to_open_arc(
+        mask,
+        original_shape=(height, width),
+        phase="ED",
+    )
+    assert int(np.count_nonzero(cleaned)) < height * width
+    assert not np.array_equal(cleaned, np.ones_like(mask, dtype=np.uint8))
+
+
 def test_papillary_mask_cleanup_es_stronger_closing() -> None:
     """ES phase uses larger SE than ED."""
     mask = _mask_with_mid_notch(height=100, width=80)
@@ -510,6 +637,18 @@ class TestBlendAnnulusWithArcTips:
         # Far from tips → no blend, stays at original
         assert septal == annulus[0]
         assert lateral == annulus[1]
+
+
+def test_annulus_if_not_collapsed_keeps_previous_when_short() -> None:
+    from echo_personal_tool.domain.services.segmentation_service import (
+        _annulus_if_not_collapsed,
+    )
+
+    previous = ((0.0, 80.0), (40.0, 80.0))
+    collapsed = ((18.0, 80.0), (22.0, 80.0))
+    assert _annulus_if_not_collapsed(previous, collapsed) == previous
+    kept = ((2.0, 80.0), (38.0, 82.0))
+    assert _annulus_if_not_collapsed(previous, kept) == kept
 
 
 class TestSnapWiredIntoOpenArc:

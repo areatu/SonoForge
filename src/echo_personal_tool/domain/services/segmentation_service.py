@@ -10,7 +10,11 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from echo_personal_tool.domain.services.contour_geometry import resample_open_arc, smooth_open_arc
+from echo_personal_tool.domain.services.contour_geometry import (
+    apex_point,
+    resample_open_arc,
+    smooth_open_arc,
+)
 
 _NEIGHBOR_OFFSETS: tuple[tuple[int, int], ...] = (
     (1, 0),
@@ -249,9 +253,12 @@ def papillary_mask_cleanup(
         (ax0, ay0), (ax1, ay1) = long_axis_hint
         angle = math.degrees(math.atan2(ay1 - ay0, ax1 - ax0))
     else:
-        # Derive from mask bbox: top (narrow) → bottom (wide) = long axis
-        mid_x = float(xs.mean())
-        angle = 90.0  # default: vertical (top→bottom)
+        # Derive from mask bbox: top centroid → bottom centroid ≈ long axis
+        top_xs = xs[ys == top_y]
+        bottom_xs = xs[ys == bottom_y]
+        top_cx = float(top_xs.mean()) if top_xs.size else float(xs.mean())
+        bottom_cx = float(bottom_xs.mean()) if bottom_xs.size else float(xs.mean())
+        angle = math.degrees(math.atan2(float(bottom_y - top_y), bottom_cx - top_cx))
 
     # Build rotated elliptical SE
     ry = max(se_len // 2, 1)
@@ -765,12 +772,13 @@ def _annulus_and_apex_from_mask_pixels(
 
     # Boundary snap when full mask is available
     if mask is not None:
-        septal, lateral = _snap_annulus_to_mask_boundary(
+        snapped = _snap_annulus_to_mask_boundary(
             septal,
             lateral,
             mask,
             basal_y_range=basal_y_range,
         )
+        septal, lateral = _annulus_if_not_collapsed((septal, lateral), snapped)
 
     if np.any(apex_mask):
         apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
@@ -825,12 +833,13 @@ def _fallback_annulus_wider_band(
 
     # Boundary snap when full mask is available
     if mask is not None:
-        septal, lateral = _snap_annulus_to_mask_boundary(
+        snapped = _snap_annulus_to_mask_boundary(
             septal,
             lateral,
             mask,
             basal_y_range=basal_y_range,
         )
+        septal, lateral = _annulus_if_not_collapsed((septal, lateral), snapped)
 
     if np.any(apex_mask):
         apex = (float(np.median(xs[apex_mask])), float(np.median(ys[apex_mask])))
@@ -874,6 +883,27 @@ def _fallback_annulus_sector_chord(
 _MA_ONNX_MODEL_PATH = Path(__file__).resolve().parent.parent.parent.parent.parent / "models" / "ma_landmark_224.onnx"
 _MA_ONNX_CROP = 224
 _MA_ONNX_BLEND_WEIGHT = 0.35
+# Keep in sync with `_MIN_LV_AUTO_ANNULUS_PX` in lvef_simpson.
+_MA_MIN_LENGTH_PX = 20.0
+
+
+def _annulus_length_px(
+    septal: tuple[float, float],
+    lateral: tuple[float, float],
+) -> float:
+    return math.hypot(lateral[0] - septal[0], lateral[1] - septal[1])
+
+
+def _annulus_if_not_collapsed(
+    previous: tuple[tuple[float, float], tuple[float, float]],
+    candidate: tuple[tuple[float, float], tuple[float, float]],
+    *,
+    min_length: float = _MA_MIN_LENGTH_PX,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Keep *previous* when snap/blend/ONNX would collapse the MA chord."""
+    if _annulus_length_px(*candidate) >= min_length:
+        return candidate
+    return previous
 
 
 def _blend_landmark(
@@ -908,11 +938,11 @@ def _try_refine_annulus_with_onnx(
         if math.hypot(pred[0] - base[0], pred[1] - base[1]) > max_offset_px:
             return septal, lateral
 
-    septal = _blend_landmark(septal, onnx_septal, blend_weight)
-    lateral = _blend_landmark(lateral, onnx_lateral, blend_weight)
-    if septal[0] > lateral[0]:
-        septal, lateral = lateral, septal
-    return septal, lateral
+    blended_septal = _blend_landmark(septal, onnx_septal, blend_weight)
+    blended_lateral = _blend_landmark(lateral, onnx_lateral, blend_weight)
+    if blended_septal[0] > blended_lateral[0]:
+        blended_septal, blended_lateral = blended_lateral, blended_septal
+    return _annulus_if_not_collapsed((septal, lateral), (blended_septal, blended_lateral))
 
 
 def _predict_ma_onnx_keypoints(
@@ -1078,12 +1108,13 @@ def open_arc_from_cavity_mask(
 
     # Preliminary arc for tip-guided MA refinement, then rebuild arc with final MA.
     open_points = _boundary_open_arc(boundary, septal, lateral, apex)
-    septal, lateral = _blend_annulus_with_arc_tips(
+    blended = _blend_annulus_with_arc_tips(
         (septal, lateral),
         open_points,
         max_blend_dist_px=12.0,
         blend_weight=0.3,
     )
+    septal, lateral = _annulus_if_not_collapsed((septal, lateral), blended)
     open_points = _boundary_open_arc(boundary, septal, lateral, apex)
     annulus = (septal, lateral)
 
@@ -1093,6 +1124,99 @@ def open_arc_from_cavity_mask(
     resampled[0] = septal
     resampled[-1] = lateral
     return resampled, annulus, apex
+
+
+_LV_MASK_MIN_PIXELS = 80
+_LV_PASS2_MIN_IOU = 0.85
+_LV_PASS2_MAX_AREA_JUMP = 0.25
+
+
+def _canonical_apex(
+    open_points: list[tuple[float, float]],
+    annulus: tuple[tuple[float, float], tuple[float, float]],
+    seed: tuple[float, float],
+) -> tuple[float, float]:
+    """Simpson tip (farthest from MA chord); band apex is seed if the arc is short."""
+    if len(open_points) < 3:
+        return seed
+    return apex_point(open_points, annulus)
+
+
+def _binary_mask_iou(first: np.ndarray, second: np.ndarray) -> float:
+    a = np.asarray(first) > 0
+    b = np.asarray(second) > 0
+    intersection = int(np.count_nonzero(a & b))
+    union = int(np.count_nonzero(a | b))
+    if union == 0:
+        return 1.0
+    return intersection / union
+
+
+def _pass2_mask_implausible(first: np.ndarray, second: np.ndarray) -> bool:
+    """True when pass-2 overgrew / diverged from pass-1 (keep pass 1)."""
+    n1 = int(np.count_nonzero(first))
+    n2 = int(np.count_nonzero(second))
+    if n1 <= 0:
+        return True
+    if abs(n2 - n1) / n1 > _LV_PASS2_MAX_AREA_JUMP:
+        return True
+    return _binary_mask_iou(first, second) < _LV_PASS2_MIN_IOU
+
+
+def lv_cavity_mask_to_open_arc(
+    mask: np.ndarray,
+    *,
+    original_shape: tuple[int, int],
+    phase: str | None = None,
+    view_hint: str = "A4C",
+    num_nodes: int = 32,
+) -> tuple[
+    list[tuple[float, float]],
+    tuple[tuple[float, float], tuple[float, float]],
+    tuple[float, float],
+    np.ndarray,
+]:
+    """Two-pass papillary cleanup then open-arc extraction (no longest-chord fallback).
+
+    Pass 1: isotropic closing. Pass 2: rotate the SE along MA midpoint → Simpson apex.
+    If the second pass is too small, fails to open, or overgrows (IoU < 0.85 or
+    pixel count jumps > 25%), keep the first-pass arc.
+    """
+    first = papillary_mask_cleanup(mask, phase=phase)
+    if int(np.count_nonzero(first)) < _LV_MASK_MIN_PIXELS:
+        msg = "mask too small"
+        raise ValueError(msg)
+
+    open_points, annulus, apex = open_arc_from_cavity_mask(
+        first,
+        original_shape=original_shape,
+        num_nodes=num_nodes,
+        view_hint=view_hint,
+    )
+    apex = _canonical_apex(open_points, annulus, apex)
+    septal, lateral = annulus
+    ma_mid = (
+        (septal[0] + lateral[0]) / 2.0,
+        (septal[1] + lateral[1]) / 2.0,
+    )
+    second = papillary_mask_cleanup(
+        mask,
+        phase=phase,
+        long_axis_hint=(ma_mid, apex),
+    )
+    if int(np.count_nonzero(second)) < _LV_MASK_MIN_PIXELS or _pass2_mask_implausible(first, second):
+        return open_points, annulus, apex, first
+    try:
+        open_points2, annulus2, apex2 = open_arc_from_cavity_mask(
+            second,
+            original_shape=original_shape,
+            num_nodes=num_nodes,
+            view_hint=view_hint,
+        )
+    except ValueError:
+        return open_points, annulus, apex, first
+    apex2 = _canonical_apex(open_points2, annulus2, apex2)
+    return open_points2, annulus2, apex2, second
 
 
 def closed_polygon_to_open_arc(
