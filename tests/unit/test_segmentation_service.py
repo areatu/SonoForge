@@ -426,8 +426,8 @@ def test_lv_cavity_mask_to_open_arc_apex_matches_simpson_tip() -> None:
 
 
 def test_lv_cavity_mask_to_open_arc_pass2_hint_is_ma_mid_to_simpson_apex(monkeypatch) -> None:
-    from echo_personal_tool.domain.services.contour_geometry import apex_point
     from echo_personal_tool.domain.services import segmentation_service as seg
+    from echo_personal_tool.domain.services.contour_geometry import apex_point
 
     hints: list[tuple[tuple[float, float], tuple[float, float]] | None] = []
     real = seg.papillary_mask_cleanup
