@@ -632,7 +632,6 @@ def temporal_fuse(
     if len(center_nodes) >= 3:
         apex_idx = apex_index_on_open_arc(center_nodes, center_contour.mitral_annulus or annulus)
 
-
     neighbor_node_lists: list[list[tuple[float, float]]] = []
     for i in valid_neighbor_ids:
         c = aligned_neighbor_contours.get(i, neighbor_contours[i])
@@ -645,8 +644,7 @@ def temporal_fuse(
 
     if neighbor_node_lists and len(center_nodes) == n_nodes:
         median_nodes = [
-            _component_wise_median([center_nodes[j]] + [nl[j] for nl in neighbor_node_lists])
-            for j in range(n_nodes)
+            _component_wise_median([center_nodes[j]] + [nl[j] for nl in neighbor_node_lists]) for j in range(n_nodes)
         ]
         fused_nodes = clamp_nodes_to_center(
             median_nodes,

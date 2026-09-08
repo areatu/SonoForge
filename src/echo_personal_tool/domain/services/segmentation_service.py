@@ -1204,9 +1204,7 @@ def lv_cavity_mask_to_open_arc(
         phase=phase,
         long_axis_hint=(ma_mid, apex),
     )
-    if int(np.count_nonzero(second)) < _LV_MASK_MIN_PIXELS or _pass2_mask_implausible(
-        first, second
-    ):
+    if int(np.count_nonzero(second)) < _LV_MASK_MIN_PIXELS or _pass2_mask_implausible(first, second):
         return open_points, annulus, apex, first
     try:
         open_points2, annulus2, apex2 = open_arc_from_cavity_mask(

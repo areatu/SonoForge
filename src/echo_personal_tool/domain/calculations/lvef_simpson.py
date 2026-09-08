@@ -293,11 +293,7 @@ def explain_lv_auto_reject_reason(
     if annulus_px > 0 and arc_depth / annulus_px < _MIN_ARC_DEPTH_RATIO:
         return tr("domain.lvef.contour_too_flat", depth=arc_depth, annulus=annulus_px, ratio=_MIN_ARC_DEPTH_RATIO)
     ma_slope = _ma_slope_deg(contour)
-    if (
-        annulus_px > 0
-        and ma_slope > _MAX_MA_SLOPE_DEG
-        and arc_depth / annulus_px < _MIN_DEPTH_RATIO_STEEP_MA
-    ):
+    if annulus_px > 0 and ma_slope > _MAX_MA_SLOPE_DEG and arc_depth / annulus_px < _MIN_DEPTH_RATIO_STEEP_MA:
         return tr("domain.lvef.annulus_slope_implausible", angle=ma_slope)
 
     # v2: centroid outside ROI check
