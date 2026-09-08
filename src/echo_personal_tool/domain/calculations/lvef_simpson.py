@@ -221,7 +221,12 @@ def _contour_arc_depth_px(contour: Contour) -> float:
 
 
 def _a4c_apex_inverted(contour: Contour) -> bool:
-    """True when A4C apex sits on the basal side of the MA (larger image-y)."""
+    """True when A4C apex sits on the basal side of the MA (larger image-y).
+
+    In a normal A4C view the apex is displayed toward the top of the screen
+    (smaller image-y) and the MA is at the bottom (larger image-y).  An
+    inverted apex — below the MA — indicates a flipped or misoriented clip.
+    """
     if contour.view.upper() != "A4C" or contour.mitral_annulus is None:
         return False
     septal, lateral = contour.mitral_annulus

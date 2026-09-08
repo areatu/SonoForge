@@ -203,9 +203,9 @@ def test_contour_meets_lv_auto_quality_rejects_tiny_contour() -> None:
         phase="ED",
         view="A4C",
         chamber="LV",
-        mitral_annulus=((0.0, 0.0), (5.0, 0.0)),
-        points=[(0.0, 0.0), (2.5, 2.0), (5.0, 0.0)],
-        apex_landmark=(2.5, 2.0),
+        mitral_annulus=((0.0, 10.0), (5.0, 10.0)),
+        points=[(0.0, 10.0), (2.5, 8.0), (5.0, 10.0)],
+        apex_landmark=(2.5, 8.0),
     )
 
     assert explain_lv_auto_reject_reason(tiny, (0.5, 0.5)) is not None
