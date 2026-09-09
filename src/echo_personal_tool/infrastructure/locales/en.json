@@ -557,7 +557,7 @@
   "server_settings.use_tls": "Use TLS",
   "server_settings.username": "Username:",
   "server_settings.verify_certificate": "Verify server certificate",
-  "splash.words": "Local-first|Private|ASE aligned",
+  "splash.words": "",
   "status.a2c_auto_next": "A2C auto — coming next version",
   "status.ai_contour_cancelled": "AI contour cancelled — press LV Auto EDV/ESV",
   "status.area_tool": "Area: click along contour, double-click to close; points are draggable",
