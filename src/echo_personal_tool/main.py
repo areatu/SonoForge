@@ -150,6 +150,11 @@ def _pump_event_loop(app: QApplication, frames: int = 3, tick_ms: int = 12) -> N
 
     The main window is constructed synchronously on the GUI thread, so without
     pumping events the splash would freeze on its very first frame.
+
+    ``QThread.msleep`` intentionally blocks the GUI thread — the splash needs
+    wall-clock time for its paint events to reach the compositor.  Total
+    blocking is *frames × tick_ms* (default 36 ms); callers use 5 frames
+    (60 ms) after show() and 2 frames (24 ms) after MainWindow is ready.
     """
     from PySide6.QtCore import QThread
 
