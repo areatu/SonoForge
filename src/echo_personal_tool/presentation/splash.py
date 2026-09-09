@@ -132,6 +132,22 @@ def _white_logo_path() -> Path:
     return base / "logo.png"
 
 
+def _placeholder_logo(width: int) -> QPixmap:
+    """Fallback pixmap when logo files are missing (e.g. broken install)."""
+    from PySide6.QtCore import QSize
+
+    pm = QPixmap(QSize(width, width))
+    pm.fill(QColor("#000000"))
+    painter = QPainter(pm)
+    painter.setPen(QColor("#ffffff"))
+    font = QFont(FONT_FAMILY_UI, max(12, width // 10))
+    font.setWeight(QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "SonoForge")
+    painter.end()
+    return pm
+
+
 def _lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * max(0.0, min(1.0, t))
 
@@ -351,7 +367,8 @@ class SplashScreen(QWidget):
         logo_path = _white_logo_path()
         pixmap = QPixmap(str(logo_path)) if logo_path.exists() else QPixmap()
         if pixmap.isNull():
-            raise FileNotFoundError(f"White logo asset not found: {logo_path}")
+            logger.warning("splash: logo not found at %s, using placeholder", logo_path)
+            pixmap = _placeholder_logo(logo_w)
         pixmap = pixmap.scaledToWidth(logo_w, Qt.TransformationMode.SmoothTransformation)
 
         self._fill = _LogoFill(pixmap, self)
