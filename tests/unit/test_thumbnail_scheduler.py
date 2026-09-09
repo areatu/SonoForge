@@ -138,3 +138,15 @@ def test_scheduler_repeated_reprioritize_does_not_dispatch_duplicates() -> None:
     assert batch[0].sop_instance_uid == "uid-dup"
     assert batch[0].priority == ThumbnailPriority.P0_VISIBLE_SELECTED
     assert second_batch == []
+
+
+def test_reset_discards_old_generation_queue_and_inflight():
+    scheduler = ThumbnailScheduler(max_in_flight=1)
+    scheduler.enqueue("old-running", ThumbnailPriority.P2_BACKGROUND)
+    scheduler.enqueue("old-queued", ThumbnailPriority.P2_BACKGROUND)
+    scheduler.next_batch(1)
+    scheduler.reset()
+    scheduler.enqueue("new", ThumbnailPriority.P1_NEAR_VISIBLE)
+    assert [t.sop_instance_uid for t in scheduler.next_batch(10)] == ["new"]
+    scheduler.mark_done("new")
+    assert scheduler.next_batch(10) == []

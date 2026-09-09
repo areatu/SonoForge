@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event
 
 import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Qt, Signal, Slot
@@ -94,6 +95,7 @@ class ThumbnailLoaderWorker(QRunnable):
         parent: QObject | None = None,
     ) -> None:
         super().__init__()
+        self._cancelled = Event()
         self._path = Path(path)
         self._sop_instance_uid = sop_instance_uid
         self._number_of_frames = number_of_frames
@@ -103,9 +105,16 @@ class ThumbnailLoaderWorker(QRunnable):
         self.signals = ThumbnailLoaderSignals()
         self.setAutoDelete(True)
 
+    def cancel(self) -> None:
+        """Cooperative cancellation; never interrupt a native decoder mid-call."""
+        self._cancelled.set()
+
     @Slot()
     def run(self) -> None:
         try:
+            if self._cancelled.is_set():
+                self.signals.failed.emit(self._sop_instance_uid, "cancelled")
+                return
             frame_index = thumbnail_frame_index(self._number_of_frames)
             if self._media_format == "mp4":
                 reader = get_thread_video_reader(self._path)
@@ -114,7 +123,7 @@ class ThumbnailLoaderWorker(QRunnable):
             elif self._media_format in ("jpeg", "png"):
                 pixels = ImageReader().read_pixels(self._path)
             else:
-                reader = DicomReaderImpl()
+                reader = DicomReaderImpl(isolated=True)
                 pixels = reader.read_pixels(self._path, frame_index=frame_index)
             # MVP is strict preview-only: preview_only=False is kept for compatibility
             # but currently does not switch to full-size rendering.
@@ -123,6 +132,9 @@ class ThumbnailLoaderWorker(QRunnable):
                 size=self._preview_size,
                 media_format=self._media_format,
             )
-            self.signals.finished.emit(self._sop_instance_uid, image)
+            if self._cancelled.is_set():
+                self.signals.failed.emit(self._sop_instance_uid, "cancelled")
+            else:
+                self.signals.finished.emit(self._sop_instance_uid, image)
         except Exception as exc:  # noqa: BLE001 - surface to UI
             self.signals.failed.emit(self._sop_instance_uid, str(exc))

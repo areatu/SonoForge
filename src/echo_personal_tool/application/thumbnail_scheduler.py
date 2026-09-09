@@ -38,6 +38,14 @@ class ThumbnailScheduler:
         self._sequence = count()
         self._lock = RLock()
 
+    def reset(self) -> None:
+        """Forget a folder generation; the controller ignores old completions."""
+        with self._lock:
+            self._heap.clear()
+            self._queued_by_uid.clear()
+            self._in_flight.clear()
+            self._generation_by_uid.clear()
+
     def enqueue(self, uid: str, priority: ThumbnailPriority) -> bool:
         with self._lock:
             if not uid:

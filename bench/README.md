@@ -14,6 +14,25 @@
 | `reports/` | Общие отчёты (LV baseline, finetuned, smoothing) |
 | `cine720/` | Измерительный комплект плавности cine-playback 1280×720 (см. `cine720/README.md` и `docs/bench/2026-09-06-cine-720p-playback-audit.md`) |
 
+## Загрузка DICOM-папок
+
+`dicom_loading_audit.py` разделяет чтение заголовка, подготовку PixelData, первый
+кадр, покадровое и полное декодирование; считает full-cine fallback и сравнивает
+масштабирование на 1/2/4 потоках. Не требует GUI, не меняет исходные DICOM.
+
+```bash
+python bench/dicom_loading_audit.py /path/to/dicom-folder \
+  --limit 30 --reference --output bench/reports/loading.json
+```
+
+Начинайте **без `--bulk`**, чтобы не выделять память под весь cine. В исходной
+версии fallback декодировал весь ролик ради каждого кадра; исправленная версия
+использует индексированный доступ. `--synthetic` создаёт временные тестовые файлы, `--alternatives`
+сравнивает J2K через cv2 с текущим backend (скорость и sampled pixel equality).
+
+Подробности, ограничения измерений и план оптимизации:
+[расследование загрузки DICOM, 2026-09-09](../docs/bench/2026-09-09-dicom-folder-loading-audit.md).
+
 ## Метрики
 
 - **Dice coefficient** —Overlap масок

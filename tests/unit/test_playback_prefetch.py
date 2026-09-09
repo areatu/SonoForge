@@ -932,3 +932,78 @@ def test_deferred_gc_runs_when_paused_again(qapp, tmp_path, gc_recorder) -> None
 
     assert controller._last_gc_collect_at > 0.0
     assert gc_recorder[-1] == (0,)
+
+
+@pytest.mark.parametrize("frames", [2, 5, 55, 60, 61, 380])
+def test_play_starts_with_minimal_batch_not_full_cine(qapp, tmp_path, frames):
+    from dataclasses import replace
+
+    started = []
+
+    class Pool:
+        def start(self, worker):
+            started.append(worker)
+
+    controller = AppController(thread_pool=Pool())
+    path = tmp_path / "cine.dcm"
+    inst = replace(_mp4_instance(path, frames=frames), media_format="dicom")
+    controller._current_instance = inst
+    controller._frame_cache.set_total_frames(path, frames)
+    controller._frame_cache.put(0, np.zeros((16, 16), dtype=np.uint8))
+    controller._state_manager.set_instance(inst, total_frames=frames, frame_time_ms=33.3, emit=False)
+    controller.set_playing(True)
+    try:
+        assert len(started) == 1
+        assert started[0]._frame_index == 1
+        expected = min(controller._playback_config.min_buffer, frames - 1)
+        assert started[0]._batch_size == expected
+        request_id = controller._prefetch_load_id
+        decoded = [(i, np.full((16, 16), i, dtype=np.uint8)) for i in range(1, expected + 1)]
+        controller._on_prefetch_batch_loaded(request_id, path, decoded)
+        assert len(started) == 1, "don't launch a large refill before warmup has been consumed"
+        assert controller._playback_warmup_pending
+        controller._advance_playback()
+        assert not controller._playback_warmup_pending
+        controller._advance_playback()
+        assert controller._state_manager.snapshot.current_frame_index == 1
+    finally:
+        controller.set_playing(False)
+        controller._timer.stop()
+
+
+def test_startup_batch_handles_wrap_and_uses_already_cached_frames(qapp, tmp_path):
+    from dataclasses import replace
+
+    started = []
+
+    class Pool:
+        def start(self, worker):
+            started.append(worker)
+
+    controller = AppController(thread_pool=Pool())
+    path = tmp_path / "wrap.dcm"
+    inst = replace(_mp4_instance(path, frames=55), media_format="dicom")
+    controller._current_instance = inst
+    controller._frame_cache.set_total_frames(path, 55)
+    for i in (0, 53):
+        controller._frame_cache.put(i, np.zeros((16, 16), dtype=np.uint8))
+    controller._state_manager.set_instance(inst, total_frames=55, frame_time_ms=33.3, emit=False)
+    controller._state_manager.set_frame(53)
+    started.clear()  # any unrelated frame-navigation request
+    controller.set_playing(True)
+    try:
+        assert started[0]._frame_index == 54
+        assert started[0]._batch_size == 1
+        controller._on_prefetch_batch_loaded(controller._prefetch_load_id, path, [(54, np.zeros((16, 16), np.uint8))])
+        assert started[1]._frame_index == 1  # frame zero already cached
+        assert started[1]._batch_size == controller._startup_buffer_frames() - 2
+    finally:
+        controller.set_playing(False)
+        controller._timer.stop()
+
+
+def test_old_cine_prefetch_does_not_contaminate_new_cache(qapp, tmp_path):
+    controller = _timing_controller(tmp_path)
+    before = controller._frame_cache.memory_bytes()
+    controller._on_prefetch_batch_loaded(-1, tmp_path / "old.dcm", [(1, np.zeros((16, 16), np.uint8))])
+    assert controller._frame_cache.memory_bytes() == before

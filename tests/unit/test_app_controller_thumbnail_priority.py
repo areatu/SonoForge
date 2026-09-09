@@ -314,3 +314,72 @@ def test_thumbnail_failure_releases_slot_and_dispatches_next(
         worker.sop_instance_uid for worker in thread_pool.started if isinstance(worker, _FakeThumbnailWorker)
     ]
     assert started_uids[:2] == ["fail-1", "next-2"]
+
+
+def test_gallery_callback_promotes_last_of_114_over_background(qapp, monkeypatch, tmp_path):
+    from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.ThumbnailLoaderWorker", _FakeThumbnailWorker)
+    pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=pool, thumbnail_max_in_flight=1)
+    gallery = ThumbnailGalleryWidget()
+    try:
+        gallery.set_thumbnail_loader(controller.load_thumbnail)
+        assert gallery._loader_accepts_priority, "production callback must expose the priority argument"
+        instances = [_thumbnail_instance(f"uid-{i}", tmp_path) for i in range(114)]
+        for instance in instances:
+            controller.load_thumbnail(instance)
+        # This is the callback the gallery uses after scrolling to the end.
+        gallery._thumbnail_loader(instances[-1], ThumbnailPriority.P1_NEAR_VISIBLE)
+        pool.started[0].signals.finished.emit(instances[0].sop_instance_uid, QImage())
+        assert pool.started[1].sop_instance_uid == instances[-1].sop_instance_uid
+    finally:
+        gallery.close()
+        gallery.deleteLater()
+
+
+def test_thumbnail_pump_pauses_for_play_and_first_frame_and_resumes(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.ThumbnailLoaderWorker", _FakeThumbnailWorker)
+    pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=pool, thumbnail_max_in_flight=1)
+    a, b = [_thumbnail_instance(uid, tmp_path) for uid in ("a", "b")]
+    controller.load_thumbnail(a)
+    controller.load_thumbnail(b)
+    controller._state_manager.set_playing(True)
+    pool.started[0].signals.finished.emit("a", QImage())
+    assert len(pool.started) == 1
+    controller._state_manager.set_playing(False)
+    controller._pending_decode_id = 123
+    controller._pump_thumbnail_queue()
+    assert len(pool.started) == 1
+    controller._pending_decode_id = 0
+    controller._pump_thumbnail_queue()
+    assert len(pool.started) == 2
+    assert pool.started[1].sop_instance_uid == "b"
+
+
+def test_old_folder_completion_never_overwrites_new_preview_or_exceeds_limit(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr("echo_personal_tool.application.app_controller.ThumbnailLoaderWorker", _FakeThumbnailWorker)
+    monkeypatch.setattr(_FakeThumbnailWorker, "cancel", lambda self: None, raising=False)
+    pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=pool, thumbnail_max_in_flight=1)
+    a = _thumbnail_instance("same-uid", tmp_path)
+    emitted = []
+    controller.thumbnail_loaded.connect(lambda *args: emitted.append(args))
+    controller.load_thumbnail(a)
+    old = pool.started[0]
+    controller._reset_thumbnail_queue()
+    controller.load_thumbnail(a)
+    assert len(pool.started) == 1, "old generation must still count against the decode limit"
+    old.signals.finished.emit("same-uid", QImage())
+    assert emitted == []
+    assert len(pool.started) == 2
+    pool.started[1].signals.finished.emit("same-uid", QImage())
+    assert len(emitted) == 1
+    assert controller._thumbnail_workers == {}
+
+
+def test_production_preview_pool_is_separate_and_bounded(qapp):
+    controller = AppController()
+    assert controller._thumbnail_pool is not controller._thread_pool
+    assert controller._thumbnail_pool.maxThreadCount() == 2
