@@ -202,3 +202,36 @@ def test_unvalidated_j2k_formats_keep_existing_backend(monkeypatch, syntax, samp
     monkeypatch.setattr(impl, "_decode_fragment_cv2", no_candidate)
     monkeypatch.setattr(impl, "_decode_compressed_frame", lambda *args: expected)
     assert session._decode_single_frame(0) is expected
+
+
+def test_dicom_without_pixel_data_raises_value_error(tmp_path):
+    """A DICOM file with no pixel data must raise ValueError (not raw AttributeError)."""
+    from pydicom.dataset import FileDataset, FileMetaDataset
+    from pydicom.uid import ExplicitVRLittleEndian
+
+    file_meta = FileMetaDataset()
+    file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+    file_meta.MediaStorageSOPInstanceUID = "1.2.3"
+    file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+
+    path = tmp_path / "no_pixels.dcm"
+    ds = FileDataset(str(path), {}, file_meta=file_meta, preamble=b"\x00" * 128)
+    ds.SOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+    ds.SOPInstanceUID = "1.2.3"
+    ds.StudyInstanceUID = "1.2.4"
+    ds.SeriesInstanceUID = "1.2.5"
+    ds.Modality = "CT"
+    ds.Rows = 64
+    ds.Columns = 64
+    ds.BitsAllocated = 8
+    ds.BitsStored = 8
+    ds.HighBit = 7
+    ds.PixelRepresentation = 0
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    # Intentionally omit PixelData
+    ds.save_as(str(path))
+
+    reader = DicomReaderImpl(isolated=True)
+    with pytest.raises(ValueError, match="no pixel data"):
+        reader.read_pixels(path, frame_index=0)

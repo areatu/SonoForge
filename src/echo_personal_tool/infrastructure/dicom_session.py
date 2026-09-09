@@ -664,9 +664,10 @@ class DicomSession:
             elif hasattr(full_ds, "DoubleFloatPixelData"):
                 self._pixel_data_raw = bytes(full_ds.DoubleFloatPixelData)
             else:
-                # File has no pixels (e.g., SR or PR). Mark as empty bytes
-                # to avoid repeated parsing.
-                self._pixel_data_raw = b""
+                raise ValueError(
+                    "DICOM file has no pixel data to decode. "
+                    "It may be a non-image DICOM (e.g., Structured Report, Presentation State)."
+                )
 
         # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
         self._raw_bytes = None
@@ -800,7 +801,13 @@ class DicomSession:
         """
         if self._open_path is None:
             raise RuntimeError("DICOM is not open; call open() first")
-        pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
+        try:
+            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
+        except AttributeError as exc:
+            raise ValueError(
+                "DICOM file has no pixel data to decode. "
+                "It may be a non-image DICOM (e.g., Structured Report, Presentation State)."
+            ) from exc
         return np.array(pixels, copy=True, order="C")
 
     @_synchronized
