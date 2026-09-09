@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>SonoForge — Splash 4.1 (компактная карточка 620×430)</title>
+<style>
+  :root {
+    --bg-page: #0a0f16; --line: #1f2c3b; --accent: #40e2de; --dim: #9aabbe;
+    --mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background: radial-gradient(1200px 500px at 50% -10%, #12233a 0%, rgba(18,35,58,0) 60%), var(--bg-page);
+    color:#e8eef5; font-family:var(--sans); font-size:14px; line-height:1.5; padding:30px 24px 90px; }
+  h1 { font-size:21px; font-weight:600; margin:0 0 6px; }
+  .sub { color:var(--dim); max-width:980px; margin:0 0 4px; }
+  .sub b { color:#e8eef5; }
+  header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; }
+  button { font-family:var(--sans); font-size:12.5px; color:#e8eef5; background:#16202c; border:1px solid var(--line); border-radius:8px; padding:7px 14px; cursor:pointer; }
+  button:hover { border-color: var(--accent); }
+  .nav { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 18px; }
+  .nav a { font-size:12px; color:var(--dim); border:1px dashed #2c3e52; border-radius:20px; padding:4px 12px; text-decoration:none; }
+  .nav a b { color:var(--accent); font-weight:600; }
+  .nav a:hover { border-color: var(--accent); }
+
+  .demo-a { position:relative; width:860px; max-width:100%; height:600px; margin:0 0 12px;
+    border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#07090d; }
+  .mock-app { position:absolute; inset:0; display:flex; flex-direction:column; background:#0e1826; }
+  .mock-app.light { background:#eef3f9; }
+  .mock-titlebar { height:40px; flex:0 0 40px; display:flex; align-items:center; gap:10px; padding:0 14px;
+    background:#10213a; border-bottom:1px solid #1c3350; color:#cdd9e4; font-size:12.5px; font-weight:500; }
+  .mock-app.light .mock-titlebar { background:#fff; border-color:#d8e2ec; color:#33475c; }
+  .mock-body { flex:1; display:flex; min-height:0; }
+  .mock-activities { width:52px; border-right:1px solid #16283f; background:#0d1a2b; padding:12px 0; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .mock-activities span { width:24px; height:24px; border-radius:7px; background:#13253c; }
+  .mock-activities span.on { background:rgba(64,226,222,.22); box-shadow:inset 0 0 0 1px rgba(64,226,222,.5); }
+  .mock-viewer { flex:1; position:relative; }
+  .sector { position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); width:62%; height:74%;
+    background:radial-gradient(ellipse at 50% 0%, #0b2233 0%, #09131f 58%, #0b1219 100%);
+    clip-path:polygon(30% 100%, 70% 100%, 100% 0%, 0% 0%); opacity:.9; }
+  .mock-panel { width:190px; border-left:1px solid #16283f; background:#0f1c2e; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .mock-panel .row { height:14px; border-radius:4px; background:#15263d; }
+  .mock-panel .row.accent { height:24px; background:rgba(64,226,222,.16); }
+  .mock-strip { height:70px; flex:0 0 70px; border-top:1px solid #16283f; background:#0d1928; display:flex; gap:8px; align-items:center; padding:8px 12px; }
+  .mock-strip .th { width:62px; height:100%; border-radius:6px; background:linear-gradient(#122a40,#0c1a2b); }
+
+  /* — 4.1: центр-карточка поверх затемнённого фона окна —
+     в Qt: SplashScreen(compact=True) — окно 620×430, радиус 26, по центру экрана */
+  .cardback { position:absolute; inset:0; background:#05070a; opacity:.72; z-index:4; transition:opacity .42s; }
+  .cardback.gone { opacity:0; pointer-events:none; }
+  .card { position:absolute; left:50%; top:50%; width:620px; height:430px; transform:translate(-50%,-50%);
+    background:#000; border-radius:26px; box-shadow:0 0 0 1px #151d27, 0 24px 70px rgba(0,0,0,.7);
+    z-index:5; transition:transform .42s cubic-bezier(.22,.61,.36,1), opacity .42s; }
+  .boot { position:absolute; inset:0; background:#000; border-radius:26px; overflow:hidden; transition:opacity .42s; }
+  .boot.gone { opacity:0; pointer-events:none; }
+  .boot canvas { position:absolute; left:150px; top:38px; }
+  .pct { position:absolute; left:308px; top:336px; transform:translateX(-50%);
+    font-size:19px; font-weight:700; color:rgba(255,255,255,.78); font-variant-numeric:tabular-nums; }
+  .bw { position:absolute; font-size:18px; font-weight:700; color:rgba(255,255,255,.95); white-space:nowrap; }
+  .bw.w0 { left:168px; top:47px; transform:translateX(-100%); }  /* left of logo, top zone */
+  .bw.w1 { left:452px; top:6px; }                                /* right, higher */
+  .bw.w2 { left:162px; top:388px; transform:translateX(-100%); }  /* below-left */
+
+  .demo-caption { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:12px 0 28px; }
+  .badge { font-size:11px; font-family:var(--mono); border:1px solid rgba(64,226,222,.4); color:var(--accent); border-radius:20px; padding:2px 9px; }
+  .stage-tag { font-family:var(--mono); font-size:11px; color:#6e8296; border:1px solid var(--line); border-radius:20px; padding:2px 10px; background:#0d141d; }
+  .note { font-size:12.5px; color:var(--dim); border:1px dashed #2c3e52; border-radius:10px; padding:10px 14px; max-width:1020px; background:rgba(16,23,32,.6); }
+  .note code { font-family:var(--mono); font-size:11.5px; color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SonoForge — заставка · концепт 4.1 (компактная карточка)</h1>
+    <p class="sub">Тот же logo-fill, что в концепте 4, но <b>не на весь экран</b>: окно 620×430 с радиусом 26 — карточка по центру поверх слегка затемнённого «окна приложения». На маленьких экранах карточка масштабируется. После финального кадра карточка мягко уходит, и появляется главное окно.</p>
+  </div>
+  <div class="controls">
+    <button id="btn-replay">↻ Повторить</button>
+    <button id="btn-lang">RU</button>
+    <button id="btn-theme">Приложение: тёмное / светлое</button>
+  </div>
+</header>
+
+<div class="nav">
+  <a href="index.html">4 · fullscreen logo-fill</a>
+  <a href="index4-1.html"><b>4.1 · компактная карточка — этот файл (актуальный)</b></a>
+  <a href="index3.html">3 · logo-fill v1 (с брызгами)</a>
+  <a href="index2.html">2 · black boot + бар</a>
+  <a href="index1.html">1 · компактное окно</a>
+</div>
+
+<div class="demo-a" id="demoA">
+  <div class="mock-app" id="mockApp">
+    <div class="mock-titlebar"><span style="margin-left:6px">SonoForge</span></div>
+    <div class="mock-body">
+      <div class="mock-activities"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+      <div class="mock-viewer"><div class="sector"></div></div>
+      <div class="mock-panel"><div class="row accent"></div><div class="row"></div><div class="row"></div></div>
+    </div>
+    <div class="mock-strip"><div class="th"></div><div class="th"></div><div class="th"></div></div>
+  </div>
+
+  <div class="cardback" id="cardbackA"></div>
+  <div class="card" id="cardA">
+    <div class="boot" id="bootA">
+      <canvas id="logoCanvas" width="380" height="380"></canvas>
+      <div class="pct" id="pctA">0%</div>
+      <span class="bw w0" id="w0"></span>
+      <span class="bw w1" id="w1"></span>
+      <span class="bw w2" id="w2"></span>
+    </div>
+  </div>
+</div>
+
+<div class="demo-caption">
+  <span class="badge">4.1 · РЕАЛИЗОВАНО В КОДЕ (ECHO_SPLASH_COMPACT=1)</span>
+  <span class="stage-tag">карточка 620×430 · радиус 26 · затемнение фона · слова/проценты масштабируются от карточки · в конце карточка «уезжает» к центру → окно приложения</span>
+</div>
+
+<p class="note">💡 <b>Итоговое состояние то же, что в 4:</b> слова появляются асимметрично вокруг логотипа (левый-верх близко, правый-верх выше и дальше, левый-низ далеко), маска волнистая без брызг, честные проценты. В Qt: <code>SplashScreen(compact=True)</code>; 4.1 включается через <code>ECHO_SPLASH_COMPACT=1</code>, чтобы посмотреть обе версии без пересборки.</p>
+
+<script>
+  const LANG = { ru: { words: ["Локально", "Конфиденциально", "Стандарты ASE"] },
+                 en: { words: ["Local-first", "Private", "ASE aligned"] } };
+  const ZONES = [[16, 58], [34, 76], [52, 96]];
+  const TARGETS = [8, 18, 30, 44, 58, 72, 84, 92];
+  const STEP_MS = 420, EASE_MS = 380;
+  let lang = "ru", timers = [], raf = 0;
+  const card = document.getElementById("cardA"), cardback = document.getElementById("cardbackA");
+  const boot = document.getElementById("bootA"), canvas = document.getElementById("logoCanvas");
+  const ctx = canvas.getContext("2d");
+  const img = new Image();
+  img.src = "../../src/echo_personal_tool/resources/logo_dark.png";
+  const CW = 380, CH = 380, LO = 220, LOH = LO * 910 / 960;
+  const LX = (CW - LO) / 2, LY = 42 + (CH - 150 - LOH) / 2;
+  const pctEl = document.getElementById("pctA");
+  const wordsEl = [document.getElementById("w0"), document.getElementById("w1"), document.getElementById("w2")];
+  let p = 0, target = 0, a0 = 0, a1 = 0, t0 = 0, phase = 0, done = false;
+
+  function easeOut(t) { return 1 - Math.pow(1 - t, 2); }
+  function renderWords() {
+    for (let i = 0; i < 3; i++) {
+      const [s, e] = ZONES[i];
+      const t = p <= s ? 0 : Math.min(1, (p - s) / (e - s));
+      wordsEl[i].style.opacity = (0.08 + 0.88 * t).toFixed(3);
+      wordsEl[i].style.filter = "blur(" + (16 * (1 - t)).toFixed(1) + "px)";
+    }
+  }
+  function draw() {
+    ctx.clearRect(0, 0, CW, CH);
+    const f = Math.max(0, Math.min(1, p / 100));
+    ctx.globalAlpha = 0.10 + 0.90 * f;
+    ctx.drawImage(img, LX, LY, LO, LOH);
+    if (f >= 0.995) { ctx.globalAlpha = 1; ctx.drawImage(img, LX, LY, LO, LOH); ctx.globalAlpha = 1; return; }
+    const edge = LY + LOH * (1 - f);
+    const waveY = (x) => edge + 2.4 * Math.sin((x - LX) / LO * Math.PI * 2 * 2.6 + phase);
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(LX - 2, edge);
+    for (let x = LX - 2; x <= LX + LO + 2; x += 6) ctx.lineTo(x, waveY(x));
+    ctx.lineTo(LX + LO + 2, CH + 2); ctx.lineTo(LX - 2, CH + 2); ctx.closePath();
+    ctx.clip(); ctx.globalAlpha = 0.98; ctx.drawImage(img, LX, LY, LO, LOH); ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+  function frame(now) {
+    phase = now / 520;
+    if (p !== target) {
+      const t = Math.min(1, (now - t0) / EASE_MS);
+      p = a0 + (a1 - a0) * easeOut(t);
+      if (t >= 1) p = target;
+    }
+    pctEl.textContent = Math.round(p) + "%";
+    pctEl.style.color = "rgba(255,255,255," + (0.55 + 0.45 * p / 100).toFixed(2) + ")";
+    renderWords(); draw();
+    raf = requestAnimationFrame(frame);
+  }
+  function clearT() { while (timers.length) clearTimeout(timers.pop()); }
+  function play() {
+    clearT(); boot.classList.remove("gone"); cardback.classList.remove("gone");
+    card.style.transform = "translate(-50%,-50%)"; card.style.opacity = "1";
+    p = 0; target = 0; done = false;
+    pctEl.textContent = "0%";
+    LANG[lang].words.forEach((w, i) => wordsEl[i].textContent = w);
+    renderWords();
+    let idx = 0;
+    const step = () => {
+      if (done) return;
+      if (idx < TARGETS.length) { a0 = p; a1 = TARGETS[idx]; t0 = performance.now(); target = a1; idx++;
+        timers.push(setTimeout(step, STEP_MS)); }
+      else { done = true; a0 = p; a1 = 100; t0 = performance.now(); target = 100;
+        timers.push(setTimeout(() => {
+          boot.classList.add("gone"); cardback.classList.add("gone");
+          card.style.transform = "translate(-50%,-50%) scale(.86)"; card.style.opacity = "0";
+          timers.push(setTimeout(play, 1200));
+        }, 1500)); }
+    };
+    timers.push(setTimeout(step, STEP_MS));
+  }
+  img.onload = () => {
+    document.getElementById("btn-replay").addEventListener("click", play);
+    document.getElementById("btn-lang").addEventListener("click", () => {
+      lang = lang === "ru" ? "en" : "ru";
+      document.getElementById("btn-lang").textContent = lang.toUpperCase(); play(); });
+    document.getElementById("btn-theme").addEventListener("click", () => {
+      document.getElementById("mockApp").classList.toggle("light"); play(); });
+    play(); requestAnimationFrame(frame);
+  };
+</script>
+</body>
+</html>

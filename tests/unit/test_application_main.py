@@ -49,6 +49,8 @@ def test_main_returns_zero_on_normal_exit() -> None:
             startup_mode="new_window",
             last_opened_folder="",
             ui_font_size=10,
+            language="en",
+            reduce_motion=False,
         )
         mock_mw_cls.return_value = MagicMock()
 
@@ -81,6 +83,8 @@ def test_main_last_folder_opens_on_startup() -> None:
             startup_mode="last_folder",
             last_opened_folder="/tmp/echo_test_folder_that_exists_42",
             ui_font_size=10,
+            language="en",
+            reduce_motion=False,
         )
         mock_window = MagicMock()
         mock_mw_cls.return_value = mock_window
@@ -116,6 +120,8 @@ def test_main_prints_profiler_on_exit() -> None:
             startup_mode="new_window",
             last_opened_folder="",
             ui_font_size=10,
+            language="en",
+            reduce_motion=False,
         )
         mock_mw_cls.return_value = MagicMock()
 
