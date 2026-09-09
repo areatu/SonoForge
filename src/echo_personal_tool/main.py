@@ -244,7 +244,7 @@ def main() -> int:
     app.setFont(ui_font(point_size=preferences.ui_font_size))
 
     # UI language must be set before the splash is created (its labels are localized).
-    from echo_personal_tool.infrastructure.i18n import set_language, tr
+    from echo_personal_tool.infrastructure.i18n import set_language
 
     set_language(preferences.language)
 
@@ -260,10 +260,9 @@ def main() -> int:
     if is_splash_enabled():
         from echo_personal_tool.presentation.splash import SplashScreen
 
-        _compact = os.environ.get("ECHO_SPLASH_COMPACT", "0").strip().lower()
+        _compact = os.environ.get("ECHO_SPLASH_COMPACT", "1").strip().lower()
         _compact = _compact not in ("", "0", "false", "no", "off")
         splash = SplashScreen(
-            words=tuple(w for w in tr("splash.words").split("|") if w.strip()),
             reduce_motion=preferences.reduce_motion,
             compact=_compact,
         )
