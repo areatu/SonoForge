@@ -279,7 +279,6 @@ class SplashScreen(QWidget):
         self,
         *,
         words: tuple[str, ...] = (),
-        theme_mode: str = "dark",  # noqa: ARG002 - kept for API compatibility
         reduce_motion: bool = False,
         app_name: str = "SonoForge",
         compact: bool = False,
