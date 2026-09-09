@@ -109,7 +109,7 @@ def is_splash_enabled() -> bool:
     QApplication is running yet (e.g. headless/mocked unit tests that
     exercise ``main()`` with a stubbed application object).
     """
-    if not _env_flag("ECHO_NO_SPLASH", default=True):
+    if _env_flag("ECHO_NO_SPLASH", default=False):
         return False
     try:
         from PySide6.QtWidgets import QApplication

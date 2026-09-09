@@ -162,7 +162,12 @@ class TestSplashTimeline:
         splash.show_and_play()
         splash.complete_with(dummy, on_complete=lambda win: (win.show(), revealed.append(win)))
         qtbot.waitUntil(lambda: len(revealed) == 1, timeout=3000)
-        qtbot.waitUntil(lambda: not splash.isVisible(), timeout=3000)
+        # Wait for fade animation to finish and _close_splash to run
+        qtbot.wait(100)
+        try:
+            assert not splash.isVisible()
+        except RuntimeError:
+            pass  # C++ object already deleted by deleteLater()
         assert revealed[0] is dummy
 
     def test_reduce_motion_shows_words_immediately(self, qtbot, monkeypatch) -> None:
