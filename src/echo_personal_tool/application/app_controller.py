@@ -174,7 +174,7 @@ class AppController(QObject):
         thread_pool: QThreadPool | None = None,
         segmenter: IOnnxSegmenter | None = None,
         thumbnail_scheduler: ThumbnailScheduler | None = None,
-        thumbnail_max_in_flight: int = 6,
+        thumbnail_max_in_flight: int = 2,
     ) -> None:
         super().__init__()
         self._thread_pool = thread_pool or QThreadPool.globalInstance()
@@ -250,6 +250,13 @@ class AppController(QObject):
             if thumbnail_scheduler is not None
             else ThumbnailScheduler(max_in_flight=self._thumbnail_max_in_flight)
         )
+        # Keep thumbnail work out of the interactive pool's FIFO. Tests/custom
+        # executors can still inject one pool; production gets a bounded preview pool.
+        self._thumbnail_pool = thread_pool if thread_pool is not None else QThreadPool(self)
+        if thread_pool is None:
+            self._thumbnail_pool.setMaxThreadCount(thumbnail_max_in_flight)
+        self._thumbnail_generation = 0
+        self._thumbnail_workers: dict[tuple[int, str], ThumbnailLoaderWorker] = {}
         self._thumbnail_instances: dict[str, InstanceMetadata] = {}
         self._thumbnail_in_flight: dict[str, ThumbnailPriority] = {}
         self._current_frame_pixels: np.ndarray | None = None
@@ -386,6 +393,7 @@ class AppController(QObject):
         return self._scroll_active
 
     def open_folder(self, root: Path, error_log_path: Path | None = None) -> None:
+        self._reset_thumbnail_queue()
         self._measurement_session.clear()
         self._current_study_uid = None
         self._scan_started_at = perf_counter()
@@ -400,6 +408,7 @@ class AppController(QObject):
 
     def load_pre_scanned_studies(self, studies: list[StudyMetadata]) -> None:
         """Load studies already built by the download worker (skip ScanWorker)."""
+        self._reset_thumbnail_queue()
         n_inst = sum(len(s.instances) for st in studies for s in st.series)
         logger.info("[CTRL] load_pre_scanned_studies: %d studies, %d instances", len(studies), n_inst)
         self._measurement_session.clear()
@@ -557,8 +566,34 @@ class AppController(QObject):
 
         self._request_frame_if_needed(self._state_manager.snapshot)
 
-    def load_thumbnail(self, instance: InstanceMetadata) -> None:
-        self.request_thumbnail_preview(instance, ThumbnailPriority.P2_BACKGROUND)
+    def load_thumbnail(
+        self,
+        instance: InstanceMetadata,
+        priority: ThumbnailPriority = ThumbnailPriority.P2_BACKGROUND,
+    ) -> None:
+        # The gallery inspects this callback's signature. Do not drop the viewport
+        # priority here: otherwise scrolling to file 114 leaves it behind files 1–113.
+        self.request_thumbnail_preview(instance, priority)
+
+    def _reset_thumbnail_queue(self) -> None:
+        self._thumbnail_generation += 1
+        self._thumbnail_scheduler.reset()
+        self._thumbnail_instances.clear()
+        self._thumbnail_in_flight.clear()
+        # Keep old workers counted until their completion reaches the GUI thread,
+        # including on repeated folder switches; the global in-flight limit still holds.
+        for worker in self._thumbnail_workers.values():
+            worker.cancel()
+
+    def _thumbnail_completed(self, generation: int, uid: str, result: object, *, failed: bool) -> None:
+        self._thumbnail_workers.pop((generation, uid), None)
+        if generation != self._thumbnail_generation:
+            self._pump_thumbnail_queue()
+            return
+        if failed:
+            self._on_thumbnail_failed(uid, str(result))
+        else:
+            self._on_thumbnail_loaded(uid, result)
 
     def request_thumbnail_preview(
         self,
@@ -590,8 +625,13 @@ class AppController(QObject):
         self._pump_thumbnail_queue()
 
     def _pump_thumbnail_queue(self) -> None:
+        # Let at most the already running previews finish. Don't keep replenishing
+        # background decode while the user waits for the first frame or presses Play.
+        if self._pending_decode_id or self._state_manager.snapshot.is_playing:
+            return
         while True:
-            batch = self._thumbnail_scheduler.next_batch(limit=16)
+            slots = self._thumbnail_max_in_flight - len(self._thumbnail_workers)
+            batch = self._thumbnail_scheduler.next_batch(limit=slots)
             if not batch:
                 return
             for task in batch:
@@ -607,10 +647,16 @@ class AppController(QObject):
                     media_format=instance.media_format,
                     parent=self,
                 )
-                worker.signals.finished.connect(self._on_thumbnail_loaded, Qt.ConnectionType.QueuedConnection)
-                worker.signals.failed.connect(self._on_thumbnail_failed, Qt.ConnectionType.QueuedConnection)
+                generation = self._thumbnail_generation
+                worker.signals.finished.connect(
+                    partial(self._thumbnail_completed, generation, failed=False), Qt.ConnectionType.QueuedConnection
+                )
+                worker.signals.failed.connect(
+                    partial(self._thumbnail_completed, generation, failed=True), Qt.ConnectionType.QueuedConnection
+                )
                 self._thumbnail_in_flight[task.sop_instance_uid] = task.priority
-                self._thread_pool.start(worker)
+                self._thumbnail_workers[(generation, task.sop_instance_uid)] = worker
+                self._thumbnail_pool.start(worker)
 
     def _on_thumbnail_loaded(self, sop_instance_uid: str, image: QImage) -> None:
         self._thumbnail_scheduler.mark_done(sop_instance_uid)
@@ -769,7 +815,7 @@ class AppController(QObject):
                 and self._frame_cache.is_ready(self._current_instance.path)
             ):
                 ahead = self._frame_cache.loaded_ahead(current)
-                warmup_needed = ahead < cfg.min_buffer
+                warmup_needed = ahead < self._startup_buffer_frames()
             self._playback_warmup_pending = warmup_needed
         else:
             self._invalidate_prefetch()
@@ -1438,6 +1484,8 @@ class AppController(QObject):
         elif self._timer.isActive():
             self._timer.stop()
         self._request_frame_if_needed(state)
+        if not state.is_playing and not self._pending_decode_id:
+            QTimer.singleShot(0, self._pump_thumbnail_queue)
 
     def _resolve_pixel_spacing(
         self,
@@ -1935,6 +1983,14 @@ class AppController(QObject):
 
     _PREFETCH_TIMEOUT_SEC = 1.0
 
+    def _startup_buffer_frames(self) -> int:
+        """A reachable startup threshold, even for a two-frame or memory-bound cine."""
+        return min(
+            self._playback_config.min_buffer,
+            max(0, self._frame_cache.frame_count() - 1),
+            max(1, self._frame_cache.capacity_frames() - 1),
+        )
+
     def _prefetch_playback_buffer(self, center: int) -> None:
         if self._current_instance is None or self._current_instance.path is None:
             return
@@ -1972,7 +2028,17 @@ class AppController(QObject):
         # are prefetched in full. This keeps every frame cached so loop
         # wrap-around and backward scrubbing never hit an un-cached frame
         # (which would force a slow keyframe seek and stall playback).
-        if total <= _SMALL_CINE_MAX_FRAMES and self._frame_cache.can_fit_full_cine():
+        if self._playback_warmup_pending:
+            # Publish only the frames needed to start, not a whole short cine. A
+            # worker emits at the end of its batch, so a 59-frame request hid even
+            # the first 3 already-decoded frames from the waiting player.
+            ahead = self._frame_cache.loaded_ahead(center)
+            needed = self._startup_buffer_frames() - ahead
+            if needed <= 0:
+                return  # timer consumes warmup before we launch background refill
+            start = (center + 1 + ahead) % total
+            batch = min(needed, total - start)  # continue across wrap in next batch
+        elif total <= _SMALL_CINE_MAX_FRAMES and self._frame_cache.can_fit_full_cine():
             unloaded = [i for i in range(total) if not self._frame_cache.is_loaded(i)]
             if not unloaded:
                 return
@@ -2156,6 +2222,8 @@ class AppController(QObject):
             self._adaptive_batch_size -= 1
 
     def _on_prefetch_batch_loaded(self, request_id: int, path: Path, frames: list) -> None:
+        if self._current_instance is None or self._current_instance.path != path:
+            return
         is_current = request_id == self._prefetch_load_id
         if is_current:
             total_ms = (perf_counter() - self._prefetch_load_started_at) * 1000.0
@@ -2234,7 +2302,7 @@ class AppController(QObject):
                 and self._frame_cache.is_ready(self._current_instance.path)
             ):
                 ahead = self._frame_cache.loaded_ahead(current)
-                if ahead >= cfg.min_buffer:
+                if ahead >= self._startup_buffer_frames():
                     self._playback_warmup_pending = False
                     # Waiting for the buffer already held the first frame on screen for
                     # longer than one interval, so the cadence starts on the next event-loop

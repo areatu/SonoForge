@@ -441,13 +441,13 @@ def _decode_uncompressed_frame(
 
 
 class DicomSession:
-    def __init__(self) -> None:
+    def __init__(self, *, isolated: bool = False) -> None:
+        # Short-lived preview readers own their buffers and never evict shared playback
+        # sessions. Their caller releases them in finally; they are not registered.
+        self._isolated = isolated
         # Guards every public entry point: a session is shared by all threads that work
         # with the same file, so its buffers must not be swapped underneath a decoder.
         self._lock = threading.RLock()
-        # Separate lock for the pydicom fallback reload: it runs inside decode worker
-        # threads while the caller may already hold _lock (RLock is not cross-thread).
-        self._fallback_lock = threading.Lock()
         self._open_path: Path | None = None
         self._open_stat: tuple[int, int] | None = None
         self._raw_bytes: bytes | None = None
@@ -507,11 +507,17 @@ class DicomSession:
         # ``_has_loadable_pixels()`` is ``@_synchronized`` so it briefly acquires
         # and releases ``self._lock``; the worst case of reading ``_open_path``
         # without the lock is a redundant ``release_stale_sessions`` call.
-        if self._open_path == resolved and self._metadata is not None and self._has_loadable_pixels():
+        if (
+            self._open_path == resolved
+            and self._metadata is not None
+            and self._has_loadable_pixels()
+            and self._stat_matches(resolved)
+        ):
             return
         # Release heavy buffers in ALL other cached sessions *outside* our lock
         # so that two concurrent ``open()`` calls cannot deadlock.
-        release_stale_sessions(exclude=self)
+        if not self._isolated:
+            release_stale_sessions(exclude=self)
         self._open_impl(resolved)
 
     @_synchronized
@@ -629,7 +635,11 @@ class DicomSession:
         if self._is_uncompressed and self._open_path is not None and self._map_pixel_data(self._open_path):
             return
         if self._raw_bytes is None:
-            return
+            if self._open_path is None:
+                raise RuntimeError("DICOM is not open; call open() first")
+            # A shared session may have been released between frames of a batch.
+            # Rebuild the compressed index instead of falling through to a full decode.
+            self._raw_bytes = Path(self._open_path).read_bytes()
 
         extracted = _extract_pixel_data_from_bytes(self._raw_bytes)
         if extracted is not None:
@@ -654,9 +664,10 @@ class DicomSession:
             elif hasattr(full_ds, "DoubleFloatPixelData"):
                 self._pixel_data_raw = bytes(full_ds.DoubleFloatPixelData)
             else:
-                # File has no pixels (e.g., SR or PR). Mark as empty bytes
-                # to avoid repeated parsing.
-                self._pixel_data_raw = b""
+                raise ValueError(
+                    "DICOM file has no pixel data to decode. "
+                    "It may be a non-image DICOM (e.g., Structured Report, Presentation State)."
+                )
 
         # _pixel_data_raw is a bytes COPY — free the full file (20-200 MB).
         self._raw_bytes = None
@@ -752,6 +763,24 @@ class DicomSession:
 
         compressed = self._encapsulated_frame_bytes(index)
         if compressed is not None:
+            # pylibjpeg-openjpeg 2.3 holds the GIL for the entire decode. OpenCV
+            # releases it. Restrict this route to lossless unsigned monochrome
+            # images with a tested output dtype; color/signed/lossy data keep the
+            # existing backend to avoid changing medical pixel interpretation.
+            if (
+                self._transfer_syntax_uid == "1.2.840.10008.1.2.4.90"
+                and int(getattr(ds, "SamplesPerPixel", 1)) == 1
+                and int(getattr(ds, "PixelRepresentation", 0)) == 0
+                and int(ds.BitsAllocated) in (8, 16)
+                and str(ds.PhotometricInterpretation) in ("MONOCHROME1", "MONOCHROME2")
+            ):
+                decoded = _decode_fragment_cv2(compressed, rows, cols)
+                if (
+                    decoded is not None
+                    and decoded.ndim == 2
+                    and decoded.dtype == np.dtype(f"uint{int(ds.BitsAllocated)}")
+                ):
+                    return decoded
             decoded = _decode_compressed_frame(
                 compressed,
                 rows,
@@ -764,47 +793,22 @@ class DicomSession:
         return self._decode_pydicom_fallback(index)
 
     def _decode_pydicom_fallback(self, index: int) -> np.ndarray:
-        """Fallback: full pydicom decode, extract frame index."""
-        # _ensure_pixel_data() frees _raw_bytes after extracting pixel bytes.
-        # If a compressed frame cannot be fast-decoded we still need the full
-        # file here, so reload it from disk (cached until release_heavy()).
-        if self._raw_bytes is None:
-            with self._fallback_lock:
-                if self._raw_bytes is None:
-                    if self._open_path is not None and Path(self._open_path).is_file():
-                        self._raw_bytes = Path(self._open_path).read_bytes()
-                    else:
-                        raise ValueError(
-                            "Cannot decode fallback: raw bytes are not available. "
-                            "The file may have no pixel data or heavy buffers were released."
-                        )
+        """Decode only the requested frame, including syntaxes without a fast path.
 
-        full_ds = pydicom.dcmread(BytesIO(self._raw_bytes), force=True)
-        # Ensure file_meta exists with Transfer Syntax UID
-        if not hasattr(full_ds, "file_meta") or full_ds.file_meta is None:
-            from pydicom.dataset import FileMetaDataset
-
-            full_ds.file_meta = FileMetaDataset()
-        if not hasattr(full_ds.file_meta, "TransferSyntaxUID") or full_ds.file_meta.TransferSyntaxUID is None:
-            from pydicom.uid import ImplicitVRLittleEndian
-
-            full_ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
-
-        # PROTECTION 2: Explicit check for pixel data
-        has_pixel_data = (
-            hasattr(full_ds, "PixelData")
-            or hasattr(full_ds, "FloatPixelData")
-            or hasattr(full_ds, "DoubleFloatPixelData")
-        )
-        if not has_pixel_data:
+        A new Dataset.pixel_array per request used to decode N frames N times on
+        bulk/scroll, and returned views pinned the *whole* cine behind each frame.
+        pydicom 3's indexed API reads one frame; own it at this boundary as well.
+        """
+        if self._open_path is None:
+            raise RuntimeError("DICOM is not open; call open() first")
+        try:
+            pixels = pydicom.pixels.pixel_array(str(self._open_path), index=index, number_of_frames=self._frame_count)
+        except AttributeError as exc:
             raise ValueError(
                 "DICOM file has no pixel data to decode. "
                 "It may be a non-image DICOM (e.g., Structured Report, Presentation State)."
-            )
-
-        pixel_array = full_ds.pixel_array
-        frames = stack_pixel_array(pixel_array)
-        return np.ascontiguousarray(frames[index])
+            ) from exc
+        return np.array(pixels, copy=True, order="C")
 
     @_synchronized
     def decode_single_frame(self, index: int) -> np.ndarray:
