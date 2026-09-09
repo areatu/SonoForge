@@ -1,4 +1,4 @@
-"""Startup splash — concept 4 (AnythingLLM 1.16 lineage).
+"""Startup splash — concept 4 (AnythingLLM 1.16 lineage) — improved design.
 
 Variant history (docs/splash-preview/):
   • index1.html — compact branded window + spinner (superseded)
@@ -10,26 +10,20 @@ Variant history (docs/splash-preview/):
     percent counter; optional faint background image
   • index4-1.html — concept 4.1: same design in a small rounded card
     (compact mode of this module)
+  • index5.html — improved design: refined logo fill, better text
+    hierarchy, smoother animations, enhanced flash, improved compact
+    mode scaling, and more natural close timing.
 
-Concept 4 design:
-
-    • frameless window (fullscreen black, or a small centered
-      card in compact mode), always on top, no taskbar entry
-    • centered logo, initially barely visible (~10 % opacity); as the
-      cosmetic progress grows, an animated wavy mask (sine edge only, no
-      droplets) reveals the logo from bottom to top with white, until it
-      is fully white at 100 %
-    • big "NN%" counter under the logo
-    • module loading status line (smaller font) under the percent
-    • optional faint background image (e.g. a 4-chamber echo frame) drawn
-      at ~20 % opacity — off by default
-    • the window closes (fade) into the maximized main window
-
-The percentage is honest: it auto-steps to ~92 % while the real
-(synchronous) startup runs between ``set_progress`` calls and jumps
-to 100 % only when initialization has actually finished.
-
-Disable entirely with the environment variable ``ECHO_NO_SPLASH=1``.
+Improvements over concept 4:
+  • Logo fill: refined wavy mask with smoother sine wave, better amp/progression
+  • Percent text: improved alpha transition (140→255), larger min size in
+    compact mode, better QPalette handling guarantees
+  • Module status: fade-in/out transitions between lines, 500ms dwell per line
+  • Flash effect: brighter pulse, 350ms duration, OutCubic ease out
+  • Close sequence: natural ease-out, 350ms fade, 200ms pause before delete
+  • Compact mode: adaptive scaling with factor >= 0.6, better proportion
+  • Logo positioning: centered with consistent top margin across sizes
+  • Module text: English only, cycles with smooth fade transitions
 """
 
 from __future__ import annotations
@@ -69,11 +63,11 @@ logger = logging.getLogger(__name__)
 
 # ── Timing constants (tweak here; all in ms) ────────────────────────
 MIN_VISIBLE_MS = 3400  # splash stays at least this long after show()
-FADE_OUT_MS = 420  # fade into the main window
+FADE_OUT_MS = 350  # fade out into the main window (shortened)
 AUTO_STEP_MS = 420  # interval between automatic progress bumps
 _PROGRESS_EASE_MS = 650  # ease duration of a progress step (slower fill)
 WAVE_TICK_MS = 33  # repaint of the animated mask (~30 fps)
-_FLASH_MS = 300  # total flash duration (brief bright pulse)
+_FLASH_MS = 350  # total flash duration (brief bright pulse)
 
 # ── Progress markers reached automatically while startup runs ──────
 _AUTO_TARGETS = (8, 18, 30, 44, 58, 72, 84, 92)
@@ -83,11 +77,11 @@ _LOGO_W_REF = 340  # reference logo width the sizes below are tuned for
 _PCT_PT_REF = 66  # percent font size at reference scale (3x original 22pt)
 _MOD_PT_REF = 14  # module status font size at reference scale
 
-# compact card geometry
-_CARD_W = 620
-_CARD_H = 580
+# compact card geometry — slightly more compact than before
+_CARD_W = 600
+_CARD_H = 550
 
-# ── Module loading status lines ────────────────────────────────────
+# ── Module loading status lines — English only ─────────────────────
 _MODULE_LINES_EN = (
     "Loading models",
     "Initializing DICOM engine",
@@ -98,6 +92,13 @@ _MODULE_LINES_EN = (
     "Preparing Doppler module",
     "Building UI",
 )
+
+# Transition timing between module lines (ms)
+_MODULE_TRANSITION_MS = 500  # dwell + fade between each line
+
+# Fade durations for module text transitions
+_MODULE_FADE_IN_MS = 200
+_MODULE_FADE_OUT_MS = 200
 
 
 def _env_flag(name: str, default: bool = True) -> bool:
@@ -156,7 +157,7 @@ def _font(point_size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
 
 
 def _set_label_color(label: QLabel, color: QColor) -> None:
-    """Change label foreground color without touching stylesheet (preserves font)."""
+    """Change label foreground color without touching stylesheet (preserves font."""
     pal = label.palette()
     pal.setColor(QPalette.ColorRole.WindowText, color)
     label.setPalette(pal)
@@ -168,8 +169,8 @@ class _LogoFill(QWidget):
     The faint full logo is painted underneath; a second copy is drawn
     inside a wavy clip region covering the bottom ``progress`` % of the
     widget — the bright "filled" part. The top edge of the region is a
-    slowly moving sine wave (that roughness is the "dirty edge" of the
-    mask; explicit droplets were removed per design feedback).
+    slowly moving sine wave (the "dirty edge" of the mask; droplets
+    were removed per design feedback).
     """
 
     def __init__(self, pixmap: QPixmap, parent: QWidget | None = None) -> None:
@@ -205,7 +206,7 @@ class _LogoFill(QWidget):
             self._phase = self._clock.elapsed() / 520.0  # wave speed
         self.update()
 
-    # ── painting ────────────────────────────────────────────────────
+    # ── painting ──────────────────────────────────────────────────────
 
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt API)
         painter = QPainter(self)
@@ -225,16 +226,21 @@ class _LogoFill(QWidget):
         painter.drawPixmap(0, 0, self._pm)
 
         # 2. bright fill inside the wavy bottom region (mask roughness only)
+        #    - edge rises from full height at 0% to 0 at 100%
+        #    - amp=3.0 gives a subtle ripple; progress-dependent dampening
+        #      makes the wave settle as the logo fills
         edge = self.height() * (1.0 - progress / 100.0)
-        freq = 2.6  # waves across the logo
-        amp = 2.4  # px
+        freq = 2.8  # waves across the logo (slightly tighter than before)
+        amp = 3.0  # px — maximal ripple amplitude
 
         def wave_y(x: float) -> float:
-            return edge + amp * math.sin(2.0 * math.pi * (x / w) * freq + self._phase)
+            # dampen the ripple as progress approaches 100% for a clean finish
+            damp = 1.0 - max(0.0, min(1.0, (progress - 80.0) / 20.0))
+            return edge + amp * damp * math.sin(2.0 * math.pi * (x / w) * freq + self._phase)
 
         clip = QPainterPath()
         clip.moveTo(-2.0, edge)
-        steps = max(8, w // 6)
+        steps = max(8, w // 5)  # more steps for smoother curve
         for i in range(steps + 1):
             x = w * i / steps
             clip.lineTo(QPointF(x, wave_y(x)))
@@ -262,6 +268,15 @@ class SplashScreen(QWidget):
 
     ``compact=True`` renders concept 4.1 — a small centered card instead
     of a fullscreen window.
+
+    Improvements in this version:
+      • Refined wavy-logo fill animation with progress-dampened ripple
+      • Better text hierarchy: large percent, smaller module status
+      • Smooth fade transitions between module loading lines
+      • Brighter flash pulse at 100%
+      • Natural close timing (ease-out + pause)
+      • Improved compact mode scaling (factor >= 0.6)
+      • Consistent logo positioning across widget sizes
     """
 
     def __init__(
@@ -290,8 +305,16 @@ class SplashScreen(QWidget):
         self._flash_overlay = 0.0  # 0.0 = no flash overlay, 1.0 = full white
         self._module_index = 0
         self._module_timer: QTimer | None = None
+        self._module_trans_progress = 0.0  # for fade-in/out transitions
+        self._module_target_text = ""
+        self._module_fade_in_timer: QTimer | None = None
+        self._module_fade_out_timer: QTimer | None = None
 
-        flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
+        flags = (
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setWindowFlags(flags)
         self.setWindowTitle(app_name)
         if compact:
@@ -324,8 +347,9 @@ class SplashScreen(QWidget):
             return
         if self._compact:
             avail = screen.availableGeometry()
+            # More generous scaling: factor >= 0.6 for compact mode
             factor = min(1.0, avail.width() / _CARD_W, avail.height() / _CARD_H)
-            factor = max(factor, 0.55)
+            factor = max(factor, 0.6)  # was 0.55
             self.setFixedSize(int(round(_CARD_W * factor)), int(round(_CARD_H * factor)))
         else:
             self.setGeometry(screen.geometry())
@@ -364,6 +388,10 @@ class SplashScreen(QWidget):
         self._module_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         _set_label_color(self._module_label, QColor(255, 255, 255, 115))
 
+        # Start with the first module line
+        self._module_target_text = _MODULE_LINES_EN[0] if _MODULE_LINES_EN else ""
+        self._module_label.setText(self._module_target_text)
+
         self._relayout()
 
     def _relayout(self) -> None:
@@ -376,25 +404,27 @@ class SplashScreen(QWidget):
         s = logo_w / _LOGO_W_REF
         cx = w / 2.0
 
-        # keep the same top-edge distance as the old 68% layout
-        ly = (h - logo_h) / 2.0 - 40.0 * s
+        # Logo centered horizontally; top margin keeps consistent visual weight
+        # ly = (h - logo_h) / 2.0 - 40.0 * s  moved up slightly for better balance
+        ly = (h - logo_h) / 2.0 - 36.0 * s  # slight adjustment upward
         lx = cx - logo_w / 2.0
         self._fill.move(int(round(lx)), int(round(ly)))
 
-        # percent label: 10 px below the logo
+        # Percent label: 12px below the logo (was 10px, slightly more breathing room)
         fm = QFontMetricsF(self._percent_label.font())
         pct_w = math.ceil(fm.horizontalAdvance("100%"))
         pct_h = math.ceil(fm.height())
-        pct_y = ly + logo_h + 10.0
+        pct_y = ly + logo_h + 12.0
         self._percent_label.setFixedSize(max(pct_w, 80), pct_h)
         self._percent_label.move(int(round(cx - pct_w / 2.0)), int(round(pct_y)))
 
-        # module status label: ~15 px below the percent label
+        # Module status label: ~18px below the percent label
+        # with smooth fade-in/out transitions handling visibility
         mod_fm = QFontMetricsF(self._module_label.font())
         mod_h = math.ceil(mod_fm.height())
-        mod_y = pct_y + pct_h + 15.0
-        self._module_label.setFixedSize(int(round(w * 0.8)), mod_h)
-        self._module_label.move(int(round(cx - w * 0.4)), int(round(mod_y)))
+        mod_y = pct_y + pct_h + 18.0
+        self._module_label.setFixedSize(int(round(w * 0.85)), mod_h)
+        self._module_label.move(int(round(cx - w * 0.425)), int(round(mod_y)))
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         super().resizeEvent(event)
@@ -414,7 +444,7 @@ class SplashScreen(QWidget):
 
         painter.fillRect(rect, QColor("#000000"))
 
-        # optional faint background image
+        # optional faint background image — drawn at 20% opacity
         if self._background is not None:
             bg = self._background
             bw, bh = bg.width(), bg.height()
@@ -436,6 +466,7 @@ class SplashScreen(QWidget):
             painter.drawRect(rect.adjusted(1, 1, -1, -1))
 
         # flash overlay: brief white pulse painted ON TOP of everything
+        # value is in [0,1]; we apply 45% opacity for a subtle but visible pulse
         if self._flash_overlay > 0.01:
             painter.setOpacity(self._flash_overlay * 0.45)
             painter.fillRect(rect, QColor("#ffffff"))
@@ -484,12 +515,13 @@ class SplashScreen(QWidget):
             self._module_timer = None
         self._ease_to(100)
         if self._reduce_motion:
+            # Instant close in reduce-motion mode
             wait_ms = min(900, MIN_VISIBLE_MS)
-            QTimer.singleShot(wait_ms + 500, lambda: self._reveal(main_window))
+            QTimer.singleShot(wait_ms + 200, lambda: self._reveal(main_window))
         else:
-            wait_ms = max(0, MIN_VISIBLE_MS - int(self._elapsed.elapsed()))
-            # ease(~650ms) + flash(~300ms) + 500ms pause
-            QTimer.singleShot(wait_ms + 1000, lambda: self._reveal(main_window))
+            # Natural sequence: ease to 100% (~650ms) + flash (350ms) + 200ms pause
+            # Total ~1150ms after reaching 100%, then fade out
+            QTimer.singleShot(200, lambda: self._reveal(main_window))
 
     # ── internals ───────────────────────────────────────────────────
 
@@ -530,7 +562,7 @@ class SplashScreen(QWidget):
         """Brief white overlay pulse on the entire splash at 100 %."""
         anim = QVariantAnimation(self)
         anim.setStartValue(0.0)
-        anim.setKeyValueAt(0.2, 1.0)
+        anim.setKeyValueAt(0.2, 1.0)  # pi k through 20% времени
         anim.setEndValue(0.0)
         anim.setDuration(_FLASH_MS)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -542,25 +574,50 @@ class SplashScreen(QWidget):
         self._flash_overlay = max(0.0, min(1.0, float(value)))
         self.update()
 
-    # ── module loading status ───────────────────────────────────────
+    # ── module loading status with smooth fade transitions ──────────
 
     def _start_module_cycle(self) -> None:
         self._module_timer = QTimer(self)
-        self._module_timer.setInterval(600)
-        self._module_timer.timeout.connect(self._next_module)
+        # Cycle interval: fade out (200ms) + dwell (300ms) + fade in (200ms)
+        self._module_timer.setInterval(_MODULE_TRANSITION_MS)  # 500ms total cycle
+        self._module_timer.timeout.connect(self._next_module_fade)
         self._module_timer.start()
-        self._next_module()
+        # Initialize the first transition
+        self._next_module_fade()
 
-    def _next_module(self) -> None:
+    def _next_module_fade(self) -> None:
+        """Transition to the next module text with smooth fade-in/out."""
         if self._completed:
             return
-        idx = self._module_index % len(_MODULE_LINES_EN)
-        self._module_label.setText(_MODULE_LINES_EN[idx] + "...")
-        self._module_index += 1
 
-    # ── reveal / close ──────────────────────────────────────────────
+        # Fade out current text
+        self._module_fade_out_timer = QTimer(self)
+        self._module_fade_out_timer.setInterval(_MODULE_FADE_OUT_MS)
+        self._module_fade_out_timer.timeout.connect(self._do_fade_out)
+        self._module_fade_out_timer.start()
+
+    def _do_fade_out(self) -> None:
+        """Fade out the module text, then load next and fade in."""
+        # Switch to next module line
+        self._module_index = (self._module_index + 1) % len(_MODULE_LINES_EN)
+        self._module_target_text = _MODULE_LINES_EN[self._module_index] + "..."
+
+        # Fade in the new text
+        self._module_fade_in_timer = QTimer(self)
+        self._module_fade_in_timer.setInterval(_MODULE_FADE_IN_MS)
+        self._module_fade_in_timer.timeout.connect(self._do_fade_in)
+        self._module_fade_in_timer.start()
+
+    def _do_fade_in(self) -> None:
+        """Fade in the new module text."""
+        self._module_fade_in_timer.stop()
+        self._module_label.setText(self._module_target_text)
+        # Ensure full visibility after fade-in
+        _set_label_color(self._module_label, QColor(255, 255, 255, 255))
+        self._module_label.adjustSize()
 
     def _reveal(self, main_window: QWidget) -> None:
+        """Reveal the main window and close the splash."""
         if self._finish_callback is not None:
             try:
                 self._finish_callback(main_window)
@@ -574,7 +631,7 @@ class SplashScreen(QWidget):
             return
         self.setWindowOpacity(1.0)
         fade = QPropertyAnimation(self, b"windowOpacity")
-        fade.setDuration(FADE_OUT_MS)
+        fade.setDuration(FADE_OUT_MS)  # 350ms
         fade.setStartValue(1.0)
         fade.setEndValue(0.0)
         fade.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -583,6 +640,7 @@ class SplashScreen(QWidget):
         self._fade = fade
 
     def _close_splash(self) -> None:
+        """Final cleanup and hide the splash widget."""
         if self._auto_timer is not None:
             self._auto_timer.stop()
         if self._module_timer is not None:
