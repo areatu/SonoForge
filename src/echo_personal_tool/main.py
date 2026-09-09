@@ -130,6 +130,7 @@ from echo_personal_tool.infrastructure.profiler import is_enabled, print_summary
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.presentation.main_window import MainWindow, apply_maximized_to_work_area
 from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_export_dialog
+from echo_personal_tool.presentation.splash import is_splash_enabled
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
 
 
@@ -142,6 +143,24 @@ def _cleanup_winmm() -> None:
             ctypes.windll.winmm.timeEndPeriod(1)
         except Exception:
             pass
+
+
+def _pump_event_loop(app: QApplication, frames: int = 3, tick_ms: int = 12) -> None:
+    """Let the splash repaint/spin briefly before long synchronous startup work.
+
+    The main window is constructed synchronously on the GUI thread, so without
+    pumping events the splash would freeze on its very first frame.
+
+    ``QThread.msleep`` intentionally blocks the GUI thread — the splash needs
+    wall-clock time for its paint events to reach the compositor.  Total
+    blocking is *frames × tick_ms* (default 36 ms); callers use 5 frames
+    (60 ms) after show() and 2 frames (24 ms) after MainWindow is ready.
+    """
+    from PySide6.QtCore import QThread
+
+    for _ in range(frames):
+        app.processEvents()
+        QThread.msleep(tick_ms)
 
 
 def _schedule_reference_preload(window: MainWindow) -> None:
@@ -223,13 +242,65 @@ def main() -> int:
     ensure_bundled_fonts_loaded()
     preferences = load_user_preferences()
     app.setFont(ui_font(point_size=preferences.ui_font_size))
-    window = MainWindow(user_preferences=preferences)
+
+    # UI language must be set before the splash is created (its labels are localized).
+    from echo_personal_tool.infrastructure.i18n import set_language, tr
+
+    set_language(preferences.language)
+
+    # ── Startup splash (concept 4, AnythingLLM 1.16 lineage, ~3.4 s) ──
+    # Fullscreen black window: the logo fills from bottom to top with
+    # white through an animated wavy mask (no droplets), big “NN%” under
+    # it, and big bold words scattered around the logo sharpening from
+    # blur into focus as progress grows; then the window fades into the
+    # maximized app.
+    # Concept 4.1 (small rounded card) preview: ECHO_SPLASH_COMPACT=1.
+    # Disable with ECHO_NO_SPLASH=1 (tests, screenshots, slow CI).
+    splash = None
+    if is_splash_enabled():
+        from echo_personal_tool.presentation.splash import SplashScreen
+
+        _compact = os.environ.get("ECHO_SPLASH_COMPACT", "0").strip().lower()
+        _compact = _compact not in ("", "0", "false", "no", "off")
+        splash = SplashScreen(
+            words=tuple(w for w in tr("splash.words").split("|") if w.strip()),
+            reduce_motion=preferences.reduce_motion,
+            compact=_compact,
+        )
+        splash.show_and_play()
+        _pump_event_loop(app, frames=5)
+
+    try:
+        window = MainWindow(user_preferences=preferences)
+    except Exception:
+        if splash is not None:
+            splash.hide()
+            splash.close()
+        raise
+    if splash is not None:
+        # Sync the counter with the real milestone just reached.
+        splash.set_progress(46)
+        _pump_event_loop(app, frames=2)
+
     if preferences.startup_mode == "last_folder" and preferences.last_opened_folder:
         last_folder = Path(preferences.last_opened_folder)
         if last_folder.is_dir():
             QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
-    # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
-    QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
+
+    if splash is not None:
+
+        def _reveal_after_splash(win: MainWindow) -> None:
+            # Deferred maximize: reliable on Windows (showMaximized in __init__
+            # often leaves a small window). Called under the splash, which then
+            # fades out — no desktop/white flash between splash and the app.
+            apply_maximized_to_work_area(win)
+            win.raise_()
+            win.activateWindow()
+
+        splash.complete_with(window, on_complete=_reveal_after_splash)
+    else:
+        # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
+        QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
     _schedule_reference_preload(window)
     result = app.exec()
     _cleanup_winmm()
