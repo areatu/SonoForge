@@ -37,6 +37,7 @@ Disable entirely with the environment variable ``ECHO_NO_SPLASH=1``.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from pathlib import Path
@@ -68,6 +69,8 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
+
+logger = logging.getLogger(__name__)
 
 # ── Timing constants (tweak here; all in ms) ────────────────────────
 MIN_VISIBLE_MS = 3400  # splash stays at least this long after show()
@@ -116,6 +119,7 @@ def is_splash_enabled() -> bool:
 
         return QApplication.instance() is not None
     except Exception:
+        logger.debug("splash: QApplication check failed", exc_info=True)
         return False
 
 
@@ -548,7 +552,7 @@ class SplashScreen(QWidget):
             try:
                 self._finish_callback(main_window)
             except Exception:
-                pass
+                logger.debug("splash: finish callback raised", exc_info=True)
         if main_window is not None:
             main_window.raise_()
             main_window.activateWindow()
