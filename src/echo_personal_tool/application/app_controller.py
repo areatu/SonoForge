@@ -3678,11 +3678,7 @@ class AppController(QObject):
 
         source_path = None
         if frames is None:
-            if (
-                instance is not None
-                and instance.path is not None
-                and instance.media_format in ("dicom", "mp4")
-            ):
+            if instance is not None and instance.path is not None and instance.media_format in ("dicom", "mp4"):
                 # Decode the full clip inside the worker thread.
                 source_path = instance.path
                 self.status_message.emit(tr("app.speckle_loading_full_cine"))
@@ -3694,11 +3690,7 @@ class AppController(QObject):
         # the ECG on its own thread even when the cine came from the frame
         # cache; a clip without ECG simply yields None and the strip is hidden.
         ecg_source_path = None
-        if (
-            instance is not None
-            and instance.path is not None
-            and instance.media_format == "dicom"
-        ):
+        if instance is not None and instance.path is not None and instance.media_format == "dicom":
             ecg_source_path = instance.path
 
         self.status_message.emit(tr("app.speckle_compute"))

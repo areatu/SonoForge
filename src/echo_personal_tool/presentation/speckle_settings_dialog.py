@@ -104,8 +104,7 @@ class SpeckleSettingsDialog(QDialog):
         self._source_hint_label = QLabel(ed_es_hint or "")
         self._source_hint_label.setWordWrap(True)
         self._source_hint_label.setStyleSheet(
-            "QLabel { color: #90caf9; background: #12283f; "
-            "padding: 4px 8px; border-radius: 4px; font-size: 11px; }"
+            "QLabel { color: #90caf9; background: #12283f; padding: 4px 8px; border-radius: 4px; font-size: 11px; }"
         )
         if ed_es_hint:
             form.addRow(self._source_hint_label)

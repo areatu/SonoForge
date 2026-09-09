@@ -436,9 +436,7 @@ def test_confidence_below_0_3_dropped_from_vote(monkeypatch: pytest.MonkeyPatch)
 
     good_ids = (8, 9, 11)
     neighbor_masks = {i: _circle_mask(100, 100, 50, 50, 20) for i in good_ids}
-    neighbor_contours = {
-        i: _make_contour(points, annulus, apex, frame_index=i) for i in good_ids
-    }
+    neighbor_contours = {i: _make_contour(points, annulus, apex, frame_index=i) for i in good_ids}
     garbage_id = 12
     garbage_mask = np.ones((100, 100), dtype=np.uint8)
     neighbor_masks[garbage_id] = garbage_mask
@@ -510,9 +508,7 @@ def test_three_good_one_garbage_excluded_fused_stays_on_anchor() -> None:
     center = _make_contour(points, annulus, apex, frame_index=10)
     good_ids = (8, 9, 11)
     neighbor_masks = {i: _circle_mask(100, 100, 50, 50, 19) for i in good_ids}
-    neighbor_contours = {
-        i: _make_contour(points, annulus, apex, frame_index=i) for i in good_ids
-    }
+    neighbor_contours = {i: _make_contour(points, annulus, apex, frame_index=i) for i in good_ids}
     garbage_id = 12
     garbage_annulus = ((5.0, 90.0), (20.0, 90.0))
     garbage_apex = (12.0, 10.0)

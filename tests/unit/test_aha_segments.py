@@ -76,7 +76,9 @@ def test_choose_clinical_gls_falls_back_to_curve_when_insufficient_coverage():
     curve_gls = -18.0
     segment_strain = {1: -20.0, 2: -17.0}
     segment_quality = {1: 0.9, 2: 0.8}
-    gls, source = choose_clinical_gls(curve_gls, segment_strain, segment_quality, min_segment_quality=0.4, min_segments=3)
+    gls, source = choose_clinical_gls(
+        curve_gls, segment_strain, segment_quality, min_segment_quality=0.4, min_segments=3
+    )
     assert source == "curve"
     assert gls == pytest.approx(-18.0)
 

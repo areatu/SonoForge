@@ -349,9 +349,7 @@ class SpeckleTrackingWorker(QRunnable):
             # Vendor-style border propagation: only well-posed when the window
             # starts at ED and runs to ES (the last frame of the window).
             is_border_mode = bool(
-                config.tracking_mode == "border"
-                and local_ed == 0
-                and local_es == int(preprocessed.shape[0]) - 1
+                config.tracking_mode == "border" and local_ed == 0 and local_es == int(preprocessed.shape[0]) - 1
             )
             border_propagation = None
             if is_border_mode:
@@ -483,9 +481,7 @@ class SpeckleTrackingWorker(QRunnable):
             if drift_applied:
                 window_long = apply_drift_compensation(window_long, local_ed, local_es)
             else:
-                logger.info(
-                    "STE: drift compensation skipped (systolic window ends at ES, no baseline to close)"
-                )
+                logger.info("STE: drift compensation skipped (systolic window ends at ES, no baseline to close)")
 
             longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 

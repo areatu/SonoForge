@@ -188,9 +188,7 @@ def propagate_wall_borders(
     translation_threshold_px = 3.0
     ncc_thr = float(config.ncc_threshold)
 
-    kernels, layer_edges = build_border_kernels(
-        endo, epi, n_nodes=n_nodes, layer_fracs=(0.0, 0.5, 1.0)
-    )
+    kernels, layer_edges = build_border_kernels(endo, epi, n_nodes=n_nodes, layer_fracs=(0.0, 0.5, 1.0))
     n_k = len(kernels)
 
     # material fractions per kernel index
@@ -223,12 +221,8 @@ def propagate_wall_borders(
         e_ncc = np.zeros(n_nodes)
         p_ncc = np.zeros(n_nodes)
         for j in range(n_nodes):
-            e_new[j], e_ncc[j] = _match_point(
-                pyr_prev, pyr_cur, e_prev[j], config, j
-            )
-            p_new[j], p_ncc[j] = _match_point(
-                pyr_prev, pyr_cur, p_prev[j], config, j
-            )
+            e_new[j], e_ncc[j] = _match_point(pyr_prev, pyr_cur, e_prev[j], config, j)
+            p_new[j], p_ncc[j] = _match_point(pyr_prev, pyr_cur, p_prev[j], config, j)
         e_new = _smooth_contour(e_new, max(5, int(0.12 * n_nodes) | 1), e_ncc, ncc_thr)
         p_new = _smooth_contour(p_new, max(5, int(0.12 * n_nodes) | 1), p_ncc, ncc_thr)
         # Robust bulk motion of the epi border (median of Cartesian
@@ -289,9 +283,7 @@ def propagate_wall_borders(
     }
 
 
-def _clamp_outward(
-    pts: np.ndarray, center: np.ndarray, r0: np.ndarray, slack: float
-) -> np.ndarray:
+def _clamp_outward(pts: np.ndarray, center: np.ndarray, r0: np.ndarray, slack: float) -> np.ndarray:
     """Clamp contour points so they never move outward past their ED radius.
 
     Inward motion (systolic contraction/thickening) is free; outward motion is

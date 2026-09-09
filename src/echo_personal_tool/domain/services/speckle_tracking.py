@@ -887,7 +887,9 @@ def clamp_kernels_to_wall_band(
             if kernel_id is None:
                 continue
             old = frame_positions[kernel_id].copy()
-            projected = frame_positions[kernel_id] + u * (new_t - float(np.dot(frame_positions[kernel_id] - frame_center, u)))
+            projected = frame_positions[kernel_id] + u * (
+                new_t - float(np.dot(frame_positions[kernel_id] - frame_center, u))
+            )
             frame_positions[kernel_id] = projected
             if float(np.linalg.norm(projected - old)) > changed_eps:
                 changed += 1

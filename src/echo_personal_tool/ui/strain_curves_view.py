@@ -41,12 +41,12 @@ logger = logging.getLogger(__name__)
 # Basal / mid / apical rings follow the strain bull's-eye colour families
 # (yellow-orange, cyan-magenta, green-blue) used by clinical packages.
 SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
-    1: (255, 235, 59),   # БазПерг  — yellow
-    2: (255, 152, 0),    # Базбок   — orange
-    3: (38, 198, 218),   # СрПерг   — cyan
-    4: (233, 30, 99),    # Србок    — magenta
+    1: (255, 235, 59),  # БазПерг  — yellow
+    2: (255, 152, 0),  # Базбок   — orange
+    3: (38, 198, 218),  # СрПерг   — cyan
+    4: (233, 30, 99),  # Србок    — magenta
     5: (102, 187, 106),  # АпПер    — green
-    6: (66, 165, 245),   # АпЛат    — blue
+    6: (66, 165, 245),  # АпЛат    — blue
 }
 
 SEGMENT_NAMES_RU: dict[int, str] = {
@@ -245,7 +245,9 @@ class SegmentCurvePanel(QWidget):
         the curve centred — the deformation occupies the majority of the
         window instead of hugging one edge.
         """
-        finite = np.concatenate([seg_flat[~np.isnan(seg_flat)] if seg_flat.size else np.array([]), mean[~np.isnan(mean)]])
+        finite = np.concatenate(
+            [seg_flat[~np.isnan(seg_flat)] if seg_flat.size else np.array([]), mean[~np.isnan(mean)]]
+        )
         if finite.size == 0:
             return (-10.0, 0.0)
         lo = float(np.nanmin(finite))
@@ -404,7 +406,11 @@ class StrainCurvesView(QWidget):
         n_frames = len(result.longitudinal) if result.longitudinal is not None else 0
         segment_curves = self._segment_curves_from_tracking(result, n_frames)
 
-        ecg = result.ecg_trace_for_display if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display) else None
+        ecg = (
+            result.ecg_trace_for_display
+            if result.ecg_trace_for_display is not None and len(result.ecg_trace_for_display)
+            else None
+        )
         ecg_sample_rate: float | None = None
         if ecg is not None and result.ecg_waveform is not None and result.ecg_waveform.primary_lead is not None:
             ecg_sample_rate = float(result.ecg_waveform.primary_lead.sampling_frequency)

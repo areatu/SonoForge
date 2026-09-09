@@ -51,8 +51,7 @@ class SteSensitivityOverlay(QWidget):
         self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
         self._slider.setMinimumWidth(140)
         self._slider.setToolTip(
-            "Повторное сглаживание кривых деформации. "
-            "Влево — ближе к данным (меньше сглаживания), вправо — плавнее."
+            "Повторное сглаживание кривых деформации. Влево — ближе к данным (меньше сглаживания), вправо — плавнее."
         )
         self._slider.valueChanged.connect(self._on_slider_moved)
 

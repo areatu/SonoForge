@@ -177,7 +177,9 @@ class TestSpeckleLaunchFlow:
         main_window._controller.run_speckle_tracking = MagicMock(
             side_effect=lambda *a, **kw: captured.update({"args": a, "kwargs": kw})
         )
-        monkeypatch.setattr("echo_personal_tool.presentation.ui_animations.exec_animated", lambda *a, **k: QDialog.DialogCode.Accepted)
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.ui_animations.exec_animated", lambda *a, **k: QDialog.DialogCode.Accepted
+        )
 
         # No exception: the handler previously crashed on the missing
         # get_lv_contour(phase=..., view=...) kwargs signature.

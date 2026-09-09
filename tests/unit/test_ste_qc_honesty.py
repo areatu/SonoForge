@@ -206,13 +206,22 @@ class TestWorkerQcWiring:
                 patches["preprocess_echo_frame"],
             ),
             patch("echo_personal_tool.application.workers.speckle_worker.build_zone_mask", patches["build_zone_mask"]),
-            patch("echo_personal_tool.application.workers.speckle_worker.extract_trajectories", patches["extract_trajectories"]),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.extract_trajectories",
+                patches["extract_trajectories"],
+            ),
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.interpolate_invalid_kernels",
                 patches["interpolate_invalid_kernels"],
             ),
-            patch("echo_personal_tool.application.workers.speckle_worker.smooth_trajectories", patches["smooth_trajectories"]),
-            patch("echo_personal_tool.application.workers.speckle_worker.apply_motion_model", patches["apply_motion_model"]),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.smooth_trajectories",
+                patches["smooth_trajectories"],
+            ),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.apply_motion_model",
+                patches["apply_motion_model"],
+            ),
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.compute_weighted_longitudinal_strain_gl",
                 patches["compute_weighted_longitudinal_strain_gl"],
@@ -221,7 +230,10 @@ class TestWorkerQcWiring:
                 "echo_personal_tool.application.workers.speckle_worker.compute_weighted_radial_strain_gl",
                 patches["compute_weighted_radial_strain_gl"],
             ),
-            patch("echo_personal_tool.application.workers.speckle_worker.compute_strain_rate", patches["compute_strain_rate"]),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.compute_strain_rate",
+                patches["compute_strain_rate"],
+            ),
             patch(
                 "echo_personal_tool.application.workers.speckle_worker.estimate_heart_rate_fft",
                 patches["estimate_heart_rate_fft"],

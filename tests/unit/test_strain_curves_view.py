@@ -176,7 +176,9 @@ class TestStrainCurvesView:
         for t in range(n):
             for i in range(k):
                 positions[t, i] = [10 + i * 5, 40 + t]
-        kernels = [TrackingKernel(center=(10 + i * 5, 40), node_index=i, layer="endo", aha_segment=i + 1) for i in range(k)]
+        kernels = [
+            TrackingKernel(center=(10 + i * 5, 40), node_index=i, layer="endo", aha_segment=i + 1) for i in range(k)
+        ]
         base = StrainResult(
             longitudinal=np.zeros(n),
             radial=np.zeros(n),

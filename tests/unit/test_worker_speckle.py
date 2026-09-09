@@ -321,9 +321,7 @@ class TestSpeckleTrackingWorkerRun:
 
     @patch("echo_personal_tool.application.workers.speckle_worker.assign_aha_segments")
     @patch("echo_personal_tool.application.workers.speckle_worker.sample_kernels_in_zone")
-    def test_run_decodes_full_cine_from_source_when_frames_none(
-        self, mock_kernels, mock_assign, tmp_path
-    ):
+    def test_run_decodes_full_cine_from_source_when_frames_none(self, mock_kernels, mock_assign, tmp_path):
         """Issue #1: STE must work even when the frame cache does not hold the
         whole cine (large clips are evicted by the memory budget).  With
         ``frames=None`` the worker decodes the full clip from ``source_path``."""
@@ -395,9 +393,7 @@ class TestSpeckleTrackingWorkerRun:
                 )
             )
             for name, target in patch_targets.items():
-                stack.enter_context(
-                    patch(f"echo_personal_tool.application.workers.speckle_worker.{name}", target)
-                )
+                stack.enter_context(patch(f"echo_personal_tool.application.workers.speckle_worker.{name}", target))
             worker = SpeckleTrackingWorker(
                 frames=None,  # cache does not hold the full cine
                 zone=zone,
@@ -517,9 +513,7 @@ class TestResultCarriesCineAndEcg:
                 )
             )
             for name, target in patches.items():
-                stack.enter_context(
-                    patch(f"echo_personal_tool.application.workers.speckle_worker.{name}", target)
-                )
+                stack.enter_context(patch(f"echo_personal_tool.application.workers.speckle_worker.{name}", target))
             worker = SpeckleTrackingWorker(
                 frames=frames,
                 zone=zone,
