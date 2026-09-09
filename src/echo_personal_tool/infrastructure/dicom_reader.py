@@ -11,7 +11,7 @@ import pydicom
 
 from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.infrastructure.dicom_metadata_mapper import map_instance_metadata
-from echo_personal_tool.infrastructure.dicom_session import get_thread_dicom_session
+from echo_personal_tool.infrastructure.dicom_session import DicomSession, get_thread_dicom_session
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 
 _CACHE_MAX_ENTRIES = 32
@@ -66,12 +66,25 @@ _pixel_cache = _DecodedPixelCache()
 class DicomReaderImpl:
     """Infrastructure implementation of IDicomReader."""
 
+    def __init__(self, *, isolated: bool = False) -> None:
+        self._isolated = isolated
+
     def read_metadata(self, path: Path) -> InstanceMetadata:
         validate_dicom_header(path)
         dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         return map_instance_metadata(dataset, path=path)
 
     def read_pixels(self, path: Path, frame_index: int = 0) -> np.ndarray:
+        if self._isolated:
+            # A preview must not evict or wait on an interactive cine's shared session.
+            # Its compressed buffers live for this one request only, not for the folder.
+            validate_dicom_header(path)
+            session = DicomSession(isolated=True)
+            try:
+                session.open(path)
+                return session.read_frame(frame_index)
+            finally:
+                session.release()
         cached = _pixel_cache.get(path, frame_index)
         if cached is not None:
             return cached
