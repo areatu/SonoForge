@@ -306,7 +306,7 @@ class UserPreferencesDialog(QDialog):
         self._gold_enabled = QCheckBox()
         self._gold_enabled.setChecked(current.gold_annotation_enabled)
         self._gold_path = QLineEdit(current.gold_dataset_path)
-        self._gold_path.setPlaceholderText(str(Path.home() / "ECHO2026-gold"))
+        self._gold_path.setPlaceholderText(str(Path.home() / "SonoForge-gold"))
         self._gold_path_browse = QPushButton(tr("preferences.gold_browse"))
         self._gold_path_browse.clicked.connect(self._browse_gold_path)
         gold_path_row = QHBoxLayout()
@@ -328,7 +328,7 @@ class UserPreferencesDialog(QDialog):
         # --- References ---
         refs_form = QFormLayout()
         self._refs_dir = QLineEdit(current.references_dir)
-        self._refs_dir.setPlaceholderText(str(Path.home() / "ECHO2026-references"))
+        self._refs_dir.setPlaceholderText(str(Path.home() / "SonoForge-references"))
         self._refs_dir_browse = QPushButton(tr("references_dir_browse"))
         self._refs_dir_browse.clicked.connect(self._browse_references_dir)
         refs_dir_row = QHBoxLayout()
@@ -486,6 +486,10 @@ class UserPreferencesDialog(QDialog):
             references_dir=self._refs_dir.text().strip(),
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
+            despeckle_enabled=stored.despeckle_enabled,
+            auto_play=stored.auto_play,
+            playback_max_cache_mb=stored.playback_max_cache_mb,
+            layout_state_json=stored.layout_state_json,
         )
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())

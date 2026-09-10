@@ -13,7 +13,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_current_language: str = "ru"
+_current_language: str = "en"
 _translations: dict[str, dict[str, str]] = {}
 _reload_callbacks: list[Callable[[], None]] = []
 
