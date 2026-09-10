@@ -43,16 +43,53 @@ class TestComputeNodeLongitudinalCurves:
         assert curves[2] == pytest.approx((0.8 - 1.0) * 100.0, abs=1e-6)
 
     def test_each_node_owns_its_own_value(self) -> None:
-        """The old pairwise formula gave nodes 1..3 the same number."""
+        """The old pairwise formula gave nodes 1..3 the same number.
+
+        ``target_length_mm=0`` asks for the minimal window (one neighbour on each
+        side), which is the pure "own value" case; the pipeline default asks for
+        a physical 10 mm baseline instead, see the two tests below.
+        """
         ed = np.array([[0.0, 0.0], [10.0, 0.0], [20.0, 0.0], [30.0, 0.0]])
         es = np.array([[0.0, 0.0], [10.0, 0.0], [15.0, 0.0], [20.0, 0.0]])
         positions = np.stack([ed, es])
-        curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0))
+        curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0), target_length_mm=0.0)
         # node 0: two-point segment (10 → 10 px), nodes 1-3: sub-arcs through
         # the moved node, node 1 → (10+5)/20 - 1 = -25 %, nodes 2-3 → -50 %.
         assert curves[1] == pytest.approx([0.0, -25.0, -50.0, -50.0], abs=1e-6)
         # neighbours no longer share a value: node 1 differs from node 2
         assert curves[1, 1] != pytest.approx(curves[1, 2])
+
+    def test_material_window_has_a_physical_length(self) -> None:
+        """The default baseline is a physical length, not a number of nodes.
+
+        Kernels are spaced by index: near the annulus neighbours sit ~1.5 mm
+        apart, so a one-neighbour baseline measures a 3 mm stretch where
+        sub-pixel tracking noise reads as several percent of strain. The window
+        grows to ``target_length_mm`` at ED and stays fixed for every frame.
+        """
+        positions = _positions([1.0, 0.9], base_step=1.0)  # 1 mm node spacing
+        short = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0), target_length_mm=0.0)
+        long = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0), target_length_mm=10.0)
+        # Uniform shortening is scale-invariant, so both read -10 %: the values
+        # must not depend on the window length ...
+        assert short[1] == pytest.approx(-10.0, abs=1e-6)
+        assert long[1] == pytest.approx(-10.0, abs=1e-6)
+        # ... but the *sensitivity* to a jittered neighbour must drop with it.
+        jittered = positions.copy()
+        jittered[1, 1, 1] += 0.5  # half a pixel across the line, on one node
+        short_j = compute_node_longitudinal_curves(jittered, 0, (1.0, 1.0), target_length_mm=0.0)
+        long_j = compute_node_longitudinal_curves(jittered, 0, (1.0, 1.0), target_length_mm=10.0)
+        short_sensitivity = abs(short_j[1, 1] - short[1, 1])
+        long_sensitivity = abs(long_j[1, 1] - long[1, 1])
+        assert short_sensitivity > 0.0
+        assert long_sensitivity < short_sensitivity / 1.8
+
+    def test_window_is_fixed_at_ed_and_covers_the_same_material(self) -> None:
+        """A longer target never re-windows per frame (that would fake strain)."""
+        positions = _positions([1.0, 0.9, 0.8])
+        curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0), target_length_mm=25.0)
+        assert curves[1] == pytest.approx(-10.0, abs=1e-6)
+        assert curves[2] == pytest.approx(-20.0, abs=1e-6)
 
     def test_endpoints_use_the_two_point_segment(self) -> None:
         positions = _positions([1.0, 0.5])

@@ -21,7 +21,14 @@ Here every metric is derived from the strain curve of the *whole* cycle:
   is what the EACVI/ASE consensus and the vendors call GLS;
 * ``time_to_peak_ms`` — from ED to the peak (TTP), the basis of the
   time-to-peak bull's-eye and of dyssynchrony indices;
-* ``post_systolic_index`` — how much of the deformation happens *after* AVC;
+* ``peak`` is the **peak systolic** strain (the EACVI/ASE definition of the
+  value a segment or the global curve reports): the most negative sample between
+  ED and AVC plus a short tolerance for late-systolic peaks. An extremum that
+  lies *after* systole is reported separately (``post_systolic_peak``,
+  ``post_systolic_index``, ``is_post_systolic``) instead of being promoted to
+  the result — a diastolic tracking artefact must not become the GLS;
+* ``post_systolic_index`` — post-systolic shortening as a percentage of the
+  systolic peak (0 when the curve does not shorten further after AVC);
 * ``drift`` — the residual strain at the next end-diastole / end of the window,
   which must be reported as a number instead of being forced to zero.
 
@@ -140,11 +147,13 @@ def _peak_index(curve: np.ndarray, start: int, end: int | None) -> int | None:
 class StrainMetrics:
     """Metrics of one strain curve over the analysed cycle."""
 
-    peak: float = float("nan")  # most negative value in the window
+    peak: float = float("nan")  # peak systolic strain (ED .. AVC + tolerance)
     peak_frame: int | None = None
     ess: float = float("nan")  # value at AVC (end-systolic strain)
     time_to_peak_ms: float = float("nan")
-    post_systolic_index: float = float("nan")  # % of peak deformation after AVC
+    post_systolic_peak: float = float("nan")  # extremum after systole
+    post_systolic_peak_frame: int | None = None
+    post_systolic_index: float = float("nan")  # extra shortening after AVC, % of the peak
     drift: float = float("nan")  # residual strain at the end of the window
     is_post_systolic: bool = False
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -158,6 +167,7 @@ def compute_strain_metrics(
     window_end: int | None = None,
     frame_time_ms: float = 33.3,
     drift_tolerance: float = 2.0,
+    post_avc_tolerance_ms: float = 50.0,
 ) -> StrainMetrics:
     """Metrics of one strain curve between ED and the end of the cycle.
 
@@ -169,6 +179,8 @@ def compute_strain_metrics(
         frame_time_ms: frame period, used for TTP.
         drift_tolerance: |residual| below this value (percentage points) is
             reported as "no drift" in the notes.
+        post_avc_tolerance_ms: how far after AVC a peak is still accepted as
+            systolic (late-systolic shortening); 0 searches strictly to AVC.
 
     Returns:
         :class:`StrainMetrics`; every field is ``nan`` when the curve does not
@@ -183,7 +195,16 @@ def compute_strain_metrics(
     avc = int(min(max(avc_index, 0), last))
     end = last if window_end is None else int(min(max(window_end, ed), last))
 
-    peak_frame = _peak_index(arr, ed, end)
+    tolerance = int(round(max(float(post_avc_tolerance_ms), 0.0) / frame_time_ms)) if frame_time_ms > 0 else 1
+    systolic_end = min(end, avc + tolerance) if avc >= ed else end
+
+    peak_frame = _peak_index(arr, ed, systolic_end)
+    if peak_frame is None:
+        # Nothing finite inside systole: fall back to the whole window, but say
+        # so — the value is then a diastolic extremum, not a peak systolic one.
+        peak_frame = _peak_index(arr, ed, end)
+        if peak_frame is not None:
+            notes.append("no finite strain inside systole - peak read over the whole window")
     peak = float(arr[peak_frame]) if peak_frame is not None else float("nan")
     if peak_frame is None:
         notes.append("no finite strain inside the analysis window")
@@ -195,13 +216,24 @@ def compute_strain_metrics(
     if peak_frame is not None and frame_time_ms > 0:
         ttp = float(max(peak_frame - ed, 0) * frame_time_ms)
 
-    psi = float("nan")
-    if np.isfinite(peak) and np.isfinite(ess) and abs(peak) > 1e-6:
-        psi = float((peak - ess) / peak * 100.0)
+    late_frame = _peak_index(arr, systolic_end + 1, end) if systolic_end < end else None
+    post_systolic_peak = float(arr[late_frame]) if late_frame is not None else float("nan")
 
-    is_post_systolic = bool(np.isfinite(psi) and psi > 5.0 and peak_frame is not None and peak_frame > avc)
+    psi = float("nan")
+    if np.isfinite(peak) and np.isfinite(post_systolic_peak) and abs(peak) > 1e-6:
+        # Negative strain shortens: a *deeper* extremum after systole means extra
+        # shortening. Clamped at zero, so a diastolic rebound is not reported as
+        # post-systolic shortening.
+        psi = float(max((peak - post_systolic_peak) / abs(peak) * 100.0, 0.0))
+    elif np.isfinite(peak):
+        psi = 0.0
+
+    is_post_systolic = bool(np.isfinite(psi) and psi > 5.0)
     if is_post_systolic:
-        notes.append("post-systolic shortening detected")
+        notes.append(
+            f"post-systolic shortening: {post_systolic_peak:+.1f}% at frame "
+            f"{int(late_frame)} ({psi:.0f}% deeper than the systolic peak)"
+        )
 
     drift = float(arr[end]) if np.isfinite(arr[end]) else float("nan")
     if np.isfinite(drift) and abs(drift) > drift_tolerance:
@@ -214,6 +246,8 @@ def compute_strain_metrics(
         peak_frame=peak_frame,
         ess=ess,
         time_to_peak_ms=ttp,
+        post_systolic_peak=post_systolic_peak,
+        post_systolic_peak_frame=late_frame,
         post_systolic_index=psi,
         drift=drift,
         is_post_systolic=is_post_systolic,

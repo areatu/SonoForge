@@ -84,6 +84,11 @@ class StrainAnalysis:
     qc_coverage: float = 0.0
     qc_interpolated_fraction: float = 0.0
     qc_consistency_delta: float = 0.0
+    # Metric cross-checks (plan §7.5, F4): gap between the reported global
+    # strain and the independent segment-mean estimate, and the share of the
+    # endocardial line whose end-systolic strain has the opposite sign.
+    qc_estimate_spread_pp: float = 0.0
+    qc_sign_flip_fraction: float = 0.0
     kernels_accepted: int = 0
     kernels_total: int = 0
     heart_rate_bpm: float = 0.0
@@ -139,15 +144,15 @@ class StrainAnalysis:
                 "coverage": self.qc_coverage,
                 "interpolated_fraction": self.qc_interpolated_fraction,
                 "consistency_delta": self.qc_consistency_delta,
+                "estimate_spread_pp": self.qc_estimate_spread_pp,
+                "sign_flip_fraction": self.qc_sign_flip_fraction,
                 "tracking_ncc_mean": self.tracking_quality_mean,
                 "kernels_accepted": self.kernels_accepted,
                 "kernels_total": self.kernels_total,
                 "preset": self.tracking_preset,
                 "heart_rate_bpm": self.heart_rate_bpm,
             },
-            "segments": {
-                str(seg): _finite(self.segment_values.get(seg)) for seg in sorted(self.segment_values)
-            },
+            "segments": {str(seg): _finite(self.segment_values.get(seg)) for seg in sorted(self.segment_values)},
             "segment_quality": {str(seg): _finite(value) for seg, value in sorted(self.segment_quality.items())},
             "segment_ttp_ms": {str(seg): _finite(value) for seg, value in sorted(self.segment_ttp_ms.items())},
             "segment_ess": {str(seg): _finite(value) for seg, value in sorted(self.segment_ess.items())},
@@ -155,7 +160,9 @@ class StrainAnalysis:
         if with_curves:
             data["curves"] = {
                 "global": None if self.global_curve is None else np.asarray(self.global_curve).tolist(),
-                "segments": {str(seg): np.asarray(curve).tolist() for seg, curve in sorted(self.segment_curves.items())},
+                "segments": {
+                    str(seg): np.asarray(curve).tolist() for seg, curve in sorted(self.segment_curves.items())
+                },
             }
         return data
 
@@ -163,9 +170,7 @@ class StrainAnalysis:
     def from_result(cls, result: StrainResult, *, view: str | None = None) -> StrainAnalysis:
         """Build the record from a worker result (the only conversion point)."""
         metrics = getattr(result, "segment_metrics", {}) or {}
-        segment_ess = {
-            int(seg): _finite(getattr(metric, "ess", None)) for seg, metric in metrics.items()
-        }
+        segment_ess = {int(seg): _finite(getattr(metric, "ess", None)) for seg, metric in metrics.items()}
         return cls(
             view=normalise_view(view or getattr(result, "view", "A4C")),
             gls=_finite(result.gls),
@@ -192,18 +197,16 @@ class StrainAnalysis:
             qc_coverage=float(getattr(result, "qc_coverage", 0.0)),
             qc_interpolated_fraction=float(getattr(result, "qc_interpolated_fraction", 0.0)),
             qc_consistency_delta=float(getattr(result, "qc_consistency_delta", 0.0)),
+            qc_estimate_spread_pp=float(getattr(result, "qc_estimate_spread_pp", 0.0)),
+            qc_sign_flip_fraction=float(getattr(result, "qc_sign_flip_fraction", 0.0)),
             kernels_accepted=int(result.kernels_accepted_count),
             kernels_total=int(result.kernels_total_count),
             heart_rate_bpm=float(result.heart_rate_bpm),
             segment_values={int(k): float(v) for k, v in (result.segment_strain or {}).items()},
             segment_quality={int(k): float(v) for k, v in (result.segment_quality or {}).items()},
-            segment_ttp_ms={
-                int(k): float(v) for k, v in (getattr(result, "segment_ttp_ms", {}) or {}).items()
-            },
+            segment_ttp_ms={int(k): float(v) for k, v in (getattr(result, "segment_ttp_ms", {}) or {}).items()},
             segment_ess={seg: value for seg, value in segment_ess.items() if value is not None},
-            segment_curves={
-                int(k): np.asarray(v, dtype=np.float64) for k, v in (result.segment_curves or {}).items()
-            },
+            segment_curves={int(k): np.asarray(v, dtype=np.float64) for k, v in (result.segment_curves or {}).items()},
             global_curve=None if result.longitudinal is None else np.asarray(result.longitudinal, dtype=np.float64),
             node_curves=None if getattr(result, "node_curves", None) is None else np.asarray(result.node_curves),
             frame_time_ms=float(result.frame_time_ms),

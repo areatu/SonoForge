@@ -18,8 +18,6 @@ from echo_personal_tool.domain.models.speckle import (
 )
 from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,
-    choose_clinical_gls,
-    compute_aha_segment_strain,
     compute_gls_from_segments,
 )
 from echo_personal_tool.domain.services.cardiac_cycle_detector import (
@@ -52,6 +50,7 @@ from echo_personal_tool.domain.services.strain_computation import (
     compute_weighted_radial_strain_gl,
     global_curve_from_node_curves,
     peak_in_window,
+    smooth_curves_time,
 )
 from echo_personal_tool.domain.services.strain_metrics import (
     compute_strain_metrics,
@@ -63,6 +62,7 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
     apply_motion_model,
     extract_trajectories,
     interpolate_invalid_kernels,
+    repair_outlier_columns,
     smooth_trajectories,
 )
 
@@ -110,6 +110,52 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
     if not frames_list:
         raise RuntimeError("No frames decoded from source")
     return np.stack(frames_list)
+
+
+def _arc_ordered_columns(
+    indices: list[int],
+    kernels: list[TrackingKernel],
+    *,
+    drop_ends: int = 0,
+) -> list[int]:
+    """Kernel indices of one layer, ordered along the wall, ends optionally dropped."""
+    ordered = sorted(indices, key=lambda i: kernels[i].node_index)
+    if drop_ends > 0 and len(ordered) > 2 * drop_ends + 2:
+        ordered = ordered[drop_ends:-drop_ends]
+    return ordered
+
+
+def _segment_tracking_quality(
+    kernels: list[TrackingKernel],
+    ncc_matrix: np.ndarray,
+    ed_index: int,
+    es_index: int,
+    *,
+    min_quality: float = 0.3,
+) -> dict[int, float]:
+    """Mean NCC fidelity per AHA segment over the ED..ES window.
+
+    One number per segment: the mean NCC of the kernels that belong to it
+    (all layers), so the bull's-eye can grey out a segment whose speckle was
+    not tracked, independently of the strain value it shows.
+    """
+    if ncc_matrix is None or len(kernels) == 0:
+        return {}
+    start = int(max(0, min(ed_index, es_index)))
+    end = int(min(ncc_matrix.shape[0] - 1, max(ed_index, es_index)))
+    if end < start:
+        return {}
+    window = np.asarray(ncc_matrix[start : end + 1], dtype=np.float64)
+    per_kernel = np.nanmean(window, axis=0) if window.size else np.zeros(len(kernels))
+    out: dict[int, list[float]] = {}
+    for index, kernel in enumerate(kernels):
+        segment = int(getattr(kernel, "aha_segment", 0) or 0)
+        if segment <= 0:
+            continue
+        value = float(per_kernel[index]) if index < per_kernel.shape[0] else float("nan")
+        if np.isfinite(value):
+            out.setdefault(segment, []).append(value)
+    return {seg: float(np.mean(values)) for seg, values in out.items() if values}
 
 
 def _embed_window_curve(
@@ -461,8 +507,7 @@ class SpeckleTrackingWorker(QRunnable):
             local_es = global_es - phase_start
             local_window_end = phase_end - phase_start
             logger.info(
-                "STE analysis window: ED=%d ES=%d end=%d (%d frames, HR=%.0f bpm, "
-                "RR=%s, cycle_estimated=%s)",
+                "STE analysis window: ED=%d ES=%d end=%d (%d frames, HR=%.0f bpm, RR=%s, cycle_estimated=%s)",
                 global_ed,
                 global_es,
                 phase_end,
@@ -496,19 +541,35 @@ class SpeckleTrackingWorker(QRunnable):
 
             self.signals.progress.emit(0, 100)
             wall_thickness_px = int(config.wall_thickness_mm / avg_spacing)
-            if config.tracking_mode in ("incremental", "bidirectional"):
-                # ED-anchored modes jump from ED to every frame, so the search
-                # window must span the full systolic excursion. A frame-to-frame
-                # sized radius would clip the match near end-systole.
-                config = dataclasses.replace(
-                    config,
-                    search_radius=max(config.search_radius, 24),
-                )
             # Vendor-style border propagation: only well-posed when the window
             # starts at ED and runs to ES (the last frame of the window).
             is_border_mode = bool(
                 config.tracking_mode == "border" and local_ed == 0 and local_es == int(preprocessed.shape[0]) - 1
             )
+            if is_border_mode:
+                tracking_path = "border"
+            elif config.tracking_mode == "incremental":
+                tracking_path = "incremental"
+            elif config.tracking_mode == "sequential":
+                tracking_path = "sequential"
+            else:
+                # Includes the fallback from "border" when the window is not a
+                # full ED..ES cycle (manual ES, sub-window, offset ED).
+                tracking_path = "bidirectional"
+            if tracking_path in ("incremental", "bidirectional"):
+                # ED-anchored modes jump from ED to every frame, so the search
+                # window must span the full systolic excursion: the annulus
+                # descends tens of pixels between ED and ES, and a radius that
+                # only covers frame-to-frame motion clips the match near
+                # end-systole (silently reporting a *smaller* strain while NCC
+                # stays high). The old code only did this for the explicitly
+                # selected modes, so the "border" preset silently degraded to
+                # bidirectional tracking *with the small radius* whenever the
+                # window was not a full cycle (plan §7.5, F9).
+                config = dataclasses.replace(
+                    config,
+                    search_radius=max(config.search_radius, 24),
+                )
             border_propagation = None
             if is_border_mode:
                 from echo_personal_tool.domain.services.border_tracking import (
@@ -589,6 +650,23 @@ class SpeckleTrackingWorker(QRunnable):
                     kernels,
                     config.ncc_threshold,
                 )
+                # A match can be well correlated and still land on the wrong
+                # speckle patch. Such a column is replaced by the median of its
+                # immediate neighbours (plan §7.5, F8): a *median* follows any
+                # locally smooth field, including the curved displacement of a
+                # rotating ventricle, and the repair is gated on a robust
+                # residual scale, so a healthy column is never touched.
+                positions, outlier_columns = repair_outlier_columns(
+                    positions,
+                    kernels,
+                    track_ed_index,
+                    self._pixel_spacing,
+                )
+                if outlier_columns.any():
+                    logger.info(
+                        "STE wall-motion outliers: %d kernel-frames replaced by their neighbour median",
+                        int(outlier_columns.sum()),
+                    )
                 raw_positions = positions.copy()
                 if config.global_motion_compensation:
                     translations = estimate_global_translations(tracking_frames_raw, local_ed)
@@ -606,28 +684,37 @@ class SpeckleTrackingWorker(QRunnable):
                         track_ed_index,
                         config.ncc_threshold,
                     )
-                # Radial containment: keep layer order and prevent spurious
-                # spikes across the wall. The epicardium is a near-hard outer
-                # wall — during systole the epi barely moves — while inward
-                # slack lets the wall thicken/contract without being erased by
-                # the ED baseline.
-                smoothed, n_clamped = clamp_trajectories_to_wall(
-                    smoothed,
-                    kernels,
-                    track_ed_index,
-                    inward_slack=1.4,
-                    outward_slack=0.0,
-                )
-                logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
+                # Wall-band containment (off by default, plan §7.5 F2): the
+                # band is the *ED* wall, so a wall that travels further inward
+                # than the ED geometry allows (or rotates as a whole) is pulled
+                # back — measured as 4-5 pp of lost strain and as probe motion
+                # turning into deformation. The phantom is the reference for
+                # this decision; the clamp stays available for A/B comparison.
+                if config.wall_clamp:
+                    smoothed, n_clamped = clamp_trajectories_to_wall(
+                        smoothed,
+                        kernels,
+                        track_ed_index,
+                        inward_slack=1.4,
+                        outward_slack=0.0,
+                    )
+                    logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]
+            # The arc integral must walk the wall in order (the strain helper
+            # uses the order it is given) and it uses every column: dropping the
+            # two annulus-plane columns was only needed while the phantom's
+            # annulus band was static (plan §7.5 F2/F8), and with the corrected
+            # phantom the two ends are as accurate as the rest of the wall.
+            strain_endo = _arc_ordered_columns(endo_indices, kernels)
+            strain_epi = _arc_ordered_columns(epi_indices, kernels)
 
             # Use NCC weights from ED frame for quality-weighted strain
             ed_ncc = ncc_matrix[local_ed].copy()
 
             window_long = compute_weighted_longitudinal_strain_gl(
-                smoothed, local_ed, self._pixel_spacing, endo_indices, ed_ncc
+                smoothed, local_ed, self._pixel_spacing, strain_endo, ed_ncc
             )
             # Drift compensation is only meaningful when the tracked window
             # actually closes back to a diastolic baseline (i.e. the window
@@ -646,14 +733,14 @@ class SpeckleTrackingWorker(QRunnable):
 
             longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 
-            n_pairs = min(len(endo_indices), len(epi_indices))
+            n_pairs = min(len(strain_endo), len(strain_epi))
             if n_pairs > 0:
                 window_radial = compute_weighted_radial_strain_gl(
                     smoothed,
                     local_ed,
                     self._pixel_spacing,
-                    endo_indices[:n_pairs],
-                    epi_indices[:n_pairs],
+                    strain_endo[:n_pairs],
+                    strain_epi[:n_pairs],
                     ed_ncc,
                 )
                 radial = _embed_window_curve(window_radial, n_frames, phase_start, phase_end)
@@ -676,6 +763,7 @@ class SpeckleTrackingWorker(QRunnable):
             es_ncc = None
             es_valid = None
             node_curves_full: np.ndarray | None = None
+            window_node_curves: np.ndarray | None = None
             node_indices: tuple[int, ...] = ()
             segment_curves: dict[int, np.ndarray] = {}
             window_segment_curves: dict[int, np.ndarray] = {}
@@ -700,13 +788,19 @@ class SpeckleTrackingWorker(QRunnable):
                     local_ed,
                     self._pixel_spacing,
                 )
+                # Metrics are read from a temporally filtered curve: peaks of a
+                # raw per-frame signal are noise-biased (see smooth_curves_time).
+                window_node_curves = smooth_curves_time(
+                    window_node_curves,
+                    window=int(config.curve_smoothing_frames),
+                    polyorder=2,
+                )
                 node_curves_full = np.full((n_frames, len(endo_sorted)), np.nan, dtype=np.float64)
                 window_len = phase_end - phase_start + 1
                 tracked_len = int(min(window_node_curves.shape[0], window_len))
                 if tracked_len != window_len:
                     logger.warning(
-                        "STE: tracker returned %d frames for a %d-frame analysis window — "
-                        "using the frames that exist",
+                        "STE: tracker returned %d frames for a %d-frame analysis window — using the frames that exist",
                         window_node_curves.shape[0],
                         window_len,
                     )
@@ -790,14 +884,12 @@ class SpeckleTrackingWorker(QRunnable):
                 frame_time_ms=self._frame_time_ms,
             )
             logger.info(
-                "STE: baseline drift measured as %.2f%% (not forced to zero; "
-                "config.drift_compensation=%s)",
+                "STE: baseline drift measured as %.2f%% (not forced to zero; config.drift_compensation=%s)",
                 float(global_metrics.drift) if np.isfinite(global_metrics.drift) else float("nan"),
                 bool(config.drift_compensation),
             )
             logger.info(
-                "STE metrics: AVC=%d (source=%s) peak=%.2f%% ESS=%.2f%% TTP=%.0f ms "
-                "PSI=%.1f%% drift=%.2f%% notes=%s",
+                "STE metrics: AVC=%d (source=%s) peak=%.2f%% ESS=%.2f%% TTP=%.0f ms PSI=%.1f%% drift=%.2f%% notes=%s",
                 avc_frame + phase_start,
                 avc_source,
                 global_metrics.peak,
@@ -816,8 +908,23 @@ class SpeckleTrackingWorker(QRunnable):
             quality_slice = ncc_matrix[local_ed : local_es + 1]
             tracking_quality_mean = float(np.mean(quality_slice)) if quality_slice.size else 0.0
 
-            segment_strain, segment_quality = compute_aha_segment_strain(
-                per_kernel, kernels, es_ncc if es_ncc is not None else np.ones(len(kernels))
+            # Segment values come from the *segment curves* of the arc model
+            # (phase 1/2): each segment curve is the same-frame weighted mean of
+            # its node curves, so the reported peak is the clinical segmental
+            # strain. The previous angular path (``compute_aha_segment_strain``
+            # over per-kernel end-systolic values) assigned kernels to segments
+            # by the angle around the centroid and read a single frame — on the
+            # kinematic phantom that produced values like +170 % for a segment
+            # whose true strain is −20 % (plan §7.5, F7).
+            segment_strain = {
+                int(seg): float(metrics.peak) for seg, metrics in segment_metrics.items() if np.isfinite(metrics.peak)
+            }
+            segment_quality = _segment_tracking_quality(
+                kernels,
+                ncc_matrix,
+                local_ed,
+                local_es,
+                min_quality=config.min_kernel_quality,
             )
 
             logger.info(
@@ -875,19 +982,16 @@ class SpeckleTrackingWorker(QRunnable):
                 segment_quality,
                 min_quality=config.min_segment_quality,
             )
-            gls, gls_source = choose_clinical_gls(
-                gls_curve,
-                segment_strain,
-                segment_quality,
-                min_segment_quality=config.min_segment_quality,
-            )
-            if gls_source == "segments":
-                # Keep the curve as the reported GLS; the segment mean is
-                # recorded separately together with the delta between them.
-                gls_source = "curve"
+            # The reported GLS is *always* the peak of the global curve. The
+            # previous revision used ``choose_clinical_gls`` here, which
+            # replaced the value with the mean of the segment peaks whenever
+            # three segments passed quality — contradicting the EACVI/ASE
+            # definition (segments peak at different instants) and, with the old
+            # angular segments, reporting numbers like +25 % for a −19 % phantom.
+            # The segment mean stays available as a cross-check.
+            gls, gls_source = gls_curve, "curve"
             logger.info(
-                "STE GLS: global curve peak=%.2f%% (source=%s), segment-mean cross-check=%.2f%% "
-                "(delta %.2f pp)",
+                "STE GLS: global curve peak=%.2f%% (source=%s), segment-mean cross-check=%.2f%% (delta %.2f pp)",
                 gls,
                 gls_source,
                 gls_segments,
@@ -907,10 +1011,22 @@ class SpeckleTrackingWorker(QRunnable):
             )
             coverage = n_accepted / n_kernels if n_kernels else 0.0
             window_ncc = ncc_matrix[local_ed : local_es + 1]
-            interpolated_fraction = (
-                float(np.mean(window_ncc < config.ncc_threshold)) if window_ncc.size else 1.0
-            )
+            interpolated_fraction = float(np.mean(window_ncc < config.ncc_threshold)) if window_ncc.size else 1.0
             geometry_ok, geometry_notes = _check_ste_geometry(self._zone, self._pixel_spacing)
+            # Metric cross-checks (plan §7.5, F4): the reported GLS must agree
+            # with the independent estimates built from the *same* tracking but
+            # a different aggregation, and the endocardial line must shorten as
+            # a line. These need no ground truth, so they work on a real patient.
+            node_ess = (
+                window_node_curves[local_es] if window_node_curves is not None else np.array([], dtype=np.float64)
+            )
+            finite_ess = node_ess[np.isfinite(node_ess)]
+            sign_flip_fraction = 0.0
+            if finite_ess.size >= 8 and abs(gls) >= 5.0:
+                sign_flip_fraction = float(np.mean(finite_ess > 0.5 * abs(gls)))
+            estimate_spread_pp = 0.0
+            if np.isfinite(gls_segments) and str(gls_source) == "curve":
+                estimate_spread_pp = float(abs(gls - gls_segments))
             quality = assess_tracking_quality(
                 has_curve=bool(np.any(np.isfinite(window_long))),
                 fidelity=tracking_quality_mean,
@@ -918,21 +1034,26 @@ class SpeckleTrackingWorker(QRunnable):
                 interpolated_fraction=interpolated_fraction,
                 consistency_delta=consistency_delta,
                 physiology_ok=phys_ok,
-                physiology_notes=phys_reasons if not phys_ok else (),
+                physiology_notes=tuple(phys_reasons),
                 geometry_ok=geometry_ok,
                 geometry_notes=geometry_notes,
                 n_segments_measured=len(segment_strain),
+                estimate_spread_pp=estimate_spread_pp,
+                sign_flip_fraction=sign_flip_fraction,
+                gls_pp=gls,
             )
             qc_overall = quality.confidence
             logger.info(
                 "STE QC: status=%s confidence=%.2f ncc=%.3f coverage=%.2f interp=%.2f "
-                "consistency=%.2f physiology_ok=%s geometry_ok=%s reasons=%s",
+                "consistency=%.2f spread=%.2f sign_flip=%.2f physiology_ok=%s geometry_ok=%s reasons=%s",
                 quality.status,
                 quality.confidence,
                 tracking_quality_mean,
                 coverage,
                 interpolated_fraction,
                 consistency_delta,
+                estimate_spread_pp,
+                sign_flip_fraction,
                 phys_ok,
                 geometry_ok,
                 quality.reasons,
@@ -1021,6 +1142,8 @@ class SpeckleTrackingWorker(QRunnable):
                 segment_metrics=dict(segment_metrics),
                 segment_ttp_ms=dict(segment_ttp),
                 gls_segment_mean=float(gls_segments),
+                qc_estimate_spread_pp=float(estimate_spread_pp),
+                qc_sign_flip_fraction=float(sign_flip_fraction),
                 analysis_window_end=int(phase_end),
                 cycle_estimated=bool(cycle_estimated),
                 raw_tracked_positions=raw_phase_positions,

@@ -61,9 +61,22 @@ class SpeckleConfig:
     tracking_mode: str = "sequential"
     spatial_smoothing: float = 1.0
     temporal_smoothing: float = 1.0
+    # Temporal low-pass of the strain curves before the metrics are read
+    # (peak systolic strain, ESS, TTP). Speckle tracking is noisy frame to
+    # frame and an unfiltered *peak* is biased by single-frame spikes, which
+    # is what made the segmental numbers swing while the global curve looked
+    # plausible. 0 or 1 disables the filter.
+    curve_smoothing_frames: int = 9
     quality_weighted_smoothing: bool = True
     drift_compensation: bool = True
     global_motion_compensation: bool = True
+    # Wall-band containment of the tracked kernels. Measurement on the kinematic
+    # phantom (plan §7.5, F2) showed it clips genuine systolic excursion — the
+    # band is built from the *ED* geometry while the endocardium legitimately
+    # travels further inward, and a rigid rotation of the wall is read as
+    # contraction — so it no longer runs in the default pipeline. Kept for A/B
+    # comparison; ``tests/unit/test_kernel_containment.py`` covers the function.
+    wall_clamp: bool = False
     min_segment_quality: float = 0.4
     min_kernel_quality: float = 0.3
     # Forward-backward closure error, as a fraction of ``search_radius``; a
@@ -173,6 +186,11 @@ class StrainResult:
     qc_coverage: float = 0.0
     qc_interpolated_fraction: float = 0.0
     qc_consistency_delta: float = 0.0
+    # Metric cross-checks (plan §7.5, F4): gap between the reported global
+    # strain and the independent segment-mean estimate, and the share of the
+    # endocardial line whose end-systolic strain has the opposite sign.
+    qc_estimate_spread_pp: float = 0.0
+    qc_sign_flip_fraction: float = 0.0
     # Per-node strain curves along the tracked material line (single definition,
     # see ``strain_computation.compute_node_longitudinal_curves``). Columns match
     # ``node_indices``; values are NaN outside the tracked window.

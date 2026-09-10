@@ -1350,5 +1350,7 @@
   "strain.bullseye_ttp_hint": "Bull's-eye: time from ED to the segment peak in ms (late activation is red)",
   "strain.view_label": "View:",
   "strain.gls_av": "GLS AV (view average)",
-  "strain.gls_av_meta": "GLS AV {value}% ({n} views)"
+  "strain.gls_av_meta": "GLS AV {value}% ({n} views)",
+  "strain.qc.reason.cross_check": "independent strain estimates disagree",
+  "strain.qc.reason.line_coherence": "the myocardial line does not shorten coherently"
 }

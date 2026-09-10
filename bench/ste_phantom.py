@@ -150,9 +150,28 @@ def run_variant(variant: Variant) -> VariantResult:
         "kernels_accepted": int(getattr(analysis, "kernels_accepted_count", 0)),
         "kernels_total": int(getattr(analysis, "kernels_total_count", 0)),
         "segment_strain": {str(k): float(v) for k, v in dict(getattr(analysis, "segment_strain", {})).items()},
+        "segment_spread_pp": abs(
+            float(analysis.gls) - float(getattr(analysis, "gls_segment_mean", float("nan")))
+        ),
+        "qc_estimate_spread_pp": float(getattr(analysis, "qc_estimate_spread_pp", float("nan"))),
+        "qc_sign_flip_fraction": float(getattr(analysis, "qc_sign_flip_fraction", float("nan"))),
+        "qc_consistency_delta": float(getattr(analysis, "qc_consistency_delta", float("nan"))),
+        "qc_coverage": float(getattr(analysis, "qc_coverage", float("nan"))),
+        "qc_interpolated_fraction": float(getattr(analysis, "qc_interpolated_fraction", float("nan"))),
+        "qc_reasons": list(getattr(analysis, "qc_reasons", ()) or ()),
+        "segment_quality": {str(k): float(v) for k, v in dict(getattr(analysis, "segment_quality", {})).items()},
     }
     result.measured = measured
 
+    node_curves = getattr(analysis, "node_curves", None)
+    if node_curves is not None:
+        curves = np.asarray(node_curves, dtype=np.float64)
+        if curves.ndim == 2 and curves.size:
+            es_index = int(min(max(truth.es_index, 0), curves.shape[0] - 1))
+            measured["node_ess_median"] = float(np.nanmedian(curves[es_index]))
+            measured["node_ess_spread_pp"] = float(
+                np.nanmedian(np.abs(curves[es_index] - np.nanmedian(curves[es_index])))
+            )
     errors: dict[str, float] = {}
     recorded = dict(measured["segment_strain"])
     for segment, value in truth.segment_values.items():
@@ -187,7 +206,11 @@ def evaluate(result: VariantResult) -> tuple[bool, list[str]]:
     if metrics.get("segment_rms_pp", 0.0) > KPI["segment_rms_pp"]:
         findings.append(f"segment RMS {metrics['segment_rms_pp']:.2f} pp (gate {KPI['segment_rms_pp']:.1f})")
         ok = False
-    if metrics.get("ttp_error_frames", 0.0) > KPI["ttp_frames"]:
+    # TTP is defined for a curve that has a systolic peak; a phantom whose true
+    # strain is identically zero has no peak time to compare against, and the
+    # value is then pure tracking noise. It stays in the report, un-gated.
+    truth_peak = float(result.truth.get("line_curve_peak", 0.0) or 0.0)
+    if abs(truth_peak) >= 1.0 and metrics.get("ttp_error_frames", 0.0) > KPI["ttp_frames"]:
         findings.append(f"TTP off by {metrics['ttp_error_frames']:.2f} frames (gate {KPI['ttp_frames']:.1f})")
         ok = False
     return ok, findings

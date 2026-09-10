@@ -74,8 +74,8 @@ class StePhantomConfig:
     """Geometry, motion and image parameters of the phantom."""
 
     # ── image
-    width: int = 600
-    height: int = 800
+    width: int = 360
+    height: int = 320
     n_frames: int = 46
     pixel_spacing_mm: float = 0.45
     rr_ms: float = 900.0
@@ -103,7 +103,13 @@ class StePhantomConfig:
     # translates with the heart and the consumer's global-motion compensation
     # would subtract genuine cardiac motion.
     static_background: bool = True
-    deform_halo: float = 0.12  # transition band outside the epicardium, fraction of its radius
+    # Width of the transition band in which the surrounding tissue progressively
+    # stops following the heart, as a multiple of the systolic excursion. It has
+    # to be wide: the band carries a displacement of tens of pixels, and a steep
+    # weight ramp would fold the warped image (a tear) — and a folded map has no
+    # inverse at all. Two excursions keep the blend's Jacobian positive while
+    # still leaving the image border static.
+    deform_halo: float = 2.0
     rotation_deg: float = 0.0  # rigid rotation amplitude about the cavity centre
     translation_px: tuple[float, float] = (0.0, 0.0)  # rigid translation per frame
     post_systolic_frac: float = 0.0  # delay of the peak beyond AVC, as a cycle fraction
@@ -113,6 +119,14 @@ class StePhantomConfig:
     noise_db: float = 20.0  # speckle SNR in dB (0 → very noisy)
     decorrelation: float = 0.35  # fraction of speckle replaced over the clip
     out_of_plane: float = 0.0  # extra per-frame speckle replacement
+    # Material reflectivity structure: real myocardium is not a smooth shell —
+    # trabeculae, fibre orientation and fibrosis give bright/dark patches that
+    # move *with* the wall. Without them a block inside the wall matches equally
+    # well at any position *along* the wall (aperture problem) and the tracked
+    # position slides tangentially by several millimetres, which no tracker can
+    # recover because the information is simply not in the image.
+    tissue_grain_contrast: float = 0.35  # relative amplitude of the patches
+    tissue_grain_mm: float = 4.0  # patch size in millimetres
     background_level: float = 0.18  # brightness outside the myocardium
     cavity_level: float = 0.10  # brightness of the blood pool
     myocardium_level: float = 0.62  # brightness of the myocardium
@@ -136,7 +150,7 @@ class StePhantomConfig:
             cavity_long_mm=45.0,
             cavity_short_mm=30.0,
             wall_mm=5.0,
-            apex_margin_mm=12.0,
+            apex_margin_mm=20.0,  # room above the apex for probe translation in tests
         )
         return replace(base, **overrides) if overrides else base
 
@@ -261,6 +275,7 @@ class StePhantom:
         self._epi_ed = self._arc(n_nodes=max(self.MIN_ARC_NODES, 65), epi=True)
         self._cavity_centre_ed = np.array([self._cx, self._apex_y + self._long_px / 2.0])
         self._weight_map: np.ndarray | None = None
+        self._moving: np.ndarray | None = None
 
     # ── geometry ────────────────────────────────────────────────────────────
 
@@ -315,11 +330,6 @@ class StePhantom:
             return local
         return e
 
-    def _circumferential_scale(self, d: np.ndarray | float, frame: int) -> np.ndarray | float:
-        """In-plane transverse scale: myocardium shortens circumferentially too."""
-        local = self._local_long_strain(d, frame)
-        return 1.0 + self.config.circumferential_ratio * np.asarray(local, dtype=np.float64)
-
     def _rigid(self, frame: int) -> tuple[np.ndarray, float, np.ndarray]:
         """Rigid part of the map: rotation centre, angle and translation.
 
@@ -352,11 +362,32 @@ class StePhantom:
         """Static-background weight for the whole image (1 heart, 0 far tissue)."""
         cfg = self.config
         mask = np.zeros((cfg.height, cfg.width), dtype=np.uint8)
-        epi_closed = np.vstack([self._epi_ed, self._epi_ed[::-1][-1:]])  # close across the annulus
+        # 1) the ventricle itself: the epicardial arc closed across the annulus.
+        epi_closed = np.vstack([self._epi_ed, self._epi_ed[::-1][-1:]])
         cv2.fillPoly(mask, [epi_closed.astype(np.int32)], 1)
-        halo_px = max(3.0, float(cfg.deform_halo) * float(self._a_endo))
-        kernel_size = int(2 * round(halo_px) + 1)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        # 2) the mitral annulus band. The annulus is part of the heart and
+        # descends with the base, so the tissue band at and above the annulus
+        # plane must move too. Leaving it static made the basal kernel patches
+        # half static tissue: their matches found no displacement at all while
+        # the wall around them moved 20 px, and those columns dominated the
+        # arc-length strain (plan §7.5, F10). The band is added as a separate
+        # polygon because extending the ventricular outline crosses the
+        # epicardial arc and makes the fill self-intersect.
+        margin = float(self._max_motion_px())
+        x_lo = float(min(self._epi_ed[:, 0].min(), self._endo_ed[:, 0].min()))
+        x_hi = float(max(self._epi_ed[:, 0].max(), self._endo_ed[:, 0].max()))
+        band = np.array(
+            [
+                [x_lo, self._base_y - margin],
+                [x_hi, self._base_y - margin],
+                [x_hi, self._base_y + margin],
+                [x_lo, self._base_y + margin],
+            ],
+            dtype=np.int32,
+        )
+        cv2.fillPoly(mask, [band], 1)
+        halo_px = self._halo_px()
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         dilated = cv2.dilate(mask, kernel)
         outside = cv2.distanceTransform((1 - dilated).astype(np.uint8), cv2.DIST_L2, 3)
         weight = np.clip(1.0 - outside / max(halo_px, 1e-6), 0.0, 1.0)
@@ -364,6 +395,28 @@ class StePhantom:
         weight[mask > 0] = 1.0
         weight = np.where(weight >= 1.0, 1.0, weight * weight * (3.0 - 2.0 * weight))
         self._weight_map = weight.astype(np.float64)
+        # Every pixel that can possibly be reached by moving tissue. Outside it
+        # the map is the identity, so the (expensive) inverse family solve can
+        # be skipped — this is what keeps ``frames()`` fast on a full sector.
+        margin = self._max_motion_px() + halo_px
+        margin_px = int(2 * round(margin) + 1)
+        big_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (margin_px, margin_px))
+        self._moving = cv2.dilate(mask, big_kernel) > 0
+
+    def _halo_px(self) -> float:
+        """Ramp width (px) over which the surrounding tissue stops moving."""
+        cfg = self.config
+        strain = float(np.max(np.abs(self._strain))) if self._strain.size else 0.0
+        excursion = strain * self._long_px * (1.0 + 0.5 * abs(float(cfg.apex_base_gradient)))
+        return max(4.0, float(cfg.deform_halo) * excursion)
+
+    def _max_motion_px(self) -> float:
+        """Upper bound (px) on how far a material point travels from ED."""
+        cfg = self.config
+        strain = float(np.max(np.abs(self._strain))) if self._strain.size else 0.0
+        span = self._long_epi_px * (1.0 + strain * (1.0 + 0.5 * abs(float(cfg.apex_base_gradient))))
+        rigid = float(np.linalg.norm(cfg.translation_px)) + np.radians(abs(cfg.rotation_deg)) * span
+        return float(span * strain + rigid + 2.0)
 
     def _sample_weight_map(self, points: np.ndarray) -> np.ndarray:
         if self._weight_map is None:
@@ -377,63 +430,135 @@ class StePhantom:
     def _cavity_centre_deformed(self, frame: int) -> np.ndarray:
         return self._pure_deform(self._cavity_centre_ed[None, :], frame)[0]
 
+    # ── wall coordinates ───────────────────────────────────────────────────
+    #
+    # The ventricle is described by the one-parameter family of "wall levels"
+    #
+    #     x = cx + (a0 + q·w)·cos θ ,   y = base − (L0 + q·w)·sin θ
+    #
+    # with q = 0 on the endocardium, q = 1 on the epicardium (negative inside
+    # the cavity, > 1 outside the heart).  Both the deformation and its inverse
+    # are trivial in (θ, q), which is what lets the phantom keep the wall
+    # thickness physiological: the endocardial surface scales with the
+    # longitudinal/tangential strain while the radial direction scales by the
+    # incompressibility factor 1/(λ_t·λ_l), i.e. the wall *thickens* in systole
+    # (radial strain ≈ +45 % for GLS −20 %).  The previous version applied one
+    # isotropic scale to every point, which thinned the wall by 20 % — an
+    # impossible heart that made the honest QC report "no radial thickening".
+
+    # ── exact deformation: elliptical-polar wall model ──────────────────────
+    #
+    # Coordinates. Relative to the annulus-plane centre every point has an
+    # *elliptical* radius ``r`` and a ray angle ``phi``::
+    #
+    #     dx = x - cx, dy = base_y - y
+    #     r  = hypot(dx / a0, dy / l0),  phi = atan2(dy / l0, dx / a0)
+    #
+    # so ``r = 1`` is the endocardial contour, ``r < 1`` the cavity and
+    # ``r > 1`` the wall; ``r - 1`` is the wall offset that has to thicken.
+    #
+    # The map scales three things, all graded by the long-axis level
+    # ``sin(phi)`` of the ray (1 at the apex, 0 at the annulus plane), so every
+    # transmural layer at one level shortens alike — the assumption behind
+    # layer strain reporting:
+    #
+    #  * longitudinal, by ``lambda_l = 1 + e_l`` about the anchor plane;
+    #  * transverse, by ``lambda_t = 1 + circumferential_ratio * e_l``;
+    #  * the wall offset, by ``lambda_r = 1 / (lambda_l * lambda_t)`` — the
+    #    radial strain incompressibility demands, so the cavity shrinks while
+    #    the wall thickens.
+    #
+    # The image of ``r = 1`` is exactly the resulting endocardial ellipse, the
+    # map is a bijection of the whole plane and its inverse is closed form. The
+    # previous ``(theta, q)`` family collapsed the isolevels inside the cavity
+    # (the iso-ellipses shrink towards the axis), so the warped blood pool
+    # disagreed with the endocardial border next to it and the tracker followed
+    # that artefact; it also mapped the tissue band below the annulus plane onto
+    # the wrong side of the heart.
+
+    def _elliptical_frame(self, points: np.ndarray) -> tuple[np.ndarray, ...]:
+        """``(dx, dy, r, phi)`` of ED points in the reference geometry."""
+        pts = np.asarray(points, dtype=np.float64)
+        dx = pts[:, 0] - self._cx
+        dy = self._base_y - pts[:, 1]
+        r = np.maximum(np.hypot(dx / self._a_endo, dy / self._long_px), 1e-9)
+        phi = np.arctan2(dy / self._long_px, dx / self._a_endo)
+        return dx, dy, r, phi
+
+    def _local_long_strain(self, phi: np.ndarray, frame: int) -> np.ndarray:
+        """Long-axis strain (fraction) of the wall level met by the rays ``phi``.
+
+        ``apex_base_gradient > 0`` gives the normal apex-dominant pattern
+        (apical segments shorten more); a negative gradient models apical
+        sparing, the pattern that makes a global GLS look "normal" while the
+        apex is akinetic.
+        """
+        e = float(self._strain[frame])
+        gradient = float(self.config.apex_base_gradient)
+        rays = np.asarray(phi, dtype=np.float64)
+        if not gradient:
+            return np.full(rays.shape, e, dtype=np.float64)
+        # ``sin(phi)`` is 1 at the apex and 0 at the annulus plane.
+        return e * (1.0 + gradient * (np.sin(rays) - 0.5))
+
+    def _strain_factors(self, phi: np.ndarray, frame: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(lambda_l, lambda_t, lambda_r)`` of the rays ``phi`` at ``frame``."""
+        local = self._local_long_strain(phi, frame)
+        # Tangential (circumferential) strain is coupled to the longitudinal one
+        # through ``circumferential_ratio``; in the uniform mode the map stays a
+        # pure similarity, so every material line shortens by exactly ``e``.
+        lambda_l = 1.0 + local
+        lambda_t = 1.0 + (local if self.config.mode == "uniform" else self.config.circumferential_ratio * local)
+        lambda_r = 1.0 / np.maximum(lambda_l * lambda_t, 1e-6)
+        return lambda_l, lambda_t, lambda_r
+
     def _deform_long_axis(self, points: np.ndarray, frame: int) -> np.ndarray:
         """Apply the pure deformation part (no rigid motion) to points."""
-        pts = np.asarray(points, dtype=np.float64)
         cfg = self.config
+        pts = np.asarray(points, dtype=np.float64)
         if cfg.mode == "rigid":
             return pts.copy()
-        if cfg.anchor == "apex":
-            origin = self._apex_y  # the apex stays fixed, the annulus descends
-        else:
-            origin = self._base_y  # the annulus stays fixed, the apex moves
-        # Signed distance from the anchor plane, positive towards the other end
-        # of the ventricle. Tissue *behind* the anchor does not deform — that
-        # keeps the map monotone (an absolute value would fold the plane) and
-        # matches the static surroundings.
-        direction = 1.0 if cfg.anchor == "apex" else -1.0
-        signed = (pts[:, 1] - origin) * direction
-        d = np.maximum(signed, 0.0)
-        if cfg.mode == "uniform":
-            # Isotropic scaling: identical strain on every material line, so the
-            # ground truth of the "uniform deformation" case is exact.
-            scale = max(1.0 + float(self._strain[frame]), 1e-6)
-            centre = self._cavity_centre_ed
-            return centre + (pts - centre) * scale
-        # The signed form keeps the map affine and monotone on both sides of the
-        # anchor (using |distance| would fold the anchor plane), so the two
-        # anchoring choices describe the same deformation up to a translation
-        # and must therefore yield the same strain.
-        # The strain profile is always graded from the *apex*, whatever end is
-        # held fixed, so "positive gradient" means the same pattern in both
-        # anchoring conventions.
-        apex_distance = np.abs(pts[:, 1] - self._apex_y)
-        local = np.asarray(self._local_long_strain(apex_distance, frame), dtype=np.float64)
-        y = origin + direction * signed * (1.0 + local)
-        s_x = 1.0 + self.config.circumferential_ratio * local
-        x = self._cx + (pts[:, 0] - self._cx) * s_x
+        dx, _, r, phi = self._elliptical_frame(pts)
+        lambda_l, lambda_t, lambda_r = self._strain_factors(phi, frame)
+        # Radial strain acts on the offset from the endocardium only: inside the
+        # cavity the elliptical radius is preserved, so the blood pool simply
+        # shrinks with the cavity instead of collapsing onto the axis.
+        radial = np.where(r > 1.0, lambda_r, 1.0)
+        gain = radial + (1.0 - radial) / r
+        anchor = self._apex_y if cfg.anchor == "apex" else self._base_y
+        base = anchor + lambda_l * (self._base_y - anchor)
+        x = self._cx + lambda_t * gain * dx
+        y = base - lambda_l * gain * (self._base_y - pts[:, 1])
         return np.column_stack([x, y])
 
     def _pure_deform(self, points: np.ndarray, frame: int) -> np.ndarray:
         """Deformation before the static-background blend (identity for rigid)."""
         return self._deform_long_axis(points, frame)
 
+    def _blended_map(self, points: np.ndarray, frame: int) -> np.ndarray:
+        """The material map the image warp uses: pure deformation + static blend."""
+        pts = np.asarray(points, dtype=np.float64)
+        moved = self._deform_long_axis(pts, frame)
+        weight = self.region_weight(pts)[:, None]
+        return pts + weight * (moved - pts)
+
     def deform(self, points: np.ndarray, frame: int) -> np.ndarray:
         """Exact position of material ``points`` at ``frame`` (rigid part included)."""
         pts = np.asarray(points, dtype=np.float64)
-        deformed = self._deform_long_axis(pts, frame)
-        weight = self.region_weight(pts)[:, None]
-        deformed = pts + weight * (deformed - pts)
+        deformed = self._blended_map(pts, frame)
         centre, angle, translation = self._rigid(frame)
         if angle:
             cos_a, sin_a = np.cos(angle), np.sin(angle)
             relative = deformed - centre
-            deformed = np.column_stack(
-                [
-                    relative[:, 0] * cos_a - relative[:, 1] * sin_a,
-                    relative[:, 0] * sin_a + relative[:, 1] * cos_a,
-                ]
-            ) + centre
+            deformed = (
+                np.column_stack(
+                    [
+                        relative[:, 0] * cos_a - relative[:, 1] * sin_a,
+                        relative[:, 0] * sin_a + relative[:, 1] * cos_a,
+                    ]
+                )
+                + centre
+            )
         return deformed + translation
 
     def ground_truth_positions(self, n_nodes: int = MIN_ARC_NODES) -> np.ndarray:
@@ -541,6 +666,15 @@ class StePhantom:
         std = float(pattern.std())
         return (pattern - pattern.mean()) / (std if std > 1e-9 else 1.0)
 
+    def _tissue_grain(self) -> np.ndarray:
+        """Low-frequency material reflectivity pattern (fixed to the tissue)."""
+        cfg = self.config
+        rng = np.random.default_rng(cfg.seed + 3)
+        sigma = max(float(cfg.tissue_grain_mm) / self._px / 2.0, 0.5)
+        grain = gaussian_filter(rng.normal(0.0, 1.0, (cfg.height, cfg.width)), sigma)
+        std = float(grain.std())
+        return grain / (std if std > 1e-9 else 1.0)
+
     def _reflectivity(self) -> np.ndarray:
         """Reference-ED tissue reflectivity map (what the speckle multiplies)."""
         cfg = self.config
@@ -553,13 +687,25 @@ class StePhantom:
         image[cavity] = cfg.cavity_level
         image[myocardium] = cfg.myocardium_level
         # Slight transmural gradient (endo brighter than epi, as on many scanners)
-        image[myocardium] *= 1.0 - 0.25 * np.clip(
-            (np.sqrt(((xx - self._cx) / self._a_epi) ** 2 + ((yy - self._base_y) / self._long_epi_px) ** 2) - 0.6) / 0.4,
-            0.0,
-            1.0,
-        )[myocardium]
+        image[myocardium] *= (
+            1.0
+            - 0.25
+            * np.clip(
+                (np.sqrt(((xx - self._cx) / self._a_epi) ** 2 + ((yy - self._base_y) / self._long_epi_px) ** 2) - 0.6)
+                / 0.4,
+                0.0,
+                1.0,
+            )[myocardium]
+        )
+        # Material patches inside the wall (trabeculae/fibre structure).
+        if cfg.tissue_grain_contrast > 0:
+            grain = self._tissue_grain()
+            image[myocardium] *= 1.0 + cfg.tissue_grain_contrast * grain[myocardium]
         # Specular epicardium and mitral annulus line
-        edge_epi = np.abs(np.sqrt(((xx - self._cx) / self._a_epi) ** 2 + ((yy - self._base_y) / self._long_epi_px) ** 2) - 1.0) < 0.02
+        edge_epi = (
+            np.abs(np.sqrt(((xx - self._cx) / self._a_epi) ** 2 + ((yy - self._base_y) / self._long_epi_px) ** 2) - 1.0)
+            < 0.02
+        )
         image[edge_epi & (yy <= self._base_y)] = 0.95
         annulus_line = np.abs(yy - self._base_y) <= 1.0
         image[annulus_line & (np.abs(xx - self._cx) <= self._a_epi)] = 0.9
@@ -589,7 +735,7 @@ class StePhantom:
             progress = frame / max(cfg.n_frames - 1, 1)
             replaced = float(np.clip(cfg.decorrelation * progress + cfg.out_of_plane * frame, 0.0, 1.0))
             if replaced > 1e-6:
-                fresh = (rng.normal(0.0, 1.0, texture.shape) + 1j * rng.normal(0.0, 1.0, texture.shape))
+                fresh = rng.normal(0.0, 1.0, texture.shape) + 1j * rng.normal(0.0, 1.0, texture.shape)
                 fresh = np.abs(gaussian_filter(fresh, cfg.speckle_sigma_px))
                 fresh = (fresh - fresh.mean()) / max(float(fresh.std()), 1e-9)
                 texture = (1.0 - replaced) * texture + replaced * fresh
@@ -613,12 +759,53 @@ class StePhantom:
         coords = self._inverse_map(xx, yy, frame)
         return map_coordinates(reference, coords, order=1, mode="constant", cval=float(cfg.background_level))
 
+    def _pure_inverse(self, points: np.ndarray, frame: int) -> np.ndarray:
+        """Exact inverse of the pure (unblended) deformation, in closed form.
+
+        The map preserves the ray angle and scales the elliptical radius --
+        ``r`` inside the cavity (the blood pool keeps its relative position) and
+        ``1 + (r - 1) * lambda_r`` in the wall. The angle comes from a short
+        fixed point: the deformed axes are normalised by the very factors that
+        depend on that angle, and the substitution cancels them everywhere
+        except in the level gradient, where it converges in two steps.
+        """
+        cfg = self.config
+        pts = np.asarray(points, dtype=np.float64)
+        if cfg.mode == "rigid":
+            return pts.copy()
+        anchor = self._apex_y if cfg.anchor == "apex" else self._base_y
+        phi = np.arctan2(
+            (self._base_y - pts[:, 1]) / self._long_px,
+            (pts[:, 0] - self._cx) / self._a_endo,
+        )
+        for _ in range(5):
+            lambda_l, lambda_t, _ = self._strain_factors(phi, frame)
+            base = anchor + lambda_l * (self._base_y - anchor)
+            u = (pts[:, 0] - self._cx) / (self._a_endo * lambda_t)
+            v = (base - pts[:, 1]) / (self._long_px * lambda_l)
+            phi = np.arctan2(v, u)
+        lambda_l, lambda_t, lambda_r = self._strain_factors(phi, frame)
+        base = anchor + lambda_l * (self._base_y - anchor)
+        radius = np.hypot(
+            (pts[:, 0] - self._cx) / (self._a_endo * lambda_t),
+            (base - pts[:, 1]) / (self._long_px * lambda_l),
+        )
+        # Branch on the *deformed* radius: it is r itself inside the cavity and
+        # 1 + (r - 1) * lambda_r in the wall, so it inverts directly.
+        pure = np.where(radius > 1.0, 1.0 + (radius - 1.0) / lambda_r, radius)
+        dx = pure * self._a_endo * np.cos(phi)
+        dy = pure * self._long_px * np.sin(phi)
+        return np.column_stack([self._cx + dx, self._base_y - dy])
+
     def _inverse_map(self, xx: np.ndarray, yy: np.ndarray, frame: int) -> np.ndarray:
         """Reference coordinates of the material that lands at (x, y) in ``frame``.
 
-        The deformation is blended with a static background, so the inverse is
-        computed by a fixed-point iteration ``p ← q − w(p)·(M(p) − p)`` instead
-        of a closed form. ``map_round_trip_error`` measures how well it closes.
+        The deformation is blended with a static background (weight 1 inside the
+        heart, 0 outside the halo), so the inverse is taken in two steps: the
+        exact inverse of the pure deformation, then one correction step for the
+        blend. The correction is idempotent where the weight is 0 or 1 (the
+        heart and the far field), which is everything that carries speckle of
+        interest; the transition band is smooth and stays within a pixel.
         """
         cfg = self.config
         x = np.asarray(xx, dtype=np.float64).copy()
@@ -635,19 +822,68 @@ class StePhantom:
                 y = centre[1] + rx * sin_a + ry * cos_a
         if cfg.mode == "rigid":
             return np.stack([y, x])
+        shape = np.shape(x)
         points = np.column_stack([x.ravel(), y.ravel()])
         inverse = points.copy()
-        damping = 0.5  # the blended map is only locally Lipschitz, so relax
-        for _ in range(40):
-            moved = self._deform_long_axis(inverse, frame)
-            weight = self.region_weight(inverse)[:, None]
-            target = points - weight * (moved - inverse)
-            updated = inverse + damping * (target - inverse)
-            if np.max(np.abs(updated - inverse)) < 1e-4:
-                inverse = updated
-                break
-            inverse = updated
-        return np.stack([inverse[:, 1].reshape(x.shape), inverse[:, 0].reshape(x.shape)])
+        if self._moving is None:
+            self._build_weight_map()
+        moving = (
+            map_coordinates(
+                self._moving.astype(np.float64),
+                np.stack([np.clip(points[:, 1], 0.0, cfg.height - 1.0), np.clip(points[:, 0], 0.0, cfg.width - 1.0)]),
+                order=1,
+                mode="nearest",
+            )
+            > 0.5
+        )
+        if np.any(moving):
+            inverse[moving] = self._invert_blended(points[moving], frame)
+        return np.stack([inverse[:, 1].reshape(shape), inverse[:, 0].reshape(shape)])
+
+    def _invert_blended(self, points: np.ndarray, frame: int) -> np.ndarray:
+        """Reference positions of the material that lands at ``points``.
+
+        Where the blend weight is 0 or 1 the *pure* inverse is already the
+        answer, so only the halo band needs work. There the plain fixed point
+        ``x <- p - w(F(x) - x)`` can diverge: the weight ramp is a few pixels
+        wide while the excursion it scales is up to tens of pixels, so the
+        iteration Jacobian is far from contractive. A damped Newton step on the
+        (tiny) band is used instead; it converges in a handful of iterations
+        because the band is smooth and small.
+        """
+        pts = np.asarray(points, dtype=np.float64)
+        # Far from the heart the weight is exactly zero, so the map is the
+        # identity there — the pure deformation must *not* be applied to it.
+        solved = pts.copy()
+        active = self.region_weight(pts) > 1e-6
+        if not np.any(active):
+            return solved
+        moving = pts[active]
+        solved[active] = self._pure_inverse(moving, frame)
+        weight = self.region_weight(solved[active])
+        band = np.flatnonzero((weight > 1e-6) & (weight < 1.0 - 1e-6))
+        if band.size:
+            x = solved[active][band]
+            target = moving[band]
+            h = 0.25
+            for _ in range(7):
+                residual = self._blended_map(x, frame) - target
+                if float(np.max(np.abs(residual))) < 1e-6:
+                    break
+                jac = np.empty((x.shape[0], 2, 2), dtype=np.float64)
+                for axis in range(2):
+                    offset = np.zeros_like(x)
+                    offset[:, axis] = h
+                    jac[:, :, axis] = (self._blended_map(x + offset, frame) - target - residual) / h
+                det = jac[:, 0, 0] * jac[:, 1, 1] - jac[:, 0, 1] * jac[:, 1, 0]
+                det = np.where(np.abs(det) < 1e-9, 1e-9, det)
+                step_x = (jac[:, 1, 1] * residual[:, 0] - jac[:, 0, 1] * residual[:, 1]) / det
+                step_y = (jac[:, 0, 0] * residual[:, 1] - jac[:, 1, 0] * residual[:, 0]) / det
+                x = x - 0.7 * np.column_stack([step_x, step_y])
+            block = solved[active]
+            block[band] = x
+            solved[active] = block
+        return solved
 
     def myocardium_round_trip_error(self, frame: int, n_nodes: int = 65) -> float:
         """Round-trip error (px) of the image map *inside the myocardium*.
@@ -660,9 +896,7 @@ class StePhantom:
         points = np.vstack([self.reference_endo_arc(n_nodes), self.reference_epi_arc(n_nodes)])
         deformed = self.deform(points, frame)
         back = self._inverse_map(deformed[:, 0], deformed[:, 1], frame)
-        return float(
-            np.max(np.linalg.norm(np.column_stack([back[1], back[0]]) - points, axis=1))
-        )
+        return float(np.max(np.linalg.norm(np.column_stack([back[1], back[0]]) - points, axis=1)))
 
     def map_round_trip_error(self, frame: int, n: int = 64) -> float:
         """Max distance (px) between a point and its inverse-mapped round trip."""

@@ -290,3 +290,85 @@ def re_smooth_trajectories(
         quality_weighted_smoothing=quality_weighted,
     )
     return smooth_trajectories(raw_positions, ncc_scores, kernels, cfg)
+
+
+# Wall motion is a *smooth* field along the endocardial arc: neighbouring
+# columns of kernels move by nearly the same amount, and the apex↔base gradient
+# is a gentle linear trend rather than a jump. A match that lands on the wrong
+# (yet well-correlated) speckle patch breaks that trend. Because the reported
+# GLS is the arc length of the tracked line, a single such column can move more
+# than every other column together: on the kinematic phantom the annulus-plane
+# columns carried 5–10 mm of error and halved the reported strain while the NCC
+# stayed high (plan §7.5, F8). The check below is *local* — it compares each
+# column with the linear trend of its neighbours — so the physiological
+# apex↔base gradient (and the sign reversal around the apex) is preserved.
+DEFAULT_COLUMN_TOLERANCE_MM = 2.5
+DEFAULT_COLUMN_WINDOW = 2
+
+
+def repair_outlier_columns(
+    positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    ed_index: int,
+    pixel_spacing: tuple[float, float],
+    *,
+    tolerance_mm: float = DEFAULT_COLUMN_TOLERANCE_MM,
+    window: int = 2,
+    max_repairs: int = 3,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Replace single columns whose match broke away from the wall motion.
+
+    A well-correlated match can still land on the wrong speckle patch; along the
+    wall the displacement field is smooth, so a broken column stands out against
+    its immediate neighbours. The prediction is the **median of the neighbours**
+    (not a fitted trend): a median follows any locally smooth field — including
+    the curved displacement of a rotating ventricle — and is not dragged by the
+    outlier itself, so nothing but a genuine outlier is ever changed.
+
+    A column is repaired only when its residual exceeds both ``tolerance_mm`` and
+    the robust scale of the residuals of the whole layer (median + 4 MAD). The
+    gate matters: without it a model that cannot represent the true field
+    "repairs" healthy columns, which is how an earlier version turned a rigid
+    rotation into −14 % of strain and cost 4.7 pp of bias on a clean
+    homogeneous contraction (plan §7.5, F8).
+
+    Returns ``(positions, repaired_mask)`` where the mask is
+    ``(n_frames, n_kernels)`` and marks the repaired kernel-frames.
+    """
+    out = positions.copy()
+    n_frames, n_kernels, _ = out.shape
+    repaired = np.zeros((n_frames, n_kernels), dtype=bool)
+    if n_frames < 2 or n_kernels < 5:
+        return out, repaired
+
+    spacing = float(np.mean(pixel_spacing))
+    for indices in _layer_groups(kernels).values():
+        idx = sorted(indices, key=lambda i: kernels[i].node_index)
+        if len(idx) < 5:
+            continue
+        idx_arr = np.array(idx, dtype=np.intp)
+        n_cols = len(idx_arr)
+        neighbours: list[list[int]] = []
+        for j in range(n_cols):
+            lo = max(0, j - window)
+            hi = min(n_cols, j + window + 1)
+            neighbours.append([k for k in range(lo, hi) if k != j])
+
+        for t in range(n_frames):
+            if t == ed_index:
+                continue
+            disp = (out[t, idx_arr, :] - out[ed_index, idx_arr, :]) * spacing
+            for _ in range(max_repairs):
+                prediction = np.array([np.median(disp[keep], axis=0) for keep in neighbours], dtype=np.float64)
+                residuals = np.linalg.norm(disp - prediction, axis=1)
+                median = float(np.median(residuals))
+                mad = float(np.median(np.abs(residuals - median)))
+                threshold = max(tolerance_mm, median + 4.0 * 1.4826 * mad)
+                worst = int(np.argmax(residuals))
+                if not (residuals[worst] > threshold):
+                    break
+                disp[worst] = prediction[worst]
+                out[t, idx_arr[worst], :] = out[ed_index, idx_arr[worst], :] + disp[worst] / spacing
+                repaired[t, idx_arr[worst]] = True
+
+    return out, repaired

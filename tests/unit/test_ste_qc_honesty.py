@@ -26,18 +26,33 @@ class TestAssessStrainPlausibility:
         assert reasons == []
 
     def test_positive_longitudinal_is_hard_failure(self) -> None:
-        # NCC can be >90% yet the curve is physiologically impossible: positive
-        # longitudinal strain during systole (issue #3).
+        # NCC can be >90% yet the curve is physiologically impossible: the
+        # material line *lengthens* during systole (issue #3).
         longitudinal = self._curve([0.0, 5.0, 20.0, 33.0, 15.0])
         ok, reasons = assess_strain_plausibility(longitudinal, None, ed_index=0, es_index=3)
         assert not ok
-        assert any("no systolic shortening" in r for r in reasons)
+        assert any("systolic lengthening" in r for r in reasons)
+        assert not any(r.startswith("no ") for r in reasons)
 
-    def test_no_radial_thickening_is_hard_failure(self) -> None:
+    def test_radial_thinning_is_hard_failure(self) -> None:
         longitudinal = self._curve([0.0, -5.0, -12.0, -15.0])
         radial = self._curve([0.0, -1.0, -4.0, -6.0])
         ok, reasons = assess_strain_plausibility(longitudinal, radial, ed_index=0, es_index=3)
         assert not ok
+        assert any("radial thinning" in r for r in reasons)
+
+    def test_flat_curve_is_reported_but_not_impossible(self) -> None:
+        """No deformation at all is a measurement, not a physiological failure.
+
+        A rigid clip (or an akinetic wall) reads GLS ≈ 0 with high fidelity; the
+        QC must say "there is nothing to measure here", not "this is impossible"
+        — otherwise a correct zero is reported as an invalid analysis.
+        """
+        longitudinal = self._curve([0.0, -0.3, 0.2, -0.4, 0.1])
+        radial = self._curve([0.0, -0.2, -0.1, -0.3, 0.0])
+        ok, reasons = assess_strain_plausibility(longitudinal, radial, ed_index=0, es_index=3)
+        assert ok
+        assert any("no systolic shortening" in r for r in reasons)
         assert any("no radial thickening" in r for r in reasons)
 
     def test_peak_before_mid_systole_warns(self) -> None:
@@ -138,9 +153,7 @@ def _make_zone(n_points: int = 48):
     chord_px, depth_px = 32.0, 60.0  # → 32 mm annulus chord, 60 mm cavity depth
     wall_px = 16.0  # → 8 mm wall
     endo = np.column_stack([16.0 + chord_px * np.cos(theta), 8.0 + depth_px * np.sin(theta)])
-    epi = np.column_stack(
-        [16.0 + (chord_px + wall_px) * np.cos(theta), 8.0 + (depth_px + wall_px) * np.sin(theta)]
-    )
+    epi = np.column_stack([16.0 + (chord_px + wall_px) * np.cos(theta), 8.0 + (depth_px + wall_px) * np.sin(theta)])
     return MyocardialZone(
         endo_points=endo,
         epi_points=epi,
@@ -195,9 +208,6 @@ class TestWorkerQcWiring:
             "estimate_heart_rate_fft": MagicMock(return_value=72.0),
             "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "compute_gls": MagicMock(return_value=-15.0),
-            "compute_aha_segment_strain": MagicMock(
-                return_value=({1: -15.0, 2: -16.0, 3: -17.0}, {1: 0.9, 2: 0.9, 3: 0.9})
-            ),
         }
 
         with (
@@ -253,10 +263,6 @@ class TestWorkerQcWiring:
                 patches["build_myocardial_roi_mask"],
             ),
             patch("echo_personal_tool.application.workers.speckle_worker.compute_gls", patches["compute_gls"]),
-            patch(
-                "echo_personal_tool.application.workers.speckle_worker.compute_aha_segment_strain",
-                patches["compute_aha_segment_strain"],
-            ),
         ):
             worker = SpeckleTrackingWorker(
                 frames=frames,
@@ -288,6 +294,24 @@ class TestWorkerQcWiring:
         assert res.qc_score <= 0.5
 
     def test_plausible_curve_keeps_qc_high(self) -> None:
+        # What this test owns is the physiology wiring: a curve that shortens and
+        # returns must not raise a physiological objection. (The mocked geometry
+        # is a rigidly translated block, so the segmental cross-checks have no
+        # deformation to read and legitimately disagree with the curve — see
+        # test_incoherent_estimates_are_flagged below.)
         res = self._run_worker(longitudinal_values=[0.0, -5.0, -10.0, -5.0, 0.0, 0.0])
         assert res.qc_physiology_ok is True
-        assert res.qc_score > 0.7
+        assert res.qc_physiology_reasons == ()
+        assert "strain.qc.reason.physiology" not in res.qc_reasons
+        assert res.qc_score > 0.25
+
+    def test_incoherent_estimates_are_flagged(self) -> None:
+        # Honest QC (plan §7.5, F4): the global curve and the segmental estimates
+        # must tell the same story. Here the curve says -10 % while the segment
+        # estimates read 0 %, so the report must drop to "review" even though the
+        # NCC is 0.95.
+        res = self._run_worker(longitudinal_values=[0.0, -5.0, -10.0, -5.0, 0.0, 0.0])
+        assert res.qc_estimate_spread_pp > 5.0
+        assert "strain.qc.reason.cross_check" in res.qc_reasons
+        assert res.qc_status != "valid"
+        assert res.qc_score <= 0.5

@@ -29,6 +29,14 @@ MIN_COVERAGE_REVIEW = 0.80
 MAX_INTERPOLATED_REVIEW = 0.15
 MAX_CONSISTENCY_DELTA_REVIEW = 2.0  # percentage points between definitions A and B
 MIN_SEGMENTS_REVIEW = 3
+# Cross-checks between independent estimates of the *same* global strain. The
+# reported GLS is the peak of the global curve; the segment mean and the node
+# end-systolic median are computed from the same tracking but a different
+# aggregation, so they must broadly agree. Disagreement means the number
+# depends on the aggregation choice and must not be presented as confident.
+MAX_ESTIMATE_SPREAD_ABS = 5.0  # percentage points
+MAX_ESTIMATE_SPREAD_REL = 0.30  # fraction of |GLS|
+MAX_SIGN_FLIP_FRACTION = 0.25  # nodes shortening vs stretching at end-systole
 
 REASON_NO_DATA = "strain.qc.reason.no_data"
 REASON_GEOMETRY = "strain.qc.reason.geometry"
@@ -37,6 +45,8 @@ REASON_INTERPOLATION = "strain.qc.reason.interpolation"
 REASON_CONSISTENCY = "strain.qc.reason.consistency"
 REASON_FEW_SEGMENTS = "strain.qc.reason.few_segments"
 REASON_PHYSIOLOGY = "strain.qc.reason.physiology"
+REASON_CROSS_CHECK = "strain.qc.reason.cross_check"
+REASON_LINE_COHERENCE = "strain.qc.reason.line_coherence"
 
 
 @dataclass(frozen=True)
@@ -49,6 +59,8 @@ class QualityReport:
     coverage: float = 0.0
     interpolated_fraction: float = 0.0
     consistency_delta: float = 0.0
+    estimate_spread_pp: float = 0.0
+    sign_flip_fraction: float = 0.0
     physiology_ok: bool = False
     reasons: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -65,6 +77,9 @@ def assess_tracking_quality(
     coverage: float = 0.0,
     interpolated_fraction: float = 0.0,
     consistency_delta: float = 0.0,
+    estimate_spread_pp: float = 0.0,
+    sign_flip_fraction: float = 0.0,
+    gls_pp: float = 0.0,
     physiology_ok: bool = True,
     physiology_notes: Sequence[str] = (),
     geometry_ok: bool = True,
@@ -75,10 +90,19 @@ def assess_tracking_quality(
 
     Hard failures (no curve, unusable geometry, uncovered line, impossible
     deformation) make the result ``invalid``; soft signals (borderline coverage,
-    interpolated frames, disagreement between the two global-strain definitions,
-    too few segments) downgrade it to ``review``. ``confidence`` never exceeds
-    0.35 for an invalid result and 0.75 for one that needs review, so a green
-    "everything is fine" reading is impossible without passing the checks.
+    interpolated frames, disagreement between the global-strain definitions,
+    disagreement between independent estimators of the same strain, a material
+    line that partly stretches, too few segments) downgrade it to ``review``.
+    ``confidence`` never exceeds 0.35 for an invalid result and 0.75 for one
+    that needs review, so a green "everything is fine" reading is impossible
+    without passing the checks.
+
+    ``estimate_spread_pp`` is the gap between the reported global strain and the
+    (independent) segment-mean estimate; ``sign_flip_fraction`` is the share of
+    the endocardial line whose end-systolic strain has the opposite sign of the
+    reported GLS. Both are *metric* cross-checks: they need no reference and no
+    ground truth, and they fail exactly when a confidently tracked clip carries
+    a wrong number (plan §7.5, F4).
     """
     reasons: list[str] = []
     notes: list[str] = list(physiology_notes) + list(geometry_notes)
@@ -86,6 +110,7 @@ def assess_tracking_quality(
 
     coverage = float(max(0.0, min(1.0, coverage)))
     fidelity = float(max(0.0, min(1.0, fidelity)))
+    gls_reference = float(gls_pp) if gls_pp == gls_pp else 0.0  # NaN-safe
     interpolated_fraction = float(max(0.0, min(1.0, interpolated_fraction)))
 
     if not has_curve:
@@ -112,6 +137,13 @@ def assess_tracking_quality(
         if consistency_delta > MAX_CONSISTENCY_DELTA_REVIEW:
             reasons.append(REASON_CONSISTENCY)
             soft = True
+        spread = float(max(0.0, estimate_spread_pp))
+        if spread > MAX_ESTIMATE_SPREAD_ABS and spread > MAX_ESTIMATE_SPREAD_REL * abs(gls_reference):
+            reasons.append(REASON_CROSS_CHECK)
+            soft = True
+        if sign_flip_fraction > MAX_SIGN_FLIP_FRACTION:
+            reasons.append(REASON_LINE_COHERENCE)
+            soft = True
         if n_segments_measured < MIN_SEGMENTS_REVIEW:
             reasons.append(REASON_FEW_SEGMENTS)
             soft = True
@@ -130,6 +162,8 @@ def assess_tracking_quality(
     confidence = fidelity * coverage
     confidence *= 1.0 - 0.5 * min(interpolated_fraction / 0.30, 1.0)
     confidence -= 0.03 * max(0.0, consistency_delta - 1.0)
+    confidence *= 1.0 - 0.5 * min(max(float(estimate_spread_pp) - 1.0, 0.0) / 8.0, 1.0)
+    confidence *= 1.0 - 0.3 * min(float(sign_flip_fraction) / 0.5, 1.0)
     confidence = float(max(0.0, min(1.0, confidence)))
     if status == STATUS_INVALID:
         confidence = min(confidence, 0.35)
@@ -143,6 +177,8 @@ def assess_tracking_quality(
         coverage=coverage,
         interpolated_fraction=interpolated_fraction,
         consistency_delta=float(consistency_delta),
+        estimate_spread_pp=float(estimate_spread_pp),
+        sign_flip_fraction=float(sign_flip_fraction),
         physiology_ok=bool(physiology_ok),
         reasons=tuple(dict.fromkeys(reasons)),
         notes=tuple(notes),

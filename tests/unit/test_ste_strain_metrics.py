@@ -47,10 +47,19 @@ def _post_systolic_curve() -> np.ndarray:
 
 
 class TestStrainMetrics:
-    def test_gls_is_the_global_peak_not_the_systolic_value(self) -> None:
+    def test_peak_is_systolic_and_post_systolic_shortening_is_reported(self) -> None:
+        """The reported value is the peak *systolic* strain (EACVI/ASE).
+
+        Was: the whole-cycle extremum, which promoted any post-systolic (or
+        diastolic artefact) excursion to the GLS. The deeper late extremum is
+        still measured — as post-systolic shortening, never as the peak.
+        """
         metrics = compute_strain_metrics(_post_systolic_curve(), ed_index=0, avc_index=3, frame_time_ms=33.3)
         assert metrics.ess == pytest.approx(-13.0)  # value at AVC
-        assert metrics.peak == pytest.approx(-19.0)  # peak of the curve (GLS)
+        assert metrics.peak == pytest.approx(-16.0)  # peak systolic strain, frame 5
+        assert metrics.peak_frame == 5
+        assert metrics.post_systolic_peak == pytest.approx(-19.0)
+        assert metrics.post_systolic_index == pytest.approx(abs(16.0 - 19.0) / 16.0 * 100.0, abs=1e-6)  # positive
         assert metrics.is_post_systolic
 
     def test_normal_beat_has_no_post_systolic_shortening(self) -> None:
@@ -70,8 +79,17 @@ class TestStrainMetrics:
         metrics = compute_strain_metrics(curve, ed_index=0, avc_index=4, frame_time_ms=33.3)
         assert np.isfinite(metrics.drift)
         assert any("drift" in note for note in metrics.notes)
-        # The peak is still read from the measured curve — no detrending.
-        assert metrics.peak == pytest.approx(float(np.min(curve)))
+        # The peak is still read from the measured curve — no detrending. The
+        # creep makes the diastolic tail rise, which must not become the peak.
+        assert metrics.peak == pytest.approx(-18.4, abs=1e-6)
+
+    def test_diastolic_dive_is_not_the_peak(self) -> None:
+        """A late downward artefact must not be reported as a peak systolic value."""
+        curve = np.array([0.0, -4.0, -9.0, -13.0, -14.0, -13.0, -11.0, -8.0, -22.0, -25.0], dtype=np.float64)
+        metrics = compute_strain_metrics(curve, ed_index=0, avc_index=4, frame_time_ms=33.3)
+        assert metrics.peak == pytest.approx(-14.0)
+        assert metrics.post_systolic_peak == pytest.approx(-25.0)
+        assert metrics.is_post_systolic
 
     def test_window_end_limits_the_peak_search(self) -> None:
         curve = _systolic_curve()

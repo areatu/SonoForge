@@ -1350,5 +1350,7 @@
   "strain.bullseye_ttp_hint": "Мишень: время от ED до пика сегмента, мс (поздняя активация — красный)",
   "strain.view_label": "Вид:",
   "strain.gls_av": "GLS AV (среднее по видам)",
-  "strain.gls_av_meta": "GLS AV {value}% ({n} вида)"
+  "strain.gls_av_meta": "GLS AV {value}% ({n} вида)",
+  "strain.qc.reason.cross_check": "независимые оценки деформации расходятся",
+  "strain.qc.reason.line_coherence": "линия миокарда сокращается неоднородно"
 }

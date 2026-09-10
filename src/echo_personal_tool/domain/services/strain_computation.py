@@ -22,6 +22,7 @@ a different definition by accident.
 from __future__ import annotations
 
 import numpy as np
+from scipy.signal import savgol_filter
 
 
 def contour_arc_length(points: np.ndarray, pixel_spacing: tuple[float, float]) -> float:
@@ -147,6 +148,17 @@ def assess_strain_plausibility(
     "quality" from NCC alone (issue #3: NCC>90% while the deformation curve is
     physiologically impossible).
 
+    Two tiers, because a measurement and a failure must not be confused:
+
+    * **hard** — the curve *stretches* in systole (lengthening or radial
+      thinning), the window has no data, or the peak is beyond any physiological
+      range. A contraction cannot lengthen its own material line, so this is a
+      tracking failure even when the NCC is high.
+    * **soft** — there is simply no deformation to measure (peak ≈ 0). That is a
+      legitimate finding (akinesia, a technical failure, or a phantom with no
+      deformation) and must be *reported*, not silently invalidated: the number
+      is honest, the clip is the problem.
+
     Returns ``(plausible, reasons)``. ``plausible`` is False only for hard
     failures; ``reasons`` lists every finding, hard ones first.
     """
@@ -161,9 +173,16 @@ def assess_strain_plausibility(
         return False, ["strain window has no finite values"]
 
     peak = float(np.min(finite))
+    stretch = float(np.max(finite))
     if peak > -1.0:
-        # No meaningful systolic shortening (GLS ≈ 0 or positive).
-        reasons.append(f"no systolic shortening (peak {peak:.1f}%)")
+        if stretch > 1.0:
+            # The material line *lengthens* during systole: impossible for a
+            # contracting wall, so this is a tracking failure, not a finding.
+            reasons.append(f"systolic lengthening (peak {stretch:+.1f}%)")
+        else:
+            # No meaningful systolic shortening (GLS ≈ 0): a measurement, not an
+            # impossibility — reported, and the caller downgrades it to review.
+            reasons.append(f"no systolic shortening (peak {peak:+.1f}%)")
 
     # The most negative longitudinal strain should occur at/near ES.
     argmin_global = start + int(np.nanargmin(np.where(np.isnan(window), np.inf, window)))
@@ -179,10 +198,19 @@ def assess_strain_plausibility(
         rfinite = rwin[np.isfinite(rwin)]
         if rfinite.size > 0:
             rpeak = float(np.max(rfinite))
+            rmin = float(np.min(rfinite))
             if rpeak <= 0.0:
-                reasons.append("no radial thickening (radial peak <= 0%)")
+                if rmin < -1.0:
+                    reasons.append(f"radial thinning during systole (peak {rmin:+.1f}%)")
+                else:
+                    reasons.append("no radial thickening (radial peak <= 0%)")
 
-    hard = [r for r in reasons if r.startswith("no ")]
+    hard = [
+        reason
+        for reason in reasons
+        if reason.startswith(("no longitudinal", "strain window has no finite"))
+        or reason.startswith(("systolic lengthening", "radial thinning", "implausibly large"))
+    ]
     plausible = not hard
     return plausible, reasons
 
@@ -368,28 +396,40 @@ def compute_node_longitudinal_curves(
     positions: np.ndarray,
     ed_index: int,
     pixel_spacing: tuple[float, float],
+    *,
+    target_length_mm: float = 10.0,
 ) -> np.ndarray:
     """Per-node longitudinal strain curves — the single strain definition.
 
-    For every node ``i`` the local strain is the Green–Lagrange strain of the
-    sub-arc that runs through the node and its two neighbours
-    (``x[i-1] -> x[i] -> x[i+1]``), so a node owns *its own* deformation instead
-    of borrowing the strain of a neighbour pair (issue #C3):
+    For every node ``i`` the local strain is the clinical (Lagrange) strain of
+    the material sub-arc that runs through the node, so a node owns *its own*
+    deformation instead of borrowing the strain of a neighbour pair (issue #C3):
 
         ε_i(t) = (L_i(t) − L_i(ED)) / L_i(ED) · 100 %
 
-    The first and last node fall back to the two-point segment (they have no
-    neighbour on the other side); this keeps the whole material line covered
-    without inventing data. A node whose *own* position is missing yields NaN
-    for that node and frame, and a neighbour that is missing only shrinks the
-    sub-arc to the tracked side — a lost node never erases the strain of its
-    healthy neighbours. The caller can therefore mask exactly the untracked
-    nodes instead of smoothing them into a plausible-looking curve.
+    The sub-arc is a **physical length**, not a fixed number of nodes: starting
+    from the node, the window grows to both sides until its end-diastolic length
+    reaches ``target_length_mm`` (or the material line ends). The window is
+    chosen *once*, at ED, and is then kept for every frame, so all frames
+    measure the same material interval. This matters because kernels are spaced
+    by index (equal angle): near the annulus neighbours sit ~1.5 mm apart, and a
+    fixed ±1-neighbour baseline would measure the strain of a 3 mm stretch,
+    where sub-pixel tracking noise of 0.3 px turns into several percent of
+    strain — the reason the segmental numbers used to swing wildly while the
+    global line looked plausible. ``target_length_mm=0`` restores the minimal
+    three-node window.
+
+    A node whose *own* position is missing yields NaN for that node and frame,
+    and a neighbour that is missing only shrinks the sub-arc to the tracked side
+    — a lost node never erases the strain of its healthy neighbours. The caller
+    can therefore mask exactly the untracked nodes instead of smoothing them
+    into a plausible-looking curve.
 
     Args:
         positions: (n_frames, n_nodes, 2) node positions in arc order.
         ed_index: end-diastole frame index (the strain reference).
         pixel_spacing: (row, col) mm per pixel.
+        target_length_mm: physical length of the material sub-arc at ED.
 
     Returns:
         (n_frames, n_nodes) strain in percent; NaN where undefined.
@@ -406,31 +446,49 @@ def compute_node_longitudinal_curves(
     if not 0 <= ed < n_frames:
         return curves
 
-    index = np.arange(n_nodes)
-    left = np.clip(index - 1, 0, n_nodes - 1)
-    right = np.clip(index + 1, 0, n_nodes - 1)
     avg_spacing = float(np.mean(pixel_spacing))
+    target_px = max(float(target_length_mm), 0.0) / (avg_spacing if avg_spacing > 1e-9 else 1.0)
+
+    # ── the material window of every node, chosen once at ED ────────────────
+    ed_pts = pts[ed]
+    step = np.linalg.norm(np.diff(ed_pts, axis=0), axis=1) * avg_spacing
+    step = np.where(np.isfinite(step), step, 0.0)
+    cumulative = np.concatenate([[0.0], np.cumsum(step)])
+    left = np.empty(n_nodes, dtype=np.int64)
+    right = np.empty(n_nodes, dtype=np.int64)
+    for i in range(n_nodes):
+        lo = hi = i
+        length = 0.0
+        while length < target_px and (lo > 0 or hi < n_nodes - 1):
+            grow_left = lo > 0 and (hi >= n_nodes - 1 or step[lo - 1] >= step[hi])
+            if grow_left:
+                lo -= 1
+            else:
+                hi += 1
+            length = cumulative[hi] - cumulative[lo]
+        # A target of 0 keeps the minimal three-node window (issue #C3 default).
+        left[i] = min(lo, max(i - 1, 0)) if target_px <= 0 else lo
+        right[i] = max(hi, min(i + 1, n_nodes - 1)) if target_px <= 0 else hi
 
     def _subarc_length(frame_index: int) -> np.ndarray:
-        a = pts[frame_index, left, :]
-        b = pts[frame_index, :, :]
-        c = pts[frame_index, right, :]
-        finite = np.isfinite(pts[frame_index]).all(axis=1)
-        has_left = (left != index) & np.isfinite(a).all(axis=1)
-        has_right = (right != index) & np.isfinite(c).all(axis=1)
-        d_ab = np.linalg.norm(b - a, axis=1)
-        d_bc = np.linalg.norm(c - b, axis=1)
-        # A lost node must not erase its healthy neighbours. The sub-arc shrinks
-        # to the part that is actually tracked (one-sided segment) instead of
-        # propagating NaN along the whole material line.
-        full = finite & has_left & has_right
-        only_ab = finite & has_left & ~has_right
-        only_bc = finite & has_right & ~has_left
+        """Length of each node's material sub-arc in this frame (mm)."""
         length = np.full(n_nodes, np.nan, dtype=np.float64)
-        length[full] = d_ab[full] + d_bc[full]
-        length[only_ab] = d_ab[only_ab]
-        length[only_bc] = d_bc[only_bc]
-        return length * avg_spacing
+        for i in range(n_nodes):
+            if not np.isfinite(pts[frame_index, i]).all():
+                continue
+            # The window shrinks to the largest tracked run around the node, so
+            # a lost neighbour never erases the strain of a healthy node.
+            lo = i
+            while lo > left[i] and np.isfinite(pts[frame_index, lo - 1]).all():
+                lo -= 1
+            hi = i
+            while hi < right[i] and np.isfinite(pts[frame_index, hi + 1]).all():
+                hi += 1
+            polyline = pts[frame_index, lo : hi + 1]
+            if polyline.shape[0] < 2:
+                continue
+            length[i] = float(np.sum(np.linalg.norm(np.diff(polyline, axis=0), axis=1))) * avg_spacing
+        return length
 
     l0 = _subarc_length(ed)
     usable = np.isfinite(l0) & (l0 > 1e-6)
@@ -439,10 +497,63 @@ def compute_node_longitudinal_curves(
 
     for t in range(n_frames):
         lt = _subarc_length(t)
+        # The window is fixed at ED, so both lengths cover the same material:
+        # no re-windowing that would hide a lost node as "less deformation".
         ratio = np.full(n_nodes, np.nan, dtype=np.float64)
         np.divide(lt, l0, out=ratio, where=usable)
         curves[t] = lagrangian_strain_pct(ratio, 1.0)
     return curves
+
+
+def smooth_curves_time(
+    curves: np.ndarray,
+    *,
+    window: int = 7,
+    polyorder: int = 2,
+) -> np.ndarray:
+    """Temporal Savitzky–Golay smoothing of strain curves, NaN-preserving.
+
+    Speckle tracking is a per-frame measurement: even with clean trajectories a
+    single frame can spike by several percent, and a *peak* read from such a
+    curve (segmental peak systolic strain, TTP, ESS) is biased by exactly those
+    spikes — the reason the segmental numbers swing while the global curve looks
+    plausible. Vendors low-pass the strain curve in time before reading the
+    metrics; this filter is the same idea and nothing else: the shape inside the
+    systolic window is preserved (quadratic polynomial), the noise is not. NaN
+    samples are interpolated for the fit and restored afterwards, so a lost
+    node-frame stays visibly lost instead of being invented.
+
+    Args:
+        curves: (n_frames, n_nodes) strain in percent.
+        window: filter length in frames (forced to an odd number ≥ 3).
+        polyorder: polynomial order of the local fit (< window).
+
+    Returns:
+        Filtered copy of ``curves``.
+    """
+    arr = np.asarray(curves, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[0] < 3:
+        return arr.copy()
+    n_frames = arr.shape[0]
+    win = int(window)
+    if win % 2 == 0:
+        win += 1
+    win = max(3, min(win, n_frames if n_frames % 2 == 1 else n_frames - 1))
+    order = max(1, min(int(polyorder), win - 1))
+    if win <= order + 1:
+        return arr.copy()
+    out = arr.copy()
+    frame_index = np.arange(n_frames, dtype=np.float64)
+    for node in range(arr.shape[1]):
+        column = arr[:, node]
+        finite = np.isfinite(column)
+        if finite.sum() < order + 2:
+            continue
+        if finite.sum() < n_frames:
+            column = np.interp(frame_index, frame_index[finite], column[finite])
+        out[:, node] = savgol_filter(column, win, order, mode="interp")
+        out[~finite, node] = np.nan
+    return out
 
 
 def aggregate_segment_curves(

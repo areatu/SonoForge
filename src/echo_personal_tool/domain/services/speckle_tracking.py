@@ -801,30 +801,41 @@ def clamp_kernels_to_wall_band(
     kernels: list[TrackingKernel],
     ed_positions: np.ndarray,
     *,
-    inward_slack: float = 0.45,
+    inward_slack: float = 1.0,
     outward_slack: float = 0.4,
     min_gap_px: float = 1.0,
     changed_eps: float = 0.25,
 ) -> tuple[np.ndarray, int]:
-    """Constrain one frame of kernel positions inside the myocardial wall band.
+    """Constrain one frame of kernel positions across the myocardial wall.
 
-    Every kernel column (same ``node_index``) must satisfy
+    The constraint acts on the **local wall normal** — the direction from the
+    column's ED endocardium to its ED epicardium — and only on that component:
 
-        r(endo) < r(mid) < r(epi)
+        -inward_slack·h <= s(endo) < s(mid) < s(epi) <= (1 + outward_slack)·h
 
-    along the outward normal of the wall, and the whole column must stay inside
-    a band derived from the ED positions: endo may move inward by up to
-    ``inward_slack`` wall thicknesses (systolic thickening), epi may drift
-    outward by up to ``outward_slack`` thicknesses. Kernels that left the band
-    (or inverted their radial order) are pulled back along the local normal,
-    which prevents the visible speckle/contour crossing when frames are
-    scrubbed and stabilises radial strain.
+    where ``h`` is the ED wall thickness of that column and ``s(x)`` is the
+    across-wall coordinate of ``x``. Motion *along* the wall (annular descent,
+    long-axis shortening, tangential tracking) is never touched.
+
+    Why not the radial direction from the cavity centre (the previous
+    implementation): near the annulus the wall runs almost parallel to that
+    radius, so genuine systolic motion projects onto it and was clipped as if it
+    were wall penetration. Measurements on the kinematic phantom (plan §7.5,
+    F2): the old band removed ≈28 % of a true −20 % strain (GLS −14.3 instead of
+    −18.5) while still leaving 41 % of kernel-frames outside the real wall.
+
+    The endocardium legitimately travels inward as the cavity empties (the wall
+    thickens), so the inward allowance is generous by default; the epicardium is
+    the near-static outer wall, so its outward drift is what the band really
+    guards against (``outward_slack``). Layer ordering is enforced with a
+    minimum gap, which is what stops kernels from crossing the wall.
 
     Args:
         frame_positions: (N_kernels, 2) kernel centers for one frame.
         kernels: kernel descriptors (layer + node_index).
-        ed_positions: (N_kernels, 2) ED-frame kernel centers used as the
-            wall-band baseline.
+        ed_positions: (N_kernels, 2) ED-frame kernel centers, the band baseline.
+        inward_slack: inward allowance for the endocardium, in ED wall thicknesses.
+        outward_slack: outward allowance for the epicardium, in ED wall thicknesses.
         changed_eps: only displacements larger than this (px) count as clamped.
 
     Returns:
@@ -833,15 +844,8 @@ def clamp_kernels_to_wall_band(
     frame_positions = np.asarray(frame_positions, dtype=np.float64).copy()
     ed_positions = np.asarray(ed_positions, dtype=np.float64)
     columns = _node_columns(kernels)
-    layers_by_idx: dict[str, list[int]] = defaultdict(list)
-    for idx, kernel in enumerate(kernels):
-        layers_by_idx[kernel.layer].append(idx)
-
     if frame_positions.shape[0] == 0:
         return frame_positions, 0
-
-    ed_center = _radial_center(ed_positions, layers_by_idx.get("mid", []) or layers_by_idx.get("endo", []))
-    frame_center = _radial_center(frame_positions, layers_by_idx.get("mid", []) or layers_by_idx.get("endo", []))
 
     changed = 0
     for node_id, layer_ids in columns.items():
@@ -851,54 +855,41 @@ def clamp_kernels_to_wall_band(
         if endo_id is None or epi_id is None:
             continue
 
-        # Wall-band baselines at ED, per radial column.
         ed_endo = ed_positions[endo_id]
         ed_epi = ed_positions[epi_id]
-        r_endo0 = float(np.linalg.norm(ed_endo - ed_center))
-        r_epi0 = float(np.linalg.norm(ed_epi - ed_center))
-        thickness0 = max(r_epi0 - r_endo0, 2.0)
-        low = r_endo0 - inward_slack * thickness0
-        high = r_epi0 + outward_slack * thickness0
-        gap = max(min_gap_px, thickness0 * 0.05)
+        wall = ed_epi - ed_endo
+        thickness = float(np.linalg.norm(wall))
+        if thickness < 2.0:
+            continue  # degenerate column: no meaningful normal
+        normal = wall / thickness
 
-        # Radial direction of the current wall column.
-        anchor_id = mid_id if mid_id is not None else endo_id
-        anchor = frame_positions[anchor_id]
-        radial = anchor - frame_center
-        norm = float(np.linalg.norm(radial))
-        if norm < 1e-6:
-            # Degenerate column: fall back to the epi direction.
-            radial = frame_positions[epi_id] - frame_center
-            norm = float(np.linalg.norm(radial))
-            if norm < 1e-6:
-                continue
-        u = radial / norm
+        low = -float(inward_slack) * thickness
+        high = (1.0 + float(outward_slack)) * thickness
+        gap = max(min_gap_px, thickness * 0.05)
 
-        def _t(kernel_id: int | None) -> float | None:
+        def _s(kernel_id: int | None) -> float | None:
             if kernel_id is None:
                 return None
-            return float(np.dot(frame_positions[kernel_id] - frame_center, u))
+            return float(np.dot(frame_positions[kernel_id] - ed_endo, normal))
 
-        t_endo = _t(endo_id)
-        t_mid = _t(mid_id)
-        t_epi = _t(epi_id)
-        if t_endo is None or t_epi is None:
+        s_endo = _s(endo_id)
+        s_mid = _s(mid_id)
+        s_epi = _s(epi_id)
+        if s_endo is None or s_epi is None:
             continue
 
-        # Sequential clipping guarantees t_endo < t_mid < t_epi inside [low, high].
-        new_t_endo = min(max(t_endo, low), high - 2.0 * gap)
-        new_t_mid = min(max(t_mid if t_mid is not None else new_t_endo, new_t_endo + gap), high - gap)
-        new_t_epi = min(max(t_epi, new_t_mid + gap), high)
+        # Sequential clipping keeps s_endo < s_mid < s_epi inside [low, high].
+        new_s_endo = min(max(s_endo, low), high - 2.0 * gap)
+        new_s_mid = min(max(s_mid if s_mid is not None else new_s_endo, new_s_endo + gap), high - gap)
+        new_s_epi = min(max(s_epi, new_s_mid + gap), high)
 
-        for kernel_id, new_t in ((endo_id, new_t_endo), (mid_id, new_t_mid), (epi_id, new_t_epi)):
+        for kernel_id, new_s in ((endo_id, new_s_endo), (mid_id, new_s_mid), (epi_id, new_s_epi)):
             if kernel_id is None:
                 continue
             old = frame_positions[kernel_id].copy()
-            projected = frame_positions[kernel_id] + u * (
-                new_t - float(np.dot(frame_positions[kernel_id] - frame_center, u))
-            )
-            frame_positions[kernel_id] = projected
-            if float(np.linalg.norm(projected - old)) > changed_eps:
+            current_s = float(np.dot(frame_positions[kernel_id] - ed_endo, normal))
+            frame_positions[kernel_id] = frame_positions[kernel_id] + normal * (new_s - current_s)
+            if float(np.linalg.norm(frame_positions[kernel_id] - old)) > changed_eps:
                 changed += 1
 
     return frame_positions, changed
