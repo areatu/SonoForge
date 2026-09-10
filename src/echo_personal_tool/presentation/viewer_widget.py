@@ -4504,18 +4504,30 @@ class ViewerWidget(QWidget):
                 return contour
         return None
 
-    def ensure_lv_epicardial_contours(self, *, view: str = "A4C") -> list[Contour]:
+    def ensure_lv_epicardial_contours(self, *, view: str = "A4C", thickness_mm: float = 8.0) -> list[Contour]:
         """Create editable epicardial contours from existing endocardial LV contours.
 
         For every phase (ED/ES) that has an endo contour but no LV_EPI contour,
         generate the epicardium by expanding the endo along its outward normals
-        by the standard wall thickness (8 mm). Existing LV_EPI contours are
-        never overwritten.
+        by ``thickness_mm`` (the STE wall-thickness setting; 8 mm default).
+        Existing LV_EPI contours are never overwritten.
+
+        The epicardium is stored as an **open arc with its own mitral-annulus and
+        apex landmarks**, exactly like the Simpson LV contour it was expanded
+        from. That is what makes it editable with the same toolchain: the
+        annulus endpoints stay pinned, every node drag is followed by
+        arc-length resampling and the magnetic edge snap, and the displayed
+        geometry is the material line rather than a spline closed across the
+        annulus. Previously the generated epicardium carried no landmarks, was
+        therefore treated as a *closed* contour and silently skipped all of
+        that — a dragged node stayed where it was dropped and the node spacing
+        became uneven (user report, confirmed by measurement).
         """
+        from echo_personal_tool.domain.services.contour_geometry import apex_index_on_open_arc
         from echo_personal_tool.domain.services.myocardial_zone import expand_contour_to_zone
 
         spacing = self._pixel_spacing() or (1.0, 1.0)
-        thickness_px = 8.0 / max(float(np.mean(spacing)), 1e-6)
+        thickness_px = max(float(thickness_mm), 0.1) / max(float(np.mean(spacing)), 1e-6)
         updated = list(self._stored_contours)
         created: list[Contour] = []
         for phase in ("ED", "ES"):
@@ -4525,14 +4537,18 @@ class ViewerWidget(QWidget):
             if self.get_lv_epicardial_contour(phase=phase, view=view) is not None:
                 continue
             epi = expand_contour_to_zone(np.asarray(endo.points, dtype=np.float64), thickness_px)
+            epi_points = [(float(x), float(y)) for x, y in epi]
+            annulus = (epi_points[0], epi_points[-1])
+            apex_index = apex_index_on_open_arc(epi_points, annulus)
             created.append(
                 replace(
                     endo,
                     chamber="LV_EPI",
-                    points=[(float(x), float(y)) for x, y in epi],
+                    points=epi_points,
                     source="ste_auto",
-                    mitral_annulus=None,
-                    apex_landmark=None,
+                    mitral_annulus=annulus,
+                    apex_landmark=epi_points[apex_index],
+                    num_nodes=len(epi_points),
                 )
             )
         if created:

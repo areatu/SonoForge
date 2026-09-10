@@ -64,11 +64,21 @@ class SpeckleSettingsDialog(QDialog):
         self._global_motion_check.setChecked(True)
 
         self._wall_thickness_spin = QDoubleSpinBox(self)
-        self._wall_thickness_spin.setRange(6.0, 12.0)
+        # 25 mm is the upper bound the geometry check accepts. Commercial STE
+        # packages cap the *default* band at 5-10 mm, but a hypertrophied or
+        # sigmoid wall needs more — with a thinner band only part of the
+        # myocardium is measured, and that part is what limits the strain.
+        self._wall_thickness_spin.setRange(5.0, 25.0)
         self._wall_thickness_spin.setSingleStep(0.5)
         self._wall_thickness_spin.setDecimals(1)
         self._wall_thickness_spin.setSuffix(" mm")
         self._wall_thickness_spin.setValue(8.0)
+        self._wall_thickness_spin.setToolTip(
+            "Thickness of the automatically generated epicardial contour.\n"
+            "Focal hypertrophy (e.g. a sigmoid basal septum) is handled by "
+            "dragging the epicardial contour nodes locally: the drawn "
+            "epicardium defines the measured zone node by node."
+        )
 
         self._ed_spin = QSpinBox(self)
         self._ed_spin.setRange(0, max(0, n_frames - 1))
