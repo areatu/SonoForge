@@ -17,9 +17,8 @@ Variant history (docs/splash-preview/):
 Improvements over concept 4:
   • Logo fill: refined wavy mask with smoother sine wave, better amp/progression
   • Percent text: improved alpha transition (140→255), larger min size in
-    compact mode, better QPalette handling guarantees
+    compact mode, black background via stylesheet (works on all Linux styles)
   • Module status: fade-in/out transitions between lines, 500ms dwell per line
-  • Flash effect: brighter pulse, 350ms duration, OutCubic ease out
   • Close sequence: natural ease-out, 350ms fade, 200ms pause before delete
   • Compact mode: adaptive scaling with factor >= 0.6, better proportion
   • Logo positioning: centered with consistent top margin across sizes
@@ -64,13 +63,12 @@ logger = logging.getLogger(__name__)
 # ── Timing constants (tweak here; all in ms) ────────────────────────
 MIN_VISIBLE_MS = 3400  # splash stays at least this long after show()
 FADE_OUT_MS = 350  # fade out into the main window (shortened)
-AUTO_STEP_MS = 420  # interval between automatic progress bumps
-_PROGRESS_EASE_MS = 650  # ease duration of a progress step (slower fill)
+AUTO_STEP_MS = 500  # interval between automatic progress bumps
+_PROGRESS_EASE_MS = 850  # ease duration of a progress step (slower fill)
 WAVE_TICK_MS = 33  # repaint of the animated mask (~30 fps)
-_FLASH_MS = 350  # total flash duration (brief bright pulse)
 
 # ── Progress markers reached automatically while startup runs ──────
-_AUTO_TARGETS = (8, 18, 30, 44, 58, 72, 84, 92)
+_AUTO_TARGETS = (5, 12, 20, 30, 40, 50, 60, 70, 80, 90, 95)
 
 # ── Visuals (fullscreen reference values, scaled by logo width) ────
 _LOGO_W_REF = 340  # reference logo width the sizes below are tuned for
@@ -93,12 +91,8 @@ _MODULE_LINES_EN = (
     "Building UI",
 )
 
-# Transition timing between module lines (ms)
-_MODULE_TRANSITION_MS = 500  # dwell + fade between each line
-
-# Fade durations for module text transitions
-_MODULE_FADE_IN_MS = 200
-_MODULE_FADE_OUT_MS = 200
+# Module text transition interval (ms)
+_MODULE_DWELL_MS = 500  # how long each line stays visible
 
 
 def _env_flag(name: str, default: bool = True) -> bool:
@@ -157,10 +151,18 @@ def _font(point_size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
 
 
 def _set_label_color(label: QLabel, color: QColor) -> None:
-    """Change label foreground color without touching stylesheet (preserves font."""
+    """Set label text color and black background.
+
+    Background via stylesheet (works on all Linux styles).
+    Text via QPalette (not in stylesheet — avoids font-reset bug).
+    Font restored from _saved_font after stylesheet application.
+    """
+    label.setStyleSheet("background-color: black;")
     pal = label.palette()
     pal.setColor(QPalette.ColorRole.WindowText, color)
     label.setPalette(pal)
+    if hasattr(label, "_saved_font"):
+        label.setFont(label._saved_font)
 
 
 class _LogoFill(QWidget):
@@ -301,20 +303,10 @@ class SplashScreen(QWidget):
         self._progress_anim: QVariantAnimation | None = None
         self._fade: QPropertyAnimation | None = None
         self._background: QPixmap | None = self._load_background(background)
-        self._flash_anim: QVariantAnimation | None = None
-        self._flash_overlay = 0.0  # 0.0 = no flash overlay, 1.0 = full white
         self._module_index = 0
         self._module_timer: QTimer | None = None
-        self._module_trans_progress = 0.0  # for fade-in/out transitions
-        self._module_target_text = ""
-        self._module_fade_in_timer: QTimer | None = None
-        self._module_fade_out_timer: QTimer | None = None
 
-        flags = (
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-        )
+        flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
         self.setWindowFlags(flags)
         self.setWindowTitle(app_name)
         if compact:
@@ -376,21 +368,23 @@ class SplashScreen(QWidget):
         pct_pt = max(28 if self._compact else 32, int(round(_PCT_PT_REF * scale)))
         mod_pt = max(10, int(round(_MOD_PT_REF * scale)))
 
-        # Percent label — font set ONCE, color managed via QPalette (never via
-        # setStyleSheet, which resets the font on Linux/Qt6).
+        # Percent label — font set ONCE, color managed via stylesheet
+        # (setStyleSheet resets font on Linux/Qt6, so _saved_font is restored)
         self._percent_label = QLabel("0%", self)
         self._percent_label.setFont(_font(pct_pt, weight=QFont.Weight.DemiBold))
+        self._percent_label._saved_font = self._percent_label.font()
         self._percent_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         _set_label_color(self._percent_label, QColor(255, 255, 255, 178))
 
         self._module_label = QLabel("", self)
         self._module_label.setFont(_font(mod_pt))
+        self._module_label._saved_font = self._module_label.font()
         self._module_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         _set_label_color(self._module_label, QColor(255, 255, 255, 115))
 
         # Start with the first module line
-        self._module_target_text = _MODULE_LINES_EN[0] if _MODULE_LINES_EN else ""
-        self._module_label.setText(self._module_target_text)
+        if _MODULE_LINES_EN:
+            self._module_label.setText(_MODULE_LINES_EN[0] + "...")
 
         self._relayout()
 
@@ -465,12 +459,6 @@ class SplashScreen(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(rect.adjusted(1, 1, -1, -1))
 
-        # flash overlay: brief white pulse painted ON TOP of everything
-        # value is in [0,1]; we apply 45% opacity for a subtle but visible pulse
-        if self._flash_overlay > 0.01:
-            painter.setOpacity(self._flash_overlay * 0.45)
-            painter.fillRect(rect, QColor("#ffffff"))
-
         painter.end()
 
     def _center_on_screen(self) -> None:
@@ -515,13 +503,12 @@ class SplashScreen(QWidget):
             self._module_timer = None
         self._ease_to(100)
         if self._reduce_motion:
-            # Instant close in reduce-motion mode
             wait_ms = min(900, MIN_VISIBLE_MS)
-            QTimer.singleShot(wait_ms + 200, lambda: self._reveal(main_window))
+            QTimer.singleShot(wait_ms + 100, lambda: self._reveal(main_window))
         else:
-            # Natural sequence: ease to 100% (~650ms) + flash (350ms) + 200ms pause
-            # Total ~1150ms after reaching 100%, then fade out
-            QTimer.singleShot(200, lambda: self._reveal(main_window))
+            wait_ms = max(0, MIN_VISIBLE_MS - int(self._elapsed.elapsed()))
+            # Ease to 100% (~850ms) then reveal shortly after
+            QTimer.singleShot(wait_ms + 500, lambda: self._reveal(main_window))
 
     # ── internals ───────────────────────────────────────────────────
 
@@ -549,72 +536,31 @@ class SplashScreen(QWidget):
         self._percent = float(value)
         percent = int(round(self._percent))
         self._percent_label.setText(f"{percent}%")
-        # alpha: 140 → 255 as progress grows (no stylesheet — QPalette only)
+        # alpha: 140 → 255 as progress grows (via stylesheet)
         alpha = int(_lerp(140, 255, self._percent / 100.0))
         _set_label_color(self._percent_label, QColor(255, 255, 255, alpha))
         # fill and percent are always in sync
         self._fill.set_progress(self._percent)
-        # trigger flash when reaching 100 %
-        if percent >= 100 and self._flash_anim is None:
-            self._trigger_flash()
 
-    def _trigger_flash(self) -> None:
-        """Brief white overlay pulse on the entire splash at 100 %."""
-        anim = QVariantAnimation(self)
-        anim.setStartValue(0.0)
-        anim.setKeyValueAt(0.2, 1.0)  # pi k through 20% времени
-        anim.setEndValue(0.0)
-        anim.setDuration(_FLASH_MS)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim.valueChanged.connect(self._set_flash_overlay)
-        anim.start()
-        self._flash_anim = anim
-
-    def _set_flash_overlay(self, value: float) -> None:
-        self._flash_overlay = max(0.0, min(1.0, float(value)))
-        self.update()
-
-    # ── module loading status with smooth fade transitions ──────────
+    # ── module loading status ───────────────────────────────────────
 
     def _start_module_cycle(self) -> None:
         self._module_timer = QTimer(self)
-        # Cycle interval: fade out (200ms) + dwell (300ms) + fade in (200ms)
-        self._module_timer.setInterval(_MODULE_TRANSITION_MS)  # 500ms total cycle
-        self._module_timer.timeout.connect(self._next_module_fade)
+        self._module_timer.setInterval(_MODULE_DWELL_MS)
+        self._module_timer.timeout.connect(self._next_module)
         self._module_timer.start()
-        # Initialize the first transition
-        self._next_module_fade()
+        self._next_module()
 
-    def _next_module_fade(self) -> None:
-        """Transition to the next module text with smooth fade-in/out."""
+    def _next_module(self) -> None:
+        """Advance to next module line."""
         if self._completed:
             return
-
-        # Fade out current text
-        self._module_fade_out_timer = QTimer(self)
-        self._module_fade_out_timer.setInterval(_MODULE_FADE_OUT_MS)
-        self._module_fade_out_timer.timeout.connect(self._do_fade_out)
-        self._module_fade_out_timer.start()
-
-    def _do_fade_out(self) -> None:
-        """Fade out the module text, then load next and fade in."""
-        # Switch to next module line
-        self._module_index = (self._module_index + 1) % len(_MODULE_LINES_EN)
-        self._module_target_text = _MODULE_LINES_EN[self._module_index] + "..."
-
-        # Fade in the new text
-        self._module_fade_in_timer = QTimer(self)
-        self._module_fade_in_timer.setInterval(_MODULE_FADE_IN_MS)
-        self._module_fade_in_timer.timeout.connect(self._do_fade_in)
-        self._module_fade_in_timer.start()
-
-    def _do_fade_in(self) -> None:
-        """Fade in the new module text."""
-        self._module_fade_in_timer.stop()
-        self._module_label.setText(self._module_target_text)
-        # Ensure full visibility after fade-in
-        _set_label_color(self._module_label, QColor(255, 255, 255, 255))
-        self._module_label.adjustSize()
+        idx = self._module_index % len(_MODULE_LINES_EN)
+        self._module_index += 1
+        try:
+            self._module_label.setText(_MODULE_LINES_EN[idx] + "...")
+        except RuntimeError:
+            pass  # C++ object already deleted
 
     def _reveal(self, main_window: QWidget) -> None:
         """Reveal the main window and close the splash."""
@@ -631,7 +577,7 @@ class SplashScreen(QWidget):
             return
         self.setWindowOpacity(1.0)
         fade = QPropertyAnimation(self, b"windowOpacity")
-        fade.setDuration(FADE_OUT_MS)  # 350ms
+        fade.setDuration(FADE_OUT_MS)
         fade.setStartValue(1.0)
         fade.setEndValue(0.0)
         fade.setEasingCurve(QEasingCurve.Type.OutCubic)

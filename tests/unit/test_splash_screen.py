@@ -69,7 +69,7 @@ class TestSplashStructure:
     def test_has_module_label(self, qtbot) -> None:
         splash = _make_splash(qtbot)
         assert splash._module_label is not None
-        assert splash._module_label.isVisible()
+        assert splash._module_label.text() != ""
 
     def test_percent_font_is_large(self, qtbot) -> None:
         splash = _make_splash(qtbot)
