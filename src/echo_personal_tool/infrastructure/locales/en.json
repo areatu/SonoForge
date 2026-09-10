@@ -1347,5 +1347,8 @@
   "strain.drift_warning": "⚠ baseline drift {value}%",
   "strain.post_systolic": "⚠ post-systolic shortening",
   "strain.bullseye_ttp": "Time to peak (TTP)",
-  "strain.bullseye_ttp_hint": "Bull's-eye: time from ED to the segment peak in ms (late activation is red)"
+  "strain.bullseye_ttp_hint": "Bull's-eye: time from ED to the segment peak in ms (late activation is red)",
+  "strain.view_label": "View:",
+  "strain.gls_av": "GLS AV (view average)",
+  "strain.gls_av_meta": "GLS AV {value}% ({n} views)"
 }

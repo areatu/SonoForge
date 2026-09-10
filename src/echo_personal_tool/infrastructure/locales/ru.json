@@ -1347,5 +1347,8 @@
   "strain.drift_warning": "⚠ дрейф базовой линии {value}%",
   "strain.post_systolic": "⚠ постсистолическое укорочение",
   "strain.bullseye_ttp": "Время до пика (TTP)",
-  "strain.bullseye_ttp_hint": "Мишень: время от ED до пика сегмента, мс (поздняя активация — красный)"
+  "strain.bullseye_ttp_hint": "Мишень: время от ED до пика сегмента, мс (поздняя активация — красный)",
+  "strain.view_label": "Вид:",
+  "strain.gls_av": "GLS AV (среднее по видам)",
+  "strain.gls_av_meta": "GLS AV {value}% ({n} вида)"
 }

@@ -33,13 +33,19 @@ from echo_personal_tool.infrastructure.i18n import tr
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
+from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
 from echo_personal_tool.domain.services.segment_map import (
-    normalise_view,
+    SEGMENT_NAMES,
     view_segment_ids,
 )
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 logger = logging.getLogger(__name__)
+
+
+def segment_name(segment_id: int) -> str:
+    """Standard AHA name of a segment id (empty for unknown ids)."""
+    return SEGMENT_NAMES.get(int(segment_id), f"Segment {segment_id}")
 
 # Localised names of the six segments of the analysed view. The dict is keyed
 # by the standard 18-segment AHA ids (issue #C2/#C11); ``strain.seg_<id>``
@@ -990,6 +996,7 @@ class SummaryTable(QWidget):
             ("gls_a4c", tr("strain.gls_a4c"), "%"),
             ("gls_a2c", tr("strain.gls_a2c"), "%"),
             ("gls_dao", tr("strain.gls_dao"), "%"),
+            ("gls_av", tr("strain.gls_av"), "%"),
             ("ef", tr("strain.ef"), "%"),
             ("edv", tr("strain.edv"), tr("strain.unit_ml")),
             ("esv", tr("strain.esv"), tr("strain.unit_ml")),
@@ -1350,6 +1357,9 @@ class StrainWindow(QMainWindow):
         # State
         self._result: StrainResult | None = None
         self._position: str = "A4C"
+        # Multi-view study: every analysed view is kept, so the report can show
+        # per-view GLS, the three-view average (GLS_AV) and the 18-segment merge.
+        self._study: StrainStudy = StrainStudy()
         self._qc_accepted_segments: set[int] = set(range(1, 18))  # All segments accepted by default
 
         # Undo/Redo stacks for kernel movements
@@ -1369,6 +1379,10 @@ class StrainWindow(QMainWindow):
                 same pixel coordinate space, so overlays line up with the image.
         """
         self._result = result
+        # Record this view in the study; the newest run of a view wins.
+        analysis = StrainAnalysis.from_result(result)
+        self._analysis = analysis
+        self._study = self._study.with_view(analysis)
 
         disp_idx: int | None = None
         n_all = len(result.longitudinal) if result.longitudinal is not None else 0
@@ -1378,7 +1392,10 @@ class StrainWindow(QMainWindow):
                 disp_idx = ed
 
         # ── Meta bar ────────────────────────────────────────────────────────
-        parts: list[str] = [f"GLS {result.gls:.1f}%"]
+        parts: list[str] = [f"{tr('strain.view_label')} {self._analysis.view}", f"GLS {result.gls:.1f}%"]
+        gls_av = self._study.gls_average()
+        if gls_av is not None and len(self._study.views_valid()) > 1:
+            parts.append(tr("strain.gls_av_meta", value=f"{gls_av:.1f}", n=str(len(self._study.views_valid()))))
         # Honest QC (issue #3): NCC fidelity and measurement validity are
         # different things. Never label a high NCC as "quality" without the
         # validity status next to it.
@@ -1442,16 +1459,13 @@ class StrainWindow(QMainWindow):
         # Per-view GLS: only the analysed view can have a value — the segments
         # of the other views were never measured, and the old id-range split
         # (<=6 / 7..11 / >=12) mixed walls of different views (issues #C2/#C11).
-        gls_a4c = gls_a2c = gls_dao = None
-        view = normalise_view(getattr(result, "view", "A4C"))
-        analysed_segments = [v for k, v in (result.segment_strain or {}).items() if k in view_segment_ids(view)]
-        analysed_gls = float(np.mean(analysed_segments)) if analysed_segments else None
-        if view == "A4C":
-            gls_a4c = analysed_gls
-        elif view == "A2C":
-            gls_a2c = analysed_gls
-        else:
-            gls_dao = analysed_gls
+        # Per-view GLS: filled from the recorded analyses, so a view analysed
+        # earlier keeps its value (and the average of the views is meaningful).
+        # A view that was never analysed stays empty — never a fabricated 0.
+        view = self._analysis.view
+        gls_a4c = self._study.view_gls("A4C")
+        gls_a2c = self._study.view_gls("A2C")
+        gls_dao = self._study.view_gls("A3C")
 
         # Update summary table — GLS (peak of the global curve) next to ESS
         # (value at AVC), time to peak, post-systolic index and the measured
@@ -1469,6 +1483,7 @@ class StrainWindow(QMainWindow):
             gls_a4c=gls_a4c,
             gls_a2c=gls_a2c,
             gls_dao=gls_dao,
+            gls_av=self._study.gls_average(),
             ess=_finite(getattr(result, "ess", None)),
             ttp=_finite(getattr(result, "time_to_peak_ms", None)),
             psi=_finite(getattr(result, "post_systolic_index", None)),
@@ -1851,19 +1866,41 @@ class StrainWindow(QMainWindow):
 
         import json
 
+        # Export the analysis record with its definitions, frame anchors and QC,
+        # not a bare list of numbers: a strain value without the definition and
+        # the view it was measured in cannot be reproduced or compared with a
+        # vendor report. Curves are included so the file is self-contained.
+        analysis = getattr(self, "_analysis", None) or StrainAnalysis.from_result(self._result)
+        analysis_dict = analysis.to_dict(with_curves=True)
+        analysis_dict["qc_accepted_segments"] = sorted(int(seg) for seg in self._qc_accepted_segments)
         data = {
+            "kind": "sonoforge.ste.analysis",
+            "analysis": analysis_dict,
+            "study": self._study.to_dict(),
+        }
+        # Keep the legacy flat keys for consumers written against the old file.
+        legacy_keys = {
             "gls": self._result.gls,
             "heart_rate_bpm": self._result.heart_rate_bpm,
             "position": self._position,
             "ed_index": self._result.ed_index,
             "es_index": self._result.es_index,
+            "avc_index": analysis.avc_index,
+            "ess": analysis.ess,
+            "time_to_peak_ms": analysis.time_to_peak_ms,
+            "post_systolic_index": analysis.post_systolic_index,
+            "drift_measured": analysis.drift,
+            "qc_status": analysis.qc_status,
+            "qc_reasons": list(analysis.qc_reasons),
             "kernels_accepted": self._result.kernels_accepted_count,
             "kernels_rejected": self._result.kernels_rejected_count,
             "kernels_total": self._result.kernels_total_count,
             "segment_strain": {str(k): v for k, v in (self._result.segment_strain or {}).items()},
             "segment_quality": {str(k): v for k, v in (self._result.segment_quality or {}).items()},
-            "qc_accepted_segments": list(self._qc_accepted_segments),
+            "segment_ttp_ms": {str(k): v for k, v in (analysis.segment_ttp_ms or {}).items()},
+            "segment_ess": {str(k): v for k, v in (analysis.segment_ess or {}).items()},
         }
+        data.update(legacy_keys)
 
         # Add kernel positions if available
         if self._result.tracked_ed_positions is not None:
@@ -1894,7 +1931,12 @@ class StrainWindow(QMainWindow):
         logger.info("Exported PNG to %s", path)
 
     def _export_csv(self) -> None:
-        """Export strain values per segment to CSV."""
+        """Export the measured segments with their metrics to CSV.
+
+        One row per standard AHA segment with the value, time to peak,
+        end-systolic value, tracking quality, the view it came from and whether
+        it passed QC — the table a report or a paper actually needs.
+        """
         if self._result is None or self._result.segment_strain is None:
             return
 
@@ -1906,36 +1948,57 @@ class StrainWindow(QMainWindow):
         if not path:
             return
 
-        # Segment names
-        segment_names = {
-            1: "Basal septal",
-            2: "Basal lateral",
-            3: "Mid septal",
-            4: "Mid lateral",
-            5: "Apical septal",
-            6: "Apical lateral",
-            7: "Mid anterior",
-            8: "Anterolateral",
-            9: "Inferoseptal",
-            10: "Mid inferior",
-            11: "Inferolateral",
-            12: "Apical septal",
-            13: "Apical anterior",
-            14: "Apical inferior",
-            15: "Basal septal",
-            16: "Apical lateral",
-            17: "Apex",
-        }
+        analysis = getattr(self, "_analysis", None) or StrainAnalysis.from_result(self._result)
+        sources = self._study.segment_sources()
 
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Segment ID", "Segment Name", "Strain (%)", "Quality", "Accepted"])
+            writer.writerow(
+                [
+                    "Segment ID",
+                    "Segment Name",
+                    "Strain (%)",
+                    "ESS (%)",
+                    "Time to peak (ms)",
+                    "Quality (NCC)",
+                    "View",
+                    "Accepted",
+                ]
+            )
             for seg_id in sorted(self._result.segment_strain.keys()):
                 strain = self._result.segment_strain[seg_id]
-                quality = self._result.segment_quality.get(seg_id, 0.0) if self._result.segment_quality else 0.0
+                quality = (self._result.segment_quality or {}).get(seg_id, float("nan"))
+                ess = analysis.segment_ess.get(seg_id)
+                ttp = analysis.segment_ttp_ms.get(seg_id)
                 accepted = seg_id in self._qc_accepted_segments
-                name = segment_names.get(seg_id, f"Segment {seg_id}")
-                writer.writerow([seg_id, name, f"{strain:.2f}", f"{quality:.3f}", accepted])
+                writer.writerow(
+                    [
+                        seg_id,
+                        segment_name(seg_id),
+                        f"{strain:.2f}",
+                        "" if ess is None else f"{ess:.2f}",
+                        "" if ttp is None or not np.isfinite(ttp) else f"{ttp:.0f}",
+                        "" if quality is None or not np.isfinite(quality) else f"{quality:.3f}",
+                        sources.get(seg_id, self._analysis.view),
+                        accepted,
+                    ]
+                )
+            # Provenance block: definitions + anchors, so the file stands alone.
+            writer.writerow([])
+            writer.writerow(["# GLS definition", analysis.definition_gls])
+            writer.writerow(["# ESS definition", analysis.definition_ess])
+            writer.writerow(["# TTP definition", analysis.definition_ttp])
+            writer.writerow(["# Layer", analysis.layer])
+            writer.writerow(["# View", analysis.view])
+            writer.writerow(["# ED frame", analysis.ed_index])
+            writer.writerow(["# ES frame", analysis.es_index])
+            writer.writerow(["# AVC frame", analysis.avc_index])
+            writer.writerow(["# AVC source", analysis.avc_source])
+            writer.writerow(["# QC status", analysis.qc_status])
+            writer.writerow(["# QC reasons", "|".join(analysis.qc_reasons)])
+            writer.writerow(["# Coverage", f"{analysis.qc_coverage:.3f}"])
+            writer.writerow(["# GLS", "" if analysis.gls is None else f"{analysis.gls:.2f}"])
+            writer.writerow(["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"])
 
         logger.info("Exported CSV to %s", path)
 
