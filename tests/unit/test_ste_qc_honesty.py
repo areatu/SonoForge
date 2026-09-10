@@ -70,6 +70,50 @@ class TestAssessStrainPlausibility:
         assert reasons == ["no longitudinal strain curve"]
 
 
+class TestNoiseToSignalGate:
+    """A number that is smaller than its own measurement noise is not a number.
+
+    This is the phantom finding F6 (plan §7.5): at 5-10 dB speckle SNR the
+    arc-length bias caused by the position noise grows to the size of the
+    contraction itself, so the reported strain is a *floor*, not a measurement —
+    while the NCC still reads ~0.85.
+    """
+
+    def _report(self, ratio: float, **kw):
+        from echo_personal_tool.domain.services.quality import assess_tracking_quality
+
+        return assess_tracking_quality(
+            has_curve=True,
+            fidelity=0.85,
+            coverage=1.0,
+            interpolated_fraction=0.0,
+            consistency_delta=0.0,
+            physiology_ok=True,
+            n_segments_measured=6,
+            noise_to_signal=ratio,
+            **kw,
+        )
+
+    def test_clean_clip_is_valid(self) -> None:
+        report = self._report(0.03)
+        assert report.status == "valid"
+        assert "strain.qc.reason.tracking_noise" not in report.reasons
+
+    def test_borderline_noise_needs_review(self) -> None:
+        report = self._report(0.5)
+        assert report.status == "review"
+        assert "strain.qc.reason.tracking_noise" in report.reasons
+
+    def test_noise_dominating_the_signal_is_invalid(self) -> None:
+        report = self._report(3.5)
+        assert report.status == "invalid"
+        assert "strain.qc.reason.tracking_noise" in report.reasons
+        assert report.confidence <= 0.35
+        # The noise check must not be an excuse to lose the other findings: the
+        # fidelity is still reported honestly at 0.85.
+        assert report.fidelity == pytest.approx(0.85)
+
+
 # ── clinical GLS aggregation ──────────────────────────────────────
 
 

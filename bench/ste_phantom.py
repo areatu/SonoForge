@@ -155,6 +155,8 @@ def run_variant(variant: Variant) -> VariantResult:
         ),
         "qc_estimate_spread_pp": float(getattr(analysis, "qc_estimate_spread_pp", float("nan"))),
         "qc_sign_flip_fraction": float(getattr(analysis, "qc_sign_flip_fraction", float("nan"))),
+        "qc_noise_mm": float(getattr(analysis, "qc_noise_mm", float("nan"))),
+        "qc_noise_to_signal": float(getattr(analysis, "qc_noise_to_signal", float("nan"))),
         "qc_consistency_delta": float(getattr(analysis, "qc_consistency_delta", float("nan"))),
         "qc_coverage": float(getattr(analysis, "qc_coverage", float("nan"))),
         "qc_interpolated_fraction": float(getattr(analysis, "qc_interpolated_fraction", float("nan"))),
@@ -243,8 +245,14 @@ def print_report(results: list[VariantResult]) -> None:
     bad = [(r, findings) for r, ok, findings in failures if not ok]
     print()
     print(f"variants: {len(results)} | evaluated: {len(passed)} | KPI failures: {len(bad)}")
+    # The honest-QC split that matters clinically: a gate missed on a clip the
+    # report *claims* is a measurement is a defect; a gate missed on a clip the
+    # QC already marks invalid/review is the QC doing its job.
+    silent = [r for r, _ in bad if str(r.measured.get("quality_status", "")) == "valid"]
+    print(f"  gate failures on results reported as valid: {len(silent)}")
     for result, findings in bad:
-        print(f"  ✗ {result.variant}: " + "; ".join(findings))
+        flag = "SILENT" if str(result.measured.get("quality_status", "")) == "valid" else "flagged"
+        print(f"  ✗ [{flag}: {result.measured.get('quality_status', '?')}] {result.variant}: " + "; ".join(findings))
     if not bad and passed:
         print("  ✓ all KPI gates met")
 

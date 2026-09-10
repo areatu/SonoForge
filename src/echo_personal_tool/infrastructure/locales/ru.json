@@ -1352,5 +1352,6 @@
   "strain.gls_av": "GLS AV (среднее по видам)",
   "strain.gls_av_meta": "GLS AV {value}% ({n} вида)",
   "strain.qc.reason.cross_check": "независимые оценки деформации расходятся",
-  "strain.qc.reason.line_coherence": "линия миокарда сокращается неоднородно"
+  "strain.qc.reason.line_coherence": "линия миокарда сокращается неоднородно",
+  "strain.qc.reason.tracking_noise": "шум слежения сопоставим с измеряемым сокращением"
 }

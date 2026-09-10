@@ -313,6 +313,28 @@ def test_quality_is_valid_when_the_measurement_is_good(qapp):
 
 
 @pytest.mark.gui
+def test_low_snr_clip_is_not_reported_as_a_measurement(qapp):
+    """Plan §7.5 F6: at 10 dB the tracking noise exceeds the contraction.
+
+    The GLS still comes out as a plausible-looking number, but the arc-length
+    bias caused by position noise is several times the shortening it is
+    supposed to measure, so the report must say the clip is not measurable
+    instead of showing "GLS -7 % with quality 85 %".
+    """
+    config = StePhantomConfig.quick(mode="uniform", noise_db=10.0, decorrelation=0.25)
+    phantom = StePhantom(config)
+    result = _run_worker(phantom, phantom.frames())
+    assert result.qc_noise_to_signal > 1.0, f"noise ratio {result.qc_noise_to_signal:.2f}"
+    assert result.qc_status == "invalid"
+    assert "strain.qc.reason.tracking_noise" in result.qc_reasons
+    # ... while the clean clip of the same phantom must stay a measurement.
+    clean = StePhantom(StePhantomConfig.quick(mode="uniform", **NOISELESS))
+    good = _run_worker(clean, clean.frames())
+    assert good.qc_noise_to_signal < 0.2
+    assert good.qc_status == "valid"
+
+
+@pytest.mark.gui
 def test_quality_never_hides_a_large_strain_error(qapp):
     """QC must not call the analysis valid while the phantom says it is far off.
 

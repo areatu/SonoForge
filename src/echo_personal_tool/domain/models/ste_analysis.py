@@ -89,6 +89,10 @@ class StrainAnalysis:
     # endocardial line whose end-systolic strain has the opposite sign.
     qc_estimate_spread_pp: float = 0.0
     qc_sign_flip_fraction: float = 0.0
+    # Position noise (mm) and the estimated arc-length bias it causes, divided by
+    # the measured contraction (plan §7.5, F6). 1.0 = the measurement is noise.
+    qc_noise_to_signal: float = 0.0
+    qc_noise_mm: float = 0.0
     kernels_accepted: int = 0
     kernels_total: int = 0
     heart_rate_bpm: float = 0.0
@@ -146,6 +150,8 @@ class StrainAnalysis:
                 "consistency_delta": self.qc_consistency_delta,
                 "estimate_spread_pp": self.qc_estimate_spread_pp,
                 "sign_flip_fraction": self.qc_sign_flip_fraction,
+                "noise_to_signal": self.qc_noise_to_signal,
+                "noise_mm": self.qc_noise_mm,
                 "tracking_ncc_mean": self.tracking_quality_mean,
                 "kernels_accepted": self.kernels_accepted,
                 "kernels_total": self.kernels_total,
@@ -199,6 +205,8 @@ class StrainAnalysis:
             qc_consistency_delta=float(getattr(result, "qc_consistency_delta", 0.0)),
             qc_estimate_spread_pp=float(getattr(result, "qc_estimate_spread_pp", 0.0)),
             qc_sign_flip_fraction=float(getattr(result, "qc_sign_flip_fraction", 0.0)),
+            qc_noise_to_signal=float(getattr(result, "qc_noise_to_signal", 0.0)),
+            qc_noise_mm=float(getattr(result, "qc_noise_mm", 0.0)),
             kernels_accepted=int(result.kernels_accepted_count),
             kernels_total=int(result.kernels_total_count),
             heart_rate_bpm=float(result.heart_rate_bpm),

@@ -41,6 +41,8 @@ from echo_personal_tool.domain.services.speckle_tracking import (
 )
 from echo_personal_tool.domain.services.strain_computation import (
     aggregate_segment_curves,
+    arc_contraction_mm,
+    arc_length_inflation_mm,
     assess_strain_plausibility,
     compute_gls,
     compute_longitudinal_strain_gl,
@@ -1027,6 +1029,32 @@ class SpeckleTrackingWorker(QRunnable):
             estimate_spread_pp = 0.0
             if np.isfinite(gls_segments) and str(gls_source) == "curve":
                 estimate_spread_pp = float(abs(gls - gls_segments))
+            # Position noise vs the contraction (plan §7.5, F6). A polyline
+            # through noisy points is longer than the material line it samples,
+            # so the noise bias *shortens* the reported strain while leaving the
+            # NCC untouched — the one cross-check that catches "quality 95 %,
+            # GLS wrong". It is measured on the pre-smoothing positions.
+            noise_mm = 0.0
+            noise_to_signal = 0.0
+            if len(strain_endo) >= 2:
+                noise_mm = arc_length_inflation_mm(raw_positions, smoothed, strain_endo, self._pixel_spacing)
+                contraction = arc_contraction_mm(
+                    smoothed,
+                    strain_endo,
+                    local_ed,
+                    self._pixel_spacing,
+                    window_end=smoothed.shape[0] - 1,
+                )
+                # Only meaningful when there is a contraction to measure: a truly
+                # akinetic clip has no signal and is judged by the physiology
+                # checks, not by this ratio.
+                noise_to_signal = float(noise_mm / contraction) if contraction > 0.5 else 0.0
+                logger.info(
+                    "STE noise check: arc inflation=%.2f mm, contraction=%.2f mm, ratio=%.2f",
+                    noise_mm,
+                    contraction,
+                    noise_to_signal,
+                )
             quality = assess_tracking_quality(
                 has_curve=bool(np.any(np.isfinite(window_long))),
                 fidelity=tracking_quality_mean,
@@ -1040,12 +1068,14 @@ class SpeckleTrackingWorker(QRunnable):
                 n_segments_measured=len(segment_strain),
                 estimate_spread_pp=estimate_spread_pp,
                 sign_flip_fraction=sign_flip_fraction,
+                noise_to_signal=noise_to_signal,
                 gls_pp=gls,
             )
             qc_overall = quality.confidence
             logger.info(
                 "STE QC: status=%s confidence=%.2f ncc=%.3f coverage=%.2f interp=%.2f "
-                "consistency=%.2f spread=%.2f sign_flip=%.2f physiology_ok=%s geometry_ok=%s reasons=%s",
+                "consistency=%.2f spread=%.2f sign_flip=%.2f noise_ratio=%.2f "
+                "physiology_ok=%s geometry_ok=%s reasons=%s",
                 quality.status,
                 quality.confidence,
                 tracking_quality_mean,
@@ -1054,6 +1084,7 @@ class SpeckleTrackingWorker(QRunnable):
                 consistency_delta,
                 estimate_spread_pp,
                 sign_flip_fraction,
+                noise_to_signal,
                 phys_ok,
                 geometry_ok,
                 quality.reasons,
@@ -1144,6 +1175,8 @@ class SpeckleTrackingWorker(QRunnable):
                 gls_segment_mean=float(gls_segments),
                 qc_estimate_spread_pp=float(estimate_spread_pp),
                 qc_sign_flip_fraction=float(sign_flip_fraction),
+                qc_noise_to_signal=float(noise_to_signal),
+                qc_noise_mm=float(noise_mm),
                 analysis_window_end=int(phase_end),
                 cycle_estimated=bool(cycle_estimated),
                 raw_tracked_positions=raw_phase_positions,

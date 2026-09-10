@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import numpy as np
+
 STATUS_VALID = "valid"
 STATUS_REVIEW = "review"
 STATUS_INVALID = "invalid"
@@ -37,6 +39,14 @@ MIN_SEGMENTS_REVIEW = 3
 MAX_ESTIMATE_SPREAD_ABS = 5.0  # percentage points
 MAX_ESTIMATE_SPREAD_REL = 0.30  # fraction of |GLS|
 MAX_SIGN_FLIP_FRACTION = 0.25  # nodes shortening vs stretching at end-systole
+# Position noise vs the signal it is supposed to measure. A polyline through
+# noisy points is *longer* than the material line it samples (E|Δp+n| > |Δp|), so
+# noise inflates the arc length of every frame and flattens the strain. When that
+# inflation is comparable to the contraction itself, the number is not a
+# measurement at all — whatever the NCC says. ``noise_to_signal`` is the
+# estimated length bias divided by the measured contraction.
+MAX_NOISE_TO_SIGNAL_INVALID = 1.0
+MAX_NOISE_TO_SIGNAL_REVIEW = 0.35
 
 REASON_NO_DATA = "strain.qc.reason.no_data"
 REASON_GEOMETRY = "strain.qc.reason.geometry"
@@ -47,6 +57,7 @@ REASON_FEW_SEGMENTS = "strain.qc.reason.few_segments"
 REASON_PHYSIOLOGY = "strain.qc.reason.physiology"
 REASON_CROSS_CHECK = "strain.qc.reason.cross_check"
 REASON_LINE_COHERENCE = "strain.qc.reason.line_coherence"
+REASON_TRACKING_NOISE = "strain.qc.reason.tracking_noise"
 
 
 @dataclass(frozen=True)
@@ -61,6 +72,7 @@ class QualityReport:
     consistency_delta: float = 0.0
     estimate_spread_pp: float = 0.0
     sign_flip_fraction: float = 0.0
+    noise_to_signal: float = 0.0
     physiology_ok: bool = False
     reasons: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -79,6 +91,7 @@ def assess_tracking_quality(
     consistency_delta: float = 0.0,
     estimate_spread_pp: float = 0.0,
     sign_flip_fraction: float = 0.0,
+    noise_to_signal: float = 0.0,
     gls_pp: float = 0.0,
     physiology_ok: bool = True,
     physiology_notes: Sequence[str] = (),
@@ -103,6 +116,12 @@ def assess_tracking_quality(
     reported GLS. Both are *metric* cross-checks: they need no reference and no
     ground truth, and they fail exactly when a confidently tracked clip carries
     a wrong number (plan §7.5, F4).
+
+    ``noise_to_signal`` adds the measurement-theory check: the estimated
+    arc-length bias caused by the position noise divided by the measured
+    contraction. Noise makes a polyline longer, so it *shortens* the reported
+    strain; when the bias is of the same order as the contraction the strain is
+    not measurable and the result is ``invalid`` regardless of the NCC.
     """
     reasons: list[str] = []
     notes: list[str] = list(physiology_notes) + list(geometry_notes)
@@ -126,6 +145,11 @@ def assess_tracking_quality(
         reasons.append(REASON_LOW_COVERAGE)
         hard_failure = True
 
+    noise_ratio = float(noise_to_signal) if np.isfinite(noise_to_signal) else 0.0
+    if has_curve and noise_ratio > MAX_NOISE_TO_SIGNAL_INVALID:
+        reasons.append(REASON_TRACKING_NOISE)
+        hard_failure = True
+
     soft = False
     if not hard_failure:
         if coverage < MIN_COVERAGE_REVIEW:
@@ -143,6 +167,9 @@ def assess_tracking_quality(
             soft = True
         if sign_flip_fraction > MAX_SIGN_FLIP_FRACTION:
             reasons.append(REASON_LINE_COHERENCE)
+            soft = True
+        if noise_ratio > MAX_NOISE_TO_SIGNAL_REVIEW:
+            reasons.append(REASON_TRACKING_NOISE)
             soft = True
         if n_segments_measured < MIN_SEGMENTS_REVIEW:
             reasons.append(REASON_FEW_SEGMENTS)
@@ -164,6 +191,7 @@ def assess_tracking_quality(
     confidence -= 0.03 * max(0.0, consistency_delta - 1.0)
     confidence *= 1.0 - 0.5 * min(max(float(estimate_spread_pp) - 1.0, 0.0) / 8.0, 1.0)
     confidence *= 1.0 - 0.3 * min(float(sign_flip_fraction) / 0.5, 1.0)
+    confidence *= 1.0 - 0.5 * min(noise_ratio / MAX_NOISE_TO_SIGNAL_INVALID, 1.0)
     confidence = float(max(0.0, min(1.0, confidence)))
     if status == STATUS_INVALID:
         confidence = min(confidence, 0.35)
@@ -178,6 +206,7 @@ def assess_tracking_quality(
         interpolated_fraction=interpolated_fraction,
         consistency_delta=float(consistency_delta),
         estimate_spread_pp=float(estimate_spread_pp),
+        noise_to_signal=noise_ratio,
         sign_flip_fraction=float(sign_flip_fraction),
         physiology_ok=bool(physiology_ok),
         reasons=tuple(dict.fromkeys(reasons)),

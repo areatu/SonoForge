@@ -191,6 +191,11 @@ class StrainResult:
     # endocardial line whose end-systolic strain has the opposite sign.
     qc_estimate_spread_pp: float = 0.0
     qc_sign_flip_fraction: float = 0.0
+    # Position noise vs the contraction it is meant to measure (plan §7.5, F6):
+    # noise inflates every arc length, so a ratio near 1 means the strain of this
+    # clip is not measurable no matter how high the NCC is.
+    qc_noise_to_signal: float = 0.0
+    qc_noise_mm: float = 0.0
     # Per-node strain curves along the tracked material line (single definition,
     # see ``strain_computation.compute_node_longitudinal_curves``). Columns match
     # ``node_indices``; values are NaN outside the tracked window.

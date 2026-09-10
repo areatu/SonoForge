@@ -21,6 +21,8 @@ a different definition by accident.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 from scipy.signal import savgol_filter
 
@@ -503,6 +505,76 @@ def compute_node_longitudinal_curves(
         np.divide(lt, l0, out=ratio, where=usable)
         curves[t] = lagrangian_strain_pct(ratio, 1.0)
     return curves
+
+
+def arc_length_inflation_mm(
+    raw_positions: np.ndarray,
+    smoothed_positions: np.ndarray,
+    indices: Sequence[int],
+    pixel_spacing: tuple[float, float],
+) -> float:
+    """Median inflation (mm) of a noisy arc over the smoothed one.
+
+    The direct measurement of the effect that matters (plan §7.5, F6): a polyline
+    through noisy points is longer than the curve it samples, because
+    ``E|Δp + n| > |Δp|``. Both the reference frame and every deformed frame carry
+    the same bias, so it *flattens* the strain curve while leaving the NCC at
+    ~0.9 — the "quality is high, GLS is wrong" symptom. Comparing the raw
+    trajectory with the smoothed one (the pipeline's own best estimate of the
+    contour) measures that inflation without any noise model:
+
+        inflation = median_t ( L_raw(t) − L_smooth(t) )   ≥ 0
+
+    Args:
+        raw_positions: (n_frames, n_nodes, 2) positions before smoothing.
+        smoothed_positions: (n_frames, n_nodes, 2) positions after smoothing.
+        indices: columns of the material line, in arc order.
+        pixel_spacing: (row, col) mm per pixel.
+
+    Returns:
+        Median length inflation in millimetres (never negative).
+    """
+    raw = np.asarray(raw_positions, dtype=np.float64)[:, list(indices), :]
+    smooth = np.asarray(smoothed_positions, dtype=np.float64)[:, list(indices), :]
+    if raw.shape[0] < 1 or raw.shape[1] < 2:
+        return 0.0
+    spacing = float(np.mean(pixel_spacing))
+    l_raw = np.array([np.sum(np.linalg.norm(np.diff(frame, axis=0), axis=1)) for frame in raw])
+    l_smooth = np.array([np.sum(np.linalg.norm(np.diff(frame, axis=0), axis=1)) for frame in smooth])
+    diff = (l_raw - l_smooth) * spacing
+    return float(max(np.median(diff), 0.0))
+
+
+def arc_contraction_mm(
+    positions: np.ndarray,
+    indices: Sequence[int],
+    ed_index: int,
+    pixel_spacing: tuple[float, float],
+    window_end: int | None = None,
+) -> float:
+    """Largest measured shortening of the material line (mm), ED to any frame.
+
+    The signal the inflation is compared against: how much shorter the line ever
+    gets inside the analysis window.
+
+    Args:
+        positions: (n_frames, n_nodes, 2) positions in pixels.
+        indices: columns of the material line, in arc order.
+        ed_index: end-diastole frame (the reference length).
+        pixel_spacing: (row, col) mm per pixel.
+        window_end: last frame of the analysis window (defaults to the last one).
+
+    Returns:
+        Shortening in millimetres (0 when the line never shortens).
+    """
+    pts = np.asarray(positions, dtype=np.float64)[:, list(indices), :]
+    if pts.shape[0] < 1 or pts.shape[1] < 2:
+        return 0.0
+    ed = int(min(max(ed_index, 0), pts.shape[0] - 1))
+    last = pts.shape[0] - 1 if window_end is None else int(min(max(window_end, ed), pts.shape[0] - 1))
+    spacing = float(np.mean(pixel_spacing))
+    lengths = np.array([np.sum(np.linalg.norm(np.diff(frame, axis=0), axis=1)) for frame in pts[ed : last + 1]])
+    return float(max((lengths[0] - lengths.min()) * spacing, 0.0))
 
 
 def smooth_curves_time(
