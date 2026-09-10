@@ -103,15 +103,6 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 | **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
 | **ECG-Based HR** | Heart rate from ECG waveform | Automatic ED/ES detection from ECG R-peaks |
 
-### Speckle Tracking Echocardiography (STE)
-
-- **Global Longitudinal Strain (GLS)** — Automatic myocardial deformation analysis with bull's eye display
-- **Regional Strain Curves** — Per-segment strain-time curves with ED/ES synchronization
-- **Simpson-Aware ED/ES** — Automatic phase detection from contour data with sequential tracking
-- **Epicardial Contour Editing** — Manual refinement of epicardial boundaries for accurate ROI definition
-- **Global Motion Compensation** — Frame-to-frame motion correction for stable strain estimation
-- **Smoothing Overlay** — Temporal smoothing visualization with configurable parameters
-
 ### Doppler and Vascular Measurements
 
 - **PSV/EDV Peak Measurement** — Manual peaks on spectral Doppler with automatic RI and S/D indices
@@ -268,8 +259,8 @@ SonoForge follows **Clean Architecture** principles with clear separation of con
 ```
 src/echo_personal_tool/
 ├── domain/              # Business logic (no Qt dependency)
-│   ├── models/          # Data models: Contour, Doppler, MMode, STE
-│   ├── calculations/    # Cardiac calculations: Simpson, Bernoulli, Teichholz, strain
+│   ├── models/          # Data models: Contour, Doppler, MMode
+│   ├── calculations/    # Cardiac calculations: Simpson, Bernoulli, Teichholz
 │   └── services/        # Segmentation, tracking, reference data, gold annotations
 ├── infrastructure/      # External integrations
 │   ├── dicom_*.py       # DICOM reading/writing (pydicom)
@@ -289,10 +280,8 @@ src/echo_personal_tool/
 │   ├── viewer_widget.py # DICOM image viewer with overlays
 │   ├── doppler_overlay.py # Spectral Doppler tools
 │   ├── web_reference/   # Web-based reference viewer (QWebEngineView)
-│   ├── ste_results_dialog.py # Speckle tracking results
 │   └── ...              # 30+ UI components
 ├── constructor/         # Reference browser editor
-├── ui/                  # Strain window and curves view
 └── resources/           # Fonts, icons, ASE reference data
 ```
 

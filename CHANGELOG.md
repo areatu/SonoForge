@@ -7,19 +7,15 @@
 ## v0.3.0 — 2026-09-10
 
 ### Highlights
-- **STE (Speckle Tracking Echocardiography)** — полная переработка: Simpson-aware ED/ES, клинический GLS, редактирование эпикардиального контура, компенсация глобального движения, окно результатов с воспроизведением ЭКГ
 - **Веб-просмотрщик справочника** — быстрый веб-вид (QWebEngine) с инлайн-редактированием, лайтбоксом изображений, тултипами полных названий, четырьмя CSS-темами
 - **Расширенная библиотека справочника** — сосудистые исследования, щитовидная железа, почки, брюшная аорта, лимфоузлы; регургитационная фракция для МР/АР, эхо-признаки ЛГ, нормы 3D-ФВЛЖ/SVi, градации АС/АР/ТР/ПР
 - **Автокалибровка допплера** — детектор тиков Samsung RS85, слияние методов базовой линии (визуальная линия + DICOM-тег + интенсивность), ручной мастер в два клика
+- **Стеноз сосуда** — измерения %D и %D с пошаговыми сценариями
 - **Анимации интерфейса** — аккордеоны, слайды панелей, crossfade вкладок, отклик кнопок, скелетоны загрузки
 - **Производительность** — кэш LUT-преобразований, общие DICOM-сессии между воркерами, предзагрузка коротких цинов
 - **Настройки по умолчанию** — тема VS Code Dark, язык English, язык/тема сохраняются между запусками
 
 ### Features
-- `feat(ste)`: Simpson-aware ED/ES, editable epicardial contour, global motion compensation
-- `feat(ste)`: vendor-style wall-border propagation tracking
-- `feat(ste)`: STE window UX overhaul — animation, real-ECG, position selector, curves redesign
-- `feat(ste)`: single top-level results window with cine background
 - `feat(reference)`: web-based reference viewer with Qt fallback and inline editing
 - `feat(reference)`: lightbox modal, tooltips, live reload, four CSS themes
 - `feat(reference)`: vascular, thyroid, kidney, abdominal aorta, lymph node parameters
@@ -94,7 +90,7 @@
 - `feat(design)`: DESIGN.md VUNO palette applied to main window
 - `feat(viewer)`: vessel sensitivity overlay for auto-trace preset control
 - `feat(reference)`: regurgitant fraction for MR/AR, pulmonary hypertension echo signs, 3D LVEF/SVi norms; preload dialog, full-name tooltips, norm columns hidden when gradations present
-- `feat`: constructor light theme, web refs 4-theme CSS, BSA restore, STE smoothing overlay
+- `feat`: constructor light theme, web refs 4-theme CSS, BSA restore
 
 ### Refactor
 - `refactor(references)`: LV mass + geometry merged, empty-parameter rows removed, pathology_desc rows dropped, missing gradations added

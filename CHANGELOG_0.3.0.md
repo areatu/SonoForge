@@ -4,22 +4,13 @@ Released: 2026-09-10
 
 ## Summary
 
-SonoForge 0.3.0 is a major release anchored by a complete STE (Speckle Tracking Echocardiography) overhaul — including vendor-style wall-border propagation, clinical GLS calculation, Simpson-aware ED/ES detection, and a redesigned results window with real-ECG playback. The release also introduces a web-based reference viewer with inline editing, a high-performance DICOM playback pipeline (per-frame decoding, priority-gated decode queue, memory-mapped pixel data), and polished UI animations across the entire interface. Calibration and Doppler modules received significant hardening, especially for Samsung and GE vendor paths.
+SonoForge 0.3.0 is a major release introducing a web-based reference viewer with inline editing, a high-performance DICOM playback pipeline (per-frame decoding, priority-gated decode queue, memory-mapped pixel data), and polished UI animations across the entire interface. Calibration and Doppler modules received significant hardening, especially for Samsung and GE vendor paths. The release also includes vessel stenosis measurements, evidence-fusion baseline detection, and expanded reference library coverage.
 
 > **Note:** Two splash-screen features (`da804c0`, `c28b02c`) were introduced and subsequently reverted (`93d4ccb`, `a35c1f8`); they are excluded from this changelog.
 
 ---
 
 ## Features
-
-### STE (Speckle Tracking Echocardiography)
-- Simpson-aware ED/ES, editable epicardial contour, global motion compensation (`d0a6295`)
-- Apply recommended follow-ups — sequential default, motion model, smoothing, preprocessing (`3568b87`)
-- Honest QC, clinical segment-mean GLS and drift fix (`28d49b1`)
-- Single top-level results window with cine background (`ff2a658`)
-- Honour one-sided ED/ES anchors and show ED/ES source (`a32b1e9`)
-- Vendor-style wall-border propagation tracking (`0d80926`)
-- STE window UX overhaul: animation, real-ECG, position selector, curves redesign (`e583306`)
 
 ### Reference
 - Add web-based reference viewer with Qt fallback (`a82a27c`)
@@ -41,7 +32,7 @@ SonoForge 0.3.0 is a major release anchored by a complete STE (Speckle Tracking 
 - Apply DESIGN.md to web view + fix UI issues (`26847af`)
 - BSA in measurement panel, context menu Edit, hover anim, i18n fixes (`3262807`)
 - Cherry-pick theme, animations, icons, locales from arena (`362bca9`)
-- Constructor light theme, web refs 4-theme CSS, BSA restore, STE smoothing overlay (`d270102`)
+- Constructor light theme, web refs 4-theme CSS, BSA restore (`d270102`)
 
 ### Viewer
 - Vessel sensitivity overlay for auto-trace preset control (`09a3019`)
@@ -65,20 +56,6 @@ SonoForge 0.3.0 is a major release anchored by a complete STE (Speckle Tracking 
 ---
 
 ## Bug Fixes
-
-### STE
-- Carry real ECG + cine frames to STE window; add view-position buttons (`27437c1`)
-- Smoothness slider crashed on frozen StrainResult (`310d703`)
-- Reset STE results when switching to another file (`75f2266`)
-- Hard-clamp borders to the drawn epicardium; denser node grid (`a88ae22`)
-- Make the ED epicardium a hard outer wall at systole (`1bfd4e7`)
-- Stop fabricating motion; let systole really track (`108e706`)
-- Run on large cines without full pre-cached frames (`7ac39dc`)
-- Recognize multi-frame clips missing NumberOfFrames tag (`7a75f5a`)
-- Enforce wall band inside the sequential tracking loop (`f1ed70b`)
-- Constrain kernels to the myocardial wall band (`12ef10e`)
-- Restore viewer STE contour API lost in arena merge (`154a0f2`)
-- Correct myocardial zone mask and add frame-to-frame sequential tracking (`a3f2133`)
 
 ### Doppler / Calibration
 - Restore 2-click manual calibration, keep time scale on reset (`a0163a1`)
@@ -198,7 +175,6 @@ SonoForge 0.3.0 is a major release anchored by a complete STE (Speckle Tracking 
 
 ## Documentation
 
-- Add comprehensive STE improvement plan (`bdea50f`)
 - Record measured playback results, run the 720p cine bench in CI (`0dd8146`)
 - Audit 720p cine playback and add the measurement harness (`95b6834`)
 - Update session changelog (`434ad7e`, `7c961d2`)
@@ -216,8 +192,6 @@ SonoForge 0.3.0 is a major release anchored by a complete STE (Speckle Tracking 
 - Apply ruff 0.16.0 formatting to 15 files (`5196204`)
 - Apply ruff format to LV core files (`2d88e71`)
 - Fix import sorting in test_segmentation_service.py (`f7276fa`)
-- Make strain curve fill the plot height and centre it (`cb9e44b`)
-- Vendor-style strain curves view (`90e5411`)
 - Ruff format web_reference_bridge.py (`f2db6b7`)
 - Format vendor bridge after merge (`b056d31`)
 - Format overlay tests (`2437f18`)
