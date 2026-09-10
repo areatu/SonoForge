@@ -606,12 +606,15 @@ class TestBorderTracking:
         )
         from echo_personal_tool.domain.services.border_tracking import (
             propagate_wall_borders,
-            resample_closed,
+            resample_along_arc,
         )
 
         out = propagate_wall_borders(frames, endo0, epi0, cfg, outward_slack_px=2.0)
-        center = np.mean(resample_closed(endo0, 64), axis=0)
-        epi_r0 = np.linalg.norm(resample_closed(epi0, 64) - center, axis=1)
+        # A full ring (phantom) is resampled as a closed contour; the reference
+        # radii must come from the same resampler the tracker used, otherwise
+        # the per-node comparison is made against nodes at other arc positions.
+        center = np.mean(resample_along_arc(endo0, 64), axis=0)
+        epi_r0 = np.linalg.norm(resample_along_arc(epi0, 64) - center, axis=1)
         for t in range(len(frames)):
             r_epi = np.linalg.norm(out["epi"][t] - center, axis=1)
             r_endo = np.linalg.norm(out["endo"][t] - center, axis=1)

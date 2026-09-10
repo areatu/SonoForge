@@ -73,6 +73,11 @@ class TestNoTimeReInterpolation:
         assert out[4, 0, 1] > 100.0
 
 
+# A4C measures the inferoseptal / anterolateral wall pair in the standard
+# 18-segment AHA numbering (3/9/15 and 6/12/18).
+A4C_SEGMENTS = (3, 6, 9, 12, 15, 18)
+
+
 # Widget-level checks need a working Qt platform plugin (CI runs them under xvfb).
 @pytest.mark.gui
 class TestCurvesViewUsesModelNumbers:
@@ -101,7 +106,7 @@ class TestCurvesViewUsesModelNumbers:
             longitudinal=np.linspace(0.0, -18.0, n),
             radial=np.zeros(n),
             gls=-18.0,
-            segment_strain={1: -18.0},
+            segment_strain={3: -18.0},
             kernels=kernels,
             tracked_positions_all=positions,
             ed_index=0,
@@ -113,7 +118,7 @@ class TestCurvesViewUsesModelNumbers:
         pytest.importorskip("PySide6")
         from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
-        model_curves = {1: np.array([0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0])}
+        model_curves = {3: np.array([0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0])}
         view = StrainCurvesView()
         result = self._result(model_curves)
 
@@ -132,8 +137,10 @@ class TestCurvesViewUsesModelNumbers:
         finally:
             view._update_panel = original  # type: ignore[assignment]
 
-        assert 1 in captured
-        assert captured[1] == pytest.approx(model_curves[1])
+        assert 3 in captured
+        assert captured[3] == pytest.approx(model_curves[3])
+        # Segments of other views are never plotted in this panel.
+        assert set(captured) <= set(A4C_SEGMENTS)
 
     def test_fallback_uses_arc_order_not_raster_order(self) -> None:
         pytest.importorskip("PySide6")
@@ -143,9 +150,9 @@ class TestCurvesViewUsesModelNumbers:
         # Kernels of one segment but ordered so that raster sorting (x, y) would
         # zig-zag: node 0 and node 2 are at the same place in the opposite wall.
         kernels = [
-            TrackingKernel(center=(10.0, 40.0), node_index=0, layer="endo", aha_segment=1),
-            TrackingKernel(center=(30.0, 40.0), node_index=2, layer="endo", aha_segment=1),
-            TrackingKernel(center=(20.0, 40.0), node_index=1, layer="endo", aha_segment=1),
+            TrackingKernel(center=(10.0, 40.0), node_index=0, layer="endo", aha_segment=3),
+            TrackingKernel(center=(30.0, 40.0), node_index=2, layer="endo", aha_segment=3),
+            TrackingKernel(center=(20.0, 40.0), node_index=1, layer="endo", aha_segment=3),
         ]
         n = 4
         positions = np.zeros((n, 3, 2))
@@ -157,7 +164,7 @@ class TestCurvesViewUsesModelNumbers:
             longitudinal=np.zeros(n),
             radial=np.zeros(n),
             gls=0.0,
-            segment_strain={1: 0.0},
+            segment_strain={3: 0.0},
             kernels=kernels,
             tracked_positions_all=positions,
             ed_index=0,
@@ -165,4 +172,4 @@ class TestCurvesViewUsesModelNumbers:
         )
         curves = view._segment_curves_from_tracking(result, n)
         # A uniform shortening of the whole arc must be negative at ES
-        assert curves[1][-1] < 0.0
+        assert curves[3][-1] < 0.0

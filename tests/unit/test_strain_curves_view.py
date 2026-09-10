@@ -224,19 +224,26 @@ class TestStrainCurvesView:
 
 
 class TestConstants:
-    def test_segment_colors_keys(self):
+    def test_segment_colors_cover_all_18_segments(self):
         from echo_personal_tool.ui.strain_curves_view import SEGMENT_COLORS
 
-        assert set(SEGMENT_COLORS.keys()) == {1, 2, 3, 4, 5, 6}
+        assert set(SEGMENT_COLORS.keys()) == set(range(1, 19))
 
     def test_segment_names_ru_keys(self):
         from echo_personal_tool.ui.strain_curves_view import SEGMENT_NAMES_RU
 
-        assert set(SEGMENT_NAMES_RU.keys()) == {1, 2, 3, 4, 5, 6}
+        # Names are keyed by the standard AHA ids of the A4C wall pair.
+        assert set(SEGMENT_NAMES_RU.keys()) == {3, 6, 9, 12, 15, 18}
 
     def test_view_segments(self):
         from echo_personal_tool.ui.strain_curves_view import VIEW_SEGMENTS
 
-        assert VIEW_SEGMENTS["A4C"] == [1, 2, 3, 4, 5, 6]
-        assert VIEW_SEGMENTS["A2C"] == [7, 8, 9, 10, 11]
-        assert VIEW_SEGMENTS["DAO"] == [12, 13, 14, 15, 16]
+        # Standard 18-segment numbering: each view names its own wall pair and
+        # no view may reuse the ids of another one (issue #C2).
+        assert VIEW_SEGMENTS["A4C"] == [3, 9, 15, 6, 12, 18]
+        assert VIEW_SEGMENTS["A2C"] == [1, 7, 13, 4, 10, 16]
+        assert VIEW_SEGMENTS["A3C"] == [2, 8, 14, 5, 11, 17]
+        assert VIEW_SEGMENTS["DAO"] == VIEW_SEGMENTS["A3C"]
+        # The three views together cover the 18 segments exactly once each.
+        union = VIEW_SEGMENTS["A4C"] + VIEW_SEGMENTS["A2C"] + VIEW_SEGMENTS["A3C"]
+        assert len(union) == len(set(union)) == 18

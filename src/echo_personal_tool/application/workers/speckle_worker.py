@@ -252,6 +252,7 @@ class SpeckleTrackingWorker(QRunnable):
         config_preset: str = "standard",
         manual_ed: int | None = None,
         manual_es: int | None = None,
+        view: str = "A4C",
         ecg_waveform=None,
         simpson_area_curve: tuple[tuple[int, float], ...] = (),
         source_path: Path | str | None = None,
@@ -270,6 +271,9 @@ class SpeckleTrackingWorker(QRunnable):
         self._config_preset = config_preset
         self._manual_ed = manual_ed
         self._manual_es = manual_es
+        # Analysed apical view — decides which wall pair the AHA segment ids
+        # name (issue #C2). Default A4C keeps old callers working.
+        self._view = str(view or "A4C").upper()
         self._ecg_waveform = ecg_waveform
         self._simpson_area_curve = simpson_area_curve
         self._source_path = source_path
@@ -313,7 +317,7 @@ class SpeckleTrackingWorker(QRunnable):
                 self._zone,
                 kernel_radius=kernel_radius,
             )
-            kernels = assign_aha_segments(kernels, lv_center=lv_center, view="A4C")
+            kernels = assign_aha_segments(kernels, lv_center=lv_center, view=self._view)
 
             manual_ed_given = self._manual_ed is not None
             manual_es_given = self._manual_es is not None
@@ -485,7 +489,7 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels = assign_aha_segments(
                     border_propagation["kernels"],
                     lv_center=tuple(np.mean(self._zone.endo_points, axis=0).tolist()),
-                    view="A4C",
+                    view=self._view,
                 )
                 positions = border_propagation["positions"]
                 ncc_matrix = border_propagation["ncc"]
@@ -822,6 +826,7 @@ class SpeckleTrackingWorker(QRunnable):
                 tracked_es_positions=tracked_es_positions,
                 tracked_ed_positions=tracked_ed_positions,
                 tracked_positions_all=tracked_positions_all,
+                view=self._view,
                 raw_tracked_positions=raw_phase_positions,
                 ncc_all_frames=ncc_all_frames,
                 es_ncc_scores=es_ncc,

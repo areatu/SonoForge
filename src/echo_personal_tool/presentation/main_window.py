@@ -2267,6 +2267,7 @@ class MainWindow(QMainWindow):
             config_preset=config_preset,
             manual_ed=self._manual_ed_frame,
             manual_es=self._manual_es_frame,
+            view=self._ste_position,
         )
 
     def _ensure_strain_window(self) -> StrainWindow:

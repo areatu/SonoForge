@@ -3680,6 +3680,7 @@ class AppController(QObject):
         config_preset: str = "standard",
         manual_ed: int | None = None,
         manual_es: int | None = None,
+        view: str = "A4C",
     ) -> None:
         """Launch speckle tracking on current CINE frames."""
         from echo_personal_tool.application.workers.speckle_worker import (
@@ -3771,6 +3772,7 @@ class AppController(QObject):
             config_preset=config_preset,
             manual_ed=manual_ed,
             manual_es=manual_es,
+            view=view,
             simpson_area_curve=simpson_area_curve,
             source_path=source_path,
             media_format=instance.media_format if instance is not None else "dicom",

@@ -33,19 +33,18 @@ from echo_personal_tool.infrastructure.i18n import tr
 if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
+from echo_personal_tool.domain.services.segment_map import (
+    normalise_view,
+    view_segment_ids,
+)
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 logger = logging.getLogger(__name__)
 
-# Russian AHA segment names (Clinical style)
-AHA_SEGMENT_NAMES_RU: dict[int, str] = {
-    1: tr("strain.seg_basal_septal"),
-    2: tr("strain.seg_basal_lateral"),
-    3: tr("strain.seg_mid_septal"),
-    4: tr("strain.seg_mid_lateral"),
-    5: tr("strain.seg_apical_septal"),
-    6: tr("strain.seg_apical_lateral"),
-}
+# Localised names of the six segments of the analysed view. The dict is keyed
+# by the standard 18-segment AHA ids (issue #C2/#C11); ``strain.seg_<id>``
+# covers all 18 so any view can be labelled.
+AHA_SEGMENT_NAMES_RU: dict[int, str] = {seg: tr(f"strain.seg_{seg}") for seg in view_segment_ids("A4C")}
 
 
 def _smooth_contour(points: np.ndarray, n_output: int = 64) -> np.ndarray:
@@ -686,54 +685,46 @@ class CinePanel(QWidget):
 
 
 class BullseyeWidget(QWidget):
-    """17-segment AHA Bull's Eye plot with color-coded strain values."""
+    """Standard 18-segment AHA bull's-eye with colour-coded strain values.
 
-    # AHA 17-segment model: (ring, angle_index) -> segment_id
-    # Rings: 0=apex, 1=apical, 2=mid, 3=basal
-    # Angles: 0=anteroseptal, 1=anterior, 2=anterolateral,
-    #         3=inferolateral, 4=inferior, 5=inferoseptal
+    Geometry follows the standard AHA layout (issue #C11): each ring is drawn
+    clockwise starting at the anterior wall (12 o'clock), so the segment ids
+    the worker assigns appear at their anatomical positions:
+
+    * basal 1, 6, 5, 4, 3, 2 — anterior, anterolateral, inferolateral,
+      inferior, inferoseptal, anteroseptal;
+    * mid 7, 12, 11, 10, 9, 8;
+    * apical 13, 18, 17, 16, 15, 14.
+
+    The 18-segment model has no separate apex segment, so the centre cap is
+    drawn as an unlabelled "not measured" region instead of inventing a value
+    for it (the old map showed segment 15 as *basal* septal, which put real
+    numbers on the wrong wall).
+    """
+
+    # (ring, angle_index) -> segment_id. Rings: 0=apex cap, 1=apical, 2=mid, 3=basal
     SEGMENT_GEOMETRY: dict[int, tuple[int, int]] = {
-        # Apex (1 segment)
-        17: (0, 0),
-        # Apical (4 segments)
-        13: (1, 0),  # apical anterior
-        16: (1, 1),  # apical lateral
-        14: (1, 2),  # apical inferior
-        12: (1, 3),  # apical septal
-        # Mid (6 segments)
-        7: (2, 0),  # mid anterior
-        8: (2, 1),  # anterolateral
-        11: (2, 2),  # inferolateral
-        10: (2, 3),  # mid inferior
-        9: (2, 4),  # inferoseptal
-        3: (2, 5),  # mid septal
-        # Basal (6 segments)
-        1: (3, 0),  # basal anterior
-        2: (3, 1),  # anterolateral
-        6: (3, 2),  # inferolateral
-        5: (3, 3),  # basal inferior
-        4: (3, 4),  # inferoseptal
-        15: (3, 5),  # basal septal
-    }
-
-    # Russian labels for outer perimeter
-    SEGMENT_LABELS_RU: dict[int, str] = {
-        1: tr("strain.lbl_anterior"),
-        2: tr("strain.lbl_lateral"),
-        6: tr("strain.lbl_lateral"),
-        5: tr("strain.lbl_inferior"),
-        4: tr("strain.lbl_posterior"),
-        15: tr("strain.lbl_anterior"),
-        7: tr("strain.lbl_anterior"),
-        8: tr("strain.lbl_lateral"),
-        11: tr("strain.lbl_lateral"),
-        10: tr("strain.lbl_inferior"),
-        9: tr("strain.lbl_posterior"),
-        3: tr("strain.lbl_anterior"),
-        13: tr("strain.seg_apical_septal"),
-        16: tr("strain.seg_apical_lateral"),
-        14: tr("strain.seg_apical_inferior"),
-        12: tr("strain.seg_apical_septal"),
+        # Apical ring (6 segments, clockwise from anterior)
+        13: (1, 0),
+        18: (1, 1),
+        17: (1, 2),
+        16: (1, 3),
+        15: (1, 4),
+        14: (1, 5),
+        # Mid ring
+        7: (2, 0),
+        12: (2, 1),
+        11: (2, 2),
+        10: (2, 3),
+        9: (2, 4),
+        8: (2, 5),
+        # Basal ring
+        1: (3, 0),
+        6: (3, 1),
+        5: (3, 2),
+        4: (3, 3),
+        3: (3, 4),
+        2: (3, 5),
     }
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -779,24 +770,28 @@ class BullseyeWidget(QWidget):
             if hasattr(self, "_qc_accepted_segments") and self._qc_accepted_segments is not None:
                 is_accepted = seg_id in self._qc_accepted_segments
 
-            if not is_accepted:
-                # Rejected segment: dark gray
-                color = QColor(60, 60, 60)
-            elif strain is not None:
-                color = self._strain_to_color(strain)
+            if strain is None:
+                # No data for this segment: hatched/dark instead of a plausible
+                # looking colour (issue #C11 — never colour a segment that was
+                # not measured).
+                color = QColor(40, 40, 40)
+            elif not is_accepted:
+                color = QColor(60, 60, 60)  # rejected by QC
             else:
-                color = QColor(40, 40, 40)  # dark gray = no data
+                color = self._strain_to_color(strain)
 
             # Calculate polygon
             if ring == 0:
-                # Apex: full circle
+                # Apex cap: the 18-segment model has no apex segment, so the
+                # centre is always drawn as "not measured".
+                color = QColor(30, 30, 30)
                 polygon = QPolygonF()
                 for a in range(360):
                     rad = np.radians(a)
                     polygon.append(QPointF(cx + r_apex * np.cos(rad), cy + r_apex * np.sin(rad)))
             else:
                 # Other rings: arc segments
-                n_segments = 6 if ring >= 2 else 4
+                n_segments = 6
                 angle_span = 360 / n_segments
                 # Offset: segments start from 12 o'clock, rotate -90 degrees
                 start_angle = -90 + angle_idx * angle_span
@@ -827,7 +822,7 @@ class BullseyeWidget(QWidget):
 
         for seg_id, (ring, angle_idx) in self.SEGMENT_GEOMETRY.items():
             # Calculate label position (centroid of segment)
-            n_segments_ring = 6 if ring >= 2 else 4
+            n_segments_ring = 6
             angle_span = 360 / n_segments_ring
             mid_angle = np.radians(-90 + angle_idx * angle_span + angle_span / 2)
 
@@ -853,13 +848,14 @@ class BullseyeWidget(QWidget):
         painter.setFont(font)
         painter.setPen(QPen(QColor(180, 180, 180), 1))
 
+        # Clockwise from the anterior wall, matching SEGMENT_GEOMETRY.
         outer_labels = {
             0: tr("strain.lbl_anterior"),
             1: tr("strain.lbl_lateral"),
-            2: tr("strain.lbl_lateral"),
+            2: tr("strain.lbl_inferior_lateral"),
             3: tr("strain.lbl_inferior"),
-            4: tr("strain.lbl_posterior"),
-            5: tr("strain.lbl_anterior"),
+            4: tr("strain.lbl_septal_inferior"),
+            5: tr("strain.lbl_septal"),
         }
         for i, label in outer_labels.items():
             angle = np.radians(-90 + i * 60 + 30)
@@ -1385,20 +1381,19 @@ class StrainWindow(QMainWindow):
             result.kernels_rejected_count,
         )
 
-        # Compute per-view GLS from segment strains
-        gls_a4c = None
-        gls_a2c = None
-        gls_dao = None
-        if result.segment_strain:
-            a4c_segs = [v for k, v in result.segment_strain.items() if k <= 6]
-            a2c_segs = [v for k, v in result.segment_strain.items() if 7 <= k <= 11]
-            dao_segs = [v for k, v in result.segment_strain.items() if k >= 12]
-            if a4c_segs:
-                gls_a4c = float(np.mean(a4c_segs))
-            if a2c_segs:
-                gls_a2c = float(np.mean(a2c_segs))
-            if dao_segs:
-                gls_dao = float(np.mean(dao_segs))
+        # Per-view GLS: only the analysed view can have a value — the segments
+        # of the other views were never measured, and the old id-range split
+        # (<=6 / 7..11 / >=12) mixed walls of different views (issues #C2/#C11).
+        gls_a4c = gls_a2c = gls_dao = None
+        view = normalise_view(getattr(result, "view", "A4C"))
+        analysed_segments = [v for k, v in (result.segment_strain or {}).items() if k in view_segment_ids(view)]
+        analysed_gls = float(np.mean(analysed_segments)) if analysed_segments else None
+        if view == "A4C":
+            gls_a4c = analysed_gls
+        elif view == "A2C":
+            gls_a2c = analysed_gls
+        else:
+            gls_dao = analysed_gls
 
         # Update summary table
         self._summary.update_values(

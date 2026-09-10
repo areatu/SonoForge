@@ -181,6 +181,10 @@ class StrainResult:
     # Per-segment curves over the same time base — the only source the UI may
     # plot, so the numbers on the screen cannot diverge from the model.
     segment_curves: dict[int, np.ndarray] = field(default_factory=dict)
+    # Provenance needed to interpret the segment ids: an AHA segment number is
+    # only meaningful together with the apical view it was measured in.
+    view: str = "A4C"
+    segment_model: str = "AHA-18"
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None
