@@ -29,6 +29,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
     estimate_heart_rate_fft,
 )
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
+from echo_personal_tool.domain.services.quality import assess_tracking_quality
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
     clamp_trajectories_to_wall,
@@ -41,12 +42,17 @@ from echo_personal_tool.domain.services.speckle_tracking import (
     track_cine_sequential,
 )
 from echo_personal_tool.domain.services.strain_computation import (
+    aggregate_segment_curves,
     apply_drift_compensation,
     assess_strain_plausibility,
     compute_gls,
+    compute_longitudinal_strain_gl,
+    compute_node_longitudinal_curves,
     compute_strain_rate,
     compute_weighted_longitudinal_strain_gl,
     compute_weighted_radial_strain_gl,
+    global_curve_from_node_curves,
+    peak_in_window,
 )
 from echo_personal_tool.domain.services.tracking_smoothing import (
     apply_motion_model,
@@ -165,6 +171,68 @@ def _resolve_partial_manual_anchors(
             ed = max(0, es - max(1, es // 3))
 
     return ed, es, source
+
+
+def _check_ste_geometry(
+    zone: MyocardialZone,
+    pixel_spacing: tuple[float, float],
+) -> tuple[bool, tuple[str, ...]]:
+    """Anatomical sanity check of the drawn myocardial zone.
+
+    Catches the cases that make every downstream number meaningless no matter
+    how well the blocks matched: a degenerate LV outline (a dot, a straight
+    line, a closed ring instead of an apical arc), a wrong scale, or an
+    epicardial contour that does not sit outside the endocardium.
+
+    The zone is an *open* apical arc running from one mitral annulus point
+    through the apex to the other (see :func:`create_myocardial_zone`), so the
+    checks are arc-based: total arc length, annulus chord, apical depth
+    (distance from the chord) and the mean endo→epi distance in mm.
+    """
+    notes: list[str] = []
+    try:
+        endo = np.asarray(zone.endo_points, dtype=np.float64)
+        epi = np.asarray(zone.epi_points, dtype=np.float64)
+        row_spacing, col_spacing = (float(pixel_spacing[0]), float(pixel_spacing[1]))
+        if not np.isfinite([row_spacing, col_spacing]).all() or row_spacing <= 0 or col_spacing <= 0:
+            return False, ("pixel spacing is not calibrated",)
+
+        if endo.ndim != 2 or endo.shape[0] < 8 or not np.all(np.isfinite(endo)):
+            return False, ("LV endocardial contour is unusable",)
+        if epi.shape != endo.shape or not np.all(np.isfinite(epi)):
+            return False, ("LV epicardial contour does not match the endocardium",)
+
+        # Row/col spacing may be anisotropic; scale each axis before measuring.
+        endo_mm = endo * np.array([col_spacing, row_spacing])
+        epi_mm = epi * np.array([col_spacing, row_spacing])
+
+        segments = np.linalg.norm(np.diff(endo_mm, axis=0), axis=1)
+        arc_length = float(np.sum(segments))
+        chord = float(np.linalg.norm(endo_mm[-1] - endo_mm[0]))
+        chord_dir = endo_mm[-1] - endo_mm[0]
+        chord_norm = float(np.linalg.norm(chord_dir))
+        if chord_norm > 1e-6:
+            normal = np.array([-chord_dir[1], chord_dir[0]]) / chord_norm
+            depth = float(np.max(np.abs((endo_mm - endo_mm[0]) @ normal)))
+        else:
+            depth = arc_length
+
+        # Distance from each epicardial point to the endocardial arc — robust to
+        # a hand-drawn epicardium whose node order does not match the endocardium.
+        pairwise = np.linalg.norm(epi_mm[:, None, :] - endo_mm[None, :, :], axis=2)
+        thickness = float(np.mean(np.min(pairwise, axis=1)))
+
+        if arc_length < 30.0:
+            notes.append("LV contour is too short to measure strain")
+        elif chord < 10.0:
+            notes.append("LV annulus is not defined (contour looks closed)")
+        elif depth < 8.0:
+            notes.append("LV contour is a straight line without an apex")
+        if not notes and not 1.0 <= thickness <= 25.0:
+            notes.append("myocardial wall thickness is implausible")
+    except Exception:  # noqa: BLE001 — geometry check must never break tracking
+        notes.append("LV geometry could not be validated")
+    return (not notes), tuple(notes)
 
 
 class SpeckleTrackingSignals(QObject):
@@ -514,6 +582,10 @@ class SpeckleTrackingWorker(QRunnable):
             tracked_es_positions = None
             es_ncc = None
             es_valid = None
+            node_curves_full: np.ndarray | None = None
+            node_indices: tuple[int, ...] = ()
+            segment_curves: dict[int, np.ndarray] = {}
+            consistency_delta = 0.0
 
             if len(endo_indices) >= 2:
                 endo_sorted = sorted(endo_indices, key=lambda i: kernels[i].node_index)
@@ -522,14 +594,51 @@ class SpeckleTrackingWorker(QRunnable):
                 ed_contour = ed_pos.copy()
                 es_contour = es_pos.copy()
 
-                for j in range(len(endo_sorted) - 1):
-                    d_init = np.linalg.norm(ed_pos[j + 1] - ed_pos[j]) * avg_spacing
-                    d_es = np.linalg.norm(es_pos[j + 1] - es_pos[j]) * avg_spacing
-                    if d_init > 1e-6:
-                        ratio = d_es / d_init
-                        seg_gl = 0.5 * (ratio**2 - 1.0) * 100.0
-                        per_kernel[endo_sorted[j]] = seg_gl
-                        per_kernel[endo_sorted[j + 1]] = seg_gl
+                # Single strain definition (issue #C3): every node owns the
+                # Green–Lagrange strain of the sub-arc through it and its two
+                # neighbours, instead of two neighbouring nodes sharing the
+                # strain of one pair. Segment curves are then the weighted mean
+                # of their node curves *in the same frame*, which is the
+                # EACVI/ASE-compatible way to aggregate; peaks are read from
+                # those curves, never averaged across different instants.
+                window_node_curves = compute_node_longitudinal_curves(
+                    smoothed[:, endo_sorted, :],
+                    local_ed,
+                    self._pixel_spacing,
+                )
+                node_curves_full = np.full((n_frames, len(endo_sorted)), np.nan, dtype=np.float64)
+                node_curves_full[phase_start : phase_end + 1] = window_node_curves
+                node_indices = tuple(int(i) for i in endo_sorted)
+
+                window_segment_curves = aggregate_segment_curves(
+                    window_node_curves,
+                    [kernels[i].aha_segment for i in endo_sorted],
+                )
+                segment_curves = {
+                    int(seg): _embed_window_curve(curve, n_frames, phase_start, phase_end)
+                    for seg, curve in window_segment_curves.items()
+                }
+
+                ess_by_node = window_node_curves[local_es]
+                for position, kernel_index in enumerate(endo_sorted):
+                    value = float(ess_by_node[position])
+                    per_kernel[kernel_index] = value if np.isfinite(value) else 0.0
+
+                # Definition (A) == definition (B) check: the whole-line curve
+                # from the total arc length must agree with the mean of the node
+                # curves when the nodes are equi-spaced. The gap is reported as
+                # a self-consistency metric instead of being hidden.
+                window_node_mean = global_curve_from_node_curves(window_node_curves)
+                window_arclength = compute_longitudinal_strain_gl(
+                    smoothed[:, endo_sorted, :],
+                    local_ed,
+                    self._pixel_spacing,
+                    list(range(len(endo_sorted))),
+                )
+                consistency_delta = abs(
+                    peak_in_window(window_node_mean, local_ed, local_es)
+                    - peak_in_window(window_arclength, local_ed, local_es)
+                )
 
             tracked_ed_positions = smoothed[local_ed].copy()
             tracked_es_positions = smoothed[local_es].copy()
@@ -603,8 +712,11 @@ class SpeckleTrackingWorker(QRunnable):
             )
 
             # Honest QC: NCC fidelity alone can read >90% while the deformation
-            # curve is physiologically impossible (issue #3). Combine tracking
-            # quality with coverage and a physiology check into one score.
+            # curve is physiologically impossible (issue #3). The status now
+            # separates fidelity (did the blocks match?) from validity (is this a
+            # defined measurement?) — geometry, coverage of the material line,
+            # the fraction of interpolated node-frames and the agreement between
+            # the two equivalent global-strain definitions.
             phys_ok, phys_reasons = assess_strain_plausibility(
                 longitudinal,
                 radial,
@@ -612,17 +724,36 @@ class SpeckleTrackingWorker(QRunnable):
                 global_es,
             )
             coverage = n_accepted / n_kernels if n_kernels else 0.0
-            qc_overall = tracking_quality_mean * coverage
-            if not phys_ok:
-                qc_overall = min(qc_overall, 0.5)
-            qc_overall = float(np.clip(qc_overall, 0.0, 1.0))
+            window_ncc = ncc_matrix[local_ed : local_es + 1]
+            interpolated_fraction = (
+                float(np.mean(window_ncc < config.ncc_threshold)) if window_ncc.size else 1.0
+            )
+            geometry_ok, geometry_notes = _check_ste_geometry(self._zone, self._pixel_spacing)
+            quality = assess_tracking_quality(
+                has_curve=bool(np.any(np.isfinite(window_long))),
+                fidelity=tracking_quality_mean,
+                coverage=coverage,
+                interpolated_fraction=interpolated_fraction,
+                consistency_delta=consistency_delta,
+                physiology_ok=phys_ok,
+                physiology_notes=phys_reasons if not phys_ok else (),
+                geometry_ok=geometry_ok,
+                geometry_notes=geometry_notes,
+                n_segments_measured=len(segment_strain),
+            )
+            qc_overall = quality.confidence
             logger.info(
-                "STE QC: ncc=%.3f coverage=%.2f physiology_ok=%s reasons=%s -> qc=%.2f",
+                "STE QC: status=%s confidence=%.2f ncc=%.3f coverage=%.2f interp=%.2f "
+                "consistency=%.2f physiology_ok=%s geometry_ok=%s reasons=%s",
+                quality.status,
+                quality.confidence,
                 tracking_quality_mean,
                 coverage,
+                interpolated_fraction,
+                consistency_delta,
                 phys_ok,
-                phys_reasons,
-                qc_overall,
+                geometry_ok,
+                quality.reasons,
             )
             raw_phase_positions = np.full((n_frames, n_kernels, 2), np.nan)
             raw_phase_positions[phase_start : phase_end + 1] = raw_positions
@@ -697,9 +828,18 @@ class SpeckleTrackingWorker(QRunnable):
                 es_valid_mask=es_valid,
                 segment_strain=segment_strain,
                 segment_quality=segment_quality,
+                segment_curves=segment_curves,
+                node_curves=node_curves_full,
+                node_indices=node_indices,
                 drift_compensation_applied=drift_applied,
                 tracking_quality_mean=tracking_quality_mean,
                 qc_score=qc_overall,
+                qc_status=quality.status,
+                qc_reasons=quality.reasons,
+                qc_notes=quality.notes,
+                qc_coverage=quality.coverage,
+                qc_interpolated_fraction=quality.interpolated_fraction,
+                qc_consistency_delta=quality.consistency_delta,
                 qc_physiology_ok=phys_ok,
                 qc_physiology_reasons=tuple(phys_reasons),
                 gls_source=gls_source,

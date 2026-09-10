@@ -125,12 +125,22 @@ class TestStrainResultQcFields:
 # ── worker-level: drift + QC wiring ───────────────────────────────
 
 
-def _make_zone(n_points=16):
-    angles = np.linspace(0, 2 * np.pi, n_points, endpoint=False)
-    endo = np.column_stack([16 + 5 * np.cos(angles), 16 + 5 * np.sin(angles)])
-    epi = np.column_stack([16 + 8 * np.cos(angles), 16 + 8 * np.sin(angles)])
+def _make_zone(n_points: int = 48):
+    """Clinically plausible A4C apical arc (32 mm annulus, 60 mm depth, 8 mm wall).
+
+    The QC layer now validates the drawn geometry, so a toy 2.5 mm circle — which
+    no user could measure strain from — must no longer be used as the fixture.
+    Pixel spacing is 0.5 mm/px, hence the pixel radii below.
+    """
     from echo_personal_tool.domain.models.speckle import MyocardialZone
 
+    theta = np.linspace(0.0, np.pi, n_points)
+    chord_px, depth_px = 32.0, 60.0  # → 32 mm annulus chord, 60 mm cavity depth
+    wall_px = 16.0  # → 8 mm wall
+    endo = np.column_stack([16.0 + chord_px * np.cos(theta), 8.0 + depth_px * np.sin(theta)])
+    epi = np.column_stack(
+        [16.0 + (chord_px + wall_px) * np.cos(theta), 8.0 + (depth_px + wall_px) * np.sin(theta)]
+    )
     return MyocardialZone(
         endo_points=endo,
         epi_points=epi,

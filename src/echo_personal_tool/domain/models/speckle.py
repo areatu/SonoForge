@@ -158,13 +158,29 @@ class StrainResult:
     kernels_rejected_count: int = 0
     kernels_total_count: int = 0
     # QC fields: honest measurement quality separate from raw NCC fidelity.
-    # ``tracking_quality_mean`` stays the NCC mean; ``qc_score`` additionally
-    # folds in kernel coverage and a physiological plausibility check, so it can
-    # be low even when NCC reads >90% (issue #3).
+    # ``tracking_quality_mean`` stays the NCC mean; ``qc_score`` is the validity
+    # confidence from ``domain.services.quality`` (fidelity x coverage x ...),
+    # so it can be low even when NCC reads >90% (issue #3).
     qc_score: float = 0.0
     qc_physiology_ok: bool = True
     qc_physiology_reasons: tuple[str, ...] = ()
     gls_source: str = "curve"
+    # Validity status: "valid" | "review" | "invalid" — never derived from NCC
+    # alone. ``qc_reasons`` holds i18n keys, ``qc_notes`` human-readable details.
+    qc_status: str = "invalid"
+    qc_reasons: tuple[str, ...] = ()
+    qc_notes: tuple[str, ...] = ()
+    qc_coverage: float = 0.0
+    qc_interpolated_fraction: float = 0.0
+    qc_consistency_delta: float = 0.0
+    # Per-node strain curves along the tracked material line (single definition,
+    # see ``strain_computation.compute_node_longitudinal_curves``). Columns match
+    # ``node_indices``; values are NaN outside the tracked window.
+    node_curves: np.ndarray | None = None
+    node_indices: tuple[int, ...] = ()
+    # Per-segment curves over the same time base — the only source the UI may
+    # plot, so the numbers on the screen cannot diverge from the model.
+    segment_curves: dict[int, np.ndarray] = field(default_factory=dict)
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None

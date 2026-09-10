@@ -1297,5 +1297,17 @@
   "layout.fullscreen": "Fullscreen viewer\tF11",
   "tools.grayscale": "Grayscale",
   "tools.grayscale_tip": "Display color Doppler images and ECG overlays in grayscale.",
-  "tools.dr_tip": "Dynamic range: center = full range; left = clip dark tones."
+  "tools.dr_tip": "Dynamic range: center = full range; left = clip dark tones.",
+  "strain.qc_status_valid": "Valid",
+  "strain.qc_status_review": "Needs review",
+  "strain.qc_status_invalid": "Invalid",
+  "strain.qc_fidelity": "Tracking NCC {pct}%",
+  "strain.qc_reasons": "Reasons",
+  "strain.qc.reason.no_data": "no strain curve",
+  "strain.qc.reason.geometry": "LV geometry is unusable",
+  "strain.qc.reason.low_coverage": "low coverage of the myocardial line",
+  "strain.qc.reason.interpolation": "many interpolated frames",
+  "strain.qc.reason.consistency": "GLS definitions disagree",
+  "strain.qc.reason.few_segments": "too few segments tracked reliably",
+  "strain.qc.reason.physiology": "deformation is physiologically impossible"
 }

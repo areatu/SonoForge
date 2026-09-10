@@ -306,3 +306,186 @@ def compute_strain_rate(
             rate[i] = (strain_curve[i] - strain_curve[i - 1]) / dt_s
 
     return rate
+
+
+def peak_in_window(curve: np.ndarray, start: int, end: int) -> float:
+    """Most negative (peak systolic) value of a strain curve inside a window.
+
+    The window is defined by its two boundaries, which may be given in either
+    order; both are clamped to the curve, so a window that runs past a frame
+    boundary is read at the nearest available frame instead of silently turning
+    into a normal-looking zero. NaN-safe: frames where the strain is undefined
+    (outside the tracked window, lost nodes) never win the peak and never turn
+    the result into NaN. Returns 0.0 only when the window holds no finite value
+    at all.
+    """
+    if curve is None or len(curve) == 0:
+        return 0.0
+    last = len(curve) - 1
+    lo = min(max(int(min(start, end)), 0), last)
+    hi = min(max(int(max(start, end)), 0), last)
+    window = np.asarray(curve[lo : hi + 1], dtype=np.float64)
+    finite = window[np.isfinite(window)]
+    if finite.size == 0:
+        return 0.0
+    return float(np.min(finite))
+
+
+def compute_node_longitudinal_curves(
+    positions: np.ndarray,
+    ed_index: int,
+    pixel_spacing: tuple[float, float],
+) -> np.ndarray:
+    """Per-node longitudinal strain curves — the single strain definition.
+
+    For every node ``i`` the local strain is the Green–Lagrange strain of the
+    sub-arc that runs through the node and its two neighbours
+    (``x[i-1] -> x[i] -> x[i+1]``), so a node owns *its own* deformation instead
+    of borrowing the strain of a neighbour pair (issue #C3):
+
+        E_i(t) = 0.5 * ((L_i(t) / L_i(ED)) ** 2 - 1) * 100
+
+    The first and last node fall back to the two-point segment (they have no
+    neighbour on the other side); this keeps the whole material line covered
+    without inventing data. A node whose *own* position is missing yields NaN
+    for that node and frame, and a neighbour that is missing only shrinks the
+    sub-arc to the tracked side — a lost node never erases the strain of its
+    healthy neighbours. The caller can therefore mask exactly the untracked
+    nodes instead of smoothing them into a plausible-looking curve.
+
+    Args:
+        positions: (n_frames, n_nodes, 2) node positions in arc order.
+        ed_index: end-diastole frame index (the strain reference).
+        pixel_spacing: (row, col) mm per pixel.
+
+    Returns:
+        (n_frames, n_nodes) strain in percent; NaN where undefined.
+    """
+    pts = np.asarray(positions, dtype=np.float64)
+    if pts.ndim != 3 or pts.shape[2] != 2:
+        raise ValueError("positions must have shape (n_frames, n_nodes, 2)")
+    n_frames, n_nodes, _ = pts.shape
+    curves = np.full((n_frames, n_nodes), np.nan, dtype=np.float64)
+    if n_nodes < 2 or n_frames == 0:
+        return curves
+
+    ed = int(ed_index)
+    if not 0 <= ed < n_frames:
+        return curves
+
+    index = np.arange(n_nodes)
+    left = np.clip(index - 1, 0, n_nodes - 1)
+    right = np.clip(index + 1, 0, n_nodes - 1)
+    avg_spacing = float(np.mean(pixel_spacing))
+
+    def _subarc_length(frame_index: int) -> np.ndarray:
+        a = pts[frame_index, left, :]
+        b = pts[frame_index, :, :]
+        c = pts[frame_index, right, :]
+        finite = np.isfinite(pts[frame_index]).all(axis=1)
+        has_left = (left != index) & np.isfinite(a).all(axis=1)
+        has_right = (right != index) & np.isfinite(c).all(axis=1)
+        d_ab = np.linalg.norm(b - a, axis=1)
+        d_bc = np.linalg.norm(c - b, axis=1)
+        # A lost node must not erase its healthy neighbours. The sub-arc shrinks
+        # to the part that is actually tracked (one-sided segment) instead of
+        # propagating NaN along the whole material line.
+        full = finite & has_left & has_right
+        only_ab = finite & has_left & ~has_right
+        only_bc = finite & has_right & ~has_left
+        length = np.full(n_nodes, np.nan, dtype=np.float64)
+        length[full] = d_ab[full] + d_bc[full]
+        length[only_ab] = d_ab[only_ab]
+        length[only_bc] = d_bc[only_bc]
+        return length * avg_spacing
+
+    l0 = _subarc_length(ed)
+    usable = np.isfinite(l0) & (l0 > 1e-6)
+    if not np.any(usable):
+        return curves
+
+    for t in range(n_frames):
+        lt = _subarc_length(t)
+        ratio = np.full(n_nodes, np.nan, dtype=np.float64)
+        np.divide(lt, l0, out=ratio, where=usable)
+        curves[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+    return curves
+
+
+def aggregate_segment_curves(
+    node_curves: np.ndarray,
+    node_segments: list[int] | np.ndarray,
+    node_weights: np.ndarray | None = None,
+) -> dict[int, np.ndarray]:
+    """Segment curves as the weighted mean of the node curves **in one frame**.
+
+    Averaging per-segment *peaks* taken at different instants is explicitly not
+    compatible with the EACVI/ASE definition of global strain, so every segment
+    curve is a weighted mean over its nodes at each time step; peaks and
+    end-systolic values are read from that curve afterwards.
+
+    Args:
+        node_curves: (n_frames, n_nodes) node strain curves in percent.
+        node_segments: AHA segment id per node (<= 0 means "unassigned").
+        node_weights: optional per-node weights (ED arc length by default).
+
+    Returns:
+        ``{segment_id: (n_frames,) curve}``; segments without any finite value
+        in a frame get NaN there instead of a fabricated number.
+    """
+    curves = np.asarray(node_curves, dtype=np.float64)
+    if curves.ndim != 2 or curves.shape[1] == 0:
+        return {}
+    n_frames, n_nodes = curves.shape
+    segments = np.asarray(node_segments, dtype=np.int64)
+    if segments.shape[0] != n_nodes:
+        raise ValueError("node_segments length must match node_curves columns")
+    weights = np.ones(n_nodes, dtype=np.float64) if node_weights is None else np.asarray(node_weights, dtype=np.float64)
+    weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+
+    out: dict[int, np.ndarray] = {}
+    for seg_id in sorted({int(s) for s in segments if int(s) > 0}):
+        mask = segments == seg_id
+        if not np.any(mask):
+            continue
+        seg_w = weights[mask]
+        seg_curves = curves[:, mask]
+        w = np.broadcast_to(seg_w, seg_curves.shape)
+        finite = np.isfinite(seg_curves)
+        w = np.where(finite, w, 0.0)
+        wsum = w.sum(axis=1)
+        weighted = np.where(finite, np.nan_to_num(seg_curves, nan=0.0) * w, 0.0).sum(axis=1)
+        curve = np.full(n_frames, np.nan, dtype=np.float64)
+        good = wsum > 1e-9
+        curve[good] = weighted[good] / wsum[good]
+        out[seg_id] = curve
+    return out
+
+
+def global_curve_from_node_curves(
+    node_curves: np.ndarray,
+    node_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """Whole-line strain curve built from the node curves (definition B).
+
+    Mathematically this is the alternative form of the global strain (mean of
+    the values along the line) and must agree with the total-arc-length curve
+    (definition A, :func:`compute_longitudinal_strain_gl`) when the nodes are
+    equi-spaced — the difference between the two is reported as a
+    self-consistency metric instead of being hidden.
+    """
+    curves = np.asarray(node_curves, dtype=np.float64)
+    if curves.ndim != 2 or curves.shape[1] == 0:
+        return np.array([], dtype=np.float64)
+    n_nodes = curves.shape[1]
+    weights = np.ones(n_nodes, dtype=np.float64) if node_weights is None else np.asarray(node_weights, dtype=np.float64)
+    weights = np.where(np.isfinite(weights) & (weights > 0), weights, 0.0)
+    w = np.broadcast_to(weights, curves.shape)
+    finite = np.isfinite(curves)
+    w = np.where(finite, w, 0.0)
+    wsum = w.sum(axis=1)
+    weighted = np.where(finite, np.nan_to_num(curves, nan=0.0) * w, 0.0).sum(axis=1)
+    out = np.full(curves.shape[0], np.nan, dtype=np.float64)
+    good = wsum > 1e-9
+    out[good] = weighted[good] / wsum[good]
+    return out

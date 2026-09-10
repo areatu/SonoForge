@@ -1339,13 +1339,24 @@ class StrainWindow(QMainWindow):
 
         # ── Meta bar ────────────────────────────────────────────────────────
         parts: list[str] = [f"GLS {result.gls:.1f}%"]
-        if result.qc_score:
-            qc = f"QC {result.qc_score * 100.0:.0f}%"
-            if not result.qc_physiology_ok and result.qc_physiology_reasons:
-                qc += f" (⚠ {result.qc_physiology_reasons[0]})"
-            parts.append(qc)
+        # Honest QC (issue #3): NCC fidelity and measurement validity are
+        # different things. Never label a high NCC as "quality" without the
+        # validity status next to it.
+        status = getattr(result, "qc_status", "") or "invalid"
+        if status == "valid":
+            parts.append(f"● {tr('strain.qc_status_valid')}")
+        elif status == "review":
+            parts.append(f"⚠ {tr('strain.qc_status_review')}")
+        else:
+            parts.append(f"■ {tr('strain.qc_status_invalid')}")
         if result.tracking_quality_mean:
-            parts.append(f"NCC {result.tracking_quality_mean * 100.0:.0f}%")
+            parts.append(tr("strain.qc_fidelity", pct=f"{result.tracking_quality_mean * 100.0:.0f}"))
+        qc_reasons = getattr(result, "qc_reasons", ()) or ()
+        if qc_reasons:
+            reason_text = ", ".join(tr(key) for key in qc_reasons[:2])
+            parts.append(f"{tr('strain.qc_reasons')}: {reason_text}")
+        elif not result.qc_physiology_ok and result.qc_physiology_reasons:
+            parts.append(f"⚠ {result.qc_physiology_reasons[0]}")
         total_k = result.kernels_total_count
         if total_k:
             parts.append(f"kernels {result.kernels_accepted_count}/{total_k}")

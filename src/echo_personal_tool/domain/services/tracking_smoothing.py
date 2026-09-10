@@ -148,18 +148,16 @@ def smooth_trajectories(
         if window < 3:
             window = 3
         polyorder = min(2, window - 1)
-        times = np.arange(n_frames, dtype=np.float64)
         for i in range(n_kernels):
             xs = out[:, i, 0].copy()
             ys = out[:, i, 1].copy()
-            if config.quality_weighted_smoothing:
-                # Re-interpolate low-confidence frames in time before filtering
-                # so high-NCC frames dominate the smoothed trajectory.
-                weights = np.clip(ncc_scores[:, i], 0.0, 1.0)
-                strong = weights >= 0.5
-                if strong.sum() >= 2:
-                    xs = np.interp(times, times[strong], xs[strong])
-                    ys = np.interp(times, times[strong], ys[strong])
+            # NOTE (issue #C9): low-NCC frames used to be replaced by linear
+            # interpolation between high-NCC frames *before* filtering. That
+            # fabricated a smooth curve wherever tracking had actually failed,
+            # and it made the quality metrics look better than the data. The
+            # raw trajectory is filtered as-is; frames that were interpolated
+            # elsewhere are reported separately (qc_interpolated_fraction)
+            # instead of being hidden inside the curve.
             out[:, i, 0] = savgol_filter(xs, window, polyorder, mode="interp")
             out[:, i, 1] = savgol_filter(ys, window, polyorder, mode="interp")
     return out
