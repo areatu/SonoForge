@@ -864,27 +864,6 @@ class MainWindow(QMainWindow):
         self._user_preferences.despeckle_enabled = enabled
         save_user_preferences(self._user_preferences)
 
-    def _on_static_noise_strength_changed(self, value: int) -> None:
-        self._viewer.set_static_noise_strength(value)
-        # Lazy calibration: if filter is enabled but not calibrated, run calibration
-        if value > 0 and not self._viewer._static_noise_cal.is_valid:
-            QTimer.singleShot(50, self._calibrate_static_noise_filter)
-
-    def _on_static_noise_sensitivity_changed(self, value: int) -> None:
-        self._viewer.set_static_noise_sensitivity(value)
-        # Recalibrate with new sensitivity if filter is active
-        if self._viewer._static_noise_params.strength > 0:
-            QTimer.singleShot(50, self._calibrate_static_noise_filter)
-
-    def _on_static_noise_min_brightness_changed(self, value: int) -> None:
-        self._viewer.set_static_noise_min_brightness(value)
-        # Recalibrate with new brightness threshold if filter is active
-        if self._viewer._static_noise_params.strength > 0:
-            QTimer.singleShot(50, self._calibrate_static_noise_filter)
-
-    def _on_static_noise_overlay_changed(self, visible: bool) -> None:
-        self._viewer.set_static_noise_overlay_visible(visible)
-
     def _on_results_overlay_position_changed(self, x_ratio: float, y_ratio: float) -> None:
         self._last_overlay_position = (x_ratio, y_ratio)
         instance = self._controller.state_manager.snapshot.instance
@@ -1494,11 +1473,6 @@ class MainWindow(QMainWindow):
         self._restore_doppler_for_current_instance()
         self._restore_mmode_for_current_instance()
         self._sync_doppler_tool_availability()
-        # Reset static noise filter calibration for new instance
-        self._viewer._static_noise_cal.invalidate()
-        # Schedule lazy calibration if filter is enabled
-        if self._viewer._static_noise_params.strength > 0:
-            QTimer.singleShot(100, self._calibrate_static_noise_filter)
         if self._user_preferences.auto_play and not is_playing:
             self._controller.toggle_playback()
         if self._controller.needs_manual_calibration():
@@ -1507,28 +1481,6 @@ class MainWindow(QMainWindow):
                 self._viewer.show_calibration_ok_overlay()
             elif self._viewer.start_calibration_caliper():
                 self._show_status(tr("status.calibration_click"))
-
-    def _calibrate_static_noise_filter(self) -> None:
-        """Run static noise calibration on full cine (background-safe)."""
-        from echo_personal_tool.infrastructure.static_noise_filter import calibrate_static_noise
-
-        try:
-            cache = self._controller._frame_cache
-            if cache.frame_count() < 2:
-                return
-            frames = cache.require_full_cine()
-            params = self._viewer._static_noise_params
-            cal = calibrate_static_noise(
-                frames,
-                sensitivity=params.sensitivity,
-                min_brightness=params.min_brightness,
-            )
-            self._viewer.set_static_noise_calibration(cal)
-            # Re-render current frame with new calibration
-            if self._viewer._current_frame is not None:
-                self._viewer._update_levels()
-        except Exception as exc:
-            logger.warning("Static noise calibration failed: %s", exc)
 
     def _on_slider_frame_selected(self, index: int) -> None:
         self._slider_navigating = True
@@ -1836,10 +1788,6 @@ class MainWindow(QMainWindow):
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
-        self._tool_panel.static_noise_strength_changed.connect(self._on_static_noise_strength_changed)
-        self._tool_panel.static_noise_sensitivity_changed.connect(self._on_static_noise_sensitivity_changed)
-        self._tool_panel.static_noise_min_brightness_changed.connect(self._on_static_noise_min_brightness_changed)
-        self._tool_panel.static_noise_overlay_changed.connect(self._on_static_noise_overlay_changed)
         self._tool_panel.auto_play_changed.connect(self._on_auto_play_changed)
         self._controller.speckle_result_ready.connect(self._on_speckle_result_ready)
         self._apply_magnetic_snap_from_preferences()
