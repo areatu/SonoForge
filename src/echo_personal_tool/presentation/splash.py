@@ -13,20 +13,23 @@ Variant history (docs/splash-preview/):
 
 Concept 4 design:
 
-    • frameless window (fullscreen black, or a small centered
+    • frameless window (fullscreen black, or a small rounded centered
       card in compact mode), always on top, no taskbar entry
     • centered logo, initially barely visible (~10 % opacity); as the
       cosmetic progress grows, an animated wavy mask (sine edge only, no
       droplets) reveals the logo from bottom to top with white, until it
       is fully white at 100 %
-    • big "NN%" counter under the logo
-    • module loading status line (smaller font) under the percent
+    • small “NN%” counter under the logo (larger font)
+    • words (Local-first / Private / ASE aligned) are scattered around
+      the logo — each at a different height and a different distance from
+      it — in bold; each starts at low opacity with a strong gaussian
+      blur and sharpens within its own progress zone
     • optional faint background image (e.g. a 4-chamber echo frame) drawn
       at ~20 % opacity — off by default
     • the window closes (fade) into the maximized main window
 
 The percentage is honest: it auto-steps to ~92 % while the real
-(synchronous) startup runs between ``set_progress`` calls and jumps
+(synchronous) startup work runs between ``set_progress`` calls and jumps
 to 100 % only when initialization has actually finished.
 
 Disable entirely with the environment variable ``ECHO_NO_SPLASH=1``.
@@ -59,6 +62,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QGraphicsBlurEffect,
+    QGraphicsOpacityEffect,
     QLabel,
     QWidget,
 )
@@ -71,33 +76,26 @@ logger = logging.getLogger(__name__)
 MIN_VISIBLE_MS = 3400  # splash stays at least this long after show()
 FADE_OUT_MS = 420  # fade into the main window
 AUTO_STEP_MS = 420  # interval between automatic progress bumps
-_PROGRESS_EASE_MS = 650  # ease duration of a progress step (slower fill)
+_PROGRESS_EASE_MS = 380  # ease duration of a progress step
 WAVE_TICK_MS = 33  # repaint of the animated mask (~30 fps)
-_FLASH_MS = 300  # total flash duration (brief bright pulse)
 
 # ── Progress markers reached automatically while startup runs ──────
 _AUTO_TARGETS = (8, 18, 30, 44, 58, 72, 84, 92)
 
+# ── Word placement zones (start / end progress for each word) ──────
+_WORD_ZONES = ((16, 58), (34, 76), (52, 96))
+
 # ── Visuals (fullscreen reference values, scaled by logo width) ────
 _LOGO_W_REF = 340  # reference logo width the sizes below are tuned for
-_PCT_PT_REF = 66  # percent font size at reference scale (3x original 22pt)
-_MOD_PT_REF = 14  # module status font size at reference scale
+_WORD_PT_REF = 20  # word font size at reference scale
+_PCT_PT_REF = 22  # percent font size at reference scale
+_WORD_BLUR_REF = 16.0  # gaussian blur radius while a word is hidden
+_WORD_ALPHA_MIN = 0.08  # opacity of a word while it is hidden
 
-# compact card geometry
+# compact card geometry (scaled down on small screens)
 _CARD_W = 620
-_CARD_H = 580
-
-# ── Module loading status lines ────────────────────────────────────
-_MODULE_LINES_EN = (
-    "Loading models",
-    "Initializing DICOM engine",
-    "Loading ASE reference",
-    "Preparing viewer",
-    "Initializing calculators",
-    "Loading segmentation models",
-    "Preparing Doppler module",
-    "Building UI",
-)
+_CARD_H = 430
+_CARD_RADIUS = 26
 
 
 def _env_flag(name: str, default: bool = True) -> bool:
@@ -108,7 +106,12 @@ def _env_flag(name: str, default: bool = True) -> bool:
 
 
 def is_splash_enabled() -> bool:
-    """Whether the splash should be shown at all."""
+    """Whether the splash should be shown at all.
+
+    Opt-out via ``ECHO_NO_SPLASH=1``. Also returns False when no real
+    QApplication is running yet (e.g. headless/mocked unit tests that
+    exercise ``main()`` with a stubbed application object).
+    """
     if _env_flag("ECHO_NO_SPLASH", default=False):
         return False
     try:
@@ -155,11 +158,35 @@ def _font(point_size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
     return font
 
 
-def _set_label_color(label: QLabel, color: QColor) -> None:
-    """Change label foreground color without touching stylesheet (preserves font)."""
-    pal = label.palette()
-    pal.setColor(QPalette.ColorRole.WindowText, color)
-    label.setPalette(pal)
+class _Word(QWidget):
+    """One positioned word with progress-driven opacity + blur."""
+
+    def __init__(self, text: str, font: QFont, blur_max: float, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._blur_max = blur_max
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(_WORD_ALPHA_MIN)
+        self.setGraphicsEffect(self._opacity_effect)
+
+        self._blur_effect = QGraphicsBlurEffect(self)
+        self._blur_effect.setBlurRadius(blur_max)
+
+        self._label = QLabel(text, self)
+        self._label.setFont(font)
+        self._label.setStyleSheet("background: transparent; color: #ffffff;")
+        self._label.setGraphicsEffect(self._blur_effect)
+
+        fm = QFontMetricsF(font)
+        w = math.ceil(fm.horizontalAdvance(text))
+        h = math.ceil(fm.height())
+        self._label.setFixedSize(w, h)
+        self.setFixedSize(w, h)
+
+    def set_clarity(self, t: float) -> None:
+        """t in [0..1]: 0 = hidden (strong blur), 1 = fully readable."""
+        t = max(0.0, min(1.0, t))
+        self._opacity_effect.setOpacity(_lerp(_WORD_ALPHA_MIN, 0.96, t))
+        self._blur_effect.setBlurRadius(self._blur_max * (1.0 - t))
 
 
 class _LogoFill(QWidget):
@@ -167,8 +194,8 @@ class _LogoFill(QWidget):
 
     The faint full logo is painted underneath; a second copy is drawn
     inside a wavy clip region covering the bottom ``progress`` % of the
-    widget — the bright "filled" part. The top edge of the region is a
-    slowly moving sine wave (that roughness is the "dirty edge" of the
+    widget — the bright “filled” part. The top edge of the region is a
+    slowly moving sine wave (that roughness is the “dirty edge” of the
     mask; explicit droplets were removed per design feedback).
     """
 
@@ -213,16 +240,15 @@ class _LogoFill(QWidget):
         w, h = self.width(), self.height()
         progress = self._progress
 
+        # 1. faint base logo; opacity grows to fully white at 100 %
+        base_alpha = _lerp(0.10, 1.0, progress / 100.0)
+        painter.setOpacity(base_alpha)
+        painter.drawPixmap(0, 0, self._pm)
         if progress >= 99.5:
             painter.setOpacity(1.0)
             painter.drawPixmap(0, 0, self._pm)
             painter.end()
             return
-
-        # 1. faint base logo; opacity grows to fully white at 100 %
-        base_alpha = _lerp(0.10, 1.0, progress / 100.0)
-        painter.setOpacity(base_alpha)
-        painter.drawPixmap(0, 0, self._pm)
 
         # 2. bright fill inside the wavy bottom region (mask roughness only)
         edge = self.height() * (1.0 - progress / 100.0)
@@ -254,27 +280,29 @@ class SplashScreen(QWidget):
 
     Usage::
 
-        splash = SplashScreen(reduce_motion=preferences.reduce_motion)
+        splash = SplashScreen(words=tuple(tr("splash.words").split("|")),
+                              reduce_motion=preferences.reduce_motion)
         splash.show_and_play()
         # ... real startup work ... optional: splash.set_progress(46)
         splash.complete_with(window, on_complete=reveal_window)
         result = app.exec()
 
-    ``compact=True`` renders concept 4.1 — a small centered card instead
-    of a fullscreen window.
+    ``compact=True`` renders concept 4.1 — a small rounded card centered on
+    the screen instead of a fullscreen window.
     """
 
     def __init__(
         self,
         *,
+        words: tuple[str, ...] = (),
         reduce_motion: bool = False,
         app_name: str = "SonoForge",
         compact: bool = False,
         background: str | None = None,
-        **_kwargs: object,
     ) -> None:
         super().__init__(None)
         self._app_name = app_name
+        self._words = words
         self._reduce_motion = reduce_motion
         self._compact = compact
         self._completed = False
@@ -286,10 +314,6 @@ class SplashScreen(QWidget):
         self._progress_anim: QVariantAnimation | None = None
         self._fade: QPropertyAnimation | None = None
         self._background: QPixmap | None = self._load_background(background)
-        self._flash_anim: QVariantAnimation | None = None
-        self._flash_overlay = 0.0  # 0.0 = no flash overlay, 1.0 = full white
-        self._module_index = 0
-        self._module_timer: QTimer | None = None
 
         flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
         self.setWindowFlags(flags)
@@ -333,8 +357,10 @@ class SplashScreen(QWidget):
     # ── UI ──────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        # logo size: fixed reference width fullscreen, ~34 % of the card in
+        # compact mode; everything else (fonts, gaps) scales with the logo
         if self._compact:
-            logo_w = max(200, int(round(self.width() * 0.55)))
+            logo_w = max(170, int(round(self.width() * 0.34)))
         else:
             logo_w = _LOGO_W_REF
         scale = logo_w / _LOGO_W_REF
@@ -349,58 +375,76 @@ class SplashScreen(QWidget):
         if not self._reduce_motion:
             self._fill.start()
 
-        pct_pt = max(28 if self._compact else 32, int(round(_PCT_PT_REF * scale)))
-        mod_pt = max(10, int(round(_MOD_PT_REF * scale)))
+        word_pt = max(13 if self._compact else 15, int(round(_WORD_PT_REF * scale)))
+        pct_pt = max(15 if self._compact else 16, int(round(_PCT_PT_REF * scale)))
+        blur_max = max(8.0, _WORD_BLUR_REF * scale)
 
-        # Percent label — font set ONCE, color managed via QPalette (never via
-        # setStyleSheet, which resets the font on Linux/Qt6).
         self._percent_label = QLabel("0%", self)
         self._percent_label.setFont(_font(pct_pt, weight=QFont.Weight.DemiBold))
-        self._percent_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        _set_label_color(self._percent_label, QColor(255, 255, 255, 178))
+        self._percent_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._percent_label.setStyleSheet("background: transparent; color: rgba(255,255,255,0.7);")
 
-        self._module_label = QLabel("", self)
-        self._module_label.setFont(_font(mod_pt))
-        self._module_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        _set_label_color(self._module_label, QColor(255, 255, 255, 115))
+        self._word_widgets: list[_Word] = []
+        word_font = _font(word_pt, weight=QFont.Weight.DemiBold)
+        for text in self._words[: len(_WORD_ZONES)]:
+            self._word_widgets.append(_Word(text, word_font, blur_max, parent=self))
+        for i, word in enumerate(self._word_widgets):
+            zone = _WORD_ZONES[i]
+            word.set_clarity(1.0 if self._reduce_motion else (0.0 if zone[0] > 0 else 1.0))
 
         self._relayout()
 
     def _relayout(self) -> None:
+        """Scatter words around the logo — different heights, distances, sides."""
         w = self.width()
         h = self.height()
         if w <= 1 or h <= 1:
             return
         logo_w = self._fill.width()
         logo_h = self._fill.height()
-        s = logo_w / _LOGO_W_REF
+        s = logo_w / _LOGO_W_REF  # same layout scale as the logo
         cx = w / 2.0
-
-        # keep the same top-edge distance as the old 68% layout
-        ly = (h - logo_h) / 2.0 - 40.0 * s
+        cy = h / 2.0
         lx = cx - logo_w / 2.0
+        ly = cy - logo_h / 2.0
         self._fill.move(int(round(lx)), int(round(ly)))
 
-        # percent label: 10 px below the logo
         fm = QFontMetricsF(self._percent_label.font())
         pct_w = math.ceil(fm.horizontalAdvance("100%"))
         pct_h = math.ceil(fm.height())
-        pct_y = ly + logo_h + 10.0
-        self._percent_label.setFixedSize(max(pct_w, 80), pct_h)
+        pct_y = ly + logo_h + 24.0 * s
+        self._percent_label.setFixedSize(pct_w, pct_h)
         self._percent_label.move(int(round(cx - pct_w / 2.0)), int(round(pct_y)))
 
-        # module status label: ~15 px below the percent label
-        mod_fm = QFontMetricsF(self._module_label.font())
-        mod_h = math.ceil(mod_fm.height())
-        mod_y = pct_y + pct_h + 15.0
-        self._module_label.setFixedSize(int(round(w * 0.8)), mod_h)
-        self._module_label.move(int(round(cx - w * 0.4)), int(round(mod_y)))
+        margin = 18.0
+        # Asymmetric constellation around the logo:
+        #   word 0 — above-left, close to the logo, low
+        #   word 1 — above-right, higher above and farther to the right
+        #   word 2 — below-left, far below, close to the logo's left edge
+        placements = (
+            ("br", lx - 28.0 * s, ly - 14.0 * s),  # right edge, bottom edge
+            ("tl", lx + logo_w + 52.0 * s, ly - 92.0 * s),  # left edge, bottom edge
+            ("br", lx - 12.0 * s, ly + logo_h + 110.0 * s),  # right edge, top edge
+        )
+        for i, word in enumerate(self._word_widgets[: len(placements)]):
+            mode, ax, ay = placements[i]
+            word_w = word.width()
+            word_h = word.height()
+            if mode == "br":  # anchor is the word's bottom-right corner
+                x = ax - word_w
+                y = ay - word_h
+            else:  # anchor is the word's bottom-left corner
+                x = ax
+                y = ay - word_h
+            x = max(margin, min(x, w - word_w - margin))
+            y = max(margin, min(y, h - word_h - margin))
+            word.move(int(round(x)), int(round(y)))
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         super().resizeEvent(event)
         self._relayout()
 
-    # ── painting (black panel + flash overlay) ───────────────────────
+    # ── painting (black panel / rounded card + optional background) ──
 
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt API)
         painter = QPainter(self)
@@ -408,22 +452,27 @@ class SplashScreen(QWidget):
         rect = self.rect()
 
         clip = QPainterPath()
-        clip.addRect(rect)
+        if self._compact:
+            clip.addRoundedRect(rect, _CARD_RADIUS, _CARD_RADIUS)
+        else:
+            clip.addRect(rect)
         painter.save()
         painter.setClipPath(clip)
 
         painter.fillRect(rect, QColor("#000000"))
 
-        # optional faint background image
+        # optional faint background image (concept 4.1 experiment)
         if self._background is not None:
             bg = self._background
+            # cover-fit the widget
+            target = rect
             bw, bh = bg.width(), bg.height()
             if bw > 0 and bh > 0:
-                scale = max(rect.width() / bw, rect.height() / bh)
+                scale = max(target.width() / bw, target.height() / bh)
                 dw = bw * scale
                 dh = bh * scale
-                dx = (rect.width() - dw) / 2.0
-                dy = (rect.height() - dh) / 2.0
+                dx = (target.width() - dw) / 2.0
+                dy = (target.height() - dh) / 2.0
                 painter.setOpacity(0.20)
                 painter.drawPixmap(dx, dy, dw, dh, bg)
                 painter.setOpacity(1.0)
@@ -433,13 +482,7 @@ class SplashScreen(QWidget):
             pen_color = QColor(255, 255, 255, 26)
             painter.setPen(pen_color)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(rect.adjusted(1, 1, -1, -1))
-
-        # flash overlay: brief white pulse painted ON TOP of everything
-        if self._flash_overlay > 0.01:
-            painter.setOpacity(self._flash_overlay * 0.45)
-            painter.fillRect(rect, QColor("#ffffff"))
-
+            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), _CARD_RADIUS, _CARD_RADIUS)
         painter.end()
 
     def _center_on_screen(self) -> None:
@@ -464,7 +507,6 @@ class SplashScreen(QWidget):
         self._auto_timer.setInterval(AUTO_STEP_MS)
         self._auto_timer.timeout.connect(self._auto_step)
         self._auto_timer.start()
-        self._start_module_cycle()
         return self
 
     def set_progress(self, percent: int) -> None:
@@ -479,17 +521,12 @@ class SplashScreen(QWidget):
         self._finish_callback = on_complete
         if self._auto_timer is not None:
             self._auto_timer.stop()
-        if self._module_timer is not None:
-            self._module_timer.stop()
-            self._module_timer = None
         self._ease_to(100)
         if self._reduce_motion:
             wait_ms = min(900, MIN_VISIBLE_MS)
-            QTimer.singleShot(wait_ms + 500, lambda: self._reveal(main_window))
         else:
             wait_ms = max(0, MIN_VISIBLE_MS - int(self._elapsed.elapsed()))
-            # ease(~650ms) + flash(~300ms) + 500ms pause
-            QTimer.singleShot(wait_ms + 1000, lambda: self._reveal(main_window))
+        QTimer.singleShot(wait_ms + 220, lambda: self._reveal(main_window))
 
     # ── internals ───────────────────────────────────────────────────
 
@@ -517,48 +554,14 @@ class SplashScreen(QWidget):
         self._percent = float(value)
         percent = int(round(self._percent))
         self._percent_label.setText(f"{percent}%")
-        # alpha: 140 → 255 as progress grows (no stylesheet — QPalette only)
-        alpha = int(_lerp(140, 255, self._percent / 100.0))
-        _set_label_color(self._percent_label, QColor(255, 255, 255, alpha))
-        # fill and percent are always in sync
+        alpha = _lerp(0.55, 1.0, self._percent / 100.0)
+        self._percent_label.setStyleSheet(f"background: transparent; color: rgba(255,255,255,{alpha:.2f});")
         self._fill.set_progress(self._percent)
-        # trigger flash when reaching 100 %
-        if percent >= 100 and self._flash_anim is None:
-            self._trigger_flash()
-
-    def _trigger_flash(self) -> None:
-        """Brief white overlay pulse on the entire splash at 100 %."""
-        anim = QVariantAnimation(self)
-        anim.setStartValue(0.0)
-        anim.setKeyValueAt(0.2, 1.0)
-        anim.setEndValue(0.0)
-        anim.setDuration(_FLASH_MS)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim.valueChanged.connect(self._set_flash_overlay)
-        anim.start()
-        self._flash_anim = anim
-
-    def _set_flash_overlay(self, value: float) -> None:
-        self._flash_overlay = max(0.0, min(1.0, float(value)))
-        self.update()
-
-    # ── module loading status ───────────────────────────────────────
-
-    def _start_module_cycle(self) -> None:
-        self._module_timer = QTimer(self)
-        self._module_timer.setInterval(600)
-        self._module_timer.timeout.connect(self._next_module)
-        self._module_timer.start()
-        self._next_module()
-
-    def _next_module(self) -> None:
-        if self._completed:
-            return
-        idx = self._module_index % len(_MODULE_LINES_EN)
-        self._module_label.setText(_MODULE_LINES_EN[idx] + "...")
-        self._module_index += 1
-
-    # ── reveal / close ──────────────────────────────────────────────
+        for i, word in enumerate(self._word_widgets):
+            if i < len(_WORD_ZONES):
+                start, end = _WORD_ZONES[i]
+                t = 0.0 if self._percent <= start else (self._percent - start) / (end - start)
+                word.set_clarity(t)
 
     def _reveal(self, main_window: QWidget) -> None:
         if self._finish_callback is not None:
@@ -572,6 +575,7 @@ class SplashScreen(QWidget):
         if self._reduce_motion:
             self._close_splash()
             return
+        # fade the window out over the (now visible) main window
         self.setWindowOpacity(1.0)
         fade = QPropertyAnimation(self, b"windowOpacity")
         fade.setDuration(FADE_OUT_MS)
@@ -585,8 +589,6 @@ class SplashScreen(QWidget):
     def _close_splash(self) -> None:
         if self._auto_timer is not None:
             self._auto_timer.stop()
-        if self._module_timer is not None:
-            self._module_timer.stop()
         self._fill.stop()
         self.hide()
         self.close()
