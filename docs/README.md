@@ -19,7 +19,7 @@
 | `DICOM_VTI_tag_fix.md` | Исправление VTI тегов |
 | `outlier_rejection.md` | Отсеивание аномальных данных |
 | `speckle_tracking_analysis.md` | Измеренный анализ текущего STE-трекинга (диагностика) |
-| `STE_IMPROVEMENT_PLAN.md` | План развития модуля STE до коммерческого уровня (rev.3, действующий) |
+| `STE_IMPROVEMENT_PLAN.md` | План развития модуля STE до коммерческого уровня (rev.4, действующий; §5.2 — состояние реализации) |
 
 ## Спеки (`superpowers/specs/`)
 

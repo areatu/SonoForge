@@ -1,9 +1,9 @@
 # ПЛАН РАЗВИТИЯ МОДУЛЯ SPECKLE TRACKING ECHOCARDIOGRAPHY (STE) ДО КОММЕРЧЕСКОГО УРОВНЯ
 
-> **Версия:** rev.3 (решения по §11 зафиксированы; добавлены разбор референсных интерфейсов GE/Philips
-> и план двух параллельных треков)
+> **Версия:** rev.4 (rev.3 + §5.2 «Состояние реализации»: фазы 0–3 закрыты, фаза 4 частично)
 > **Дата:** 2026-09-10
-> **Статус:** проект спеки; реализация не начата. Решения, требующие ответа, — в §11.
+> **Статус:** спека действует; реализация идёт в ветке `arena/01a08cb0-sonoforge` — см. §5.2 для
+> построчного статуса и списка того, что осталось. Решения приняты (§11.1), открытые вопросы — §11.2.
 > **Область:** `domain/services/{speckle_tracking,border_tracking,strain_computation,aha_segments,tracking_smoothing}.py`,
 > `domain/models/speckle.py`, `application/workers/speckle_worker.py`, `application/app_controller.py`,
 > `ui/strain_window.py`, `ui/strain_curves_view.py`, `presentation/*`, `infrastructure/locales/*`
@@ -724,6 +724,26 @@ LA strain (reservoir/conduit/contraction), RV GLS/FWLS, multi-beat усредн�
 
 ---
 
+### 5.2 Состояние реализации (обновляется по мере работы)
+
+Последнее обновление: 2026-09-10, ветка `arena/01a08cb0-sonoforge`.
+
+| Фаза | Статус | Что сделано / что осталось |
+|---|---|---|
+| 0. Честность и диагностика | **сделано** | Единое определение strain (`compute_node_longitudinal_curves`, `aggregate_segment_curves`, `global_curve_from_node_curves`); `domain/services/quality.py` со статусами `valid/review/invalid`, причинами (i18n) и confidence; ре-интерполяция кадров удалена (`qc_interpolated_fraction`); `StrainResult` несёт `segment_curves`/`node_curves`, UI рисует кривые модели; мета-строка показывает статус + NCC-достоверность + причины. **Осталось:** диагностический прогон `IM_0059` (нужен клип локально). |
+| 1. Геометрия ЛЖ и сегменты | **сделано (ядро)** | `resample_open_arc()` + `resample_along_arc()` (открытая дуга, хорда исключена), arc-aware сглаживание/кламп, `domain/services/segment_map.py` (18-сегментная AHA-карта по длине дуги и виду), `assign_aha_segments(..., view=)` для всех слоёв узла, анализируемый вид протянут worker → controller → UI. **Осталось:** `material_line.py` как отдельный модуль (логика живёт в `strain_computation`), визуализация уровней/стенок в cine. |
+| 2. Ядро расчёта | **сделано (ядро)** | `domain/services/strain_metrics.py`: окно полного цикла (RR → HR → нормальное отношение систолы), `detect_avc_frame()` с источником (manual → ЭКГ → площадь Симпсона → пик strain → ES), GLS = пик глобальной кривой (AVC-независимый), ESS, TTP, PSI, измеренный дрейф; среднее пиков сегментов — только кросс-чек. **Осталось:** синтетический кинематический фантом (§7.1) и инварианты как отдельный набор. |
+| 3. QC + модель + протокол | **сделано (ядро)** | `domain/models/ste_analysis.py`: `StrainAnalysis` (определения, якоря, QC, значения, кривые, JSON-схема v2, null вместо NaN) и `StrainStudy` (per-view GLS, `GLS_AV` по валидным видам, слияние 18 сегментов с источниками и списком неизмеренных); экспорт JSON/CSV с блоком провенанса. **Осталось:** запись строки GLS в `study_measurement_session`/протокол отчёта, PDF-страница. |
+| 4. UI-паритет | **частично** | 18-секторная мишень в стандартной раскладке, палитра GE/EchoPAC (ярко-красный = норма), переключатель мишени на карту TTP, «нет данных» вместо выдуманных секторов, таблица с ESS/TTP/PSI/дрейфом, мета-строка с источником AVC. **Осталось:** пакет `ui/ste/`, полоса деформации по эндокарду, векторы смещений, hover/click-связка мишень ↔ кривые ↔ cine, colorbar, ECG/transport v2, вкладка отчёта. |
+| 5. 3 вида | **частично** | Многосмотровая модель (`StrainStudy`), per-view GLS и `GLS_AV` в таблице и мета-строке, вид в провенансе результата. **Осталось:** очередь анализов трёх видов из UI, кэш результатов на клип, headless CLI. |
+| 6. Расширения | не начато | LA/RV strain, multi-beat, плотное поле, ML. |
+
+Ключевые артефакты итерации: `src/echo_personal_tool/domain/services/{quality,segment_map,strain_metrics}.py`,
+`src/echo_personal_tool/domain/models/ste_analysis.py`,
+тесты `tests/unit/test_ste_{quality,segment_map,strain_metrics,study_analysis}.py`,
+`tests/unit/test_strain_node_curves.py`, `tests/unit/test_ste_single_source.py`.
+
+---
 ## 6. UI/UX спека
 
 ### 6.1 Принципы

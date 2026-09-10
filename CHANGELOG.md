@@ -4,6 +4,37 @@
 
 ---
 
+## 2026-09-10 — STE: вывод модуля на клинический уровень (фазы 0–3)
+
+Ветка `arena/01a08cb0-sonoforge`. План: `docs/STE_IMPROVEMENT_PLAN.md` (rev.4, §5.2 — состояние реализации).
+
+### Features
+- `feat(ste)`: единое определение деформации — узловые кривые Green–Lagrange по поддуге узла
+  (`compute_node_longitudinal_curves`), сегментные кривые как среднее **в одном кадре**
+  (`aggregate_segment_curves`), глобальная кривая из узловых (`global_curve_from_node_curves`)
+- `feat(ste)`: честный QC — `domain/services/quality.py` со статусами `valid/review/invalid`,
+  причинами (i18n) и confidence; NCC-достоверность отделена от валидности измерения
+- `feat(ste)`: открытая апикальная дуга — `resample_open_arc()`/`resample_along_arc()`, хорда митрального
+  кольца исключена из материальной линии (C1), arc-aware сглаживание и кламп
+- `feat(ste)`: 18-сегментная AHA-карта по длине дуги и виду (`domain/services/segment_map.py`),
+  A4C 3/9/15+6/12/18, A2C 1/7/13+4/10/16, A3C 2/8/14+5/11/17; вид протянут worker → controller → UI
+- `feat(ste)`: клинические метрики полного цикла (`domain/services/strain_metrics.py`) — окно ED→следующий ED,
+  AVC с источником (ЭКГ → площадь Симпсона → пик strain → ES), GLS = пик глобальной кривой, ESS, TTP, PSI,
+  измеренный дрейф базовой линии
+- `feat(ste)`: модель результата с провенансом (`domain/models/ste_analysis.py`) — `StrainAnalysis` (JSON-схема,
+  определения, якоря кадров, QC, сегменты, кривые) и `StrainStudy` (per-view GLS, `GLS_AV`, слияние 18 сегментов)
+- `feat(ste-ui)`: мишень 18 сегментов в стандартной раскладке с палитрой GE/EchoPAC (ярко-красный = норма),
+  переключатель на карту TTP, «нет данных» вместо выдуманных секторов, таблица с ESS/TTP/PSI/дрейфом,
+  строка GLS AV, мета-строка с видом, источником AVC и предупреждениями
+- `feat(ste-export)`: экспорт JSON/CSV с блоком провенанса (определения, якоря, QC, значения сегментов,
+  TTP/ESS, источник вида, GLS и GLS_AV)
+
+### Tests
+- `test(ste)`: `test_strain_node_curves.py`, `test_ste_quality.py`, `test_ste_single_source.py`,
+  `test_ste_segment_map.py`, `test_ste_strain_metrics.py`, `test_ste_study_analysis.py`
+
+---
+
 ## 2026-08-23
 
 ### Features
