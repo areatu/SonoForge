@@ -85,3 +85,6 @@ CHANGELOG_SESSION.md
 /docs/screenshots/ste_references/*.jpg
 /docs/screenshots/ste_references/*.png
 /docs/screenshots/ste_references/*.jpeg
+
+# Local dev helper for bare containers (stub GL/EGL/dbus libs for PySide6)
+tools/qtstub/lib/

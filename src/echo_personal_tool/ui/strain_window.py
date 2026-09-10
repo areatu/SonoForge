@@ -740,6 +740,8 @@ class BullseyeWidget(QWidget):
         # Default: all segments white (no data)
         self._segment_strains: dict[int, float] = {}
         self._segment_quality: dict[int, float] = {}
+        self._segment_ttp: dict[int, float] = {}
+        self._ttp_mode = False
 
     def paintEvent(self, event) -> None:
         """Custom paint using QPainter for filled segments."""
@@ -761,9 +763,11 @@ class BullseyeWidget(QWidget):
 
         ring_radii = [r_apex, r_apical, r_mid, r_basal]
 
-        # Draw filled segments
+        # Draw filled segments (strain or time-to-peak, whichever was selected)
+        ttp_mode = bool(getattr(self, "_ttp_mode", False))
+        values = self._segment_ttp if ttp_mode else self._segment_strains
         for seg_id, (ring, angle_idx) in self.SEGMENT_GEOMETRY.items():
-            strain = self._segment_strains.get(seg_id, None)
+            strain = values.get(seg_id, None)
 
             # Check if segment is accepted by QC
             is_accepted = True
@@ -777,6 +781,8 @@ class BullseyeWidget(QWidget):
                 color = QColor(40, 40, 40)
             elif not is_accepted:
                 color = QColor(60, 60, 60)  # rejected by QC
+            elif ttp_mode:
+                color = self._ttp_to_color(strain)
             else:
                 color = self._strain_to_color(strain)
 
@@ -836,11 +842,12 @@ class BullseyeWidget(QWidget):
             lx = cx + label_r * np.cos(mid_angle)
             ly = cy + label_r * np.sin(mid_angle)
 
-            # Draw segment value
-            strain = self._segment_strains.get(seg_id, None)
+            # Draw segment value (ms for the TTP map, % for strain)
+            strain = self._segment_ttp.get(seg_id) if ttp_mode else self._segment_strains.get(seg_id)
             if strain is not None:
                 painter.setPen(QPen(QColor(255, 255, 255), 1))
-                painter.drawText(QPointF(lx - 15, ly + 4), f"{strain:.1f}")
+                text = f"{strain:.0f}" if ttp_mode else f"{strain:.1f}"
+                painter.drawText(QPointF(lx - 15, ly + 4), text)
 
         # Draw outer labels (segment names)
         font.setPointSize(9)
@@ -883,36 +890,61 @@ class BullseyeWidget(QWidget):
 
         painter.end()
 
+    # GE/EchoPAC bull's-eye ramp: bright red = normal (|ε| > 16 %), then light
+    # red, pink, pale pink; positive strain is blue (user-chosen palette).
+    # (value_threshold, RGB) from the most negative end upwards.
+    STRAIN_RAMP: tuple[tuple[float, tuple[int, int, int]], ...] = (
+        (-16.0, (214, 24, 24)),  # normal — bright red
+        (-11.0, (238, 106, 106)),  # light red
+        (-6.0, (247, 176, 186)),  # light pink
+        (0.0, (252, 224, 228)),  # pale pink — borderline/zero
+        (float("inf"), (66, 133, 244)),  # any positive strain — blue
+    )
+
+    # Time-to-peak ramp (blue → yellow → red): late activation is red, which is
+    # the vendor convention for the TTP bull's-eye.
+    TTP_RAMP: tuple[tuple[float, tuple[int, int, int]], ...] = (
+        (0.0, (38, 96, 214)),
+        (200.0, (58, 190, 220)),
+        (330.0, (255, 214, 64)),
+        (430.0, (240, 120, 30)),
+        (float("inf"), (206, 40, 40)),
+    )
+
+    @staticmethod
+    def _ramp_color(value: float, ramp: tuple[tuple[float, tuple[int, int, int]], ...]) -> QColor:
+        from PySide6.QtGui import QColor
+
+        for threshold, color in ramp:
+            if value <= threshold:
+                return QColor(*color)
+        return QColor(*ramp[-1][1])
+
     def _strain_to_color(self, strain: float) -> QColor:
-        """Map strain value to color (red=negative, white=zero, blue=positive)."""
-        # Clamp to [-25, 10] range
-        clamped = max(-25.0, min(10.0, strain))
+        """Map strain value to colour with the clinical bull's-eye palette."""
+        return self._ramp_color(float(strain), self.STRAIN_RAMP)
 
-        if clamped < 0:
-            # Red to white (negative strain = abnormal)
-            t = (clamped + 25) / 25  # 0 to 1
-            r = 255
-            g = int(255 * t)
-            b = int(255 * t)
-        else:
-            # White to blue (positive strain)
-            t = clamped / 10  # 0 to 1
-            r = int(255 * (1 - t))
-            g = int(255 * (1 - t))
-            b = 255
-
-        return QColor(r, g, b)
+    def _ttp_to_color(self, ttp_ms: float) -> QColor:
+        """Map a time-to-peak value (ms from ED) to the TTP palette."""
+        return self._ramp_color(float(ttp_ms), self.TTP_RAMP)
 
     def update_data(
         self,
         segment_strain: dict[int, float],
         segment_quality: dict[int, float] | None = None,
+        segment_ttp_ms: dict[int, float] | None = None,
     ) -> None:
-        """Update bull's eye with strain data."""
+        """Update bull's eye with strain data (and the TTP map when supplied)."""
         self._segment_strains = segment_strain.copy()
         self._segment_quality = (segment_quality or {}).copy()
+        self._segment_ttp = {int(k): float(v) for k, v in (segment_ttp_ms or {}).items()}
         self._qc_accepted_segments: set[int] | None = None
         self.update()  # Trigger repaint
+
+    def set_ttp_mode(self, enabled: bool) -> None:
+        """Switch the bull's-eye between strain and time-to-peak colourization."""
+        self._ttp_mode = bool(enabled)
+        self.update()
 
     def update_qc(
         self,
@@ -929,6 +961,7 @@ class BullseyeWidget(QWidget):
     def clear(self) -> None:
         self._segment_strains.clear()
         self._segment_quality.clear()
+        self._segment_ttp.clear()
         self.update()
 
 
@@ -950,6 +983,10 @@ class SummaryTable(QWidget):
         self._rows: dict[str, tuple[QLabel, QLabel, str]] = {}
         row_defs = [
             ("gls", tr("strain.gls_global"), "%"),
+            ("ess", tr("strain.ess"), "%"),
+            ("ttp", tr("strain.ttp"), tr("strain.unit_ms")),
+            ("psi", tr("strain.psi"), "%"),
+            ("drift", tr("strain.drift"), "%"),
             ("gls_a4c", tr("strain.gls_a4c"), "%"),
             ("gls_a2c", tr("strain.gls_a2c"), "%"),
             ("gls_dao", tr("strain.gls_dao"), "%"),
@@ -1004,6 +1041,7 @@ class ControlPanel(QWidget):
     strain_metric_changed = Signal(str)  # "deformation", "strain_rate", "peak"
     qc_segment_toggled = Signal(int, bool)  # segment_id, accepted
     position_selected = Signal(str)  # "A4C" | "A2C" | "A3C"
+    ttp_mode_toggled = Signal(bool)  # bull's-eye: strain vs time-to-peak
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1103,7 +1141,12 @@ class ControlPanel(QWidget):
         self._pos_a3c = QRadioButton(tr("strain.position_a3c"))
         self._pos_a3c.setStyleSheet("color: #e0e0e0;")
         self._pos_a3c.toggled.connect(lambda c: self.position_selected.emit("A3C") if c else None)
+        # Bull's-eye mode: strain (default) or time-to-peak map.
+        self._cb_ttp = QCheckBox(tr("strain.bullseye_ttp"))
+        self._cb_ttp.setToolTip(tr("strain.bullseye_ttp_hint"))
+        self._cb_ttp.toggled.connect(self.ttp_mode_toggled.emit)
         position_layout.addWidget(self._pos_a3c)
+        position_layout.addWidget(self._cb_ttp)
 
         group_position.setLayout(position_layout)
         layout.addWidget(group_position)
@@ -1278,6 +1321,7 @@ class StrainWindow(QMainWindow):
         self._panel_a2c = CinePanel("A2C")
         self._panel_dao = CinePanel("DAO (A3C)")
         self._panel_bullseye = BullseyeWidget()
+        self._control.ttp_mode_toggled.connect(self._panel_bullseye.set_ttp_mode)
 
         contour_layout.addWidget(self._panel_a4c, 0, 0)
         contour_layout.addWidget(self._panel_a2c, 0, 1)
@@ -1347,6 +1391,20 @@ class StrainWindow(QMainWindow):
             parts.append(f"■ {tr('strain.qc_status_invalid')}")
         if result.tracking_quality_mean:
             parts.append(tr("strain.qc_fidelity", pct=f"{result.tracking_quality_mean * 100.0:.0f}"))
+        avc_source = getattr(result, "avc_source", "") or ""
+        if avc_source:
+            parts.append(
+                tr(
+                    "strain.avc_source",
+                    source=tr(f"strain.avc_{avc_source}"),
+                    frame=str(getattr(result, "avc_index", 0)),
+                )
+            )
+        drift = float(getattr(result, "drift_measured", float("nan")))
+        if np.isfinite(drift) and abs(drift) > 2.0:
+            parts.append(tr("strain.drift_warning", value=f"{drift:+.1f}"))
+        if getattr(result, "is_post_systolic", False):
+            parts.append(tr("strain.post_systolic"))
         qc_reasons = getattr(result, "qc_reasons", ()) or ()
         if qc_reasons:
             reason_text = ", ".join(tr(key) for key in qc_reasons[:2])
@@ -1395,12 +1453,26 @@ class StrainWindow(QMainWindow):
         else:
             gls_dao = analysed_gls
 
-        # Update summary table
+        # Update summary table — GLS (peak of the global curve) next to ESS
+        # (value at AVC), time to peak, post-systolic index and the measured
+        # baseline drift, so the systolic value can never be mistaken for the
+        # peak one (plan §3.5).
+        def _finite(value) -> float | None:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return None
+            return number if np.isfinite(number) else None
+
         self._summary.update_values(
             gls=result.gls,
             gls_a4c=gls_a4c,
             gls_a2c=gls_a2c,
             gls_dao=gls_dao,
+            ess=_finite(getattr(result, "ess", None)),
+            ttp=_finite(getattr(result, "time_to_peak_ms", None)),
+            psi=_finite(getattr(result, "post_systolic_index", None)),
+            drift=_finite(getattr(result, "drift_measured", None)),
             hr=result.heart_rate_bpm if result.heart_rate_bpm > 0 else None,
         )
 
@@ -1409,6 +1481,7 @@ class StrainWindow(QMainWindow):
             self._panel_bullseye.update_data(
                 result.segment_strain,
                 result.segment_quality,
+                getattr(result, "segment_ttp_ms", None),
             )
 
             # Populate QC checkboxes for available segments

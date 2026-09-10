@@ -185,6 +185,27 @@ class StrainResult:
     # only meaningful together with the apical view it was measured in.
     view: str = "A4C"
     segment_model: str = "AHA-18"
+    # Clinical metrics over the analysed cycle (plan §3.5, phase 2). ``gls`` is
+    # the peak of the global curve (AVC-independent); ``ess`` is the value at
+    # aortic valve closure. ``drift_measured`` is the residual strain at the end
+    # of the window — reported, never silently removed.
+    avc_index: int = 0
+    avc_source: str = "es"
+    avc_confidence: float = 0.0
+    ess: float = float("nan")
+    gls_peak_frame: int | None = None
+    time_to_peak_ms: float = float("nan")
+    post_systolic_index: float = float("nan")
+    drift_measured: float = float("nan")
+    is_post_systolic: bool = False
+    peak_strain: float = float("nan")
+    # Per-segment metrics and their time-to-peak (TTP bull's-eye input).
+    segment_metrics: dict[int, object] = field(default_factory=dict)
+    segment_ttp_ms: dict[int, float] = field(default_factory=dict)
+    # Cross-check: mean of the segment peaks (NOT the reported GLS).
+    gls_segment_mean: float = float("nan")
+    analysis_window_end: int = 0
+    cycle_estimated: bool = False
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None

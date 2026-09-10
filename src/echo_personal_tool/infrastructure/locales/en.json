@@ -1333,5 +1333,19 @@
   "strain.lbl_inferior_lateral": "Inferolateral",
   "strain.lbl_inferior": "Inferior",
   "strain.lbl_septal_inferior": "Inferoseptal",
-  "strain.lbl_septal": "Septal"
+  "strain.lbl_septal": "Septal",
+  "strain.ess": "ESS (at AVC)",
+  "strain.ttp": "Time to peak (TTP)",
+  "strain.psi": "Post-systolic index",
+  "strain.drift": "Baseline drift",
+  "strain.avc_source": "AVC: {source} (frame {frame})",
+  "strain.avc_ecg": "ECG",
+  "strain.avc_simpson_area": "area curve (Simpson)",
+  "strain.avc_strain_peak": "global strain peak",
+  "strain.avc_manual": "manual",
+  "strain.avc_es": "auto ES",
+  "strain.drift_warning": "⚠ baseline drift {value}%",
+  "strain.post_systolic": "⚠ post-systolic shortening",
+  "strain.bullseye_ttp": "Time to peak (TTP)",
+  "strain.bullseye_ttp_hint": "Bull's-eye: time from ED to the segment peak in ms (late activation is red)"
 }

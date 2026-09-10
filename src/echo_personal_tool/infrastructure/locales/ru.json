@@ -1333,5 +1333,19 @@
   "strain.lbl_inferior_lateral": "Нижнебоковая",
   "strain.lbl_inferior": "Нижняя",
   "strain.lbl_septal_inferior": "Нижнеперегородочная",
-  "strain.lbl_septal": "Перегородочная"
+  "strain.lbl_septal": "Перегородочная",
+  "strain.ess": "ESS (на клапане)",
+  "strain.ttp": "Время до пика (TTP)",
+  "strain.psi": "Постсистолический индекс",
+  "strain.drift": "Дрейф базовой линии",
+  "strain.avc_source": "AVC: {source} (кадр {frame})",
+  "strain.avc_ecg": "ЭКГ",
+  "strain.avc_simpson_area": "кривая площади (Симпсон)",
+  "strain.avc_strain_peak": "пик глобальной деформации",
+  "strain.avc_manual": "вручную",
+  "strain.avc_es": "автоопределение ES",
+  "strain.drift_warning": "⚠ дрейф базовой линии {value}%",
+  "strain.post_systolic": "⚠ постсистолическое укорочение",
+  "strain.bullseye_ttp": "Время до пика (TTP)",
+  "strain.bullseye_ttp_hint": "Мишень: время от ED до пика сегмента, мс (поздняя активация — красный)"
 }

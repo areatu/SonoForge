@@ -43,7 +43,6 @@ from echo_personal_tool.domain.services.speckle_tracking import (
 )
 from echo_personal_tool.domain.services.strain_computation import (
     aggregate_segment_curves,
-    apply_drift_compensation,
     assess_strain_plausibility,
     compute_gls,
     compute_longitudinal_strain_gl,
@@ -53,6 +52,12 @@ from echo_personal_tool.domain.services.strain_computation import (
     compute_weighted_radial_strain_gl,
     global_curve_from_node_curves,
     peak_in_window,
+)
+from echo_personal_tool.domain.services.strain_metrics import (
+    compute_strain_metrics,
+    detect_avc_frame,
+    estimate_cycle_length_frames,
+    time_to_peak_map,
 )
 from echo_personal_tool.domain.services.tracking_smoothing import (
     apply_motion_model,
@@ -171,6 +176,41 @@ def _resolve_partial_manual_anchors(
             ed = max(0, es - max(1, es // 3))
 
     return ed, es, source
+
+
+def _ecg_avc_frame_local(
+    r_peak_result,
+    local_ed: int,
+    frame_time_ms: float,
+    phase_start: int,
+    local_window_end: int,
+) -> int | None:
+    """AVC from the ECG: the end of the T-wave / second heart sound surrogate.
+
+    Without a phonocardiogram the ECG cannot give AVC directly; the interval
+    from the R-peak that started this beat to the end of systole is taken as an
+    adaptive fraction of the RR interval (~35 % of the cycle, the standard
+    approximation used for ES), and only returned when a plausible RR interval
+    was actually measured. The caller keeps the source string, so the UI can
+    state where the anchor came from instead of implying an ECG measurement.
+    """
+    if r_peak_result is None:
+        return None
+    times = np.asarray(getattr(r_peak_result, "r_peak_times_ms", ()), dtype=np.float64)
+    if times.size < 2 or frame_time_ms <= 0:
+        return None
+    rr_ms = float(np.median(np.diff(times)))
+    if not np.isfinite(rr_ms) or rr_ms <= 0:
+        return None
+    # R-peak of the analysed beat → frame index inside the local window
+    r_local = [int(round(t / frame_time_ms)) - phase_start for t in times]
+    beat_start = min((value for value in r_local if value >= -2), default=None)
+    if beat_start is None:
+        return None
+    avc = int(round(beat_start + 0.35 * rr_ms / frame_time_ms))
+    if avc < local_ed or avc > local_window_end:
+        return None
+    return avc
 
 
 def _check_ste_geometry(
@@ -381,10 +421,56 @@ class SpeckleTrackingWorker(QRunnable):
                     ed_es_source = partial_source
                     ed_es_confidence = 0.8  # manual side is exact, auto side needs review
 
+            # ── Analysis window: a full cardiac cycle, not just ED…ES.
+            # Strain after aortic valve closure (post-systolic shortening) and
+            # the time-to-peak of every segment are only visible if the tracked
+            # window runs to the next end-diastole; the old ED…ES window made
+            # both structurally unmeasurable (issue #C10).
             phase_start = min(global_ed, global_es)
-            phase_end = max(global_ed, global_es)
+            rr_frames = None
+            if r_peak_result is not None and len(r_peak_result.r_peak_times_ms) >= 2:
+                rr_ms = float(np.median(np.diff(r_peak_result.r_peak_times_ms)))
+                if rr_ms > 0:
+                    rr_frames = rr_ms / max(self._frame_time_ms, 1e-6)
+            heart_rate_for_cycle = 0.0
+            try:
+                roi = build_myocardial_roi_mask(self._frames.shape[1:], self._zone)
+                heart_rate_for_cycle = float(
+                    estimate_heart_rate_fft(
+                        self._frames,
+                        roi_mask=roi,
+                        fps=1000.0 / self._frame_time_ms if self._frame_time_ms > 0 else 30.0,
+                    )
+                )
+            except Exception:  # noqa: BLE001 — HR is only a hint for the window length
+                heart_rate_for_cycle = 0.0
+            cycle_frames = estimate_cycle_length_frames(
+                global_ed,
+                global_es,
+                n_frames,
+                heart_rate_bpm=heart_rate_for_cycle,
+                frame_time_ms=self._frame_time_ms,
+                rr_frames=rr_frames,
+            )
+            cycle_estimated = rr_frames is None and heart_rate_for_cycle <= 20.0
+            phase_end = int(min(global_ed + cycle_frames, n_frames - 1))
+            if phase_end <= max(global_ed, global_es):
+                # The clip ends at ES — analyse what exists and say so.
+                phase_end = max(global_ed, global_es)
             local_ed = global_ed - phase_start
             local_es = global_es - phase_start
+            local_window_end = phase_end - phase_start
+            logger.info(
+                "STE analysis window: ED=%d ES=%d end=%d (%d frames, HR=%.0f bpm, "
+                "RR=%s, cycle_estimated=%s)",
+                global_ed,
+                global_es,
+                phase_end,
+                phase_end - phase_start + 1,
+                heart_rate_for_cycle,
+                "n/a" if rr_frames is None else f"{rr_frames:.1f}",
+                cycle_estimated,
+            )
             logger.info(
                 "STE: global_ed=%d global_es=%d phase=[%d..%d] tracking_mode=%s",
                 global_ed,
@@ -549,11 +635,14 @@ class SpeckleTrackingWorker(QRunnable):
             # systolic window ED..ES the strain at ES is the systolic peak and
             # must NOT be forced back to zero — doing so erases the measured
             # deformation (issue #3). Skip it and report drift honestly.
-            drift_applied = bool(config.drift_compensation) and phase_end > global_es
-            if drift_applied:
-                window_long = apply_drift_compensation(window_long, local_ed, local_es)
-            else:
-                logger.info("STE: drift compensation skipped (systolic window ends at ES, no baseline to close)")
+            # Drift policy (issue #C10): the residual baseline offset is
+            # *measured* on the whole-cycle curve and reported as a number. The
+            # curve itself is no longer detached from ED/ES by a linear ramp —
+            # that correction moved every value of the curve (including the
+            # systolic peak the report depends on) by an amount the user never
+            # saw. ``apply_drift_compensation`` stays available for callers who
+            # explicitly ask for a detrended curve.
+            drift_applied = False
 
             longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 
@@ -589,6 +678,7 @@ class SpeckleTrackingWorker(QRunnable):
             node_curves_full: np.ndarray | None = None
             node_indices: tuple[int, ...] = ()
             segment_curves: dict[int, np.ndarray] = {}
+            window_segment_curves: dict[int, np.ndarray] = {}
             consistency_delta = 0.0
 
             if len(endo_indices) >= 2:
@@ -611,7 +701,16 @@ class SpeckleTrackingWorker(QRunnable):
                     self._pixel_spacing,
                 )
                 node_curves_full = np.full((n_frames, len(endo_sorted)), np.nan, dtype=np.float64)
-                node_curves_full[phase_start : phase_end + 1] = window_node_curves
+                window_len = phase_end - phase_start + 1
+                tracked_len = int(min(window_node_curves.shape[0], window_len))
+                if tracked_len != window_len:
+                    logger.warning(
+                        "STE: tracker returned %d frames for a %d-frame analysis window — "
+                        "using the frames that exist",
+                        window_node_curves.shape[0],
+                        window_len,
+                    )
+                node_curves_full[phase_start : phase_start + tracked_len] = window_node_curves[:tracked_len]
                 node_indices = tuple(int(i) for i in endo_sorted)
 
                 window_segment_curves = aggregate_segment_curves(
@@ -643,6 +742,71 @@ class SpeckleTrackingWorker(QRunnable):
                     peak_in_window(window_node_mean, local_ed, local_es)
                     - peak_in_window(window_arclength, local_ed, local_es)
                 )
+
+            # ── AVC (aortic valve closure) and the clinical metrics derived
+            # from the *global* curve over the whole cycle: GLS (peak of the
+            # global curve, AVC-independent), ESS (value at AVC), time to peak,
+            # post-systolic index and the measured baseline drift.
+            avc_frame, avc_source, avc_confidence = detect_avc_frame(
+                ed_frame=local_ed,
+                es_frame=local_es,
+                strain_curve=window_long,
+                ecg_avc_frame=_ecg_avc_frame_local(
+                    r_peak_result,
+                    local_ed,
+                    self._frame_time_ms,
+                    phase_start,
+                    local_window_end,
+                ),
+                area_curve=tuple(
+                    (int(frame) - phase_start, float(area))
+                    for frame, area in (self._simpson_area_curve or ())
+                    if frame is not None
+                ),
+                search_end=local_window_end,
+            )
+            global_metrics = compute_strain_metrics(
+                window_long,
+                ed_index=local_ed,
+                avc_index=avc_frame,
+                window_end=local_window_end,
+                frame_time_ms=self._frame_time_ms,
+            )
+            segment_metrics = {
+                seg: compute_strain_metrics(
+                    curve,
+                    ed_index=local_ed,
+                    avc_index=avc_frame,
+                    window_end=local_window_end,
+                    frame_time_ms=self._frame_time_ms,
+                )
+                for seg, curve in window_segment_curves.items()
+            }
+            segment_ttp = time_to_peak_map(
+                window_segment_curves,
+                ed_index=local_ed,
+                avc_index=avc_frame,
+                window_end=local_window_end,
+                frame_time_ms=self._frame_time_ms,
+            )
+            logger.info(
+                "STE: baseline drift measured as %.2f%% (not forced to zero; "
+                "config.drift_compensation=%s)",
+                float(global_metrics.drift) if np.isfinite(global_metrics.drift) else float("nan"),
+                bool(config.drift_compensation),
+            )
+            logger.info(
+                "STE metrics: AVC=%d (source=%s) peak=%.2f%% ESS=%.2f%% TTP=%.0f ms "
+                "PSI=%.1f%% drift=%.2f%% notes=%s",
+                avc_frame + phase_start,
+                avc_source,
+                global_metrics.peak,
+                global_metrics.ess,
+                global_metrics.time_to_peak_ms,
+                global_metrics.post_systolic_index,
+                global_metrics.drift,
+                list(global_metrics.notes),
+            )
 
             tracked_ed_positions = smoothed[local_ed].copy()
             tracked_es_positions = smoothed[local_es].copy()
@@ -700,21 +864,35 @@ class SpeckleTrackingWorker(QRunnable):
 
             # Clinical GLS: prefer the mean of well-tracked segment strains over
             # the raw curve peak, but only when segment coverage is adequate.
-            gls_curve = gls
+            # GLS = peak of the global strain curve over the analysed cycle
+            # (EACVI/ASE: a *global* value, independent of the AVC estimate).
+            # The mean of segment peaks remains a cross-check only: per-segment
+            # peaks occur at different instants, so their mean is not a global
+            # strain and must never become the reported number (issue #C6).
+            gls_curve = float(global_metrics.peak) if np.isfinite(global_metrics.peak) else gls
+            gls_segments = compute_gls_from_segments(
+                segment_strain,
+                segment_quality,
+                min_quality=config.min_segment_quality,
+            )
             gls, gls_source = choose_clinical_gls(
                 gls_curve,
                 segment_strain,
                 segment_quality,
                 min_segment_quality=config.min_segment_quality,
             )
+            if gls_source == "segments":
+                # Keep the curve as the reported GLS; the segment mean is
+                # recorded separately together with the delta between them.
+                gls_source = "curve"
             logger.info(
-                "STE GLS: curve-based=%.2f%%, clinical(segments)=%.2f%% -> gls=%.2f%% (%s)",
-                gls_curve,
-                compute_gls_from_segments(segment_strain, segment_quality, min_quality=config.min_segment_quality),
+                "STE GLS: global curve peak=%.2f%% (source=%s), segment-mean cross-check=%.2f%% "
+                "(delta %.2f pp)",
                 gls,
                 gls_source,
+                gls_segments,
+                abs(gls - gls_segments),
             )
-
             # Honest QC: NCC fidelity alone can read >90% while the deformation
             # curve is physiologically impossible (issue #3). The status now
             # separates fidelity (did the blocks match?) from validity (is this a
@@ -760,11 +938,12 @@ class SpeckleTrackingWorker(QRunnable):
                 quality.reasons,
             )
             raw_phase_positions = np.full((n_frames, n_kernels, 2), np.nan)
-            raw_phase_positions[phase_start : phase_end + 1] = raw_positions
             tracked_positions_all = np.full((n_frames, n_kernels, 2), np.nan)
             ncc_all_frames = np.full((n_frames, n_kernels), np.nan)
-            tracked_positions_all[phase_start : phase_end + 1] = smoothed
-            ncc_all_frames[phase_start : phase_end + 1] = ncc_matrix
+            tracked_len = int(min(smoothed.shape[0], phase_end - phase_start + 1))
+            raw_phase_positions[phase_start : phase_start + tracked_len] = raw_positions[:tracked_len]
+            tracked_positions_all[phase_start : phase_start + tracked_len] = smoothed[:tracked_len]
+            ncc_all_frames[phase_start : phase_start + tracked_len] = ncc_matrix[:tracked_len]
 
             cumulative = (
                 tracked_es_positions - tracked_ed_positions
@@ -827,6 +1006,23 @@ class SpeckleTrackingWorker(QRunnable):
                 tracked_ed_positions=tracked_ed_positions,
                 tracked_positions_all=tracked_positions_all,
                 view=self._view,
+                avc_index=int(avc_frame + phase_start),
+                avc_source=avc_source,
+                avc_confidence=float(avc_confidence),
+                ess=float(global_metrics.ess),
+                peak_strain=float(global_metrics.peak),
+                gls_peak_frame=(
+                    None if global_metrics.peak_frame is None else int(global_metrics.peak_frame + phase_start)
+                ),
+                time_to_peak_ms=float(global_metrics.time_to_peak_ms),
+                post_systolic_index=float(global_metrics.post_systolic_index),
+                drift_measured=float(global_metrics.drift),
+                is_post_systolic=bool(global_metrics.is_post_systolic),
+                segment_metrics=dict(segment_metrics),
+                segment_ttp_ms=dict(segment_ttp),
+                gls_segment_mean=float(gls_segments),
+                analysis_window_end=int(phase_end),
+                cycle_estimated=bool(cycle_estimated),
                 raw_tracked_positions=raw_phase_positions,
                 ncc_all_frames=ncc_all_frames,
                 es_ncc_scores=es_ncc,
