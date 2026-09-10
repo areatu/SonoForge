@@ -2,6 +2,8 @@
 
 **Дата:** 2026-09-04
 **Статус:** Анализ + частично реализованные правки (см. §5.1)
+**Плановый документ:** `docs/STE_IMPROVEMENT_PLAN.md` (rev.3) — актуальная дорожная карта модуля; этот файл остаётся
+источником измерений и истории диагностики.
 **Область:** `domain/services/speckle_tracking.py`, `tracking_smoothing.py`, `strain_computation.py`, `application/workers/speckle_worker.py`, `presentation/speckle_settings_dialog.py`
 
 ---

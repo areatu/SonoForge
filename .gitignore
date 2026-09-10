@@ -80,3 +80,8 @@ server_TOKKD.md
 traceback.txtAGENTS.md
 
 CHANGELOG_SESSION.md
+
+# Third-party vendor UI reference screenshots (internal use only, not redistributed) — see README
+/docs/screenshots/ste_references/*.jpg
+/docs/screenshots/ste_references/*.png
+/docs/screenshots/ste_references/*.jpeg

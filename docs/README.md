@@ -18,6 +18,8 @@
 | `dicom_parcer_advanced.md` | Продвинутый парсинг DICOM тегов |
 | `DICOM_VTI_tag_fix.md` | Исправление VTI тегов |
 | `outlier_rejection.md` | Отсеивание аномальных данных |
+| `speckle_tracking_analysis.md` | Измеренный анализ текущего STE-трекинга (диагностика) |
+| `STE_IMPROVEMENT_PLAN.md` | План развития модуля STE до коммерческого уровня (rev.3, действующий) |
 
 ## Спеки (`superpowers/specs/`)
 
