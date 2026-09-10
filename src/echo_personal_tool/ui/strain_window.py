@@ -47,6 +47,7 @@ def segment_name(segment_id: int) -> str:
     """Standard AHA name of a segment id (empty for unknown ids)."""
     return SEGMENT_NAMES.get(int(segment_id), f"Segment {segment_id}")
 
+
 # Localised names of the six segments of the analysed view. The dict is keyed
 # by the standard 18-segment AHA ids (issue #C2/#C11); ``strain.seg_<id>``
 # covers all 18 so any view can be labelled.
@@ -1998,7 +1999,9 @@ class StrainWindow(QMainWindow):
             writer.writerow(["# QC reasons", "|".join(analysis.qc_reasons)])
             writer.writerow(["# Coverage", f"{analysis.qc_coverage:.3f}"])
             writer.writerow(["# GLS", "" if analysis.gls is None else f"{analysis.gls:.2f}"])
-            writer.writerow(["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"])
+            writer.writerow(
+                ["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"]
+            )
 
         logger.info("Exported CSV to %s", path)
 

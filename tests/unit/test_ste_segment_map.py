@@ -194,9 +194,7 @@ class TestKernelAssignment:
     def test_assignment_does_not_depend_on_kernel_order(self) -> None:
         arc = _apical_arc(31)
         kernels = self._kernels(arc, ("endo",))
-        straight = {
-            k.node_index: k.aha_segment for k in assign_aha_segments(kernels, (0.0, 0.0), "A3C")
-        }
+        straight = {k.node_index: k.aha_segment for k in assign_aha_segments(kernels, (0.0, 0.0), "A3C")}
         shuffled = assign_aha_segments(list(reversed(kernels)), (0.0, 0.0), "A3C")
         assert {k.node_index: k.aha_segment for k in shuffled} == straight
 

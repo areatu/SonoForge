@@ -208,7 +208,11 @@ def assign_segments_from_arc(
         is_first_side = i <= apex
         side = 0 if is_first_side else 1
         # 0 at the apex → 1 at the annulus
-        to_annulus = (apex_param - float(params[i])) / left_span if is_first_side else (float(params[i]) - apex_param) / right_span
+        to_annulus = (
+            (apex_param - float(params[i])) / left_span
+            if is_first_side
+            else (float(params[i]) - apex_param) / right_span
+        )
         to_annulus = float(min(max(to_annulus, 0.0), 1.0))
         # to_annulus = 1 at the annulus, 0 at the apex
         if to_annulus >= 1.0 - basal_fraction:

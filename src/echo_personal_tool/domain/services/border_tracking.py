@@ -267,9 +267,7 @@ def propagate_wall_borders(
     translation_threshold_px = 3.0
     ncc_thr = float(config.ncc_threshold)
 
-    kernels, layer_edges = build_border_kernels(
-        endo, epi, n_nodes=n_nodes, layer_fracs=(0.0, 0.5, 1.0), closed=closed
-    )
+    kernels, layer_edges = build_border_kernels(endo, epi, n_nodes=n_nodes, layer_fracs=(0.0, 0.5, 1.0), closed=closed)
     n_k = len(kernels)
 
     # material fractions per kernel index
@@ -323,9 +321,7 @@ def propagate_wall_borders(
             e_new = _clamp_outward(
                 e_new, lv_center, r_endo0, outward_slack_px, center0=lv_center, max_inward=inward_cap
             )
-            p_new = _clamp_outward(
-                p_new, lv_center, r_epi0, outward_slack_px, center0=lv_center, max_inward=inward_cap
-            )
+            p_new = _clamp_outward(p_new, lv_center, r_epi0, outward_slack_px, center0=lv_center, max_inward=inward_cap)
         else:
             shifted = lv_center + t_global
             e_new = _clamp_outward(e_new, shifted, r_endo0, outward_slack_px, center0=shifted, max_inward=inward_cap)
