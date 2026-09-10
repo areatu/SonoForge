@@ -55,8 +55,14 @@ htmlcov/
 # Ruff
 .ruff_cache/
 
-# Benchmark outputs
+# Benchmark outputs and reports
 bench/reports/
+bench/la/reports/
+
+# Internal dev plans and specs (not shipped)
+docs/superpowers/plans/
+docs/compose/
+docs/bench/
 
 # Tooling / worktrees
 .tooling-venv/
@@ -66,17 +72,18 @@ bench/reports/
 .mimocode/
 .claude/
 .opencode/
-AGENTS.md
 .cursorrules
 .cursor/rules
-.vscode
-
-# IDE config (contains MCP tokens)
 .cursor/
 .vscode/
+AGENTS.md
 
 # Server settings (contains potentially sensitive data)
 server_TOKKD.md
-traceback.txtAGENTS.md
+traceback.txt
 
+# Session state
 CHANGELOG_SESSION.md
+
+# Graphify output
+graphify-out/
