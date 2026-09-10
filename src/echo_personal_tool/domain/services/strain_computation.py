@@ -1,4 +1,23 @@
-"""Strain computation from speckle tracking results."""
+"""Strain computation from speckle tracking results.
+
+Strain definition
+-----------------
+Every strain value produced here is the clinical **Lagrange strain**
+
+    ε(t) = (L(t) − L0) / L0 · 100 %
+
+i.e. the relative change of length with respect to the end-diastolic length.
+This is the definition used by the EACVI/ASE consensus and by the vendor
+packages (GE, Philips, TomTec): a myocardium that shortens by 20 % reads
+−20 %, which is what the −16 % / −18 % clinical thresholds refer to.
+
+The module previously computed the Green–Lagrange strain
+``0.5·((L/L0)² − 1)·100``, which is a different (finite-strain) measure: the
+same 20 % shortening read as −18 %, so a truly abnormal −16 % was reported as
+−14.7 % — inside the "normal" band. All strain values, curves and metrics now
+come from :func:`lagrangian_strain_pct`, so a number can never be produced with
+a different definition by accident.
+"""
 
 from __future__ import annotations
 
@@ -12,15 +31,30 @@ def contour_arc_length(points: np.ndarray, pixel_spacing: tuple[float, float]) -
     return float(np.sum(np.linalg.norm(diffs, axis=1)) * avg)
 
 
+def lagrangian_strain_pct(length: float | np.ndarray, reference_length: float | np.ndarray) -> float | np.ndarray:
+    """Clinical Lagrange strain in percent: ``(L − L0) / L0 · 100``.
+
+    NaN/zero reference lengths yield NaN instead of an invented zero, so a
+    segment that cannot be measured stays missing.
+    """
+    length_arr = np.asarray(length, dtype=np.float64)
+    ref_arr = np.asarray(reference_length, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        strain = (length_arr - ref_arr) / ref_arr * 100.0
+    if np.ndim(strain) == 0:
+        return float(strain) if np.isfinite(strain) else float("nan")
+    return strain
+
+
 def compute_longitudinal_strain_gl(
     positions: np.ndarray,
     ed_index: int,
     pixel_spacing: tuple[float, float],
     endo_indices: list[int],
 ) -> np.ndarray:
-    """Green-Lagrange longitudinal strain from smoothed kernel positions.
+    """Lagrange longitudinal strain (definition A: total arc length).
 
-    E = 0.5 * ((L/L0)^2 - 1) * 100
+    ε = (L(t) − L0) / L0 · 100 %, see the module docstring.
     """
     n_frames = positions.shape[0]
     strain = np.zeros(n_frames)
@@ -30,8 +64,7 @@ def compute_longitudinal_strain_gl(
         return strain
     for t in range(n_frames):
         lt = contour_arc_length(positions[t, endo_indices, :], pixel_spacing)
-        ratio = lt / l0
-        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+        strain[t] = lagrangian_strain_pct(lt, l0)
     return strain
 
 
@@ -71,7 +104,7 @@ def compute_radial_strain_gl(
         epi_t = positions[t, epi_indices, :]
         tt = float(np.mean(np.linalg.norm(epi_t - endo_t, axis=1)) * avg_spacing)
         ratio = tt / t0
-        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+        strain[t] = lagrangian_strain_pct(ratio, 1.0)
     return strain
 
 
@@ -211,7 +244,7 @@ def compute_weighted_longitudinal_strain_gl(
             weight = (ncc_weights[i1] + ncc_weights[i2]) / 2.0
             lt += dist * weight
         ratio = lt / l0
-        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+        strain[t] = lagrangian_strain_pct(ratio, 1.0)
 
     return strain
 
@@ -276,7 +309,7 @@ def compute_weighted_radial_strain_gl(
             weight = (ncc_weights[i_endo] + ncc_weights[i_epi]) / 2.0
             tt += thickness * weight
         ratio = tt / t0
-        strain[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+        strain[t] = lagrangian_strain_pct(ratio, 1.0)
 
     return strain
 
@@ -343,7 +376,7 @@ def compute_node_longitudinal_curves(
     (``x[i-1] -> x[i] -> x[i+1]``), so a node owns *its own* deformation instead
     of borrowing the strain of a neighbour pair (issue #C3):
 
-        E_i(t) = 0.5 * ((L_i(t) / L_i(ED)) ** 2 - 1) * 100
+        ε_i(t) = (L_i(t) − L_i(ED)) / L_i(ED) · 100 %
 
     The first and last node fall back to the two-point segment (they have no
     neighbour on the other side); this keeps the whole material line covered
@@ -408,7 +441,7 @@ def compute_node_longitudinal_curves(
         lt = _subarc_length(t)
         ratio = np.full(n_nodes, np.nan, dtype=np.float64)
         np.divide(lt, l0, out=ratio, where=usable)
-        curves[t] = 0.5 * (ratio**2 - 1.0) * 100.0
+        curves[t] = lagrangian_strain_pct(ratio, 1.0)
     return curves
 
 

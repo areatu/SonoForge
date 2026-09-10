@@ -3,8 +3,13 @@
 The old code computed one strain value per *pair* of neighbouring kernels and
 assigned it to both kernels, so two neighbours always shared a number and a
 kernel never owned its own deformation. These tests pin the corrected model:
-each node carries the Green–Lagrange strain of the sub-arc through it and its
-neighbours, and segment curves are a same-frame weighted mean of node curves.
+each node carries the clinical (Lagrange) strain of the sub-arc through it and
+its neighbours, and segment curves are a same-frame weighted mean of node curves.
+
+Definition note: strain is ``(L − L₀)/L₀ · 100 %`` — the convention of the
+EACVI/ASE consensus and of the vendor packages. The older Green–Lagrange form
+``0.5·((L/L₀)² − 1)·100`` understates |ε| (a 20 % shortening read as −18 %), so
+the expected values below are *not* the previous ones.
 """
 
 from __future__ import annotations
@@ -34,8 +39,8 @@ class TestComputeNodeLongitudinalCurves:
     def test_uniform_shortening_is_identical_at_every_node(self) -> None:
         curves = compute_node_longitudinal_curves(_positions([1.0, 0.9, 0.8]), 0, (1.0, 1.0))
         assert curves[0] == pytest.approx(0.0, abs=1e-9)
-        # 3-node sub-arc scales as the factor itself → 0.5*(f²-1)*100
-        assert curves[2] == pytest.approx(0.5 * (0.8**2 - 1.0) * 100.0, abs=1e-6)
+        # 3-node sub-arc scales as the factor itself → (f - 1)*100
+        assert curves[2] == pytest.approx((0.8 - 1.0) * 100.0, abs=1e-6)
 
     def test_each_node_owns_its_own_value(self) -> None:
         """The old pairwise formula gave nodes 1..3 the same number."""
@@ -43,15 +48,17 @@ class TestComputeNodeLongitudinalCurves:
         es = np.array([[0.0, 0.0], [10.0, 0.0], [15.0, 0.0], [20.0, 0.0]])
         positions = np.stack([ed, es])
         curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0))
-        assert curves[1] == pytest.approx([0.0, -21.875, -37.5, -37.5], abs=1e-6)
+        # node 0: two-point segment (10 → 10 px), nodes 1-3: sub-arcs through
+        # the moved node, node 1 → (10+5)/20 - 1 = -25 %, nodes 2-3 → -50 %.
+        assert curves[1] == pytest.approx([0.0, -25.0, -50.0, -50.0], abs=1e-6)
         # neighbours no longer share a value: node 1 differs from node 2
         assert curves[1, 1] != pytest.approx(curves[1, 2])
 
     def test_endpoints_use_the_two_point_segment(self) -> None:
         positions = _positions([1.0, 0.5])
         curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0))
-        # Endpoint nodes only see one neighbour pair → 0.5*(0.5²-1)*100
-        assert curves[1, 0] == pytest.approx(-37.5, abs=1e-6)
+        # Endpoint nodes only see one neighbour pair → (0.5 - 1)*100
+        assert curves[1, 0] == pytest.approx(-50.0, abs=1e-6)
         assert curves[1, 0] == pytest.approx(curves[1, -1], abs=1e-6)
 
     def test_pixel_spacing_scales_out(self) -> None:
@@ -135,8 +142,14 @@ class TestGlobalCurveFromNodes:
         assert out == pytest.approx([0.0, -20.0])
 
     def test_matches_arc_length_definition_for_equispaced_nodes(self) -> None:
-        """Definitions (A) total arc length and (B) node mean must agree."""
-        positions = _positions([1.0, 0.95, 0.8])
+        """Definitions (A) total arc length and (B) node mean must agree.
+
+        With the clinical (Lagrange) definition the two agree exactly for a
+        *uniform* scaling — the case the consistency metric in the worker is
+        gated on (§7.2.3). A non-uniform deformation makes them differ by
+        design, and that difference is reported instead of hidden.
+        """
+        positions = _positions([1.0, 0.9, 0.8])
         node_curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0))
         definition_b = global_curve_from_node_curves(node_curves)
         ed_pts = positions[0]
@@ -144,8 +157,26 @@ class TestGlobalCurveFromNodes:
         manual_a = []
         for frame in positions:
             length = float(np.sum(np.linalg.norm(np.diff(frame, axis=0), axis=1)))
-            manual_a.append(0.5 * ((length / l0) ** 2 - 1.0) * 100.0)
+            manual_a.append((length / l0 - 1.0) * 100.0)
         assert definition_b == pytest.approx(manual_a, abs=1e-6)
+
+    def test_definitions_differ_for_a_local_deformation(self) -> None:
+        """A local bend moves the two definitions apart (non-zero consistency delta).
+
+        They are equal for a uniform scaling only; the worker reports the
+        difference as a self-consistency metric instead of hiding it.
+        """
+        ed = np.array([[0.0, 0.0], [10.0, 0.0], [20.0, 0.0], [30.0, 0.0], [40.0, 0.0]])
+        es = np.array([[0.0, 0.0], [10.0, 6.0], [20.0, 8.0], [30.0, 6.0], [40.0, 0.0]])
+        positions = np.stack([ed, es])
+        node_curves = compute_node_longitudinal_curves(positions, 0, (1.0, 1.0))
+        definition_b = float(global_curve_from_node_curves(node_curves)[1])
+        l0 = float(np.sum(np.linalg.norm(np.diff(ed, axis=0), axis=1)))
+        l1 = float(np.sum(np.linalg.norm(np.diff(es, axis=0), axis=1)))
+        definition_a = (l1 / l0 - 1.0) * 100.0
+        assert definition_a == pytest.approx(9.31, abs=0.05)
+        assert definition_b == pytest.approx(10.75, abs=0.05)
+        assert abs(definition_b - definition_a) > 1.0
 
 
 class TestPeakInWindow:

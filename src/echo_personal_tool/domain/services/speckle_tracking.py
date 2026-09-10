@@ -93,10 +93,17 @@ def block_match_single(
             continue
         k_level = ref_l[k_y0 : k_y0 + k_h, k_x0 : k_x0 + k_w].astype(np.float32)
 
-        x0 = max(0, int(cx_l) - search_r)
-        y0 = max(0, int(cy_l) - search_r)
-        x1 = min(w_l, int(cx_l) + search_r + 1)
-        y1 = min(h_l, int(cy_l) + search_r + 1)
+        # The search box has to be large enough to hold the *whole* kernel at
+        # the maximum offset, otherwise the usable range is silently
+        # ``search_radius − kernel_size/2``: with the default kernel (12) and
+        # search_radius (8) that left ±2 px per frame instead of ±8, and every
+        # faster-than-2 px/frame motion was clipped to the box edge (tracking
+        # under-measured the wall motion while NCC stayed moderate → GLS too
+        # small in absolute value at a "good" quality score).
+        x0 = max(0, int(cx_l) - search_r - half_l)
+        y0 = max(0, int(cy_l) - search_r - half_l)
+        x1 = min(w_l, int(cx_l) + search_r + half_l + 1)
+        y1 = min(h_l, int(cy_l) + search_r + half_l + 1)
 
         if x1 - x0 < k_w or y1 - y0 < k_h:
             continue

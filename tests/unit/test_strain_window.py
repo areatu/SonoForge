@@ -335,41 +335,49 @@ class TestBullseyeWidget:
         assert w._segment_strains == {}
         assert w._segment_quality == {}
 
-    def test_strain_to_color_negative(self):
+    # The palette follows the clinical GE/EchoPAC bull's-eye convention
+    # (plan §6.5): bright red = normal (|ε| ≥ 16 %), pale pink = borderline,
+    # blue = positive strain. The tests below replaced the older
+    # "red/white/blue" expectations of the pre-phase-3 widget.
+    def test_strain_to_color_normal_is_bright_red(self):
         w = self._make_widget()
         c = w._strain_to_color(-25.0)
-        assert c.red() == 255
-        assert c.green() == 0
-        assert c.blue() == 0
+        assert (c.red(), c.green(), c.blue()) == (214, 24, 24)
 
-    def test_strain_to_color_zero(self):
+    def test_strain_to_color_borderline_is_pale_pink(self):
         w = self._make_widget()
-        c = w._strain_to_color(0.0)
-        assert c.red() == 255
-        assert c.green() == 255
-        assert c.blue() == 255
+        c = w._strain_to_color(-3.0)
+        assert (c.red(), c.green(), c.blue()) == (252, 224, 228)
 
-    def test_strain_to_color_positive(self):
+    def test_strain_to_color_positive_is_blue(self):
         w = self._make_widget()
         c = w._strain_to_color(10.0)
-        assert c.red() == 0
-        assert c.green() == 0
-        assert c.blue() == 255
+        assert (c.red(), c.green(), c.blue()) == (66, 133, 244)
 
     def test_strain_to_color_clamped_high(self):
         w = self._make_widget()
-        c = w._strain_to_color(100.0)
-        assert c.blue() == 255
+        assert w._strain_to_color(100.0).blue() == 244
 
     def test_strain_to_color_clamped_low(self):
         w = self._make_widget()
-        c = w._strain_to_color(-100.0)
-        assert c.red() == 255
+        assert w._strain_to_color(-100.0).red() == 214
 
-    def test_segment_geometry_has_17_segments(self):
+    def test_ttp_palette_is_blue_to_red(self):
+        """Late activation must read red on the time-to-peak map (plan §6.5)."""
+        w = self._make_widget()
+        early = w._ttp_to_color(150.0)
+        late = w._ttp_to_color(500.0)
+        assert early.blue() > early.red()
+        assert late.red() > late.blue()
+
+    def test_segment_geometry_covers_the_aha_model(self):
+        from echo_personal_tool.domain.services.segment_map import view_segment_ids
         from echo_personal_tool.ui.strain_window import BullseyeWidget
 
-        assert len(BullseyeWidget.SEGMENT_GEOMETRY) == 17
+        geometry = BullseyeWidget.SEGMENT_GEOMETRY
+        assert len(geometry) == 18
+        for view in ("A4C", "A2C", "A3C"):
+            assert set(view_segment_ids(view)) <= set(geometry)
 
     def test_paint_event(self):
         from PySide6.QtGui import QImage, QPainter
