@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -694,9 +695,9 @@ class CinePanel(QWidget):
 class BullseyeWidget(QWidget):
     """Standard 18-segment AHA bull's-eye with colour-coded strain values.
 
-    Geometry follows the standard AHA layout (issue #C11): each ring is drawn
-    clockwise starting at the anterior wall (12 o'clock), so the segment ids
-    the worker assigns appear at their anatomical positions:
+    Geometry follows the standard AHA layout (issue #C11): the anterior wall is
+    centred on 12 o'clock and each ring is drawn clockwise from it, so the
+    segment ids the worker assigns appear at their anatomical positions:
 
     * basal 1, 6, 5, 4, 3, 2 — anterior, anterolateral, inferolateral,
       inferior, inferoseptal, anteroseptal;
@@ -749,6 +750,11 @@ class BullseyeWidget(QWidget):
         self._segment_quality: dict[int, float] = {}
         self._segment_ttp: dict[int, float] = {}
         self._ttp_mode = False
+        self._palette_index = 0
+        self._hovered_segment: int | None = None
+        self._segment_polygons: dict[int, object] = {}
+        self.setMouseTracking(True)
+        self.setToolTip(tr("strain.bullseye_tooltip_hint"))
 
     def paintEvent(self, event) -> None:
         """Custom paint using QPainter for filled segments."""
@@ -759,8 +765,35 @@ class BullseyeWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         w, h = self.width(), self.height()
-        cx, cy = w / 2, h / 2
-        r_max = min(w, h) * 0.42
+        # The colourbar sits in the right margin, so the map (and its wall
+        # labels) is laid out in the remaining area instead of centred in the
+        # full widget — otherwise the lateral labels run under the bar.
+        cb_total_w = self.COLORBAR_WIDTH + 46 if w >= 260 else 0
+        map_w = max(w - cb_total_w, 1)
+
+        # Wall labels are drawn around the rim, so the radius has to leave room
+        # for the widest of them (side labels sit 30° off the horizontal, hence
+        # the cos(30°) projection) and for a text line above/below.
+        label_font = QFont(painter.font())
+        label_font.setPointSize(9)
+        label_font.setBold(True)
+        metrics = QFontMetrics(label_font)
+        line_h = float(metrics.height())
+        side_w = max(
+            float(metrics.horizontalAdvance(tr(key)))
+            for key in ("strain.lbl_anterior", "strain.lbl_lateral", "strain.lbl_septal", "strain.lbl_inferior")
+        )
+        cos_side = float(np.cos(np.radians(30.0)))
+        r_max = max(
+            20.0,
+            min(
+                (map_w / 2.0 - side_w - 6.0) / cos_side,
+                h / 2.0 - line_h - 4.0,
+            ),
+        )
+        r_max *= 0.99  # keep the outermost ring stroke inside the widget
+
+        cx, cy = map_w / 2, h / 2
 
         # Ring radii
         r_apex = r_max * 0.15
@@ -780,6 +813,9 @@ class BullseyeWidget(QWidget):
             is_accepted = True
             if hasattr(self, "_qc_accepted_segments") and self._qc_accepted_segments is not None:
                 is_accepted = seg_id in self._qc_accepted_segments
+
+            quality = self._segment_quality.get(seg_id)
+            low_confidence = quality is not None and float(quality) < self.LOW_QUALITY_THRESHOLD
 
             if strain is None:
                 # No data for this segment: hatched/dark instead of a plausible
@@ -806,8 +842,12 @@ class BullseyeWidget(QWidget):
                 # Other rings: arc segments
                 n_segments = 6
                 angle_span = 360 / n_segments
-                # Offset: segments start from 12 o'clock, rotate -90 degrees
-                start_angle = -90 + angle_idx * angle_span
+                # Standard AHA orientation: segment 1 (basal anterior) is
+                # *centred* on 12 o'clock, so the ring starts half a segment
+                # counter-clockwise of it and runs clockwise (anterior →
+                # anterolateral → inferolateral → inferior → inferoseptal →
+                # anteroseptal).
+                start_angle = -90 - angle_span / 2 + angle_idx * angle_span
                 end_angle = start_angle + angle_span
 
                 inner_r = ring_radii[ring - 1]
@@ -826,6 +866,29 @@ class BullseyeWidget(QWidget):
             painter.setPen(QPen(QColor(80, 80, 80), 1))
             painter.setBrush(color)
             painter.drawPolygon(polygon)
+            self._segment_polygons[seg_id] = polygon
+
+            # State styling (plan §6.5): hatch = never measured, slash =
+            # excluded by QC, dashed outline = low confidence.
+            if strain is None:
+                self._paint_hatch(painter, polygon)
+            elif not is_accepted:
+                self._paint_slash(painter, polygon)
+            elif low_confidence:
+                painter.save()
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor(255, 235, 130), 1, Qt.PenStyle.DashLine))
+                painter.drawPolygon(polygon)
+                painter.restore()
+
+            if seg_id == self._hovered_segment:
+                # Hover highlight: a bright outline, so the segment under the
+                # cursor is identifiable without moving the mouse off the map.
+                painter.setPen(QPen(QColor(255, 255, 255), 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawPolygon(polygon)
+
+        self._paint_colorbar(painter, w, h, r_max, ttp_mode)
 
         # Draw segment labels and values
         painter.setPen(QPen(QColor(220, 220, 220), 1))
@@ -837,14 +900,16 @@ class BullseyeWidget(QWidget):
             # Calculate label position (centroid of segment)
             n_segments_ring = 6
             angle_span = 360 / n_segments_ring
-            mid_angle = np.radians(-90 + angle_idx * angle_span + angle_span / 2)
+            mid_angle = np.radians(-90 + angle_idx * angle_span)  # label the segment centre
 
             if ring == 0:
                 label_r = r_apex * 0.5
             else:
                 inner_r = ring_radii[ring - 1]
                 outer_r = ring_radii[ring]
-                label_r = (inner_r + outer_r) / 2
+                # Push the numbers towards the outer edge of their ring: at the
+                # exact centre of the apical ring they crowd the apex cap.
+                label_r = inner_r + 0.58 * (outer_r - inner_r)
 
             lx = cx + label_r * np.cos(mid_angle)
             ly = cy + label_r * np.sin(mid_angle)
@@ -854,9 +919,13 @@ class BullseyeWidget(QWidget):
             if strain is not None:
                 painter.setPen(QPen(QColor(255, 255, 255), 1))
                 text = f"{strain:.0f}" if ttp_mode else f"{strain:.1f}"
-                painter.drawText(QPointF(lx - 15, ly + 4), text)
+                # Centre the text on the segment: the old fixed −15 px offset
+                # cut the minus sign off the wider values.
+                half = painter.fontMetrics().horizontalAdvance(text) / 2.0
+                painter.drawText(QPointF(lx - half, ly + 4), text)
 
-        # Draw outer labels (segment names)
+        # Draw outer labels (wall names) at the centre angle of the wall they
+        # name — the same angle the segment fill uses.
         font.setPointSize(9)
         font.setBold(True)
         painter.setFont(font)
@@ -872,17 +941,31 @@ class BullseyeWidget(QWidget):
             5: tr("strain.lbl_septal"),
         }
         for i, label in outer_labels.items():
-            angle = np.radians(-90 + i * 60 + 30)
-            lx = cx + (r_basal + 18) * np.cos(angle)
-            ly = cy + (r_basal + 18) * np.sin(angle)
-            painter.drawText(QPointF(lx - 10, ly + 4), label)
+            angle = np.radians(-90 + i * 60)
+            cos_a, sin_a = np.cos(angle), np.sin(angle)
+            lx = cx + (r_basal + 8) * cos_a
+            ly = cy + (r_basal + 8) * sin_a
+            width = float(metrics.horizontalAdvance(label))
+            # Anchor the label on the side it points at, so neighbouring walls
+            # never collide and nothing runs under the colourbar.
+            if cos_a < -0.01:
+                x0 = lx - width
+            elif cos_a > 0.01:
+                x0 = lx
+            else:
+                x0 = lx - width / 2.0
+            x0 = min(max(x0, 2.0), max(map_w - width - 2.0, 2.0))
+            painter.drawText(QPointF(x0, ly + line_h / 4.0), label)
 
-        # Draw concentric circles
+        # Draw concentric circles. The brush is cleared first: the colourbar
+        # above paints with a QLinearGradient brush, and a filled ellipse here
+        # would repaint the whole disc with that ramp instead of the segments.
         painter.setPen(QPen(QColor(100, 100, 100), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         for r in ring_radii:
             painter.drawEllipse(QPointF(cx, cy), r, r)
 
-        # Draw radial lines
+        # Draw radial lines (segment boundaries: 12 o'clock ± 30°, every 60°)
         for angle_deg in range(0, 360, 60):
             rad = np.radians(angle_deg - 90)
             painter.drawLine(
@@ -897,9 +980,12 @@ class BullseyeWidget(QWidget):
 
         painter.end()
 
-    # GE/EchoPAC bull's-eye ramp: bright red = normal (|ε| > 16 %), then light
-    # red, pink, pale pink; positive strain is blue (user-chosen palette).
-    # (value_threshold, RGB) from the most negative end upwards.
+    # Colour ramps of the bull's-eye. ``(value_threshold, RGB)`` from the most
+    # negative end upwards; the first threshold the value satisfies wins.
+    #
+    # Default is the GE/EchoPAC ramp (plan §6.5, §11.1): bright red = normal
+    # (|ε| > 16 %), then light red (16–11), light pink (10–6), pale pink (5–0),
+    # blue = positive strain.
     STRAIN_RAMP: tuple[tuple[float, tuple[int, int, int]], ...] = (
         (-16.0, (214, 24, 24)),  # normal — bright red
         (-11.0, (238, 106, 106)),  # light red
@@ -907,6 +993,55 @@ class BullseyeWidget(QWidget):
         (0.0, (252, 224, 228)),  # pale pink — borderline/zero
         (float("inf"), (66, 133, 244)),  # any positive strain — blue
     )
+
+    # "Deformation+" — the same clinical thresholds on a single-hue ramp, for
+    # readers who need luminance to carry the magnitude (colour-blind safe).
+    DEFORMATION_PLUS_RAMP: tuple[tuple[float, tuple[int, int, int]], ...] = (
+        (-16.0, (140, 0, 0)),
+        (-11.0, (190, 40, 40)),
+        (-6.0, (225, 110, 90)),
+        (0.0, (245, 200, 180)),
+        (float("inf"), (66, 133, 244)),
+    )
+
+    # Rainbow — the classic CFD/segmental look (blue = normal shortening).
+    RAINBOW_RAMP: tuple[tuple[float, tuple[int, int, int]], ...] = (
+        (-16.0, (28, 60, 160)),
+        (-11.0, (40, 140, 200)),
+        (-6.0, (90, 200, 160)),
+        (0.0, (250, 220, 90)),
+        (float("inf"), (210, 60, 60)),
+    )
+
+    # Monochrome with a threshold: everything at or below −16 % is black-white
+    # "normal", everything above is progressively lighter — a binary read-out.
+    MONOCHROME_RAMP: tuple[tuple[float, tuple[int, int, int]], ...] = (
+        (-16.0, (250, 250, 250)),
+        (-11.0, (200, 200, 200)),
+        (-6.0, (150, 150, 150)),
+        (0.0, (95, 95, 95)),
+        (float("inf"), (40, 40, 40)),
+    )
+
+    # ``C`` cycles through these in order; the first one is the default.
+    PALETTES: tuple[tuple[str, tuple[tuple[float, tuple[int, int, int]], ...]], ...] = (
+        ("palette.ge", STRAIN_RAMP),
+        ("palette.deformation_plus", DEFORMATION_PLUS_RAMP),
+        ("palette.rainbow", RAINBOW_RAMP),
+        ("palette.monochrome", MONOCHROME_RAMP),
+    )
+
+    # Colourbar range of the strain map: what the plan calls the "−20…+20 %"
+    # scale with the blue end on top (GE reference).
+    COLORBAR_MIN = -20.0
+    COLORBAR_MAX = 20.0
+    COLORBAR_TICKS = (20.0, 0.0, -5.0, -10.0, -15.0, -20.0)
+    COLORBAR_WIDTH = 16
+
+    # Segments whose tracking quality (NCC) is below this are drawn with a
+    # dashed outline — "measured, but do not trust it" (plan §6.5). The value
+    # matches the low-quality kernel colouring of the cine panels.
+    LOW_QUALITY_THRESHOLD = 0.5
 
     # Time-to-peak ramp (blue → yellow → red): late activation is red, which is
     # the vendor convention for the TTP bull's-eye.
@@ -927,13 +1062,189 @@ class BullseyeWidget(QWidget):
                 return QColor(*color)
         return QColor(*ramp[-1][1])
 
+    @property
+    def palette_key(self) -> str:
+        """i18n key of the active bull's-eye palette."""
+        return self.PALETTES[self._palette_index][0]
+
+    def active_palette_key(self) -> str:
+        """Alias kept for callers that prefer an explicit method."""
+        return self.palette_key
+
+    def set_palette(self, name: str) -> None:
+        """Activate a palette by i18n key (unknown names are ignored)."""
+        for index, (key, _ramp) in enumerate(self.PALETTES):
+            if key == name:
+                self._palette_index = index
+                self.update()
+                return
+
+    def cycle_palette(self) -> str:
+        """Switch to the next palette (the ``C`` shortcut) and return its key."""
+        self._palette_index = (self._palette_index + 1) % len(self.PALETTES)
+        self.update()
+        return self.palette_key
+
     def _strain_to_color(self, strain: float) -> QColor:
-        """Map strain value to colour with the clinical bull's-eye palette."""
-        return self._ramp_color(float(strain), self.STRAIN_RAMP)
+        """Map strain value to colour with the active bull's-eye palette."""
+        return self._ramp_color(float(strain), self.PALETTES[self._palette_index][1])
 
     def _ttp_to_color(self, ttp_ms: float) -> QColor:
         """Map a time-to-peak value (ms from ED) to the TTP palette."""
         return self._ramp_color(float(ttp_ms), self.TTP_RAMP)
+
+    def _colorbar_range(self, ttp_mode: bool) -> tuple[float, float]:
+        """(low, high) of the colourbar for the active mode.
+
+        Strain always uses the clinical −20…+20 % scale (so maps of different
+        patients are comparable at a glance); the TTP map scales to the study,
+        rounded up to a round number so its ticks stay readable.
+        """
+        if not ttp_mode:
+            return self.COLORBAR_MIN, self.COLORBAR_MAX
+        peak = max(self._segment_ttp.values(), default=0.0)
+        step = 100.0 if peak > 300.0 else 50.0
+        return 0.0, max(float(np.ceil(max(float(peak), 400.0) / step) * step), 400.0)
+
+    def _colorbar_ticks(self, ttp_mode: bool) -> tuple[tuple[float, str], ...]:
+        """Tick values and labels of the colourbar for the active mode."""
+        lo, hi = self._colorbar_range(ttp_mode)
+        if ttp_mode:
+            return tuple(
+                (round(lo + (hi - lo) * f, 0), f"{round(lo + (hi - lo) * f)}") for f in (1.0, 0.75, 0.5, 0.25, 0.0)
+            )
+        return tuple((value, f"{value:.0f}") for value in self.COLORBAR_TICKS)
+
+    def _colorbar_ramp(self, ttp_mode: bool):
+        return self.TTP_RAMP if ttp_mode else self.PALETTES[self._palette_index][1]
+
+    def _paint_colorbar(self, painter, w: int, h: int, r_max: float, ttp_mode: bool) -> None:
+        """Vertical colour scale of the map: the plan requires it next to the map.
+
+        Range −20…+20 % for strain (blue end on top, as in the GE reference) and
+        0…max ms for the time-to-peak map; the ramp is the active palette's.
+        """
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QColor, QLinearGradient, QPen
+
+        bar_h = r_max * 1.7
+        bar_w = self.COLORBAR_WIDTH
+        bar_x = w - bar_w - 46
+        bar_y = (h - bar_h) / 2
+        map_right = w - (self.COLORBAR_WIDTH + 46) if w >= 260 else w
+        if bar_x < 0 or bar_x < map_right:  # not enough room next to the map
+            return
+
+        ramp = self._colorbar_ramp(ttp_mode)
+        lo, hi = self._colorbar_range(ttp_mode)
+        gradient = QLinearGradient(QPointF(bar_x, bar_y), QPointF(bar_x, bar_y + bar_h))
+        steps = 32
+        for step in range(steps + 1):
+            frac = step / steps  # 0 = top of the bar
+            value = hi - frac * (hi - lo)
+            gradient.setColorAt(frac, self._ramp_color(value, ramp))
+        painter.setPen(QPen(QColor(120, 120, 120), 1))
+        painter.setBrush(gradient)
+        painter.drawRect(QRectF(bar_x, bar_y, bar_w, bar_h))
+
+        font = painter.font()
+        font.setPointSize(7)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(200, 200, 200), 1))
+        for value, label in self._colorbar_ticks(ttp_mode):
+            frac = (hi - value) / (hi - lo) if hi > lo else 0.0
+            ty = bar_y + frac * bar_h
+            painter.drawLine(QPointF(bar_x + bar_w, ty), QPointF(bar_x + bar_w + 4, ty))
+            painter.drawText(QPointF(bar_x + bar_w + 6, ty + 3), label)
+        unit = tr("strain.unit_ms") if ttp_mode else "%"
+        painter.drawText(QPointF(bar_x - 2, bar_y - 6), unit)
+        painter.setBrush(Qt.BrushStyle.NoBrush)  # never leak the ramp brush
+
+    @staticmethod
+    def _clip_to_polygon(painter, polygon):
+        """Clip the painter to a segment polygon and return its bounding box."""
+        from PySide6.QtGui import QPainterPath
+
+        path = QPainterPath()
+        path.addPolygon(polygon)
+        painter.save()
+        painter.setClipPath(path)
+        return path, polygon.boundingRect()
+
+    @staticmethod
+    def _paint_hatch(painter, polygon) -> None:
+        """Diagonal hatch over a segment that was never measured (plan §6.5)."""
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QColor, QPen
+
+        _path, rect = BullseyeWidget._clip_to_polygon(painter, polygon)
+        painter.setPen(QPen(QColor(145, 145, 145), 1))
+        step = 6.0
+        x = float(rect.left()) - float(rect.height())
+        while x < float(rect.right()):
+            painter.drawLine(QPointF(x, rect.bottom()), QPointF(x + rect.height(), rect.top()))
+            x += step
+        painter.restore()
+
+    @staticmethod
+    def _paint_slash(painter, polygon) -> None:
+        """One bold slash across a segment excluded by QC (plan §6.5)."""
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QColor, QPen
+
+        _path, rect = BullseyeWidget._clip_to_polygon(painter, polygon)
+        painter.setPen(QPen(QColor(235, 235, 235), 2))
+        painter.drawLine(QPointF(rect.left(), rect.bottom()), QPointF(rect.right(), rect.top()))
+        painter.restore()
+
+    def segment_at(self, x: float, y: float) -> int | None:
+        """Segment id under a widget-space point, or None (hit test)."""
+        try:
+            from PySide6.QtCore import QPointF
+        except ImportError:  # pragma: no cover - Qt is always present in the UI
+            return None
+        point = QPointF(float(x), float(y))
+        for seg_id, polygon in self._segment_polygons.items():
+            if polygon.containsPoint(point, Qt.FillRule.WindingFill):
+                return int(seg_id)
+        return None
+
+    def segment_tooltip(self, seg_id: int) -> str:
+        """Human-readable description of one segment (value, quality, TTP)."""
+        values = self._segment_ttp if self._ttp_mode else self._segment_strains
+        value = values.get(seg_id)
+        if value is None:
+            return f"{tr('strain.segment')} {seg_id}: {tr('strain.no_data')}"
+        if self._ttp_mode:
+            text = f"{tr('strain.segment')} {seg_id}: {float(value):.0f} {tr('strain.unit_ms')}"
+        else:
+            text = f"{tr('strain.segment')} {seg_id}: {float(value):+.1f} %"
+        quality = self._segment_quality.get(seg_id)
+        if quality is not None:
+            text += f" · {tr('strain.quality')} {float(quality):.2f}"
+        ttp = self._segment_ttp.get(seg_id)
+        if ttp is not None and not self._ttp_mode:
+            text += f" · TTP {float(ttp):.0f} {tr('strain.unit_ms')}"
+        return text
+
+    def mouseMoveEvent(self, event) -> None:
+        """Track the cursor so the map can explain what is under it."""
+        pos = event.position() if hasattr(event, "position") else event.pos()
+        seg_id = self.segment_at(pos.x(), pos.y())
+        if seg_id != self._hovered_segment:
+            self._hovered_segment = seg_id
+            self.update()
+        if seg_id is not None:
+            self.setToolTip(self.segment_tooltip(seg_id))
+        else:
+            self.setToolTip(tr("strain.bullseye_tooltip_hint"))
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        if self._hovered_segment is not None:
+            self._hovered_segment = None
+            self.update()
+        super().leaveEvent(event)
 
     def update_data(
         self,
@@ -1050,6 +1361,7 @@ class ControlPanel(QWidget):
     qc_segment_toggled = Signal(int, bool)  # segment_id, accepted
     position_selected = Signal(str)  # "A4C" | "A2C" | "A3C"
     ttp_mode_toggled = Signal(bool)  # bull's-eye: strain vs time-to-peak
+    palette_changed = Signal(str)  # bull's-eye palette i18n key
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1155,6 +1467,18 @@ class ControlPanel(QWidget):
         self._cb_ttp.toggled.connect(self.ttp_mode_toggled.emit)
         position_layout.addWidget(self._pos_a3c)
         position_layout.addWidget(self._cb_ttp)
+
+        # Bull's-eye palette (plan §6.5): the GE ramp is the default, the combo
+        # makes the alternatives discoverable, ``C`` cycles them.
+        self._cb_palette = QComboBox()
+        for key, _ramp in BullseyeWidget.PALETTES:
+            self._cb_palette.addItem(tr(key), key)
+        self._cb_palette.setToolTip(tr("strain.palette_hint"))
+        self._cb_palette.currentIndexChanged.connect(
+            lambda _index: self.palette_changed.emit(str(self._cb_palette.currentData()))
+        )
+        position_layout.addWidget(QLabel(tr("strain.palette")))
+        position_layout.addWidget(self._cb_palette)
 
         group_position.setLayout(position_layout)
         layout.addWidget(group_position)
@@ -1295,6 +1619,11 @@ class StrainWindow(QMainWindow):
         self._control._btn_save.clicked.connect(self._save_json)
         self._control._btn_export_png.clicked.connect(self._export_png)
         self._control._btn_export_csv.clicked.connect(self._export_csv)
+        # Plan §6.5: ``C`` cycles the bull's-eye palette. The combo box stays in
+        # sync, so the keyboard and the panel never disagree about the palette.
+        palette_shortcut = QShortcut(QKeySequence(Qt.Key.Key_C), self)
+        palette_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        palette_shortcut.activated.connect(self._cycle_bullseye_palette)
         self._control._btn_close.clicked.connect(self.close)
         splitter.addWidget(self._control)
 
@@ -1330,6 +1659,7 @@ class StrainWindow(QMainWindow):
         self._panel_dao = CinePanel("DAO (A3C)")
         self._panel_bullseye = BullseyeWidget()
         self._control.ttp_mode_toggled.connect(self._panel_bullseye.set_ttp_mode)
+        self._control.palette_changed.connect(self._panel_bullseye.set_palette)
 
         contour_layout.addWidget(self._panel_a4c, 0, 0)
         contour_layout.addWidget(self._panel_a2c, 0, 1)
@@ -1774,6 +2104,17 @@ class StrainWindow(QMainWindow):
         panel = panel_map.get(view)
         if panel is not None:
             panel.setVisible(checked)
+
+    def _cycle_bullseye_palette(self) -> None:
+        """Switch the bull's-eye palette (``C``) and keep the combo in sync."""
+        key = self._panel_bullseye.cycle_palette()
+        combo = getattr(self._control, "_cb_palette", None)
+        if combo is not None:
+            index = combo.findData(key)
+            if index >= 0 and index != combo.currentIndex():
+                blocker = QSignalBlocker(combo)
+                combo.setCurrentIndex(index)
+                del blocker
 
     def _on_display_mode_changed(self, mode: str) -> None:
         """Switch between contour, curves, and edit mode."""

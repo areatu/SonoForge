@@ -132,6 +132,33 @@ class TestStrainWindow:
         qtbot.addWidget(window)
         assert window.windowTitle() != ""
 
+    def test_palette_combo_drives_the_bullseye(self, qtbot) -> None:
+        """The panel combo and the map must never disagree (plan §6.5)."""
+        from echo_personal_tool.ui.strain_window import BullseyeWidget, StrainWindow
+
+        window = StrainWindow()
+        qtbot.addWidget(window)
+        combo = window._control._cb_palette
+        assert combo.count() == len(BullseyeWidget.PALETTES)
+        combo.setCurrentIndex(1)
+        assert window._panel_bullseye.palette_key == str(combo.itemData(1))
+
+    def test_palette_shortcut_cycles_and_syncs_the_combo(self, qtbot) -> None:
+        from echo_personal_tool.ui.strain_window import BullseyeWidget, StrainWindow
+
+        window = StrainWindow()
+        qtbot.addWidget(window)
+        combo = window._control._cb_palette
+        start = window._panel_bullseye.palette_key
+        window._cycle_bullseye_palette()
+        first = window._panel_bullseye.palette_key
+        assert first != start
+        assert str(combo.currentData()) == first
+        for _ in range(len(BullseyeWidget.PALETTES) - 1):
+            window._cycle_bullseye_palette()
+        assert window._panel_bullseye.palette_key == start
+        assert str(combo.currentData()) == start
+
 
 # ── strain_curves_view ────────────────────────────────────────────
 
