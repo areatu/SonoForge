@@ -15,15 +15,13 @@
 
 **SonoForge** is a free, open-source desktop application for **echocardiography analysis**, **DICOM viewing**, **cardiac measurements**, and **clinical reporting**. Built for cardiologists, sonographers, and researchers who need a powerful, offline-capable tool that complies with **ASE (American Society of Echocardiography) guidelines**.
 
-[🇷🇺 Русская версия](README_RU.md)
-
-[Installation](#installation) · [Features](#features) · [Quick Start](#quick-start) · [Documentation](#documentation) · [Contributing](#contributing)
+[Русская версия](README_RU.md)
 
 </div>
 
 ---
 
-## 📦 Installation
+## Installation
 
 <details open>
 <summary><strong>Linux (.deb) — Recommended</strong></summary>
@@ -89,11 +87,11 @@ python -m echo_personal_tool
 
 ---
 
-## 🚀 Features
+## Features
 
 SonoForge provides a comprehensive set of tools for **echocardiographic assessment**, from basic measurements to advanced AI-powered analysis.
 
-### 📊 Cardiac Measurements
+### Cardiac Measurements
 
 | Category | Measurements | Description |
 |----------|--------------|-------------|
@@ -105,30 +103,31 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 | **Body Surface Area** | DuBois formula, indexed measurements | Automatic BSA indexing for all volume measurements |
 | **ECG-Based HR** | Heart rate from ECG waveform | Automatic ED/ES detection from ECG R-peaks |
 
-<div align="center">
+### Speckle Tracking Echocardiography (STE)
 
-![Linear Measurements](docs/screenshots/lv-linear-measurements.png)
+- **Global Longitudinal Strain (GLS)** — Automatic myocardial deformation analysis with bull's eye display
+- **Regional Strain Curves** — Per-segment strain-time curves with ED/ES synchronization
+- **Simpson-Aware ED/ES** — Automatic phase detection from contour data with sequential tracking
+- **Epicardial Contour Editing** — Manual refinement of epicardial boundaries for accurate ROI definition
+- **Global Motion Compensation** — Frame-to-frame motion correction for stable strain estimation
+- **Smoothing Overlay** — Temporal smoothing visualization with configurable parameters
 
-*B-Mode linear measurements with automatic LV mass and LVMI calculation*
-
-</div>
-
-### 🩸 Doppler & Vascular Measurements
+### Doppler and Vascular Measurements
 
 - **PSV/EDV Peak Measurement** — Manual peaks on spectral Doppler with automatic RI and S/D indices
 - **Vessel Stenosis** — By diameter (%D) and by area (%S) with guided multi-step workflows
-- **Cycle Averaging Without ECG** — PSV/EDV averaged over automatically detected cardiac cycles, with manual cycle selection (`←`/`→`, `Enter`)
+- **Cycle Averaging Without ECG** — PSV/EDV averaged over automatically detected cardiac cycles, with manual cycle selection
 - **Auto VTI** — Two-click region selection with direction detection, velocity spike filtering, and VTI trace extraction
-- **Study-Wide Measurements** — Cross-file persistence within a study (E peak on one file + e′ peaks on TDI file → mean E/e′ in the overlay)
+- **Study-Wide Measurements** — Cross-file persistence within a study (E peak on one file + e' peaks on TDI file -> mean E/e' in the overlay)
 
-### 🎚️ Doppler Auto-Calibration
+### Doppler Auto-Calibration
 
 - **Velocity Scale Detection** — Automatic calibration from ruler ticks with grid-line fallback
 - **Sweep Speed Calibration** — Samsung RS85 tick detector for time-axis calibration (linear tick-spacing model)
-- **Baseline Line Detection** — Visual baseline detector with line → DICOM tag → intensity priority chain
+- **Evidence-Fusion Baseline** — Multi-method baseline detection (visual line, DICOM tag, intensity) for Samsung and GE systems
 - **Manual 2-Click Wizard** — Calibration wizard with snapping to detected ticks; auto-detection never overrides manual calibration
 
-### 🤖 AI-Powered Segmentation
+### AI-Powered Segmentation
 
 SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentation:
 
@@ -136,19 +135,11 @@ SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentati
 - **LA Segmentation** — Left atrium cavity segmentation in end-systolic frames
 - **LA AI Assist** — AI-assisted LA contour refinement with optical flow boundary detection
 - **Mitral Annulus Detection** — AI-assisted landmark detection for mitral valve annulus
-- **Temporal Fusion** — Multi-frame temporal consistency using N±2 neighbor voting for stable contour propagation
+- **Temporal Fusion** — Multi-frame temporal consistency using N+/-2 neighbor voting for stable contour propagation
 - **Active Contour Refinement** — Edge-snapping and gradient-based contour refinement (press `R`)
 - **Open-Arc Simpson** — Manual contour initialization with mitral annulus points and apex
 
-<div align="center">
-
-![LA Segmentation](docs/screenshots/la-segmentation.png)
-
-*Left atrium segmentation with automatic volume calculation and BSA indexing*
-
-</div>
-
-### 🏥 DICOM Integration & PACS Connectivity
+### DICOM Integration and PACS Connectivity
 
 Full DICOM connectivity for seamless integration with hospital information systems:
 
@@ -163,7 +154,7 @@ Full DICOM connectivity for seamless integration with hospital information syste
 
 **Supported PACS:** Orthanc, DCM4CHEE, Conquest, and any DICOMweb/DIMSE compliant server.
 
-### 📈 Clinical Reporting & Export
+### Clinical Reporting and Export
 
 - **Study Summary** — Comprehensive report with all measurements, calculations, and indexed values
 - **PDF Export** — Clinical-grade PDF reports with patient information, measurements, and reference ranges
@@ -171,25 +162,21 @@ Full DICOM connectivity for seamless integration with hospital information syste
 - **Structured Reports** — DICOM SR-compatible output
 - **Constructor** — Custom reference browser editor with Excel import, PDF/HTML export
 
-### 📖 Reference Constructor — Personalized Clinical References
+### Reference Constructor
 
-SonoForge includes a **built-in Reference Constructor** that lets you build and maintain your own library of clinical reference materials directly within the application — no coding required.
+SonoForge includes a **built-in Reference Constructor** that lets you build and maintain your own library of clinical reference materials directly within the application.
 
 **What you can add:**
 - ASE guideline tables (normal values by age, sex, BSA)
 - Your own measurement nomograms and scoring systems
 - Protocol checklists and reporting templates
 - PDF documents, images, and structured data
-- Any structured reference material used in daily echocardiography practice
 
 **How it works:**
 - **Import** — Add references from Excel (.xlsx), YAML, or built-in ASE tables
 - **Edit** — Modify values, add new parameters, customize ranges inline
 - **Organize** — Group references by category (LV, RV, Valves, Pediatrics, etc.)
 - **Export** — Share your reference library as PDF or HTML for colleagues
-- **Sync** — Reference data is saved locally and persists across sessions
-
-The Constructor is designed for **clinicians, not developers** — a simple point-and-click interface for managing the reference data you rely on every day.
 
 **Web-Based Reference Viewer:**
 The structured reference browser opens as a fast web view (QWebEngine) with automatic fallback to a native Qt widget:
@@ -202,54 +189,48 @@ The structured reference browser opens as a fast web view (QWebEngine) with auto
 **Expanded Reference Library:**
 Beyond adult echocardiography, the built-in handbook now covers vascular ultrasound, thyroid, kidney, abdominal aorta, and lymph node parameters — including regurgitant fraction for MR/AR, pulmonary hypertension echo signs, 3D LVEF/SVi norms, and severity gradations (AS/AR/TR/PR).
 
-### 🎨 User Interface & Experience
+### User Interface and Experience
 
-- **Dark/Light Theme** — Clinical-friendly color schemes optimized for long reading sessions
+- **VS Code Dark Theme** — Default clinical-friendly color scheme optimized for long reading sessions; light and system themes also available
 - **Dual Viewer** — Side-by-side comparison of different phases or modalities
 - **Gallery** — Thumbnail-based study/series navigation
 - **Cine Playback** — Smooth DICOM cine loop with variable speed control
 - **Window/Level** — Interactive image contrast/brightness adjustment
 - **Crosshair** — Spatial reference across synchronized views
 - **Keyboard Shortcuts** — Full keyboard navigation for efficient workflow
-- **Internationalization (i18n)** — English and Russian language support with live switching
+- **Internationalization (i18n)** — English and Russian language support with live switching; English is the default language
 - **Micro-Animations** — Accordion chevrons, panel slides, tab crossfades, button feedback, and skeleton placeholders
-- **Polished Dialogs** — ✓/✗ icons on OK/Cancel buttons with tinted shortcut labels across all dialogs
 - **Smart Result Overlays** — Re-measuring the same parameter updates the existing value instead of duplicating it
+- **Configurable Layout** — Gallery position (left/right), status bar visibility, activity bar mode, dual viewer
 
-<div align="center">
-
-![M-Mode Measurements](docs/screenshots/mmode-measurements.png)
-
-*M-Mode with Teichholz calculations: IVSd, LVIDd, LVPWd, LVEF*
-
-</div>
-
-### ⚡ Performance & Reliability
+### Performance and Reliability
 
 - **Smooth Playback** — Forward-arc frame cache eviction eliminates frame skips on large RGB cines; short cines are fully preloaded for seamless looping
 - **Non-Blocking PACS** — Asynchronous study/series queries with retries and exponential backoff; cancellable download timeouts (60 s)
 - **Server Browser Filters** — Filter studies by date (1/3/30 days) with correct chronological sorting
+- **Window/Level Cache** — Cached LUT transforms skip redundant frame re-uploads for responsive contrast adjustment
+- **Shared DICOM Sessions** — One warm DICOM session per file across workers reduces memory overhead
 
 ---
 
-## 🎥 Demo
+## Demo
 
 [![SonoForge Demo](https://img.youtube.com/vi/vbcIFMZP-3o/maxresdefault.jpg)](https://youtu.be/vbcIFMZP-3o)
 
 ---
 
-## 🏃 Quick Start
+## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (current release: **v0.2.4**).
+> Check the installed version anytime: `sonoforge --version` (current release: **v0.3.0**).
 
 ### 1. Open DICOM Data
 
-- **Local Folder:** File → Open Folder → Select directory with DICOM/MP4/JPEG files
-- **PACS Server:** File → Load from Server → Select Orthanc/DICOMweb server
+- **Local Folder:** File -> Open Folder -> Select directory with DICOM/MP4/JPEG files
+- **PACS Server:** File -> Load from Server -> Select Orthanc/DICOMweb server
 
 ### 2. Navigate Studies
 
-- **Gallery** → Select series → Frame opens in main viewer
+- **Gallery** -> Select series -> Frame opens in main viewer
 - **Scroll** through cine frames using mouse wheel or keyboard arrows
 - **Play/Pause** with `Space` for automated cine loop
 
@@ -269,7 +250,7 @@ Beyond adult echocardiography, the built-in handbook now covers vascular ultraso
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -277,62 +258,65 @@ Beyond adult echocardiography, the built-in handbook now covers vascular ultraso
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |
-| [docs/superpowers/plans/](docs/superpowers/plans/) | Implementation plans and sprint backlogs |
-| [docs/bench/](docs/bench/) | Performance benchmarks |
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 SonoForge follows **Clean Architecture** principles with clear separation of concerns:
 
 ```
 src/echo_personal_tool/
 ├── domain/              # Business logic (no Qt dependency)
-│   ├── models/          # Data models: Contour, Doppler, MMode
-│   ├── calculations/    # Cardiac calculations: Simpson, Bernoulli, Teichholz
-│   └── services/        # Segmentation, tracking, reference data
+│   ├── models/          # Data models: Contour, Doppler, MMode, STE
+│   ├── calculations/    # Cardiac calculations: Simpson, Bernoulli, Teichholz, strain
+│   └── services/        # Segmentation, tracking, reference data, gold annotations
 ├── infrastructure/      # External integrations
 │   ├── dicom_*.py       # DICOM reading/writing (pydicom)
 │   ├── orthanc_*.py     # DICOMweb client (httpx)
 │   ├── dimse_*.py       # DIMSE client (pynetdicom)
 │   ├── onnx_engine.py   # ONNX inference engine
-│   └── server_settings.py # Server connection management
+│   ├── i18n.py          # Internationalization (ru/en)
+│   ├── user_preferences.py  # Persistent user settings (QSettings)
+│   └── server_settings.py   # Server connection management
 ├── application/         # Orchestration layer
 │   ├── app_controller.py # Main application controller
-│   ├── workers/         # Background workers (11 parallel tasks)
+│   ├── frame_cache.py   # Adaptive frame cache with memory budget
+│   ├── workers/         # Background workers (decode, load, download, ONNX, etc.)
 │   └── services/        # Application services
 ├── presentation/        # GUI layer (PySide6/Qt)
-│   ├── main_window.py   # Main application window
-│   ├── viewer_widget.py # DICOM image viewer
-│   ├── doppler_widget.py # Spectral Doppler display
+│   ├── main_window.py   # Main application window with configurable layout
+│   ├── viewer_widget.py # DICOM image viewer with overlays
+│   ├── doppler_overlay.py # Spectral Doppler tools
 │   ├── web_reference/   # Web-based reference viewer (QWebEngineView)
+│   ├── ste_results_dialog.py # Speckle tracking results
 │   └── ...              # 30+ UI components
 ├── constructor/         # Reference browser editor
+├── ui/                  # Strain window and curves view
 └── resources/           # Fonts, icons, ASE reference data
 ```
 
 ---
 
-## 🛡️ Security & Privacy
+## Security and Privacy
 
 > **Your data stays local.** SonoForge processes all DICOM data in memory — no PHI (Protected Health Information) is written to disk, no cloud uploads, no telemetry, no analytics.
 
 ### Security Features
 
-- ✅ **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
-- ✅ **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 §6.1
-- ✅ **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
-- ✅ **Network Timeouts** — Configurable timeouts for DICOMweb/DIMSE connections
-- ✅ **PHI Sanitization** — Patient identifiers truncated in log files
-- ✅ **In-Memory Processing** — All DICOM data processed in RAM, no temp files
-- ✅ **No Cloud Dependencies** — Works fully offline after installation
+- **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
+- **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 section 6.1
+- **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
+- **Network Timeouts** — Configurable timeouts for DICOMweb/DIMSE connections
+- **PHI Sanitization** — Patient identifiers truncated in log files
+- **In-Memory Processing** — All DICOM data processed in RAM, no temp files
+- **No Cloud Dependencies** — Works fully offline after installation
 
 See [SECURITY.md](SECURITY.md) for detailed security documentation.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions from the medical imaging and cardiology community! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
@@ -356,15 +340,15 @@ ruff format src tests
 
 ### Areas for Contribution
 
-- 🩺 New measurement tools (3D echo, valve quantification, etc.)
-- 🤖 Additional AI models (RV segmentation, valve detection)
-- 🌐 Localization (i18n) for different languages
-- 📊 Additional reference databases
-- 🐛 Bug fixes and performance improvements
+- New measurement tools (3D echo, valve quantification, etc.)
+- Additional AI models (RV segmentation, valve detection)
+- Localization (i18n) for different languages
+- Additional reference databases
+- Bug fixes and performance improvements
 
 ---
 
-## 📜 Citation
+## Citation
 
 If you use SonoForge in your research or clinical practice, please cite:
 
@@ -381,13 +365,13 @@ If you use SonoForge in your research or clinical practice, please cite:
 
 ---
 
-## 📄 License
+## License
 
 [GPL-3.0](LICENSE) — Free software, open source. You are free to use, modify, and distribute this software.
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This software is intended for research, education, and informational purposes only.
 It is NOT intended for clinical diagnosis, treatment decisions, or patient care.
@@ -398,7 +382,7 @@ This software has not been reviewed or approved by the FDA, CE, or any regulator
 
 <div align="center">
 
-**Built with ❤️ for cardiologists, sonographers, and researchers**
+**Built for cardiologists, sonographers, and researchers**
 
 [Report Bug](https://github.com/areatu/SonoForge/issues) · [Request Feature](https://github.com/areatu/SonoForge/issues) · [Discussions](https://github.com/areatu/SonoForge/discussions)
 
