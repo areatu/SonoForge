@@ -60,9 +60,9 @@ def test_main_window_measurement_panel_updates_after_contour(qtbot, synthetic_di
     controller.on_contours_changed([ed, es])
 
     text = window._viewer.results_overlay_text()
-    assert "КДО ЛЖ 4C" in text
-    assert "КСО ЛЖ 4C" in text
-    assert "ФВ ЛЖ" in text
+    assert "LV EDV 4C" in text
+    assert "LV ESV 4C" in text
+    assert "LVEF" in text
 
 
 def test_main_window_measurement_panel_updates_after_linear_caliper(qtbot, synthetic_dicom_path) -> None:
@@ -86,7 +86,7 @@ def test_main_window_measurement_panel_updates_after_linear_caliper(qtbot, synth
     )
 
     text = window._viewer.results_overlay_text()
-    assert "КДР ЛЖ" in text and "50.0" in text
+    assert "LVIDd" in text and "50.0" in text
 
 
 @pytest.fixture(scope="session", autouse=True)

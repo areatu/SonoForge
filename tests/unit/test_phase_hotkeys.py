@@ -57,11 +57,11 @@ def test_main_window_l_and_escape_toggle_linear_caliper(qtbot, synthetic_dicom_p
     qtbot.keyClick(window, Qt.Key.Key_L)
     assert window._viewer.is_linear_caliper_active
     assert window._viewer._measurement_label.text().startswith("Dist1:")
-    assert "1-й клик" in window._viewer._measurement_label.text()
+    assert "1st click" in window._viewer._measurement_label.text()
 
     qtbot.keyClick(window, Qt.Key.Key_Tab)
     assert window._viewer._measurement_label.text().startswith("LVEDD:")
-    assert "1-й клик" in window._viewer._measurement_label.text()
+    assert "1st click" in window._viewer._measurement_label.text()
 
     qtbot.keyClick(window, Qt.Key.Key_Escape)
     assert not window._viewer.is_linear_caliper_active

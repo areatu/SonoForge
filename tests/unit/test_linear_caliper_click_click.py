@@ -124,7 +124,7 @@ def test_caliper_button_starts_click_click_mode(qtbot, synthetic_dicom_path) -> 
     window._on_caliper_requested()
 
     assert window._viewer.is_linear_caliper_active
-    assert "1-й клик" in window._viewer._measurement_label.text()
+    assert "1st click" in window._viewer._measurement_label.text()
 
 
 def test_main_window_panel_updates_after_click_click_caliper(qtbot, synthetic_dicom_path) -> None:
@@ -145,7 +145,7 @@ def test_main_window_panel_updates_after_click_click_caliper(qtbot, synthetic_di
     _place_caliper(window._viewer, 10.0, 50.0)
 
     text = window._viewer.results_overlay_text()
-    assert "КДР ЛЖ" in text and "20.0" in text
+    assert "LVIDd" in text and "20.0" in text
 
 
 @pytest.fixture(scope="session", autouse=True)
