@@ -222,6 +222,9 @@ def main() -> int:
         pass
     ensure_bundled_fonts_loaded()
     preferences = load_user_preferences()
+    from echo_personal_tool.infrastructure.i18n import set_language
+
+    set_language(preferences.language)
     app.setFont(ui_font(point_size=preferences.ui_font_size))
     window = MainWindow(user_preferences=preferences)
     if preferences.startup_mode == "last_folder" and preferences.last_opened_folder:

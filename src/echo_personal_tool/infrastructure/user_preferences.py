@@ -97,8 +97,8 @@ class UserPreferences:
     pdf_font_size: int = DEFAULT_PDF_FONT_SIZE
     startup_mode: str = "empty"
     last_opened_folder: str = ""
-    theme_mode: str = "dark"
-    language: str = "ru"
+    theme_mode: str = "vscode_dark"
+    language: str = "en"
     auto_play: bool = False
     layout_state_json: str = ""
     reduce_motion: bool = False
@@ -295,9 +295,9 @@ def load_user_preferences() -> UserPreferences:
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
         theme_mode=_read_choice(
-            store.value("theme_mode"), "dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
+            store.value("theme_mode"), "vscode_dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
         ),
-        language=_read_choice(store.value("language"), "ru", {"ru", "en"}),
+        language=_read_choice(store.value("language"), "en", {"ru", "en"}),
         auto_play=_read_bool(store.value("auto_play"), False),
         layout_state_json=str(store.value("layout_state_json", "")),
         reduce_motion=_read_bool(store.value("reduce_motion"), False),

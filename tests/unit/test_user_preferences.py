@@ -128,7 +128,7 @@ class TestDefaultUserPreferences:
         assert prefs.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE
         assert prefs.playback_speed_multiplier == up_mod.DEFAULT_PLAYBACK_SPEED
         assert prefs.magnetic_snap_enabled is True
-        assert prefs.language == "ru"
+        assert prefs.language == "en"
 
 
 class TestInterestingDicomTagList:
@@ -167,7 +167,7 @@ class TestSaveAndLoadPreferences:
     def test_load_defaults_when_empty(self, isolated_prefs):
         loaded = load_user_preferences()
         assert loaded.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE
-        assert loaded.language == "ru"
+        assert loaded.language == "en"
 
     def test_clamping_on_load(self, isolated_prefs):
         store = QSettings("sonoforge-test", "prefs-test")
@@ -188,7 +188,7 @@ class TestSaveAndLoadPreferences:
         store.setValue("language", "de")
         store.sync()
         loaded = load_user_preferences()
-        assert loaded.language == "ru"
+        assert loaded.language == "en"
 
     def test_overlay_custom_position(self, isolated_prefs):
         store = QSettings("sonoforge-test", "prefs-test")
@@ -228,7 +228,7 @@ class TestUserPreferencesDataclass:
         assert prefs.results_overlay_opacity == 0.70
         assert prefs.caliper_line_width == 2.0
         assert prefs.show_crosshair is True
-        assert prefs.theme_mode == "dark"
+        assert prefs.theme_mode == "vscode_dark"
         assert prefs.startup_mode == "empty"
         assert prefs.reduce_motion is False
         assert prefs.gold_annotation_enabled is False

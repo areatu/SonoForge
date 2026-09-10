@@ -72,7 +72,7 @@ class TestPreferencesWorkflow:
         prefs2 = replace(prefs, language="en", theme_mode="light")
         assert prefs2.language == "en"
         assert prefs2.theme_mode == "light"
-        assert prefs.language == "ru"  # original unchanged
+        assert prefs.language == "en"  # original unchanged
 
     def test_preferences_dialog_standalone(self, qtbot, qapp) -> None:
         """User preferences dialog can be created without crashing."""
