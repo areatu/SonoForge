@@ -84,6 +84,10 @@ class ControlsTab(QWidget):
 
     magnetic_snap_changed = Signal(bool)
     despeckle_changed = Signal(bool)
+    static_noise_strength_changed = Signal(int)
+    static_noise_sensitivity_changed = Signal(int)
+    static_noise_min_brightness_changed = Signal(int)
+    static_noise_overlay_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -105,6 +109,37 @@ class ControlsTab(QWidget):
         self._despeckle_check.setToolTip("Remove color from Doppler, ECG overlays — display in grayscale")
         self._despeckle_check.toggled.connect(self.despeckle_changed.emit)
 
+        # --- Static noise filter controls ---
+        from PySide6.QtWidgets import QGroupBox
+
+        self._noise_group = QGroupBox("Static Noise Filter")
+        self._noise_group.setToolTip("Suppress stationary sensor noise from ultrasound cine loops")
+
+        self._noise_strength_slider = TopLabeledSlider("Strength", minimum=0, maximum=100, value=0)
+        self._noise_strength_slider.slider().setToolTip("Filter strength: 0 = off, 100 = maximum suppression")
+        self._noise_strength_slider.slider().valueChanged.connect(self.static_noise_strength_changed.emit)
+
+        self._noise_sensitivity_slider = TopLabeledSlider("Sensitivity", minimum=1, maximum=10, value=3)
+        self._noise_sensitivity_slider.slider().setToolTip("MAD threshold: lower = more pixels detected as noise")
+        self._noise_sensitivity_slider.slider().valueChanged.connect(self.static_noise_sensitivity_changed.emit)
+
+        self._noise_brightness_slider = TopLabeledSlider("Min brightness", minimum=0, maximum=255, value=60)
+        self._noise_brightness_slider.slider().setToolTip("Minimum median brightness to consider as noise")
+        self._noise_brightness_slider.slider().valueChanged.connect(self.static_noise_min_brightness_changed.emit)
+
+        self._noise_overlay_check = QCheckBox("Show noise mask")
+        self._noise_overlay_check.setChecked(False)
+        self._noise_overlay_check.setToolTip("Overlay red mask showing detected static noise pixels")
+        self._noise_overlay_check.toggled.connect(self.static_noise_overlay_changed.emit)
+
+        noise_layout = QVBoxLayout(self._noise_group)
+        noise_layout.setContentsMargins(4, 8, 4, 8)
+        noise_layout.setSpacing(6)
+        noise_layout.addWidget(self._noise_strength_slider)
+        noise_layout.addWidget(self._noise_sensitivity_slider)
+        noise_layout.addWidget(self._noise_brightness_slider)
+        noise_layout.addWidget(self._noise_overlay_check)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 12, 8, 8)
         layout.setSpacing(10)
@@ -113,6 +148,7 @@ class ControlsTab(QWidget):
         layout.addWidget(self.dr_slider)
         layout.addWidget(self._magnetic_snap_check)
         layout.addWidget(self._despeckle_check)
+        layout.addWidget(self._noise_group)
         layout.addStretch(1)
 
 
@@ -239,6 +275,10 @@ class ToolPanel(QWidget):
     results_requested = Signal()
     magnetic_snap_changed = Signal(bool)
     despeckle_changed = Signal(bool)
+    static_noise_strength_changed = Signal(int)
+    static_noise_sensitivity_changed = Signal(int)
+    static_noise_min_brightness_changed = Signal(int)
+    static_noise_overlay_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -263,6 +303,10 @@ class ToolPanel(QWidget):
         self.measure.results_requested.connect(self.results_requested.emit)
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
         self.controls.despeckle_changed.connect(self.despeckle_changed.emit)
+        self.controls.static_noise_strength_changed.connect(self.static_noise_strength_changed.emit)
+        self.controls.static_noise_sensitivity_changed.connect(self.static_noise_sensitivity_changed.emit)
+        self.controls.static_noise_min_brightness_changed.connect(self.static_noise_min_brightness_changed.emit)
+        self.controls.static_noise_overlay_changed.connect(self.static_noise_overlay_changed.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

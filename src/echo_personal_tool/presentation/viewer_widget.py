@@ -880,6 +880,16 @@ class ViewerWidget(QWidget):
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
         self._despeckle_enabled = False
+        # Static noise filter (display-only)
+        from echo_personal_tool.infrastructure.static_noise_filter import (
+            StaticNoiseCalibration,
+            StaticNoiseFilterParams,
+        )
+
+        self._static_noise_cal = StaticNoiseCalibration()
+        self._static_noise_params = StaticNoiseFilterParams()
+        self._static_noise_overlay_item: pg.ImageItem | None = None
+        self._static_noise_overlay_visible = False
         self._results_overlay_custom_position = False
         self._results_overlay_cleared = False
         self._results_overlay_position_just_restored = False
@@ -1685,6 +1695,14 @@ class ViewerWidget(QWidget):
 
             self._current_frame = despeckle_frame(self._current_frame)
 
+        # Apply static noise filter (display-only, before windowing)
+        if self._static_noise_params.strength > 0 and self._static_noise_cal.is_valid:
+            from echo_personal_tool.infrastructure.static_noise_filter import apply_static_filter
+
+            self._current_frame = apply_static_filter(
+                self._current_frame, self._static_noise_cal, self._static_noise_params
+            )
+
         if self._is_color_frame:
             self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
             if self._despeckle_enabled:
@@ -1867,6 +1885,13 @@ class ViewerWidget(QWidget):
                 from echo_personal_tool.infrastructure.pixel_utils import despeckle_frame
 
                 self._current_frame = despeckle_frame(self._current_frame)
+            # Apply static noise filter (display-only, before windowing)
+            if self._static_noise_params.strength > 0 and self._static_noise_cal.is_valid:
+                from echo_personal_tool.infrastructure.static_noise_filter import apply_static_filter
+
+                self._current_frame = apply_static_filter(
+                    self._current_frame, self._static_noise_cal, self._static_noise_params
+                )
             if self._window_level_enabled:
                 # W/L path: _update_levels() will call setImage with LUT result.
                 # Skip redundant 1st setImage to avoid double GPU texture upload.
@@ -7665,6 +7690,84 @@ class ViewerWidget(QWidget):
 
     def despeckle_enabled(self) -> bool:
         return self._despeckle_enabled
+
+    # --- Static noise filter management ---
+
+    def set_static_noise_calibration(self, cal: object) -> None:
+        """Set pre-computed temporal calibration for static noise filter."""
+        from echo_personal_tool.infrastructure.static_noise_filter import StaticNoiseCalibration
+
+        if isinstance(cal, StaticNoiseCalibration):
+            self._static_noise_cal = cal
+
+    def set_static_noise_strength(self, value: int) -> None:
+        """Set filter strength (0-100). 0 = off."""
+        self._static_noise_params.strength = int(np.clip(value, 0, 100))
+        if self._current_frame is not None:
+            self.show_frame(self._original_frame_for_refilter())
+
+    def set_static_noise_sensitivity(self, value: int) -> None:
+        """Set MAD sensitivity threshold (1-10). Lower = more aggressive."""
+        self._static_noise_params.sensitivity = int(np.clip(value, 1, 10))
+        self._static_noise_cal.invalidate()
+
+    def set_static_noise_min_brightness(self, value: int) -> None:
+        """Set minimum brightness threshold for noise detection."""
+        self._static_noise_params.min_brightness = int(np.clip(value, 0, 255))
+        self._static_noise_cal.invalidate()
+
+    def set_static_noise_overlay_visible(self, visible: bool) -> None:
+        """Toggle red overlay showing suppressed pixels."""
+        self._static_noise_overlay_visible = bool(visible)
+        self._update_static_noise_overlay()
+
+    def static_noise_params(self) -> object:
+        return self._static_noise_params
+
+    def _original_frame_for_refilter(self) -> np.ndarray:
+        """Retrieve the unfiltered current frame from cache for re-filtering."""
+        if self._current_state is not None and self._current_state.instance is not None:
+            state = self._current_state
+            idx = state.current_frame_index if hasattr(state, "current_frame_index") else 0
+            try:
+                from echo_personal_tool.application.frame_cache import FrameCache
+
+                cache = getattr(self, "_frame_cache_ref", None)
+                if cache is not None and cache.is_loaded(idx):
+                    return cache.get(idx)
+            except Exception:
+                pass
+        return self._current_frame if self._current_frame is not None else np.zeros((1, 1), dtype=np.uint8)
+
+    def _update_static_noise_overlay(self) -> None:
+        """Show or hide the red noise overlay on the view."""
+        from echo_personal_tool.infrastructure.static_noise_filter import render_noise_overlay
+
+        if not self._static_noise_overlay_visible or self._static_noise_params.strength <= 0:
+            if self._static_noise_overlay_item is not None:
+                self._static_noise_overlay_item.setVisible(False)
+            return
+
+        if self._current_frame is None:
+            return
+
+        overlay = render_noise_overlay(
+            self._current_frame.shape[:2], self._static_noise_cal, self._static_noise_params
+        )
+        if overlay is None:
+            if self._static_noise_overlay_item is not None:
+                self._static_noise_overlay_item.setVisible(False)
+            return
+
+        if self._static_noise_overlay_item is None:
+            self._static_noise_overlay_item = pg.ImageItem(axisOrder="row-major")
+            self._static_noise_overlay_item.setZValue(10)
+            self._view.addItem(self._static_noise_overlay_item)
+
+        self._static_noise_overlay_item.setImage(overlay, autoLevels=False)
+        self._static_noise_overlay_item.setVisible(True)
+        h, w = self._current_frame.shape[:2]
+        self._static_noise_overlay_item.setRect(0, 0, w, h)
 
     def _grayscale_frame_for_edges(self) -> np.ndarray | None:
         if self._current_frame is None:
