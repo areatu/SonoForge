@@ -6,6 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorMap
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.domain.models.speckle import (
@@ -42,6 +43,28 @@ class SpeckleOverlay(QWidget):
         self._displacement_arrows: list[pg.PlotDataItem] = []
         self._strain_items: list[pg.PlotDataItem] = []
         self._phase_contour_items: list[pg.PlotDataItem] = []
+        self._verification_items: list[pg.PlotDataItem] = []
+        # Which parts of the drawn contour the tracker could confirm by matching
+        # there and back (clinical review Q6). EACVI/ASE ask for a display where
+        # the reader can visually check tracking quality against the image loop,
+        # and the round trip is the only truth-free evidence available.
+        self._verification_rejected_scatter = pg.ScatterPlotItem(
+            size=13, symbol="x", pen=pg.mkPen("#ff1744", width=2.0), brush=None
+        )
+        self._verification_rejected_scatter.setZValue(14)
+        self._plot.addItem(self._verification_rejected_scatter)
+        self._verification_unverified_scatter = pg.ScatterPlotItem(
+            size=13, symbol="o", pen=pg.mkPen("#ffb300", width=1.6), brush=None
+        )
+        self._verification_unverified_scatter.setZValue(13)
+        self._plot.addItem(self._verification_unverified_scatter)
+        self._verification_legend = pg.TextItem(anchor=(0, 1), color="#ffd54f")
+        legend_font = QFont()
+        legend_font.setPointSize(9)
+        self._verification_legend.setFont(legend_font)
+        self._verification_legend.setZValue(15)
+        self._plot.addItem(self._verification_legend)
+        self._verification_legend.hide()
 
         self._kernel_scatter.sigClicked.connect(self._on_kernel_clicked)
 
@@ -259,6 +282,46 @@ class SpeckleOverlay(QWidget):
             self._plot.addItem(item)
             self._strain_items.append(item)
 
+    def show_verification_marks(
+        self,
+        positions: np.ndarray | None,
+        rejected: np.ndarray | None,
+        unverified: np.ndarray | None,
+        legend: str = "",
+    ) -> None:
+        """Mark the nodes the round trip could not confirm (clinical review Q6).
+
+        ``rejected`` / ``unverified`` are boolean masks over the kernels: the
+        patch at the drawn position did not match back onto the contour the
+        operator drew at end diastole, or the backward match produced no verdict
+        at all. Confirmed nodes stay unmarked — the marks are meant to draw the
+        eye exactly where the number on screen is not backed by the image.
+        """
+        if positions is None or rejected is None or unverified is None or len(positions) == 0:
+            self._verification_rejected_scatter.setData([], [])
+            self._verification_unverified_scatter.setData([], [])
+            self._verification_legend.hide()
+            return
+
+        x = np.asarray(positions[:, 0], dtype=np.float64)
+        y = np.asarray(positions[:, 1], dtype=np.float64)
+        finite = np.isfinite(x) & np.isfinite(y)
+        rejected = np.asarray(rejected, dtype=bool) & finite
+        unverified = np.asarray(unverified, dtype=bool) & finite
+        self._verification_rejected_scatter.setData(x[rejected], y[rejected])
+        self._verification_unverified_scatter.setData(x[unverified], y[unverified])
+
+        if legend and (rejected.any() or unverified.any()):
+            self._verification_legend.setText(legend, color="#ffd54f")
+            view_range = self._plot.viewRange()
+            self._verification_legend.setPos(
+                float(view_range[0][0]),
+                float(view_range[1][0]) + 0.06 * float(view_range[1][1] - view_range[1][0]),
+            )
+            self._verification_legend.show()
+        else:
+            self._verification_legend.hide()
+
     def show_phase_contours(
         self,
         ed_contour: np.ndarray | None,
@@ -291,6 +354,9 @@ class SpeckleOverlay(QWidget):
         """Remove all overlay items."""
         self._zone_item.setData([], [])
         self._endo_fill.setData([], [])
+        self._verification_rejected_scatter.setData([], [])
+        self._verification_unverified_scatter.setData([], [])
+        self._verification_legend.hide()
         self._kernel_scatter.setData([], [])
         for item in self._displacement_arrows:
             self._plot.removeItem(item)

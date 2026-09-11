@@ -204,6 +204,15 @@ class StrainResult:
     # clip is not measurable no matter how high the NCC is.
     qc_noise_to_signal: float = 0.0
     qc_noise_mm: float = 0.0
+    # EACVI/ASE definitions (Voigt 2015) require a strain number to travel with
+    # what it was measured on and how it was processed: the spatial extent of the
+    # sampling, whether LV translation was compensated, and which regularization
+    # was applied. Without them two "GLS" values are not comparable.
+    sampling_kernel_mm: float = 0.0
+    sampling_node_spacing_mm: float = 0.0
+    regularization: str = ""
+    translation_compensation_applied: bool = False
+    frame_rate_hz: float = 0.0
     # The wall is not fully inside the sector (clinical review Q4): share of
     # node-frames without visible tissue, the nodes dropped from the strain and
     # the AHA segments they belonged to.
@@ -214,6 +223,10 @@ class StrainResult:
     # forward-backward closure error in pixels for every analysed frame (NaN
     # where no verdict exists) and the window summary the QC report uses.
     closure_all_frames: np.ndarray | None = None
+    # The threshold the round trip was judged by (pixels). Stored so the overlay
+    # marks exactly the node-frames the report counted as unconfirmed, instead of
+    # re-deriving the rule and drifting away from it.
+    closure_gate_px: float = 0.0
     qc_closure_median_mm: float = 0.0
     qc_closure_p95_mm: float = 0.0
     qc_rejected_fraction: float = 0.0

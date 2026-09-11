@@ -2345,6 +2345,20 @@ class StrainWindow(QMainWindow):
             writer.writerow(["# ESS definition", analysis.definition_ess])
             writer.writerow(["# TTP definition", analysis.definition_ttp])
             writer.writerow(["# Layer", analysis.layer])
+            writer.writerow(
+                [
+                    "# ROI sampling (kernel / node spacing, mm)",
+                    f"{analysis.sampling_kernel_mm:.2f} / {analysis.sampling_node_spacing_mm:.2f}",
+                ]
+            )
+            writer.writerow(["# Regularization", analysis.regularization])
+            writer.writerow(
+                [
+                    "# LV translation compensation",
+                    "on" if analysis.translation_compensation else "off",
+                ]
+            )
+            writer.writerow(["# Frame rate (Hz)", f"{analysis.frame_rate_hz:.0f}"])
             writer.writerow(["# View", analysis.view])
             writer.writerow(["# ED frame", analysis.ed_index])
             writer.writerow(["# ES frame", analysis.es_index])
@@ -2366,6 +2380,8 @@ class StrainWindow(QMainWindow):
             if closure_median is not None and closure_p95 is not None:
                 writer.writerow(["# Round-trip closure median/p95 (mm)", f"{closure_median:.2f}/{closure_p95:.2f}"])
             writer.writerow(["# GLS", "" if analysis.gls is None else f"{analysis.gls:.2f}"])
+            writer.writerow(["# ESS", "" if analysis.ess is None else f"{analysis.ess:.2f}"])
+            writer.writerow(["# Peak strain", "" if analysis.peak is None else f"{analysis.peak:.2f}"])
             writer.writerow(
                 ["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"]
             )

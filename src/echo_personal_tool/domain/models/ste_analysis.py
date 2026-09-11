@@ -37,6 +37,12 @@ DEFINITION_GLS = "GLS = peak of the global longitudinal strain curve over one ca
 DEFINITION_ESS = "ESS = longitudinal strain at aortic valve closure (AVC)"
 DEFINITION_TTP = "TTP = time from end-diastole to the segment strain peak"
 DEFINITION_LAYER = "endocardial layer (kernels on the endocardial contour)"
+#: Voigt 2015 requires the report to declare the sampling extent, the handling of
+#: LV translation and the regularization — otherwise "GLS" is not comparable.
+DEFINITION_COMPARABILITY = (
+    "comparable only together with the declared ROI sampling extent, "
+    "LV translation compensation and regularization settings"
+)
 
 ANALYSIS_SCHEMA_VERSION = 2
 
@@ -60,6 +66,15 @@ class StrainAnalysis:
     definition_ess: str = DEFINITION_ESS
     definition_ttp: str = DEFINITION_TTP
     layer: str = DEFINITION_LAYER
+    definition_comparability: str = DEFINITION_COMPARABILITY
+    # Spatial extent of the sampling (mm) and the processing that shaped the
+    # number: kernel footprint, node spacing, regularization text, whether LV
+    # translation was compensated, and the acquisition frame rate.
+    sampling_kernel_mm: float = 0.0
+    sampling_node_spacing_mm: float = 0.0
+    regularization: str = ""
+    translation_compensation: bool = False
+    frame_rate_hz: float = 0.0
     gls: float | None = None
     ess: float | None = None
     peak: float | None = None
@@ -130,6 +145,14 @@ class StrainAnalysis:
                 "ess": self.definition_ess,
                 "ttp": self.definition_ttp,
                 "layer": self.layer,
+                "comparability": self.definition_comparability,
+            },
+            "sampling": {
+                "kernel_mm": _finite(self.sampling_kernel_mm),
+                "node_spacing_mm": _finite(self.sampling_node_spacing_mm),
+                "translation_compensation": self.translation_compensation,
+                "regularization": self.regularization,
+                "frame_rate_hz": _finite(self.frame_rate_hz),
             },
             "values": {
                 "gls": self.gls,
@@ -212,6 +235,11 @@ class StrainAnalysis:
             window_start=int(result.tracking_window_start),
             window_end=int(getattr(result, "analysis_window_end", result.tracking_window_end)),
             ed_es_source=str(result.ed_es_source),
+            sampling_kernel_mm=float(getattr(result, "sampling_kernel_mm", 0.0)),
+            sampling_node_spacing_mm=float(getattr(result, "sampling_node_spacing_mm", 0.0)),
+            regularization=str(getattr(result, "regularization", "")),
+            translation_compensation=bool(getattr(result, "translation_compensation_applied", False)),
+            frame_rate_hz=float(getattr(result, "frame_rate_hz", 0.0)),
             cycle_estimated=bool(getattr(result, "cycle_estimated", False)),
             tracking_preset=str(result.config_preset),
             tracking_quality_mean=float(result.tracking_quality_mean),

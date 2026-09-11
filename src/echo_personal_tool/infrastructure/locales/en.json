@@ -1365,5 +1365,6 @@
   "strain.qc.reason.tracking_noise": "tracking noise is comparable to the measured contraction",
   "strain.qc.reason.edge_visibility": "part of the myocardium is outside the field of view",
   "strain.qc.reason.tracking_verification": "inter-frame contour tracking is not confirmed",
-  "strain.tracking_verification": "verification: {confirmed}% of node-frames confirmed, closure {closure} mm"
+  "strain.tracking_verification": "verification: {confirmed}% of node-frames confirmed, closure {closure} mm",
+  "strain.overlay_verification": "✗ not confirmed: {rejected}   ○ no verdict: {unverified}"
 }

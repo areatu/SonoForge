@@ -1365,5 +1365,6 @@
   "strain.qc.reason.tracking_noise": "шум слежения сопоставим с измеряемым сокращением",
   "strain.qc.reason.edge_visibility": "часть миокарда вне сектора видимости",
   "strain.qc.reason.tracking_verification": "межкадерное слежение за контуром не подтверждено",
-  "strain.tracking_verification": "проверка: подтверждено {confirmed}% точек контура, замыкание {closure} мм"
+  "strain.tracking_verification": "проверка: подтверждено {confirmed}% точек контура, замыкание {closure} мм",
+  "strain.overlay_verification": "✗ не подтверждено: {rejected}   ○ нет вердикта: {unverified}"
 }

@@ -247,3 +247,52 @@ class TestKernelClickedSignal:
         mock_point.index.return_value = 5
         overlay._on_kernel_clicked(None, [mock_point])
         mock_signal.assert_called_once_with(5)
+
+
+class TestVerificationMarks:
+    """Q6: the reader must see where the drawn contour is not confirmed."""
+
+    def test_marks_rejected_and_unverified_nodes(self, overlay):
+        positions = np.array([[50.0, 50.0], [60.0, 60.0], [70.0, 70.0], [80.0, 80.0]])
+        rejected = np.array([True, False, False, True])
+        unverified = np.array([False, True, False, False])
+        overlay.show_verification_marks(positions, rejected, unverified, legend="2 marks")
+
+        assert list(overlay._verification_rejected_scatter.getData()[0]) == [50.0, 80.0]
+        assert list(overlay._verification_unverified_scatter.getData()[0]) == [60.0]
+        assert overlay._verification_legend.isVisible()
+
+    def test_confirmed_nodes_are_not_marked(self, overlay):
+        positions = np.array([[50.0, 50.0], [60.0, 60.0]])
+        overlay.show_verification_marks(
+            positions, np.array([False, False]), np.array([False, False]), legend="nothing"
+        )
+
+        assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
+        assert len(overlay._verification_unverified_scatter.getData()[0]) == 0
+        assert not overlay._verification_legend.isVisible()
+
+    def test_nan_positions_are_skipped(self, overlay):
+        positions = np.array([[np.nan, np.nan], [60.0, 60.0]])
+        overlay.show_verification_marks(positions, np.array([True, True]), np.array([False, False]))
+
+        assert list(overlay._verification_rejected_scatter.getData()[0]) == [60.0]
+
+    def test_none_clears_the_marks(self, overlay):
+        overlay.show_verification_marks(
+            np.array([[50.0, 50.0]]), np.array([True]), np.array([False]), legend="x"
+        )
+        overlay.show_verification_marks(None, None, None)
+
+        assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
+        assert not overlay._verification_legend.isVisible()
+
+    def test_clear_removes_the_marks(self, overlay):
+        overlay.show_verification_marks(
+            np.array([[50.0, 50.0]]), np.array([True]), np.array([True]), legend="x"
+        )
+        overlay.clear()
+
+        assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
+        assert len(overlay._verification_unverified_scatter.getData()[0]) == 0
+        assert not overlay._verification_legend.isVisible()

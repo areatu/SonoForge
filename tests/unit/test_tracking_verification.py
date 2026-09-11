@@ -304,3 +304,52 @@ class TestVerificationIsClinicallyReported:
             assert "strain.tracking_verification" in data, name
             assert "{confirmed}" in data["strain.tracking_verification"]
             assert "{closure}" in data["strain.tracking_verification"]
+
+class TestEacviAseDeclarations:
+    """Voigt 2015 asks a strain number to declare what it was measured on.
+
+    Not a style point: without the sampling extent, the translation handling, the
+    regularization and the frame rate, two "GLS" values are not comparable, which
+    is the whole purpose of the consensus document.
+    """
+
+    def test_analysis_record_declares_sampling_and_processing(self) -> None:
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.domain.models.ste_analysis import (
+            DEFINITION_COMPARABILITY,
+            StrainAnalysis,
+        )
+
+        result = StrainResult(
+            longitudinal=np.zeros((1, 1)),
+            radial=np.zeros((1, 1)),
+            gls=-19.0,
+            sampling_kernel_mm=5.4,
+            sampling_node_spacing_mm=2.95,
+            regularization="Savitzky-Golay 9-frame filter",
+            translation_compensation_applied=True,
+            frame_rate_hz=60.0,
+        )
+        analysis = StrainAnalysis.from_result(result)
+        payload = analysis.to_dict()
+
+        assert analysis.definition_comparability == DEFINITION_COMPARABILITY
+        assert payload["sampling"]["kernel_mm"] == pytest.approx(5.4)
+        assert payload["sampling"]["node_spacing_mm"] == pytest.approx(2.95)
+        assert payload["sampling"]["translation_compensation"] is True
+        assert payload["sampling"]["frame_rate_hz"] == pytest.approx(60.0)
+        assert payload["sampling"]["regularization"]
+        assert payload["definitions"]["comparability"] == DEFINITION_COMPARABILITY
+
+    def test_declaration_defaults_are_not_silently_invented(self) -> None:
+        """An old result without the fields must read as "not declared", not zero."""
+        from echo_personal_tool.domain.models.speckle import StrainResult
+        from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis
+
+        analysis = StrainAnalysis.from_result(
+            StrainResult(longitudinal=np.zeros((1, 1)), radial=np.zeros((1, 1)), gls=-19.0)
+        )
+
+        assert analysis.sampling_kernel_mm == pytest.approx(0.0)
+        assert analysis.regularization == ""
+        assert analysis.translation_compensation is False

@@ -4713,6 +4713,7 @@ class ViewerWidget(QWidget):
                 self._speckle_overlay.show_strain_color_map(
                     result.kernels, result.per_kernel_longitudinal, positions=es_positions
                 )
+            self._speckle_overlay.show_verification_marks(None, None, None)
             self._speckle_overlay.show_phase_contours(result.ed_contour, result.es_contour)
             return
 
@@ -4723,6 +4724,7 @@ class ViewerWidget(QWidget):
             self._speckle_overlay.show_kernels([], None, None)
             self._speckle_overlay.show_ed_es_displacements(None, None)
             self._speckle_overlay.show_strain_color_map([], np.array([]))
+            self._speckle_overlay.show_verification_marks(None, None, None)
             self._speckle_overlay.show_phase_contours(result.ed_contour, result.es_contour)
             return
 
@@ -4732,6 +4734,29 @@ class ViewerWidget(QWidget):
 
         if result.kernels:
             self._speckle_overlay.show_kernels(result.kernels, valid, ncc, positions=positions)
+
+        # Round-trip verdicts for the frame on screen (clinical review Q6): the
+        # reader sees where the drawn contour is not backed by the image, judged
+        # by the same gate the report counted with.
+        closure = result.closure_all_frames
+        gate_px = float(getattr(result, "closure_gate_px", 0.0) or 0.0)
+        if closure is not None and gate_px > 0.0 and 0 <= frame < closure.shape[0]:
+            row = np.asarray(closure[frame], dtype=np.float64)
+            rejected = np.isfinite(row) & (row > gate_px)
+            unverified = ~np.isfinite(row)
+            n_rejected, n_unverified = int(np.sum(rejected)), int(np.sum(unverified))
+            legend = (
+                tr(
+                    "strain.overlay_verification",
+                    rejected=n_rejected,
+                    unverified=n_unverified,
+                )
+                if (n_rejected or n_unverified)
+                else ""
+            )
+            self._speckle_overlay.show_verification_marks(positions, rejected, unverified, legend)
+        else:
+            self._speckle_overlay.show_verification_marks(None, None, None)
 
         endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
         if endo_indices and frame != ed_index:

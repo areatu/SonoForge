@@ -1135,6 +1135,19 @@ class SpeckleTrackingWorker(QRunnable):
             # Round-trip verification summary over the analysed window: how much
             # of the wall the tracker could confirm by matching there and back.
             avg_spacing_mm = float((self._pixel_spacing[0] + self._pixel_spacing[1]) / 2.0)
+            # Sampling extent actually used (Voigt 2015: "explicitly states what
+            # is being measured and the spatial extent over which the data is
+            # sampled"): the kernel footprint in millimetres and the spacing
+            # between neighbouring nodes of the endocardial material line at ED.
+            sampling_kernel_mm = float(config.kernel_size) * avg_spacing_mm
+            sampling_node_spacing_mm = 0.0
+            if len(strain_endo_all) >= 2:
+                ed_arc = np.asarray(smoothed[local_ed][strain_endo_all], dtype=np.float64)
+                steps = np.linalg.norm(np.diff(ed_arc, axis=0), axis=1)
+                finite_steps = steps[np.isfinite(steps)]
+                if finite_steps.size:
+                    sampling_node_spacing_mm = float(np.median(finite_steps)) * avg_spacing_mm
+            frame_rate_hz = 1000.0 / float(self._frame_time_ms) if float(self._frame_time_ms) > 0 else 0.0
             window_closure = closure_matrix[local_ed : local_es + 1]
             finite_closure = np.isfinite(window_closure)
             verified_fraction = float(np.mean(finite_closure)) if window_closure.size else 0.0
@@ -1199,6 +1212,16 @@ class SpeckleTrackingWorker(QRunnable):
                     noise_mm,
                     contraction,
                     noise_to_signal,
+                )
+            # Frame rate is the one acquisition property the analysis can still
+            # comment on (Voigt 2015: 40-80 Hz for motion/deformation at rest,
+            # >100 Hz for strain rate). A note, not a gate: the clip is what it
+            # is, but the reader has to know.
+            frame_rate_note: tuple[str, ...] = ()
+            if frame_rate_hz > 0 and (frame_rate_hz < 40.0 or frame_rate_hz > 100.0):
+                frame_rate_note = (
+                    f"frame rate {frame_rate_hz:.0f} Hz is outside the recommended "
+                    f"40-100 Hz for deformation imaging",
                 )
             quality = assess_tracking_quality(
                 has_curve=bool(np.any(np.isfinite(window_long))),
@@ -1335,6 +1358,16 @@ class SpeckleTrackingWorker(QRunnable):
                 qc_excluded_nodes=quality.excluded_nodes,
                 qc_excluded_segments=excluded_segments,
                 closure_all_frames=_embed_closure_matrix(closure_matrix, n_frames, phase_start),
+                closure_gate_px=_closure_gate_px(config),
+                sampling_kernel_mm=sampling_kernel_mm,
+                sampling_node_spacing_mm=sampling_node_spacing_mm,
+                regularization=(
+                    f"quality-weighted spatial + temporal spline smoothing of trajectories "
+                    f"(spatial={config.spatial_smoothing:g}, temporal={config.temporal_smoothing:g}), "
+                    f"Savitzky-Golay {int(config.curve_smoothing_frames)}-frame filter on the strain curves"
+                ),
+                translation_compensation_applied=bool(config.global_motion_compensation),
+                frame_rate_hz=frame_rate_hz,
                 qc_closure_median_mm=quality.closure_median_mm,
                 qc_closure_p95_mm=quality.closure_p95_mm,
                 qc_rejected_fraction=quality.rejected_fraction,
@@ -1355,7 +1388,7 @@ class SpeckleTrackingWorker(QRunnable):
                 qc_score=qc_overall,
                 qc_status=quality.status,
                 qc_reasons=quality.reasons,
-                qc_notes=quality.notes,
+                qc_notes=tuple(quality.notes) + frame_rate_note,
                 qc_coverage=quality.coverage,
                 qc_interpolated_fraction=quality.interpolated_fraction,
                 qc_consistency_delta=quality.consistency_delta,
