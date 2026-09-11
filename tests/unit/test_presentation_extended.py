@@ -227,32 +227,40 @@ class TestSegmentQualityPanel:
         assert panel._table.columnCount() == 3
 
     def test_update_results(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.aha_segments import A4C_SEGMENT_NAMES
         from echo_personal_tool.presentation.segment_quality_panel import (
             SegmentQualityPanel,
         )
 
         panel = SegmentQualityPanel()
         qtbot.addWidget(panel)
-        strain = {1: -20.0, 2: -18.0}
-        quality = {1: 0.9, 2: 0.3}
+        # Rows carry real AHA ids — legacy 1..6 keys would leave the table empty.
+        first_id, second_id = sorted(A4C_SEGMENT_NAMES)[:2]
+        strain = {first_id: -20.0, second_id: -18.0}
+        quality = {first_id: 0.9, second_id: 0.3}
         panel.update_results(strain, quality)
         # Should not crash
         assert panel._table.item(0, 1) is not None
+        assert panel._table.item(0, 1).text() != "--"
 
     def test_low_quality_highlighting(self, qtbot) -> None:
+        from echo_personal_tool.domain.services.aha_segments import A4C_SEGMENT_NAMES
         from echo_personal_tool.presentation.segment_quality_panel import (
             SegmentQualityPanel,
         )
 
         panel = SegmentQualityPanel()
         qtbot.addWidget(panel)
-        quality = {1: 0.1}  # very low quality
-        panel.update_results({}, quality)
-        # Check that low quality items have special background
+        low_quality_id = sorted(A4C_SEGMENT_NAMES)[0]
+        panel.update_results({}, {low_quality_id: 0.1})  # very low quality
+        # Check that exactly the low-quality row gets the special background
+        highlighted = 0
         for row in range(panel._table.rowCount()):
             item = panel._table.item(row, 2)
-            if item is not None and item.text() == "0.1":
+            if item is not None and item.text() == "0.10":
                 assert item.background().color() == panel._LOW_QUALITY_BG
+                highlighted += 1
+        assert highlighted == 1
 
 
 # ── properties_panel ───────────────────────────────────────────────

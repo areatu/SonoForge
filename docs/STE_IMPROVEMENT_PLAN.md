@@ -68,10 +68,17 @@
 
 ## 0. Сводка для передачи: что сделано и что осталось (2026-09-11)
 
-**Ветка** `arena/01a08cb0-sonoforge`, PR #74 (MERGEABLE). **Красное на CI:** `test (ubuntu-latest, 3.11)` и
-`Test coverage` — 33–36 мин против 30 мин зелёного `main`; локальные полные прогоны падений кода не
-показывают, логи Actions из песочницы недоступны, поэтому имена упавших тестов теперь публикуются в
-аннотациях check-run (п.0 §5.3 и §5.4).
+**Ветка** `arena/01a09076-sonoforge` (продолжение `arena/01a08cb0-sonoforge`, PR #74).
+
+**Красный ubuntu-CI разобран и закрыт (2026-09-11, вторая сессия).** Причина не во флаках и не во времени:
+этот же PR перевёл `A4C_SEGMENT_NAMES` на настоящие AHA-id вида (3/6/9/12/15/18), а файл
+`tests/unit/test_presentation_segment_quality_panel.py` — которого PR **не касался** — по-прежнему
+обращался к строкам по старым id 1…6. Три теста ассертили по пустым строкам и падали
+(`test_strain_format`, `test_partial_data`, `test_low_quality_highlights_row`), и только на Linux:
+на macOS/Windows gui-тесты исключены фильтром `-m "not gui"`, а локальный STE-свип из 23 файлов этот
+файл не включал. Починка: тесты берут id из `A4C_SEGMENT_NAMES` (плюс отдельный тест «старые id 1…6 не
+попадают ни в одну строку»), в `test_presentation_extended.py` — те же id вместо заглушек, чтобы
+проверка не проходила вхолостую. Детали и выводы для процесса — §5.2 (инфраструктура) и §5.4.
 
 ### Сделано (эта сессия)
 
@@ -100,12 +107,16 @@
   §6 в `docs/STE_TRACKING_VERIFICATION.md`; в отчётах объявляются протяжённость ROI, компенсация трансляции,
   фактически применённое окно сглаживания, частота кадров и стороны стенок.
 * **Инфраструктура**: `ruff check` + `ruff format --check`, CodeQL (ложное срабатывание на `bench/**`
-  исключено, ЧСС/RR убраны из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС; локальный
-  STE-свип 23 файла / 497 тестов, все зелёные.
+  исключено, ЧСС/RR убраны из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС. Урок
+  второй сессии: **STE-свип из 23 файлов недостаточен** — он не ловит тесты, которых PR не касался, но
+  которые зависят от изменённых модулей (`test_presentation_segment_quality_panel.py` и новые AHA-id).
+  Проверочный прогон — весь `tests/unit/` минус модули, требующие QtWebEngine (§5.4).
 
 ### Осталось (подробно — §5.3, с критериями приёмки и оценками)
 
-1. **Довести CI до зелёного** (P0) — ubuntu `test` и `Test coverage`; читать падения по аннотациям (§5.4).
+1. ~~**Довести CI до зелёного** (P0)~~ — **сделано 2026-09-11**: причина найдена (устаревшие id сегментов
+   в тесте, не тронутом PR), тесты переведены на реальные AHA-id, прогон всего `tests/unit/` локально
+   чистый; ждём зелёные проверки уже на починенной ветке.
 2. **Сверка с вендором на одних кадрах** (P0) — нужны gold-контуры КД для 2–3 клипов For_pero (§11.2 п.1).
 3. **Обзорный экран трёх видов** в стиле «3 Point Contour» (P1) — самый заметный остаток UI-паритета.
 4. **Q5: авто-черновик контура КД** с правкой мышью (P1); нужны веса ONNX (в репозитории только манифест).
@@ -825,7 +836,7 @@ LA strain (reservoir/conduit/contraction), RV GLS/FWLS, multi-beat усредн�
 | 6. Расширения | не начато | LA/RV strain, multi-beat + доверительные интервалы, плотное поле, ML-трек (§5.3 п.10). |
 | — Консенсус EACVI/ASE (Voigt 2015) | **закрыто** | Матрица из 17 рекомендаций: все закрыты, остаётся принципиальное ограничение 2D (через-плоскостное движение) — `docs/STE_TRACKING_VERIFICATION.md` §6. |
 | — Реальные данные | **сделано** | `tests/fixtures/for_pero` (19 клипов: кадры + обезличенные заголовки + индекс, выгружаются CI-воркфлоу `.github/workflows/ste-fixtures.yml`), контракт `tests/unit/test_ste_real_clips.py` (7 тестов), вендорские числа `docs/STE_VENDOR_REFERENCE.md`. **Осталось:** gold-контуры КД для сверки на тех же кадрах (§11.2 п.1). |
-| — Инфраструктура и CI | **сделано** | `ruff check` + `ruff format --check`, CodeQL (включая правку ложного срабатывания на `bench/**` и снятие ЧСС/RR из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС; локальный STE-свип — 23 файла / 497 тестов, ~2 мин, 3 скипа, все зелёные (проверено 2026-09-11). **Известная проблема (2026-09-11):** на ветке падают ubuntu-джобы (`Test coverage` и `test (ubuntu-latest)`, 33–36 мин против 30 мин зелёного `main`); локальные полные прогоны — в том числе с заглушкой QtWebEngine, чтобы шли и WebEngine-зависимые файлы, — падений кода не показывают, а логи Actions из песочницы недоступны (blob-хост закрыт). В CI добавлен фильтр `.github/scripts/annotate_pytest_failures.py`, публикующий имена упавших тестов в аннотациях check-run: они читаются через REST API. Разобрать первым делом — §5.3 п.0. |
+| — Инфраструктура и CI | **сделано** | `ruff check` + `ruff format --check`, CodeQL (включая правку ложного срабатывания на `bench/**` и снятие ЧСС/RR из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС. **Красный ubuntu-джоб разобран 2026-09-11 (вторая сессия):** падали только три теста `test_presentation_segment_quality_panel.py::TestUpdateResults` (`test_strain_format`, `test_partial_data`, `test_low_quality_highlights_row`); причина — перевод `A4C_SEGMENT_NAMES` на настоящие AHA-id 3/6/9/12/15/18, из-за которого тесты, обращавшиеся к строкам по старым id 1…6, ассертили по пустым строкам. Файл PR не трогал, в 23-файловый STE-свип не входил, а macOS/Windows-джобы исключают gui-тесты (`-m "not gui"`) — поэтому падение было видно только на Linux. Починка: id берутся из `A4C_SEGMENT_NAMES`, добавлен тест «старые id 1…6 не попадают ни в одну строку», в `test_presentation_extended.py` заглушки заменены реальными id (иначе проверка проходила вхолостую). Имена упавших тестов читаются без логов Actions — через аннотации check-run (`.github/scripts/annotate_pytest_failures.py`, §5.4). |
 
 Ключевые артефакты итерации: `src/echo_personal_tool/domain/services/{quality,segment_map,aha_segments,strain_metrics,strain_computation,wall_visibility,speckle_tracking,border_tracking,tracking_smoothing}.py`,
 `src/echo_personal_tool/domain/models/{speckle,ste_analysis}.py`,
@@ -845,7 +856,7 @@ P3 — расширения. Оценки — рабочие дни одного
 
 | № | Задача | Критерий приёмки | Где | Оценка |
 |---|---|---|---|---|
-| 0 | **Довести CI до зелёного** (P0) | Все джобы PR #74 зелёные, включая ubuntu `test` и `Test coverage`; причина найдена и записана, падение воспроизводится или объяснено | `.github/workflows/{ci,coverage}.yml`, `.github/scripts/annotate_pytest_failures.py` | 0.5–2 |
+| 0 | **Довести CI до зелёного** (P0) — **сделано** | Причина: тесты `test_presentation_segment_quality_panel.py::TestUpdateResults` ключевали строки старыми id 1…6 после перехода `A4C_SEGMENT_NAMES` на AHA-id. Критерий выполнен: тесты берут id из модуля, есть страж-тест на старые id, локальный полный прогон `tests/unit/` (минус WebEngine-модули) чистый, `ruff check` + `ruff format --check` зелёные | `.github/workflows/{ci,coverage}.yml`, `.github/scripts/annotate_pytest_failures.py`, `tests/unit/test_presentation_{segment_quality_panel,extended}.py` | 0.5 (факт) |
 | 1 | **Сверка с вендором на одних кадрах** (P0) | Таблица «наш GLS / вендор / Δ» по трём видам для ≥2 клипов For_pero; в отчёте объявлено, какой контур использован и откуда он | `tests/fixtures/for_pero`, `docs/STE_VENDOR_REFERENCE.md`, `application/workers/speckle_worker.py` | 1–2 дня после получения контуров; **блокер — §11.2 п.1** |
 | 2 | **Обзорный экран трёх видов** в стиле «3 Point Contour» (P1) | Три панели (кадр + контур + полоса/ECG) + мишень + сводная таблица + список видов со статусом в одном окне; offscreen-рендер в тесте; все данные — из `StrainStudy`, без пересчёта | `ui/strain_window.py`, новый пакет `ui/ste/` | 3–5 |
 | 3 | **Q5: авто-черновик контура КД** (P1) | Черновик правится мышью; в отчёте — признак «черновик» и доля правки; расхождение с ручным контуром на доступных клипах ≤ ~2 мм; без черновика GLS не считается «вендорским» | `domain/services/segmentation_service.py`, `application/*` | 3–6; нужны веса ONNX: в репозитории только `models/model_manifest.json` (манифест числит `echonet_seg_resnet50.onnx` как `exported`, но сами файлы исключены `models/.gitignore`: `*.onnx`, `*.pt`), поэтому в песочнице нужен либо каталог моделей автора, либо повторный экспорт `scripts/export_echonet_seg_to_onnx.py`; инфраструктура (preprocessing, temporal fusion, refine, landmark-модель) в манифесте уже описана или классический детектор |
@@ -862,7 +873,7 @@ P3 — расширения. Оценки — рабочие дни одного
 
 ### 5.4 Как продолжить (окружение, проверки, артефакты)
 
-Ветка `arena/01a08cb0-sonoforge` (PR #74). Развёртывание окружения с нуля:
+Ветка `arena/01a09076-sonoforge` (продолжение `arena/01a08cb0-sonoforge`, PR #74). Развёртывание окружения с нуля:
 
 ```bash
 python3 -m venv .venv
@@ -879,11 +890,38 @@ export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 ./.venv/bin/python -m pytest <23 STE-файла> -q     # 497 тестов, ~2 мин, 3 скипа
 ```
 
-Список STE-файлов: `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
-`test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,presentation_speckle_overlay,presentation_speckle_settings_dialog}.py`.
-`test_ste_entry_flow.py` (маркер `gui`) импортирует `presentation/web_reference/web_reference_widget.py`, которому нужен
-QtWebEngine: в песочнице с `tools/qtstub` он падает на импорте (2 ошибки), в CI на ubuntu с полным `pyside6` проходит,
-на macOS/Windows исключён фильтром `-m "not gui"`.
+Список STE-файлов (27): `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
+`test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,strain_curves_view,stepped_border_refine,presentation_speckle_overlay,presentation_speckle_settings_dialog,presentation_segment_quality_panel,presentation_ste_results_dialog}.py`.
+
+**Свип по этому списку — недостаточная проверка.** Он не ловит тесты, которых PR не касался, но
+которые зависят от изменённых модулей: именно так 2026-09-11 проехали три падения в
+`test_presentation_segment_quality_panel.py` (старые id 1…6 против новых AHA-id в `A4C_SEGMENT_NAMES`),
+видимые только на Linux, потому что macOS/Windows исключают gui-тесты (`-m "not gui"`). Перед пушем
+гонять весь `tests/unit/` (в песочнице — минус модули, тянущие QtWebEngine):
+
+```bash
+cd /home/user/SonoForge && export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
+./.venv/bin/python -m pytest tests/unit/ -q --tb=line --no-header \
+  --ignore=tests/unit/test_ase_reference_dialog.py \
+  --ignore=tests/unit/test_application___main__.py --ignore=tests/unit/test_application_main.py \
+  --ignore=tests/unit/test_linear_caliper_click_click.py \
+  --ignore=tests/unit/test_main_window_doppler.py --ignore=tests/unit/test_main_window_extended.py \
+  --ignore=tests/unit/test_main_window_layout.py --ignore=tests/unit/test_main_window_vessel.py \
+  --ignore=tests/unit/test_measurement_tools_panel.py --ignore=tests/unit/test_measurement_wiring.py \
+  --ignore=tests/unit/test_phase_hotkeys.py \
+  --ignore=tests/unit/test_presentation_ase_reference_dialog.py \
+  --ignore=tests/unit/test_presentation_main_window.py \
+  --ignore=tests/unit/test_simpson_live_feedback.py --ignore=tests/unit/test_ste_entry_flow.py
+# 4944 теста, ~19 мин на 2 ядрах песочницы; 0 падений, кроме перечисленных модулей
+```
+
+Все пятнадцать модулей импортируют `presentation/web_reference/web_reference_widget.py` → `PySide6.QtWebEngineCore`,
+которому в песочнице не хватает системных библиотек (`libxcb-dri3.so.0`, NSS/GBM/X11-расширения), а `tools/qtstub`
+их не подменяет: без игнора они дают 14 ошибок коллекции и 111 падений/ошибок по цепочке импорта
+(`test_presentation_main_window.py` — от фикстуры, остальные — на импорте). В CI на ubuntu с полным `pyside6`
+эти же модули проходят. Маркер `gui` в `conftest.py` есть, но гонять `-m "not gui"` **нельзя**: он исключает
+именно те UI-проверки, на которых CI и упал (`test_presentation_segment_quality_panel.py` помечен `gui`), — и
+ровно так же поступают macOS/Windows-джобы, поэтому красное было видно только в ubuntu-джобе.
 
 Бенчмарки и отчёты:
 
