@@ -2353,6 +2353,18 @@ class StrainWindow(QMainWindow):
             writer.writerow(["# QC status", analysis.qc_status])
             writer.writerow(["# QC reasons", "|".join(analysis.qc_reasons)])
             writer.writerow(["# Coverage", f"{analysis.qc_coverage:.3f}"])
+            # Round-trip verification travels with the number it qualifies.
+            rejected = getattr(analysis, "qc_rejected_fraction", None)
+            unverified = getattr(analysis, "qc_unverified_fraction", None)
+            closure_median = getattr(analysis, "qc_closure_median_mm", None)
+            closure_p95 = getattr(analysis, "qc_closure_p95_mm", None)
+            if rejected is not None:
+                writer.writerow(["# Tracking verified (share of node-frames)", f"{1.0 - rejected:.3f}"])
+                writer.writerow(["# Tracking rejected (share of node-frames)", f"{rejected:.3f}"])
+            if unverified is not None:
+                writer.writerow(["# Tracking without a verdict (share)", f"{unverified:.3f}"])
+            if closure_median is not None and closure_p95 is not None:
+                writer.writerow(["# Round-trip closure median/p95 (mm)", f"{closure_median:.2f}/{closure_p95:.2f}"])
             writer.writerow(["# GLS", "" if analysis.gls is None else f"{analysis.gls:.2f}"])
             writer.writerow(
                 ["# GLS_AV", "" if self._study.gls_average() is None else f"{self._study.gls_average():.2f}"]
