@@ -353,3 +353,64 @@ class TestEacviAseDeclarations:
         assert analysis.sampling_kernel_mm == pytest.approx(0.0)
         assert analysis.regularization == ""
         assert analysis.translation_compensation is False
+
+class TestTrustFlagHarness:
+    """The harness that compares candidate trust flags must itself be right."""
+
+    @staticmethod
+    def _module():
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        name = "ste_trust_flags_bench"
+        if name in sys.modules:
+            return sys.modules[name]
+        path = Path(__file__).resolve().parents[2] / "bench" / "ste_trust_flags.py"
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        # dataclasses resolves annotations through sys.modules, so the module
+        # has to exist there before it is executed.
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    def test_scoring_counts_flagged_bad_node_frames(self) -> None:
+        module = self._module()
+        error_mm = np.array([10.0, 1.0, 1.0, 1.0])
+        flag = np.array([True, False, False, False])
+        bad = error_mm > 5.0
+
+        score = module._score(flag, bad, error_mm, "test")
+
+        assert score.name == "test"
+        assert score.detection["flagged"] == 1
+        assert score.detection["bad"] == 1
+        assert score.detection["precision"] == pytest.approx(1.0)
+        assert score.detection["recall"] == pytest.approx(1.0)
+        # The one thing the flag is for: the group it leaves alone is better
+        # than the group it marks.
+        assert score.trusted_p95_mm < score.flagged_p95_mm
+        assert score.flagged_p95_mm == pytest.approx(10.0)
+
+    def test_a_missed_bad_node_frame_stays_in_the_trusted_group(self) -> None:
+        module = self._module()
+        error_mm = np.array([10.0, 1.0, 1.0, 12.0])
+        flag = np.array([True, False, False, False])
+
+        score = module._score(flag, error_mm > 5.0, error_mm, "partial")
+
+        assert score.detection["recall"] == pytest.approx(0.5)
+        # Recall is the honest part of the score: an unflagged 12 mm error is
+        # still reported as trusted, which is exactly why the flag may not be
+        # presented as a complete detector.
+        assert score.trusted_p95_mm > 5.0
+
+    def test_a_flag_that_never_fires_scores_zero_not_full_marks(self) -> None:
+        module = self._module()
+        score = module._score(np.zeros(4, dtype=bool), np.array([True, False, False, False]), np.ones(4), "silent")
+
+        assert score.flagged_fraction == 0.0
+        assert score.detection["precision"] == 0.0
+        assert score.detection["recall"] == 0.0
+        assert not np.isfinite(score.flagged_p95_mm)
