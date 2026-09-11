@@ -1369,7 +1369,6 @@ class SummaryTable(QWidget):
                     val_label.setText(f"{val:.1f}")
                 self._mark_view_status(key, val_label)
 
-
     def _mark_view_status(self, key: str, val_label: QLabel) -> None:
         """Append the QC mark of the row's view and explain it in a tooltip."""
         view = self._ROW_VIEW.get(key)
@@ -1858,9 +1857,7 @@ class StrainWindow(QMainWindow):
 
         # Which measured views passed QC, vendor-style: the per-view rows carry
         # the status mark so GLS_AV is never read as "three views agreed".
-        self._summary.set_view_statuses(
-            {view: item.qc_status for view, item in self._study.analyses.items()}
-        )
+        self._summary.set_view_statuses({view: item.qc_status for view, item in self._study.analyses.items()})
         self._summary.update_values(
             gls=result.gls,
             gls_a4c=gls_a4c,
