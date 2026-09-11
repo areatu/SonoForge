@@ -1,6 +1,54 @@
 # CHANGELOG — SonoForge
 
-Все значимые изменения в хронологическом порядке. Формат: `[feat/fix/refactor/perf/docs/chore]: описание` (コミット-конвенция).
+Все значимые изменения в хронологическом порядке. Формат: `[feat/fix/refactor/perf/docs/chore]: описание` (коммит-конвенция).
+
+---
+
+## v0.3.0 — 2026-09-10
+
+### Highlights
+- **Веб-просмотрщик справочника** — быстрый веб-вид (QWebEngine) с инлайн-редактированием, лайтбоксом изображений, тултипами полных названий, четырьмя CSS-темами
+- **Расширенная библиотека справочника** — сосудистые исследования, щитовидная железа, почки, брюшная аорта, лимфоузлы; регургитационная фракция для МР/АР, эхо-признаки ЛГ, нормы 3D-ФВЛЖ/SVi, градации АС/АР/ТР/ПР
+- **Автокалибровка допплера** — детектор тиков Samsung RS85, слияние методов базовой линии (визуальная линия + DICOM-тег + интенсивность), ручной мастер в два клика
+- **Стеноз сосуда** — измерения %D и %D с пошаговыми сценариями
+- **Анимации интерфейса** — аккордеоны, слайды панелей, crossfade вкладок, отклик кнопок, скелетоны загрузки
+- **Производительность** — кэш LUT-преобразований, общие DICOM-сессии между воркерами, предзагрузка коротких цинов
+- **Настройки по умолчанию** — тема VS Code Dark, язык English, язык/тема сохраняются между запусками
+
+### Features
+- `feat(reference)`: web-based reference viewer with Qt fallback and inline editing
+- `feat(reference)`: lightbox modal, tooltips, live reload, four CSS themes
+- `feat(reference)`: vascular, thyroid, kidney, abdominal aorta, lymph node parameters
+- `feat(reference)`: RF for MR/AR, PH echo signs, 3D LVEF/SVi norms, severity gradations
+- `feat(doppler)`: evidence-fusion baseline detector for Samsung tick path
+- `feat(tools)`: vessel stenosis measurements — %D and %S with guided workflows
+- `feat(ui)`: Qt interface animations — accordion chevron, panel slide, tab crossfade, button feedback
+- `feat(ui)`: BSA in measurement panel, context menu Edit, hover animations
+- `feat(ui)`: DESIGN.md VUNO palette applied to main window
+- `feat(viewer)`: vessel sensitivity overlay for auto-trace preset control
+- `feat(settings)`: persist language and theme on startup; default theme VS Code Dark, default language EN
+- `feat(settings)`: configurable layout — gallery position, status bar, activity bar, dual viewer
+
+### Fixes
+- `fix(playback)`: prevent frame-skip jumps on large RGB cines
+- `fix(playback)`: prefetch short cines fully to restore looping and rewind
+- `fix(doppler)`: restore 2-click manual calibration, keep time scale on reset
+- `fix(doppler)`: manual velocity calibration takes priority over auto-detection
+- `fix(doppler)`: reject false-positive Doppler ROI on bright B-mode frames
+- `fix(samsung)`: high-threshold tick retry for luminance-washed rulers
+- `fix(samsung)`: propagate velocity_sign through tick detection path
+- `fix(mmode)`: restore partial state for panels without vertical calibration
+- `fix(reference)`: share OpenGL contexts with QtWebEngine, restore double-click interval
+- `fix(reference)`: restructure AS/AR/TR/PR gradations, fix diastolic name duplication
+- `fix(area)`: persist completed contour in area-compare mode
+- `fix(ui)`: shorten double-click interval for faster contour point placement
+- `fix(settings)`: preferences dialog no longer drops despeckle_enabled, auto_play, layout_state_json
+- `fix(filter)`: remove dead static_noise_filter references after revert
+
+### Performance
+- `perf(viewer)`: cache window/level transforms and skip full-frame re-uploads
+- `perf(playback)`: pace the cine timer from the frame time, not a fixed interval
+- `perf(playback)`: share one warm DICOM session per file across workers
 
 ---
 
@@ -432,7 +480,7 @@ GLS/сегменты деградируют (0 дБ — клип неотсле�
 - `feat(design)`: DESIGN.md VUNO palette applied to main window
 - `feat(viewer)`: vessel sensitivity overlay for auto-trace preset control
 - `feat(reference)`: regurgitant fraction for MR/AR, pulmonary hypertension echo signs, 3D LVEF/SVi norms; preload dialog, full-name tooltips, norm columns hidden when gradations present
-- `feat`: constructor light theme, web refs 4-theme CSS, BSA restore, STE smoothing overlay
+- `feat`: constructor light theme, web refs 4-theme CSS, BSA restore
 
 ### Refactor
 - `refactor(references)`: LV mass + geometry merged, empty-parameter rows removed, pathology_desc rows dropped, missing gradations added
