@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.speckle import StrainResult
 from echo_personal_tool.domain.services.segment_map import (
     normalise_view,
@@ -385,6 +386,49 @@ class StrainStudy:
         for analysis in analyses:
             study = study.with_view(analysis)
         return study
+
+
+def strain_report_from_study(
+    study: StrainStudy,
+    *,
+    contour_source: str = "manual",
+) -> StrainReport | None:
+    """Project a :class:`StrainStudy` onto the protocol record (plan §5.3 п.6).
+
+    The study holds everything the strain window needs; the protocol needs the
+    reportable subset and nothing invented. Views without a finite GLS are left
+    out entirely instead of being written as ``0``, and ``gls_average`` is taken
+    from :meth:`StrainStudy.gls_average` so the report and the UI can never
+    disagree about which views entered the average.
+
+    Returns ``None`` when no view has a usable number — a study without strain
+    simply has no strain section in the report.
+    """
+    gls_by_view: list[tuple[str, float]] = []
+    qc_by_view: list[tuple[str, str]] = []
+    avc_by_view: list[tuple[str, str]] = []
+    for view in study.views_measured():
+        analysis = study.analyses[view]
+        value = _finite(analysis.gls)
+        if value is None:
+            continue
+        gls_by_view.append((view, value))
+        qc_by_view.append((view, analysis.qc_status))
+        avc_by_view.append((view, analysis.avc_source))
+    if not gls_by_view:
+        return None
+
+    first = study.analyses[gls_by_view[0][0]]
+    return StrainReport(
+        gls_by_view=tuple(gls_by_view),
+        qc_by_view=tuple(qc_by_view),
+        gls_average=study.gls_average(),
+        views_valid=study.views_valid(),
+        segmentation=first.segmentation,
+        avc_source_by_view=tuple(avc_by_view),
+        segments_missing=len(study.missing_segments()),
+        contour_source=contour_source,
+    )
 
 
 def study_from_results(results: Mapping[str, StrainResult]) -> StrainStudy:

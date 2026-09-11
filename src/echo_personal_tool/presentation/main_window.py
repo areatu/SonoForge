@@ -2353,6 +2353,9 @@ class MainWindow(QMainWindow):
         self._strain_frames_for_window = frames
         window = self._ensure_strain_window()
         window.set_position(self._ste_position)
+        # One accumulation of analysed views for the window and the protocol:
+        # the controller owns it, the window adopts it (plan §5.3 п.6).
+        window.set_study(self._controller.strain_study())
         window.show_result(result, frames=frames)
 
     def _on_ste_view_selected(self, view: str) -> None:
@@ -2373,6 +2376,7 @@ class MainWindow(QMainWindow):
             return
         window = self._ensure_strain_window()
         window.set_position(self._ste_position)
+        window.set_study(self._controller.strain_study())
         window.show_result(result, frames=self._strain_frames_for_window)
         window.show_curves()
 

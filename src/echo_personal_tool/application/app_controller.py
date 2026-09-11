@@ -63,7 +63,12 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
-from echo_personal_tool.domain.models.speckle import SpeckleConfig
+from echo_personal_tool.domain.models.speckle import SpeckleConfig, StrainResult
+from echo_personal_tool.domain.models.ste_analysis import (
+    StrainAnalysis,
+    StrainStudy,
+    strain_report_from_study,
+)
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.ports import IOnnxSegmenter
 from echo_personal_tool.domain.services.auto_depth_calibration import (
@@ -185,6 +190,10 @@ class AppController(QObject):
         self._decode_gate = DecodeGate()
         self._state_manager = StateManager()
         self._measurement_session = StudyMeasurementSessionStore()
+        # Analysed STE views per study (``study_uid -> StrainStudy``). Kept in
+        # the controller so the protocol row and the strain window are derived
+        # from one accumulation instead of two (plan §5.3 п.6).
+        self._strain_studies: dict[str, StrainStudy] = {}
         self._current_study_uid: str | None = None
         self._segmenter = segmenter or OnnxInferenceEngine()
         self._playback_config: PlaybackConfig = detect_playback_config()
@@ -1730,6 +1739,7 @@ class AppController(QObject):
             indexed=indexed,
             planimeter=planimeter,
             vessel_measurements=vessel_measurements,
+            strain=session.strain,
         )
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
@@ -3783,16 +3793,37 @@ class AppController(QObject):
         self._thread_pool.start(worker)
 
     def _on_speckle_tracking_finished(self, result: object) -> None:
-        from echo_personal_tool.domain.models.speckle import StrainResult
-
         if not isinstance(result, StrainResult):
             return
+
+        self._record_strain_result(result)
 
         gls_text = f"GLS: {result.gls:.1f}%"
         hr_text = f"HR: {result.heart_rate_bpm:.0f} bpm" if result.heart_rate_bpm > 0 else ""
         status = f"{gls_text}  {hr_text}".strip()
         self.status_message.emit(status)
         self.speckle_result_ready.emit(result)
+
+    def _record_strain_result(self, result: StrainResult) -> None:
+        """Accumulate the analysed views of the study and publish the protocol row.
+
+        The strain window keeps its own :class:`StrainStudy` for the screen, but
+        the protocol must not read numbers off a widget: the study is rebuilt
+        here from the same :class:`StrainResult` objects with the same
+        conversion (:meth:`StrainAnalysis.from_result`), so the report and the
+        window always agree (plan §5.3 п.6). One study accumulates up to three
+        apical views; re-running a view replaces it.
+        """
+        study_uid = self._resolve_study_uid()
+        study = self._strain_studies.get(study_uid, StrainStudy())
+        study = study.with_view(StrainAnalysis.from_result(result))
+        self._strain_studies[study_uid] = study
+        self._measurement_session.set_strain(study_uid, strain_report_from_study(study))
+        self._recompute_measurements()
+
+    def strain_study(self, study_uid: str | None = None) -> StrainStudy | None:
+        """Analysed views of a study (the window and the report share this)."""
+        return self._strain_studies.get(study_uid or self._resolve_study_uid())
 
     def _on_speckle_tracking_error(self, message: str) -> None:
         self.status_message.emit(tr("app.speckle_error", message=message))

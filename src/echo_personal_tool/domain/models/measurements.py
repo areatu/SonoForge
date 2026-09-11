@@ -109,6 +109,48 @@ class IndexedMeasurements:
 
 
 @dataclass(frozen=True)
+class StrainReport:
+    """Study-level speckle-tracking result as the protocol needs to state it.
+
+    The strain window keeps the full :class:`StrainStudy` (curves, kernels,
+    per-segment records); a protocol line needs far less, but it must never
+    show a number without the method and the quality that produced it. This
+    record is therefore the *reporting projection* of the study: per-view GLS
+    with the QC status of each view, the average over the views that passed QC,
+    and the declarations (definition, layer, AVC source) that make the number
+    comparable with a vendor report (plan §3.1, §5.3 п.6).
+
+    Every field is a plain tuple/scalar so the snapshot stays comparable with
+    ``==`` — the viewer refreshes on snapshot change.
+    """
+
+    #: ``(view, GLS %)`` for every analysed view, in ``A4C, A2C, A3C`` order.
+    gls_by_view: tuple[tuple[str, float], ...] = ()
+    #: ``(view, "valid"|"review"|"invalid")`` — the status travels with the value.
+    qc_by_view: tuple[tuple[str, str], ...] = ()
+    #: Mean of the per-view GLS values that passed QC (``GLS_AV``); ``None``
+    #: when no view is valid — never a silent average over rejected views.
+    gls_average: float | None = None
+    #: Views that entered ``gls_average``.
+    views_valid: tuple[str, ...] = ()
+    #: Segment model behind the numbers, e.g. ``"AHA-18"``. The report renders
+    #: the method line from this, so switching the interface language
+    #: re-translates the protocol instead of freezing the wording that happened
+    #: to be active when the clip was analysed.
+    segmentation: str = ""
+    #: Where end-systole came from per view, e.g. ``(("A4C", "ecg"),)``.
+    avc_source_by_view: tuple[tuple[str, str], ...] = ()
+    #: Segments the analysed views could not measure (never fabricated).
+    segments_missing: int = 0
+    #: Whether the ED contour was drawn by hand ("gold") or produced as a draft.
+    contour_source: str = "manual"
+
+    @property
+    def has_values(self) -> bool:
+        return bool(self.gls_by_view)
+
+
+@dataclass(frozen=True)
 class PlanimeterResult:
     label: str
     kind: str  # area | volume
@@ -137,3 +179,6 @@ class MeasurementSnapshot:
     indexed: IndexedMeasurements | None = None
     planimeter: tuple[PlanimeterResult, ...] = ()
     vessel_measurements: tuple[VesselMeasurement, ...] = ()
+    #: Speckle-tracking result of the study (plan §5.3 п.6). ``None`` until a
+    #: view has been analysed — the report then simply has no strain section.
+    strain: StrainReport | None = None
