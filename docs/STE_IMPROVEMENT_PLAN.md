@@ -768,7 +768,7 @@ LA strain (reservoir/conduit/contraction), RV GLS/FWLS, multi-beat усредн�
 | 6. Расширения | не начато | LA/RV strain, multi-beat + доверительные интервалы, плотное поле, ML-трек (§5.3 п.10). |
 | — Консенсус EACVI/ASE (Voigt 2015) | **закрыто** | Матрица из 17 рекомендаций: все закрыты, остаётся принципиальное ограничение 2D (через-плоскостное движение) — `docs/STE_TRACKING_VERIFICATION.md` §6. |
 | — Реальные данные | **сделано** | `tests/fixtures/for_pero` (19 клипов: кадры + обезличенные заголовки + индекс, выгружаются CI-воркфлоу `.github/workflows/ste-fixtures.yml`), контракт `tests/unit/test_ste_real_clips.py` (7 тестов), вендорские числа `docs/STE_VENDOR_REFERENCE.md`. **Осталось:** gold-контуры КД для сверки на тех же кадрах (§11.2 п.1). |
-| — Инфраструктура и CI | **сделано** | `ruff check` + `ruff format --check`, CodeQL (включая правку ложного срабатывания на `bench/**` и снятие ЧСС/RR из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС; локальный STE-свип — 23 файла / 497 тестов, ~2 мин, 3 скипа, все зелёные (проверено 2026-09-11). |
+| — Инфраструктура и CI | **сделано** | `ruff check` + `ruff format --check`, CodeQL (включая правку ложного срабатывания на `bench/**` и снятие ЧСС/RR из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС; локальный STE-свип — 23 файла / 497 тестов, ~2 мин, 3 скипа, все зелёные (проверено 2026-09-11). **Известная проблема (2026-09-11):** на ветке падают ubuntu-джобы (`Test coverage` и `test (ubuntu-latest)`, 33–36 мин против 30 мин зелёного `main`); локальные полные прогоны — в том числе с заглушкой QtWebEngine, чтобы шли и WebEngine-зависимые файлы, — падений кода не показывают, а логи Actions из песочницы недоступны (blob-хост закрыт). В CI добавлен фильтр `.github/scripts/annotate_pytest_failures.py`, публикующий имена упавших тестов в аннотациях check-run: они читаются через REST API. Разобрать первым делом — §5.3 п.0. |
 
 Ключевые артефакты итерации: `src/echo_personal_tool/domain/services/{quality,segment_map,aha_segments,strain_metrics,strain_computation,wall_visibility,speckle_tracking,border_tracking,tracking_smoothing}.py`,
 `src/echo_personal_tool/domain/models/{speckle,ste_analysis}.py`,
@@ -788,6 +788,7 @@ P3 — расширения. Оценки — рабочие дни одного
 
 | № | Задача | Критерий приёмки | Где | Оценка |
 |---|---|---|---|---|
+| 0 | **Довести CI до зелёного** (P0) | Все джобы PR #74 зелёные, включая ubuntu `test` и `Test coverage`; причина найдена и записана, падение воспроизводится или объяснено | `.github/workflows/{ci,coverage}.yml`, `.github/scripts/annotate_pytest_failures.py` | 0.5–2 |
 | 1 | **Сверка с вендором на одних кадрах** (P0) | Таблица «наш GLS / вендор / Δ» по трём видам для ≥2 клипов For_pero; в отчёте объявлено, какой контур использован и откуда он | `tests/fixtures/for_pero`, `docs/STE_VENDOR_REFERENCE.md`, `application/workers/speckle_worker.py` | 1–2 дня после получения контуров; **блокер — §11.2 п.1** |
 | 2 | **Обзорный экран трёх видов** в стиле «3 Point Contour» (P1) | Три панели (кадр + контур + полоса/ECG) + мишень + сводная таблица + список видов со статусом в одном окне; offscreen-рендер в тесте; все данные — из `StrainStudy`, без пересчёта | `ui/strain_window.py`, новый пакет `ui/ste/` | 3–5 |
 | 3 | **Q5: авто-черновик контура КД** (P1) | Черновик правится мышью; в отчёте — признак «черновик» и доля правки; расхождение с ручным контуром на доступных клипах ≤ ~2 мм; без черновика GLS не считается «вендорским» | `domain/services/segmentation_service.py`, `application/*` | 3–6; нужны веса ONNX: в репозитории только `models/model_manifest.json` (манифест числит `echonet_seg_resnet50.onnx` как `exported`, но сами файлы исключены `models/.gitignore`: `*.onnx`, `*.pt`), поэтому в песочнице нужен либо каталог моделей автора, либо повторный экспорт `scripts/export_echonet_seg_to_onnx.py`; инфраструктура (preprocessing, temporal fusion, refine, landmark-модель) в манифесте уже описана или классический детектор |
@@ -833,6 +834,13 @@ QtWebEngine: в песочнице с `tools/qtstub` он падает на им
 * `bench/ste_trust_flags.py` — сравнение флагов доверия (круговой проход vs NCC);
 * `bench/ste_contour_tracking.py` — ошибка контура p50/p95/max;
 * `bench/reports/` — gitignored; иллюстрации для документации складываются в `docs/screenshots/`.
+
+Упавшие тесты на CI читаются без скачивания логов (blob-хост закрыт) через аннотации check-run:
+
+```bash
+gh api repos/areatu/SonoForge/commits/<sha>/check-runs --jq '.check_runs[] | select(.conclusion=="failure") | .id' \
+  | while read id; do gh api "repos/areatu/SonoForge/check-runs/$id/annotations" --jq '.[] | "\(.annotation_level) \(.message)"'; done
+```
 
 Документы: `docs/STE_TRACKING_VERIFICATION.md` (фантом, ворота KPI, матрица EACVI/ASE, ограничения),
 `docs/STE_VENDOR_REFERENCE.md` (вендорские GLS и конвенции), `CHANGELOG.md` (что и когда сделано),

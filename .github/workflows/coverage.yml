@@ -33,13 +33,16 @@ jobs:
           python -m pip install pytest-cov
 
       - name: Run tests with coverage
+        shell: bash
         run: |
+          set -o pipefail
           xvfb-run pytest tests/unit/ \
             --cov=src/echo_personal_tool \
             --cov-report=xml:coverage.xml \
             --cov-report=html:htmlcov \
             --cov-report=term-missing \
-            -q --tb=line --no-header
+            -q --tb=line --no-header \
+            | python .github/scripts/annotate_pytest_failures.py
 
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
