@@ -31,7 +31,14 @@
   `.venv` (пересобран и доукомплектован по `pyproject.toml`, включая `pylibjpeg*`, `jsonschema`,
   `openpyxl`, `keyring`, `pytest-qt`, `pytest-benchmark`), `bench/reports/*.json` (в `.gitignore`,
   перегенерированы) и скрипты в `/tmp` — вывод калибровки про NCC жил только там, поэтому он
-  восстановлен **как отслеживаемый харнесс**, а не как заметка.
+  восстановлен **как отслеживаемый харнесс**, а не как заметка. Команда восстановления окружения
+  (важно: `pylibjpeg*` ставить версиями, совместимыми с `numpy<2`):
+
+  ```
+  python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]" \
+      "numpy==1.26.4" "pylibjpeg-libjpeg==2.2.0" "pylibjpeg-openjpeg==2.2.1"
+  ./.venv/bin/python tools/qtstub/mkstub.py     # заглушки GL/EGL для GUI-тестов
+  ```
 
 ---
 
