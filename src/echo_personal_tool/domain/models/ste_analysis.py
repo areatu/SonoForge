@@ -98,6 +98,11 @@ class StrainAnalysis:
     qc_visibility_loss: float = 0.0
     qc_excluded_nodes: int = 0
     qc_excluded_segments: tuple[int, ...] = ()
+    # Round-trip verification of the tracking (clinical review Q6).
+    qc_closure_median_mm: float = 0.0
+    qc_closure_p95_mm: float = 0.0
+    qc_rejected_fraction: float = 0.0
+    qc_unverified_fraction: float = 0.0
     kernels_accepted: int = 0
     kernels_total: int = 0
     heart_rate_bpm: float = 0.0
@@ -160,6 +165,10 @@ class StrainAnalysis:
                 "visibility_loss": self.qc_visibility_loss,
                 "excluded_nodes": self.qc_excluded_nodes,
                 "excluded_segments": list(self.qc_excluded_segments),
+                "closure_median_mm": self.qc_closure_median_mm,
+                "closure_p95_mm": self.qc_closure_p95_mm,
+                "rejected_fraction": self.qc_rejected_fraction,
+                "unverified_fraction": self.qc_unverified_fraction,
                 "tracking_ncc_mean": self.tracking_quality_mean,
                 "kernels_accepted": self.kernels_accepted,
                 "kernels_total": self.kernels_total,
@@ -216,6 +225,10 @@ class StrainAnalysis:
             qc_noise_to_signal=float(getattr(result, "qc_noise_to_signal", 0.0)),
             qc_noise_mm=float(getattr(result, "qc_noise_mm", 0.0)),
             qc_visibility_loss=float(getattr(result, "qc_visibility_loss", 0.0)),
+            qc_closure_median_mm=float(getattr(result, "qc_closure_median_mm", 0.0)),
+            qc_closure_p95_mm=float(getattr(result, "qc_closure_p95_mm", 0.0)),
+            qc_rejected_fraction=float(getattr(result, "qc_rejected_fraction", 0.0)),
+            qc_unverified_fraction=float(getattr(result, "qc_unverified_fraction", 0.0)),
             qc_excluded_nodes=int(getattr(result, "qc_excluded_nodes", 0)),
             qc_excluded_segments=tuple(int(seg) for seg in (getattr(result, "qc_excluded_segments", ()) or ())),
             kernels_accepted=int(result.kernels_accepted_count),

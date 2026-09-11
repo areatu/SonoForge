@@ -1753,6 +1753,20 @@ class StrainWindow(QMainWindow):
             parts.append(tr("strain.drift_warning", value=f"{drift:+.1f}"))
         if getattr(result, "is_post_systolic", False):
             parts.append(tr("strain.post_systolic"))
+        # Round-trip verification of the tracking (clinical review Q6): the share
+        # of node-frames the tracker could confirm by matching there and back, and
+        # how far the round trip misses the drawn contour. This is the number that
+        # turns "trust the tracking" into evidence.
+        confirmed = 1.0 - float(getattr(result, "qc_rejected_fraction", 0.0) or 0.0)
+        closure_mm = float(getattr(result, "qc_closure_median_mm", 0.0) or 0.0)
+        if getattr(result, "qc_rejected_fraction", None) is not None:
+            parts.append(
+                tr(
+                    "strain.tracking_verification",
+                    confirmed=f"{confirmed * 100.0:.1f}",
+                    closure=f"{closure_mm:.1f}",
+                )
+            )
         qc_reasons = getattr(result, "qc_reasons", ()) or ()
         if qc_reasons:
             reason_text = ", ".join(tr(key) for key in qc_reasons[:2])

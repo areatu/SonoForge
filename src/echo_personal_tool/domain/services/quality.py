@@ -62,6 +62,19 @@ MAX_VISIBILITY_LOSS_INVALID = 0.10
 # node-frames outside the field of view already moved GLS by ~4 pp, which is
 # more than the tracking error of a clean clip.
 MAX_VISIBILITY_LOSS_REVIEW = 0.02
+# Round-trip (forward-backward) verification of the tracking itself, i.e. the
+# only accuracy check that needs no ground truth: the tracker matches a kernel
+# to a frame and matches it back, and the distance by which the round trip fails
+# to close measures its own drift. Calibrated on the phantom against the true
+# material positions: verified node-frames carry a median error of 0.4-0.5 mm and
+# a 95th percentile of 1.0-1.2 mm, rejected ones 13-15 mm, so the share of
+# rejected node-frames is what separates a measurement from a guess
+# (6 % on a clean clip, 21 % at 10 dB). ``MAX_UNVERIFIED_*`` covers the
+# node-frames where the round trip could not be evaluated at all (no verdict
+# must not silently count as a pass).
+MAX_REJECTED_FRACTION_REVIEW = 0.10
+MAX_REJECTED_FRACTION_INVALID = 0.25
+MAX_UNVERIFIED_FRACTION_REVIEW = 0.30
 
 REASON_NO_DATA = "strain.qc.reason.no_data"
 REASON_GEOMETRY = "strain.qc.reason.geometry"
@@ -74,6 +87,7 @@ REASON_CROSS_CHECK = "strain.qc.reason.cross_check"
 REASON_LINE_COHERENCE = "strain.qc.reason.line_coherence"
 REASON_TRACKING_NOISE = "strain.qc.reason.tracking_noise"
 REASON_EDGE_VISIBILITY = "strain.qc.reason.edge_visibility"
+REASON_TRACKING_VERIFICATION = "strain.qc.reason.tracking_verification"
 
 
 @dataclass(frozen=True)
@@ -92,6 +106,10 @@ class QualityReport:
     visibility_loss: float = 0.0
     excluded_nodes: int = 0
     excluded_segments: int = 0
+    closure_median_mm: float = 0.0
+    closure_p95_mm: float = 0.0
+    rejected_fraction: float = 0.0
+    unverified_fraction: float = 0.0
     physiology_ok: bool = False
     reasons: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -114,6 +132,10 @@ def assess_tracking_quality(
     visibility_loss: float = 0.0,
     excluded_nodes: int = 0,
     excluded_segments: int = 0,
+    closure_median_mm: float = 0.0,
+    closure_p95_mm: float = 0.0,
+    rejected_fraction: float = 0.0,
+    unverified_fraction: float = 0.0,
     gls_pp: float = 0.0,
     physiology_ok: bool = True,
     physiology_notes: Sequence[str] = (),
@@ -150,6 +172,12 @@ def assess_tracking_quality(
     exclusion downgrades the result to ``review`` — the number then describes
     the visible part of the wall, which has to be stated — and more than one
     excluded segment of a view makes it ``invalid`` (EACVI/ASE limit).
+
+    ``rejected_fraction`` / ``unverified_fraction`` are the round-trip
+    verification of the tracking (clinical review Q6): how much of the wall the
+    tracker itself could not confirm by matching forward and back, and how much
+    of it produced no verdict at all. This is the evidence behind the number —
+    without it a report is asking to be trusted blindly.
     """
     reasons: list[str] = []
     notes: list[str] = list(physiology_notes) + list(geometry_notes)
@@ -173,6 +201,20 @@ def assess_tracking_quality(
         reasons.append(REASON_LOW_COVERAGE)
         hard_failure = True
 
+    rejected_fraction = float(max(0.0, min(1.0, rejected_fraction)))
+    unverified_fraction = float(max(0.0, min(1.0, unverified_fraction)))
+    # The verification numbers belong in the record whatever the verdict: they
+    # are the evidence behind the number, not a diagnosis of it.
+    if has_curve and (rejected_fraction > 0.0 or unverified_fraction > 0.0):
+        notes.append(
+            f"round-trip verification: {rejected_fraction * 100:.1f}% of node-frames rejected, "
+            f"{unverified_fraction * 100:.1f}% without a verdict, "
+            f"closure {closure_median_mm:.2f} mm median / {closure_p95_mm:.2f} mm p95"
+        )
+    if has_curve and rejected_fraction > MAX_REJECTED_FRACTION_INVALID:
+        reasons.append(REASON_TRACKING_VERIFICATION)
+        hard_failure = True
+
     excluded_nodes = int(max(0, excluded_nodes))
     excluded_segments = int(max(0, excluded_segments))
     visibility_loss = float(max(0.0, min(1.0, visibility_loss)))
@@ -193,34 +235,41 @@ def assess_tracking_quality(
         hard_failure = True
 
     soft = False
-    if not hard_failure:
-        if coverage < MIN_COVERAGE_REVIEW:
-            reasons.append(REASON_LOW_COVERAGE)
-            soft = True
-        if interpolated_fraction > MAX_INTERPOLATED_REVIEW:
-            reasons.append(REASON_INTERPOLATION)
-            soft = True
-        if consistency_delta > MAX_CONSISTENCY_DELTA_REVIEW:
-            reasons.append(REASON_CONSISTENCY)
-            soft = True
-        spread = float(max(0.0, estimate_spread_pp))
-        if spread > MAX_ESTIMATE_SPREAD_ABS and spread > MAX_ESTIMATE_SPREAD_REL * abs(gls_reference):
-            reasons.append(REASON_CROSS_CHECK)
-            soft = True
-        if sign_flip_fraction > MAX_SIGN_FLIP_FRACTION:
-            reasons.append(REASON_LINE_COHERENCE)
-            soft = True
-        if noise_ratio > MAX_NOISE_TO_SIGNAL_REVIEW:
-            reasons.append(REASON_TRACKING_NOISE)
-            soft = True
-        if n_segments_measured < MIN_SEGMENTS_REVIEW:
-            reasons.append(REASON_FEW_SEGMENTS)
-            soft = True
-        if excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW:
-            reasons.append(REASON_EDGE_VISIBILITY)
-            soft = True
-        if physiology_notes:
-            soft = True
+    # Soft evidence is collected even when the result already failed hard: a
+    # report that lists one reason hides the others (a clip that is both
+    # unverifiable and self-contradictory used to mention only the first), and
+    # the clinician is better served by the full list. Severity is unchanged:
+    # a hard failure still decides the status.
+    if coverage < MIN_COVERAGE_REVIEW:
+        reasons.append(REASON_LOW_COVERAGE)
+        soft = True
+    if interpolated_fraction > MAX_INTERPOLATED_REVIEW:
+        reasons.append(REASON_INTERPOLATION)
+        soft = True
+    if consistency_delta > MAX_CONSISTENCY_DELTA_REVIEW:
+        reasons.append(REASON_CONSISTENCY)
+        soft = True
+    spread = float(max(0.0, estimate_spread_pp))
+    if spread > MAX_ESTIMATE_SPREAD_ABS and spread > MAX_ESTIMATE_SPREAD_REL * abs(gls_reference):
+        reasons.append(REASON_CROSS_CHECK)
+        soft = True
+    if sign_flip_fraction > MAX_SIGN_FLIP_FRACTION:
+        reasons.append(REASON_LINE_COHERENCE)
+        soft = True
+    if noise_ratio > MAX_NOISE_TO_SIGNAL_REVIEW:
+        reasons.append(REASON_TRACKING_NOISE)
+        soft = True
+    if n_segments_measured < MIN_SEGMENTS_REVIEW:
+        reasons.append(REASON_FEW_SEGMENTS)
+        soft = True
+    if excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW:
+        reasons.append(REASON_EDGE_VISIBILITY)
+        soft = True
+    if rejected_fraction > MAX_REJECTED_FRACTION_REVIEW or unverified_fraction > MAX_UNVERIFIED_FRACTION_REVIEW:
+        reasons.append(REASON_TRACKING_VERIFICATION)
+        soft = True
+    if physiology_notes:
+        soft = True
 
     if hard_failure:
         status = STATUS_INVALID
@@ -238,6 +287,7 @@ def assess_tracking_quality(
     confidence *= 1.0 - 0.3 * min(float(sign_flip_fraction) / 0.5, 1.0)
     confidence *= 1.0 - 0.5 * min(noise_ratio / MAX_NOISE_TO_SIGNAL_INVALID, 1.0)
     confidence *= 1.0 - 0.5 * min(visibility_loss / 0.25, 1.0)
+    confidence *= 1.0 - 0.5 * min(max(rejected_fraction, unverified_fraction) / 0.5, 1.0)
     confidence = float(max(0.0, min(1.0, confidence)))
     if status == STATUS_INVALID:
         confidence = min(confidence, 0.35)
@@ -257,6 +307,10 @@ def assess_tracking_quality(
         visibility_loss=visibility_loss,
         excluded_nodes=excluded_nodes,
         excluded_segments=excluded_segments,
+        closure_median_mm=float(closure_median_mm),
+        closure_p95_mm=float(closure_p95_mm),
+        rejected_fraction=rejected_fraction,
+        unverified_fraction=unverified_fraction,
         physiology_ok=bool(physiology_ok),
         reasons=tuple(dict.fromkeys(reasons)),
         notes=tuple(notes),

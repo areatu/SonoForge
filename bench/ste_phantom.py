@@ -159,6 +159,19 @@ def run_variant(variant: Variant) -> VariantResult:
         "qc_noise_to_signal": float(getattr(analysis, "qc_noise_to_signal", float("nan"))),
         "qc_consistency_delta": float(getattr(analysis, "qc_consistency_delta", float("nan"))),
         "qc_coverage": float(getattr(analysis, "qc_coverage", float("nan"))),
+        # Round-trip verification of the tracking: the tracker's own error
+        # estimate, reported instead of asking the reader to trust the numbers.
+        "qc_closure_median_mm": float(getattr(analysis, "qc_closure_median_mm", float("nan"))),
+        "qc_closure_p95_mm": float(getattr(analysis, "qc_closure_p95_mm", float("nan"))),
+        "qc_rejected_fraction": float(getattr(analysis, "qc_rejected_fraction", float("nan"))),
+        "qc_unverified_fraction": float(getattr(analysis, "qc_unverified_fraction", float("nan"))),
+        "qc_visibility_loss": float(getattr(analysis, "qc_visibility_loss", float("nan"))),
+        "qc_excluded_segments": list(getattr(analysis, "qc_excluded_segments", ()) or ()),
+        "closures": (
+            None
+            if getattr(analysis, "closure_all_frames", None) is None
+            else np.asarray(analysis.closure_all_frames, dtype=np.float64).tolist()
+        ),
         "qc_interpolated_fraction": float(getattr(analysis, "qc_interpolated_fraction", float("nan"))),
         "qc_reasons": list(getattr(analysis, "qc_reasons", ()) or ()),
         "segment_quality": {str(k): float(v) for k, v in dict(getattr(analysis, "segment_quality", {})).items()},

@@ -1363,5 +1363,7 @@
   "strain.qc.reason.cross_check": "независимые оценки деформации расходятся",
   "strain.qc.reason.line_coherence": "линия миокарда сокращается неоднородно",
   "strain.qc.reason.tracking_noise": "шум слежения сопоставим с измеряемым сокращением",
-  "strain.qc.reason.edge_visibility": "часть миокарда вне сектора видимости"
+  "strain.qc.reason.edge_visibility": "часть миокарда вне сектора видимости",
+  "strain.qc.reason.tracking_verification": "межкадерное слежение за контуром не подтверждено",
+  "strain.tracking_verification": "проверка: подтверждено {confirmed}% точек контура, замыкание {closure} мм"
 }

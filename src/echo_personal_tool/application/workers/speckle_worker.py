@@ -38,6 +38,8 @@ from echo_personal_tool.domain.services.speckle_tracking import (
     track_cine_bidirectional,
     track_cine_incremental,
     track_cine_sequential,
+    verification_gate_px,
+    verify_trajectory_closure,
 )
 from echo_personal_tool.domain.services.strain_computation import (
     aggregate_segment_curves,
@@ -113,6 +115,26 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
     if not frames_list:
         raise RuntimeError("No frames decoded from source")
     return np.stack(frames_list)
+
+
+def _closure_gate_px(config: SpeckleConfig) -> float:
+    """Round-trip rejection threshold of the verification pass, in pixels.
+
+    Thin alias of the domain helper so the worker, the harnesses and the pass
+    itself can never drift apart (the radius the round trip gets is a floor of
+    ``VERIFICATION_SEARCH_RADIUS_PX``, not whatever the selected tracking mode
+    happens to use).
+    """
+    return verification_gate_px(config)
+
+
+def _embed_closure_matrix(closure: np.ndarray, n_frames: int, phase_start: int) -> np.ndarray:
+    """Place the tracked-window closure matrix on the full frame timeline."""
+    embedded = np.full((n_frames, closure.shape[1]), np.nan, dtype=np.float64)
+    tracked_len = int(min(closure.shape[0], n_frames - phase_start))
+    if tracked_len > 0:
+        embedded[phase_start : phase_start + tracked_len] = closure[:tracked_len]
+    return embedded
 
 
 # Fewer visible endocardial nodes than this and the arc is no longer a usable
@@ -736,6 +758,30 @@ class SpeckleTrackingWorker(QRunnable):
             # two annulus-plane columns was only needed while the phantom's
             # annulus band was static (plan §7.5 F2/F8), and with the corrected
             # phantom the two ends are as accurate as the rest of the wall.
+            # Round-trip verification of the tracking (clinical review Q6): the
+            # finished trajectory — the one the overlay draws and the strain
+            # integrates — is matched back to end diastole, node by node and
+            # frame by frame, and the miss distance is reported. It runs here
+            # rather than inside the tracker so that every tracking mode gets the
+            # same verdict and the verdict describes the *smoothed* curve.
+            # No zone mask: the mask constrains *tracking* to the myocardial
+            # band, while the round trip is a verification of the trajectory and
+            # must be able to match back wherever the tissue went (measured:
+            # with the static ED mask only 24 % of the endocardial nodes could be
+            # verified, without it 100 %).
+            closure_matrix = verify_trajectory_closure(
+                preprocessed,
+                smoothed,
+                kernels,
+                ed_index=local_ed,
+                config=config,
+            )
+            logger.info(
+                "STE verification pass: closure over %d frames x %d kernels",
+                closure_matrix.shape[0],
+                closure_matrix.shape[1],
+            )
+
             strain_endo_all = _arc_ordered_columns(endo_indices, kernels)
             strain_epi_all = _arc_ordered_columns(epi_indices, kernels)
 
@@ -1086,6 +1132,29 @@ class SpeckleTrackingWorker(QRunnable):
             coverage = n_accepted / n_kernels if n_kernels else 0.0
             window_ncc = ncc_matrix[local_ed : local_es + 1]
             interpolated_fraction = float(np.mean(window_ncc < config.ncc_threshold)) if window_ncc.size else 1.0
+            # Round-trip verification summary over the analysed window: how much
+            # of the wall the tracker could confirm by matching there and back.
+            avg_spacing_mm = float((self._pixel_spacing[0] + self._pixel_spacing[1]) / 2.0)
+            window_closure = closure_matrix[local_ed : local_es + 1]
+            finite_closure = np.isfinite(window_closure)
+            verified_fraction = float(np.mean(finite_closure)) if window_closure.size else 0.0
+            unverified_fraction = 1.0 - verified_fraction
+            rejected_fraction = (
+                float(np.mean(window_closure[finite_closure] > _closure_gate_px(config)))
+                if finite_closure.any()
+                else 0.0
+            )
+            closure_median_mm = float(np.nanmedian(window_closure)) * avg_spacing_mm if finite_closure.any() else 0.0
+            closure_p95_mm = (
+                float(np.nanpercentile(window_closure, 95)) * avg_spacing_mm if finite_closure.any() else 0.0
+            )
+            logger.info(
+                "STE verification: verified %.2f of node-frames, rejected %.2f, closure median %.2f mm, p95 %.2f mm",
+                verified_fraction,
+                rejected_fraction,
+                closure_median_mm,
+                closure_p95_mm,
+            )
             geometry_ok, geometry_notes = _check_ste_geometry(self._zone, self._pixel_spacing)
             # Metric cross-checks (plan §7.5, F4): the reported GLS must agree
             # with the independent estimates built from the *same* tracking but
@@ -1148,6 +1217,10 @@ class SpeckleTrackingWorker(QRunnable):
                 visibility_loss=visibility.loss_fraction,
                 excluded_nodes=len(excluded_endo_nodes),
                 excluded_segments=len(excluded_segments),
+                closure_median_mm=closure_median_mm,
+                closure_p95_mm=closure_p95_mm,
+                rejected_fraction=rejected_fraction,
+                unverified_fraction=unverified_fraction,
                 gls_pp=gls,
             )
             qc_overall = quality.confidence
@@ -1261,6 +1334,11 @@ class SpeckleTrackingWorker(QRunnable):
                 qc_visibility_loss=quality.visibility_loss,
                 qc_excluded_nodes=quality.excluded_nodes,
                 qc_excluded_segments=excluded_segments,
+                closure_all_frames=_embed_closure_matrix(closure_matrix, n_frames, phase_start),
+                qc_closure_median_mm=quality.closure_median_mm,
+                qc_closure_p95_mm=quality.closure_p95_mm,
+                qc_rejected_fraction=quality.rejected_fraction,
+                qc_unverified_fraction=quality.unverified_fraction,
                 analysis_window_end=int(phase_end),
                 cycle_estimated=bool(cycle_estimated),
                 raw_tracked_positions=raw_phase_positions,

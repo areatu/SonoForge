@@ -43,6 +43,14 @@ class TrackingResult:
     valid_mask: np.ndarray
     kernel_positions: np.ndarray
     reference_frame: int = 0
+    # Forward–backward (round-trip) closure error per kernel, in pixels: how far
+    # the kernel has drifted when the match is run backwards from the tracked
+    # position to the reference frame. ``NaN`` where the round trip could not be
+    # evaluated (bidirectional tracking disabled or a rejected match) or where the
+    # kernel was not tracked. This is the tracker's own, ground-truth-free error
+    # estimate — it was computed on every frame and thrown away before (clinical
+    # review Q6), so the report could not say how far the tracking had drifted.
+    closure_error: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +210,14 @@ class StrainResult:
     qc_visibility_loss: float = 0.0
     qc_excluded_nodes: int = 0
     qc_excluded_segments: tuple[int, ...] = ()
+    # Round-trip verification of the tracking (clinical review Q6): per-kernel
+    # forward-backward closure error in pixels for every analysed frame (NaN
+    # where no verdict exists) and the window summary the QC report uses.
+    closure_all_frames: np.ndarray | None = None
+    qc_closure_median_mm: float = 0.0
+    qc_closure_p95_mm: float = 0.0
+    qc_rejected_fraction: float = 0.0
+    qc_unverified_fraction: float = 0.0
     # Per-node strain curves along the tracked material line (single definition,
     # see ``strain_computation.compute_node_longitudinal_curves``). Columns match
     # ``node_indices``; values are NaN outside the tracked window.
