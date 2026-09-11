@@ -118,6 +118,14 @@
   вместо заглушки `strain.segment_name.{id}`; якорь подписи — снаружи стенки
   (`segment_label_anchors`); QC-чекбоксы сегментов переведены с устаревших id 1…6 на реальные
   (`full_segment_label`); иллюстрация `docs/screenshots/ste-segment-labels.png`.
+* **Ориентация кадра на иллюстрациях**: найденная причина «правильные контуры, миокард под 90°» —
+  `pg.ImageItem` без `axisOrder` (по умолчанию `col-major`, массив читается как `(x, y)`); боевые пути
+  и зритель были верны. Добавлены `bench/render_utils.py` (рисование в конвенции приложения + проба
+  `verify_render_orientation`, падающая вместо публикации транспонированного кадра) и
+  `bench/ste_verification_preview.py` (генератор картинок §1 `docs/STE_TRACKING_VERIFICATION.md`);
+  перегенерированы обе верификационные фигуры и `docs/screenshots/ste-segment-labels.png`; страж —
+  `tests/unit/test_bench_render_utils.py` (плюс статическая проверка, что bench-скрипты не строят
+  `ImageItem` в обход хелпера).
 
 ### Осталось (подробно — §5.3, с критериями приёмки и оценками)
 
@@ -900,6 +908,11 @@ export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 
 Список STE-файлов (28; +`test_segment_labels.py` — имена сегментов для cine/панели): `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
 `test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,strain_curves_view,stepped_border_refine,presentation_speckle_overlay,presentation_speckle_settings_dialog,presentation_segment_quality_panel,presentation_ste_results_dialog,segment_labels}.py`.
+
+Все иллюстрации рисовать только через `bench/render_utils.py` (`make_image_item`): у `pg.ImageItem`
+по умолчанию ось `col-major`, и кадр молча выходит транспонированным относительно оверлея; генератор
+обязан перед записью позвать `verify_render_orientation()`. Страж —
+`tests/unit/test_bench_render_utils.py` (он же валит сборку, если bench-скрипт строит `ImageItem` сам).
 
 **Свип по этому списку — недостаточная проверка.** Он не ловит тесты, которых PR не касался, но
 которые зависят от изменённых модулей: именно так 2026-09-11 проехали три падения в

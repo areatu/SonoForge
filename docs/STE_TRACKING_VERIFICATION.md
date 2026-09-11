@@ -38,15 +38,28 @@ JSON исследования (`ste_analysis.to_dict`).
 жёлтым кружком, в углу — счётчик. Подтверждённые узлы не помечаются, поэтому
 метки читаются как «вот здесь числу нельзя верить», а не как фон.
 
-![чисто, 40 дБ](screenshots/ste-tracking-verification-clean.png)
-![10 дБ, 81 % узлов не подтверждены](screenshots/ste-tracking-verification-noisy.png)
+![40 дБ — не подтверждено 8 из 96 узлов](screenshots/ste-tracking-verification-clean.png)
+![10 дБ — не подтверждено 95 из 96 узлов](screenshots/ste-tracking-verification-noisy.png)
+
+Обе картинки — кадр КС быстрого фантома (`StePhantomConfig.quick()`, 20 кадров,
+96 узлов); счётчики в углу кадра и подписи здесь — одно и то же число.
 
 Порог метки — тот же `closure_gate_px`, которым пользовался отчёт: overlay не
 пересчитывает правило и не может с ним разойтись.
 
+Иллюстрации рисует `bench/ste_verification_preview.py`: кадры берутся у
+production-воркера, метки и легенда — у того же `SpeckleOverlay`, а перед
+записью файла скрипт прогоняет пробу ориентации из `bench/render_utils.py` —
+`pg.ImageItem` по умолчанию читает массив как `(x, y)`, и без явного
+`axisOrder="row-major"` (как во всех боевых путях) кадр молча выходит
+транспонированным: контуры на месте, а миокард повёрнут на 90°. Проба падает
+вместо того, чтобы отдать такую картинку.
+
 Воспроизведение:
 
 ```bash
+LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen \
+    ./.venv/bin/python bench/ste_verification_preview.py
 LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen \
     ./.venv/bin/python bench/ste_contour_tracking.py --json /tmp/contour.json
 LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen \

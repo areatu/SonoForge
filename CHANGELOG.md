@@ -52,6 +52,28 @@
 
 ---
 
+## 2026-09-11 — STE: скриншоты больше не врут об ориентации (миокард под 90°)
+
+### Fixed
+- `fix(bench)`: кадр на иллюстрациях рисовался через `pg.ImageItem` **без** `axisOrder`, а pyqtgraph по
+  умолчанию читает массив как `(x, y)` — картинка молча выходила транспонированной: контуры стояли верно
+  («верхушка сверху, линия МК снизу»), а миокард был повёрнут на 90° против часовой. Приложение ни при
+  чём: все боевые пути (`viewer_widget`, `strain_window`, `doppler_widget`, `mmode_widget`) просят
+  `row-major` — проверено сквозным прогоном по реальному зрителю. Починены генераторы: новый
+  `bench/render_utils.py` (`make_image_item`, проба ориентации, которая **падает** вместо публикации
+  транспонированного кадра), новый `bench/ste_verification_preview.py` (обе картинки §1
+  `docs/STE_TRACKING_VERIFICATION.md`: кадр от production-воркера, метки и легенда — от
+  `SpeckleOverlay`) и `bench/ste_segment_labels_preview.py`.
+- `fix(docs)`: перегенерированы `docs/screenshots/ste-tracking-verification-{clean,noisy}.png` и
+  `docs/screenshots/ste-segment-labels.png`; подписи в `docs/STE_TRACKING_VERIFICATION.md` приведены к
+  фактическим числам кадра КС (40 дБ — 8 из 96, 10 дБ — 95 из 96; прежние «81 %» относились к другому
+  коду и другому числу узлов).
+- `test(bench)`: `tests/unit/test_bench_render_utils.py` — положительный контроль (метка попадает туда,
+  куда её кладут координаты изображения), негативный (рендер по умолчанию ловится пробой) и статическая
+  проверка: ни один bench-скрипт не строит `ImageItem` в обход хелпера.
+
+---
+
 ## 2026-09-11 — STE: подписи сегментов у стенок на cine (§5.3 п.4)
 
 ### Features

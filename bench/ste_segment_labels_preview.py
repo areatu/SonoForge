@@ -11,6 +11,12 @@ ground-truth endocardial arc at end diastole, and the segment ids come from the
 production assignment ``assign_segments_from_arc`` — the same call the analysis
 worker makes.
 
+The frame goes through :mod:`bench.render_utils` (``axisOrder="row-major"``, as
+every product path does) and the run self-checks the orientation before writing:
+without the explicit axis order pyqtgraph transposes a ``(rows, cols)`` frame, and
+the first version of this figure showed the labels and contours correctly placed
+over a myocardium rotated by 90°.
+
 Usage::
 
     LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen \\
@@ -29,6 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests" / "fixtures"))
 
+from render_utils import make_image_item, verify_render_orientation  # noqa: E402
 from ste_phantom import StePhantom, StePhantomConfig  # noqa: E402
 
 from echo_personal_tool.domain.models.speckle import TrackingKernel  # noqa: E402
@@ -43,7 +50,6 @@ NODE_COUNT = 36
 def render(out_path: Path, language: str = "ru", scale: int = 2) -> int:
     """Draw the overlay and return the number of segment labels placed."""
     import pyqtgraph as pg
-    from PySide6.QtCore import QRectF
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication(sys.argv)
@@ -75,9 +81,10 @@ def render(out_path: Path, language: str = "ru", scale: int = 2) -> int:
     plot.hideAxis("bottom")
     plot.invertY(True)
     plot.setAspectLocked(True)
-    image = pg.ImageItem(frames[ed_index])
-    image.setRect(QRectF(0, 0, frames[ed_index].shape[1], frames[ed_index].shape[0]))
-    plot.addItem(image)
+    plot.addItem(make_image_item(frames[ed_index]))
+
+    plot.setXRange(0, config.width, padding=0)
+    plot.setYRange(0, config.height, padding=0)
 
     set_language(language)
     overlay = SpeckleOverlay(plot)
@@ -90,8 +97,6 @@ def render(out_path: Path, language: str = "ru", scale: int = 2) -> int:
     )
     drawn = overlay.show_segment_labels(kernels, positions_ed)
 
-    plot.setXRange(0, config.width, padding=0)
-    plot.setYRange(0, config.height, padding=0)
     plot.resize(scale * config.width, scale * config.height)
     plot.show()
     app.processEvents()
@@ -107,6 +112,7 @@ def main() -> int:
     parser.add_argument("--scale", type=int, default=2)
     args = parser.parse_args()
 
+    verify_render_orientation()
     drawn = render(args.out, language=args.language, scale=args.scale)
     print(f"segment labels drawn: {drawn} -> {args.out}")
     return 0
