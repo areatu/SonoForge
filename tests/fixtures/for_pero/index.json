@@ -1,0 +1,945 @@
+{
+  "source": "data/dicom/For_pero",
+  "clips": [
+    {
+      "file": "gold1.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "55",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.2816901355981827,
+            0.2816901355981827
+          ]
+        }
+      ],
+      "frames": 55,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20250926.1101145196.769.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20250926",
+        "(0040,0245) Performed Procedure Step Start Time": "101145",
+        "(0040,0253) Performed Procedure Step ID": "20250926101145"
+      },
+      "npz": "gold1.npz",
+      "npz_mb": 2.69,
+      "jpeg_quality": 68,
+      "size_mb": 8.79,
+      "shape": [
+        55,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold2.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "80",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.2816901355981827,
+            0.2816901355981827
+          ]
+        }
+      ],
+      "frames": 80,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20250926.1101145196.769.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20250926",
+        "(0040,0245) Performed Procedure Step Start Time": "101145",
+        "(0040,0253) Performed Procedure Step ID": "20250926101145"
+      },
+      "npz": "gold2.npz",
+      "npz_mb": 3.17,
+      "jpeg_quality": 68,
+      "size_mb": 10.75,
+      "shape": [
+        80,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold3.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "105",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.22535212337970734,
+            0.22535212337970734
+          ]
+        }
+      ],
+      "frames": 105,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20260202.1134937196.168.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20260202",
+        "(0040,0245) Performed Procedure Step Start Time": "134937",
+        "(0040,0253) Performed Procedure Step ID": "20260202134937"
+      },
+      "npz": "gold3.npz",
+      "npz_mb": 6.13,
+      "jpeg_quality": 68,
+      "size_mb": 17.83,
+      "shape": [
+        105,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold4.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "139",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.2535211481153965,
+            0.2535211481153965
+          ]
+        }
+      ],
+      "frames": 139,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20260420.1125512045.823.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20260420",
+        "(0040,0245) Performed Procedure Step Start Time": "125512",
+        "(0040,0253) Performed Procedure Step ID": "20260420125512"
+      },
+      "npz": "gold4.npz",
+      "npz_mb": 6.33,
+      "jpeg_quality": 68,
+      "size_mb": 19.73,
+      "shape": [
+        139,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold5.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "125",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.22535212337970734,
+            0.22535212337970734
+          ]
+        }
+      ],
+      "frames": 125,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20260526.1091229677.258.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20260526",
+        "(0040,0245) Performed Procedure Step Start Time": "091229",
+        "(0040,0253) Performed Procedure Step ID": "20260526091229"
+      },
+      "npz": "gold5.npz",
+      "npz_mb": 6.67,
+      "jpeg_quality": 68,
+      "size_mb": 19.83,
+      "shape": [
+        125,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold6.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "120",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.27162976562976837,
+            0.27162976562976837
+          ]
+        }
+      ],
+      "frames": 120,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251111.1220602892.976.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251111",
+        "(0040,0245) Performed Procedure Step Start Time": "220602",
+        "(0040,0253) Performed Procedure Step ID": "20251111220602"
+      },
+      "npz": "gold6.npz",
+      "npz_mb": 6.93,
+      "jpeg_quality": 68,
+      "size_mb": 20.43,
+      "shape": [
+        120,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold7+ECG.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "83",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.2816901355981827,
+            0.2816901355981827
+          ]
+        }
+      ],
+      "frames": 83,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": true,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1132127683.305.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251124",
+        "(0040,0245) Performed Procedure Step Start Time": "132127",
+        "(0040,0253) Performed Procedure Step ID": "20251124132127"
+      },
+      "npz": "gold7+ECG.npz",
+      "npz_mb": 5.3,
+      "jpeg_quality": 68,
+      "size_mb": 15.38,
+      "shape": [
+        83,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold8+ECG.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "800",
+      "Columns": "1276",
+      "NumberOfFrames": "82",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            0.0,
+            90.0
+          ],
+          "size": [
+            1276.0,
+            710.0
+          ],
+          "physical_delta_mm": [
+            0.2816901355981827,
+            0.2816901355981827
+          ]
+        }
+      ],
+      "frames": 82,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": true,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1132127683.305.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251124",
+        "(0040,0245) Performed Procedure Step Start Time": "132127",
+        "(0040,0253) Performed Procedure Step ID": "20251124132127"
+      },
+      "npz": "gold8+ECG.npz",
+      "npz_mb": 5.36,
+      "jpeg_quality": 68,
+      "size_mb": 15.45,
+      "shape": [
+        82,
+        800,
+        1276
+      ]
+    },
+    {
+      "file": "gold_Ph_ECG1",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "Philips Medical Systems",
+      "ManufacturerModelName": "EPIQ Elite",
+      "SoftwareVersions": "EPIQ Elite_9.0.3.637",
+      "Rows": "600",
+      "Columns": "800",
+      "NumberOfFrames": "185",
+      "SamplesPerPixel": "1",
+      "PhotometricInterpretation": "MONOCHROME2",
+      "BitsAllocated": "8",
+      "PixelSpacing": [
+        0.3860547230481,
+        0.3860547230481
+      ],
+      "UltrasoundColorDataPresent": "0",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            11.0,
+            30.0
+          ],
+          "size": [
+            777.0,
+            562.0
+          ],
+          "physical_delta_mm": [
+            0.3860547230481046,
+            0.3860547230481046
+          ]
+        }
+      ],
+      "frames": 185,
+      "fps": 58.28,
+      "ecg": false,
+      "ecg_burn_in_hint": true,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.840.113663.1500.1.492753341.5.1.20251126.144732.829]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251126",
+        "(0040,0245) Performed Procedure Step Start Time": "144732",
+        "(0040,0253) Performed Procedure Step ID": "20251126.144732",
+        "(0040,0254) Performed Procedure Step Description": "",
+        "(0040,0280) Comments on the Performed Procedure Step": "Нет",
+        "(2001,0010) Private Creator": "Philips Imaging DD 001",
+        "(2001,1063) [Examination Source]": "ELSEWHERE",
+        "(2001,10F3) Private tag data": "YES",
+        "(200D,0020) Private Creator": "Philips US Imaging DD 017",
+        "(200D,0024) Private Creator": "Philips US Imaging DD 021",
+        "(200D,0026) Private Creator": "Philips US Imaging DD 023",
+        "(200D,0030) Private Creator": "Philips US Imaging DD 033",
+        "(200D,0039) Private Creator": "Philips US Imaging DD 042",
+        "(200D,003A) Private Creator": "Philips US Imaging DD 043",
+        "(200D,003C) Private Creator": "Philips US Imaging DD 045",
+        "(200D,0051) Private Creator": "Philips US Imaging DD 066",
+        "(200D,2005) [Unknown]": "native",
+        "(200D,2407) Private tag data": "DICOM_GSDF_ENABLED",
+        "(200D,2637) [Unknown]": "20251126",
+        "(200D,2638) [Unknown]": "144732",
+        "(200D,2645) Private tag data": "0",
+        "(200D,2659) Private tag data": "0",
+        "(200D,265A) Private tag data": "0",
+        "(200D,265B) Private tag data": "0",
+        "(200D,265C) Private tag data": "0",
+        "(200D,3000) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0s\\x05\\x85@7\\xae\\x1d\\x8a\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x873\\x1f\\xc5\\xcd\\x99\\x8bZ\\xb2\"\\x06j\\xf86\\xf5…",
+        "(200D,300F) Private tag data": "b'\\xff\\xfe<\\x00?\\x00x\\x00m\\x00l\\x00 \\x00v\\x00e\\x00r\\x00s\\x00i\\x00o\\x00n\\x00=\\x00\"\\x001\\x00.\\x000\\x00\"\\x00 \\x00s\\x00t\\x00a\\x00n\\x00d\\x00a\\x00l\\x00o\\x00n\\x00e\\x00=\\x00\"\\x00y\\x00e\\x00s\\x00\"\\x00?\\x00>\\x00\\r\\x00\\n\\x00<\\x00U\\x00A\\x00A\\x00>\\x00<\\x00C\\x00a\\x00p\\x00t\\x00u\\x00r\\x00e\\x00C\\x00o\\x00n\\x00t\\x00e\\x00x\\x00t\\x00 \\x00x\\x00A\\x00p\\x00e\\x00x\\x00=\\x00\"\\x009\\x005\\x009\\x00.\\x004\\x009\\x000\\x004\\x00\"\\x00 \\x…",
+        "(200D,3014) [Unknown]": "1",
+        "(200D,3022) Private tag data": "0",
+        "(200D,3915) Private tag data": "0",
+        "(200D,3916) Private tag data": "0.0",
+        "(200D,3A05) [Unknown]": "ACCEPTED",
+        "(200D,3A06) Private tag data": "0",
+        "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…",
+        "(200D,5100) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0s\\x05\\x85@7\\xae\\x1d\\x8a\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x873\\x1f\\xc5\\xcd\\x99\\x8bZ\\xb2\"\\x06j\\xf86\\xf5…"
+      },
+      "npz": "gold_Ph_ECG1.npz",
+      "npz_mb": 5.78,
+      "jpeg_quality": 68,
+      "size_mb": 104.25,
+      "shape": [
+        185,
+        600,
+        800
+      ]
+    },
+    {
+      "file": "gold_Ph_ECG2",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "Philips Medical Systems",
+      "ManufacturerModelName": "EPIQ CVx",
+      "SoftwareVersions": "EPIQ CVx_9.0.16.1181",
+      "Rows": "600",
+      "Columns": "800",
+      "NumberOfFrames": "46",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "PixelSpacing": [
+        0.44917814080806,
+        0.44917814080806
+      ],
+      "UltrasoundColorDataPresent": "0",
+      "SequenceOfUltrasoundRegions": [
+        {
+          "origin": [
+            11.0,
+            30.0
+          ],
+          "size": [
+            777.0,
+            562.0
+          ],
+          "physical_delta_mm": [
+            0.4491781408080698,
+            0.4491781408080698
+          ]
+        }
+      ],
+      "frames": 46,
+      "fps": 46.49,
+      "ecg": false,
+      "ecg_burn_in_hint": true,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.840.113663.1500.1.534263164.5.1.20251107.134043.628]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251107",
+        "(0040,0245) Performed Procedure Step Start Time": "134043",
+        "(0040,0253) Performed Procedure Step ID": "20251107.134043",
+        "(0040,0254) Performed Procedure Step Description": "",
+        "(0040,0280) Comments on the Performed Procedure Step": "Нет",
+        "(2001,0010) Private Creator": "Philips Imaging DD 001",
+        "(2001,1063) [Examination Source]": "ELSEWHERE",
+        "(200D,0020) Private Creator": "Philips US Imaging DD 017",
+        "(200D,0024) Private Creator": "Philips US Imaging DD 021",
+        "(200D,0026) Private Creator": "Philips US Imaging DD 023",
+        "(200D,0030) Private Creator": "Philips US Imaging DD 033",
+        "(200D,0039) Private Creator": "Philips US Imaging DD 042",
+        "(200D,003A) Private Creator": "Philips US Imaging DD 043",
+        "(200D,0051) Private Creator": "Philips US Imaging DD 066",
+        "(200D,2005) [Unknown]": "native",
+        "(200D,2407) Private tag data": "DICOM_GSDF_ENABLED",
+        "(200D,2637) [Unknown]": "20251107",
+        "(200D,2638) [Unknown]": "134043",
+        "(200D,2645) Private tag data": "0",
+        "(200D,2659) Private tag data": "0",
+        "(200D,265A) Private tag data": "0",
+        "(200D,265B) Private tag data": "0",
+        "(200D,265C) Private tag data": "0",
+        "(200D,3000) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0\\xe1\\xa3b\\x8en\\xe6H\\xe5\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87\\x17\\xbf,\\xfa\\xc7D(2\"\\x06j\\xf86\\xf5\\xe5:C…",
+        "(200D,300F) Private tag data": "b'\\xff\\xfe<\\x00?\\x00x\\x00m\\x00l\\x00 \\x00v\\x00e\\x00r\\x00s\\x00i\\x00o\\x00n\\x00=\\x00\"\\x001\\x00.\\x000\\x00\"\\x00 \\x00s\\x00t\\x00a\\x00n\\x00d\\x00a\\x00l\\x00o\\x00n\\x00e\\x00=\\x00\"\\x00y\\x00e\\x00s\\x00\"\\x00?\\x00>\\x00\\r\\x00\\n\\x00<\\x00U\\x00A\\x00A\\x00>\\x00<\\x00C\\x00a\\x00p\\x00t\\x00u\\x00r\\x00e\\x00C\\x00o\\x00n\\x00t\\x00e\\x00x\\x00t\\x00 \\x00x\\x00A\\x00p\\x00e\\x00x\\x00=\\x00\"\\x009\\x005\\x009\\x00.\\x004\\x009\\x000\\x004\\x00\"\\x00 \\x…",
+        "(200D,3014) [Unknown]": "1",
+        "(200D,3022) Private tag data": "0",
+        "(200D,3915) Private tag data": "0",
+        "(200D,3916) Private tag data": "0.0",
+        "(200D,3A05) [Unknown]": "ACCEPTED",
+        "(200D,3A06) Private tag data": "0",
+        "(200D,5100) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0\\xe1\\xa3b\\x8en\\xe6H\\xe5\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87\\x17\\xbf,\\xfa\\xc7D(2\"\\x06j\\xf86\\xf5\\xe5:C…"
+      },
+      "npz": "gold_Ph_ECG2.npz",
+      "npz_mb": 2.94,
+      "jpeg_quality": 92,
+      "size_mb": 4.76,
+      "shape": [
+        46,
+        600,
+        800
+      ]
+    },
+    {
+      "file": "strain_ph1",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "Philips Medical Systems",
+      "ManufacturerModelName": "EPIQ CVx",
+      "SoftwareVersions": "EPIQ CVx_9.0.16.1181",
+      "Rows": "900",
+      "Columns": "1600",
+      "NumberOfFrames": "20",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "UltrasoundColorDataPresent": "1",
+      "frames": 20,
+      "fps": 30.3,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.840.113663.1500.1.534263164.5.1.20251107.134043.628]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251107",
+        "(0040,0245) Performed Procedure Step Start Time": "134043",
+        "(0040,0253) Performed Procedure Step ID": "20251107.134043",
+        "(0040,0254) Performed Procedure Step Description": "",
+        "(0040,0280) Comments on the Performed Procedure Step": "Нет",
+        "(2001,0010) Private Creator": "Philips Imaging DD 001",
+        "(2001,1063) [Examination Source]": "ELSEWHERE",
+        "(200D,0020) Private Creator": "Philips US Imaging DD 017",
+        "(200D,0024) Private Creator": "Philips US Imaging DD 021",
+        "(200D,0026) Private Creator": "Philips US Imaging DD 023",
+        "(200D,0030) Private Creator": "Philips US Imaging DD 033",
+        "(200D,0039) Private Creator": "Philips US Imaging DD 042",
+        "(200D,003A) Private Creator": "Philips US Imaging DD 043",
+        "(200D,2005) [Unknown]": "composite_loop",
+        "(200D,2407) Private tag data": "DICOM_GSDF_ENABLED",
+        "(200D,2637) [Unknown]": "20251107",
+        "(200D,2638) [Unknown]": "134043",
+        "(200D,2645) Private tag data": "0",
+        "(200D,2659) Private tag data": "0",
+        "(200D,265A) Private tag data": "0",
+        "(200D,265B) Private tag data": "0",
+        "(200D,265C) Private tag data": "0",
+        "(200D,3014) [Unknown]": "1",
+        "(200D,3022) Private tag data": "0",
+        "(200D,3915) Private tag data": "0",
+        "(200D,3916) Private tag data": "0.0",
+        "(200D,3A05) [Unknown]": "ACCEPTED",
+        "(200D,3A06) Private tag data": "0"
+      },
+      "npz": "strain_ph1.npz",
+      "npz_mb": 1.4,
+      "jpeg_quality": 92,
+      "size_mb": 2.95,
+      "shape": [
+        20,
+        900,
+        1600
+      ]
+    },
+    {
+      "file": "strain_ph2",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "Philips Medical Systems",
+      "ManufacturerModelName": "EPIQ Elite",
+      "SoftwareVersions": "EPIQ Elite_9.0.3.637",
+      "Rows": "900",
+      "Columns": "1600",
+      "NumberOfFrames": "23",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "RGB",
+      "BitsAllocated": "8",
+      "UltrasoundColorDataPresent": "1",
+      "frames": 23,
+      "fps": 25.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.840.113663.1500.1.492753341.5.1.20251118.152259.291]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251118",
+        "(0040,0245) Performed Procedure Step Start Time": "152259",
+        "(0040,0253) Performed Procedure Step ID": "20251118.152259",
+        "(0040,0254) Performed Procedure Step Description": "",
+        "(0040,0280) Comments on the Performed Procedure Step": "Нет",
+        "(2001,0010) Private Creator": "Philips Imaging DD 001",
+        "(2001,1063) [Examination Source]": "ELSEWHERE",
+        "(200D,0020) Private Creator": "Philips US Imaging DD 017",
+        "(200D,0024) Private Creator": "Philips US Imaging DD 021",
+        "(200D,0026) Private Creator": "Philips US Imaging DD 023",
+        "(200D,0030) Private Creator": "Philips US Imaging DD 033",
+        "(200D,0039) Private Creator": "Philips US Imaging DD 042",
+        "(200D,003A) Private Creator": "Philips US Imaging DD 043",
+        "(200D,003C) Private Creator": "Philips US Imaging DD 045",
+        "(200D,2005) [Unknown]": "composite_loop",
+        "(200D,2407) Private tag data": "DICOM_GSDF_ENABLED",
+        "(200D,2637) [Unknown]": "20251118",
+        "(200D,2638) [Unknown]": "145555",
+        "(200D,2645) Private tag data": "0",
+        "(200D,2659) Private tag data": "0",
+        "(200D,265A) Private tag data": "0",
+        "(200D,265B) Private tag data": "0",
+        "(200D,265C) Private tag data": "0",
+        "(200D,3014) [Unknown]": "1",
+        "(200D,3022) Private tag data": "0",
+        "(200D,3915) Private tag data": "0",
+        "(200D,3916) Private tag data": "0.0",
+        "(200D,3A05) [Unknown]": "ACCEPTED",
+        "(200D,3A06) Private tag data": "0",
+        "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…"
+      },
+      "npz": "strain_ph2.npz",
+      "npz_mb": 2.78,
+      "jpeg_quality": 84,
+      "size_mb": 94.77,
+      "shape": [
+        23,
+        900,
+        1600
+      ]
+    },
+    {
+      "file": "strain_ph3",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "Philips Medical Systems",
+      "ManufacturerModelName": "EPIQ Elite",
+      "SoftwareVersions": "EPIQ Elite_9.0.3.637",
+      "Rows": "900",
+      "Columns": "1600",
+      "NumberOfFrames": "23",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "RGB",
+      "BitsAllocated": "8",
+      "UltrasoundColorDataPresent": "1",
+      "frames": 23,
+      "fps": 25.64,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.840.113663.1500.1.492753341.5.1.20251125.153125.216]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251125",
+        "(0040,0245) Performed Procedure Step Start Time": "153125",
+        "(0040,0253) Performed Procedure Step ID": "20251125.153125",
+        "(0040,0254) Performed Procedure Step Description": "",
+        "(0040,0280) Comments on the Performed Procedure Step": "ЭхоКГВзросл",
+        "(2001,0010) Private Creator": "Philips Imaging DD 001",
+        "(2001,1063) [Examination Source]": "ELSEWHERE",
+        "(200D,0020) Private Creator": "Philips US Imaging DD 017",
+        "(200D,0024) Private Creator": "Philips US Imaging DD 021",
+        "(200D,0026) Private Creator": "Philips US Imaging DD 023",
+        "(200D,0030) Private Creator": "Philips US Imaging DD 033",
+        "(200D,0039) Private Creator": "Philips US Imaging DD 042",
+        "(200D,003A) Private Creator": "Philips US Imaging DD 043",
+        "(200D,003C) Private Creator": "Philips US Imaging DD 045",
+        "(200D,2005) [Unknown]": "composite_loop",
+        "(200D,2407) Private tag data": "DICOM_GSDF_ENABLED",
+        "(200D,2637) [Unknown]": "20251125",
+        "(200D,2638) [Unknown]": "145418",
+        "(200D,2645) Private tag data": "0",
+        "(200D,2659) Private tag data": "0",
+        "(200D,265A) Private tag data": "0",
+        "(200D,265B) Private tag data": "0",
+        "(200D,265C) Private tag data": "0",
+        "(200D,3014) [Unknown]": "1",
+        "(200D,3022) Private tag data": "0",
+        "(200D,3915) Private tag data": "0",
+        "(200D,3916) Private tag data": "0.0",
+        "(200D,3A03) Private tag data": "ECHO2D",
+        "(200D,3A04) Private tag data": "1",
+        "(200D,3A05) [Unknown]": "ACCEPTED",
+        "(200D,3A06) Private tag data": "0",
+        "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…"
+      },
+      "npz": "strain_ph3.npz",
+      "npz_mb": 2.79,
+      "jpeg_quality": 84,
+      "size_mb": 94.77,
+      "shape": [
+        23,
+        900,
+        1600
+      ]
+    },
+    {
+      "file": "strain_sams1.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "668",
+      "Columns": "1280",
+      "NumberOfFrames": "20",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "frames": 20,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20260129.1142148448.250.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20260129",
+        "(0040,0245) Performed Procedure Step Start Time": "142148",
+        "(0040,0253) Performed Procedure Step ID": "20260129142148"
+      },
+      "npz": "strain_sams1.npz",
+      "npz_mb": 2.79,
+      "jpeg_quality": 92,
+      "size_mb": 4.51,
+      "shape": [
+        20,
+        668,
+        1280
+      ]
+    },
+    {
+      "file": "strain_sams2.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "1080",
+      "Columns": "1920",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "RGB",
+      "BitsAllocated": "8",
+      "frames": 1,
+      "fps": 0.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251117.1112804341.596.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251117",
+        "(0040,0245) Performed Procedure Step Start Time": "092413",
+        "(0040,0253) Performed Procedure Step ID": "20251117112804"
+      },
+      "npz": "strain_sams2.npz",
+      "npz_mb": 0.96,
+      "jpeg_quality": 92,
+      "size_mb": 5.93,
+      "shape": [
+        1080,
+        1920,
+        3
+      ]
+    },
+    {
+      "file": "strain_sams3.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "668",
+      "Columns": "1280",
+      "NumberOfFrames": "14",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "frames": 14,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251117.1112804341.596.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251117",
+        "(0040,0245) Performed Procedure Step Start Time": "092413",
+        "(0040,0253) Performed Procedure Step ID": "20251117112804"
+      },
+      "npz": "strain_sams3.npz",
+      "npz_mb": 1.83,
+      "jpeg_quality": 92,
+      "size_mb": 2.95,
+      "shape": [
+        14,
+        668,
+        1280
+      ]
+    },
+    {
+      "file": "strain_sams4.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "1080",
+      "Columns": "1920",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "RGB",
+      "BitsAllocated": "8",
+      "frames": 1,
+      "fps": 0.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1155230399.761.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251124",
+        "(0040,0245) Performed Procedure Step Start Time": "132127",
+        "(0040,0253) Performed Procedure Step ID": "20251124155230"
+      },
+      "npz": "strain_sams4.npz",
+      "npz_mb": 0.83,
+      "jpeg_quality": 92,
+      "size_mb": 5.93,
+      "shape": [
+        1080,
+        1920,
+        3
+      ]
+    },
+    {
+      "file": "strain_sams5.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "1080",
+      "Columns": "1920",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "RGB",
+      "BitsAllocated": "8",
+      "frames": 1,
+      "fps": 0.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1155230399.761.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251124",
+        "(0040,0245) Performed Procedure Step Start Time": "132127",
+        "(0040,0253) Performed Procedure Step ID": "20251124155230"
+      },
+      "npz": "strain_sams5.npz",
+      "npz_mb": 0.98,
+      "jpeg_quality": 92,
+      "size_mb": 5.93,
+      "shape": [
+        1080,
+        1920,
+        3
+      ]
+    },
+    {
+      "file": "strain_sams6.dcm",
+      "kind": "dicom",
+      "Modality": "US",
+      "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+      "ManufacturerModelName": "RS85-RUS",
+      "SoftwareVersions": "2.06.01a.3013",
+      "Rows": "668",
+      "Columns": "1280",
+      "NumberOfFrames": "14",
+      "SamplesPerPixel": "3",
+      "PhotometricInterpretation": "YBR_FULL_422",
+      "BitsAllocated": "8",
+      "frames": 14,
+      "fps": 30.0,
+      "ecg": false,
+      "ecg_burn_in_hint": false,
+      "private_or_strain_tags": {
+        "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1155230399.761.1]",
+        "(0040,0244) Performed Procedure Step Start Date": "20251124",
+        "(0040,0245) Performed Procedure Step Start Time": "132127",
+        "(0040,0253) Performed Procedure Step ID": "20251124155230"
+      },
+      "npz": "strain_sams6.npz",
+      "npz_mb": 2.03,
+      "jpeg_quality": 92,
+      "size_mb": 3.18,
+      "shape": [
+        14,
+        668,
+        1280
+      ]
+    }
+  ],
+  "total_mb": 84.79
+}

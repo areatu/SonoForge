@@ -1,0 +1,33 @@
+{
+  "file": "strain_sams1.dcm",
+  "kind": "dicom",
+  "Modality": "US",
+  "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+  "ManufacturerModelName": "RS85-RUS",
+  "SoftwareVersions": "2.06.01a.3013",
+  "Rows": "668",
+  "Columns": "1280",
+  "NumberOfFrames": "20",
+  "SamplesPerPixel": "3",
+  "PhotometricInterpretation": "YBR_FULL_422",
+  "BitsAllocated": "8",
+  "frames": 20,
+  "fps": 30.0,
+  "ecg": false,
+  "ecg_burn_in_hint": false,
+  "private_or_strain_tags": {
+    "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20260129.1142148448.250.1]",
+    "(0040,0244) Performed Procedure Step Start Date": "20260129",
+    "(0040,0245) Performed Procedure Step Start Time": "142148",
+    "(0040,0253) Performed Procedure Step ID": "20260129142148"
+  },
+  "npz": "strain_sams1.npz",
+  "npz_mb": 2.79,
+  "jpeg_quality": 92,
+  "size_mb": 4.51,
+  "shape": [
+    20,
+    668,
+    1280
+  ]
+}

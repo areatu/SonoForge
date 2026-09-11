@@ -1,0 +1,86 @@
+{
+  "file": "gold_Ph_ECG1",
+  "kind": "dicom",
+  "Modality": "US",
+  "Manufacturer": "Philips Medical Systems",
+  "ManufacturerModelName": "EPIQ Elite",
+  "SoftwareVersions": "EPIQ Elite_9.0.3.637",
+  "Rows": "600",
+  "Columns": "800",
+  "NumberOfFrames": "185",
+  "SamplesPerPixel": "1",
+  "PhotometricInterpretation": "MONOCHROME2",
+  "BitsAllocated": "8",
+  "PixelSpacing": [
+    0.3860547230481,
+    0.3860547230481
+  ],
+  "UltrasoundColorDataPresent": "0",
+  "SequenceOfUltrasoundRegions": [
+    {
+      "origin": [
+        11.0,
+        30.0
+      ],
+      "size": [
+        777.0,
+        562.0
+      ],
+      "physical_delta_mm": [
+        0.3860547230481046,
+        0.3860547230481046
+      ]
+    }
+  ],
+  "frames": 185,
+  "fps": 58.28,
+  "ecg": false,
+  "ecg_burn_in_hint": true,
+  "private_or_strain_tags": {
+    "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.840.113663.1500.1.492753341.5.1.20251126.144732.829]",
+    "(0040,0244) Performed Procedure Step Start Date": "20251126",
+    "(0040,0245) Performed Procedure Step Start Time": "144732",
+    "(0040,0253) Performed Procedure Step ID": "20251126.144732",
+    "(0040,0254) Performed Procedure Step Description": "",
+    "(0040,0280) Comments on the Performed Procedure Step": "Нет",
+    "(2001,0010) Private Creator": "Philips Imaging DD 001",
+    "(2001,1063) [Examination Source]": "ELSEWHERE",
+    "(2001,10F3) Private tag data": "YES",
+    "(200D,0020) Private Creator": "Philips US Imaging DD 017",
+    "(200D,0024) Private Creator": "Philips US Imaging DD 021",
+    "(200D,0026) Private Creator": "Philips US Imaging DD 023",
+    "(200D,0030) Private Creator": "Philips US Imaging DD 033",
+    "(200D,0039) Private Creator": "Philips US Imaging DD 042",
+    "(200D,003A) Private Creator": "Philips US Imaging DD 043",
+    "(200D,003C) Private Creator": "Philips US Imaging DD 045",
+    "(200D,0051) Private Creator": "Philips US Imaging DD 066",
+    "(200D,2005) [Unknown]": "native",
+    "(200D,2407) Private tag data": "DICOM_GSDF_ENABLED",
+    "(200D,2637) [Unknown]": "20251126",
+    "(200D,2638) [Unknown]": "144732",
+    "(200D,2645) Private tag data": "0",
+    "(200D,2659) Private tag data": "0",
+    "(200D,265A) Private tag data": "0",
+    "(200D,265B) Private tag data": "0",
+    "(200D,265C) Private tag data": "0",
+    "(200D,3000) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0s\\x05\\x85@7\\xae\\x1d\\x8a\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x873\\x1f\\xc5\\xcd\\x99\\x8bZ\\xb2\"\\x06j\\xf86\\xf5…",
+    "(200D,300F) Private tag data": "b'\\xff\\xfe<\\x00?\\x00x\\x00m\\x00l\\x00 \\x00v\\x00e\\x00r\\x00s\\x00i\\x00o\\x00n\\x00=\\x00\"\\x001\\x00.\\x000\\x00\"\\x00 \\x00s\\x00t\\x00a\\x00n\\x00d\\x00a\\x00l\\x00o\\x00n\\x00e\\x00=\\x00\"\\x00y\\x00e\\x00s\\x00\"\\x00?\\x00>\\x00\\r\\x00\\n\\x00<\\x00U\\x00A\\x00A\\x00>\\x00<\\x00C\\x00a\\x00p\\x00t\\x00u\\x00r\\x00e\\x00C\\x00o\\x00n\\x00t\\x00e\\x00x\\x00t\\x00 \\x00x\\x00A\\x00p\\x00e\\x00x\\x00=\\x00\"\\x009\\x005\\x009\\x00.\\x004\\x009\\x000\\x004\\x00\"\\x00 \\x…",
+    "(200D,3014) [Unknown]": "1",
+    "(200D,3022) Private tag data": "0",
+    "(200D,3915) Private tag data": "0",
+    "(200D,3916) Private tag data": "0.0",
+    "(200D,3A05) [Unknown]": "ACCEPTED",
+    "(200D,3A06) Private tag data": "0",
+    "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…",
+    "(200D,5100) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0s\\x05\\x85@7\\xae\\x1d\\x8a\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x873\\x1f\\xc5\\xcd\\x99\\x8bZ\\xb2\"\\x06j\\xf86\\xf5…"
+  },
+  "npz": "gold_Ph_ECG1.npz",
+  "npz_mb": 5.78,
+  "jpeg_quality": 68,
+  "size_mb": 104.25,
+  "shape": [
+    185,
+    600,
+    800
+  ]
+}
