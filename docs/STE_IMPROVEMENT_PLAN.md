@@ -68,9 +68,16 @@
 
 ## 0. Сводка для передачи: что сделано и что осталось (2026-09-11)
 
-**Ветка** `arena/01a09076-sonoforge` (продолжение `arena/01a08cb0-sonoforge`), PR **#75** — **все проверки зелёные
-2026-09-11**, включая `test (ubuntu-latest, 3.11)` (38 мин 16 с) и `Test coverage` (37 мин 23 с): причина
-красного найдена и устранена (см. ниже). PR #74 остаётся открытым из ветки прошлой сессии и не обновлялся.
+**Ветка** `arena/01a09076-sonoforge` (продолжение `arena/01a08cb0-sonoforge`), PR **#75**.
+**Head на вход в новую сессию — `1683ab9`**, дерево чистое, **все проверки PR #75 зелёные** (14 pass, 1 skip):
+`test (ubuntu-latest, 3.11)` 33 мин 3 с, `Test coverage` 35 мин 28 с, macOS 4 мин 55 с, Windows 11 мин 43 с,
+`lint` 9 с, CodeQL, сборки, бенчмарки. Коммиты этой сессии: `3659d4a` (красный CI),
+`52a6366` (подписи сегментов §5.3 п.4), `b38c6bc` (док — зелёный CI), `1683ab9` (ориентация иллюстраций).
+PR #74 остаётся открытым из ветки прошлой сессии и не обновлялся.
+
+**Что взять в новую сессию:** очередь §5.3 — P1 п.2 (обзорный экран трёх видов, 3–5 дн) и п.6 (GLS в протокол
+исследования, 1–2 дн); P0 п.1 (сверка с вендором) ждёт gold-контуры КД (§11.2 п.1). Окружение и проверки —
+§5.4, включая рецепт восстановления локального git после сброса песочницы.
 
 **Красный ubuntu-CI разобран и закрыт (2026-09-11, вторая сессия).** Причина не во флаках и не во времени:
 этот же PR перевёл `A4C_SEGMENT_NAMES` на настоящие AHA-id вида (3/6/9/12/15/18), а файл
@@ -131,7 +138,8 @@
 
 1. ~~**Довести CI до зелёного** (P0)~~ — **сделано 2026-09-11**: причина найдена (устаревшие id сегментов
    в тесте, не тронутом PR), тесты переведены на реальные AHA-id, прогон всего `tests/unit/` локально
-   чистый, на PR #75 все джобы зелёные (ubuntu 38 мин 16 с, coverage 37 мин 23 с).
+   чистый, на PR #75 все джобы зелёные — перепроверено на head `1683ab9` (ubuntu 33 мин 3 с,
+   coverage 35 мин 28 с, macOS/Windows/линт/сборки/бенчмарки тоже зелёные).
 2. **Сверка с вендором на одних кадрах** (P0) — нужны gold-контуры КД для 2–3 клипов For_pero (§11.2 п.1).
 3. **Обзорный экран трёх видов** в стиле «3 Point Contour» (P1) — самый заметный остаток UI-паритета.
 4. **Q5: авто-черновик контура КД** с правкой мышью (P1); нужны веса ONNX (в репозитории только манифест).
@@ -872,7 +880,7 @@ P3 — расширения. Оценки — рабочие дни одного
 
 | № | Задача | Критерий приёмки | Где | Оценка |
 |---|---|---|---|---|
-| 0 | **Довести CI до зелёного** (P0) — **сделано, проверено на CI** | Причина: тесты `test_presentation_segment_quality_panel.py::TestUpdateResults` ключевали строки старыми id 1…6 после перехода `A4C_SEGMENT_NAMES` на AHA-id. Критерий выполнен: id берутся из модуля, есть страж-тест на старые id, локальный полный прогон `tests/unit/` (минус WebEngine-модули) чистый, `ruff check` + `ruff format --check` зелёные, **все джобы PR #75 зелёные** (ubuntu `test` 38 мин, `Test coverage` 37 мин; медленный, но проходит — при желании ускорять отдельно, это не блокер) | `.github/workflows/{ci,coverage}.yml`, `.github/scripts/annotate_pytest_failures.py`, `tests/unit/test_presentation_{segment_quality_panel,extended}.py` | 0.5 (факт) |
+| 0 | **Довести CI до зелёного** (P0) — **сделано, проверено на CI** | Причина: тесты `test_presentation_segment_quality_panel.py::TestUpdateResults` ключевали строки старыми id 1…6 после перехода `A4C_SEGMENT_NAMES` на AHA-id. Критерий выполнен: id берутся из модуля, есть страж-тест на старые id, локальный полный прогон `tests/unit/` (минус WebEngine-модули) чистый, `ruff check` + `ruff format --check` зелёные, **все джобы PR #75 зелёные** на head `1683ab9` (ubuntu `test` 33 мин 3 с, `Test coverage` 35 мин 28 с; медленный, но проходит — при желании ускорять отдельно, это не блокер) | `.github/workflows/{ci,coverage}.yml`, `.github/scripts/annotate_pytest_failures.py`, `tests/unit/test_presentation_{segment_quality_panel,extended}.py` | 0.5 (факт) |
 | 1 | **Сверка с вендором на одних кадрах** (P0) | Таблица «наш GLS / вендор / Δ» по трём видам для ≥2 клипов For_pero; в отчёте объявлено, какой контур использован и откуда он | `tests/fixtures/for_pero`, `docs/STE_VENDOR_REFERENCE.md`, `application/workers/speckle_worker.py` | 1–2 дня после получения контуров; **блокер — §11.2 п.1** |
 | 2 | **Обзорный экран трёх видов** в стиле «3 Point Contour» (P1) | Три панели (кадр + контур + полоса/ECG) + мишень + сводная таблица + список видов со статусом в одном окне; offscreen-рендер в тесте; все данные — из `StrainStudy`, без пересчёта | `ui/strain_window.py`, новый пакет `ui/ste/` | 3–5 |
 | 3 | **Q5: авто-черновик контура КД** (P1) | Черновик правится мышью; в отчёте — признак «черновик» и доля правки; расхождение с ручным контуром на доступных клипах ≤ ~2 мм; без черновика GLS не считается «вендорским» | `domain/services/segmentation_service.py`, `application/*` | 3–6; нужны веса ONNX: в репозитории только `models/model_manifest.json` (манифест числит `echonet_seg_resnet50.onnx` как `exported`, но сами файлы исключены `models/.gitignore`: `*.onnx`, `*.pt`), поэтому в песочнице нужен либо каталог моделей автора, либо повторный экспорт `scripts/export_echonet_seg_to_onnx.py`; инфраструктура (preprocessing, temporal fusion, refine, landmark-модель) в манифесте уже описана или классический детектор |
@@ -903,10 +911,11 @@ export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 ```bash
 ./.venv/bin/ruff check src/ tests/
 ./.venv/bin/ruff format --check src/ tests/
-./.venv/bin/python -m pytest <23 STE-файла> -q     # 497 тестов, ~2 мин, 3 скипа
+./.venv/bin/python -m pytest <29 STE-файлов> -q    # ~500 тестов, ~2 мин, 3 скипа (список ниже)
 ```
 
-Список STE-файлов (28; +`test_segment_labels.py` — имена сегментов для cine/панели): `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
+Список STE-файлов (29; +`test_segment_labels.py` — имена сегментов для cine/панели,
++`test_bench_render_utils.py` — страж ориентации иллюстраций): `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
 `test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,strain_curves_view,stepped_border_refine,presentation_speckle_overlay,presentation_speckle_settings_dialog,presentation_segment_quality_panel,presentation_ste_results_dialog,segment_labels}.py`.
 
 Все иллюстрации рисовать только через `bench/render_utils.py` (`make_image_item`): у `pg.ImageItem`
@@ -935,6 +944,21 @@ cd /home/user/SonoForge && export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFO
   --ignore=tests/unit/test_simpson_live_feedback.py --ignore=tests/unit/test_ste_entry_flow.py
 # 4944 теста, ~19 мин на 2 ядрах песочницы; 0 падений, кроме перечисленных модулей
 ```
+
+**Сброс песочницы (случалось дважды за сессию 2026-09-11).** Рабочие файлы сохраняются, а локальный
+`.git` и `.venv` могут откатиться: `.venv` исчезает, `HEAD` возвращается к старому коммиту при живом
+рабочем дереве. Коммиты при этом целы на origin — восстанавливать работу заново не нужно:
+
+```bash
+python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]" "numpy==1.26.4" \
+    "pylibjpeg-libjpeg==2.2.0" "pylibjpeg-openjpeg==2.2.1" && ./.venv/bin/python tools/qtstub/mkstub.py
+git fetch origin 'refs/heads/*:refs/remotes/origin/*'      # обычный fetch не создаёт tracking-ветку
+git add -A && git diff --cached --stat origin/arena/01a09076-sonoforge   # пусто = файлы совпадают с origin
+git reset --mixed origin/arena/01a09076-sonoforge          # HEAD на актуальный коммит, дерево остаётся
+```
+
+Сначала убедиться, что `git diff --cached origin/...` пуст (значит, содержимое файлов уже равно
+удалённому коммиту), и только потом делать `reset`. Force-push не нужен.
 
 Все пятнадцать модулей импортируют `presentation/web_reference/web_reference_widget.py` → `PySide6.QtWebEngineCore`,
 которому в песочнице не хватает системных библиотек (`libxcb-dri3.so.0`, NSS/GBM/X11-расширения), а `tools/qtstub`
