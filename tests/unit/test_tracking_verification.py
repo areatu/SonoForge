@@ -43,8 +43,7 @@ def _texture(seed: int = 0, size: int = 48) -> np.ndarray:
 
 def _kernels(centers: list[tuple[float, float]], layer: str = "endo") -> list[TrackingKernel]:
     return [
-        TrackingKernel(center=(x, y), radius=5, node_index=index, layer=layer)
-        for index, (x, y) in enumerate(centers)
+        TrackingKernel(center=(x, y), radius=5, node_index=index, layer=layer) for index, (x, y) in enumerate(centers)
     ]
 
 
@@ -287,6 +286,7 @@ def test_noisy_clip_reports_unverified_tracking(phantom_module, qapp) -> None:
     assert result.qc_status != "valid"
     assert REASON in result.qc_reasons
 
+
 class TestVerificationIsClinicallyReported:
     """A verdict the UI cannot phrase is not a verdict the clinician can read."""
 
@@ -304,6 +304,7 @@ class TestVerificationIsClinicallyReported:
             assert "strain.tracking_verification" in data, name
             assert "{confirmed}" in data["strain.tracking_verification"]
             assert "{closure}" in data["strain.tracking_verification"]
+
 
 class TestEacviAseDeclarations:
     """Voigt 2015 asks a strain number to declare what it was measured on.
@@ -353,6 +354,7 @@ class TestEacviAseDeclarations:
         assert analysis.sampling_kernel_mm == pytest.approx(0.0)
         assert analysis.regularization == ""
         assert analysis.translation_compensation is False
+
 
 class TestTrustFlagHarness:
     """The harness that compares candidate trust flags must itself be right."""

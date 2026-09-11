@@ -1220,8 +1220,7 @@ class SpeckleTrackingWorker(QRunnable):
             frame_rate_note: tuple[str, ...] = ()
             if frame_rate_hz > 0 and (frame_rate_hz < 40.0 or frame_rate_hz > 100.0):
                 frame_rate_note = (
-                    f"frame rate {frame_rate_hz:.0f} Hz is outside the recommended "
-                    f"40-100 Hz for deformation imaging",
+                    f"frame rate {frame_rate_hz:.0f} Hz is outside the recommended 40-100 Hz for deformation imaging",
                 )
             quality = assess_tracking_quality(
                 has_curve=bool(np.any(np.isfinite(window_long))),

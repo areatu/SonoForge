@@ -264,9 +264,7 @@ class TestVerificationMarks:
 
     def test_confirmed_nodes_are_not_marked(self, overlay):
         positions = np.array([[50.0, 50.0], [60.0, 60.0]])
-        overlay.show_verification_marks(
-            positions, np.array([False, False]), np.array([False, False]), legend="nothing"
-        )
+        overlay.show_verification_marks(positions, np.array([False, False]), np.array([False, False]), legend="nothing")
 
         assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
         assert len(overlay._verification_unverified_scatter.getData()[0]) == 0
@@ -279,18 +277,14 @@ class TestVerificationMarks:
         assert list(overlay._verification_rejected_scatter.getData()[0]) == [60.0]
 
     def test_none_clears_the_marks(self, overlay):
-        overlay.show_verification_marks(
-            np.array([[50.0, 50.0]]), np.array([True]), np.array([False]), legend="x"
-        )
+        overlay.show_verification_marks(np.array([[50.0, 50.0]]), np.array([True]), np.array([False]), legend="x")
         overlay.show_verification_marks(None, None, None)
 
         assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
         assert not overlay._verification_legend.isVisible()
 
     def test_clear_removes_the_marks(self, overlay):
-        overlay.show_verification_marks(
-            np.array([[50.0, 50.0]]), np.array([True]), np.array([True]), legend="x"
-        )
+        overlay.show_verification_marks(np.array([[50.0, 50.0]]), np.array([True]), np.array([True]), legend="x")
         overlay.clear()
 
         assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
