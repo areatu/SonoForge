@@ -12,7 +12,11 @@ line** (the apical arc from one mitral annulus point through the apex to the
 other) and from the wall the analysed view shows:
 
 * level — basal (1), mid (2) or apical (3) third of the arc to the apex;
-* side  — which half of the arc the node is on (1st or 2nd wall of the view).
+* side  — which wall of the view the node belongs to (1st or 2nd). The side is
+  resolved from the *image*: the arc half whose annulus end lies on the left of
+  the frame carries the first wall of the view, so the names do not change when
+  the same arc is drawn from the other annulus. A mirrored display is declared
+  by ``flip=True``, which swaps the two walls.
 
 Segment numbering follows the standard 18-segment AHA model; the apex has no
 separate segment (apex = apical cap), apical segments carry the wall name of
@@ -160,19 +164,50 @@ def _arc_length_params(points: np.ndarray) -> np.ndarray:
     return cum / total
 
 
+def _wall_name(wall: tuple[int, int, int]) -> str:
+    """Wall name of a segment triplet (``basal inferoseptal`` → ``inferoseptal``)."""
+    name = SEGMENT_NAMES[int(wall[0])]
+    return name.split(" ", 1)[1] if " " in name else name
+
+
+def describe_segment_sides(view: str | None = "A4C", *, flip: bool = False) -> str:
+    """Declare which wall the report placed on which side of the image.
+
+    The module assumes the vendor display convention — apex up, the first wall
+    of the view on the left of the screen — and ``flip`` declares a mirrored
+    display (see :func:`assign_segments_from_arc`). The returned string is what
+    travels with the numbers, because a segment name is only comparable when the
+    side convention is known (Voigt 2015, segment definition).
+    """
+    first_wall, second_wall = VIEW_WALLS[normalise_view(view)]
+    left, right = (second_wall, first_wall) if flip else (first_wall, second_wall)
+    suffix = " (mirrored display declared by the user)" if flip else ""
+    return f"left={_wall_name(left)} / right={_wall_name(right)}{suffix}"
+
+
 def assign_segments_from_arc(
     points: np.ndarray,
     view: str | None = "A4C",
     *,
+    flip: bool = False,
     basal_fraction: float = 1.0 / 3.0,
     apical_fraction: float = 2.0 / 3.0,
 ) -> SegmentAssignment:
     """Assign every node of an apical arc to one of the six segments of a view.
 
+    Which half of the material line carries the *first* wall of the view is
+    resolved from the image, not from the drawing direction: the annulus end on
+    the left of the frame (smaller x) is the side the vendor convention puts the
+    first wall on. Drawing the same arc from the other annulus therefore yields
+    the same segment names, and ``flip=True`` swaps the two walls for a mirrored
+    display — the "select view, inversion, flip" requirement of the consensus.
+
     Args:
         points: (n_nodes, 2) node positions in arc order (annulus → apex →
             annulus), i.e. the order the material line is built in.
         view: analysed apical view — changes which wall pair is named.
+        flip: display is mirrored relative to the vendor convention (first wall
+            of the view on the left of the screen).
         basal_fraction: arc fraction (measured from each annulus) that still
             counts as basal level.
         apical_fraction: arc fraction beyond which a node counts as apical.
@@ -204,13 +239,26 @@ def assign_segments_from_arc(
     node_levels: list[int] = []
     node_sides: list[int] = []
     node_segments: list[int] = []
+    # The wall a half of the arc carries is a property of the image: under the
+    # vendor convention (apex up) the first wall of the view sits on the left of
+    # the frame, i.e. on the annulus end with the smaller x. Ties (a perfectly
+    # vertical arc drawn on a symmetric outline) keep the start side, as before.
+    image_start_is_left = float(pts[0, 0]) <= float(pts[-1, 0])
+    start_half_is_first_wall = not image_start_is_left if flip else image_start_is_left
     for i in range(n):
-        is_first_side = i <= apex
-        side = 0 if is_first_side else 1
+        is_start_half = i <= apex
+        # 0 = first wall of the view, 1 = second wall (see SegmentAssignment).
+        # The apex node lies on the boundary of the two halves and follows the
+        # one displayed on the left, so the direction the arc was drawn in
+        # cannot rename it (a declared mirroring still swaps it like the rest).
+        if i == apex:
+            side = 0 if image_start_is_left == start_half_is_first_wall else 1
+        else:
+            side = 0 if is_start_half == start_half_is_first_wall else 1
         # 0 at the apex → 1 at the annulus
         to_annulus = (
             (apex_param - float(params[i])) / left_span
-            if is_first_side
+            if is_start_half
             else (float(params[i]) - apex_param) / right_span
         )
         to_annulus = float(min(max(to_annulus, 0.0), 1.0))

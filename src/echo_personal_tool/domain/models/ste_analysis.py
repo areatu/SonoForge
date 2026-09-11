@@ -43,6 +43,10 @@ DEFINITION_COMPARABILITY = (
     "comparable only together with the declared ROI sampling extent, "
     "LV translation compensation and regularization settings"
 )
+#: Which wall sits on which side of the image is part of a segment name: the
+#: module assumes the vendor convention (apex up, the view's first wall on the
+#: left of the screen) unless the user declares a mirrored display.
+DEFINITION_SEGMENT_SIDES = "left / right wall of the displayed image under the view's side convention"
 
 ANALYSIS_SCHEMA_VERSION = 2
 
@@ -67,12 +71,16 @@ class StrainAnalysis:
     definition_ttp: str = DEFINITION_TTP
     layer: str = DEFINITION_LAYER
     definition_comparability: str = DEFINITION_COMPARABILITY
+    definition_segment_sides: str = DEFINITION_SEGMENT_SIDES
     # Spatial extent of the sampling (mm) and the processing that shaped the
     # number: kernel footprint, node spacing, regularization text, whether LV
     # translation was compensated, and the acquisition frame rate.
     sampling_kernel_mm: float = 0.0
     sampling_node_spacing_mm: float = 0.0
     regularization: str = ""
+    # "left=inferoseptal / right=anterolateral" (+ mirrored marker): segment
+    # names are only comparable when the side convention is declared.
+    segment_sides: str = ""
     translation_compensation: bool = False
     frame_rate_hz: float = 0.0
     gls: float | None = None
@@ -146,12 +154,14 @@ class StrainAnalysis:
                 "ttp": self.definition_ttp,
                 "layer": self.layer,
                 "comparability": self.definition_comparability,
+                "segment_sides_convention": self.definition_segment_sides,
             },
             "sampling": {
                 "kernel_mm": _finite(self.sampling_kernel_mm),
                 "node_spacing_mm": _finite(self.sampling_node_spacing_mm),
                 "translation_compensation": self.translation_compensation,
                 "regularization": self.regularization,
+                "segment_sides": self.segment_sides,
                 "frame_rate_hz": _finite(self.frame_rate_hz),
             },
             "values": {
@@ -238,6 +248,7 @@ class StrainAnalysis:
             sampling_kernel_mm=float(getattr(result, "sampling_kernel_mm", 0.0)),
             sampling_node_spacing_mm=float(getattr(result, "sampling_node_spacing_mm", 0.0)),
             regularization=str(getattr(result, "regularization", "")),
+            segment_sides=str(getattr(result, "segment_sides", "")),
             translation_compensation=bool(getattr(result, "translation_compensation_applied", False)),
             frame_rate_hz=float(getattr(result, "frame_rate_hz", 0.0)),
             cycle_estimated=bool(getattr(result, "cycle_estimated", False)),

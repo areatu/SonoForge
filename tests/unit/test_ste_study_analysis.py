@@ -189,3 +189,26 @@ class TestSingleViewEquivalence:
         for value in analysis.to_dict()["segments"].values():
             if value is not None:
                 assert math.isfinite(value)
+
+
+class TestSegmentSideDeclarations:
+    """A segment name is not comparable without its side convention (Voigt 2015)."""
+
+    def test_declaration_travels_into_the_record(self) -> None:
+        from dataclasses import replace
+
+        sides = "left=inferoseptal / right=anterolateral"
+        result = replace(_result("A4C", -18.0), segment_sides=sides)
+        analysis = StrainAnalysis.from_result(result)
+        data = analysis.to_dict()
+        assert data["sampling"]["segment_sides"] == sides
+        assert "side convention" in data["definitions"]["segment_sides_convention"]
+
+    def test_mirrored_declaration_is_kept_verbatim(self) -> None:
+        from dataclasses import replace
+
+        sides = "left=anterolateral / right=inferoseptal (mirrored display declared by the user)"
+        result = replace(_result("A4C", -18.0), segment_sides=sides, segment_flip_applied=True)
+        analysis = StrainAnalysis.from_result(result)
+        assert analysis.segment_sides == sides
+        assert "mirrored" in analysis.to_dict()["sampling"]["segment_sides"]

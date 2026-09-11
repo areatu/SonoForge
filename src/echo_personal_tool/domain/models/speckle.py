@@ -85,6 +85,14 @@ class SpeckleConfig:
     # contraction — so it no longer runs in the default pipeline. Kept for A/B
     # comparison; ``tests/unit/test_kernel_containment.py`` covers the function.
     wall_clamp: bool = False
+    # Which half of the material line carries which AHA wall is a property of the
+    # display, not of the order the user drew the arc in — the assignment
+    # resolves the arc sides from the image (vendor convention: apex up, the
+    # first wall of the view on the left of the screen). Set this when the
+    # display is mirrored relative to that convention: the two walls of the
+    # analysed view swap sides. The consensus requires the choice to be
+    # selectable and declared (Voigt 2015, segment definition).
+    segment_flip: bool = False
     min_segment_quality: float = 0.4
     min_kernel_quality: float = 0.3
     # Forward-backward closure error, as a fraction of ``search_radius``; a
@@ -211,6 +219,11 @@ class StrainResult:
     sampling_kernel_mm: float = 0.0
     sampling_node_spacing_mm: float = 0.0
     regularization: str = ""
+    # Which wall the report placed on which side of the image ("left=… /
+    # right=…"), and whether the user declared a mirrored display. A segment
+    # name is not comparable without this declaration (Voigt 2015).
+    segment_sides: str = ""
+    segment_flip_applied: bool = False
     translation_compensation_applied: bool = False
     frame_rate_hz: float = 0.0
     # The wall is not fully inside the sector (clinical review Q4): share of

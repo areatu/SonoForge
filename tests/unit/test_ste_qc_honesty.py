@@ -371,3 +371,55 @@ class TestWorkerQcWiring:
         assert "strain.qc.reason.cross_check" in res.qc_reasons
         assert res.qc_status != "valid"
         assert res.qc_score <= 0.5
+
+
+class TestDisclosedRegularization:
+    """Voigt 2015: the reported regularization must be the one that was applied.
+
+    The Savitzky-Golay window is user-selectable and is forced odd and clamped to
+    the analysis window. Disclosing the *requested* length on a short clip would
+    tell the reader the curves were filtered more than they were.
+    """
+
+    def test_requested_window_is_kept_when_it_fits(self) -> None:
+        from echo_personal_tool.domain.services.strain_computation import effective_curve_smoothing_window
+
+        assert effective_curve_smoothing_window(9, 120) == 9
+
+    def test_even_request_is_made_odd(self) -> None:
+        from echo_personal_tool.domain.services.strain_computation import effective_curve_smoothing_window
+
+        assert effective_curve_smoothing_window(10, 120) == 11
+
+    def test_window_is_clamped_to_the_analysis_window(self) -> None:
+        from echo_personal_tool.domain.services.strain_computation import effective_curve_smoothing_window
+
+        assert effective_curve_smoothing_window(31, 12) == 11
+
+    def test_window_shorter_than_the_fit_is_not_applied(self) -> None:
+        from echo_personal_tool.domain.services.strain_computation import effective_curve_smoothing_window
+
+        assert effective_curve_smoothing_window(9, 2) == 0
+        assert effective_curve_smoothing_window(3, 3) == 0
+
+    def test_clamped_and_explicit_windows_filter_identically(self) -> None:
+        from echo_personal_tool.domain.services.strain_computation import smooth_curves_time
+
+        curves = np.linspace(-20.0, 0.0, 60).reshape(12, 5) + np.sin(np.arange(12))[:, None]
+        long_request = smooth_curves_time(curves, window=31)
+        clamped = smooth_curves_time(curves, window=11)
+        np.testing.assert_allclose(long_request, clamped)
+
+    def test_report_states_the_applied_window_and_the_spline_settings(self) -> None:
+        from echo_personal_tool.application.workers.speckle_worker import _regularization_text
+
+        config = SpeckleConfig(curve_smoothing_frames=31, spatial_smoothing=1.2, temporal_smoothing=1.1)
+        text = _regularization_text(config, 12)
+        assert "Savitzky-Golay 11-frame" in text
+        assert "spatial=1.2" in text and "temporal=1.1" in text
+
+    def test_report_says_when_no_filter_ran(self) -> None:
+        from echo_personal_tool.application.workers.speckle_worker import _regularization_text
+
+        text = _regularization_text(SpeckleConfig(curve_smoothing_frames=9), 2)
+        assert "no temporal curve filter" in text

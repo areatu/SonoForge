@@ -175,3 +175,45 @@ class TestFrameRange:
         dlg = SpeckleSettingsDialog(n_frames=20)
         assert dlg._ed_spin.maximum() == 19
         assert dlg._es_spin.maximum() == 19
+
+
+class TestRegularizationAndSideControls:
+    """User-controllable regularization and the side declaration (Voigt 2015).
+
+    The consensus requires the amount of regularization to be under the user's
+    control and the side/inversion convention to be selectable — both must reach
+    the analysis, not just the dialog.
+    """
+
+    def test_curve_smoothing_window_defaults_to_the_preset_value(self):
+        from echo_personal_tool.domain.models.speckle import SpeckleConfig
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog()
+        assert dlg._curve_smoothing_spin.value() == SpeckleConfig.preset_standard().curve_smoothing_frames
+        assert dlg.get_config().curve_smoothing_frames == SpeckleConfig.preset_standard().curve_smoothing_frames
+
+    def test_curve_smoothing_window_flows_into_config(self):
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog()
+        dlg._curve_smoothing_spin.setValue(15)
+        assert dlg.get_config().curve_smoothing_frames == 15
+
+    def test_segment_flip_is_off_by_default_and_flows_into_config(self):
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog()
+        assert dlg.get_config().segment_flip is False
+        dlg._segment_flip_check.setChecked(True)
+        assert dlg.get_config().segment_flip is True
+
+    def test_research_preset_keeps_the_user_window(self):
+        from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+
+        dlg = SpeckleSettingsDialog()
+        dlg._curve_smoothing_spin.setValue(5)
+        dlg._preset_combo.setCurrentIndex(1)  # research
+        config = dlg.get_config()
+        assert config.curve_smoothing_frames == 5
+        assert config.spatial_smoothing == 1.2  # preset still applied

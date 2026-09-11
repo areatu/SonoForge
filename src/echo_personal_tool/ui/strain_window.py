@@ -1753,6 +1753,10 @@ class StrainWindow(QMainWindow):
             parts.append(tr("strain.drift_warning", value=f"{drift:+.1f}"))
         if getattr(result, "is_post_systolic", False):
             parts.append(tr("strain.post_systolic"))
+        # Segment names depend on which wall the display puts on the left; the
+        # user's declaration travels with the numbers (Voigt 2015).
+        if getattr(result, "segment_flip_applied", False):
+            parts.append(tr("strain.segment_flip_meta"))
         # Round-trip verification of the tracking (clinical review Q6): the share
         # of node-frames the tracker could confirm by matching there and back, and
         # how far the round trip misses the drawn contour. This is the number that
@@ -2352,6 +2356,8 @@ class StrainWindow(QMainWindow):
                 ]
             )
             writer.writerow(["# Regularization", analysis.regularization])
+            if analysis.segment_sides:
+                writer.writerow(["# Segment sides", analysis.segment_sides])
             writer.writerow(
                 [
                     "# LV translation compensation",

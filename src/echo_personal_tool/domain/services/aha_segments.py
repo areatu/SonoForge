@@ -74,6 +74,8 @@ def assign_aha_segments(
     kernels: list[TrackingKernel],
     lv_center: tuple[float, float],
     view: str = "A4C",
+    *,
+    flip: bool = False,
 ) -> list[TrackingKernel]:
     """Return kernels with ``aha_segment``/``arc_length_param`` filled in.
 
@@ -82,6 +84,10 @@ def assign_aha_segments(
     (issue #C2). All layers of a node share the node's segment, so the
     epicardial and mid-wall kernels of one wall region report the same segment
     as the endocardium they belong to.
+
+    ``flip`` declares a mirrored display (the view's first wall on the right of
+    the screen instead of the left); the arc order itself does not matter,
+    because :func:`assign_segments_from_arc` resolves the sides from the image.
     """
     points, endo_indices = _arc_points_from_kernels(kernels)
     if points.shape[0] < 3 or not np.all(np.isfinite(points)):
@@ -93,7 +99,7 @@ def assign_aha_segments(
         return _assign_aha_segments_angular(kernels, lv_center)
 
     try:
-        assignment = assign_segments_from_arc(points, view)
+        assignment = assign_segments_from_arc(points, view, flip=flip)
     except ValueError as exc:
         logger.warning("STE: segment assignment failed (%s) — legacy fallback", exc)
         return _assign_aha_segments_angular(kernels, lv_center)
@@ -115,8 +121,9 @@ def assign_aha_segments(
             )
         )
     logger.info(
-        "STE segment map: view=%s apex_node=%d segments=%s",
+        "STE segment map: view=%s flip=%s apex_node=%d segments=%s",
         view,
+        flip,
         kernels[endo_indices[assignment.apex_index]].node_index if endo_indices else -1,
         sorted({k.aha_segment for k in assigned if k.aha_segment > 0}),
     )

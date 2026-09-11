@@ -34,6 +34,7 @@ from echo_personal_tool.domain.services.segment_map import (
     VIEW_WALLS,
     apex_index_from_arc,
     assign_segments_from_arc,
+    describe_segment_sides,
     normalise_view,
     segment_ids_in_bullseye_order,
     segments_present,
@@ -198,6 +199,19 @@ class TestKernelAssignment:
         shuffled = assign_aha_segments(list(reversed(kernels)), (0.0, 0.0), "A3C")
         assert {k.node_index: k.aha_segment for k in shuffled} == straight
 
+    def test_flip_reaches_the_kernel_segments(self) -> None:
+        arc = _apical_arc(31)
+        normal = {
+            k.node_index: k.aha_segment for k in assign_aha_segments(self._kernels(arc, ("endo",)), (0.0, 0.0), "A4C")
+        }
+        flipped = {
+            k.node_index: k.aha_segment
+            for k in assign_aha_segments(self._kernels(arc, ("endo",)), (0.0, 0.0), "A4C", flip=True)
+        }
+        walls = VIEW_WALLS["A4C"]
+        swap = dict(zip(walls[0], walls[1])) | dict(zip(walls[1], walls[0]))
+        assert flipped == {node: swap[seg] for node, seg in normal.items()}
+
     def test_legacy_fallback_still_returns_segments(self) -> None:
         """With fewer than three endo nodes the angular fallback must not crash."""
         kernels = [
@@ -233,3 +247,57 @@ class TestHeartPhantomInvariants:
     def test_config_defaults_do_not_depend_on_the_view(self) -> None:
         cfg = SpeckleConfig()
         assert cfg.tracking_mode in {"sequential", "border", "incremental"}
+
+
+class TestSegmentSidesComeFromTheImage:
+    """The consensus requires the side convention to be selectable and declared
+    (Voigt 2015, segment definition). Two defects are pinned here:
+
+    * the wall a node got used to follow the direction the arc was *drawn* in —
+      the same outline drawn from the other annulus silently swapped the
+      inferoseptal and anterolateral segments of an A4C;
+    * a mirrored display had no way to be declared at all.
+    """
+
+    def test_drawing_direction_does_not_change_segment_names(self) -> None:
+        arc = _apical_arc(61)
+        forward = assign_segments_from_arc(arc, "A4C")
+        backward = assign_segments_from_arc(arc[::-1], "A4C")
+        # Index i of the reversed arc is the same physical node as index n-1-i.
+        assert backward.node_segments[::-1] == forward.node_segments
+        assert backward.node_levels[::-1] == forward.node_levels
+
+    def test_first_wall_of_the_view_sits_on_the_left_of_the_image(self) -> None:
+        arc = _apical_arc(61)
+        assignment = assign_segments_from_arc(arc, "A4C")
+        left = arc[:, 0] < -1.0
+        right = arc[:, 0] > 1.0
+        left_ids = {seg for seg, on_left in zip(assignment.node_segments, left) if on_left}
+        right_ids = {seg for seg, on_right in zip(assignment.node_segments, right) if on_right}
+        assert left_ids <= set(VIEW_WALLS["A4C"][0])  # inferoseptal 3/9/15
+        assert right_ids <= set(VIEW_WALLS["A4C"][1])  # anterolateral 6/12/18
+
+    def test_flip_swaps_the_walls_and_keeps_full_coverage(self) -> None:
+        arc = _apical_arc(61)
+        normal = assign_segments_from_arc(arc, "A4C")
+        flipped = assign_segments_from_arc(arc, "A4C", flip=True)
+        walls = VIEW_WALLS["A4C"]
+        swap = dict(zip(walls[0], walls[1])) | dict(zip(walls[1], walls[0]))
+        assert flipped.node_segments == tuple(swap[seg] for seg in normal.node_segments)
+        assert flipped.node_sides == tuple(1 - side for side in normal.node_sides)
+        assert set(flipped.node_segments) == set(normal.node_segments)
+        assert all(seg > 0 for seg in flipped.node_segments)
+
+    def test_view_pair_is_swapped_not_replaced(self) -> None:
+        arc = _apical_arc(41)
+        for view in ("A4C", "A2C", "A3C"):
+            normal = assign_segments_from_arc(arc, view)
+            flipped = assign_segments_from_arc(arc, view, flip=True)
+            assert set(flipped.node_segments) == set(normal.node_segments)
+
+    def test_declaration_names_the_walls_and_the_mirroring(self) -> None:
+        assert describe_segment_sides("A4C") == "left=inferoseptal / right=anterolateral"
+        assert describe_segment_sides("A2C").startswith("left=anterior / right=inferior")
+        flipped = describe_segment_sides("A4C", flip=True)
+        assert flipped.startswith("left=anterolateral / right=inferoseptal")
+        assert "mirrored" in flipped

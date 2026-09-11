@@ -28,6 +28,7 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
 )
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
 from echo_personal_tool.domain.services.quality import assess_tracking_quality
+from echo_personal_tool.domain.services.segment_map import describe_segment_sides
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
     clamp_trajectories_to_wall,
@@ -52,6 +53,7 @@ from echo_personal_tool.domain.services.strain_computation import (
     compute_strain_rate,
     compute_weighted_longitudinal_strain_gl,
     compute_weighted_radial_strain_gl,
+    effective_curve_smoothing_window,
     global_curve_from_node_curves,
     peak_in_window,
     smooth_curves_time,
@@ -115,6 +117,31 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
     if not frames_list:
         raise RuntimeError("No frames decoded from source")
     return np.stack(frames_list)
+
+
+def _regularization_text(config: SpeckleConfig, window_frames: int) -> str:
+    """Declare the regularization that was applied to *this* analysis window.
+
+    The Savitzky-Golay length is forced odd and clamped to the analysis window
+    (``effective_curve_smoothing_window``), so a long requested window on a short
+    clip is not what the curves actually got — the report has to say so.
+    """
+    applied = effective_curve_smoothing_window(
+        int(config.curve_smoothing_frames),
+        int(window_frames),
+    )
+    curve_part = (
+        f"Savitzky-Golay {applied}-frame filter on the strain curves"
+        if applied
+        else (
+            f"no temporal curve filter (requested {int(config.curve_smoothing_frames)} frames, "
+            f"analysis window {int(window_frames)} frames)"
+        )
+    )
+    return (
+        f"quality-weighted spatial + temporal spline smoothing of trajectories "
+        f"(spatial={config.spatial_smoothing:g}, temporal={config.temporal_smoothing:g}), {curve_part}"
+    )
 
 
 def _closure_gate_px(config: SpeckleConfig) -> float:
@@ -454,7 +481,12 @@ class SpeckleTrackingWorker(QRunnable):
                 self._zone,
                 kernel_radius=kernel_radius,
             )
-            kernels = assign_aha_segments(kernels, lv_center=lv_center, view=self._view)
+            kernels = assign_aha_segments(
+                kernels,
+                lv_center=lv_center,
+                view=self._view,
+                flip=config.segment_flip,
+            )
 
             manual_ed_given = self._manual_ed is not None
             manual_es_given = self._manual_es is not None
@@ -688,6 +720,7 @@ class SpeckleTrackingWorker(QRunnable):
                     border_propagation["kernels"],
                     lv_center=tuple(np.mean(self._zone.endo_points, axis=0).tolist()),
                     view=self._view,
+                    flip=config.segment_flip,
                 )
                 positions = border_propagation["positions"]
                 ncc_matrix = border_propagation["ncc"]
@@ -1360,11 +1393,12 @@ class SpeckleTrackingWorker(QRunnable):
                 closure_gate_px=_closure_gate_px(config),
                 sampling_kernel_mm=sampling_kernel_mm,
                 sampling_node_spacing_mm=sampling_node_spacing_mm,
-                regularization=(
-                    f"quality-weighted spatial + temporal spline smoothing of trajectories "
-                    f"(spatial={config.spatial_smoothing:g}, temporal={config.temporal_smoothing:g}), "
-                    f"Savitzky-Golay {int(config.curve_smoothing_frames)}-frame filter on the strain curves"
+                regularization=_regularization_text(
+                    config,
+                    phase_end - phase_start + 1,
                 ),
+                segment_sides=describe_segment_sides(self._view, flip=config.segment_flip),
+                segment_flip_applied=bool(config.segment_flip),
                 translation_compensation_applied=bool(config.global_motion_compensation),
                 frame_rate_hz=frame_rate_hz,
                 qc_closure_median_mm=quality.closure_median_mm,

@@ -577,6 +577,25 @@ def arc_contraction_mm(
     return float(max((lengths[0] - lengths.min()) * spacing, 0.0))
 
 
+def effective_curve_smoothing_window(window: int, n_frames: int, *, polyorder: int = 2) -> int:
+    """Window :func:`smooth_curves_time` will actually use (0 = not applied).
+
+    The requested length is forced odd and clamped to the analysis window, and a
+    window that cannot carry the polynomial fit is not applied at all. The report
+    must state *this* number — a disclosed regularization that was not the one
+    actually applied is worse than no disclosure.
+    """
+    frames = int(n_frames)
+    if frames < 3:
+        return 0
+    win = int(window)
+    if win % 2 == 0:
+        win += 1
+    win = max(3, min(win, frames if frames % 2 == 1 else frames - 1))
+    order = max(1, min(int(polyorder), win - 1))
+    return win if win > order + 1 else 0
+
+
 def smooth_curves_time(
     curves: np.ndarray,
     *,
@@ -607,13 +626,10 @@ def smooth_curves_time(
     if arr.ndim != 2 or arr.shape[0] < 3:
         return arr.copy()
     n_frames = arr.shape[0]
-    win = int(window)
-    if win % 2 == 0:
-        win += 1
-    win = max(3, min(win, n_frames if n_frames % 2 == 1 else n_frames - 1))
-    order = max(1, min(int(polyorder), win - 1))
-    if win <= order + 1:
+    win = effective_curve_smoothing_window(window, n_frames, polyorder=polyorder)
+    if win == 0:
         return arr.copy()
+    order = max(1, min(int(polyorder), win - 1))
     out = arr.copy()
     frame_index = np.arange(n_frames, dtype=np.float64)
     for node in range(arr.shape[1]):
