@@ -589,15 +589,17 @@ class SpeckleTrackingWorker(QRunnable):
             local_ed = global_ed - phase_start
             local_es = global_es - phase_start
             local_window_end = phase_end - phase_start
+            # HR/RR are not logged: they are patient-derived values and already
+            # travel with the analysis record (``heart_rate_bpm``); CodeQL reads
+            # them as sensitive data in logs, and the log does not need them.
             logger.info(
-                "STE analysis window: ED=%d ES=%d end=%d (%d frames, HR=%.0f bpm, RR=%s, cycle_estimated=%s)",
+                "STE analysis window: ED=%d ES=%d end=%d (%d frames, cycle_estimated=%s, rr_available=%s)",
                 global_ed,
                 global_es,
                 phase_end,
                 phase_end - phase_start + 1,
-                heart_rate_for_cycle,
-                "n/a" if rr_frames is None else f"{rr_frames:.1f}",
                 cycle_estimated,
+                "ecg" if rr_frames is not None else "no",
             )
             logger.info(
                 "STE: global_ed=%d global_es=%d phase=[%d..%d] tracking_mode=%s",
