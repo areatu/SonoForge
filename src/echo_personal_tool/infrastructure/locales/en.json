@@ -1362,5 +1362,6 @@
   "strain.gls_av_meta": "GLS AV {value}% ({n} views)",
   "strain.qc.reason.cross_check": "independent strain estimates disagree",
   "strain.qc.reason.line_coherence": "the myocardial line does not shorten coherently",
-  "strain.qc.reason.tracking_noise": "tracking noise is comparable to the measured contraction"
+  "strain.qc.reason.tracking_noise": "tracking noise is comparable to the measured contraction",
+  "strain.qc.reason.edge_visibility": "part of the myocardium is outside the field of view"
 }

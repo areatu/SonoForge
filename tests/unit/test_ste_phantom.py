@@ -355,3 +355,41 @@ def test_quality_never_hides_a_large_strain_error(qapp):
             f"QC reported valid with a {bias:.2f} pp strain error (accepted {accept_rate:.0%})"
         )
     assert result.qc_score <= 0.5, f"a {bias:.2f} pp error was reported with confidence {result.qc_score:.2f}"
+
+
+# The apex leaves the sector: before this check the report said ``valid`` with
+# GLS −11.5 % against a true −19.5 % (1.7 % of the node-frames outside the field
+# of view), because both the NCC and the coverage fraction look at the *match*
+# rather than at the *image* (clinical review Q4).
+WALL_VISIBILITY_ROW_CUT = 136
+
+
+@pytest.mark.gui
+def test_wall_leaving_the_sector_is_excluded_and_stated(qapp):
+    """Invisible tissue must not be measured, and the report must say so.
+
+    With the apical band blanked the nodes over it are dropped from the strain,
+    so the remaining number describes the wall that is actually in the image
+    (measured: −15.9 % instead of −11.5 %), and the QC status stops claiming a
+    full-ventricle measurement.
+    """
+    config = StePhantomConfig.quick(mode="uniform", noise_db=40.0)
+    phantom = StePhantom(config)
+    truth = phantom.ground_truth()
+    frames = phantom.frames()
+
+    clean = _run_worker(phantom, frames)
+    assert clean.qc_status == "valid"
+    assert clean.qc_visibility_loss == 0.0
+    assert clean.qc_excluded_nodes == 0
+
+    cut = frames.copy()
+    cut[:, WALL_VISIBILITY_ROW_CUT:, :] = 0.0
+    result = _run_worker(phantom, cut)
+    assert result.qc_visibility_loss > 0.03, f"loss {result.qc_visibility_loss:.3f}"
+    assert result.qc_excluded_nodes >= 1
+    assert "strain.qc.reason.edge_visibility" in result.qc_reasons
+    assert result.qc_status != "valid"
+    # The measurement is now taken on the visible part of the wall only, which
+    # brings it back close to the ground truth instead of the +8 pp bias.
+    assert abs(result.gls - truth.peak) < 5.0, f"GLS {result.gls:.2f} vs truth {truth.peak:.2f}"

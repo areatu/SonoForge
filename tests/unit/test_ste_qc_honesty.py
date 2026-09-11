@@ -218,6 +218,7 @@ class TestWorkerQcWiring:
     ):
         from echo_personal_tool.application.workers.speckle_worker import SpeckleTrackingWorker
         from echo_personal_tool.domain.models.speckle import TrackingKernel
+        from echo_personal_tool.domain.services.wall_visibility import WallVisibility
 
         if radial_values is None:
             radial_values = [0.0, 2.0, 5.0, 3.0, 0.0, 0.0]
@@ -252,6 +253,13 @@ class TestWorkerQcWiring:
             "estimate_heart_rate_fft": MagicMock(return_value=72.0),
             "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "compute_gls": MagicMock(return_value=-15.0),
+            # These tests own the QC wiring, not the image content: the frames
+            # below are synthetic, so the wall-visibility check (which looks at
+            # the actual pixels, clinical review Q4) is neutralised here and
+            # covered by test_wall_visibility.py and test_ste_phantom.py.
+            "measure_wall_visibility": MagicMock(
+                return_value=WallVisibility(loss_fraction=0.0, node_loss=np.zeros(n_kernels))
+            ),
         }
 
         with (
@@ -307,6 +315,10 @@ class TestWorkerQcWiring:
                 patches["build_myocardial_roi_mask"],
             ),
             patch("echo_personal_tool.application.workers.speckle_worker.compute_gls", patches["compute_gls"]),
+            patch(
+                "echo_personal_tool.application.workers.speckle_worker.measure_wall_visibility",
+                patches["measure_wall_visibility"],
+            ),
         ):
             worker = SpeckleTrackingWorker(
                 frames=frames,

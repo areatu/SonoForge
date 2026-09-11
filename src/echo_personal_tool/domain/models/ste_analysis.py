@@ -93,6 +93,11 @@ class StrainAnalysis:
     # the measured contraction (plan §7.5, F6). 1.0 = the measurement is noise.
     qc_noise_to_signal: float = 0.0
     qc_noise_mm: float = 0.0
+    # Wall visibility (clinical review Q4): tissue that left the sector is not
+    # measured, and the report states how much of the wall was excluded.
+    qc_visibility_loss: float = 0.0
+    qc_excluded_nodes: int = 0
+    qc_excluded_segments: tuple[int, ...] = ()
     kernels_accepted: int = 0
     kernels_total: int = 0
     heart_rate_bpm: float = 0.0
@@ -152,6 +157,9 @@ class StrainAnalysis:
                 "sign_flip_fraction": self.qc_sign_flip_fraction,
                 "noise_to_signal": self.qc_noise_to_signal,
                 "noise_mm": self.qc_noise_mm,
+                "visibility_loss": self.qc_visibility_loss,
+                "excluded_nodes": self.qc_excluded_nodes,
+                "excluded_segments": list(self.qc_excluded_segments),
                 "tracking_ncc_mean": self.tracking_quality_mean,
                 "kernels_accepted": self.kernels_accepted,
                 "kernels_total": self.kernels_total,
@@ -207,6 +215,9 @@ class StrainAnalysis:
             qc_sign_flip_fraction=float(getattr(result, "qc_sign_flip_fraction", 0.0)),
             qc_noise_to_signal=float(getattr(result, "qc_noise_to_signal", 0.0)),
             qc_noise_mm=float(getattr(result, "qc_noise_mm", 0.0)),
+            qc_visibility_loss=float(getattr(result, "qc_visibility_loss", 0.0)),
+            qc_excluded_nodes=int(getattr(result, "qc_excluded_nodes", 0)),
+            qc_excluded_segments=tuple(int(seg) for seg in (getattr(result, "qc_excluded_segments", ()) or ())),
             kernels_accepted=int(result.kernels_accepted_count),
             kernels_total=int(result.kernels_total_count),
             heart_rate_bpm=float(result.heart_rate_bpm),

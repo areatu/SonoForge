@@ -196,6 +196,12 @@ class StrainResult:
     # clip is not measurable no matter how high the NCC is.
     qc_noise_to_signal: float = 0.0
     qc_noise_mm: float = 0.0
+    # The wall is not fully inside the sector (clinical review Q4): share of
+    # node-frames without visible tissue, the nodes dropped from the strain and
+    # the AHA segments they belonged to.
+    qc_visibility_loss: float = 0.0
+    qc_excluded_nodes: int = 0
+    qc_excluded_segments: tuple[int, ...] = ()
     # Per-node strain curves along the tracked material line (single definition,
     # see ``strain_computation.compute_node_longitudinal_curves``). Columns match
     # ``node_indices``; values are NaN outside the tracked window.

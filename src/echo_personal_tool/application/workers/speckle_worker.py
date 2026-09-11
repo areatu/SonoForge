@@ -67,6 +67,7 @@ from echo_personal_tool.domain.services.tracking_smoothing import (
     repair_outlier_columns,
     smooth_trajectories,
 )
+from echo_personal_tool.domain.services.wall_visibility import measure_wall_visibility
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,32 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
     if not frames_list:
         raise RuntimeError("No frames decoded from source")
     return np.stack(frames_list)
+
+
+# Fewer visible endocardial nodes than this and the arc is no longer a usable
+# material line: the visibility filter is then abandoned (and the QC report
+# still carries the measured loss), instead of reporting the strain of a stub.
+MIN_VISIBLE_NODES = 8
+
+
+def _invisible_segments(
+    kernels: list[TrackingKernel],
+    arc_columns: list[int],
+    visible_nodes: np.ndarray,
+) -> tuple[int, ...]:
+    """AHA segments of one view whose nodes are mostly invisible (clinical Q4).
+
+    A segment is treated as not measured when fewer than half of its nodes are
+    visible somewhere in the wall along the cycle — a single unlucky node must
+    not retire a segment. EACVI/ASE allow one excluded segment per view.
+    """
+    per_segment: dict[int, list[bool]] = {}
+    for node in arc_columns:
+        segment = getattr(kernels[node], "aha_segment", None)
+        if segment is None:
+            continue
+        per_segment.setdefault(int(segment), []).append(bool(visible_nodes[node]))
+    return tuple(sorted(seg for seg, flags in per_segment.items() if sum(flags) * 2 < len(flags)))
 
 
 def _arc_ordered_columns(
@@ -709,8 +736,47 @@ class SpeckleTrackingWorker(QRunnable):
             # two annulus-plane columns was only needed while the phantom's
             # annulus band was static (plan §7.5 F2/F8), and with the corrected
             # phantom the two ends are as accurate as the rest of the wall.
-            strain_endo = _arc_ordered_columns(endo_indices, kernels)
-            strain_epi = _arc_ordered_columns(epi_indices, kernels)
+            strain_endo_all = _arc_ordered_columns(endo_indices, kernels)
+            strain_epi_all = _arc_ordered_columns(epi_indices, kernels)
+
+            # Which tissue is actually in the image? (clinical review Q4) A node
+            # that runs out of the sector keeps producing a position (the match
+            # locks onto the boundary, where a blank patch even scores NCC 1.0),
+            # so the strain must be computed on the visible part of the wall
+            # only, and the report has to say how much was dropped.
+            n_tracked_frames = int(min(preprocessed.shape[0], smoothed.shape[0]))
+            visibility = measure_wall_visibility(
+                preprocessed[:n_tracked_frames],
+                smoothed[:n_tracked_frames],
+                reference_index=int(min(max(local_ed, 0), n_tracked_frames - 1)) if n_tracked_frames else 0,
+                kernel_radius=max(1, config.kernel_size // 2),
+            )
+            visible_nodes = visibility.visible_nodes()
+            strain_endo = [i for i in strain_endo_all if visible_nodes[i]]
+            strain_epi = [
+                column
+                for position, column in enumerate(strain_epi_all)
+                if position < len(strain_endo_all) and visible_nodes[strain_endo_all[position]]
+            ]
+            excluded_endo_nodes = [i for i in strain_endo_all if not visible_nodes[i]]
+            if len(strain_endo) < MIN_VISIBLE_NODES or len(strain_epi) != len(strain_endo):
+                logger.warning(
+                    "STE visibility: only %d/%d endocardial nodes visible (epi %d) — keeping the full arc",
+                    len(strain_endo),
+                    len(strain_endo_all),
+                    len(strain_epi),
+                )
+                strain_endo = strain_endo_all
+                strain_epi = strain_epi_all
+                excluded_endo_nodes = []
+            excluded_segments = _invisible_segments(kernels, strain_endo_all, visible_nodes)
+            if excluded_endo_nodes:
+                logger.info(
+                    "STE visibility: %.1f%% of node-frames invisible; excluded nodes %s (segments %s)",
+                    visibility.loss_fraction * 100.0,
+                    excluded_endo_nodes,
+                    list(excluded_segments),
+                )
 
             # Use NCC weights from ED frame for quality-weighted strain
             ed_ncc = ncc_matrix[local_ed].copy()
@@ -772,11 +838,17 @@ class SpeckleTrackingWorker(QRunnable):
             consistency_delta = 0.0
 
             if len(endo_indices) >= 2:
-                endo_sorted = sorted(endo_indices, key=lambda i: kernels[i].node_index)
-                ed_pos = smoothed[local_ed, endo_sorted, :]
-                es_pos = smoothed[local_es, endo_sorted, :]
+                endo_sorted_all = sorted(endo_indices, key=lambda i: kernels[i].node_index)
+                ed_pos = smoothed[local_ed, endo_sorted_all, :]
+                es_pos = smoothed[local_es, endo_sorted_all, :]
                 ed_contour = ed_pos.copy()
                 es_contour = es_pos.copy()
+                # Node and segment curves live on the same visible node set as
+                # the global curve, so the cross-check between them stays a
+                # comparison of the same measurement.
+                endo_sorted = [i for i in endo_sorted_all if visible_nodes[i]]
+                if len(endo_sorted) < MIN_VISIBLE_NODES:
+                    endo_sorted = endo_sorted_all
 
                 # Single strain definition (issue #C3): every node owns the
                 # Green–Lagrange strain of the sub-arc through it and its two
@@ -1036,11 +1108,15 @@ class SpeckleTrackingWorker(QRunnable):
             # GLS wrong". It is measured on the pre-smoothing positions.
             noise_mm = 0.0
             noise_to_signal = 0.0
-            if len(strain_endo) >= 2:
-                noise_mm = arc_length_inflation_mm(raw_positions, smoothed, strain_endo, self._pixel_spacing)
+            # The noise estimate describes the *tracking* of the whole material
+            # line, so it deliberately uses every endocardial column: tying it
+            # to the visibility subset would let a clip whose tracker wandered
+            # off the tissue look less noisy than it is (measured at 10 dB).
+            if len(strain_endo_all) >= 2:
+                noise_mm = arc_length_inflation_mm(raw_positions, smoothed, strain_endo_all, self._pixel_spacing)
                 contraction = arc_contraction_mm(
                     smoothed,
-                    strain_endo,
+                    strain_endo_all,
                     local_ed,
                     self._pixel_spacing,
                     window_end=smoothed.shape[0] - 1,
@@ -1069,13 +1145,16 @@ class SpeckleTrackingWorker(QRunnable):
                 estimate_spread_pp=estimate_spread_pp,
                 sign_flip_fraction=sign_flip_fraction,
                 noise_to_signal=noise_to_signal,
+                visibility_loss=visibility.loss_fraction,
+                excluded_nodes=len(excluded_endo_nodes),
+                excluded_segments=len(excluded_segments),
                 gls_pp=gls,
             )
             qc_overall = quality.confidence
             logger.info(
                 "STE QC: status=%s confidence=%.2f ncc=%.3f coverage=%.2f interp=%.2f "
                 "consistency=%.2f spread=%.2f sign_flip=%.2f noise_ratio=%.2f "
-                "physiology_ok=%s geometry_ok=%s reasons=%s",
+                "visibility=%.2f excluded_segments=%s physiology_ok=%s geometry_ok=%s reasons=%s",
                 quality.status,
                 quality.confidence,
                 tracking_quality_mean,
@@ -1085,6 +1164,8 @@ class SpeckleTrackingWorker(QRunnable):
                 estimate_spread_pp,
                 sign_flip_fraction,
                 noise_to_signal,
+                visibility.loss_fraction,
+                list(excluded_segments),
                 phys_ok,
                 geometry_ok,
                 quality.reasons,
@@ -1177,6 +1258,9 @@ class SpeckleTrackingWorker(QRunnable):
                 qc_sign_flip_fraction=float(sign_flip_fraction),
                 qc_noise_to_signal=float(noise_to_signal),
                 qc_noise_mm=float(noise_mm),
+                qc_visibility_loss=quality.visibility_loss,
+                qc_excluded_nodes=quality.excluded_nodes,
+                qc_excluded_segments=excluded_segments,
                 analysis_window_end=int(phase_end),
                 cycle_estimated=bool(cycle_estimated),
                 raw_tracked_positions=raw_phase_positions,

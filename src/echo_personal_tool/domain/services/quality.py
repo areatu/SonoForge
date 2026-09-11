@@ -47,6 +47,21 @@ MAX_SIGN_FLIP_FRACTION = 0.25  # nodes shortening vs stretching at end-systole
 # estimated length bias divided by the measured contraction.
 MAX_NOISE_TO_SIGNAL_INVALID = 1.0
 MAX_NOISE_TO_SIGNAL_REVIEW = 0.35
+# Tissue that is not in the image cannot be measured (clinical review Q4). The
+# worker excludes the nodes the visibility check rejects, so the reported GLS
+# describes the wall that was actually seen. EACVI/ASE allow at most one
+# excluded segment per view for a GLS that still represents the whole
+# ventricle; more than that and the view has to be re-acquired.
+MAX_EXCLUDED_SEGMENTS_INVALID = 1
+# Share of the node-frames without visible tissue above which the view cannot be
+# reported at all: roughly one whole AHA segment of the wall, or an apex that is
+# outside the sector for a fifth of the cycle. Measured on the phantom: above
+# this the GLS of the remaining tissue is no longer a whole-ventricle number.
+MAX_VISIBILITY_LOSS_INVALID = 0.10
+# Above this share even without a whole segment lost: on the phantom 2 % of
+# node-frames outside the field of view already moved GLS by ~4 pp, which is
+# more than the tracking error of a clean clip.
+MAX_VISIBILITY_LOSS_REVIEW = 0.02
 
 REASON_NO_DATA = "strain.qc.reason.no_data"
 REASON_GEOMETRY = "strain.qc.reason.geometry"
@@ -58,6 +73,7 @@ REASON_PHYSIOLOGY = "strain.qc.reason.physiology"
 REASON_CROSS_CHECK = "strain.qc.reason.cross_check"
 REASON_LINE_COHERENCE = "strain.qc.reason.line_coherence"
 REASON_TRACKING_NOISE = "strain.qc.reason.tracking_noise"
+REASON_EDGE_VISIBILITY = "strain.qc.reason.edge_visibility"
 
 
 @dataclass(frozen=True)
@@ -73,6 +89,9 @@ class QualityReport:
     estimate_spread_pp: float = 0.0
     sign_flip_fraction: float = 0.0
     noise_to_signal: float = 0.0
+    visibility_loss: float = 0.0
+    excluded_nodes: int = 0
+    excluded_segments: int = 0
     physiology_ok: bool = False
     reasons: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -92,6 +111,9 @@ def assess_tracking_quality(
     estimate_spread_pp: float = 0.0,
     sign_flip_fraction: float = 0.0,
     noise_to_signal: float = 0.0,
+    visibility_loss: float = 0.0,
+    excluded_nodes: int = 0,
+    excluded_segments: int = 0,
     gls_pp: float = 0.0,
     physiology_ok: bool = True,
     physiology_notes: Sequence[str] = (),
@@ -122,6 +144,12 @@ def assess_tracking_quality(
     contraction. Noise makes a polyline longer, so it *shortens* the reported
     strain; when the bias is of the same order as the contraction the strain is
     not measurable and the result is ``invalid`` regardless of the NCC.
+
+    ``excluded_nodes`` / ``excluded_segments`` report tissue that left the field
+    of view and was therefore dropped from the strain (clinical review Q4). Any
+    exclusion downgrades the result to ``review`` — the number then describes
+    the visible part of the wall, which has to be stated — and more than one
+    excluded segment of a view makes it ``invalid`` (EACVI/ASE limit).
     """
     reasons: list[str] = []
     notes: list[str] = list(physiology_notes) + list(geometry_notes)
@@ -144,6 +172,20 @@ def assess_tracking_quality(
     if has_curve and coverage < MIN_COVERAGE_INVALID:
         reasons.append(REASON_LOW_COVERAGE)
         hard_failure = True
+
+    excluded_nodes = int(max(0, excluded_nodes))
+    excluded_segments = int(max(0, excluded_segments))
+    visibility_loss = float(max(0.0, min(1.0, visibility_loss)))
+    if has_curve and (
+        excluded_segments > MAX_EXCLUDED_SEGMENTS_INVALID or visibility_loss > MAX_VISIBILITY_LOSS_INVALID
+    ):
+        reasons.append(REASON_EDGE_VISIBILITY)
+        hard_failure = True
+    elif has_curve and (excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW):
+        notes.append(
+            f"{visibility_loss * 100:.1f}% of the node-frames have no visible tissue "
+            f"({excluded_nodes} node(s), {excluded_segments} segment(s) excluded from the strain)"
+        )
 
     noise_ratio = float(noise_to_signal) if np.isfinite(noise_to_signal) else 0.0
     if has_curve and noise_ratio > MAX_NOISE_TO_SIGNAL_INVALID:
@@ -174,6 +216,9 @@ def assess_tracking_quality(
         if n_segments_measured < MIN_SEGMENTS_REVIEW:
             reasons.append(REASON_FEW_SEGMENTS)
             soft = True
+        if excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW:
+            reasons.append(REASON_EDGE_VISIBILITY)
+            soft = True
         if physiology_notes:
             soft = True
 
@@ -192,6 +237,7 @@ def assess_tracking_quality(
     confidence *= 1.0 - 0.5 * min(max(float(estimate_spread_pp) - 1.0, 0.0) / 8.0, 1.0)
     confidence *= 1.0 - 0.3 * min(float(sign_flip_fraction) / 0.5, 1.0)
     confidence *= 1.0 - 0.5 * min(noise_ratio / MAX_NOISE_TO_SIGNAL_INVALID, 1.0)
+    confidence *= 1.0 - 0.5 * min(visibility_loss / 0.25, 1.0)
     confidence = float(max(0.0, min(1.0, confidence)))
     if status == STATUS_INVALID:
         confidence = min(confidence, 0.35)
@@ -208,6 +254,9 @@ def assess_tracking_quality(
         estimate_spread_pp=float(estimate_spread_pp),
         noise_to_signal=noise_ratio,
         sign_flip_fraction=float(sign_flip_fraction),
+        visibility_loss=visibility_loss,
+        excluded_nodes=excluded_nodes,
+        excluded_segments=excluded_segments,
         physiology_ok=bool(physiology_ok),
         reasons=tuple(dict.fromkeys(reasons)),
         notes=tuple(notes),
