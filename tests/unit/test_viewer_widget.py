@@ -1889,6 +1889,62 @@ class TestSpeckleOverlayDeep:
         w._speckle_result = result
         w._on_ste_smoothness_changed(1.0)  # must not raise
 
+    def test_segment_labels_follow_the_displayed_frame(self, qtbot) -> None:
+        """§5.3 п.4: the cine names the walls it measures, and un-names them
+        when the frame leaves the tracked window (labels belong to the overlay)."""
+        import numpy as np
+
+        from echo_personal_tool.domain.models.speckle import StrainResult, TrackingKernel
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        n_frames, n_kern = 6, 4
+        kernels = [
+            TrackingKernel(
+                center=(10.0 + 10 * i, 50.0),
+                node_index=i,
+                layer="endo",
+                radius=4,
+                aha_segment=(3, 9, 6, 18)[i],
+            )
+            for i in range(n_kern)
+        ]
+        positions = np.tile(np.array([[20.0, 50.0], [30.0, 50.0], [40.0, 50.0], [50.0, 50.0]]), (n_frames, 1, 1))
+        result = StrainResult(
+            longitudinal=np.zeros(n_frames),
+            radial=np.zeros(n_frames),
+            gls=-18.0,
+            ed_index=0,
+            es_index=3,
+            kernels=kernels,
+            tracked_positions_all=positions.copy(),
+            ncc_all_frames=np.full((n_frames, n_kern), 0.9),
+            tracking_window_start=0,
+            tracking_window_end=3,
+        )
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        w._speckle_result = result
+        w._speckle_overlay.show()
+
+        set_language("ru")
+        try:
+            # Frame 0 is inside [tracking_window_start, tracking_window_end].
+            w._current_state = _make_state(frame=0, total=n_frames)
+            w._refresh_speckle_overlay_for_current_frame()
+            labels = [item.toPlainText() for item in w._speckle_overlay._segment_labels]
+            assert sorted(labels) == ["АпБок", "БазБок", "БазПерг", "СрПерг"]
+
+            # Past the tracked window the names are dropped together with the kernels.
+            w._current_state = _make_state(frame=n_frames - 1, total=n_frames)
+            w._refresh_speckle_overlay_for_current_frame()
+            assert w._speckle_overlay._segment_labels == []
+        finally:
+            set_language("en")
+
+        w.clear_speckle_overlay()
+        assert w._speckle_overlay._segment_labels == []
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Scroll debounce

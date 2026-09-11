@@ -13,6 +13,55 @@ from echo_personal_tool.domain.models.speckle import (
     MyocardialZone,
     TrackingKernel,
 )
+from echo_personal_tool.presentation.segment_labels import short_segment_label
+
+
+def segment_label_anchors(
+    kernels: list[TrackingKernel],
+    positions: np.ndarray | None,
+    *,
+    layer: str = "endo",
+    offset_px: float = 22.0,
+) -> list[tuple[int, float, float]]:
+    """Anchor of each segment name: next to its nodes, outside the wall.
+
+    Returns ``(segment_id, x, y)`` sorted by segment id. The anchor is the mean
+    position of the segment's nodes moved *away from the cavity* by
+    ``offset_px``, so the name lands beyond the myocardium instead of on top of
+    the border the reader is judging. Kernels without an AHA segment, without a
+    finite position or from another layer are skipped; a degenerate direction
+    falls back to a fixed one, keeping the overlay deterministic.
+    """
+    if not kernels or positions is None or len(positions) == 0:
+        return []
+
+    node_points: list[np.ndarray] = []
+    per_segment: dict[int, list[np.ndarray]] = {}
+    for i, kernel in enumerate(kernels):
+        if kernel.layer != layer or i >= len(positions):
+            continue
+        x, y = float(positions[i, 0]), float(positions[i, 1])
+        if not (np.isfinite(x) and np.isfinite(y)):
+            continue
+        segment = int(kernel.aha_segment)
+        if segment <= 0:
+            continue
+        point = np.array([x, y], dtype=np.float64)
+        per_segment.setdefault(segment, []).append(point)
+        node_points.append(point)
+    if not per_segment:
+        return []
+
+    cavity = np.mean(np.vstack(node_points), axis=0)
+    anchors: list[tuple[int, float, float]] = []
+    for segment, points in sorted(per_segment.items()):
+        node = np.mean(np.vstack(points), axis=0)
+        direction = node - cavity
+        norm = float(np.linalg.norm(direction))
+        direction = np.array([0.0, 1.0]) if norm < 1e-9 else direction / norm
+        anchor = node + direction * float(offset_px)
+        anchors.append((segment, float(anchor[0]), float(anchor[1])))
+    return anchors
 
 
 class SpeckleOverlay(QWidget):
@@ -44,6 +93,9 @@ class SpeckleOverlay(QWidget):
         self._strain_items: list[pg.PlotDataItem] = []
         self._phase_contour_items: list[pg.PlotDataItem] = []
         self._verification_items: list[pg.PlotDataItem] = []
+        # Segment names drawn next to the wall they belong to (vendor style: the
+        # reader matches a number on the image to a segment without a legend).
+        self._segment_labels: list[pg.TextItem] = []
         # Which parts of the drawn contour the tracker could confirm by matching
         # there and back (clinical review Q6). EACVI/ASE ask for a display where
         # the reader can visually check tracking quality against the image loop,
@@ -282,6 +334,43 @@ class SpeckleOverlay(QWidget):
             self._plot.addItem(item)
             self._strain_items.append(item)
 
+    def show_segment_labels(
+        self,
+        kernels: list[TrackingKernel],
+        positions: np.ndarray | None = None,
+        *,
+        layer: str = "endo",
+        offset_px: float = 22.0,
+    ) -> int:
+        """Name the visible wall segments on the image (vendor-style short names).
+
+        The vendors label the wall they measure ("Inf. septum base"), so the
+        reader can tie a number to a place; the overlay follows suit with
+        :func:`segment_label_anchors` for placement and short localised names.
+        Labels belong to the overlay and disappear with it (:meth:`clear`).
+        Returns the number of labels drawn.
+        """
+        for item in self._segment_labels:
+            self._plot.removeItem(item)
+        self._segment_labels.clear()
+
+        for segment, x, y in segment_label_anchors(kernels, positions, layer=layer, offset_px=offset_px):
+            item = pg.TextItem(
+                short_segment_label(segment),
+                color=(235, 247, 255),
+                anchor=(0.5, 0.5),
+                border=pg.mkPen(6, 10, 16, 170),
+                fill=pg.mkBrush(6, 10, 16, 120),
+            )
+            font = QFont("sans-serif", 8)
+            font.setBold(True)
+            item.setFont(font)
+            item.setPos(x, y)
+            item.setZValue(21)
+            self._plot.addItem(item)
+            self._segment_labels.append(item)
+        return len(self._segment_labels)
+
     def show_verification_marks(
         self,
         positions: np.ndarray | None,
@@ -367,6 +456,9 @@ class SpeckleOverlay(QWidget):
         for item in self._phase_contour_items:
             self._plot.removeItem(item)
         self._phase_contour_items.clear()
+        for item in self._segment_labels:
+            self._plot.removeItem(item)
+        self._segment_labels.clear()
 
     def _on_kernel_clicked(self, scatter, points) -> None:
         if points:

@@ -4705,6 +4705,8 @@ class ViewerWidget(QWidget):
             valid = result.es_valid_mask or result.last_valid_mask
             if result.kernels and es_positions is not None:
                 self._speckle_overlay.show_kernels(result.kernels, valid, ncc, positions=es_positions)
+                # Segment names sit on the wall they measure (documentation §5.3 п.4).
+                self._speckle_overlay.show_segment_labels(result.kernels, es_positions)
             if ed_positions is not None and es_positions is not None:
                 endo_mask = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
                 if endo_mask:
@@ -4722,6 +4724,7 @@ class ViewerWidget(QWidget):
         )
         if not (phase_lo <= frame <= phase_hi) or not has_tracked:
             self._speckle_overlay.show_kernels([], None, None)
+            self._speckle_overlay.show_segment_labels([], None)
             self._speckle_overlay.show_ed_es_displacements(None, None)
             self._speckle_overlay.show_strain_color_map([], np.array([]))
             self._speckle_overlay.show_verification_marks(None, None, None)
@@ -4734,6 +4737,7 @@ class ViewerWidget(QWidget):
 
         if result.kernels:
             self._speckle_overlay.show_kernels(result.kernels, valid, ncc, positions=positions)
+            self._speckle_overlay.show_segment_labels(result.kernels, positions)
 
         # Round-trip verdicts for the frame on screen (clinical review Q6): the
         # reader sees where the drawn contour is not backed by the image, judged

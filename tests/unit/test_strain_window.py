@@ -20,6 +20,13 @@ def _setup_qapp():
     yield app
 
 
+def _make_segment_kernel(x: float, y: float, segment: int, layer: str = "endo"):
+    """Real kernel (not a MagicMock): the label code reads layer + aha_segment."""
+    from echo_personal_tool.domain.models.speckle import TrackingKernel
+
+    return TrackingKernel(center=(x, y), radius=10, node_index=0, layer=layer, aha_segment=segment)
+
+
 class TestSmoothContour:
     def test_smooth_contour_fewer_than_4_points(self):
         from echo_personal_tool.ui.strain_window import _smooth_contour
@@ -169,12 +176,13 @@ class TestCinePanel:
         panel.move_selected_kernel(50.0, 60.0)  # no-op, no crash
 
     def test_show_segment_labels(self):
-
         panel = self._make_panel()
-        kernels = [MagicMock(aha_segment=1), MagicMock(aha_segment=2)]
+        kernels = [_make_segment_kernel(10.0, 20.0, 3), _make_segment_kernel(30.0, 40.0, 6)]
         pos = np.array([[10.0, 20.0], [30.0, 40.0]])
         panel.show_segment_labels(kernels, pos)
         assert len(panel._segment_labels) == 2
+        # Short vendor-style names, the same ones the cine overlay draws.
+        assert sorted(item.toPlainText() for item in panel._segment_labels) == ["БазБок", "БазПерг"]
 
     def test_show_segment_labels_empty(self):
         panel = self._make_panel()
@@ -691,6 +699,18 @@ class TestStrainWindow:
         assert 5 not in w._qc_accepted_segments
         w._on_qc_segment_toggled(5, True)
         assert 5 in w._qc_accepted_segments
+
+    def test_qc_checkboxes_are_named_after_the_real_segments(self):
+        """Ids here are the AHA ones (3/9/15/…), not the old 1…6 placeholders."""
+        w = self._make_window()
+        w._populate_qc_checkboxes({3: -18.0, 9: -20.0, 15: -22.0})
+
+        labels = {segment: cb.text() for segment, cb in w._control._qc_checkboxes.items()}
+        assert set(labels) == {3, 9, 15}
+        assert labels[3] == "Базальный нижнеперегородочный"
+        assert labels[15] == "Апикальный нижнеперегородочный"
+        for label in labels.values():
+            assert "Сегмент" not in label  # no "Segment N" fallback in a live window
 
     def test_set_position(self):
         w = self._make_window()

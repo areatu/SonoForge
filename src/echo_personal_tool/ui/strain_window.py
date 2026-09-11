@@ -39,6 +39,11 @@ from echo_personal_tool.domain.services.segment_map import (
     SEGMENT_NAMES,
     view_segment_ids,
 )
+from echo_personal_tool.presentation.segment_labels import (
+    full_segment_label,
+    short_segment_label,
+)
+from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 logger = logging.getLogger(__name__)
@@ -533,7 +538,11 @@ class CinePanel(QWidget):
         kernels: list,
         positions: np.ndarray,
     ) -> None:
-        """Draw segment name labels near kernel clusters (Russian names)."""
+        """Draw short segment names next to the wall they measure.
+
+        Same labels as on the cine overlay (`presentation.segment_labels`), so a
+        segment reads the same way in the strain window and in the viewer.
+        """
         # Clear old labels
         for item in self._segment_labels:
             self._plot.removeItem(item)
@@ -542,25 +551,18 @@ class CinePanel(QWidget):
         if len(positions) == 0 or len(kernels) == 0:
             return
 
-        # Group positions by segment
-        segment_positions: dict[int, list[int]] = {}
-        for i, kernel in enumerate(kernels):
-            seg = kernel.aha_segment
-            if seg > 0 and i < len(positions):
-                segment_positions.setdefault(seg, []).append(i)
-
-        for seg, indices in segment_positions.items():
-            label_text = AHA_SEGMENT_NAMES_RU.get(seg, f"Seg{seg}")
-            pts = positions[indices]
-            centroid = pts.mean(axis=0)
-
+        for segment, x, y in segment_label_anchors(kernels, positions):
             text_item = pg.TextItem(
-                label_text,
-                color=(200, 200, 200),
+                short_segment_label(segment),
+                color=(235, 247, 255),
                 anchor=(0.5, 0.5),
+                border=pg.mkPen(6, 10, 16, 170),
+                fill=pg.mkBrush(6, 10, 16, 120),
             )
-            text_item.setPos(centroid[0], centroid[1])
-            text_item.setFont(QFont("sans-serif", 8))
+            text_item.setPos(x, y)
+            font = QFont("sans-serif", 8)
+            font.setBold(True)
+            text_item.setFont(font)
             text_item.setZValue(20)
             self._plot.addItem(text_item)
             self._segment_labels.append(text_item)
@@ -2057,19 +2059,11 @@ class StrainWindow(QMainWindow):
             cb.deleteLater()
         self._control._qc_checkboxes.clear()
 
-        # AHA segment names
-        segment_names = {
-            1: tr("strain.seg_basal_septal"),
-            2: tr("strain.seg_basal_lateral"),
-            3: tr("strain.seg_mid_septal"),
-            4: tr("strain.seg_mid_lateral"),
-            5: tr("strain.seg_apical_septal"),
-            6: tr("strain.seg_apical_lateral"),
-        }
-
-        # Create checkboxes for segments with data
+        # Create checkboxes for segments with data. Names come from the standard
+        # AHA ids of the analysis; the level is spelled out ("Базальный
+        # нижнеперегородочный"), unlike the short labels on the cine.
         for seg_id in sorted(segment_strain.keys()):
-            seg_name = segment_names.get(seg_id, tr("strain.segment_fallback", id=str(seg_id)))
+            seg_name = full_segment_label(seg_id)
             cb = QCheckBox(seg_name)
             cb.setChecked(True)
             cb.setStyleSheet("color: #e0e0e0; font-size: 10px;")
