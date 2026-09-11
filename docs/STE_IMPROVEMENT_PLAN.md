@@ -768,7 +768,7 @@ LA strain (reservoir/conduit/contraction), RV GLS/FWLS, multi-beat усредн�
 | 6. Расширения | не начато | LA/RV strain, multi-beat + доверительные интервалы, плотное поле, ML-трек (§5.3 п.10). |
 | — Консенсус EACVI/ASE (Voigt 2015) | **закрыто** | Матрица из 17 рекомендаций: все закрыты, остаётся принципиальное ограничение 2D (через-плоскостное движение) — `docs/STE_TRACKING_VERIFICATION.md` §6. |
 | — Реальные данные | **сделано** | `tests/fixtures/for_pero` (19 клипов: кадры + обезличенные заголовки + индекс, выгружаются CI-воркфлоу `.github/workflows/ste-fixtures.yml`), контракт `tests/unit/test_ste_real_clips.py` (7 тестов), вендорские числа `docs/STE_VENDOR_REFERENCE.md`. **Осталось:** gold-контуры КД для сверки на тех же кадрах (§11.2 п.1). |
-| — Инфраструктура и CI | **сделано** | `ruff check` + `ruff format --check`, CodeQL (включая правку ложного срабатывания на `bench/**` и снятие ЧСС/RR из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС; локальный STE-свип 24 файла / 494 теста (~95–110 с). |
+| — Инфраструктура и CI | **сделано** | `ruff check` + `ruff format --check`, CodeQL (включая правку ложного срабатывания на `bench/**` и снятие ЧСС/RR из логов), бенчмарки, сборки linux/macOS/Windows, тесты на трёх ОС; локальный STE-свип — 23 файла / 497 тестов, ~2 мин, 3 скипа, все зелёные (проверено 2026-09-11). |
 
 Ключевые артефакты итерации: `src/echo_personal_tool/domain/services/{quality,segment_map,aha_segments,strain_metrics,strain_computation,wall_visibility,speckle_tracking,border_tracking,tracking_smoothing}.py`,
 `src/echo_personal_tool/domain/models/{speckle,ste_analysis}.py`,
@@ -790,7 +790,7 @@ P3 — расширения. Оценки — рабочие дни одного
 |---|---|---|---|---|
 | 1 | **Сверка с вендором на одних кадрах** (P0) | Таблица «наш GLS / вендор / Δ» по трём видам для ≥2 клипов For_pero; в отчёте объявлено, какой контур использован и откуда он | `tests/fixtures/for_pero`, `docs/STE_VENDOR_REFERENCE.md`, `application/workers/speckle_worker.py` | 1–2 дня после получения контуров; **блокер — §11.2 п.1** |
 | 2 | **Обзорный экран трёх видов** в стиле «3 Point Contour» (P1) | Три панели (кадр + контур + полоса/ECG) + мишень + сводная таблица + список видов со статусом в одном окне; offscreen-рендер в тесте; все данные — из `StrainStudy`, без пересчёта | `ui/strain_window.py`, новый пакет `ui/ste/` | 3–5 |
-| 3 | **Q5: авто-черновик контура КД** (P1) | Черновик правится мышью; в отчёте — признак «черновик» и доля правки; расхождение с ручным контуром на доступных клипах ≤ ~2 мм; без черновика GLS не считается «вендорским» | `domain/services/segmentation_service.py`, `application/*` | 3–6; нужны веса ONNX (в репозитории только `models/model_manifest.json`, `*.onnx` gitignored) или классический детектор |
+| 3 | **Q5: авто-черновик контура КД** (P1) | Черновик правится мышью; в отчёте — признак «черновик» и доля правки; расхождение с ручным контуром на доступных клипах ≤ ~2 мм; без черновика GLS не считается «вендорским» | `domain/services/segmentation_service.py`, `application/*` | 3–6; нужны веса ONNX: в репозитории только `models/model_manifest.json` (манифест числит `echonet_seg_resnet50.onnx` как `exported`, но сами файлы исключены `models/.gitignore`: `*.onnx`, `*.pt`), поэтому в песочнице нужен либо каталог моделей автора, либо повторный экспорт `scripts/export_echonet_seg_to_onnx.py`; инфраструктура (preprocessing, temporal fusion, refine, landmark-модель) в манифесте уже описана или классический детектор |
 | 4 | **Подписи сегментов/стенок на cine** (P1) | Названия сегментов у соответствующих участков кадра (как «БазПерг/СрЛат» у вендора), скрываются вместе с оверлеем; тест на наличие и i18n-имена | `presentation/speckle_overlay.py`, `ui/strain_window.py`; имена уже есть — `strain.segment_name.{id}` | 1–2 |
 | 5 | **Низкий SNR: многошкальное совмещение** (P2) | На 10 дБ сегментный RMS ≤ 2.5 п.п. при сохранении честных ворот (шум не «лечим» порогами); KPI §3.7 не хуже | `domain/services/speckle_tracking.py`, `border_tracking.py`, `bench/ste_phantom.py` | 3–5 |
 | 6 | **GLS в протокол исследования** (P1) | Строка «GLS (A4C/A2C/A3C), метод, QC» в `study_measurement_session` и в экспортируемом отчёте; тест «числа UI == числа отчёта» | `application/*`, `domain/models/ste_analysis.py` | 1–2 |
@@ -818,12 +818,14 @@ export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 ```bash
 ./.venv/bin/ruff check src/ tests/
 ./.venv/bin/ruff format --check src/ tests/
-./.venv/bin/python -m pytest <24 STE-файла> -q     # ~95–110 с, 494 теста
+./.venv/bin/python -m pytest <23 STE-файла> -q     # 497 тестов, ~2 мин, 3 скипа
 ```
 
 Список STE-файлов: `test_ste_{phantom,segment_map,qc_honesty,study_analysis,real_clips,quality,reproducibility,single_source,strain_metrics}.py`,
 `test_{aha_segments,wall_visibility,tracking_verification,strain_computation,strain_node_curves,tracking_smoothing,tracking_smoothing_v2,speckle_tracking,speckle_models,worker_speckle,ui_strain,strain_window,presentation_speckle_overlay,presentation_speckle_settings_dialog}.py`.
-`test_ste_entry_flow.py` требует Qt-заглушек (QtWebEngine) — в песочнице падает на импорте, это ограничение окружения, не кода.
+`test_ste_entry_flow.py` (маркер `gui`) импортирует `presentation/web_reference/web_reference_widget.py`, которому нужен
+QtWebEngine: в песочнице с `tools/qtstub` он падает на импорте (2 ошибки), в CI на ubuntu с полным `pyside6` проходит,
+на macOS/Windows исключён фильтром `-m "not gui"`.
 
 Бенчмарки и отчёты:
 
