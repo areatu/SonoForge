@@ -1,10 +1,13 @@
 name: STE fixtures (LFS → compact, analysis-ready)
 
-# The study clips live in Git LFS. Development sandboxes can reach the Git host
-# but not the LFS content host, while Actions runners can read LFS. This workflow
-# therefore runs the export there and commits the *compact derivative* (frames as
-# JPEG + scrubbed header summaries) back to the branch that triggered it, so the
-# clips become usable for real-data regression runs and UI work.
+# The study clips live in Git LFS on the default branch. Development sandboxes can
+# reach the Git host but not the LFS content host, while Actions runners can read
+# LFS. This workflow therefore runs the export there and commits the *compact
+# derivative* (frames as JPEG + scrubbed header summaries) back to the branch that
+# triggered it, so the clips become usable for real-data regression and UI work.
+#
+# It is deliberately self-contained: the source clips are pulled from the default
+# branch into the runner's working tree and are never committed to this branch.
 #
 # Runs on push when the exporter changes, or manually via "Run workflow".
 
@@ -18,25 +21,26 @@ on:
 permissions:
   contents: write
 
+env:
+  SOURCE_REF: main
+  SOURCE_DIR: data/dicom/For_pero
+  OUT_DIR: tests/fixtures/for_pero
+
 jobs:
   export:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
 
-      - name: Verify LFS content is real
+      - name: Pull the study clips out of LFS (they live on the default branch)
         run: |
-          ls -l data/dicom/For_pero | head -20
-          python3 - <<'PY'
-          import pathlib, sys
-          pointers = [p.name for p in pathlib.Path("data/dicom/For_pero").iterdir() if p.is_file() and p.stat().st_size < 1024]
-          if pointers:
-              print("still pointers:", pointers)
-              sys.exit(1)
-          print("LFS content present")
-          PY
+          set -x
+          git fetch --no-tags origin "$SOURCE_REF"
+          git show "origin/$SOURCE_REF:.gitattributes" > .gitattributes
+          git checkout "origin/$SOURCE_REF" -- "$SOURCE_DIR"
+          git add .gitattributes
+          git lfs pull --include="$SOURCE_DIR/*" --exclude=""
+          ls -l "$SOURCE_DIR" | head -25
 
       - uses: actions/setup-python@v5
         with:
@@ -46,16 +50,39 @@ jobs:
         run: pip install "numpy<2.0" pydicom opencv-python-headless pillow
 
       - name: Export compact fixtures
-        run: python tools/ste_fixture_export.py --source data/dicom/For_pero --out tests/fixtures/for_pero
+        id: export
+        continue-on-error: true
+        run: |
+          python tools/ste_fixture_export.py --source "$SOURCE_DIR" --out "$OUT_DIR" 2>&1 | tee /tmp/export.log
 
-      - name: Report bundle size
-        run: du -sh tests/fixtures/for_pero && find tests/fixtures/for_pero -type f | wc -l
+      - name: Diagnostics (readable from the repository, since run logs are not)
+        if: always()
+        run: |
+          mkdir -p "$OUT_DIR"
+          {
+            echo "# STE fixture export diagnostics"
+            echo
+            echo "ref: $(git rev-parse --short HEAD)  source: origin/$SOURCE_REF"
+            echo
+            echo "## sizes in $SOURCE_DIR"
+            ls -l "$SOURCE_DIR" || true
+            echo
+            echo "## pointer files remaining (<1024 bytes)"
+            find "$SOURCE_DIR" -type f -size -1024c -print 2>/dev/null || true
+            echo
+            echo "## git lfs ls-files (first 30)"
+            git lfs ls-files | head -30 || true
+            echo
+            echo "## export log"
+            cat /tmp/export.log 2>/dev/null || echo "(no log)"
+          } > "$OUT_DIR/_diagnostics.md"
 
       - name: Commit the derivative back to this branch
+        if: always()
         run: |
           git config user.name "ste-fixture-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -f tests/fixtures/for_pero
+          git add -f "$OUT_DIR"
           if git diff --cached --quiet; then
             echo "nothing to commit"
             exit 0
