@@ -476,6 +476,17 @@ def try_parse_samsung_tick_calibration(
         if len(result.tick_positions) < 5:
             return False
         positions_s = sorted(result.tick_positions)
+
+        # Gap uniformity: real Samsung rulers have evenly spaced ticks.
+        # B-mode frames can produce clustered false positives (e.g. text/
+        # labels on the left) with one outlier inflating the span.  Reject
+        # when any gap exceeds 5× the median gap.
+        gaps = [positions_s[i + 1] - positions_s[i] for i in range(len(positions_s) - 1)]
+        if gaps:
+            median_gap = float(np.median(gaps))
+            if median_gap > 0 and max(gaps) > median_gap * 5.0:
+                return False
+
         span_frac = (positions_s[-1] - positions_s[0]) / float(w) if w > 0 else 0.0
         if span_frac < 0.5:
             return False
