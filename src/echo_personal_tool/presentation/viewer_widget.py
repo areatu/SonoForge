@@ -48,6 +48,7 @@ from echo_personal_tool.domain.models.doppler_roi import (
 from echo_personal_tool.domain.models.frame_panels import (
     FramePanelLayout,
     MmodeCalibrationState,
+    PanelKind,
 )
 from echo_personal_tool.domain.models.linear_measurement import (
     LinearMeasurement,
@@ -1364,6 +1365,10 @@ class ViewerWidget(QWidget):
             return
         layout = self._resolve_frame_panels()
         if layout is None:
+            return
+        # On pure B-mode frames (single panel, no Doppler/M-mode) the panel
+        # outline is visual noise — skip it.
+        if len(layout.panels) == 1 and layout.panels[0].kind is PanelKind.B_MODE:
             return
         for panel in layout.panels:
             bounds = panel.bounds
