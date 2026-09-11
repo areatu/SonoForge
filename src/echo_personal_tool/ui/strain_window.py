@@ -1286,9 +1286,17 @@ class BullseyeWidget(QWidget):
 class SummaryTable(QWidget):
     """Summary metrics table — Clinical-style layout with 9 rows."""
 
+    #: Per-view rows and the view each one reports. The vendor "3 Point Contour"
+    #: screen marks every analysed view with its status, so the reader knows at a
+    #: glance which views entered the average; the same mark travels with our
+    #: per-view GLS.
+    _ROW_VIEW: dict[str, str] = {"gls_a4c": "A4C", "gls_a2c": "A2C", "gls_dao": "A3C"}
+    _STATUS_MARKS: dict[str, str] = {"valid": "●", "review": "⚠", "invalid": "■"}
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumWidth(240)
+        self._view_status: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -1331,6 +1339,15 @@ class SummaryTable(QWidget):
 
         layout.addStretch()
 
+    def set_view_statuses(self, statuses: dict[str, str]) -> None:
+        """Declare the QC status of each analysed view (``valid``/``review``/``invalid``).
+
+        A view that was never analysed is simply absent: its row keeps ``--`` so
+        the table never fabricates a value, while the mark tells the reader which
+        measured views were allowed into ``GLS_AV``.
+        """
+        self._view_status = {str(view): str(status) for view, status in statuses.items() if status}
+
     def update_values(self, **kwargs: float | str | None) -> None:
         """Update table values. Accepts: gls, gls_a4c, gls_a2c, gls_dao, ef, edv, esv, autozak, hr."""
         for key, val in kwargs.items():
@@ -1350,6 +1367,18 @@ class SummaryTable(QWidget):
                     val_label.setText(f"{val:.0f} bpm")
                 else:
                     val_label.setText(f"{val:.1f}")
+                self._mark_view_status(key, val_label)
+
+
+    def _mark_view_status(self, key: str, val_label: QLabel) -> None:
+        """Append the QC mark of the row's view and explain it in a tooltip."""
+        view = self._ROW_VIEW.get(key)
+        status = self._view_status.get(view) if view else None
+        mark = self._STATUS_MARKS.get(status) if status else None
+        if not mark:
+            return
+        val_label.setText(f"{val_label.text()} {mark}")
+        val_label.setToolTip(tr(f"strain.qc_status_{status}"))
 
 
 class ControlPanel(QWidget):
@@ -1827,6 +1856,11 @@ class StrainWindow(QMainWindow):
                 return None
             return number if np.isfinite(number) else None
 
+        # Which measured views passed QC, vendor-style: the per-view rows carry
+        # the status mark so GLS_AV is never read as "three views agreed".
+        self._summary.set_view_statuses(
+            {view: item.qc_status for view, item in self._study.analyses.items()}
+        )
         self._summary.update_values(
             gls=result.gls,
             gls_a4c=gls_a4c,

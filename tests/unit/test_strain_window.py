@@ -559,6 +559,35 @@ class TestSummaryTable:
         table.update_values(hr=72.0)
         assert "72 bpm" in table._rows["hr"][1].text()
 
+    def test_per_view_rows_carry_the_qc_mark(self):
+        """The vendor review screen marks every analysed view with its status."""
+        table = self._make_table()
+        table.set_view_statuses({"A4C": "valid", "A2C": "review", "A3C": "invalid"})
+        table.update_values(gls_a4c=-19.0, gls_a2c=-20.0, gls_dao=-14.5, gls_av=-17.8)
+        assert table._rows["gls_a4c"][1].text().endswith("●")
+        assert table._rows["gls_a2c"][1].text().endswith("⚠")
+        assert table._rows["gls_dao"][1].text().endswith("■")
+        # The average row is not a view and must stay unmarked.
+        assert table._rows["gls_av"][1].text().endswith("%")
+        assert table._rows["gls_a2c"][1].toolTip() != ""
+
+    def test_unmeasured_view_keeps_dash_and_no_mark(self):
+        table = self._make_table()
+        table.set_view_statuses({"A4C": "valid"})
+        table.update_values(gls_a4c=-19.0, gls_a2c=None, gls_dao=None)
+        assert table._rows["gls_a2c"][1].text() == "--"
+        assert table._rows["gls_dao"][1].text() == "--"
+        assert table._rows["gls_a4c"][1].text().endswith("●")
+
+    def test_statuses_can_be_cleared(self):
+        table = self._make_table()
+        table.set_view_statuses({"A4C": "invalid"})
+        table.update_values(gls_a4c=-19.0)
+        assert table._rows["gls_a4c"][1].text().endswith("■")
+        table.set_view_statuses({})
+        table.update_values(gls_a4c=-19.0)
+        assert table._rows["gls_a4c"][1].text() == "-19.0%"
+
     def test_update_values_none(self):
         table = self._make_table()
         table.update_values(gls=None)
