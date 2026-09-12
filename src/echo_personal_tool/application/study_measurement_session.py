@@ -13,6 +13,7 @@ from echo_personal_tool.domain.models.doppler import (
 )
 from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
 
@@ -167,6 +168,10 @@ class StudyMeasurementData:
     mmode_time_per_pixel_ms: float | None = None
     vessel_measurements: tuple[VesselMeasurement, ...] = ()
     simpson_area_by_frame: tuple[tuple[str, str, int, float], ...] = ()
+    #: Speckle-tracking result of the study (plan §5.3 п.6). Kept per study,
+    #: not per instance: GLS_AV is an average over apical views that normally
+    #: live in different clips of the same study.
+    strain: StrainReport | None = None
 
     @property
     def doppler_measurement(self) -> DopplerMeasurementDTO | None:
@@ -461,6 +466,16 @@ class StudyMeasurementSessionStore:
             height_cm=height_cm,
             weight_kg=weight_kg,
         )
+
+    def set_strain(self, study_uid: str, report: StrainReport | None) -> None:
+        """Store the study's speckle-tracking result for the protocol (§5.3 п.6).
+
+        The newest analysis of the study wins as a whole: the report record is
+        already the merge of every analysed view, so replacing it keeps the
+        protocol identical to what the strain window shows.
+        """
+        data = self.get(study_uid)
+        self._studies[study_uid] = replace(data, strain=report)
 
     def merge_vessel_measurements(
         self,

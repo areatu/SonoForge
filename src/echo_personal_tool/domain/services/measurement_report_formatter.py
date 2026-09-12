@@ -54,6 +54,7 @@ def format_measurement_report(
         _format_planimeter_section(report_snapshot),
         _format_linear_section(report_snapshot, length_display_unit=length_display_unit),
         _format_vessel_section(report_snapshot),
+        _format_strain_section(report_snapshot),
         _format_indexed_section(report_snapshot),
     ):
         if section:
@@ -276,6 +277,59 @@ def _format_vessel_section(snapshot: MeasurementSnapshot) -> list[str]:
         if measurement.mv_approx is not None:
             lines.append(_line("MV≈", measurement.mv_approx, " cm/s"))
     return lines if len(lines) > 1 else []
+
+
+#: QC status → the mark used in the strain window, so the protocol and the
+#: screen speak the same language (plan §6.6).
+_STRAIN_QC_MARKS = {"valid": "●", "review": "⚠", "invalid": "■"}
+
+
+def _format_strain_section(snapshot: MeasurementSnapshot) -> list[str]:
+    """Speckle-tracking section: per-view GLS, GLS_AV, method and QC (§5.3 п.6).
+
+    A strain number is only a measurement together with its definition and the
+    quality of the tracking behind it, so every view line carries its QC mark
+    and the section always states the method. Views that were never analysed
+    are absent rather than written as ``—``.
+    """
+    strain = snapshot.strain
+    if strain is None or not strain.has_values:
+        return []
+
+    qc_by_view = dict(strain.qc_by_view)
+    avc_by_view = dict(strain.avc_source_by_view)
+    lines = [tr("domain.report.strain")]
+    for view, value in strain.gls_by_view:
+        status = qc_by_view.get(view, "")
+        mark = _STRAIN_QC_MARKS.get(status, "")
+        status_text = tr(f"strain.qc_status_{status}") if status else ""
+        suffix = f" %  {mark} {status_text}".rstrip() if status_text else " %"
+        lines.append(_line(tr("domain.report.strain_gls_view", view=view), value, suffix))
+
+    if strain.gls_average is not None:
+        lines.append(
+            _line(
+                tr("domain.report.strain_gls_av", n=str(len(strain.views_valid))),
+                strain.gls_average,
+                " %",
+            )
+        )
+    else:
+        # No view passed QC: say so instead of silently dropping the average.
+        lines.append(tr("domain.report.strain_no_average"))
+
+    if strain.segmentation:
+        method = tr("domain.report.strain_method", segmentation=strain.segmentation)
+        lines.append(tr("domain.report.method", method=method))
+    avc_text = ", ".join(f"{view}: {tr(f'strain.avc_{source}')}" for view, source in avc_by_view.items() if source)
+    if avc_text:
+        lines.append(tr("domain.report.strain_avc_source", source=avc_text))
+    if strain.contour_source != "manual":
+        # A draft contour is not a gold contour; the report must not hide it.
+        lines.append(tr("domain.report.strain_contour_draft"))
+    if strain.segments_missing:
+        lines.append(tr("domain.report.strain_segments_missing", count=str(strain.segments_missing)))
+    return lines
 
 
 def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
