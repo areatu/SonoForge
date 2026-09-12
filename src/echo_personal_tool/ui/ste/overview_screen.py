@@ -15,8 +15,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -47,6 +47,54 @@ _STATUS_COLOR: dict[str, str] = {
 #: Smallest number of endo points needed to draw a contour through (less than
 #: that would just be noise — skip rather than fabricate).
 _MIN_CONTOUR_POINTS = 3
+
+
+def _frame_to_qimage(frame: np.ndarray) -> QImage:
+    """Convert a grayscale ultrasound frame to a QImage (Format_Grayscale8)."""
+    f = np.asarray(frame, dtype=np.uint8, order="C")
+    if f.ndim != 2:
+        raise ValueError(f"expected 2-D grayscale frame, got shape {f.shape}")
+    h, w = f.shape
+    return QImage(f.data, w, h, w, QImage.Format.Format_Grayscale8).copy()
+
+
+def _points_to_polygon(points: np.ndarray) -> QPolygonF:
+    return QPolygonF([QPointF(float(x), float(y)) for x, y in np.asarray(points)])
+
+
+def _render_thumbnail_pixmap(snap: ViewSnapshot) -> QPixmap | None:
+    """Render an ED-frame thumbnail with ED/ES contours + kernels.
+
+    The result is a QPixmap at the native frame resolution with overlays
+    painted in vendor-style colours (red ED, dashed green ES, white kernel
+    squares). The card then scales it with ``KeepAspectRatio`` so the
+    sector always fills the panel width — no pillarboxing artefacts.
+    """
+    if snap.ed_frame is None or snap.ed_frame.ndim < 2:
+        return None
+    img = _frame_to_qimage(snap.ed_frame)
+    pix = QPixmap.fromImage(img.convertToFormat(QImage.Format.Format_RGB32))
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    try:
+        if snap.ed_contour is not None and len(snap.ed_contour) >= _MIN_CONTOUR_POINTS:
+            pts = _smooth_contour(np.asarray(snap.ed_contour, dtype=float), n_output=96)
+            painter.setPen(QPen(QColor("#ff1744"), 2.5))
+            painter.drawPolyline(_points_to_polygon(pts))
+        if snap.es_contour is not None and len(snap.es_contour) >= _MIN_CONTOUR_POINTS:
+            pts = _smooth_contour(np.asarray(snap.es_contour, dtype=float), n_output=96)
+            pen = QPen(QColor("#00e676"), 1.8)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawPolyline(_points_to_polygon(pts))
+        if snap.endo_positions_ed is not None and len(snap.endo_positions_ed) > 0:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 220))
+            for x, y in np.asarray(snap.endo_positions_ed):
+                painter.drawRect(QRectF(float(x) - 1.5, float(y) - 1.5, 3.0, 3.0))
+    finally:
+        painter.end()
+    return pix
 
 
 @dataclass
@@ -103,28 +151,21 @@ class _ViewCard(QFrame):
         header.addWidget(self._status)
         layout.addLayout(header)
 
-        # Plot widget (static ED frame + contours, no interaction).
-        self._plot = pg.PlotWidget()
-        self._plot.setBackground("black")
-        self._plot.hideAxis("left")
-        self._plot.hideAxis("bottom")
-        self._plot.setAspectLocked(True)
-        self._plot.setMouseEnabled(x=False, y=False)
-        self._plot.getViewBox().invertY(True)
-        self._plot.setMinimumHeight(160)
-        layout.addWidget(self._plot, stretch=3)
-
-        # Image item
-        self._image_item = pg.ImageItem(axisOrder="row-major")
-        self._image_item.setOpts(smooth=True)
-        self._image_item.setZValue(0)
-        self._image_item.hide()
-        self._plot.addItem(self._image_item)
-
-        # Contour / kernel items (re-created on each render).
-        self._ed_item: pg.PlotDataItem | None = None
-        self._es_item: pg.PlotDataItem | None = None
-        self._kitem: pg.ScatterPlotItem | None = None
+        # Frame thumbnail (rendered to a QPixmap on each update, with
+        # contours/kernels painted over the ED image). Using a QLabel with
+        # scaledContents + KeepAspectRatio gives us the vendor-style
+        # behaviour automatically: the sector fills the card width with a
+        # small black band only where the image aspect doesn't match,
+        # instead of pyqtgraph's aspectLocked mode which was forcing a
+        # square viewBox and pillarboxing the sector into the upper half
+        # of the card (the "Samsung phone look").
+        self._thumb = QLabel()
+        self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._thumb.setStyleSheet("background: black;")
+        self._thumb.setMinimumHeight(200)
+        self._thumb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self._thumb, stretch=4)
+        self._thumb_pixmap: QPixmap | None = None
 
         # Mini ECG strip under the frame.
         self._ecg_plot = pg.PlotWidget()
@@ -165,13 +206,21 @@ class _ViewCard(QFrame):
     # Public API
     # ------------------------------------------------------------------
 
+    def resizeEvent(self, event) -> None:  # noqa: D401, N802 - Qt override
+        super().resizeEvent(event)
+        if self._thumb_pixmap is not None and not self._thumb_pixmap.isNull():
+            self._thumb.setPixmap(
+                self._thumb_pixmap.scaled(
+                    self._thumb.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+
     def clear(self) -> None:
         """Reset the card to its empty state (no data)."""
-        self._image_item.hide()
-        for item in (self._ed_item, self._es_item, self._kitem):
-            if item is not None:
-                self._plot.removeItem(item)
-        self._ed_item = self._es_item = self._kitem = None
+        self._thumb_pixmap = None
+        self._thumb.clear()
         for item in (self._ecg_item, self._ecg_ed_line, self._ecg_es_line):
             if item is not None:
                 self._ecg_plot.removeItem(item)
@@ -227,50 +276,22 @@ class _ViewCard(QFrame):
         # Visual layer: frame + contours + kernels when a snapshot is present.
         if snapshot is not None:
             self._render_snapshot(snapshot)
-        self._plot.autoRange()
 
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
 
     def _render_snapshot(self, snap: ViewSnapshot) -> None:
-        if snap.ed_frame is not None and snap.ed_frame.ndim >= 2:
-            img = np.ascontiguousarray(snap.ed_frame)
-            self._image_item.setImage(img, autoLevels=True)
-            self._image_item.show()
-            h, w = img.shape[:2]
-            # Lock the aspect ratio and fill the card; small negative padding
-            # keeps the contour from clipping against the border.
-            self._plot.setAspectLocked(True)
-            self._plot.setRange(xRange=(0, w), yRange=(0, h), padding=-0.02)
-
-        if snap.ed_contour is not None and len(snap.ed_contour) >= _MIN_CONTOUR_POINTS:
-            pts = _smooth_contour(np.asarray(snap.ed_contour, dtype=float), n_output=64)
-            self._ed_item = pg.PlotDataItem(
-                np.append(pts[:, 0], pts[0, 0]),
-                np.append(pts[:, 1], pts[0, 1]),
-                pen=pg.mkPen("#ff1744", width=2),
+        pixmap = _render_thumbnail_pixmap(snap)
+        if pixmap is not None:
+            self._thumb_pixmap = pixmap
+            self._thumb.setPixmap(
+                pixmap.scaled(
+                    self._thumb.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
             )
-            self._ed_item.setZValue(5)
-            self._plot.addItem(self._ed_item)
-
-        if snap.es_contour is not None and len(snap.es_contour) >= _MIN_CONTOUR_POINTS:
-            pts = _smooth_contour(np.asarray(snap.es_contour, dtype=float), n_output=64)
-            self._es_item = pg.PlotDataItem(
-                np.append(pts[:, 0], pts[0, 0]),
-                np.append(pts[:, 1], pts[0, 1]),
-                pen=pg.mkPen("#00e676", width=1.5, style=Qt.PenStyle.DashLine),
-            )
-            self._es_item.setZValue(4)
-            self._plot.addItem(self._es_item)
-
-        if snap.endo_positions_ed is not None and len(snap.endo_positions_ed) > 0:
-            pos = np.asarray(snap.endo_positions_ed)
-            self._kitem = pg.ScatterPlotItem(
-                x=pos[:, 0], y=pos[:, 1], pen=None, brush=pg.mkBrush(255, 255, 255, 180), symbol="s", size=3
-            )
-            self._kitem.setZValue(10)
-            self._plot.addItem(self._kitem)
 
         # Mini ECG strip (hidden entirely when no ECG — plan §6.5: never
         # draw a synthetic ECG to pretend the data is there).
