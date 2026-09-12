@@ -32,6 +32,7 @@ from echo_personal_tool.presentation.segment_labels import (
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
+from echo_personal_tool.ui.ste import OverviewScreen, ViewSnapshot
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 # --- Extracted submodules (step 1 of decomposition) ---
@@ -144,6 +145,14 @@ class StrainWindow(QMainWindow):
         self._curves_view = StrainCurvesView()
         self._stacked.addWidget(self._curves_view)  # index 1
 
+        # «3 Point Contour» overview (plan §5.3 п.2): three per-view cards, the
+        # 18-segment bull's-eye from ``StrainStudy``, and a per-view status list.
+        # All data flows from the study — no recomputation.
+        self._overview = OverviewScreen()
+        self._control.ttp_mode_toggled.connect(self._overview.bullseye.set_ttp_mode)
+        self._control.palette_changed.connect(self._overview.bullseye.set_palette)
+        self._stacked.addWidget(self._overview)  # index 2
+
         content_layout.addWidget(self._stacked, stretch=3)
 
         # Summary table
@@ -189,6 +198,7 @@ class StrainWindow(QMainWindow):
         """
         if isinstance(study, StrainStudy):
             self._study = study
+            self._refresh_overview()
 
     def show_result(self, result: StrainResult, *, frames: np.ndarray | None = None) -> None:
         """Display strain results in the STE window.
@@ -204,6 +214,13 @@ class StrainWindow(QMainWindow):
         analysis = StrainAnalysis.from_result(result)
         self._analysis = analysis
         self._study = self._study.with_view(analysis)
+
+        # Visual snapshot for the overview screen (plan §5.3 п.2): store the ED
+        # frame + ED/ES contours + endo kernels per view so the 3-view screen
+        # can redraw without recomputing strain. The snapshot borrows frame
+        # memory from the caller (no copy) — frame buffers live for the
+        # lifetime of the viewer.
+        self._overview.set_snapshot(self._capture_view_snapshot(result, frames))
 
         disp_idx: int | None = None
         n_all = len(result.longitudinal) if result.longitudinal is not None else 0
@@ -419,6 +436,10 @@ class StrainWindow(QMainWindow):
         # Update curves view (ECG strip hidden there too when absent)
         self._curves_view.set_strain_data(result)
 
+        # Keep the overview in sync even when it's not the active page, so
+        # switching to it later shows the latest study without a second click.
+        self._refresh_overview()
+
         if not self.isVisible():
             self.show()
         self.raise_()
@@ -444,6 +465,12 @@ class StrainWindow(QMainWindow):
         self._control._mode_curves.setChecked(True)
         if self._result is not None:
             self._curves_view.set_strain_data(self._result)
+
+    def show_overview(self) -> None:
+        """Switch the stacked view to the «3 Point Contour» overview page."""
+        self._stacked.setCurrentIndex(2)
+        self._control._mode_overview.setChecked(True)
+        self._refresh_overview()
 
     def _on_position_selected(self, view: str) -> None:
         self._position = view
@@ -576,6 +603,59 @@ class StrainWindow(QMainWindow):
         # Re-render
         self._update_panel_a4c()
 
+    def _refresh_overview(self) -> None:
+        """Re-render the «3 Point Contour» screen from ``self._study``.
+
+        Called when the user switches to the overview tab and whenever a new
+        view's result arrives. All numbers come from the study — there is no
+        second GLS computation, no alternate average.
+        """
+        if self._study is None:
+            return
+        self._overview.set_study(self._study)
+
+    def _capture_view_snapshot(
+        self,
+        result: StrainResult,
+        frames: np.ndarray | None,
+    ) -> ViewSnapshot:
+        """Build a :class:`ViewSnapshot` from the worker result for this run.
+
+        The snapshot holds references (not copies) to the ED frame and the
+        contours/endo positions so the overview card can draw them without
+        re-running the tracker. ``frames`` is kept by reference; the caller
+        (viewer widget) owns the buffer.
+        """
+        view = str(getattr(result, "view", self._position) or self._position)
+        ed_frame: np.ndarray | None = None
+        ed_idx = int(getattr(result, "ed_index", 0) or 0)
+        if frames is not None and frames.ndim >= 3 and 0 <= ed_idx < frames.shape[0]:
+            ed_frame = frames[ed_idx]
+        endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
+        endo_positions = None
+        if result.tracked_ed_positions is not None and len(endo_indices) > 0:
+            endo_positions = np.asarray(result.tracked_ed_positions)[endo_indices]
+        ecg = result.ecg_trace_for_display
+        frame_count = 0
+        if frames is not None and frames.ndim >= 3:
+            frame_count = int(frames.shape[0])
+        elif result.longitudinal is not None:
+            frame_count = len(result.longitudinal)
+        return ViewSnapshot(
+            view=view,
+            ed_frame=ed_frame,
+            ed_contour=None if result.ed_contour is None else np.asarray(result.ed_contour),
+            es_contour=None if result.es_contour is None else np.asarray(result.es_contour),
+            endo_positions_ed=endo_positions,
+            ecg_trace=None if ecg is None else np.asarray(ecg),
+            ecg_frame_time_ms=float(getattr(result, "frame_time_ms", 33.3) or 33.3),
+            ed_index=ed_idx,
+            es_index=int(getattr(result, "es_index", 0) or 0),
+            frame_count=frame_count,
+            heart_rate_bpm=float(getattr(result, "heart_rate_bpm", 0.0) or 0.0),
+            kernels=[result.kernels[i] for i in endo_indices],
+        )
+
     def _update_panel_a4c(self) -> None:
         """Re-render A4C panel with current data."""
         if self._result is None:
@@ -611,6 +691,9 @@ class StrainWindow(QMainWindow):
     def _cycle_bullseye_palette(self) -> None:
         """Switch the bull's-eye palette (``C``) and keep the combo in sync."""
         key = self._panel_bullseye.cycle_palette()
+        # Keep the overview bull's-eye on the same palette (same palette key
+        # drives both targets — they must never disagree about the color map).
+        self._overview.bullseye.set_palette(key)
         combo = getattr(self._control, "_cb_palette", None)
         if combo is not None:
             index = combo.findData(key)
@@ -620,7 +703,7 @@ class StrainWindow(QMainWindow):
                 del blocker
 
     def _on_display_mode_changed(self, mode: str) -> None:
-        """Switch between contour, curves, and edit mode."""
+        """Switch between contour, curves, overview and edit mode."""
         if mode == "contour":
             self._stacked.setCurrentIndex(0)
             self._panel_a4c.set_edit_mode(False)
@@ -629,6 +712,11 @@ class StrainWindow(QMainWindow):
             # Update curves view with current result
             if self._result is not None:
                 self._curves_view.set_strain_data(self._result)
+        elif mode == "overview":
+            self._stacked.setCurrentIndex(2)
+            self._panel_a4c.set_edit_mode(False)
+            # Re-push the study so new per-view numbers / snapshots are drawn.
+            self._refresh_overview()
         elif mode == "edit_mode":
             self._stacked.setCurrentIndex(0)
             self._panel_a4c.set_edit_mode(True)

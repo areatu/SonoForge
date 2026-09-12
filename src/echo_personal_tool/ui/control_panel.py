@@ -55,6 +55,11 @@ class ControlPanel(QWidget):
         self._mode_curves.toggled.connect(lambda c: self.display_mode_changed.emit("curves") if c else None)
         view_mode_layout.addWidget(self._mode_curves)
 
+        self._mode_overview = QRadioButton(tr("strain.mode_overview"))
+        self._mode_overview.setStyleSheet("color: #e0e0e0;")
+        self._mode_overview.toggled.connect(lambda c: self.display_mode_changed.emit("overview") if c else None)
+        view_mode_layout.addWidget(self._mode_overview)
+
         group_view_mode.setLayout(view_mode_layout)
         layout.addWidget(group_view_mode)
 
