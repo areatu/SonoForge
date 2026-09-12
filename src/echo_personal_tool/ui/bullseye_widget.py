@@ -10,11 +10,11 @@ from PySide6.QtWidgets import QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.ui.strain_helpers import (
-    PALETTES,
-    STRAIN_RAMP,
     DEFORMATION_PLUS_RAMP,
-    RAINBOW_RAMP,
     MONOCHROME_RAMP,
+    PALETTES,
+    RAINBOW_RAMP,
+    STRAIN_RAMP,
 )
 
 

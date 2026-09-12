@@ -5,11 +5,11 @@ from __future__ import annotations
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.domain.services.segment_map import (
     SEGMENT_NAMES,
     view_segment_ids,
 )
+from echo_personal_tool.infrastructure.i18n import tr
 
 
 def segment_name(segment_id: int) -> str:

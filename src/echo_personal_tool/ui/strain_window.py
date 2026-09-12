@@ -6,22 +6,14 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
-import pyqtgraph as pg
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QShortcut
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QPushButton,
-    QRadioButton,
-    QScrollArea,
-    QSlider,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -34,32 +26,26 @@ if TYPE_CHECKING:
     from echo_personal_tool.domain.models.speckle import StrainResult
 
 from echo_personal_tool.domain.models.ste_analysis import StrainAnalysis, StrainStudy
-from echo_personal_tool.domain.services.segment_map import (
-    SEGMENT_NAMES,
-    view_segment_ids,
-)
 from echo_personal_tool.presentation.segment_labels import (
     full_segment_label,
-    short_segment_label,
 )
-from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
+from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
+from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 # --- Extracted submodules (step 1 of decomposition) ---
 from echo_personal_tool.ui.strain_helpers import (  # noqa: F401 — re-exported for backward compat
     AHA_SEGMENT_NAMES_RU,
-    PALETTES,
-    STRAIN_RAMP,
     DEFORMATION_PLUS_RAMP,
-    RAINBOW_RAMP,
     MONOCHROME_RAMP,
-    segment_name,
+    PALETTES,
+    RAINBOW_RAMP,
+    STRAIN_RAMP,
     _smooth_contour,
+    segment_name,
 )
-from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.summary_table import SummaryTable  # noqa: F401 — re-exported
-from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
-from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 
 logger = logging.getLogger(__name__)
 
