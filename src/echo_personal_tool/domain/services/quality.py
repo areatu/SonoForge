@@ -179,61 +179,165 @@ def assess_tracking_quality(
     of it produced no verdict at all. This is the evidence behind the number —
     without it a report is asking to be trusted blindly.
     """
+    cvg, fid, gls_ref, interp = _clamp_inputs(
+        coverage, fidelity, gls_pp, interpolated_fraction
+    )
+    rej, unv, excl_n, excl_s, vis, noise = _clamp_secondary(
+        rejected_fraction, unverified_fraction,
+        excluded_nodes, excluded_segments, visibility_loss, noise_to_signal,
+    )
+
     reasons: list[str] = []
     notes: list[str] = list(physiology_notes) + list(geometry_notes)
-    hard_failure = False
+    hard_failure = _check_hard_failures(
+        reasons, has_curve, geometry_ok, physiology_ok, cvg,
+        rej, excl_s, vis, noise,
+    )
+    _collect_verification_note(notes, has_curve, rej, unv, closure_median_mm, closure_p95_mm)
+    _collect_visibility_note(notes, has_curve, excl_n, excl_s, vis)
 
-    coverage = float(max(0.0, min(1.0, coverage)))
-    fidelity = float(max(0.0, min(1.0, fidelity)))
-    gls_reference = float(gls_pp) if gls_pp == gls_pp else 0.0  # NaN-safe
-    interpolated_fraction = float(max(0.0, min(1.0, interpolated_fraction)))
+    soft = _check_soft_failures(
+        reasons, has_curve, cvg, interp, consistency_delta,
+        estimate_spread_pp, sign_flip_fraction, gls_ref, noise,
+        n_segments_measured, excl_n, excl_s, vis, rej, unv, physiology_notes,
+    )
 
+    status = _decide_status(hard_failure, soft)
+    confidence = _compute_confidence(
+        fid, cvg, interp, consistency_delta, estimate_spread_pp,
+        sign_flip_fraction, noise, vis, rej, unv, status,
+    )
+
+    return QualityReport(
+        status=status,
+        confidence=confidence,
+        fidelity=fid,
+        coverage=cvg,
+        interpolated_fraction=interp,
+        consistency_delta=float(consistency_delta),
+        estimate_spread_pp=float(estimate_spread_pp),
+        noise_to_signal=noise,
+        sign_flip_fraction=float(sign_flip_fraction),
+        visibility_loss=vis,
+        excluded_nodes=excl_n,
+        excluded_segments=excl_s,
+        closure_median_mm=float(closure_median_mm),
+        closure_p95_mm=float(closure_p95_mm),
+        rejected_fraction=rej,
+        unverified_fraction=unv,
+        physiology_ok=bool(physiology_ok),
+        reasons=tuple(dict.fromkeys(reasons)),
+        notes=tuple(notes),
+    )
+
+
+def _clamp_inputs(
+    coverage: float, fidelity: float, gls_pp: float, interpolated_fraction: float,
+) -> tuple[float, float, float, float]:
+    return (
+        float(max(0.0, min(1.0, coverage))),
+        float(max(0.0, min(1.0, fidelity))),
+        float(gls_pp) if gls_pp == gls_pp else 0.0,
+        float(max(0.0, min(1.0, interpolated_fraction))),
+    )
+
+
+def _clamp_secondary(
+    rejected_fraction: float, unverified_fraction: float,
+    excluded_nodes: int, excluded_segments: int,
+    visibility_loss: float, noise_to_signal: float,
+) -> tuple[float, float, int, int, float, float]:
+    return (
+        float(max(0.0, min(1.0, rejected_fraction))),
+        float(max(0.0, min(1.0, unverified_fraction))),
+        int(max(0, excluded_nodes)),
+        int(max(0, excluded_segments)),
+        float(max(0.0, min(1.0, visibility_loss))),
+        float(noise_to_signal) if np.isfinite(noise_to_signal) else 0.0,
+    )
+
+
+def _check_hard_failures(
+    reasons: list[str],
+    has_curve: bool,
+    geometry_ok: bool,
+    physiology_ok: bool,
+    coverage: float,
+    rejected_fraction: float,
+    excluded_segments: int,
+    visibility_loss: float,
+    noise_ratio: float,
+) -> bool:
+    hard = False
     if not has_curve:
         reasons.append(REASON_NO_DATA)
-        hard_failure = True
+        hard = True
     if not geometry_ok:
         reasons.append(REASON_GEOMETRY)
-        hard_failure = True
+        hard = True
     if not physiology_ok:
         reasons.append(REASON_PHYSIOLOGY)
-        hard_failure = True
+        hard = True
     if has_curve and coverage < MIN_COVERAGE_INVALID:
         reasons.append(REASON_LOW_COVERAGE)
-        hard_failure = True
+        hard = True
+    if has_curve and rejected_fraction > MAX_REJECTED_FRACTION_INVALID:
+        reasons.append(REASON_TRACKING_VERIFICATION)
+        hard = True
+    if has_curve and (
+        excluded_segments > MAX_EXCLUDED_SEGMENTS_INVALID
+        or visibility_loss > MAX_VISIBILITY_LOSS_INVALID
+    ):
+        reasons.append(REASON_EDGE_VISIBILITY)
+        hard = True
+    if has_curve and noise_ratio > MAX_NOISE_TO_SIGNAL_INVALID:
+        reasons.append(REASON_TRACKING_NOISE)
+        hard = True
+    return hard
 
-    rejected_fraction = float(max(0.0, min(1.0, rejected_fraction)))
-    unverified_fraction = float(max(0.0, min(1.0, unverified_fraction)))
-    # The verification numbers belong in the record whatever the verdict: they
-    # are the evidence behind the number, not a diagnosis of it.
+
+def _collect_verification_note(
+    notes: list[str], has_curve: bool,
+    rejected_fraction: float, unverified_fraction: float,
+    closure_median_mm: float, closure_p95_mm: float,
+) -> None:
     if has_curve and (rejected_fraction > 0.0 or unverified_fraction > 0.0):
         notes.append(
             f"round-trip verification: {rejected_fraction * 100:.1f}% of node-frames rejected, "
             f"{unverified_fraction * 100:.1f}% without a verdict, "
             f"closure {closure_median_mm:.2f} mm median / {closure_p95_mm:.2f} mm p95"
         )
-    if has_curve and rejected_fraction > MAX_REJECTED_FRACTION_INVALID:
-        reasons.append(REASON_TRACKING_VERIFICATION)
-        hard_failure = True
 
-    excluded_nodes = int(max(0, excluded_nodes))
-    excluded_segments = int(max(0, excluded_segments))
-    visibility_loss = float(max(0.0, min(1.0, visibility_loss)))
-    if has_curve and (
-        excluded_segments > MAX_EXCLUDED_SEGMENTS_INVALID or visibility_loss > MAX_VISIBILITY_LOSS_INVALID
-    ):
-        reasons.append(REASON_EDGE_VISIBILITY)
-        hard_failure = True
-    elif has_curve and (excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW):
+
+def _collect_visibility_note(
+    notes: list[str], has_curve: bool,
+    excluded_nodes: int, excluded_segments: int, visibility_loss: float,
+) -> None:
+    if has_curve and (excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW):
         notes.append(
             f"{visibility_loss * 100:.1f}% of the node-frames have no visible tissue "
             f"({excluded_nodes} node(s), {excluded_segments} segment(s) excluded from the strain)"
         )
 
-    noise_ratio = float(noise_to_signal) if np.isfinite(noise_to_signal) else 0.0
-    if has_curve and noise_ratio > MAX_NOISE_TO_SIGNAL_INVALID:
-        reasons.append(REASON_TRACKING_NOISE)
-        hard_failure = True
 
+def _check_soft_failures(
+    reasons: list[str],
+    has_curve: bool,
+    coverage: float,
+    interpolated_fraction: float,
+    consistency_delta: float,
+    estimate_spread_pp: float,
+    sign_flip_fraction: float,
+    gls_reference: float,
+    noise_ratio: float,
+    n_segments_measured: int,
+    excluded_nodes: int,
+    excluded_segments: int,
+    visibility_loss: float,
+    rejected_fraction: float,
+    unverified_fraction: float,
+    physiology_notes: Sequence[str],
+) -> bool:
     soft = False
     # Soft evidence is collected even when the result already failed hard: a
     # report that lists one reason hides the others (a clip that is both
@@ -270,51 +374,46 @@ def assess_tracking_quality(
         soft = True
     if physiology_notes:
         soft = True
+    return soft
 
+
+def _decide_status(hard_failure: bool, soft: bool) -> str:
     if hard_failure:
-        status = STATUS_INVALID
-    elif soft:
-        status = STATUS_REVIEW
-    else:
-        status = STATUS_VALID
+        return STATUS_INVALID
+    if soft:
+        return STATUS_REVIEW
+    return STATUS_VALID
 
+
+def _compute_confidence(
+    fidelity: float,
+    coverage: float,
+    interpolated_fraction: float,
+    consistency_delta: float,
+    estimate_spread_pp: float,
+    sign_flip_fraction: float,
+    noise_ratio: float,
+    visibility_loss: float,
+    rejected_fraction: float,
+    unverified_fraction: float,
+    status: str,
+) -> float:
     # Confidence: fidelity and coverage dominate, interpolation and a
     # disagreement between definitions pull it down further.
-    confidence = fidelity * coverage
-    confidence *= 1.0 - 0.5 * min(interpolated_fraction / 0.30, 1.0)
-    confidence -= 0.03 * max(0.0, consistency_delta - 1.0)
-    confidence *= 1.0 - 0.5 * min(max(float(estimate_spread_pp) - 1.0, 0.0) / 8.0, 1.0)
-    confidence *= 1.0 - 0.3 * min(float(sign_flip_fraction) / 0.5, 1.0)
-    confidence *= 1.0 - 0.5 * min(noise_ratio / MAX_NOISE_TO_SIGNAL_INVALID, 1.0)
-    confidence *= 1.0 - 0.5 * min(visibility_loss / 0.25, 1.0)
-    confidence *= 1.0 - 0.5 * min(max(rejected_fraction, unverified_fraction) / 0.5, 1.0)
-    confidence = float(max(0.0, min(1.0, confidence)))
+    c = fidelity * coverage
+    c *= 1.0 - 0.5 * min(interpolated_fraction / 0.30, 1.0)
+    c -= 0.03 * max(0.0, consistency_delta - 1.0)
+    c *= 1.0 - 0.5 * min(max(float(estimate_spread_pp) - 1.0, 0.0) / 8.0, 1.0)
+    c *= 1.0 - 0.3 * min(float(sign_flip_fraction) / 0.5, 1.0)
+    c *= 1.0 - 0.5 * min(noise_ratio / MAX_NOISE_TO_SIGNAL_INVALID, 1.0)
+    c *= 1.0 - 0.5 * min(visibility_loss / 0.25, 1.0)
+    c *= 1.0 - 0.5 * min(max(rejected_fraction, unverified_fraction) / 0.5, 1.0)
+    c = float(max(0.0, min(1.0, c)))
     if status == STATUS_INVALID:
-        confidence = min(confidence, 0.35)
+        c = min(c, 0.35)
     elif status == STATUS_REVIEW:
-        confidence = min(confidence, 0.75)
-
-    return QualityReport(
-        status=status,
-        confidence=confidence,
-        fidelity=fidelity,
-        coverage=coverage,
-        interpolated_fraction=interpolated_fraction,
-        consistency_delta=float(consistency_delta),
-        estimate_spread_pp=float(estimate_spread_pp),
-        noise_to_signal=noise_ratio,
-        sign_flip_fraction=float(sign_flip_fraction),
-        visibility_loss=visibility_loss,
-        excluded_nodes=excluded_nodes,
-        excluded_segments=excluded_segments,
-        closure_median_mm=float(closure_median_mm),
-        closure_p95_mm=float(closure_p95_mm),
-        rejected_fraction=rejected_fraction,
-        unverified_fraction=unverified_fraction,
-        physiology_ok=bool(physiology_ok),
-        reasons=tuple(dict.fromkeys(reasons)),
-        notes=tuple(notes),
-    )
+        c = min(c, 0.75)
+    return c
 
 
 # Short alias used by callers that already imported the module.

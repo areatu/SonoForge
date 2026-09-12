@@ -20,13 +20,39 @@ container. The generated libraries are never called, they only need to resolve.
 
 from __future__ import annotations
 
+import argparse
 import glob
+import os
 import pathlib
 import re
 import subprocess
 
 HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "lib"
+PROJECT_ROOT = HERE.parent.parent  # repo root
+
+
+def _assert_not_production() -> None:
+    """Refuse to run outside CI or the dev sandbox."""
+    if os.environ.get("CI") or os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("MKSTUB_CI_ONLY"):
+        return
+    raise SystemExit(
+        "mkstub.py is a CI-only tool — it generates stub .so files.\n"
+        "Set CI=1 or PYTEST_CURRENT_TEST=1 or MKSTUB_CI_ONLY=1 to force."
+    )
+
+
+def _assert_output_safe() -> None:
+    """Make sure OUT never points outside the project tree."""
+    try:
+        OUT.resolve().relative_to(PROJECT_ROOT)
+    except ValueError:
+        raise SystemExit(
+            f"Refusing: OUT={OUT} is outside the project root ({PROJECT_ROOT}).\n"
+            "This tool must not write to system directories."
+        )
+
+
 #: ``(symbol regex, soname)``. Order matters: the first pattern that matches a
 #: symbol claims it, so narrow prefixes must come before broad ones.
 TARGETS = [
@@ -93,12 +119,16 @@ def collect(qt_root: pathlib.Path) -> dict[str, tuple[str, str | None]]:
     return found
 
 
-def build(symbols: dict[str, tuple[str, str | None]], soname: str) -> None:
+def build(symbols: dict[str, tuple[str, str | None]], soname: str, *, dry_run: bool = False) -> None:
     # A library can be needed even when nothing imports a symbol from it: the
     # dynamic loader still refuses to start if the DT_NEEDED entry cannot be
     # resolved. Emit an empty object in that case instead of skipping it.
     if not symbols:
         print(f"{soname}: no undefined symbols — emitting an empty stub")
+        return
+    if dry_run:
+        print(f"[dry-run] would build {soname} with {len(symbols)} symbols")
+        return
     OUT.mkdir(parents=True, exist_ok=True)
     src = OUT / f"{soname}.c"
     body = ["/* auto-generated stub — resolved but never called */"]
@@ -141,6 +171,13 @@ def build(symbols: dict[str, tuple[str, str | None]], soname: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Build stub GL/EGL/dbus/xkb libraries for PySide6.")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be built without gcc")
+    args = parser.parse_args()
+
+    _assert_not_production()
+    _assert_output_safe()
+
     qt_root = _qt_root()
     found = collect(qt_root)
     print(f"collected {len(found)} undefined symbols from {qt_root}")
@@ -149,7 +186,7 @@ def main() -> None:
         rx = re.compile(pattern)
         batch = {n: t for n, t in found.items() if n not in claimed and rx.match(n)}
         claimed.update(batch)
-        build(batch, soname)
+        build(batch, soname, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
