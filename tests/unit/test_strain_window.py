@@ -20,6 +20,13 @@ def _setup_qapp():
     yield app
 
 
+def _make_segment_kernel(x: float, y: float, segment: int, layer: str = "endo"):
+    """Real kernel (not a MagicMock): the label code reads layer + aha_segment."""
+    from echo_personal_tool.domain.models.speckle import TrackingKernel
+
+    return TrackingKernel(center=(x, y), radius=10, node_index=0, layer=layer, aha_segment=segment)
+
+
 class TestSmoothContour:
     def test_smooth_contour_fewer_than_4_points(self):
         from echo_personal_tool.ui.strain_window import _smooth_contour
@@ -169,12 +176,13 @@ class TestCinePanel:
         panel.move_selected_kernel(50.0, 60.0)  # no-op, no crash
 
     def test_show_segment_labels(self):
-
         panel = self._make_panel()
-        kernels = [MagicMock(aha_segment=1), MagicMock(aha_segment=2)]
+        kernels = [_make_segment_kernel(10.0, 20.0, 3), _make_segment_kernel(30.0, 40.0, 6)]
         pos = np.array([[10.0, 20.0], [30.0, 40.0]])
         panel.show_segment_labels(kernels, pos)
         assert len(panel._segment_labels) == 2
+        # Short vendor-style names, the same ones the cine overlay draws.
+        assert sorted(item.toPlainText() for item in panel._segment_labels) == ["БазБок", "БазПерг"]
 
     def test_show_segment_labels_empty(self):
         panel = self._make_panel()
@@ -335,54 +343,197 @@ class TestBullseyeWidget:
         assert w._segment_strains == {}
         assert w._segment_quality == {}
 
-    def test_strain_to_color_negative(self):
+    # The palette follows the clinical GE/EchoPAC bull's-eye convention
+    # (plan §6.5): bright red = normal (|ε| ≥ 16 %), pale pink = borderline,
+    # blue = positive strain. The tests below replaced the older
+    # "red/white/blue" expectations of the pre-phase-3 widget.
+    def test_strain_to_color_normal_is_bright_red(self):
         w = self._make_widget()
         c = w._strain_to_color(-25.0)
-        assert c.red() == 255
-        assert c.green() == 0
-        assert c.blue() == 0
+        assert (c.red(), c.green(), c.blue()) == (214, 24, 24)
 
-    def test_strain_to_color_zero(self):
+    def test_strain_to_color_borderline_is_pale_pink(self):
         w = self._make_widget()
-        c = w._strain_to_color(0.0)
-        assert c.red() == 255
-        assert c.green() == 255
-        assert c.blue() == 255
+        c = w._strain_to_color(-3.0)
+        assert (c.red(), c.green(), c.blue()) == (252, 224, 228)
 
-    def test_strain_to_color_positive(self):
+    def test_strain_to_color_positive_is_blue(self):
         w = self._make_widget()
         c = w._strain_to_color(10.0)
-        assert c.red() == 0
-        assert c.green() == 0
-        assert c.blue() == 255
+        assert (c.red(), c.green(), c.blue()) == (66, 133, 244)
 
     def test_strain_to_color_clamped_high(self):
         w = self._make_widget()
-        c = w._strain_to_color(100.0)
-        assert c.blue() == 255
+        assert w._strain_to_color(100.0).blue() == 244
 
     def test_strain_to_color_clamped_low(self):
         w = self._make_widget()
-        c = w._strain_to_color(-100.0)
-        assert c.red() == 255
+        assert w._strain_to_color(-100.0).red() == 214
 
-    def test_segment_geometry_has_17_segments(self):
+    def test_ttp_palette_is_blue_to_red(self):
+        """Late activation must read red on the time-to-peak map (plan §6.5)."""
+        w = self._make_widget()
+        early = w._ttp_to_color(150.0)
+        late = w._ttp_to_color(500.0)
+        assert early.blue() > early.red()
+        assert late.red() > late.blue()
+
+    def test_segment_geometry_covers_the_aha_model(self):
+        from echo_personal_tool.domain.services.segment_map import view_segment_ids
         from echo_personal_tool.ui.strain_window import BullseyeWidget
 
-        assert len(BullseyeWidget.SEGMENT_GEOMETRY) == 17
+        geometry = BullseyeWidget.SEGMENT_GEOMETRY
+        assert len(geometry) == 18
+        for view in ("A4C", "A2C", "A3C"):
+            assert set(view_segment_ids(view)) <= set(geometry)
+
+    # ── bull's-eye v2 (plan §6.5): palettes, colourbar, hover ──────────────
+    def test_default_palette_is_ge(self):
+        from echo_personal_tool.ui.strain_window import BullseyeWidget
+
+        w = self._make_widget()
+        assert w.palette_key == "palette.ge"
+        assert BullseyeWidget.PALETTES[0][0] == "palette.ge"
+
+    def test_cycle_palette_walks_all_ramps_and_wraps(self):
+        from echo_personal_tool.ui.strain_window import BullseyeWidget
+
+        w = self._make_widget()
+        seen = [w.palette_key]
+        for _ in range(len(BullseyeWidget.PALETTES) - 1):
+            seen.append(w.cycle_palette())
+        assert seen == [key for key, _ramp in BullseyeWidget.PALETTES]
+        assert w.cycle_palette() == "palette.ge"  # wraps back to the default
+
+    def test_set_palette_changes_the_colours(self):
+        w = self._make_widget()
+        ge = w._strain_to_color(-25.0)
+        w.set_palette("palette.rainbow")
+        rainbow = w._strain_to_color(-25.0)
+        assert (ge.red(), ge.green(), ge.blue()) != (rainbow.red(), rainbow.green(), rainbow.blue())
+        w.set_palette("no.such.palette")  # unknown names must not break the map
+        assert w.palette_key == "palette.rainbow"
+
+    def test_monochrome_threshold_keeps_normal_bright(self):
+        w = self._make_widget()
+        w.set_palette("palette.monochrome")
+        normal = w._strain_to_color(-20.0)
+        reduced = w._strain_to_color(-8.0)
+        assert normal.red() > reduced.red()
+
+    def test_colorbar_ticks_span_the_strain_scale(self):
+        """Plan §6.5: −20…+20 % with 0/−5/−10/−15/−20 divisions, blue on top."""
+        w = self._make_widget()
+        labels = [label for _value, label in w._colorbar_ticks(ttp_mode=False)]
+        assert labels[0] == "20"
+        assert {"0", "-5", "-10", "-15", "-20"} <= set(labels)
+        # TTP map scales to the study and stays readable
+        w.update_data({1: -18.0}, {1: 0.9}, {1: 612.0})
+        ttp_labels = [label for _value, label in w._colorbar_ticks(ttp_mode=True)]
+        assert ttp_labels[0] == "700" and ttp_labels[-1] == "0"
+
+    def test_missing_excluded_and_low_confidence_segments_are_marked(self):
+        """State styling (plan §6.5): hatch / slash / dashed frame."""
+        from PySide6.QtGui import QImage
+
+        w = self._make_widget()
+        w.resize(400, 400)
+        # Segment 1 measured well, 2 excluded by QC, 3 low confidence, 4 missing.
+        w.update_data({1: -20.0, 2: -20.0, 3: -20.0}, {1: 0.9, 2: 0.9, 3: 0.2})
+        w.update_qc({1: -20.0, 2: -20.0, 3: -20.0}, {1: 0.9, 2: 0.9, 3: 0.2}, {1, 3})
+        image = QImage(400, 400, QImage.Format.Format_ARGB32)
+        w.render(image)  # must not raise
+
+        def colours(seg):
+            rect = w._segment_polygons[seg].boundingRect()
+            x, y = int(rect.center().x()), int(rect.center().y())
+            return {image.pixelColor(int(x + dx), int(y + dy)).name() for dx in (-6, 0, 6) for dy in (-6, 0, 6)}
+
+        # Never measured: dark fill plus the hatch strokes.
+        assert len(colours(4)) > 1
+        # Excluded: grey fill plus the white slash.
+        assert len(colours(2)) > 1
+        # Low confidence: dashed frame drawn over the fill.
+        assert len(colours(3)) > 1
+
+    def test_colorbar_paints_without_error(self):
+        from PySide6.QtGui import QImage, QPainter
+
+        w = self._make_widget()
+        w.resize(420, 320)
+        w.update_data({seg: -18.0 for seg in range(1, 19)})
+        # The QImage must stay referenced while the painter is alive.
+        for ttp_mode in (False, True):
+            image = QImage(420, 320, QImage.Format.Format_ARGB32)
+            painter = QPainter(image)
+            w._paint_colorbar(painter, 420, 320, 130.0, ttp_mode)
+            painter.end()
+
+    def test_hover_finds_the_segment_under_a_point(self):
+        from PySide6.QtGui import QImage
+
+        w = self._make_widget()
+        w.resize(320, 320)
+        w.update_data({seg: -18.0 for seg in range(1, 19)})
+        w.render(QImage(320, 320, QImage.Format.Format_ARGB32))  # builds the polygons
+        assert len(w._segment_polygons) == 18
+        ring = w._segment_polygons[7]
+        centre = ring.boundingRect().center()
+        assert w.segment_at(centre.x(), centre.y()) == 7
+        assert w.segment_at(-50.0, -50.0) is None
+
+    def test_tooltip_reports_value_quality_and_ttp(self):
+        w = self._make_widget()
+        w.update_data({7: -17.4}, {7: 0.86}, {7: 340.0})
+        text = w.segment_tooltip(7)
+        assert "-17.4" in text and "0.86" in text and "340" in text
+
+    def test_tooltip_says_no_data_instead_of_inventing_a_value(self):
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        w = self._make_widget()
+        assert tr("strain.no_data").lower() in w.segment_tooltip(12).lower()
+
+    def test_ttp_mode_tooltip_uses_milliseconds(self):
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        w = self._make_widget()
+        w.update_data({7: -17.4}, {7: 0.9}, {7: 340.0})
+        w.set_ttp_mode(True)
+        text = w.segment_tooltip(7)
+        assert "340" in text and tr("strain.unit_ms") in text
+
+    def test_anterior_wall_is_centred_on_top_and_ring_runs_clockwise(self):
+        """Segments must sit where the AHA model puts them (vendors centre the
+        anterior wall on 12 o'clock, not merely start there)."""
+        from PySide6.QtGui import QImage
+
+        from echo_personal_tool.ui.strain_window import BullseyeWidget
+
+        w = self._make_widget()
+        w.resize(400, 400)
+        w.update_data({seg: -18.0 for seg in range(1, 19)})
+        w.render(QImage(400, 400, QImage.Format.Format_ARGB32))
+
+        map_w = 400 - (BullseyeWidget.COLORBAR_WIDTH + 46)
+        cx, cy = map_w / 2, 200.0
+        anterior = w._segment_polygons[1].boundingRect().center()
+        assert abs(anterior.x() - cx) < 2.0
+        assert anterior.y() < cy  # above the centre
+        # Clockwise from anterior: 6 = anterolateral is to the right of 1 …
+        assert w._segment_polygons[6].boundingRect().center().x() > cx
+        # … and 2 = anteroseptal is to its left.
+        assert w._segment_polygons[2].boundingRect().center().x() < cx
 
     def test_paint_event(self):
-        from PySide6.QtGui import QImage, QPainter
+        from PySide6.QtGui import QImage
 
         w = self._make_widget()
         w.update_data({1: -15.0, 17: -10.0})
         w.resize(300, 300)
-        # Trigger paint by creating a QImage
-        img = QImage(300, 300, QImage.Format.Format_ARGB32)
-        painter = QPainter(img)
-        event = MagicMock()
-        w.paintEvent(event)
-        painter.end()
+        image = QImage(300, 300, QImage.Format.Format_ARGB32)
+        w.render(image)  # runs the real paint pass
+        assert len(w._segment_polygons) == 18
 
 
 class TestSummaryTable:
@@ -415,6 +566,35 @@ class TestSummaryTable:
         table = self._make_table()
         table.update_values(hr=72.0)
         assert "72 bpm" in table._rows["hr"][1].text()
+
+    def test_per_view_rows_carry_the_qc_mark(self):
+        """The vendor review screen marks every analysed view with its status."""
+        table = self._make_table()
+        table.set_view_statuses({"A4C": "valid", "A2C": "review", "A3C": "invalid"})
+        table.update_values(gls_a4c=-19.0, gls_a2c=-20.0, gls_dao=-14.5, gls_av=-17.8)
+        assert table._rows["gls_a4c"][1].text().endswith("●")
+        assert table._rows["gls_a2c"][1].text().endswith("⚠")
+        assert table._rows["gls_dao"][1].text().endswith("■")
+        # The average row is not a view and must stay unmarked.
+        assert table._rows["gls_av"][1].text().endswith("%")
+        assert table._rows["gls_a2c"][1].toolTip() != ""
+
+    def test_unmeasured_view_keeps_dash_and_no_mark(self):
+        table = self._make_table()
+        table.set_view_statuses({"A4C": "valid"})
+        table.update_values(gls_a4c=-19.0, gls_a2c=None, gls_dao=None)
+        assert table._rows["gls_a2c"][1].text() == "--"
+        assert table._rows["gls_dao"][1].text() == "--"
+        assert table._rows["gls_a4c"][1].text().endswith("●")
+
+    def test_statuses_can_be_cleared(self):
+        table = self._make_table()
+        table.set_view_statuses({"A4C": "invalid"})
+        table.update_values(gls_a4c=-19.0)
+        assert table._rows["gls_a4c"][1].text().endswith("■")
+        table.set_view_statuses({})
+        table.update_values(gls_a4c=-19.0)
+        assert table._rows["gls_a4c"][1].text() == "-19.0%"
 
     def test_update_values_none(self):
         table = self._make_table()
@@ -519,6 +699,18 @@ class TestStrainWindow:
         assert 5 not in w._qc_accepted_segments
         w._on_qc_segment_toggled(5, True)
         assert 5 in w._qc_accepted_segments
+
+    def test_qc_checkboxes_are_named_after_the_real_segments(self):
+        """Ids here are the AHA ones (3/9/15/…), not the old 1…6 placeholders."""
+        w = self._make_window()
+        w._populate_qc_checkboxes({3: -18.0, 9: -20.0, 15: -22.0})
+
+        labels = {segment: cb.text() for segment, cb in w._control._qc_checkboxes.items()}
+        assert set(labels) == {3, 9, 15}
+        assert labels[3] == "Базальный нижнеперегородочный"
+        assert labels[15] == "Апикальный нижнеперегородочный"
+        for label in labels.values():
+            assert "Сегмент" not in label  # no "Segment N" fallback in a live window
 
     def test_set_position(self):
         w = self._make_window()

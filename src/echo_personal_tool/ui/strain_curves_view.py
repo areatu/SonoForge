@@ -30,6 +30,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.services.segment_map import (
+    VIEW_WALLS,
+    segment_ids_in_bullseye_order,
+    segment_ids_in_view,
+)
 from echo_personal_tool.infrastructure.i18n import tr
 
 if TYPE_CHECKING:
@@ -37,32 +42,38 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Vendor-style per-segment palette (A4C 6-segment scheme used by our tracker).
-# Basal / mid / apical rings follow the strain bull's-eye colour families
-# (yellow-orange, cyan-magenta, green-blue) used by clinical packages.
+# Per-segment palette over the standard 18-segment AHA model. The six colours
+# repeat on each ring (basal / mid / apical) in the anatomical order the
+# bull's-eye uses, so a curve keeps its identity across views.
+SEGMENT_HUES: tuple[tuple[int, int, int], ...] = (
+    (255, 235, 59),  # anterior            — yellow
+    (255, 152, 0),  # anteroseptal         — orange
+    (38, 198, 218),  # inferoseptal        — cyan
+    (233, 30, 99),  # inferior             — magenta
+    (102, 187, 106),  # inferolateral      — green
+    (66, 165, 245),  # anterolateral       — blue
+)
+
 SEGMENT_COLORS: dict[int, tuple[int, int, int]] = {
-    1: (255, 235, 59),  # БазПерг  — yellow
-    2: (255, 152, 0),  # Базбок   — orange
-    3: (38, 198, 218),  # СрПерг   — cyan
-    4: (233, 30, 99),  # Србок    — magenta
-    5: (102, 187, 106),  # АпПер    — green
-    6: (66, 165, 245),  # АпЛат    — blue
+    seg: SEGMENT_HUES[(seg - 1) % 6] for seg in segment_ids_in_bullseye_order()
 }
 
-SEGMENT_NAMES_RU: dict[int, str] = {
-    1: tr("strain.seg_basal_sept"),
-    2: tr("strain.seg_basal_lat"),
-    3: tr("strain.seg_mid_sept"),
-    4: tr("strain.seg_mid_lat"),
-    5: tr("strain.seg_apical_septal"),
-    6: tr("strain.seg_apical_lat"),
-}
 
-# View segment ranges
+def segment_label(segment_id: int) -> str:
+    """Localised AHA name of a segment id (falls back to the id itself)."""
+    return tr(f"strain.seg_{int(segment_id)}")
+
+
+# Kept for compatibility: localised names of the six segments of the A4C wall
+# pair. New code should call :func:`segment_label` (all 18 are available).
+SEGMENT_NAMES_RU: dict[int, str] = {seg: segment_label(seg) for seg in VIEW_WALLS["A4C"][0] + VIEW_WALLS["A4C"][1]}
+
+# Segment ids each view can measure (standard 18-segment numbering, issue #C2).
 VIEW_SEGMENTS: dict[str, list[int]] = {
-    "A4C": [1, 2, 3, 4, 5, 6],
-    "A2C": [7, 8, 9, 10, 11],
-    "DAO": [12, 13, 14, 15, 16],
+    "A4C": list(segment_ids_in_view("A4C")),
+    "A2C": list(segment_ids_in_view("A2C")),
+    "A3C": list(segment_ids_in_view("A3C")),
+    "DAO": list(segment_ids_in_view("A3C")),  # legacy UI name for A3C
 }
 
 # White global curve colour
@@ -211,7 +222,7 @@ class SegmentCurvePanel(QWidget):
         self._legend.setPen(pg.mkPen("#37474f"))
         for seg_id in sorted(self._curves):
             sample = pg.PlotDataItem(pen=pg.mkPen(SEGMENT_COLORS[seg_id], width=3))
-            self._legend.addItem(sample, SEGMENT_NAMES_RU.get(seg_id, f"Seg{seg_id}"))
+            self._legend.addItem(sample, segment_label(seg_id))
         mean_sample = pg.PlotDataItem(pen=pg.mkPen(_GLOBAL_COLOR, width=3))
         self._legend.addItem(mean_sample, tr("strain.legend_global"))
 
@@ -399,12 +410,23 @@ class StrainCurvesView(QWidget):
         frame_time_ms: float = 33.3,
     ) -> None:
         """Update the panels with per-segment strain curves from the result."""
-        if result.segment_strain is None or result.per_kernel_longitudinal is None:
+        has_model_curves = bool(getattr(result, "segment_curves", None))
+        # ``per_kernel_longitudinal`` was only needed because the view used to
+        # re-derive the curves itself; with model curves present it is not
+        # required any more (single source of truth, issue #C3).
+        if result.segment_strain is None or (not has_model_curves and result.per_kernel_longitudinal is None):
             self.clear()
             return
 
         n_frames = len(result.longitudinal) if result.longitudinal is not None else 0
-        segment_curves = self._segment_curves_from_tracking(result, n_frames)
+        # Single source of truth (issue #C3): plot the segment curves the worker
+        # computed with the model's strain definition. The local re-computation
+        # below stays only as a fallback for results produced by older code
+        # paths / tests that do not carry ``segment_curves``.
+        if getattr(result, "segment_curves", None):
+            segment_curves = {int(k): np.asarray(v, dtype=np.float64) for k, v in result.segment_curves.items()}
+        else:
+            segment_curves = self._segment_curves_from_tracking(result, n_frames)
 
         ecg = (
             result.ecg_trace_for_display
@@ -472,17 +494,20 @@ class StrainCurvesView(QWidget):
         for seg_id, kernel_indices in segment_kernels.items():
             if len(kernel_indices) < 1:
                 continue
+            # Arc order, not raster order: sorting by (x, y) walked across the
+            # cavity and measured the chord instead of the wall.
+            arc_order = sorted(all_endo, key=lambda i: result.kernels[i].node_index)
+            node_rank = {idx: rank for rank, idx in enumerate(arc_order)}
             if len(kernel_indices) == 1:
                 # Single-kernel segment: connect it through its neighbours on
                 # the whole endo arc so its strain is still well defined.
-                order = sorted(all_endo, key=lambda i: (ed_pos[i, 0], ed_pos[i, 1]))
-                pos = order.index(kernel_indices[0])
-                pair = (order[max(pos - 1, 0)], order[min(pos + 1, len(order) - 1)])
+                pos = node_rank.get(kernel_indices[0], 0)
+                pair = (arc_order[max(pos - 1, 0)], arc_order[min(pos + 1, len(arc_order) - 1)])
                 if pair[0] == pair[1]:
                     continue
                 kernel_indices = list(pair)
             else:
-                kernel_indices = sorted(kernel_indices, key=lambda i: ed_pos[i, 1])
+                kernel_indices = sorted(kernel_indices, key=lambda i: node_rank.get(i, 0))
 
             def _arc(idx_list: list[int], t: int) -> float:
                 pts = result.tracked_positions_all[t][idx_list]
@@ -493,7 +518,7 @@ class StrainCurvesView(QWidget):
             l0 = _arc(kernel_indices, ed)
             if l0 is None or not np.isfinite(l0) or l0 <= 1e-6:
                 # Fall back to a global curve from the whole endo contour
-                all_idx = sorted(all_endo, key=lambda i: ed_pos[i, 1])
+                all_idx = arc_order
                 l0 = _arc(all_idx, ed)
                 kernel_indices = all_idx
             curve = np.zeros(n_frames)

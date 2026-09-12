@@ -49,6 +49,12 @@ class TestAhaSegmentNames:
 
         assert len(AHA_SEGMENT_NAMES_RU) == 6
 
+    def test_ids_are_standard_aha_ids(self) -> None:
+        from echo_personal_tool.ui.strain_window import AHA_SEGMENT_NAMES_RU
+
+        # A4C names its own wall pair in the standard 18-segment numbering.
+        assert set(AHA_SEGMENT_NAMES_RU) == {3, 6, 9, 12, 15, 18}
+
     def test_keys_are_integers(self) -> None:
         from echo_personal_tool.ui.strain_window import AHA_SEGMENT_NAMES_RU
 
@@ -77,17 +83,27 @@ class TestBullseyeWidget:
         qtbot.addWidget(widget)
         assert widget._segment_strains == {}
 
-    def test_segment_geometry_has_17_segments(self) -> None:
+    def test_segment_geometry_covers_all_18_segments(self) -> None:
         from echo_personal_tool.ui.strain_window import BullseyeWidget
 
-        assert len(BullseyeWidget.SEGMENT_GEOMETRY) == 17
+        # Standard 18-segment AHA model: every id has exactly one position and
+        # the apex cap carries no segment (issue #C11).
+        assert set(BullseyeWidget.SEGMENT_GEOMETRY) == set(range(1, 19))
+        positions = list(BullseyeWidget.SEGMENT_GEOMETRY.values())
+        assert len(set(positions)) == len(positions)
 
-    def test_segment_labels_keys(self) -> None:
+    def test_geometry_places_each_segment_on_its_own_ring(self) -> None:
         from echo_personal_tool.ui.strain_window import BullseyeWidget
 
-        for key in BullseyeWidget.SEGMENT_LABELS_RU:
-            assert isinstance(key, int)
-            assert isinstance(BullseyeWidget.SEGMENT_LABELS_RU[key], str)
+        geometry = BullseyeWidget.SEGMENT_GEOMETRY
+        # Ring 1 = apical (13..18), ring 2 = mid (7..12), ring 3 = basal (1..6)
+        for seg, (ring, _angle) in geometry.items():
+            if seg <= 6:
+                assert ring == 3, f"segment {seg} must be basal"
+            elif seg <= 12:
+                assert ring == 2, f"segment {seg} must be mid"
+            else:
+                assert ring == 1, f"segment {seg} must be apical"
 
 
 class TestSummaryTable:
@@ -116,6 +132,33 @@ class TestStrainWindow:
         qtbot.addWidget(window)
         assert window.windowTitle() != ""
 
+    def test_palette_combo_drives_the_bullseye(self, qtbot) -> None:
+        """The panel combo and the map must never disagree (plan §6.5)."""
+        from echo_personal_tool.ui.strain_window import BullseyeWidget, StrainWindow
+
+        window = StrainWindow()
+        qtbot.addWidget(window)
+        combo = window._control._cb_palette
+        assert combo.count() == len(BullseyeWidget.PALETTES)
+        combo.setCurrentIndex(1)
+        assert window._panel_bullseye.palette_key == str(combo.itemData(1))
+
+    def test_palette_shortcut_cycles_and_syncs_the_combo(self, qtbot) -> None:
+        from echo_personal_tool.ui.strain_window import BullseyeWidget, StrainWindow
+
+        window = StrainWindow()
+        qtbot.addWidget(window)
+        combo = window._control._cb_palette
+        start = window._panel_bullseye.palette_key
+        window._cycle_bullseye_palette()
+        first = window._panel_bullseye.palette_key
+        assert first != start
+        assert str(combo.currentData()) == first
+        for _ in range(len(BullseyeWidget.PALETTES) - 1):
+            window._cycle_bullseye_palette()
+        assert window._panel_bullseye.palette_key == start
+        assert str(combo.currentData()) == start
+
 
 # ── strain_curves_view ────────────────────────────────────────────
 
@@ -142,7 +185,7 @@ class TestSegmentConstants:
     def test_segment_colors(self) -> None:
         from echo_personal_tool.ui.strain_curves_view import SEGMENT_COLORS
 
-        assert len(SEGMENT_COLORS) == 6
+        assert len(SEGMENT_COLORS) == 18
         for key, val in SEGMENT_COLORS.items():
             assert isinstance(key, int)
             assert len(val) == 3

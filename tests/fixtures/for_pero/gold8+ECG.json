@@ -1,0 +1,49 @@
+{
+  "file": "gold8+ECG.dcm",
+  "kind": "dicom",
+  "Modality": "US",
+  "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
+  "ManufacturerModelName": "RS85-RUS",
+  "SoftwareVersions": "2.06.01a.3013",
+  "Rows": "800",
+  "Columns": "1276",
+  "NumberOfFrames": "82",
+  "SamplesPerPixel": "3",
+  "PhotometricInterpretation": "YBR_FULL_422",
+  "BitsAllocated": "8",
+  "SequenceOfUltrasoundRegions": [
+    {
+      "origin": [
+        0.0,
+        90.0
+      ],
+      "size": [
+        1276.0,
+        710.0
+      ],
+      "physical_delta_mm": [
+        0.2816901355981827,
+        0.2816901355981827
+      ]
+    }
+  ],
+  "frames": 82,
+  "fps": 30.0,
+  "ecg": false,
+  "ecg_burn_in_hint": true,
+  "private_or_strain_tags": {
+    "(0008,1111) Referenced Performed Procedure Step Sequence": "[(0008,1150) Referenced SOP Class UID            UI: Modality Performed Procedure Step SOP Class\n(0008,1155) Referenced SOP Instance UID         UI: 1.2.410.200001.1.1185.2062614048.4.20251124.1132127683.305.1]",
+    "(0040,0244) Performed Procedure Step Start Date": "20251124",
+    "(0040,0245) Performed Procedure Step Start Time": "132127",
+    "(0040,0253) Performed Procedure Step ID": "20251124132127"
+  },
+  "npz": "gold8+ECG.npz",
+  "npz_mb": 5.36,
+  "jpeg_quality": 68,
+  "size_mb": 15.45,
+  "shape": [
+    82,
+    800,
+    1276
+  ]
+}

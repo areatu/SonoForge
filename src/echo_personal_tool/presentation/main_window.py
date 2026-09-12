@@ -147,6 +147,10 @@ class MainWindow(QMainWindow):
         self._manual_ed_frame: int | None = None
         self._manual_es_frame: int | None = None
         self._ste_position: str = "A4C"
+        # Last wall thickness confirmed in the STE dialog: the auto-created
+        # epicardium of a new view uses it instead of the 8 mm default, so a
+        # hypertrophied wall does not have to be re-drawn by hand every time.
+        self._ste_wall_thickness_mm: float = 8.0
         self._strain_result_for_window: object | None = None
         self._strain_frames_for_window: np.ndarray | None = None
         self._layout_config = self._load_layout_state()
@@ -2204,7 +2208,10 @@ class MainWindow(QMainWindow):
         if contour is None:
             self._show_status(tr("status.speckle_no_contour"))
             return
-        created_epi = self._viewer.ensure_lv_epicardial_contours(view=contour.view)
+        created_epi = self._viewer.ensure_lv_epicardial_contours(
+            view=contour.view,
+            thickness_mm=self._ste_wall_thickness_mm,
+        )
         if created_epi:
             self._controller.on_contours_changed(self._viewer.contours())
             self._show_status("Epicardial contours created — edit nodes if needed, then press STE again")
@@ -2252,6 +2259,7 @@ class MainWindow(QMainWindow):
             return
         config = settings.get_config()
         config_preset = settings.selected_preset_name()
+        self._ste_wall_thickness_mm = float(config.wall_thickness_mm)
         self._ste_position = settings.selected_view()
         self._manual_ed_frame = settings.manual_ed
         self._manual_es_frame = settings.manual_es
@@ -2267,6 +2275,7 @@ class MainWindow(QMainWindow):
             config_preset=config_preset,
             manual_ed=self._manual_ed_frame,
             manual_es=self._manual_es_frame,
+            view=self._ste_position,
         )
 
     def _ensure_strain_window(self) -> StrainWindow:

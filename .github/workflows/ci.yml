@@ -50,10 +50,16 @@ jobs:
 
       - run: pip install -e ".[dev]"
 
-      # Linux: run with virtual display (xvfb-run for Qt tests)
+      # Linux: run with virtual display (xvfb-run for Qt tests). The output is
+      # piped through the annotation filter so failing test names stay readable
+      # via the check-run REST API even when job logs are not downloadable.
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml \
+            | python .github/scripts/annotate_pytest_failures.py
 
       # macOS/Windows: run without GUI tests (no xvfb available)
       - name: Run tests (macOS/Windows)

@@ -43,6 +43,14 @@ class TrackingResult:
     valid_mask: np.ndarray
     kernel_positions: np.ndarray
     reference_frame: int = 0
+    # Forward–backward (round-trip) closure error per kernel, in pixels: how far
+    # the kernel has drifted when the match is run backwards from the tracked
+    # position to the reference frame. ``NaN`` where the round trip could not be
+    # evaluated (bidirectional tracking disabled or a rejected match) or where the
+    # kernel was not tracked. This is the tracker's own, ground-truth-free error
+    # estimate — it was computed on every frame and thrown away before (clinical
+    # review Q6), so the report could not say how far the tracking had drifted.
+    closure_error: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -61,9 +69,30 @@ class SpeckleConfig:
     tracking_mode: str = "sequential"
     spatial_smoothing: float = 1.0
     temporal_smoothing: float = 1.0
+    # Temporal low-pass of the strain curves before the metrics are read
+    # (peak systolic strain, ESS, TTP). Speckle tracking is noisy frame to
+    # frame and an unfiltered *peak* is biased by single-frame spikes, which
+    # is what made the segmental numbers swing while the global curve looked
+    # plausible. 0 or 1 disables the filter.
+    curve_smoothing_frames: int = 9
     quality_weighted_smoothing: bool = True
     drift_compensation: bool = True
     global_motion_compensation: bool = True
+    # Wall-band containment of the tracked kernels. Measurement on the kinematic
+    # phantom (plan §7.5, F2) showed it clips genuine systolic excursion — the
+    # band is built from the *ED* geometry while the endocardium legitimately
+    # travels further inward, and a rigid rotation of the wall is read as
+    # contraction — so it no longer runs in the default pipeline. Kept for A/B
+    # comparison; ``tests/unit/test_kernel_containment.py`` covers the function.
+    wall_clamp: bool = False
+    # Which half of the material line carries which AHA wall is a property of the
+    # display, not of the order the user drew the arc in — the assignment
+    # resolves the arc sides from the image (vendor convention: apex up, the
+    # first wall of the view on the left of the screen). Set this when the
+    # display is mirrored relative to that convention: the two walls of the
+    # analysed view swap sides. The consensus requires the choice to be
+    # selectable and declared (Voigt 2015, segment definition).
+    segment_flip: bool = False
     min_segment_quality: float = 0.4
     min_kernel_quality: float = 0.3
     # Forward-backward closure error, as a fraction of ``search_radius``; a
@@ -158,13 +187,96 @@ class StrainResult:
     kernels_rejected_count: int = 0
     kernels_total_count: int = 0
     # QC fields: honest measurement quality separate from raw NCC fidelity.
-    # ``tracking_quality_mean`` stays the NCC mean; ``qc_score`` additionally
-    # folds in kernel coverage and a physiological plausibility check, so it can
-    # be low even when NCC reads >90% (issue #3).
+    # ``tracking_quality_mean`` stays the NCC mean; ``qc_score`` is the validity
+    # confidence from ``domain.services.quality`` (fidelity x coverage x ...),
+    # so it can be low even when NCC reads >90% (issue #3).
     qc_score: float = 0.0
     qc_physiology_ok: bool = True
     qc_physiology_reasons: tuple[str, ...] = ()
     gls_source: str = "curve"
+    # Validity status: "valid" | "review" | "invalid" — never derived from NCC
+    # alone. ``qc_reasons`` holds i18n keys, ``qc_notes`` human-readable details.
+    qc_status: str = "invalid"
+    qc_reasons: tuple[str, ...] = ()
+    qc_notes: tuple[str, ...] = ()
+    qc_coverage: float = 0.0
+    qc_interpolated_fraction: float = 0.0
+    qc_consistency_delta: float = 0.0
+    # Metric cross-checks (plan §7.5, F4): gap between the reported global
+    # strain and the independent segment-mean estimate, and the share of the
+    # endocardial line whose end-systolic strain has the opposite sign.
+    qc_estimate_spread_pp: float = 0.0
+    qc_sign_flip_fraction: float = 0.0
+    # Position noise vs the contraction it is meant to measure (plan §7.5, F6):
+    # noise inflates every arc length, so a ratio near 1 means the strain of this
+    # clip is not measurable no matter how high the NCC is.
+    qc_noise_to_signal: float = 0.0
+    qc_noise_mm: float = 0.0
+    # EACVI/ASE definitions (Voigt 2015) require a strain number to travel with
+    # what it was measured on and how it was processed: the spatial extent of the
+    # sampling, whether LV translation was compensated, and which regularization
+    # was applied. Without them two "GLS" values are not comparable.
+    sampling_kernel_mm: float = 0.0
+    sampling_node_spacing_mm: float = 0.0
+    regularization: str = ""
+    # Which wall the report placed on which side of the image ("left=… /
+    # right=…"), and whether the user declared a mirrored display. A segment
+    # name is not comparable without this declaration (Voigt 2015).
+    segment_sides: str = ""
+    segment_flip_applied: bool = False
+    translation_compensation_applied: bool = False
+    frame_rate_hz: float = 0.0
+    # The wall is not fully inside the sector (clinical review Q4): share of
+    # node-frames without visible tissue, the nodes dropped from the strain and
+    # the AHA segments they belonged to.
+    qc_visibility_loss: float = 0.0
+    qc_excluded_nodes: int = 0
+    qc_excluded_segments: tuple[int, ...] = ()
+    # Round-trip verification of the tracking (clinical review Q6): per-kernel
+    # forward-backward closure error in pixels for every analysed frame (NaN
+    # where no verdict exists) and the window summary the QC report uses.
+    closure_all_frames: np.ndarray | None = None
+    # The threshold the round trip was judged by (pixels). Stored so the overlay
+    # marks exactly the node-frames the report counted as unconfirmed, instead of
+    # re-deriving the rule and drifting away from it.
+    closure_gate_px: float = 0.0
+    qc_closure_median_mm: float = 0.0
+    qc_closure_p95_mm: float = 0.0
+    qc_rejected_fraction: float = 0.0
+    qc_unverified_fraction: float = 0.0
+    # Per-node strain curves along the tracked material line (single definition,
+    # see ``strain_computation.compute_node_longitudinal_curves``). Columns match
+    # ``node_indices``; values are NaN outside the tracked window.
+    node_curves: np.ndarray | None = None
+    node_indices: tuple[int, ...] = ()
+    # Per-segment curves over the same time base — the only source the UI may
+    # plot, so the numbers on the screen cannot diverge from the model.
+    segment_curves: dict[int, np.ndarray] = field(default_factory=dict)
+    # Provenance needed to interpret the segment ids: an AHA segment number is
+    # only meaningful together with the apical view it was measured in.
+    view: str = "A4C"
+    segment_model: str = "AHA-18"
+    # Clinical metrics over the analysed cycle (plan §3.5, phase 2). ``gls`` is
+    # the peak of the global curve (AVC-independent); ``ess`` is the value at
+    # aortic valve closure. ``drift_measured`` is the residual strain at the end
+    # of the window — reported, never silently removed.
+    avc_index: int = 0
+    avc_source: str = "es"
+    avc_confidence: float = 0.0
+    ess: float = float("nan")
+    gls_peak_frame: int | None = None
+    time_to_peak_ms: float = float("nan")
+    post_systolic_index: float = float("nan")
+    drift_measured: float = float("nan")
+    is_post_systolic: bool = False
+    peak_strain: float = float("nan")
+    # Per-segment metrics and their time-to-peak (TTP bull's-eye input).
+    segment_metrics: dict[int, object] = field(default_factory=dict)
+    segment_ttp_ms: dict[int, float] = field(default_factory=dict)
+    # Cross-check: mean of the segment peaks (NOT the reported GLS).
+    gls_segment_mean: float = float("nan")
+    analysis_window_end: int = 0
+    cycle_estimated: bool = False
     # ECG fields
     ecg_waveform: EcgWaveform | None = None
     r_peak_result: RPeakResult | None = None

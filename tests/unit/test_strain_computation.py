@@ -7,6 +7,8 @@ import pytest
 
 from echo_personal_tool.domain.services.strain_computation import (
     apply_drift_compensation,
+    arc_contraction_mm,
+    arc_length_inflation_mm,
     compute_gls,
     compute_longitudinal_strain_gl,
     compute_radial_strain_gl,
@@ -205,3 +207,41 @@ class TestComputeStrainRate:
         strain = np.array([0.0, -1.0])
         rate = compute_strain_rate(strain, [50.0, 50.0])
         assert rate[1] == 0.0
+
+
+class TestNoiseVsSignalMetrics:
+    """The measurement-theory checks behind the honest QC (plan §7.5, F6).
+
+    Noise inflates every arc length, so a noisy clip reads *less* strain while
+    its NCC stays high. ``arc_length_inflation_mm`` measures that inflation
+    directly and ``arc_contraction_mm`` measures the signal it competes with.
+    """
+
+    @staticmethod
+    def _arc(n_frames: int = 6, contraction: float = 0.8, spacing: float = 1.0) -> np.ndarray:
+        """A straight line of nodes that shortens by ``contraction``."""
+        pts = np.zeros((n_frames, 6, 2), dtype=np.float64)
+        for t in range(n_frames):
+            step = 10.0 * spacing * (contraction if t == n_frames - 1 else 1.0)
+            pts[t, :, 0] = np.arange(6) * step
+        return pts
+
+    def test_noise_inflates_the_polyline(self) -> None:
+        rng = np.random.default_rng(7)
+        raw = self._arc() + rng.normal(0.0, 0.5, (6, 6, 2))
+        clean = self._arc()
+        inflation = arc_length_inflation_mm(raw, clean, list(range(6)), (0.5, 0.5))
+        assert inflation > 0.0
+
+    def test_clean_positions_have_no_inflation(self) -> None:
+        pts = self._arc()
+        assert arc_length_inflation_mm(pts, pts, list(range(6)), (0.5, 0.5)) == 0.0
+
+    def test_contraction_is_measured_from_ed(self) -> None:
+        pts = self._arc(contraction=0.8, spacing=1.0)
+        # ED length 50 px, ES length 40 px, spacing 0.5 mm/px → 5 mm
+        assert arc_contraction_mm(pts, list(range(6)), 0, (0.5, 0.5)) == pytest.approx(5.0, abs=1e-6)
+
+    def test_no_contraction_reads_zero_not_negative(self) -> None:
+        pts = self._arc(contraction=1.0)
+        assert arc_contraction_mm(pts, list(range(6)), 0, (1.0, 1.0)) == 0.0

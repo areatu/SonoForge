@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections import defaultdict
 from collections.abc import Callable
@@ -93,10 +94,17 @@ def block_match_single(
             continue
         k_level = ref_l[k_y0 : k_y0 + k_h, k_x0 : k_x0 + k_w].astype(np.float32)
 
-        x0 = max(0, int(cx_l) - search_r)
-        y0 = max(0, int(cy_l) - search_r)
-        x1 = min(w_l, int(cx_l) + search_r + 1)
-        y1 = min(h_l, int(cy_l) + search_r + 1)
+        # The search box has to be large enough to hold the *whole* kernel at
+        # the maximum offset, otherwise the usable range is silently
+        # ``search_radius − kernel_size/2``: with the default kernel (12) and
+        # search_radius (8) that left ±2 px per frame instead of ±8, and every
+        # faster-than-2 px/frame motion was clipped to the box edge (tracking
+        # under-measured the wall motion while NCC stayed moderate → GLS too
+        # small in absolute value at a "good" quality score).
+        x0 = max(0, int(cx_l) - search_r - half_l)
+        y0 = max(0, int(cy_l) - search_r - half_l)
+        x1 = min(w_l, int(cx_l) + search_r + half_l + 1)
+        y1 = min(h_l, int(cy_l) + search_r + half_l + 1)
 
         if x1 - x0 < k_w or y1 - y0 < k_h:
             continue
@@ -401,9 +409,11 @@ def track_cine_bidirectional(
     positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
     ncc_all = np.zeros((n_frames, n_kernels), dtype=np.float64)
     valid_all = np.zeros((n_frames, n_kernels), dtype=bool)
+    closure_all = np.full((n_frames, n_kernels), np.nan, dtype=np.float64)
     positions[ed_index] = ed_centers
     ncc_all[ed_index] = 1.0
     valid_all[ed_index] = True
+    closure_all[ed_index] = 0.0
 
     for t in range(n_frames):
         if t == ed_index:
@@ -436,10 +446,17 @@ def track_cine_bidirectional(
             for i in range(n_kernels):
                 if v_fwd[i] and bwd.valid_mask[i]:
                     closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - ed_centers[i]))
+                    closure_all[t, i] = closure_err
                     if closure_err > config.closure_error_threshold * config.search_radius:
+                        # The round trip did not close. The match is *not*
+                        # discarded here: calibration on the phantom showed the
+                        # flag is a screen, not a verdict — half of the rejected
+                        # node-frames are within 1 mm of the truth, and replacing
+                        # them by their neighbours measurably hurt the 20 dB
+                        # phantom (bias 0.02 -> 2.5 pp). The rejection is
+                        # reported and gated in QC instead, and the closure
+                        # error itself is carried out in ``closure_error``.
                         valid_all[t, i] = False
-                    else:
-                        ncc_all[t, i] = (w_fwd[i] + bwd.ncc_scores[i]) / 2.0
 
         if progress_callback:
             progress_callback(t + 1, n_frames)
@@ -457,6 +474,7 @@ def track_cine_bidirectional(
                 valid_mask=valid_all[t],
                 kernel_positions=positions[t],
                 reference_frame=ed_index,
+                closure_error=closure_all[t],
             )
         )
     return results
@@ -545,9 +563,11 @@ def track_cine_incremental(
         final_positions = np.zeros((n_frames, n_kernels, 2), dtype=np.float64)
         final_ncc = np.zeros((n_frames, n_kernels), dtype=np.float64)
         final_valid = np.zeros((n_frames, n_kernels), dtype=bool)
+        final_closure = np.full((n_frames, n_kernels), np.nan, dtype=np.float64)
         final_positions[ed_index] = current_ed_centers
         final_ncc[ed_index] = 1.0
         final_valid[ed_index] = True
+        final_closure[ed_index] = 0.0
 
         if iteration == 0:
             es_positions = coarse_positions[es_index]
@@ -620,6 +640,7 @@ def track_cine_incremental(
                 for i in range(n_kernels):
                     if match.valid_mask[i] and bwd.valid_mask[i]:
                         closure_err = float(np.linalg.norm(bwd.kernel_positions[i] - current_ed_centers[i]))
+                        final_closure[t, i] = closure_err
                         if closure_err > config.closure_error_threshold * config.search_radius:
                             final_valid[t, i] = False
                         else:
@@ -648,6 +669,7 @@ def track_cine_incremental(
                 valid_mask=final_valid[t],
                 kernel_positions=final_positions[t],
                 reference_frame=ed_index,
+                closure_error=final_closure[t],
             )
         )
     return results
@@ -717,6 +739,10 @@ def track_cine_sequential(
         )
 
         if config.bidirectional:
+            # NOTE: this round trip spans one frame pair (i+1 -> i), i.e. it is a
+            # local consistency check, not the ED-anchored drift that
+            # ``TrackingResult.closure_error`` reports. The incremental path
+            # therefore leaves that field NaN on purpose.
             bwd_kernels = [
                 TrackingKernel(
                     center=(float(positions[i + 1, j, 0]), float(positions[i + 1, j, 1])),
@@ -772,6 +798,90 @@ def track_cine_sequential(
     return results
 
 
+#: Radius used when a node is matched back to the end-diastolic frame. The round
+#: trip covers the whole systolic excursion (tens of pixels), so it needs at
+#: least the motion range the ED-anchored tracking itself uses; a smaller radius
+#: turns deep-systole nodes into "unverified" rather than into a verdict.
+VERIFICATION_SEARCH_RADIUS_PX = 24
+
+
+def verification_gate_px(config: SpeckleConfig) -> float:
+    """Round-trip rejection threshold of the verification pass, in pixels.
+
+    Single source of truth: the summary, the bench harness and the pass itself
+    must judge closure with the same constant, otherwise the reported rejection
+    share is measured against a rule that was never applied. It is derived from
+    (a fraction of) the search radius the round trip actually gets.
+    """
+    radius = max(int(config.search_radius), VERIFICATION_SEARCH_RADIUS_PX)
+    return float(config.closure_error_threshold * radius)
+
+
+def verify_trajectory_closure(
+    frames: np.ndarray,
+    positions: np.ndarray,
+    kernels: list[TrackingKernel],
+    *,
+    ed_index: int,
+    config: SpeckleConfig,
+    zone_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Round-trip verification of a *finished* trajectory (clinical review Q6).
+
+    For every analysed frame the kernel is matched **back** from its tracked
+    position to the end-diastolic frame, and the distance by which it misses the
+    contour the operator drew is the closure error. Unlike the tracker's internal
+    check — which runs on the raw matches, only in the bidirectional branch, and
+    merely flips a validity flag — this pass validates the trajectory that is
+    displayed and measured (after interpolation, outlier repair and smoothing),
+    in every tracking mode, so the number in the report describes the contour the
+    clinician actually sees.
+
+    The question asked is the tracker's own: *does the patch at the position the
+    report shows still match the tissue the operator drew at end diastole?* It is
+    deliberately asked in the raw image, not in the motion-compensated frame the
+    strain uses — an attempt to verify the compensated trajectory instead was
+    measured to need the global-shift estimate as an input, and that estimate is
+    itself unstable (on the translating-probe phantom it returns −58 px on a
+    frame whose true shift is 8 px), which produced more false alarms (29 % of
+    node-frames on a rigid phantom) than the check removes.
+
+    Returns a ``(n_frames, n_kernels)`` array in pixels; ``NaN`` where no verdict
+    exists (invalid backward match). The end-diastolic frame is 0 by definition.
+    """
+    track = np.asarray(positions, dtype=np.float64)
+    n_frames, n_kernels, _ = track.shape
+    verification = np.full((n_frames, n_kernels), np.nan, dtype=np.float64)
+    if n_kernels == 0 or n_frames == 0 or not 0 <= ed_index < n_frames:
+        return verification
+    verification[ed_index] = 0.0
+    ed_frame = frames[ed_index]
+    centers = np.array([kernel.center for kernel in kernels], dtype=np.float64)
+    match_config = dataclasses.replace(
+        config,
+        search_radius=max(int(config.search_radius), VERIFICATION_SEARCH_RADIUS_PX),
+    )
+    for t in range(n_frames):
+        if t == ed_index or not np.isfinite(track[t]).all():
+            continue
+        back_kernels = [
+            TrackingKernel(
+                center=(float(track[t, i, 0]), float(track[t, i, 1])),
+                node_index=kernel.node_index,
+                layer=kernel.layer,
+                radius=kernel.radius,
+                aha_segment=kernel.aha_segment,
+                arc_length_param=kernel.arc_length_param,
+            )
+            for i, kernel in enumerate(kernels)
+        ]
+        backwards = track_frame_pair(frames[t], ed_frame, back_kernels, match_config, zone_mask)
+        back_positions = np.asarray(backwards.kernel_positions, dtype=np.float64)
+        errors = np.linalg.norm(back_positions - centers, axis=1)
+        verification[t] = np.where(backwards.valid_mask, errors, np.nan)
+    return verification
+
+
 def _node_columns(kernels: list[TrackingKernel]) -> dict[int, dict[str, int]]:
     """Map each node index to its per-layer kernel indices."""
     columns: dict[int, dict[str, int]] = defaultdict(dict)
@@ -794,30 +904,41 @@ def clamp_kernels_to_wall_band(
     kernels: list[TrackingKernel],
     ed_positions: np.ndarray,
     *,
-    inward_slack: float = 0.45,
+    inward_slack: float = 1.0,
     outward_slack: float = 0.4,
     min_gap_px: float = 1.0,
     changed_eps: float = 0.25,
 ) -> tuple[np.ndarray, int]:
-    """Constrain one frame of kernel positions inside the myocardial wall band.
+    """Constrain one frame of kernel positions across the myocardial wall.
 
-    Every kernel column (same ``node_index``) must satisfy
+    The constraint acts on the **local wall normal** — the direction from the
+    column's ED endocardium to its ED epicardium — and only on that component:
 
-        r(endo) < r(mid) < r(epi)
+        -inward_slack·h <= s(endo) < s(mid) < s(epi) <= (1 + outward_slack)·h
 
-    along the outward normal of the wall, and the whole column must stay inside
-    a band derived from the ED positions: endo may move inward by up to
-    ``inward_slack`` wall thicknesses (systolic thickening), epi may drift
-    outward by up to ``outward_slack`` thicknesses. Kernels that left the band
-    (or inverted their radial order) are pulled back along the local normal,
-    which prevents the visible speckle/contour crossing when frames are
-    scrubbed and stabilises radial strain.
+    where ``h`` is the ED wall thickness of that column and ``s(x)`` is the
+    across-wall coordinate of ``x``. Motion *along* the wall (annular descent,
+    long-axis shortening, tangential tracking) is never touched.
+
+    Why not the radial direction from the cavity centre (the previous
+    implementation): near the annulus the wall runs almost parallel to that
+    radius, so genuine systolic motion projects onto it and was clipped as if it
+    were wall penetration. Measurements on the kinematic phantom (plan §7.5,
+    F2): the old band removed ≈28 % of a true −20 % strain (GLS −14.3 instead of
+    −18.5) while still leaving 41 % of kernel-frames outside the real wall.
+
+    The endocardium legitimately travels inward as the cavity empties (the wall
+    thickens), so the inward allowance is generous by default; the epicardium is
+    the near-static outer wall, so its outward drift is what the band really
+    guards against (``outward_slack``). Layer ordering is enforced with a
+    minimum gap, which is what stops kernels from crossing the wall.
 
     Args:
         frame_positions: (N_kernels, 2) kernel centers for one frame.
         kernels: kernel descriptors (layer + node_index).
-        ed_positions: (N_kernels, 2) ED-frame kernel centers used as the
-            wall-band baseline.
+        ed_positions: (N_kernels, 2) ED-frame kernel centers, the band baseline.
+        inward_slack: inward allowance for the endocardium, in ED wall thicknesses.
+        outward_slack: outward allowance for the epicardium, in ED wall thicknesses.
         changed_eps: only displacements larger than this (px) count as clamped.
 
     Returns:
@@ -826,15 +947,8 @@ def clamp_kernels_to_wall_band(
     frame_positions = np.asarray(frame_positions, dtype=np.float64).copy()
     ed_positions = np.asarray(ed_positions, dtype=np.float64)
     columns = _node_columns(kernels)
-    layers_by_idx: dict[str, list[int]] = defaultdict(list)
-    for idx, kernel in enumerate(kernels):
-        layers_by_idx[kernel.layer].append(idx)
-
     if frame_positions.shape[0] == 0:
         return frame_positions, 0
-
-    ed_center = _radial_center(ed_positions, layers_by_idx.get("mid", []) or layers_by_idx.get("endo", []))
-    frame_center = _radial_center(frame_positions, layers_by_idx.get("mid", []) or layers_by_idx.get("endo", []))
 
     changed = 0
     for node_id, layer_ids in columns.items():
@@ -844,54 +958,41 @@ def clamp_kernels_to_wall_band(
         if endo_id is None or epi_id is None:
             continue
 
-        # Wall-band baselines at ED, per radial column.
         ed_endo = ed_positions[endo_id]
         ed_epi = ed_positions[epi_id]
-        r_endo0 = float(np.linalg.norm(ed_endo - ed_center))
-        r_epi0 = float(np.linalg.norm(ed_epi - ed_center))
-        thickness0 = max(r_epi0 - r_endo0, 2.0)
-        low = r_endo0 - inward_slack * thickness0
-        high = r_epi0 + outward_slack * thickness0
-        gap = max(min_gap_px, thickness0 * 0.05)
+        wall = ed_epi - ed_endo
+        thickness = float(np.linalg.norm(wall))
+        if thickness < 2.0:
+            continue  # degenerate column: no meaningful normal
+        normal = wall / thickness
 
-        # Radial direction of the current wall column.
-        anchor_id = mid_id if mid_id is not None else endo_id
-        anchor = frame_positions[anchor_id]
-        radial = anchor - frame_center
-        norm = float(np.linalg.norm(radial))
-        if norm < 1e-6:
-            # Degenerate column: fall back to the epi direction.
-            radial = frame_positions[epi_id] - frame_center
-            norm = float(np.linalg.norm(radial))
-            if norm < 1e-6:
-                continue
-        u = radial / norm
+        low = -float(inward_slack) * thickness
+        high = (1.0 + float(outward_slack)) * thickness
+        gap = max(min_gap_px, thickness * 0.05)
 
-        def _t(kernel_id: int | None) -> float | None:
+        def _s(kernel_id: int | None) -> float | None:
             if kernel_id is None:
                 return None
-            return float(np.dot(frame_positions[kernel_id] - frame_center, u))
+            return float(np.dot(frame_positions[kernel_id] - ed_endo, normal))
 
-        t_endo = _t(endo_id)
-        t_mid = _t(mid_id)
-        t_epi = _t(epi_id)
-        if t_endo is None or t_epi is None:
+        s_endo = _s(endo_id)
+        s_mid = _s(mid_id)
+        s_epi = _s(epi_id)
+        if s_endo is None or s_epi is None:
             continue
 
-        # Sequential clipping guarantees t_endo < t_mid < t_epi inside [low, high].
-        new_t_endo = min(max(t_endo, low), high - 2.0 * gap)
-        new_t_mid = min(max(t_mid if t_mid is not None else new_t_endo, new_t_endo + gap), high - gap)
-        new_t_epi = min(max(t_epi, new_t_mid + gap), high)
+        # Sequential clipping keeps s_endo < s_mid < s_epi inside [low, high].
+        new_s_endo = min(max(s_endo, low), high - 2.0 * gap)
+        new_s_mid = min(max(s_mid if s_mid is not None else new_s_endo, new_s_endo + gap), high - gap)
+        new_s_epi = min(max(s_epi, new_s_mid + gap), high)
 
-        for kernel_id, new_t in ((endo_id, new_t_endo), (mid_id, new_t_mid), (epi_id, new_t_epi)):
+        for kernel_id, new_s in ((endo_id, new_s_endo), (mid_id, new_s_mid), (epi_id, new_s_epi)):
             if kernel_id is None:
                 continue
             old = frame_positions[kernel_id].copy()
-            projected = frame_positions[kernel_id] + u * (
-                new_t - float(np.dot(frame_positions[kernel_id] - frame_center, u))
-            )
-            frame_positions[kernel_id] = projected
-            if float(np.linalg.norm(projected - old)) > changed_eps:
+            current_s = float(np.dot(frame_positions[kernel_id] - ed_endo, normal))
+            frame_positions[kernel_id] = frame_positions[kernel_id] + normal * (new_s - current_s)
+            if float(np.linalg.norm(frame_positions[kernel_id] - old)) > changed_eps:
                 changed += 1
 
     return frame_positions, changed

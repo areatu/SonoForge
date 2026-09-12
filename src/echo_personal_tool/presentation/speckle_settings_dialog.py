@@ -58,17 +58,41 @@ class SpeckleSettingsDialog(QDialog):
         if idx >= 0:
             self._view_combo.setCurrentIndex(idx)
 
+        self._segment_flip_check = QCheckBox(self)
+        self._segment_flip_check.setToolTip(tr("dialog.speckle_settings.segment_flip_hint"))
+
         self._drift_compensation_check = QCheckBox(self)
         self._drift_compensation_check.setChecked(True)
         self._global_motion_check = QCheckBox(self)
         self._global_motion_check.setChecked(True)
 
         self._wall_thickness_spin = QDoubleSpinBox(self)
-        self._wall_thickness_spin.setRange(6.0, 12.0)
+        # 25 mm is the upper bound the geometry check accepts. Commercial STE
+        # packages cap the *default* band at 5-10 mm, but a hypertrophied or
+        # sigmoid wall needs more — with a thinner band only part of the
+        # myocardium is measured, and that part is what limits the strain.
+        self._wall_thickness_spin.setRange(5.0, 25.0)
         self._wall_thickness_spin.setSingleStep(0.5)
         self._wall_thickness_spin.setDecimals(1)
         self._wall_thickness_spin.setSuffix(" mm")
         self._wall_thickness_spin.setValue(8.0)
+        self._wall_thickness_spin.setToolTip(
+            "Thickness of the automatically generated epicardial contour.\n"
+            "Focal hypertrophy (e.g. a sigmoid basal septum) is handled by "
+            "dragging the epicardial contour nodes locally: the drawn "
+            "epicardium defines the measured zone node by node."
+        )
+
+        # User-controllable regularization (Voigt 2015): the temporal
+        # Savitzky-Golay window applied to the strain curves before ESS/TTP/peak
+        # are read. 1 disables the filter; even values are made odd by the
+        # filter itself. The window actually applied is declared in the report.
+        self._curve_smoothing_spin = QSpinBox(self)
+        self._curve_smoothing_spin.setRange(1, 31)
+        self._curve_smoothing_spin.setSingleStep(2)
+        self._curve_smoothing_spin.setSuffix(" " + tr("dialog.speckle_settings.frames"))
+        self._curve_smoothing_spin.setValue(int(SpeckleConfig.preset_standard().curve_smoothing_frames))
+        self._curve_smoothing_spin.setToolTip(tr("dialog.speckle_settings.curve_smoothing_hint"))
 
         self._ed_spin = QSpinBox(self)
         self._ed_spin.setRange(0, max(0, n_frames - 1))
@@ -93,9 +117,11 @@ class SpeckleSettingsDialog(QDialog):
         form.addRow(tr("strain.position") + ":", self._view_combo)
         form.addRow("Preset:", self._preset_combo)
         form.addRow("Tracking mode:", self._mode_combo)
+        form.addRow(tr("dialog.speckle_settings.curve_smoothing") + ":", self._curve_smoothing_spin)
         form.addRow("Drift compensation:", self._drift_compensation_check)
         form.addRow("Global motion compensation:", self._global_motion_check)
         form.addRow("Wall thickness:", self._wall_thickness_spin)
+        form.addRow(tr("dialog.speckle_settings.segment_flip") + ":", self._segment_flip_check)
         form.addRow(self._ed_auto_check)
         form.addRow("ED frame:", self._ed_spin)
         form.addRow(self._es_auto_check)
@@ -153,4 +179,6 @@ class SpeckleSettingsDialog(QDialog):
             global_motion_compensation=self._global_motion_check.isChecked(),
             wall_thickness_mm=float(self._wall_thickness_spin.value()),
             tracking_mode=str(self._mode_combo.currentData()),
+            curve_smoothing_frames=int(self._curve_smoothing_spin.value()),
+            segment_flip=self._segment_flip_check.isChecked(),
         )

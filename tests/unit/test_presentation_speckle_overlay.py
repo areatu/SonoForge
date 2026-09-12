@@ -247,3 +247,175 @@ class TestKernelClickedSignal:
         mock_point.index.return_value = 5
         overlay._on_kernel_clicked(None, [mock_point])
         mock_signal.assert_called_once_with(5)
+
+
+class TestVerificationMarks:
+    """Q6: the reader must see where the drawn contour is not confirmed."""
+
+    def test_marks_rejected_and_unverified_nodes(self, overlay):
+        positions = np.array([[50.0, 50.0], [60.0, 60.0], [70.0, 70.0], [80.0, 80.0]])
+        rejected = np.array([True, False, False, True])
+        unverified = np.array([False, True, False, False])
+        overlay.show_verification_marks(positions, rejected, unverified, legend="2 marks")
+
+        assert list(overlay._verification_rejected_scatter.getData()[0]) == [50.0, 80.0]
+        assert list(overlay._verification_unverified_scatter.getData()[0]) == [60.0]
+        assert overlay._verification_legend.isVisible()
+
+    def test_confirmed_nodes_are_not_marked(self, overlay):
+        positions = np.array([[50.0, 50.0], [60.0, 60.0]])
+        overlay.show_verification_marks(positions, np.array([False, False]), np.array([False, False]), legend="nothing")
+
+        assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
+        assert len(overlay._verification_unverified_scatter.getData()[0]) == 0
+        assert not overlay._verification_legend.isVisible()
+
+    def test_nan_positions_are_skipped(self, overlay):
+        positions = np.array([[np.nan, np.nan], [60.0, 60.0]])
+        overlay.show_verification_marks(positions, np.array([True, True]), np.array([False, False]))
+
+        assert list(overlay._verification_rejected_scatter.getData()[0]) == [60.0]
+
+    def test_none_clears_the_marks(self, overlay):
+        overlay.show_verification_marks(np.array([[50.0, 50.0]]), np.array([True]), np.array([False]), legend="x")
+        overlay.show_verification_marks(None, None, None)
+
+        assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
+        assert not overlay._verification_legend.isVisible()
+
+    def test_clear_removes_the_marks(self, overlay):
+        overlay.show_verification_marks(np.array([[50.0, 50.0]]), np.array([True]), np.array([True]), legend="x")
+        overlay.clear()
+
+        assert len(overlay._verification_rejected_scatter.getData()[0]) == 0
+        assert len(overlay._verification_unverified_scatter.getData()[0]) == 0
+        assert not overlay._verification_legend.isVisible()
+
+
+def _make_segment_kernel(x, y, segment, layer="endo"):
+    from echo_personal_tool.domain.models.speckle import TrackingKernel
+
+    return TrackingKernel(center=(x, y), radius=10, node_index=0, layer=layer, aha_segment=segment)
+
+
+class TestSegmentLabelAnchors:
+    """Placement maths of the labels: next to the segment, outside the wall."""
+
+    def test_one_anchor_per_segment_sorted_by_id(self):
+        from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+
+        kernels = [
+            _make_segment_kernel(10.0, 50.0, 6),
+            _make_segment_kernel(20.0, 60.0, 3),
+            _make_segment_kernel(30.0, 70.0, 3),
+        ]
+        positions = np.array([[10.0, 50.0], [20.0, 60.0], [30.0, 70.0]])
+        anchors = segment_label_anchors(kernels, positions, offset_px=20.0)
+
+        assert [segment for segment, _x, _y in anchors] == [3, 6]
+
+    def test_anchors_move_away_from_the_cavity(self):
+        from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+
+        # Two walls of one view: septal nodes on the left, lateral on the right.
+        kernels = [_make_segment_kernel(30.0, 50.0, 3), _make_segment_kernel(70.0, 50.0, 6)]
+        positions = np.array([[30.0, 50.0], [70.0, 50.0]])
+
+        anchors = segment_label_anchors(kernels, positions, offset_px=10.0)
+
+        assert [segment for segment, _x, _y in anchors] == [3, 6]
+        cavity = np.array([50.0, 50.0])
+        for segment, x, y in anchors:
+            node = positions[0] if segment == 3 else positions[1]
+            # The label sits exactly `offset_px` further out than its own nodes.
+            assert np.linalg.norm(np.array([x, y]) - cavity) == pytest.approx(np.linalg.norm(node - cavity) + 10.0)
+        # And the two labels part ways instead of landing on each other.
+        assert anchors[0][1] < 30.0 < 70.0 < anchors[1][1]
+
+    def test_degenerate_direction_is_deterministic(self):
+        from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+
+        kernels = [_make_segment_kernel(50.0, 50.0, 9)]
+        positions = np.array([[50.0, 50.0]])
+        first = segment_label_anchors(kernels, positions, offset_px=12.0)
+        second = segment_label_anchors(kernels, positions, offset_px=12.0)
+
+        assert first == second
+        assert first[0][1:] == (50.0, 62.0)
+
+    def test_skips_unknown_segments_other_layers_and_bad_positions(self):
+        from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+
+        kernels = [
+            _make_segment_kernel(10.0, 10.0, 0),  # no AHA segment
+            _make_segment_kernel(20.0, 20.0, 3, layer="mid"),  # not the drawn layer
+            _make_segment_kernel(30.0, 30.0, 3),  # kept
+            _make_segment_kernel(40.0, 40.0, 6),  # kept
+        ]
+        positions = np.array([[10.0, 10.0], [20.0, 20.0], [30.0, 30.0], [np.nan, 40.0]])
+
+        anchors = segment_label_anchors(kernels, positions)
+
+        assert [segment for segment, _x, _y in anchors] == [3]
+
+    def test_no_positions_no_anchors(self):
+        from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+
+        assert segment_label_anchors([_make_segment_kernel(1.0, 1.0, 3)], None) == []
+        assert segment_label_anchors([], np.array([]).reshape(0, 2)) == []
+
+
+class TestSegmentLabels:
+    """Vendor style (§5.3 п.4): the wall is named where it is measured."""
+
+    def test_draws_one_label_per_segment(self, overlay):
+        kernels = [
+            _make_segment_kernel(10.0, 50.0, 3),
+            _make_segment_kernel(20.0, 60.0, 3),
+            _make_segment_kernel(30.0, 70.0, 6),
+        ]
+        positions = np.array([[10.0, 50.0], [20.0, 60.0], [30.0, 70.0]])
+
+        drawn = overlay.show_segment_labels(kernels, positions)
+
+        assert drawn == 2
+        assert len(overlay._segment_labels) == 2
+
+    def test_labels_use_the_localised_short_names(self, overlay):
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        kernels = [_make_segment_kernel(10.0, 50.0, 3), _make_segment_kernel(30.0, 70.0, 18)]
+        positions = np.array([[10.0, 50.0], [30.0, 70.0]])
+
+        set_language("ru")
+        try:
+            overlay.show_segment_labels(kernels, positions)
+            assert [item.toPlainText() for item in overlay._segment_labels] == ["БазПерг", "АпБок"]
+        finally:
+            set_language("en")
+
+        overlay.show_segment_labels(kernels, positions)
+        assert [item.toPlainText() for item in overlay._segment_labels] == ["BasSept", "ApLat"]
+
+    def test_relabelling_replaces_the_previous_labels(self, overlay):
+        kernels = [_make_segment_kernel(10.0, 50.0, 3)]
+        overlay.show_segment_labels(kernels, np.array([[10.0, 50.0]]))
+        overlay.show_segment_labels([], None)
+
+        assert overlay._segment_labels == []
+
+    def test_clear_removes_labels_with_the_overlay(self, overlay):
+        kernels = [_make_segment_kernel(10.0, 50.0, 3)]
+        overlay.show_segment_labels(kernels, np.array([[10.0, 50.0]]))
+        assert len(overlay._segment_labels) == 1
+
+        overlay.clear()
+
+        assert overlay._segment_labels == []
+
+    def test_ignores_kernels_without_segment_ids(self, overlay):
+        kernels = [_make_segment_kernel(10.0, 50.0, 0)]
+        positions = np.array([[10.0, 50.0]])
+
+        assert overlay.show_segment_labels(kernels, positions) == 0
+        assert overlay._segment_labels == []

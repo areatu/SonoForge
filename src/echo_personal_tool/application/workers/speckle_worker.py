@@ -18,8 +18,6 @@ from echo_personal_tool.domain.models.speckle import (
 )
 from echo_personal_tool.domain.services.aha_segments import (
     assign_aha_segments,
-    choose_clinical_gls,
-    compute_aha_segment_strain,
     compute_gls_from_segments,
 )
 from echo_personal_tool.domain.services.cardiac_cycle_detector import (
@@ -29,6 +27,8 @@ from echo_personal_tool.domain.services.cardiac_cycle_detector import (
     estimate_heart_rate_fft,
 )
 from echo_personal_tool.domain.services.myocardial_zone import sample_kernels_in_zone
+from echo_personal_tool.domain.services.quality import assess_tracking_quality
+from echo_personal_tool.domain.services.segment_map import describe_segment_sides
 from echo_personal_tool.domain.services.speckle_tracking import (
     build_zone_mask,
     clamp_trajectories_to_wall,
@@ -39,21 +39,39 @@ from echo_personal_tool.domain.services.speckle_tracking import (
     track_cine_bidirectional,
     track_cine_incremental,
     track_cine_sequential,
+    verification_gate_px,
+    verify_trajectory_closure,
 )
 from echo_personal_tool.domain.services.strain_computation import (
-    apply_drift_compensation,
+    aggregate_segment_curves,
+    arc_contraction_mm,
+    arc_length_inflation_mm,
     assess_strain_plausibility,
     compute_gls,
+    compute_longitudinal_strain_gl,
+    compute_node_longitudinal_curves,
     compute_strain_rate,
     compute_weighted_longitudinal_strain_gl,
     compute_weighted_radial_strain_gl,
+    effective_curve_smoothing_window,
+    global_curve_from_node_curves,
+    peak_in_window,
+    smooth_curves_time,
+)
+from echo_personal_tool.domain.services.strain_metrics import (
+    compute_strain_metrics,
+    detect_avc_frame,
+    estimate_cycle_length_frames,
+    time_to_peak_map,
 )
 from echo_personal_tool.domain.services.tracking_smoothing import (
     apply_motion_model,
     extract_trajectories,
     interpolate_invalid_kernels,
+    repair_outlier_columns,
     smooth_trajectories,
 )
+from echo_personal_tool.domain.services.wall_visibility import measure_wall_visibility
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +117,123 @@ def _load_full_cine_frames(path: Path | str, media_format: str) -> np.ndarray:
     if not frames_list:
         raise RuntimeError("No frames decoded from source")
     return np.stack(frames_list)
+
+
+def _regularization_text(config: SpeckleConfig, window_frames: int) -> str:
+    """Declare the regularization that was applied to *this* analysis window.
+
+    The Savitzky-Golay length is forced odd and clamped to the analysis window
+    (``effective_curve_smoothing_window``), so a long requested window on a short
+    clip is not what the curves actually got — the report has to say so.
+    """
+    applied = effective_curve_smoothing_window(
+        int(config.curve_smoothing_frames),
+        int(window_frames),
+    )
+    curve_part = (
+        f"Savitzky-Golay {applied}-frame filter on the strain curves"
+        if applied
+        else (
+            f"no temporal curve filter (requested {int(config.curve_smoothing_frames)} frames, "
+            f"analysis window {int(window_frames)} frames)"
+        )
+    )
+    return (
+        f"quality-weighted spatial + temporal spline smoothing of trajectories "
+        f"(spatial={config.spatial_smoothing:g}, temporal={config.temporal_smoothing:g}), {curve_part}"
+    )
+
+
+def _closure_gate_px(config: SpeckleConfig) -> float:
+    """Round-trip rejection threshold of the verification pass, in pixels.
+
+    Thin alias of the domain helper so the worker, the harnesses and the pass
+    itself can never drift apart (the radius the round trip gets is a floor of
+    ``VERIFICATION_SEARCH_RADIUS_PX``, not whatever the selected tracking mode
+    happens to use).
+    """
+    return verification_gate_px(config)
+
+
+def _embed_closure_matrix(closure: np.ndarray, n_frames: int, phase_start: int) -> np.ndarray:
+    """Place the tracked-window closure matrix on the full frame timeline."""
+    embedded = np.full((n_frames, closure.shape[1]), np.nan, dtype=np.float64)
+    tracked_len = int(min(closure.shape[0], n_frames - phase_start))
+    if tracked_len > 0:
+        embedded[phase_start : phase_start + tracked_len] = closure[:tracked_len]
+    return embedded
+
+
+# Fewer visible endocardial nodes than this and the arc is no longer a usable
+# material line: the visibility filter is then abandoned (and the QC report
+# still carries the measured loss), instead of reporting the strain of a stub.
+MIN_VISIBLE_NODES = 8
+
+
+def _invisible_segments(
+    kernels: list[TrackingKernel],
+    arc_columns: list[int],
+    visible_nodes: np.ndarray,
+) -> tuple[int, ...]:
+    """AHA segments of one view whose nodes are mostly invisible (clinical Q4).
+
+    A segment is treated as not measured when fewer than half of its nodes are
+    visible somewhere in the wall along the cycle — a single unlucky node must
+    not retire a segment. EACVI/ASE allow one excluded segment per view.
+    """
+    per_segment: dict[int, list[bool]] = {}
+    for node in arc_columns:
+        segment = getattr(kernels[node], "aha_segment", None)
+        if segment is None:
+            continue
+        per_segment.setdefault(int(segment), []).append(bool(visible_nodes[node]))
+    return tuple(sorted(seg for seg, flags in per_segment.items() if sum(flags) * 2 < len(flags)))
+
+
+def _arc_ordered_columns(
+    indices: list[int],
+    kernels: list[TrackingKernel],
+    *,
+    drop_ends: int = 0,
+) -> list[int]:
+    """Kernel indices of one layer, ordered along the wall, ends optionally dropped."""
+    ordered = sorted(indices, key=lambda i: kernels[i].node_index)
+    if drop_ends > 0 and len(ordered) > 2 * drop_ends + 2:
+        ordered = ordered[drop_ends:-drop_ends]
+    return ordered
+
+
+def _segment_tracking_quality(
+    kernels: list[TrackingKernel],
+    ncc_matrix: np.ndarray,
+    ed_index: int,
+    es_index: int,
+    *,
+    min_quality: float = 0.3,
+) -> dict[int, float]:
+    """Mean NCC fidelity per AHA segment over the ED..ES window.
+
+    One number per segment: the mean NCC of the kernels that belong to it
+    (all layers), so the bull's-eye can grey out a segment whose speckle was
+    not tracked, independently of the strain value it shows.
+    """
+    if ncc_matrix is None or len(kernels) == 0:
+        return {}
+    start = int(max(0, min(ed_index, es_index)))
+    end = int(min(ncc_matrix.shape[0] - 1, max(ed_index, es_index)))
+    if end < start:
+        return {}
+    window = np.asarray(ncc_matrix[start : end + 1], dtype=np.float64)
+    per_kernel = np.nanmean(window, axis=0) if window.size else np.zeros(len(kernels))
+    out: dict[int, list[float]] = {}
+    for index, kernel in enumerate(kernels):
+        segment = int(getattr(kernel, "aha_segment", 0) or 0)
+        if segment <= 0:
+            continue
+        value = float(per_kernel[index]) if index < per_kernel.shape[0] else float("nan")
+        if np.isfinite(value):
+            out.setdefault(segment, []).append(value)
+    return {seg: float(np.mean(values)) for seg, values in out.items() if values}
 
 
 def _embed_window_curve(
@@ -167,6 +302,103 @@ def _resolve_partial_manual_anchors(
     return ed, es, source
 
 
+def _ecg_avc_frame_local(
+    r_peak_result,
+    local_ed: int,
+    frame_time_ms: float,
+    phase_start: int,
+    local_window_end: int,
+) -> int | None:
+    """AVC from the ECG: the end of the T-wave / second heart sound surrogate.
+
+    Without a phonocardiogram the ECG cannot give AVC directly; the interval
+    from the R-peak that started this beat to the end of systole is taken as an
+    adaptive fraction of the RR interval (~35 % of the cycle, the standard
+    approximation used for ES), and only returned when a plausible RR interval
+    was actually measured. The caller keeps the source string, so the UI can
+    state where the anchor came from instead of implying an ECG measurement.
+    """
+    if r_peak_result is None:
+        return None
+    times = np.asarray(getattr(r_peak_result, "r_peak_times_ms", ()), dtype=np.float64)
+    if times.size < 2 or frame_time_ms <= 0:
+        return None
+    rr_ms = float(np.median(np.diff(times)))
+    if not np.isfinite(rr_ms) or rr_ms <= 0:
+        return None
+    # R-peak of the analysed beat → frame index inside the local window
+    r_local = [int(round(t / frame_time_ms)) - phase_start for t in times]
+    beat_start = min((value for value in r_local if value >= -2), default=None)
+    if beat_start is None:
+        return None
+    avc = int(round(beat_start + 0.35 * rr_ms / frame_time_ms))
+    if avc < local_ed or avc > local_window_end:
+        return None
+    return avc
+
+
+def _check_ste_geometry(
+    zone: MyocardialZone,
+    pixel_spacing: tuple[float, float],
+) -> tuple[bool, tuple[str, ...]]:
+    """Anatomical sanity check of the drawn myocardial zone.
+
+    Catches the cases that make every downstream number meaningless no matter
+    how well the blocks matched: a degenerate LV outline (a dot, a straight
+    line, a closed ring instead of an apical arc), a wrong scale, or an
+    epicardial contour that does not sit outside the endocardium.
+
+    The zone is an *open* apical arc running from one mitral annulus point
+    through the apex to the other (see :func:`create_myocardial_zone`), so the
+    checks are arc-based: total arc length, annulus chord, apical depth
+    (distance from the chord) and the mean endo→epi distance in mm.
+    """
+    notes: list[str] = []
+    try:
+        endo = np.asarray(zone.endo_points, dtype=np.float64)
+        epi = np.asarray(zone.epi_points, dtype=np.float64)
+        row_spacing, col_spacing = (float(pixel_spacing[0]), float(pixel_spacing[1]))
+        if not np.isfinite([row_spacing, col_spacing]).all() or row_spacing <= 0 or col_spacing <= 0:
+            return False, ("pixel spacing is not calibrated",)
+
+        if endo.ndim != 2 or endo.shape[0] < 8 or not np.all(np.isfinite(endo)):
+            return False, ("LV endocardial contour is unusable",)
+        if epi.shape != endo.shape or not np.all(np.isfinite(epi)):
+            return False, ("LV epicardial contour does not match the endocardium",)
+
+        # Row/col spacing may be anisotropic; scale each axis before measuring.
+        endo_mm = endo * np.array([col_spacing, row_spacing])
+        epi_mm = epi * np.array([col_spacing, row_spacing])
+
+        segments = np.linalg.norm(np.diff(endo_mm, axis=0), axis=1)
+        arc_length = float(np.sum(segments))
+        chord = float(np.linalg.norm(endo_mm[-1] - endo_mm[0]))
+        chord_dir = endo_mm[-1] - endo_mm[0]
+        chord_norm = float(np.linalg.norm(chord_dir))
+        if chord_norm > 1e-6:
+            normal = np.array([-chord_dir[1], chord_dir[0]]) / chord_norm
+            depth = float(np.max(np.abs((endo_mm - endo_mm[0]) @ normal)))
+        else:
+            depth = arc_length
+
+        # Distance from each epicardial point to the endocardial arc — robust to
+        # a hand-drawn epicardium whose node order does not match the endocardium.
+        pairwise = np.linalg.norm(epi_mm[:, None, :] - endo_mm[None, :, :], axis=2)
+        thickness = float(np.mean(np.min(pairwise, axis=1)))
+
+        if arc_length < 30.0:
+            notes.append("LV contour is too short to measure strain")
+        elif chord < 10.0:
+            notes.append("LV annulus is not defined (contour looks closed)")
+        elif depth < 8.0:
+            notes.append("LV contour is a straight line without an apex")
+        if not notes and not 1.0 <= thickness <= 25.0:
+            notes.append("myocardial wall thickness is implausible")
+    except Exception:  # noqa: BLE001 — geometry check must never break tracking
+        notes.append("LV geometry could not be validated")
+    return (not notes), tuple(notes)
+
+
 class SpeckleTrackingSignals(QObject):
     finished = Signal(object)
     error = Signal(str)
@@ -184,6 +416,7 @@ class SpeckleTrackingWorker(QRunnable):
         config_preset: str = "standard",
         manual_ed: int | None = None,
         manual_es: int | None = None,
+        view: str = "A4C",
         ecg_waveform=None,
         simpson_area_curve: tuple[tuple[int, float], ...] = (),
         source_path: Path | str | None = None,
@@ -202,6 +435,9 @@ class SpeckleTrackingWorker(QRunnable):
         self._config_preset = config_preset
         self._manual_ed = manual_ed
         self._manual_es = manual_es
+        # Analysed apical view — decides which wall pair the AHA segment ids
+        # name (issue #C2). Default A4C keeps old callers working.
+        self._view = str(view or "A4C").upper()
         self._ecg_waveform = ecg_waveform
         self._simpson_area_curve = simpson_area_curve
         self._source_path = source_path
@@ -245,7 +481,12 @@ class SpeckleTrackingWorker(QRunnable):
                 self._zone,
                 kernel_radius=kernel_radius,
             )
-            kernels = assign_aha_segments(kernels, lv_center=lv_center, view="A4C")
+            kernels = assign_aha_segments(
+                kernels,
+                lv_center=lv_center,
+                view=self._view,
+                flip=config.segment_flip,
+            )
 
             manual_ed_given = self._manual_ed is not None
             manual_es_given = self._manual_es is not None
@@ -309,10 +550,57 @@ class SpeckleTrackingWorker(QRunnable):
                     ed_es_source = partial_source
                     ed_es_confidence = 0.8  # manual side is exact, auto side needs review
 
+            # ── Analysis window: a full cardiac cycle, not just ED…ES.
+            # Strain after aortic valve closure (post-systolic shortening) and
+            # the time-to-peak of every segment are only visible if the tracked
+            # window runs to the next end-diastole; the old ED…ES window made
+            # both structurally unmeasurable (issue #C10).
             phase_start = min(global_ed, global_es)
-            phase_end = max(global_ed, global_es)
+            rr_frames = None
+            if r_peak_result is not None and len(r_peak_result.r_peak_times_ms) >= 2:
+                rr_ms = float(np.median(np.diff(r_peak_result.r_peak_times_ms)))
+                if rr_ms > 0:
+                    rr_frames = rr_ms / max(self._frame_time_ms, 1e-6)
+            heart_rate_for_cycle = 0.0
+            try:
+                roi = build_myocardial_roi_mask(self._frames.shape[1:], self._zone)
+                heart_rate_for_cycle = float(
+                    estimate_heart_rate_fft(
+                        self._frames,
+                        roi_mask=roi,
+                        fps=1000.0 / self._frame_time_ms if self._frame_time_ms > 0 else 30.0,
+                    )
+                )
+            except Exception:  # noqa: BLE001 — HR is only a hint for the window length
+                heart_rate_for_cycle = 0.0
+            cycle_frames = estimate_cycle_length_frames(
+                global_ed,
+                global_es,
+                n_frames,
+                heart_rate_bpm=heart_rate_for_cycle,
+                frame_time_ms=self._frame_time_ms,
+                rr_frames=rr_frames,
+            )
+            cycle_estimated = rr_frames is None and heart_rate_for_cycle <= 20.0
+            phase_end = int(min(global_ed + cycle_frames, n_frames - 1))
+            if phase_end <= max(global_ed, global_es):
+                # The clip ends at ES — analyse what exists and say so.
+                phase_end = max(global_ed, global_es)
             local_ed = global_ed - phase_start
             local_es = global_es - phase_start
+            local_window_end = phase_end - phase_start
+            # HR/RR are not logged: they are patient-derived values and already
+            # travel with the analysis record (``heart_rate_bpm``); CodeQL reads
+            # them as sensitive data in logs, and the log does not need them.
+            logger.info(
+                "STE analysis window: ED=%d ES=%d end=%d (%d frames, cycle_estimated=%s, rr_available=%s)",
+                global_ed,
+                global_es,
+                phase_end,
+                phase_end - phase_start + 1,
+                cycle_estimated,
+                "ecg" if rr_frames is not None else "no",
+            )
             logger.info(
                 "STE: global_ed=%d global_es=%d phase=[%d..%d] tracking_mode=%s",
                 global_ed,
@@ -338,19 +626,35 @@ class SpeckleTrackingWorker(QRunnable):
 
             self.signals.progress.emit(0, 100)
             wall_thickness_px = int(config.wall_thickness_mm / avg_spacing)
-            if config.tracking_mode in ("incremental", "bidirectional"):
-                # ED-anchored modes jump from ED to every frame, so the search
-                # window must span the full systolic excursion. A frame-to-frame
-                # sized radius would clip the match near end-systole.
-                config = dataclasses.replace(
-                    config,
-                    search_radius=max(config.search_radius, 24),
-                )
             # Vendor-style border propagation: only well-posed when the window
             # starts at ED and runs to ES (the last frame of the window).
             is_border_mode = bool(
                 config.tracking_mode == "border" and local_ed == 0 and local_es == int(preprocessed.shape[0]) - 1
             )
+            if is_border_mode:
+                tracking_path = "border"
+            elif config.tracking_mode == "incremental":
+                tracking_path = "incremental"
+            elif config.tracking_mode == "sequential":
+                tracking_path = "sequential"
+            else:
+                # Includes the fallback from "border" when the window is not a
+                # full ED..ES cycle (manual ES, sub-window, offset ED).
+                tracking_path = "bidirectional"
+            if tracking_path in ("incremental", "bidirectional"):
+                # ED-anchored modes jump from ED to every frame, so the search
+                # window must span the full systolic excursion: the annulus
+                # descends tens of pixels between ED and ES, and a radius that
+                # only covers frame-to-frame motion clips the match near
+                # end-systole (silently reporting a *smaller* strain while NCC
+                # stays high). The old code only did this for the explicitly
+                # selected modes, so the "border" preset silently degraded to
+                # bidirectional tracking *with the small radius* whenever the
+                # window was not a full cycle (plan §7.5, F9).
+                config = dataclasses.replace(
+                    config,
+                    search_radius=max(config.search_radius, 24),
+                )
             border_propagation = None
             if is_border_mode:
                 from echo_personal_tool.domain.services.border_tracking import (
@@ -417,7 +721,8 @@ class SpeckleTrackingWorker(QRunnable):
                 kernels = assign_aha_segments(
                     border_propagation["kernels"],
                     lv_center=tuple(np.mean(self._zone.endo_points, axis=0).tolist()),
-                    view="A4C",
+                    view=self._view,
+                    flip=config.segment_flip,
                 )
                 positions = border_propagation["positions"]
                 ncc_matrix = border_propagation["ncc"]
@@ -431,6 +736,23 @@ class SpeckleTrackingWorker(QRunnable):
                     kernels,
                     config.ncc_threshold,
                 )
+                # A match can be well correlated and still land on the wrong
+                # speckle patch. Such a column is replaced by the median of its
+                # immediate neighbours (plan §7.5, F8): a *median* follows any
+                # locally smooth field, including the curved displacement of a
+                # rotating ventricle, and the repair is gated on a robust
+                # residual scale, so a healthy column is never touched.
+                positions, outlier_columns = repair_outlier_columns(
+                    positions,
+                    kernels,
+                    track_ed_index,
+                    self._pixel_spacing,
+                )
+                if outlier_columns.any():
+                    logger.info(
+                        "STE wall-motion outliers: %d kernel-frames replaced by their neighbour median",
+                        int(outlier_columns.sum()),
+                    )
                 raw_positions = positions.copy()
                 if config.global_motion_compensation:
                     translations = estimate_global_translations(tracking_frames_raw, local_ed)
@@ -448,28 +770,100 @@ class SpeckleTrackingWorker(QRunnable):
                         track_ed_index,
                         config.ncc_threshold,
                     )
-                # Radial containment: keep layer order and prevent spurious
-                # spikes across the wall. The epicardium is a near-hard outer
-                # wall — during systole the epi barely moves — while inward
-                # slack lets the wall thicken/contract without being erased by
-                # the ED baseline.
-                smoothed, n_clamped = clamp_trajectories_to_wall(
-                    smoothed,
-                    kernels,
-                    track_ed_index,
-                    inward_slack=1.4,
-                    outward_slack=0.0,
-                )
-                logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
+                # Wall-band containment (off by default, plan §7.5 F2): the
+                # band is the *ED* wall, so a wall that travels further inward
+                # than the ED geometry allows (or rotates as a whole) is pulled
+                # back — measured as 4-5 pp of lost strain and as probe motion
+                # turning into deformation. The phantom is the reference for
+                # this decision; the clamp stays available for A/B comparison.
+                if config.wall_clamp:
+                    smoothed, n_clamped = clamp_trajectories_to_wall(
+                        smoothed,
+                        kernels,
+                        track_ed_index,
+                        inward_slack=1.4,
+                        outward_slack=0.0,
+                    )
+                    logger.info("STE containment clamp: %d kernel-frame moves corrected", n_clamped)
 
             endo_indices = [i for i, k in enumerate(kernels) if k.layer == "endo"]
             epi_indices = [i for i, k in enumerate(kernels) if k.layer == "epi"]
+            # The arc integral must walk the wall in order (the strain helper
+            # uses the order it is given) and it uses every column: dropping the
+            # two annulus-plane columns was only needed while the phantom's
+            # annulus band was static (plan §7.5 F2/F8), and with the corrected
+            # phantom the two ends are as accurate as the rest of the wall.
+            # Round-trip verification of the tracking (clinical review Q6): the
+            # finished trajectory — the one the overlay draws and the strain
+            # integrates — is matched back to end diastole, node by node and
+            # frame by frame, and the miss distance is reported. It runs here
+            # rather than inside the tracker so that every tracking mode gets the
+            # same verdict and the verdict describes the *smoothed* curve.
+            # No zone mask: the mask constrains *tracking* to the myocardial
+            # band, while the round trip is a verification of the trajectory and
+            # must be able to match back wherever the tissue went (measured:
+            # with the static ED mask only 24 % of the endocardial nodes could be
+            # verified, without it 100 %).
+            closure_matrix = verify_trajectory_closure(
+                preprocessed,
+                smoothed,
+                kernels,
+                ed_index=local_ed,
+                config=config,
+            )
+            logger.info(
+                "STE verification pass: closure over %d frames x %d kernels",
+                closure_matrix.shape[0],
+                closure_matrix.shape[1],
+            )
+
+            strain_endo_all = _arc_ordered_columns(endo_indices, kernels)
+            strain_epi_all = _arc_ordered_columns(epi_indices, kernels)
+
+            # Which tissue is actually in the image? (clinical review Q4) A node
+            # that runs out of the sector keeps producing a position (the match
+            # locks onto the boundary, where a blank patch even scores NCC 1.0),
+            # so the strain must be computed on the visible part of the wall
+            # only, and the report has to say how much was dropped.
+            n_tracked_frames = int(min(preprocessed.shape[0], smoothed.shape[0]))
+            visibility = measure_wall_visibility(
+                preprocessed[:n_tracked_frames],
+                smoothed[:n_tracked_frames],
+                reference_index=int(min(max(local_ed, 0), n_tracked_frames - 1)) if n_tracked_frames else 0,
+                kernel_radius=max(1, config.kernel_size // 2),
+            )
+            visible_nodes = visibility.visible_nodes()
+            strain_endo = [i for i in strain_endo_all if visible_nodes[i]]
+            strain_epi = [
+                column
+                for position, column in enumerate(strain_epi_all)
+                if position < len(strain_endo_all) and visible_nodes[strain_endo_all[position]]
+            ]
+            excluded_endo_nodes = [i for i in strain_endo_all if not visible_nodes[i]]
+            if len(strain_endo) < MIN_VISIBLE_NODES or len(strain_epi) != len(strain_endo):
+                logger.warning(
+                    "STE visibility: only %d/%d endocardial nodes visible (epi %d) — keeping the full arc",
+                    len(strain_endo),
+                    len(strain_endo_all),
+                    len(strain_epi),
+                )
+                strain_endo = strain_endo_all
+                strain_epi = strain_epi_all
+                excluded_endo_nodes = []
+            excluded_segments = _invisible_segments(kernels, strain_endo_all, visible_nodes)
+            if excluded_endo_nodes:
+                logger.info(
+                    "STE visibility: %.1f%% of node-frames invisible; excluded nodes %s (segments %s)",
+                    visibility.loss_fraction * 100.0,
+                    excluded_endo_nodes,
+                    list(excluded_segments),
+                )
 
             # Use NCC weights from ED frame for quality-weighted strain
             ed_ncc = ncc_matrix[local_ed].copy()
 
             window_long = compute_weighted_longitudinal_strain_gl(
-                smoothed, local_ed, self._pixel_spacing, endo_indices, ed_ncc
+                smoothed, local_ed, self._pixel_spacing, strain_endo, ed_ncc
             )
             # Drift compensation is only meaningful when the tracked window
             # actually closes back to a diastolic baseline (i.e. the window
@@ -477,22 +871,25 @@ class SpeckleTrackingWorker(QRunnable):
             # systolic window ED..ES the strain at ES is the systolic peak and
             # must NOT be forced back to zero — doing so erases the measured
             # deformation (issue #3). Skip it and report drift honestly.
-            drift_applied = bool(config.drift_compensation) and phase_end > global_es
-            if drift_applied:
-                window_long = apply_drift_compensation(window_long, local_ed, local_es)
-            else:
-                logger.info("STE: drift compensation skipped (systolic window ends at ES, no baseline to close)")
+            # Drift policy (issue #C10): the residual baseline offset is
+            # *measured* on the whole-cycle curve and reported as a number. The
+            # curve itself is no longer detached from ED/ES by a linear ramp —
+            # that correction moved every value of the curve (including the
+            # systolic peak the report depends on) by an amount the user never
+            # saw. ``apply_drift_compensation`` stays available for callers who
+            # explicitly ask for a detrended curve.
+            drift_applied = False
 
             longitudinal = _embed_window_curve(window_long, n_frames, phase_start, phase_end)
 
-            n_pairs = min(len(endo_indices), len(epi_indices))
+            n_pairs = min(len(strain_endo), len(strain_epi))
             if n_pairs > 0:
                 window_radial = compute_weighted_radial_strain_gl(
                     smoothed,
                     local_ed,
                     self._pixel_spacing,
-                    endo_indices[:n_pairs],
-                    epi_indices[:n_pairs],
+                    strain_endo[:n_pairs],
+                    strain_epi[:n_pairs],
                     ed_ncc,
                 )
                 radial = _embed_window_curve(window_radial, n_frames, phase_start, phase_end)
@@ -514,22 +911,149 @@ class SpeckleTrackingWorker(QRunnable):
             tracked_es_positions = None
             es_ncc = None
             es_valid = None
+            node_curves_full: np.ndarray | None = None
+            window_node_curves: np.ndarray | None = None
+            node_indices: tuple[int, ...] = ()
+            segment_curves: dict[int, np.ndarray] = {}
+            window_segment_curves: dict[int, np.ndarray] = {}
+            consistency_delta = 0.0
 
             if len(endo_indices) >= 2:
-                endo_sorted = sorted(endo_indices, key=lambda i: kernels[i].node_index)
-                ed_pos = smoothed[local_ed, endo_sorted, :]
-                es_pos = smoothed[local_es, endo_sorted, :]
+                endo_sorted_all = sorted(endo_indices, key=lambda i: kernels[i].node_index)
+                ed_pos = smoothed[local_ed, endo_sorted_all, :]
+                es_pos = smoothed[local_es, endo_sorted_all, :]
                 ed_contour = ed_pos.copy()
                 es_contour = es_pos.copy()
+                # Node and segment curves live on the same visible node set as
+                # the global curve, so the cross-check between them stays a
+                # comparison of the same measurement.
+                endo_sorted = [i for i in endo_sorted_all if visible_nodes[i]]
+                if len(endo_sorted) < MIN_VISIBLE_NODES:
+                    endo_sorted = endo_sorted_all
 
-                for j in range(len(endo_sorted) - 1):
-                    d_init = np.linalg.norm(ed_pos[j + 1] - ed_pos[j]) * avg_spacing
-                    d_es = np.linalg.norm(es_pos[j + 1] - es_pos[j]) * avg_spacing
-                    if d_init > 1e-6:
-                        ratio = d_es / d_init
-                        seg_gl = 0.5 * (ratio**2 - 1.0) * 100.0
-                        per_kernel[endo_sorted[j]] = seg_gl
-                        per_kernel[endo_sorted[j + 1]] = seg_gl
+                # Single strain definition (issue #C3): every node owns the
+                # Green–Lagrange strain of the sub-arc through it and its two
+                # neighbours, instead of two neighbouring nodes sharing the
+                # strain of one pair. Segment curves are then the weighted mean
+                # of their node curves *in the same frame*, which is the
+                # EACVI/ASE-compatible way to aggregate; peaks are read from
+                # those curves, never averaged across different instants.
+                window_node_curves = compute_node_longitudinal_curves(
+                    smoothed[:, endo_sorted, :],
+                    local_ed,
+                    self._pixel_spacing,
+                )
+                # Metrics are read from a temporally filtered curve: peaks of a
+                # raw per-frame signal are noise-biased (see smooth_curves_time).
+                window_node_curves = smooth_curves_time(
+                    window_node_curves,
+                    window=int(config.curve_smoothing_frames),
+                    polyorder=2,
+                )
+                node_curves_full = np.full((n_frames, len(endo_sorted)), np.nan, dtype=np.float64)
+                window_len = phase_end - phase_start + 1
+                tracked_len = int(min(window_node_curves.shape[0], window_len))
+                if tracked_len != window_len:
+                    logger.warning(
+                        "STE: tracker returned %d frames for a %d-frame analysis window — using the frames that exist",
+                        window_node_curves.shape[0],
+                        window_len,
+                    )
+                node_curves_full[phase_start : phase_start + tracked_len] = window_node_curves[:tracked_len]
+                node_indices = tuple(int(i) for i in endo_sorted)
+
+                window_segment_curves = aggregate_segment_curves(
+                    window_node_curves,
+                    [kernels[i].aha_segment for i in endo_sorted],
+                )
+                segment_curves = {
+                    int(seg): _embed_window_curve(curve, n_frames, phase_start, phase_end)
+                    for seg, curve in window_segment_curves.items()
+                }
+
+                ess_by_node = window_node_curves[local_es]
+                for position, kernel_index in enumerate(endo_sorted):
+                    value = float(ess_by_node[position])
+                    per_kernel[kernel_index] = value if np.isfinite(value) else 0.0
+
+                # Definition (A) == definition (B) check: the whole-line curve
+                # from the total arc length must agree with the mean of the node
+                # curves when the nodes are equi-spaced. The gap is reported as
+                # a self-consistency metric instead of being hidden.
+                window_node_mean = global_curve_from_node_curves(window_node_curves)
+                window_arclength = compute_longitudinal_strain_gl(
+                    smoothed[:, endo_sorted, :],
+                    local_ed,
+                    self._pixel_spacing,
+                    list(range(len(endo_sorted))),
+                )
+                consistency_delta = abs(
+                    peak_in_window(window_node_mean, local_ed, local_es)
+                    - peak_in_window(window_arclength, local_ed, local_es)
+                )
+
+            # ── AVC (aortic valve closure) and the clinical metrics derived
+            # from the *global* curve over the whole cycle: GLS (peak of the
+            # global curve, AVC-independent), ESS (value at AVC), time to peak,
+            # post-systolic index and the measured baseline drift.
+            avc_frame, avc_source, avc_confidence = detect_avc_frame(
+                ed_frame=local_ed,
+                es_frame=local_es,
+                strain_curve=window_long,
+                ecg_avc_frame=_ecg_avc_frame_local(
+                    r_peak_result,
+                    local_ed,
+                    self._frame_time_ms,
+                    phase_start,
+                    local_window_end,
+                ),
+                area_curve=tuple(
+                    (int(frame) - phase_start, float(area))
+                    for frame, area in (self._simpson_area_curve or ())
+                    if frame is not None
+                ),
+                search_end=local_window_end,
+            )
+            global_metrics = compute_strain_metrics(
+                window_long,
+                ed_index=local_ed,
+                avc_index=avc_frame,
+                window_end=local_window_end,
+                frame_time_ms=self._frame_time_ms,
+            )
+            segment_metrics = {
+                seg: compute_strain_metrics(
+                    curve,
+                    ed_index=local_ed,
+                    avc_index=avc_frame,
+                    window_end=local_window_end,
+                    frame_time_ms=self._frame_time_ms,
+                )
+                for seg, curve in window_segment_curves.items()
+            }
+            segment_ttp = time_to_peak_map(
+                window_segment_curves,
+                ed_index=local_ed,
+                avc_index=avc_frame,
+                window_end=local_window_end,
+                frame_time_ms=self._frame_time_ms,
+            )
+            logger.info(
+                "STE: baseline drift measured as %.2f%% (not forced to zero; config.drift_compensation=%s)",
+                float(global_metrics.drift) if np.isfinite(global_metrics.drift) else float("nan"),
+                bool(config.drift_compensation),
+            )
+            logger.info(
+                "STE metrics: AVC=%d (source=%s) peak=%.2f%% ESS=%.2f%% TTP=%.0f ms PSI=%.1f%% drift=%.2f%% notes=%s",
+                avc_frame + phase_start,
+                avc_source,
+                global_metrics.peak,
+                global_metrics.ess,
+                global_metrics.time_to_peak_ms,
+                global_metrics.post_systolic_index,
+                global_metrics.drift,
+                list(global_metrics.notes),
+            )
 
             tracked_ed_positions = smoothed[local_ed].copy()
             tracked_es_positions = smoothed[local_es].copy()
@@ -539,8 +1063,23 @@ class SpeckleTrackingWorker(QRunnable):
             quality_slice = ncc_matrix[local_ed : local_es + 1]
             tracking_quality_mean = float(np.mean(quality_slice)) if quality_slice.size else 0.0
 
-            segment_strain, segment_quality = compute_aha_segment_strain(
-                per_kernel, kernels, es_ncc if es_ncc is not None else np.ones(len(kernels))
+            # Segment values come from the *segment curves* of the arc model
+            # (phase 1/2): each segment curve is the same-frame weighted mean of
+            # its node curves, so the reported peak is the clinical segmental
+            # strain. The previous angular path (``compute_aha_segment_strain``
+            # over per-kernel end-systolic values) assigned kernels to segments
+            # by the angle around the centroid and read a single frame — on the
+            # kinematic phantom that produced values like +170 % for a segment
+            # whose true strain is −20 % (plan §7.5, F7).
+            segment_strain = {
+                int(seg): float(metrics.peak) for seg, metrics in segment_metrics.items() if np.isfinite(metrics.peak)
+            }
+            segment_quality = _segment_tracking_quality(
+                kernels,
+                ncc_matrix,
+                local_ed,
+                local_es,
+                min_quality=config.min_kernel_quality,
             )
 
             logger.info(
@@ -587,24 +1126,38 @@ class SpeckleTrackingWorker(QRunnable):
 
             # Clinical GLS: prefer the mean of well-tracked segment strains over
             # the raw curve peak, but only when segment coverage is adequate.
-            gls_curve = gls
-            gls, gls_source = choose_clinical_gls(
-                gls_curve,
+            # GLS = peak of the global strain curve over the analysed cycle
+            # (EACVI/ASE: a *global* value, independent of the AVC estimate).
+            # The mean of segment peaks remains a cross-check only: per-segment
+            # peaks occur at different instants, so their mean is not a global
+            # strain and must never become the reported number (issue #C6).
+            gls_curve = float(global_metrics.peak) if np.isfinite(global_metrics.peak) else gls
+            gls_segments = compute_gls_from_segments(
                 segment_strain,
                 segment_quality,
-                min_segment_quality=config.min_segment_quality,
+                min_quality=config.min_segment_quality,
             )
+            # The reported GLS is *always* the peak of the global curve. The
+            # previous revision used ``choose_clinical_gls`` here, which
+            # replaced the value with the mean of the segment peaks whenever
+            # three segments passed quality — contradicting the EACVI/ASE
+            # definition (segments peak at different instants) and, with the old
+            # angular segments, reporting numbers like +25 % for a −19 % phantom.
+            # The segment mean stays available as a cross-check.
+            gls, gls_source = gls_curve, "curve"
             logger.info(
-                "STE GLS: curve-based=%.2f%%, clinical(segments)=%.2f%% -> gls=%.2f%% (%s)",
-                gls_curve,
-                compute_gls_from_segments(segment_strain, segment_quality, min_quality=config.min_segment_quality),
+                "STE GLS: global curve peak=%.2f%% (source=%s), segment-mean cross-check=%.2f%% (delta %.2f pp)",
                 gls,
                 gls_source,
+                gls_segments,
+                abs(gls - gls_segments),
             )
-
             # Honest QC: NCC fidelity alone can read >90% while the deformation
-            # curve is physiologically impossible (issue #3). Combine tracking
-            # quality with coverage and a physiology check into one score.
+            # curve is physiologically impossible (issue #3). The status now
+            # separates fidelity (did the blocks match?) from validity (is this a
+            # defined measurement?) — geometry, coverage of the material line,
+            # the fraction of interpolated node-frames and the agreement between
+            # the two equivalent global-strain definitions.
             phys_ok, phys_reasons = assess_strain_plausibility(
                 longitudinal,
                 radial,
@@ -612,24 +1165,148 @@ class SpeckleTrackingWorker(QRunnable):
                 global_es,
             )
             coverage = n_accepted / n_kernels if n_kernels else 0.0
-            qc_overall = tracking_quality_mean * coverage
-            if not phys_ok:
-                qc_overall = min(qc_overall, 0.5)
-            qc_overall = float(np.clip(qc_overall, 0.0, 1.0))
+            window_ncc = ncc_matrix[local_ed : local_es + 1]
+            interpolated_fraction = float(np.mean(window_ncc < config.ncc_threshold)) if window_ncc.size else 1.0
+            # Round-trip verification summary over the analysed window: how much
+            # of the wall the tracker could confirm by matching there and back.
+            avg_spacing_mm = float((self._pixel_spacing[0] + self._pixel_spacing[1]) / 2.0)
+            # Sampling extent actually used (Voigt 2015: "explicitly states what
+            # is being measured and the spatial extent over which the data is
+            # sampled"): the kernel footprint in millimetres and the spacing
+            # between neighbouring nodes of the endocardial material line at ED.
+            sampling_kernel_mm = float(config.kernel_size) * avg_spacing_mm
+            sampling_node_spacing_mm = 0.0
+            if len(strain_endo_all) >= 2:
+                ed_arc = np.asarray(smoothed[local_ed][strain_endo_all], dtype=np.float64)
+                steps = np.linalg.norm(np.diff(ed_arc, axis=0), axis=1)
+                finite_steps = steps[np.isfinite(steps)]
+                if finite_steps.size:
+                    sampling_node_spacing_mm = float(np.median(finite_steps)) * avg_spacing_mm
+            frame_rate_hz = 1000.0 / float(self._frame_time_ms) if float(self._frame_time_ms) > 0 else 0.0
+            window_closure = closure_matrix[local_ed : local_es + 1]
+            finite_closure = np.isfinite(window_closure)
+            verified_fraction = float(np.mean(finite_closure)) if window_closure.size else 0.0
+            unverified_fraction = 1.0 - verified_fraction
+            rejected_fraction = (
+                float(np.mean(window_closure[finite_closure] > _closure_gate_px(config)))
+                if finite_closure.any()
+                else 0.0
+            )
+            closure_median_mm = float(np.nanmedian(window_closure)) * avg_spacing_mm if finite_closure.any() else 0.0
+            closure_p95_mm = (
+                float(np.nanpercentile(window_closure, 95)) * avg_spacing_mm if finite_closure.any() else 0.0
+            )
             logger.info(
-                "STE QC: ncc=%.3f coverage=%.2f physiology_ok=%s reasons=%s -> qc=%.2f",
+                "STE verification: verified %.2f of node-frames, rejected %.2f, closure median %.2f mm, p95 %.2f mm",
+                verified_fraction,
+                rejected_fraction,
+                closure_median_mm,
+                closure_p95_mm,
+            )
+            geometry_ok, geometry_notes = _check_ste_geometry(self._zone, self._pixel_spacing)
+            # Metric cross-checks (plan §7.5, F4): the reported GLS must agree
+            # with the independent estimates built from the *same* tracking but
+            # a different aggregation, and the endocardial line must shorten as
+            # a line. These need no ground truth, so they work on a real patient.
+            node_ess = (
+                window_node_curves[local_es] if window_node_curves is not None else np.array([], dtype=np.float64)
+            )
+            finite_ess = node_ess[np.isfinite(node_ess)]
+            sign_flip_fraction = 0.0
+            if finite_ess.size >= 8 and abs(gls) >= 5.0:
+                sign_flip_fraction = float(np.mean(finite_ess > 0.5 * abs(gls)))
+            estimate_spread_pp = 0.0
+            if np.isfinite(gls_segments) and str(gls_source) == "curve":
+                estimate_spread_pp = float(abs(gls - gls_segments))
+            # Position noise vs the contraction (plan §7.5, F6). A polyline
+            # through noisy points is longer than the material line it samples,
+            # so the noise bias *shortens* the reported strain while leaving the
+            # NCC untouched — the one cross-check that catches "quality 95 %,
+            # GLS wrong". It is measured on the pre-smoothing positions.
+            noise_mm = 0.0
+            noise_to_signal = 0.0
+            # The noise estimate describes the *tracking* of the whole material
+            # line, so it deliberately uses every endocardial column: tying it
+            # to the visibility subset would let a clip whose tracker wandered
+            # off the tissue look less noisy than it is (measured at 10 dB).
+            if len(strain_endo_all) >= 2:
+                noise_mm = arc_length_inflation_mm(raw_positions, smoothed, strain_endo_all, self._pixel_spacing)
+                contraction = arc_contraction_mm(
+                    smoothed,
+                    strain_endo_all,
+                    local_ed,
+                    self._pixel_spacing,
+                    window_end=smoothed.shape[0] - 1,
+                )
+                # Only meaningful when there is a contraction to measure: a truly
+                # akinetic clip has no signal and is judged by the physiology
+                # checks, not by this ratio.
+                noise_to_signal = float(noise_mm / contraction) if contraction > 0.5 else 0.0
+                logger.info(
+                    "STE noise check: arc inflation=%.2f mm, contraction=%.2f mm, ratio=%.2f",
+                    noise_mm,
+                    contraction,
+                    noise_to_signal,
+                )
+            # Frame rate is the one acquisition property the analysis can still
+            # comment on (Voigt 2015: 40-80 Hz for motion/deformation at rest,
+            # >100 Hz for strain rate). A note, not a gate: the clip is what it
+            # is, but the reader has to know.
+            frame_rate_note: tuple[str, ...] = ()
+            if frame_rate_hz > 0 and (frame_rate_hz < 40.0 or frame_rate_hz > 100.0):
+                frame_rate_note = (
+                    f"frame rate {frame_rate_hz:.0f} Hz is outside the recommended 40-100 Hz for deformation imaging",
+                )
+            quality = assess_tracking_quality(
+                has_curve=bool(np.any(np.isfinite(window_long))),
+                fidelity=tracking_quality_mean,
+                coverage=coverage,
+                interpolated_fraction=interpolated_fraction,
+                consistency_delta=consistency_delta,
+                physiology_ok=phys_ok,
+                physiology_notes=tuple(phys_reasons),
+                geometry_ok=geometry_ok,
+                geometry_notes=geometry_notes,
+                n_segments_measured=len(segment_strain),
+                estimate_spread_pp=estimate_spread_pp,
+                sign_flip_fraction=sign_flip_fraction,
+                noise_to_signal=noise_to_signal,
+                visibility_loss=visibility.loss_fraction,
+                excluded_nodes=len(excluded_endo_nodes),
+                excluded_segments=len(excluded_segments),
+                closure_median_mm=closure_median_mm,
+                closure_p95_mm=closure_p95_mm,
+                rejected_fraction=rejected_fraction,
+                unverified_fraction=unverified_fraction,
+                gls_pp=gls,
+            )
+            qc_overall = quality.confidence
+            logger.info(
+                "STE QC: status=%s confidence=%.2f ncc=%.3f coverage=%.2f interp=%.2f "
+                "consistency=%.2f spread=%.2f sign_flip=%.2f noise_ratio=%.2f "
+                "visibility=%.2f excluded_segments=%s physiology_ok=%s geometry_ok=%s reasons=%s",
+                quality.status,
+                quality.confidence,
                 tracking_quality_mean,
                 coverage,
+                interpolated_fraction,
+                consistency_delta,
+                estimate_spread_pp,
+                sign_flip_fraction,
+                noise_to_signal,
+                visibility.loss_fraction,
+                list(excluded_segments),
                 phys_ok,
-                phys_reasons,
-                qc_overall,
+                geometry_ok,
+                quality.reasons,
             )
             raw_phase_positions = np.full((n_frames, n_kernels, 2), np.nan)
-            raw_phase_positions[phase_start : phase_end + 1] = raw_positions
             tracked_positions_all = np.full((n_frames, n_kernels, 2), np.nan)
             ncc_all_frames = np.full((n_frames, n_kernels), np.nan)
-            tracked_positions_all[phase_start : phase_end + 1] = smoothed
-            ncc_all_frames[phase_start : phase_end + 1] = ncc_matrix
+            tracked_len = int(min(smoothed.shape[0], phase_end - phase_start + 1))
+            raw_phase_positions[phase_start : phase_start + tracked_len] = raw_positions[:tracked_len]
+            tracked_positions_all[phase_start : phase_start + tracked_len] = smoothed[:tracked_len]
+            ncc_all_frames[phase_start : phase_start + tracked_len] = ncc_matrix[:tracked_len]
 
             cumulative = (
                 tracked_es_positions - tracked_ed_positions
@@ -691,15 +1368,65 @@ class SpeckleTrackingWorker(QRunnable):
                 tracked_es_positions=tracked_es_positions,
                 tracked_ed_positions=tracked_ed_positions,
                 tracked_positions_all=tracked_positions_all,
+                view=self._view,
+                avc_index=int(avc_frame + phase_start),
+                avc_source=avc_source,
+                avc_confidence=float(avc_confidence),
+                ess=float(global_metrics.ess),
+                peak_strain=float(global_metrics.peak),
+                gls_peak_frame=(
+                    None if global_metrics.peak_frame is None else int(global_metrics.peak_frame + phase_start)
+                ),
+                time_to_peak_ms=float(global_metrics.time_to_peak_ms),
+                post_systolic_index=float(global_metrics.post_systolic_index),
+                drift_measured=float(global_metrics.drift),
+                is_post_systolic=bool(global_metrics.is_post_systolic),
+                segment_metrics=dict(segment_metrics),
+                segment_ttp_ms=dict(segment_ttp),
+                gls_segment_mean=float(gls_segments),
+                qc_estimate_spread_pp=float(estimate_spread_pp),
+                qc_sign_flip_fraction=float(sign_flip_fraction),
+                qc_noise_to_signal=float(noise_to_signal),
+                qc_noise_mm=float(noise_mm),
+                qc_visibility_loss=quality.visibility_loss,
+                qc_excluded_nodes=quality.excluded_nodes,
+                qc_excluded_segments=excluded_segments,
+                closure_all_frames=_embed_closure_matrix(closure_matrix, n_frames, phase_start),
+                closure_gate_px=_closure_gate_px(config),
+                sampling_kernel_mm=sampling_kernel_mm,
+                sampling_node_spacing_mm=sampling_node_spacing_mm,
+                regularization=_regularization_text(
+                    config,
+                    phase_end - phase_start + 1,
+                ),
+                segment_sides=describe_segment_sides(self._view, flip=config.segment_flip),
+                segment_flip_applied=bool(config.segment_flip),
+                translation_compensation_applied=bool(config.global_motion_compensation),
+                frame_rate_hz=frame_rate_hz,
+                qc_closure_median_mm=quality.closure_median_mm,
+                qc_closure_p95_mm=quality.closure_p95_mm,
+                qc_rejected_fraction=quality.rejected_fraction,
+                qc_unverified_fraction=quality.unverified_fraction,
+                analysis_window_end=int(phase_end),
+                cycle_estimated=bool(cycle_estimated),
                 raw_tracked_positions=raw_phase_positions,
                 ncc_all_frames=ncc_all_frames,
                 es_ncc_scores=es_ncc,
                 es_valid_mask=es_valid,
                 segment_strain=segment_strain,
                 segment_quality=segment_quality,
+                segment_curves=segment_curves,
+                node_curves=node_curves_full,
+                node_indices=node_indices,
                 drift_compensation_applied=drift_applied,
                 tracking_quality_mean=tracking_quality_mean,
                 qc_score=qc_overall,
+                qc_status=quality.status,
+                qc_reasons=quality.reasons,
+                qc_notes=tuple(quality.notes) + frame_rate_note,
+                qc_coverage=quality.coverage,
+                qc_interpolated_fraction=quality.interpolated_fraction,
+                qc_consistency_delta=quality.consistency_delta,
                 qc_physiology_ok=phys_ok,
                 qc_physiology_reasons=tuple(phys_reasons),
                 gls_source=gls_source,

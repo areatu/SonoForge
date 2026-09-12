@@ -228,8 +228,6 @@ class TestSpeckleTrackingWorkerRun:
             "estimate_heart_rate_fft": MagicMock(return_value=72.0),
             "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "compute_gls": MagicMock(return_value=-15.0),
-            "apply_drift_compensation": MagicMock(return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])),
-            "compute_aha_segment_strain": MagicMock(return_value=({1: -15.0}, {1: 0.8})),
         }
 
         with (
@@ -293,14 +291,6 @@ class TestSpeckleTrackingWorkerRun:
                 "echo_personal_tool.application.workers.speckle_worker.compute_gls",
                 patches["compute_gls"],
             ),
-            patch(
-                "echo_personal_tool.application.workers.speckle_worker.apply_drift_compensation",
-                patches["apply_drift_compensation"],
-            ),
-            patch(
-                "echo_personal_tool.application.workers.speckle_worker.compute_aha_segment_strain",
-                patches["compute_aha_segment_strain"],
-            ),
         ):
             worker = SpeckleTrackingWorker(
                 frames=frames,
@@ -356,8 +346,6 @@ class TestSpeckleTrackingWorkerRun:
             "estimate_heart_rate_fft": MagicMock(return_value=72.0),
             "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "compute_gls": MagicMock(return_value=-15.0),
-            "apply_drift_compensation": MagicMock(return_value=np.array([0.0, -5.0, -10.0, -5.0, 0.0, 0.0])),
-            "compute_aha_segment_strain": MagicMock(return_value=({1: -15.0}, {1: 0.8})),
         }
 
         patch_targets = {
@@ -374,8 +362,6 @@ class TestSpeckleTrackingWorkerRun:
             "estimate_heart_rate_fft": patches["estimate_heart_rate_fft"],
             "build_myocardial_roi_mask": patches["build_myocardial_roi_mask"],
             "compute_gls": patches["compute_gls"],
-            "apply_drift_compensation": patches["apply_drift_compensation"],
-            "compute_aha_segment_strain": patches["compute_aha_segment_strain"],
         }
         from contextlib import ExitStack
 
@@ -469,7 +455,6 @@ class TestResultCarriesCineAndEcg:
             "estimate_heart_rate_fft": MagicMock(return_value=72.0),
             "build_myocardial_roi_mask": MagicMock(return_value=np.ones((32, 32), dtype=bool)),
             "compute_gls": MagicMock(return_value=-15.0),
-            "compute_aha_segment_strain": MagicMock(return_value=({1: -15.0}, {1: 0.8})),
         }
 
     def _run(self, *, frames, ecg_mock, source_path=None):

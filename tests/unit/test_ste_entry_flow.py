@@ -78,10 +78,33 @@ class TestViewerSteApi:
         for c in created:
             assert c.chamber == "LV_EPI"
             assert len(c.points) >= 4
+            # Open arc with its own landmarks: this is what gives the
+            # epicardium the same editing toolchain as the Simpson LV contour
+            # (pinned annulus, arc resampling after a drag, edge snap) instead
+            # of the old landmark-less closed contour that skipped all of it.
+            assert c.is_open_arc
+            assert c.mitral_annulus is not None
+            assert c.apex_landmark is not None
+            assert c.num_nodes == len(c.points)
             assert viewer.get_lv_epicardial_contour(phase=c.phase, view="A4C") is c
 
         # Second run is a no-op (idempotent, existing EPI not overwritten).
         assert viewer.ensure_lv_epicardial_contours(view="A4C") == []
+
+    def test_epicardial_thickness_follows_the_setting(self, viewer) -> None:
+        """A hypertrophied wall needs a thicker auto epicardium (>= 15 mm)."""
+        import numpy as np
+
+        ed = _lv_contour("ED", 3)
+        viewer.apply_contours([ed])
+        created = viewer.ensure_lv_epicardial_contours(view="A4C", thickness_mm=16.0)
+        assert len(created) == 1
+        spacing = viewer._pixel_spacing() or (1.0, 1.0)
+        endo = np.asarray(ed.points, dtype=float)
+        epi = np.asarray(created[0].points, dtype=float)
+        # node-wise distance from the endocardium ≈ 16 mm / spacing
+        distance_px = np.linalg.norm(epi - endo, axis=1).mean()
+        assert distance_px * float(np.mean(spacing)) > 12.0
 
     def test_epicardial_pen_is_distinct(self, viewer) -> None:
         ed = _lv_contour("ED", 3)
