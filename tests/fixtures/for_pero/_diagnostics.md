@@ -1,28 +1,28 @@
 # STE fixture export diagnostics
 
-ref: f3e2d65  source: origin/main
+ref: 86e2fe6  source: origin/main
 
 ## sizes in data/dicom/For_pero
-total 469184
--rw-r--r-- 1 runner runner   9220206 Sep 11 10:01 gold1.dcm
--rw-r--r-- 1 runner runner  11267426 Sep 11 10:01 gold2.dcm
--rw-r--r-- 1 runner runner  18699678 Sep 11 10:01 gold3.dcm
--rw-r--r-- 1 runner runner  20688092 Sep 11 10:01 gold4.dcm
--rw-r--r-- 1 runner runner  20796784 Sep 11 10:01 gold5.dcm
--rw-r--r-- 1 runner runner  21424526 Sep 11 10:01 gold6.dcm
--rw-r--r-- 1 runner runner  16131256 Sep 11 10:01 gold7+ECG.dcm
--rw-r--r-- 1 runner runner  16198284 Sep 11 10:01 gold8+ECG.dcm
--rwxr-xr-x 1 runner runner 109309786 Sep 11 10:01 gold_Ph_ECG1
--rwxr-xr-x 1 runner runner   4994344 Sep 11 10:01 gold_Ph_ECG2
--rwxr-xr-x 1 runner runner   3097202 Sep 11 10:01 strain_ph1
--rwxr-xr-x 1 runner runner  99372788 Sep 11 10:01 strain_ph2
--rwxr-xr-x 1 runner runner  99372846 Sep 11 10:01 strain_ph3
--rw-r--r-- 1 runner runner   4727412 Sep 11 10:01 strain_sams1.dcm
--rw-r--r-- 1 runner runner   6222178 Sep 11 10:01 strain_sams2.dcm
--rw-r--r-- 1 runner runner   3090092 Sep 11 10:01 strain_sams3.dcm
--rw-r--r-- 1 runner runner   6222206 Sep 11 10:01 strain_sams4.dcm
--rw-r--r-- 1 runner runner   6222206 Sep 11 10:01 strain_sams5.dcm
--rw-r--r-- 1 runner runner   3338290 Sep 11 10:01 strain_sams6.dcm
+total 469180
+-rw-r--r-- 1 runner runner   9220206 Sep 12 20:40 gold1.dcm
+-rw-r--r-- 1 runner runner  11267426 Sep 12 20:40 gold2.dcm
+-rw-r--r-- 1 runner runner  18699678 Sep 12 20:40 gold3.dcm
+-rw-r--r-- 1 runner runner  20688092 Sep 12 20:40 gold4.dcm
+-rw-r--r-- 1 runner runner  20796784 Sep 12 20:40 gold5.dcm
+-rw-r--r-- 1 runner runner  21424526 Sep 12 20:40 gold6.dcm
+-rw-r--r-- 1 runner runner  16131256 Sep 12 20:40 gold7+ECG.dcm
+-rw-r--r-- 1 runner runner  16198284 Sep 12 20:40 gold8+ECG.dcm
+-rwxr-xr-x 1 runner runner 109309786 Sep 12 20:40 gold_Ph_ECG1
+-rwxr-xr-x 1 runner runner   4994344 Sep 12 20:40 gold_Ph_ECG2
+-rwxr-xr-x 1 runner runner   3097202 Sep 12 20:40 strain_ph1
+-rwxr-xr-x 1 runner runner  99372788 Sep 12 20:40 strain_ph2
+-rwxr-xr-x 1 runner runner  99372846 Sep 12 20:40 strain_ph3
+-rw-r--r-- 1 runner runner   4727412 Sep 12 20:40 strain_sams1.dcm
+-rw-r--r-- 1 runner runner   6222178 Sep 12 20:40 strain_sams2.dcm
+-rw-r--r-- 1 runner runner   3090092 Sep 12 20:40 strain_sams3.dcm
+-rw-r--r-- 1 runner runner   6222206 Sep 12 20:40 strain_sams4.dcm
+-rw-r--r-- 1 runner runner   6222206 Sep 12 20:40 strain_sams5.dcm
+-rw-r--r-- 1 runner runner   3338290 Sep 12 20:40 strain_sams6.dcm
 
 ## pointer files remaining (<1024 bytes)
 
@@ -48,24 +48,24 @@ c154cf28a7 * data/dicom/For_pero/strain_sams4.dcm
 505b7071fc * data/dicom/For_pero/strain_sams6.dcm
 
 ## export log
-  ✓ gold1                 55 кадров 1276×800 fps  30.0 ECG=False →  2.69 МБ (q68)
-  ✓ gold2                 80 кадров 1276×800 fps  30.0 ECG=False →  3.17 МБ (q68)
-  ✓ gold3                105 кадров 1276×800 fps  30.0 ECG=False →  6.13 МБ (q68)
-  ✓ gold4                139 кадров 1276×800 fps  30.0 ECG=False →  6.33 МБ (q68)
-  ✓ gold5                125 кадров 1276×800 fps  30.0 ECG=False →  6.67 МБ (q68)
-  ✓ gold6                120 кадров 1276×800 fps  30.0 ECG=False →  6.93 МБ (q68)
-  ✓ gold7+ECG             83 кадров 1276×800 fps  30.0 ECG=False →  5.30 МБ (q68)
-  ✓ gold8+ECG             82 кадров 1276×800 fps  30.0 ECG=False →  5.36 МБ (q68)
-  ✓ gold_Ph_ECG1         185 кадров 800×600 fps  58.3 ECG=False →  5.78 МБ (q68)
-  ✓ gold_Ph_ECG2          46 кадров 800×600 fps  46.5 ECG=False →  2.94 МБ (q92)
-  ✓ strain_ph1            20 кадров 1600×900 fps  30.3 ECG=False →  1.40 МБ (q92)
-  ✓ strain_ph2            23 кадров 1600×900 fps  25.0 ECG=False →  2.78 МБ (q84)
-  ✓ strain_ph3            23 кадров 1600×900 fps  25.6 ECG=False →  2.79 МБ (q84)
-  ✓ strain_sams1          20 кадров 1280×668 fps  30.0 ECG=False →  2.79 МБ (q92)
-  ✓ strain_sams2         1080 кадров 3×1920 fps   0.0 ECG=False →  0.96 МБ (q92)
-  ✓ strain_sams3          14 кадров 1280×668 fps  30.0 ECG=False →  1.83 МБ (q92)
-  ✓ strain_sams4         1080 кадров 3×1920 fps   0.0 ECG=False →  0.83 МБ (q92)
-  ✓ strain_sams5         1080 кадров 3×1920 fps   0.0 ECG=False →  0.98 МБ (q92)
-  ✓ strain_sams6          14 кадров 1280×668 fps  30.0 ECG=False →  2.03 МБ (q92)
+  ✓ gold1                 55 кадров 1276×800 fps  30.0 ECG=False →  2.53 МБ (q76)
+  ✓ gold2                 80 кадров 1276×800 fps  30.0 ECG=False →  2.86 МБ (q76)
+  ✓ gold3                105 кадров 1276×800 fps  30.0 ECG=False →  5.28 МБ (q68)
+  ✓ gold4                139 кадров 1276×800 fps  30.0 ECG=False →  5.27 МБ (q68)
+  ✓ gold5                125 кадров 1276×800 fps  30.0 ECG=False →  5.67 МБ (q68)
+  ✓ gold6                120 кадров 1276×800 fps  30.0 ECG=False →  6.03 МБ (q68)
+  ✓ gold7+ECG             83 кадров 1276×800 fps  30.0 ECG=False →  4.64 МБ (q68)
+  ✓ gold8+ECG             82 кадров 1276×800 fps  30.0 ECG=False →  4.71 МБ (q68)
+  ✓ gold_Ph_ECG1         185 кадров 800×600 fps  58.3 ECG=False →  4.21 МБ (q68)
+  ✓ gold_Ph_ECG2          46 кадров 800×600 fps  46.5 ECG=False →  2.32 МБ (q92)
+  ~ strain_ph1           vendor screen (1600×900, 20 кадров) → 6 PNG в ui_reference/
+  ~ strain_ph2           vendor screen (1600×900, 23 кадров) → 6 PNG в ui_reference/
+  ~ strain_ph3           vendor screen (1600×900, 23 кадров) → 6 PNG в ui_reference/
+  ~ strain_sams1         vendor screen (1280×668, 20 кадров) → 6 PNG в ui_reference/
+  ~ strain_sams2         vendor screen (3×1920, 1080 кадров) → 6 PNG в ui_reference/
+  ~ strain_sams3         vendor screen (1280×668, 14 кадров) → 6 PNG в ui_reference/
+  ~ strain_sams4         vendor screen (3×1920, 1080 кадров) → 6 PNG в ui_reference/
+  ~ strain_sams5         vendor screen (3×1920, 1080 кадров) → 6 PNG в ui_reference/
+  ~ strain_sams6         vendor screen (1280×668, 14 кадров) → 6 PNG в ui_reference/
 
 индекс: tests/fixtures/for_pero/index.json (19 файлов)

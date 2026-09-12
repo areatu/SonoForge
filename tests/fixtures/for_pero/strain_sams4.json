@@ -1,6 +1,6 @@
 {
   "file": "strain_sams4.dcm",
-  "kind": "dicom",
+  "kind": "vendor_screen_still",
   "Modality": "US",
   "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
   "ManufacturerModelName": "RS85-RUS",
@@ -20,13 +20,19 @@
     "(0040,0245) Performed Procedure Step Start Time": "132127",
     "(0040,0253) Performed Procedure Step ID": "20251124155230"
   },
-  "npz": "strain_sams4.npz",
-  "npz_mb": 0.83,
-  "jpeg_quality": 92,
-  "size_mb": 5.93,
+  "stills": [
+    "ui_reference/strain_sams4_f0000.png",
+    "ui_reference/strain_sams4_f0215.png",
+    "ui_reference/strain_sams4_f0431.png",
+    "ui_reference/strain_sams4_f0647.png",
+    "ui_reference/strain_sams4_f0863.png",
+    "ui_reference/strain_sams4_f1079.png"
+  ],
   "shape": [
     1080,
     1920,
     3
-  ]
+  ],
+  "size_mb": 5.93,
+  "phi_masked": true
 }

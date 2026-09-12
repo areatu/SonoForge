@@ -41,14 +41,15 @@
         "(0040,0253) Performed Procedure Step ID": "20250926101145"
       },
       "npz": "gold1.npz",
-      "npz_mb": 2.69,
-      "jpeg_quality": 68,
+      "npz_mb": 2.53,
+      "jpeg_quality": 76,
       "size_mb": 8.79,
       "shape": [
         55,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold2.dcm",
@@ -90,14 +91,15 @@
         "(0040,0253) Performed Procedure Step ID": "20250926101145"
       },
       "npz": "gold2.npz",
-      "npz_mb": 3.17,
-      "jpeg_quality": 68,
+      "npz_mb": 2.86,
+      "jpeg_quality": 76,
       "size_mb": 10.75,
       "shape": [
         80,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold3.dcm",
@@ -139,14 +141,15 @@
         "(0040,0253) Performed Procedure Step ID": "20260202134937"
       },
       "npz": "gold3.npz",
-      "npz_mb": 6.13,
+      "npz_mb": 5.28,
       "jpeg_quality": 68,
       "size_mb": 17.83,
       "shape": [
         105,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold4.dcm",
@@ -188,14 +191,15 @@
         "(0040,0253) Performed Procedure Step ID": "20260420125512"
       },
       "npz": "gold4.npz",
-      "npz_mb": 6.33,
+      "npz_mb": 5.27,
       "jpeg_quality": 68,
       "size_mb": 19.73,
       "shape": [
         139,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold5.dcm",
@@ -237,14 +241,15 @@
         "(0040,0253) Performed Procedure Step ID": "20260526091229"
       },
       "npz": "gold5.npz",
-      "npz_mb": 6.67,
+      "npz_mb": 5.67,
       "jpeg_quality": 68,
       "size_mb": 19.83,
       "shape": [
         125,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold6.dcm",
@@ -286,14 +291,15 @@
         "(0040,0253) Performed Procedure Step ID": "20251111220602"
       },
       "npz": "gold6.npz",
-      "npz_mb": 6.93,
+      "npz_mb": 6.03,
       "jpeg_quality": 68,
       "size_mb": 20.43,
       "shape": [
         120,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold7+ECG.dcm",
@@ -335,14 +341,15 @@
         "(0040,0253) Performed Procedure Step ID": "20251124132127"
       },
       "npz": "gold7+ECG.npz",
-      "npz_mb": 5.3,
+      "npz_mb": 4.64,
       "jpeg_quality": 68,
       "size_mb": 15.38,
       "shape": [
         83,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold8+ECG.dcm",
@@ -384,14 +391,15 @@
         "(0040,0253) Performed Procedure Step ID": "20251124132127"
       },
       "npz": "gold8+ECG.npz",
-      "npz_mb": 5.36,
+      "npz_mb": 4.71,
       "jpeg_quality": 68,
       "size_mb": 15.45,
       "shape": [
         82,
         800,
         1276
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold_Ph_ECG1",
@@ -470,14 +478,15 @@
         "(200D,5100) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0s\\x05\\x85@7\\xae\\x1d\\x8a\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x873\\x1f\\xc5\\xcd\\x99\\x8bZ\\xb2\"\\x06j\\xf86\\xf5…"
       },
       "npz": "gold_Ph_ECG1.npz",
-      "npz_mb": 5.78,
+      "npz_mb": 4.21,
       "jpeg_quality": 68,
       "size_mb": 104.25,
       "shape": [
         185,
         600,
         800
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "gold_Ph_ECG2",
@@ -553,18 +562,19 @@
         "(200D,5100) Private tag data": "b'Philips Confidential v.10\\x00\\x80|\\xdc\\xea,\\x80\\xeb\\x1e\\xfc:\\xba0\\xb6\\x0b\\xba^/\\x92\\xfa\\xcb>2\\xe5\\x06\\\\\\x06\\x00\\xd7Py\\'\\x85\\x1e`\\xb2\\x9f\\x03\\xc5<@ki\\xd5\\xa5U\\xb3\\xbc6@^\\x82\\xd4N\\x12\\xd9\\xc4\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87^\\x99\\x96\\xac.I-Y\\x90\\t\\x00{>\\x1ai\\xba\\x16\\x1eWB\\xff\\x98%\\xc0\\xe1\\xa3b\\x8en\\xe6H\\xe5\\xb4\\x95\\xb0\\xc7\\xcdb\\xaf~\\x89\\xba\\x8c\\xb4\\xb5e\\xc6\\x87\\x17\\xbf,\\xfa\\xc7D(2\"\\x06j\\xf86\\xf5\\xe5:C…"
       },
       "npz": "gold_Ph_ECG2.npz",
-      "npz_mb": 2.94,
+      "npz_mb": 2.32,
       "jpeg_quality": 92,
       "size_mb": 4.76,
       "shape": [
         46,
         600,
         800
-      ]
+      ],
+      "phi_masked": true
     },
     {
       "file": "strain_ph1",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "Philips Medical Systems",
       "ManufacturerModelName": "EPIQ CVx",
@@ -611,19 +621,25 @@
         "(200D,3A05) [Unknown]": "ACCEPTED",
         "(200D,3A06) Private tag data": "0"
       },
-      "npz": "strain_ph1.npz",
-      "npz_mb": 1.4,
-      "jpeg_quality": 92,
-      "size_mb": 2.95,
+      "stills": [
+        "ui_reference/strain_ph1_f0000.png",
+        "ui_reference/strain_ph1_f0003.png",
+        "ui_reference/strain_ph1_f0007.png",
+        "ui_reference/strain_ph1_f0011.png",
+        "ui_reference/strain_ph1_f0015.png",
+        "ui_reference/strain_ph1_f0019.png"
+      ],
       "shape": [
         20,
         900,
         1600
-      ]
+      ],
+      "size_mb": 2.95,
+      "phi_masked": true
     },
     {
       "file": "strain_ph2",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "Philips Medical Systems",
       "ManufacturerModelName": "EPIQ Elite",
@@ -672,19 +688,25 @@
         "(200D,3A06) Private tag data": "0",
         "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…"
       },
-      "npz": "strain_ph2.npz",
-      "npz_mb": 2.78,
-      "jpeg_quality": 84,
-      "size_mb": 94.77,
+      "stills": [
+        "ui_reference/strain_ph2_f0000.png",
+        "ui_reference/strain_ph2_f0004.png",
+        "ui_reference/strain_ph2_f0008.png",
+        "ui_reference/strain_ph2_f0013.png",
+        "ui_reference/strain_ph2_f0017.png",
+        "ui_reference/strain_ph2_f0022.png"
+      ],
       "shape": [
         23,
         900,
         1600
-      ]
+      ],
+      "size_mb": 94.77,
+      "phi_masked": true
     },
     {
       "file": "strain_ph3",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "Philips Medical Systems",
       "ManufacturerModelName": "EPIQ Elite",
@@ -735,19 +757,25 @@
         "(200D,3A06) Private tag data": "0",
         "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…"
       },
-      "npz": "strain_ph3.npz",
-      "npz_mb": 2.79,
-      "jpeg_quality": 84,
-      "size_mb": 94.77,
+      "stills": [
+        "ui_reference/strain_ph3_f0000.png",
+        "ui_reference/strain_ph3_f0004.png",
+        "ui_reference/strain_ph3_f0008.png",
+        "ui_reference/strain_ph3_f0013.png",
+        "ui_reference/strain_ph3_f0017.png",
+        "ui_reference/strain_ph3_f0022.png"
+      ],
       "shape": [
         23,
         900,
         1600
-      ]
+      ],
+      "size_mb": 94.77,
+      "phi_masked": true
     },
     {
       "file": "strain_sams1.dcm",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
       "ManufacturerModelName": "RS85-RUS",
@@ -768,19 +796,25 @@
         "(0040,0245) Performed Procedure Step Start Time": "142148",
         "(0040,0253) Performed Procedure Step ID": "20260129142148"
       },
-      "npz": "strain_sams1.npz",
-      "npz_mb": 2.79,
-      "jpeg_quality": 92,
-      "size_mb": 4.51,
+      "stills": [
+        "ui_reference/strain_sams1_f0000.png",
+        "ui_reference/strain_sams1_f0003.png",
+        "ui_reference/strain_sams1_f0007.png",
+        "ui_reference/strain_sams1_f0011.png",
+        "ui_reference/strain_sams1_f0015.png",
+        "ui_reference/strain_sams1_f0019.png"
+      ],
       "shape": [
         20,
         668,
         1280
-      ]
+      ],
+      "size_mb": 4.51,
+      "phi_masked": true
     },
     {
       "file": "strain_sams2.dcm",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
       "ManufacturerModelName": "RS85-RUS",
@@ -800,19 +834,25 @@
         "(0040,0245) Performed Procedure Step Start Time": "092413",
         "(0040,0253) Performed Procedure Step ID": "20251117112804"
       },
-      "npz": "strain_sams2.npz",
-      "npz_mb": 0.96,
-      "jpeg_quality": 92,
-      "size_mb": 5.93,
+      "stills": [
+        "ui_reference/strain_sams2_f0000.png",
+        "ui_reference/strain_sams2_f0215.png",
+        "ui_reference/strain_sams2_f0431.png",
+        "ui_reference/strain_sams2_f0647.png",
+        "ui_reference/strain_sams2_f0863.png",
+        "ui_reference/strain_sams2_f1079.png"
+      ],
       "shape": [
         1080,
         1920,
         3
-      ]
+      ],
+      "size_mb": 5.93,
+      "phi_masked": true
     },
     {
       "file": "strain_sams3.dcm",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
       "ManufacturerModelName": "RS85-RUS",
@@ -833,19 +873,25 @@
         "(0040,0245) Performed Procedure Step Start Time": "092413",
         "(0040,0253) Performed Procedure Step ID": "20251117112804"
       },
-      "npz": "strain_sams3.npz",
-      "npz_mb": 1.83,
-      "jpeg_quality": 92,
-      "size_mb": 2.95,
+      "stills": [
+        "ui_reference/strain_sams3_f0000.png",
+        "ui_reference/strain_sams3_f0002.png",
+        "ui_reference/strain_sams3_f0005.png",
+        "ui_reference/strain_sams3_f0007.png",
+        "ui_reference/strain_sams3_f0010.png",
+        "ui_reference/strain_sams3_f0013.png"
+      ],
       "shape": [
         14,
         668,
         1280
-      ]
+      ],
+      "size_mb": 2.95,
+      "phi_masked": true
     },
     {
       "file": "strain_sams4.dcm",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
       "ManufacturerModelName": "RS85-RUS",
@@ -865,19 +911,25 @@
         "(0040,0245) Performed Procedure Step Start Time": "132127",
         "(0040,0253) Performed Procedure Step ID": "20251124155230"
       },
-      "npz": "strain_sams4.npz",
-      "npz_mb": 0.83,
-      "jpeg_quality": 92,
-      "size_mb": 5.93,
+      "stills": [
+        "ui_reference/strain_sams4_f0000.png",
+        "ui_reference/strain_sams4_f0215.png",
+        "ui_reference/strain_sams4_f0431.png",
+        "ui_reference/strain_sams4_f0647.png",
+        "ui_reference/strain_sams4_f0863.png",
+        "ui_reference/strain_sams4_f1079.png"
+      ],
       "shape": [
         1080,
         1920,
         3
-      ]
+      ],
+      "size_mb": 5.93,
+      "phi_masked": true
     },
     {
       "file": "strain_sams5.dcm",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
       "ManufacturerModelName": "RS85-RUS",
@@ -897,19 +949,25 @@
         "(0040,0245) Performed Procedure Step Start Time": "132127",
         "(0040,0253) Performed Procedure Step ID": "20251124155230"
       },
-      "npz": "strain_sams5.npz",
-      "npz_mb": 0.98,
-      "jpeg_quality": 92,
-      "size_mb": 5.93,
+      "stills": [
+        "ui_reference/strain_sams5_f0000.png",
+        "ui_reference/strain_sams5_f0215.png",
+        "ui_reference/strain_sams5_f0431.png",
+        "ui_reference/strain_sams5_f0647.png",
+        "ui_reference/strain_sams5_f0863.png",
+        "ui_reference/strain_sams5_f1079.png"
+      ],
       "shape": [
         1080,
         1920,
         3
-      ]
+      ],
+      "size_mb": 5.93,
+      "phi_masked": true
     },
     {
       "file": "strain_sams6.dcm",
-      "kind": "dicom",
+      "kind": "vendor_screen_still",
       "Modality": "US",
       "Manufacturer": "SAMSUNG MEDISON CO.,LTD.",
       "ManufacturerModelName": "RS85-RUS",
@@ -930,16 +988,22 @@
         "(0040,0245) Performed Procedure Step Start Time": "132127",
         "(0040,0253) Performed Procedure Step ID": "20251124155230"
       },
-      "npz": "strain_sams6.npz",
-      "npz_mb": 2.03,
-      "jpeg_quality": 92,
-      "size_mb": 3.18,
+      "stills": [
+        "ui_reference/strain_sams6_f0000.png",
+        "ui_reference/strain_sams6_f0002.png",
+        "ui_reference/strain_sams6_f0005.png",
+        "ui_reference/strain_sams6_f0007.png",
+        "ui_reference/strain_sams6_f0010.png",
+        "ui_reference/strain_sams6_f0013.png"
+      ],
       "shape": [
         14,
         668,
         1280
-      ]
+      ],
+      "size_mb": 3.18,
+      "phi_masked": true
     }
   ],
-  "total_mb": 84.79
+  "total_mb": 60.62
 }
