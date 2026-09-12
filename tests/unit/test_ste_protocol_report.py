@@ -380,3 +380,28 @@ class TestWindowAdoptsTheStudy:
             assert window._study.view_gls("A4C") == pytest.approx(-19.0)
         finally:
             window.close()
+
+    def test_set_study_rejects_a_stand_in_object(self, qapp) -> None:
+        """A duck-typed stand-in must be refused at the door, not deep inside.
+
+        The window asks the application for the study, and a test double (or a
+        stubbed controller) answers every call with another double. Accepting
+        it here would postpone the failure until ``GLS_AV`` is formatted —
+        ``unsupported format string passed to MagicMock.__format__`` — far away
+        from the object that actually caused it. This is exactly how the first
+        version of the wiring broke the ubuntu CI job.
+        """
+        from unittest.mock import MagicMock
+
+        from echo_personal_tool.ui.strain_window import StrainWindow
+
+        window = StrainWindow()
+        try:
+            window.show_result(_result("A4C", -19.0))
+            window.set_study(MagicMock())
+            assert window._study.view_gls("A4C") == pytest.approx(-19.0)
+            # And the table still renders: no mock reaches the format string.
+            window.show_result(_result("A2C", -21.0))
+            assert window._study.gls_average() == pytest.approx(-20.0)
+        finally:
+            window.close()

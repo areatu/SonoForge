@@ -954,28 +954,26 @@ export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 `tests/unit/test_bench_render_utils.py` (он же валит сборку, если bench-скрипт строит `ImageItem` сам).
 
 **Свип по этому списку — недостаточная проверка.** Он не ловит тесты, которых PR не касался, но
-которые зависят от изменённых модулей: именно так 2026-09-11 проехали три падения в
-`test_presentation_segment_quality_panel.py` (старые id 1…6 против новых AHA-id в `A4C_SEGMENT_NAMES`),
-видимые только на Linux, потому что macOS/Windows исключают gui-тесты (`-m "not gui"`). Перед пушем
-гонять весь `tests/unit/` (в песочнице — минус модули, тянущие QtWebEngine):
+которые зависят от изменённых модулей. Так вышло дважды: 2026-09-11 — три падения в
+`test_presentation_segment_quality_panel.py` (старые id 1…6 против новых AHA-id), 2026-09-12 — три падения
+в `test_ste_entry_flow.py` / `test_presentation_main_window.py` (`MagicMock.__format__`: окно принимало
+любой объект в `set_study`, а в этих тестах контроллер — мок). Оба раза красное было видно только на Linux.
+Перед пушем гонять **весь** `tests/unit/` — теперь без единого `--ignore` (см. ниже про qtstub):
 
 ```bash
 cd /home/user/SonoForge && export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
 ./.venv/bin/python -m pytest tests/unit/ -q --tb=line --no-header \
   --ignore=tests/unit/test_ase_reference_dialog.py \
-  --ignore=tests/unit/test_application___main__.py --ignore=tests/unit/test_application_main.py \
-  --ignore=tests/unit/test_linear_caliper_click_click.py \
-  --ignore=tests/unit/test_main_window_doppler.py --ignore=tests/unit/test_main_window_extended.py \
-  --ignore=tests/unit/test_main_window_layout.py --ignore=tests/unit/test_main_window_vessel.py \
-  --ignore=tests/unit/test_measurement_tools_panel.py --ignore=tests/unit/test_measurement_wiring.py \
-  --ignore=tests/unit/test_phase_hotkeys.py \
-  --ignore=tests/unit/test_presentation_ase_reference_dialog.py \
-  --ignore=tests/unit/test_presentation_main_window.py \
-  --ignore=tests/unit/test_simpson_live_feedback.py --ignore=tests/unit/test_ste_entry_flow.py
-# 4944 теста, ~19 мин на 2 ядрах песочницы; 0 падений, кроме перечисленных модулей
+  --ignore=tests/unit/test_presentation_ase_reference_dialog.py
+# ~5000 тестов, ~20 мин на 2 ядрах песочницы
 ```
 
-**Сброс песочницы (случалось дважды за сессию 2026-09-11).** Рабочие файлы сохраняются, а локальный
+Исключений осталось **два** вместо пятнадцати: только эти модули реально создают `QWebEngineView`, и
+заглушки тут не спасают — символы резолвятся, но процесс рендерера всё равно не стартует (segfault на
+teardown). Остальные тринадцать, включая `test_presentation_main_window.py` и `test_ste_entry_flow.py`,
+где CI падал 2026-09-12, теперь гоняются локально.
+
+**Сброс песочницы (дважды за 2026-09-11 и ещё раз 2026-09-12).** Рабочие файлы сохраняются, а локальный
 `.git` и `.venv` могут откатиться: `.venv` исчезает, `HEAD` возвращается к старому коммиту при живом
 рабочем дереве. Коммиты при этом целы на origin — восстанавливать работу заново не нужно:
 
@@ -983,20 +981,39 @@ cd /home/user/SonoForge && export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFO
 python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]" "numpy==1.26.4" \
     "pylibjpeg-libjpeg==2.2.0" "pylibjpeg-openjpeg==2.2.1" && ./.venv/bin/python tools/qtstub/mkstub.py
 git fetch origin 'refs/heads/*:refs/remotes/origin/*'      # обычный fetch не создаёт tracking-ветку
-git add -A && git diff --cached --stat origin/arena/01a09076-sonoforge   # пусто = файлы совпадают с origin
-git reset --mixed origin/arena/01a09076-sonoforge          # HEAD на актуальный коммит, дерево остаётся
+git add -A && git diff --cached --stat origin/<ветка-сессии>   # пусто = файлы совпадают с origin
+git reset --mixed origin/<ветка-сессии>                    # HEAD на актуальный коммит, дерево остаётся
 ```
 
 Сначала убедиться, что `git diff --cached origin/...` пуст (значит, содержимое файлов уже равно
 удалённому коммиту), и только потом делать `reset`. Force-push не нужен.
 
-Все пятнадцать модулей импортируют `presentation/web_reference/web_reference_widget.py` → `PySide6.QtWebEngineCore`,
-которому в песочнице не хватает системных библиотек (`libxcb-dri3.so.0`, NSS/GBM/X11-расширения), а `tools/qtstub`
-их не подменяет: без игнора они дают 14 ошибок коллекции и 111 падений/ошибок по цепочке импорта
-(`test_presentation_main_window.py` — от фикстуры, остальные — на импорте). В CI на ubuntu с полным `pyside6`
-эти же модули проходят. Маркер `gui` в `conftest.py` есть, но гонять `-m "not gui"` **нельзя**: он исключает
-именно те UI-проверки, на которых CI и упал (`test_presentation_segment_quality_panel.py` помечен `gui`), — и
-ровно так же поступают macOS/Windows-джобы, поэтому красное было видно только в ubuntu-джобе.
+**Игнор WebEngine-модулей больше не нужен (2026-09-12).** Пятнадцать модулей импортируют
+`presentation/web_reference/web_reference_widget.py` → `PySide6.QtWebEngineCore`, которому в песочнице не
+хватало системных библиотек (`libxcb-dri3.so.0`, NSS/NSPR, GBM, ALSA, X11-расширения). Их приходилось
+исключать, и именно поэтому дважды подряд красное видел только ubuntu-джоб — сначала устаревшие id сегментов,
+затем `MagicMock.__format__` в `set_study`. `tools/qtstub/mkstub.py` расширен и теперь собирает эти
+библиотеки тоже, так что локальный прогон почти сравнялся по объёму с ubuntu-джобом (исключены только два модуля,
+создающих `QWebEngineView`):
+
+```bash
+cd /home/user/SonoForge && export LD_LIBRARY_PATH=tools/qtstub/lib QT_QPA_PLATFORM=offscreen
+./.venv/bin/python tools/qtstub/mkstub.py     # включая NSS/NSPR/GBM/ALSA/xkbfile/X11 для QtWebEngine
+./.venv/bin/python -m pytest tests/unit/ -q --tb=line --no-header   # без единого --ignore
+```
+
+Три вещи, которых потребовал ELF (записаны, чтобы не переоткрывать):
+1. библиотека нужна, даже если из неё не импортируется ни один символ — загрузчик проверяет `DT_NEEDED`,
+   поэтому для таких случаев генерируется **пустой** объект;
+2. version-script из нескольких узлов `{ global: *; }` отдаёт все символы последнему узлу, и загрузчик
+   сообщает «undefined symbol … version ALSA_0.9» при present имени — каждый символ приписывается **своей**
+   версии;
+3. анонимный version-тег нельзя смешивать с именованными — безверсионные символы уходят в приватный
+   базовый узел.
+
+Маркер `gui` в `conftest.py` есть, но гонять `-m "not gui"` **нельзя**: он исключает именно те UI-проверки, на
+которых CI падал дважды, — и ровно так же поступают macOS/Windows-джобы, поэтому красное было видно только
+в ubuntu-джобе.
 
 Бенчмарки и отчёты:
 

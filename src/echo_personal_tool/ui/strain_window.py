@@ -1738,8 +1738,14 @@ class StrainWindow(QMainWindow):
         the protocol still reported. The application now owns that
         accumulation; the window adopts it, which also guarantees the table and
         the report can never show different sets of views.
+
+        Only a real :class:`StrainStudy` is adopted. Anything else (``None``
+        before the first analysis, or a stand-in controller that answers every
+        call) keeps the study the window already has: a duck-typed object would
+        pass this far and only fail later, while formatting ``GLS_AV`` — far
+        from the place that supplied it.
         """
-        if study is not None:
+        if isinstance(study, StrainStudy):
             self._study = study
 
     def show_result(self, result: StrainResult, *, frames: np.ndarray | None = None) -> None:
