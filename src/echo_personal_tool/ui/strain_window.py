@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -32,6 +33,8 @@ from echo_personal_tool.presentation.segment_labels import (
 from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 — re-exported
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
+from echo_personal_tool.ui.ste import OverviewScreen, ViewSnapshot
+from echo_personal_tool.ui.ste.gold_contour import contour_from_result, default_path_for, load_for
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 # --- Extracted submodules (step 1 of decomposition) ---
@@ -91,6 +94,8 @@ class StrainWindow(QMainWindow):
         self._control._btn_save.clicked.connect(self._save_json)
         self._control._btn_export_png.clicked.connect(self._export_png)
         self._control._btn_export_csv.clicked.connect(self._export_csv)
+        self._control.save_gold_contour.connect(self._save_gold_contour)
+        self._control.load_gold_contour.connect(self._load_gold_contour)
         # Plan §6.5: ``C`` cycles the bull's-eye palette. The combo box stays in
         # sync, so the keyboard and the panel never disagree about the palette.
         palette_shortcut = QShortcut(QKeySequence(Qt.Key.Key_C), self)
@@ -144,6 +149,14 @@ class StrainWindow(QMainWindow):
         self._curves_view = StrainCurvesView()
         self._stacked.addWidget(self._curves_view)  # index 1
 
+        # «3 Point Contour» overview (plan §5.3 п.2): three per-view cards, the
+        # 18-segment bull's-eye from ``StrainStudy``, and a per-view status list.
+        # All data flows from the study — no recomputation.
+        self._overview = OverviewScreen()
+        self._control.ttp_mode_toggled.connect(self._overview.bullseye.set_ttp_mode)
+        self._control.palette_changed.connect(self._overview.bullseye.set_palette)
+        self._stacked.addWidget(self._overview)  # index 2
+
         content_layout.addWidget(self._stacked, stretch=3)
 
         # Summary table
@@ -160,6 +173,13 @@ class StrainWindow(QMainWindow):
         # State
         self._result: StrainResult | None = None
         self._position: str = "A4C"
+        # DICOM provenance carried with the current clip (set via show_result):
+        # needed to write a gold-contour JSON that the validation harness can
+        # match back to the source clip.
+        self._study_uid: str = ""
+        self._sop_instance_uid: str = ""
+        self._source_path: str = ""
+        self._pixel_spacing_mm: tuple[float, float] = (1.0, 1.0)
         # Multi-view study: every analysed view is kept, so the report can show
         # per-view GLS, the three-view average (GLS_AV) and the 18-segment merge.
         self._study: StrainStudy = StrainStudy()
@@ -189,8 +209,17 @@ class StrainWindow(QMainWindow):
         """
         if isinstance(study, StrainStudy):
             self._study = study
+            self._refresh_overview()
 
-    def show_result(self, result: StrainResult, *, frames: np.ndarray | None = None) -> None:
+    def show_result(
+        self,
+        result: StrainResult,
+        *,
+        frames: np.ndarray | None = None,
+        study_uid: str = "",
+        sop_instance_uid: str = "",
+        pixel_spacing_mm: tuple[float, float] | None = None,
+    ) -> None:
         """Display strain results in the STE window.
 
         Args:
@@ -198,12 +227,40 @@ class StrainWindow(QMainWindow):
             frames: optional full cine (N, H, W[, C]) used as the ultrasound
                 background of the A4C panel. Positions in the result are in the
                 same pixel coordinate space, so overlays line up with the image.
+            study_uid: DICOM Study Instance UID — used as the file-name stem
+                when saving a gold contour (plan §11.2 п.1).
+            sop_instance_uid: DICOM SOP Instance UID, stored verbatim in the
+                gold-contour JSON for provenance.
+            pixel_spacing_mm: physical pixel size (row, col) from the DICOM;
+                defaults to the value carried on the worker result, then 1 mm.
         """
         self._result = result
+        # Record DICOM provenance for gold-contour saves (newer value wins;
+        # unknown fields stay at their default so older callers keep working).
+        self._study_uid = str(study_uid or getattr(result, "study_instance_uid", "") or "")
+        self._sop_instance_uid = str(sop_instance_uid or getattr(result, "sop_instance_uid", "") or "")
+        self._source_path = str(getattr(result, "source_path", "") or "")
+        if pixel_spacing_mm is not None and len(pixel_spacing_mm) == 2:
+            self._pixel_spacing_mm = (float(pixel_spacing_mm[0]), float(pixel_spacing_mm[1]))
+        else:
+            try:
+                ps = getattr(result, "pixel_spacing_mm", None)
+                if ps is not None and len(ps) == 2:
+                    self._pixel_spacing_mm = (float(ps[0]), float(ps[1]))
+            except Exception:  # noqa: BLE001
+                pass
+
         # Record this view in the study; the newest run of a view wins.
         analysis = StrainAnalysis.from_result(result)
         self._analysis = analysis
         self._study = self._study.with_view(analysis)
+
+        # Visual snapshot for the overview screen (plan §5.3 п.2): store the ED
+        # frame + ED/ES contours + endo kernels per view so the 3-view screen
+        # can redraw without recomputing strain. The snapshot borrows frame
+        # memory from the caller (no copy) — frame buffers live for the
+        # lifetime of the viewer.
+        self._overview.set_snapshot(self._capture_view_snapshot(result, frames))
 
         disp_idx: int | None = None
         n_all = len(result.longitudinal) if result.longitudinal is not None else 0
@@ -419,6 +476,10 @@ class StrainWindow(QMainWindow):
         # Update curves view (ECG strip hidden there too when absent)
         self._curves_view.set_strain_data(result)
 
+        # Keep the overview in sync even when it's not the active page, so
+        # switching to it later shows the latest study without a second click.
+        self._refresh_overview()
+
         if not self.isVisible():
             self.show()
         self.raise_()
@@ -444,6 +505,12 @@ class StrainWindow(QMainWindow):
         self._control._mode_curves.setChecked(True)
         if self._result is not None:
             self._curves_view.set_strain_data(self._result)
+
+    def show_overview(self) -> None:
+        """Switch the stacked view to the «3 Point Contour» overview page."""
+        self._stacked.setCurrentIndex(2)
+        self._control._mode_overview.setChecked(True)
+        self._refresh_overview()
 
     def _on_position_selected(self, view: str) -> None:
         self._position = view
@@ -576,6 +643,59 @@ class StrainWindow(QMainWindow):
         # Re-render
         self._update_panel_a4c()
 
+    def _refresh_overview(self) -> None:
+        """Re-render the «3 Point Contour» screen from ``self._study``.
+
+        Called when the user switches to the overview tab and whenever a new
+        view's result arrives. All numbers come from the study — there is no
+        second GLS computation, no alternate average.
+        """
+        if self._study is None:
+            return
+        self._overview.set_study(self._study)
+
+    def _capture_view_snapshot(
+        self,
+        result: StrainResult,
+        frames: np.ndarray | None,
+    ) -> ViewSnapshot:
+        """Build a :class:`ViewSnapshot` from the worker result for this run.
+
+        The snapshot holds references (not copies) to the ED frame and the
+        contours/endo positions so the overview card can draw them without
+        re-running the tracker. ``frames`` is kept by reference; the caller
+        (viewer widget) owns the buffer.
+        """
+        view = str(getattr(result, "view", self._position) or self._position)
+        ed_frame: np.ndarray | None = None
+        ed_idx = int(getattr(result, "ed_index", 0) or 0)
+        if frames is not None and frames.ndim >= 3 and 0 <= ed_idx < frames.shape[0]:
+            ed_frame = frames[ed_idx]
+        endo_indices = [i for i, k in enumerate(result.kernels) if k.layer == "endo"]
+        endo_positions = None
+        if result.tracked_ed_positions is not None and len(endo_indices) > 0:
+            endo_positions = np.asarray(result.tracked_ed_positions)[endo_indices]
+        ecg = result.ecg_trace_for_display
+        frame_count = 0
+        if frames is not None and frames.ndim >= 3:
+            frame_count = int(frames.shape[0])
+        elif result.longitudinal is not None:
+            frame_count = len(result.longitudinal)
+        return ViewSnapshot(
+            view=view,
+            ed_frame=ed_frame,
+            ed_contour=None if result.ed_contour is None else np.asarray(result.ed_contour),
+            es_contour=None if result.es_contour is None else np.asarray(result.es_contour),
+            endo_positions_ed=endo_positions,
+            ecg_trace=None if ecg is None else np.asarray(ecg),
+            ecg_frame_time_ms=float(getattr(result, "frame_time_ms", 33.3) or 33.3),
+            ed_index=ed_idx,
+            es_index=int(getattr(result, "es_index", 0) or 0),
+            frame_count=frame_count,
+            heart_rate_bpm=float(getattr(result, "heart_rate_bpm", 0.0) or 0.0),
+            kernels=[result.kernels[i] for i in endo_indices],
+        )
+
     def _update_panel_a4c(self) -> None:
         """Re-render A4C panel with current data."""
         if self._result is None:
@@ -611,6 +731,9 @@ class StrainWindow(QMainWindow):
     def _cycle_bullseye_palette(self) -> None:
         """Switch the bull's-eye palette (``C``) and keep the combo in sync."""
         key = self._panel_bullseye.cycle_palette()
+        # Keep the overview bull's-eye on the same palette (same palette key
+        # drives both targets — they must never disagree about the color map).
+        self._overview.bullseye.set_palette(key)
         combo = getattr(self._control, "_cb_palette", None)
         if combo is not None:
             index = combo.findData(key)
@@ -620,7 +743,7 @@ class StrainWindow(QMainWindow):
                 del blocker
 
     def _on_display_mode_changed(self, mode: str) -> None:
-        """Switch between contour, curves, and edit mode."""
+        """Switch between contour, curves, overview and edit mode."""
         if mode == "contour":
             self._stacked.setCurrentIndex(0)
             self._panel_a4c.set_edit_mode(False)
@@ -629,6 +752,11 @@ class StrainWindow(QMainWindow):
             # Update curves view with current result
             if self._result is not None:
                 self._curves_view.set_strain_data(self._result)
+        elif mode == "overview":
+            self._stacked.setCurrentIndex(2)
+            self._panel_a4c.set_edit_mode(False)
+            # Re-push the study so new per-view numbers / snapshots are drawn.
+            self._refresh_overview()
         elif mode == "edit_mode":
             self._stacked.setCurrentIndex(0)
             self._panel_a4c.set_edit_mode(True)
@@ -697,6 +825,81 @@ class StrainWindow(QMainWindow):
                 self._result.segment_quality,
                 self._qc_accepted_segments,
             )
+
+    def _save_gold_contour(self) -> None:
+        """Save the current ED endo contour as a gold-standard annotation (§11.2 п.1).
+
+        Writes ``gold/lv_{study_uid}_{view}.json`` using the canonical schema
+        consumed by the validation harness. The saved contour is exactly what
+        is on screen (so manual kernel edits are captured); if the user has
+        moved kernels, those edits are what gets saved, not the original
+        auto-contour.
+        """
+        if self._result is None:
+            return
+        try:
+            gold = contour_from_result(
+                self._result,
+                view=self._position,
+                study_uid=self._study_uid,
+                sop_instance_uid=self._sop_instance_uid,
+                pixel_spacing_mm=self._pixel_spacing_mm,
+            )
+        except ValueError as exc:
+            logger.warning("cannot save gold contour: %s", exc)
+            return
+
+        from PySide6.QtWidgets import QFileDialog
+
+        default = str(default_path_for(self._study_uid or "unknown", self._position))
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("strain.save_gold_title"),
+            default,
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+        try:
+            written = gold.save(pathlib.Path(path).parent, source_path=self._source_path)
+            # Ensure the file name uses the final chosen path (save() writes
+            # its own lv_* name inside the selected directory; rename if the
+            # user picked a different file name).
+            target = pathlib.Path(path)
+            if written != target:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    target.unlink()
+                written.replace(target)
+                written = target
+            logger.info("Saved gold ED contour → %s", written)
+            self._meta_label.setText(
+                self._meta_label.text() + f"   |   {tr('strain.gold_saved', path=str(written.name))}"
+            )
+        except OSError as exc:
+            logger.error("Failed to save gold contour: %s", exc)
+
+    def _load_gold_contour(self) -> None:
+        """Load a gold-contour JSON and draw it over the current panel.
+
+        This is a visual overlay (dashed yellow) for comparison against the
+        current ED contour — it does not replace the tracked contour or
+        recompute anything.
+        """
+        from PySide6.QtWidgets import QFileDialog
+
+        default_dir = str(default_path_for(self._study_uid or "unknown", self._position).parent)
+        path, _ = QFileDialog.getOpenFileName(self, tr("strain.load_gold_title"), default_dir, "JSON files (*.json)")
+        if not path:
+            return
+        gold = load_for(pathlib.Path(path))
+        if gold is None:
+            return
+        # Overlay as a dashed cyan contour on the currently visible panel.
+        self._panel_a4c.show_es_contour(gold.points, color="#00e5ff", smooth=True)
+        self._meta_label.setText(
+            self._meta_label.text() + f"   |   {tr('strain.gold_loaded', view=gold.view, frame=str(gold.frame_index))}"
+        )
 
     def _save_json(self) -> None:
         """Save deformation data to JSON file."""

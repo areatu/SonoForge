@@ -179,33 +179,64 @@ def assess_tracking_quality(
     of it produced no verdict at all. This is the evidence behind the number —
     without it a report is asking to be trusted blindly.
     """
-    cvg, fid, gls_ref, interp = _clamp_inputs(
-        coverage, fidelity, gls_pp, interpolated_fraction
-    )
+    cvg, fid, gls_ref, interp = _clamp_inputs(coverage, fidelity, gls_pp, interpolated_fraction)
     rej, unv, excl_n, excl_s, vis, noise = _clamp_secondary(
-        rejected_fraction, unverified_fraction,
-        excluded_nodes, excluded_segments, visibility_loss, noise_to_signal,
+        rejected_fraction,
+        unverified_fraction,
+        excluded_nodes,
+        excluded_segments,
+        visibility_loss,
+        noise_to_signal,
     )
 
     reasons: list[str] = []
     notes: list[str] = list(physiology_notes) + list(geometry_notes)
     hard_failure = _check_hard_failures(
-        reasons, has_curve, geometry_ok, physiology_ok, cvg,
-        rej, excl_s, vis, noise,
+        reasons,
+        has_curve,
+        geometry_ok,
+        physiology_ok,
+        cvg,
+        rej,
+        excl_s,
+        vis,
+        noise,
     )
     _collect_verification_note(notes, has_curve, rej, unv, closure_median_mm, closure_p95_mm)
     _collect_visibility_note(notes, has_curve, excl_n, excl_s, vis)
 
     soft = _check_soft_failures(
-        reasons, has_curve, cvg, interp, consistency_delta,
-        estimate_spread_pp, sign_flip_fraction, gls_ref, noise,
-        n_segments_measured, excl_n, excl_s, vis, rej, unv, physiology_notes,
+        reasons,
+        has_curve,
+        cvg,
+        interp,
+        consistency_delta,
+        estimate_spread_pp,
+        sign_flip_fraction,
+        gls_ref,
+        noise,
+        n_segments_measured,
+        excl_n,
+        excl_s,
+        vis,
+        rej,
+        unv,
+        physiology_notes,
     )
 
     status = _decide_status(hard_failure, soft)
     confidence = _compute_confidence(
-        fid, cvg, interp, consistency_delta, estimate_spread_pp,
-        sign_flip_fraction, noise, vis, rej, unv, status,
+        fid,
+        cvg,
+        interp,
+        consistency_delta,
+        estimate_spread_pp,
+        sign_flip_fraction,
+        noise,
+        vis,
+        rej,
+        unv,
+        status,
     )
 
     return QualityReport(
@@ -232,7 +263,10 @@ def assess_tracking_quality(
 
 
 def _clamp_inputs(
-    coverage: float, fidelity: float, gls_pp: float, interpolated_fraction: float,
+    coverage: float,
+    fidelity: float,
+    gls_pp: float,
+    interpolated_fraction: float,
 ) -> tuple[float, float, float, float]:
     return (
         float(max(0.0, min(1.0, coverage))),
@@ -243,9 +277,12 @@ def _clamp_inputs(
 
 
 def _clamp_secondary(
-    rejected_fraction: float, unverified_fraction: float,
-    excluded_nodes: int, excluded_segments: int,
-    visibility_loss: float, noise_to_signal: float,
+    rejected_fraction: float,
+    unverified_fraction: float,
+    excluded_nodes: int,
+    excluded_segments: int,
+    visibility_loss: float,
+    noise_to_signal: float,
 ) -> tuple[float, float, int, int, float, float]:
     return (
         float(max(0.0, min(1.0, rejected_fraction))),
@@ -285,8 +322,7 @@ def _check_hard_failures(
         reasons.append(REASON_TRACKING_VERIFICATION)
         hard = True
     if has_curve and (
-        excluded_segments > MAX_EXCLUDED_SEGMENTS_INVALID
-        or visibility_loss > MAX_VISIBILITY_LOSS_INVALID
+        excluded_segments > MAX_EXCLUDED_SEGMENTS_INVALID or visibility_loss > MAX_VISIBILITY_LOSS_INVALID
     ):
         reasons.append(REASON_EDGE_VISIBILITY)
         hard = True
@@ -297,9 +333,12 @@ def _check_hard_failures(
 
 
 def _collect_verification_note(
-    notes: list[str], has_curve: bool,
-    rejected_fraction: float, unverified_fraction: float,
-    closure_median_mm: float, closure_p95_mm: float,
+    notes: list[str],
+    has_curve: bool,
+    rejected_fraction: float,
+    unverified_fraction: float,
+    closure_median_mm: float,
+    closure_p95_mm: float,
 ) -> None:
     if has_curve and (rejected_fraction > 0.0 or unverified_fraction > 0.0):
         notes.append(
@@ -310,8 +349,11 @@ def _collect_verification_note(
 
 
 def _collect_visibility_note(
-    notes: list[str], has_curve: bool,
-    excluded_nodes: int, excluded_segments: int, visibility_loss: float,
+    notes: list[str],
+    has_curve: bool,
+    excluded_nodes: int,
+    excluded_segments: int,
+    visibility_loss: float,
 ) -> None:
     if has_curve and (excluded_nodes > 0 or excluded_segments > 0 or visibility_loss > MAX_VISIBILITY_LOSS_REVIEW):
         notes.append(

@@ -24,12 +24,14 @@ class ControlPanel(QWidget):
     """Left-side control panel for Strain Window."""
 
     view_toggled = Signal(str, bool)  # view_name, checked
-    display_mode_changed = Signal(str)  # "contour", "curves", "sr", "peak"
+    display_mode_changed = Signal(str)  # "contour", "curves", "sr", "peak", "overview"
     strain_metric_changed = Signal(str)  # "deformation", "strain_rate", "peak"
     qc_segment_toggled = Signal(int, bool)  # segment_id, accepted
     position_selected = Signal(str)  # "A4C" | "A2C" | "A3C"
     ttp_mode_toggled = Signal(bool)  # bull's-eye: strain vs time-to-peak
     palette_changed = Signal(str)  # bull's-eye palette i18n key
+    save_gold_contour = Signal()  # user asked to save ED endo as gold
+    load_gold_contour = Signal()  # user asked to load an existing gold contour
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -54,6 +56,11 @@ class ControlPanel(QWidget):
         self._mode_curves.setStyleSheet("color: #e0e0e0;")
         self._mode_curves.toggled.connect(lambda c: self.display_mode_changed.emit("curves") if c else None)
         view_mode_layout.addWidget(self._mode_curves)
+
+        self._mode_overview = QRadioButton(tr("strain.mode_overview"))
+        self._mode_overview.setStyleSheet("color: #e0e0e0;")
+        self._mode_overview.toggled.connect(lambda c: self.display_mode_changed.emit("overview") if c else None)
+        view_mode_layout.addWidget(self._mode_overview)
 
         group_view_mode.setLayout(view_mode_layout)
         layout.addWidget(group_view_mode)
@@ -216,6 +223,20 @@ class ControlPanel(QWidget):
 
         self._btn_export_csv = QPushButton(tr("strain.btn_export_csv"))
         actions_layout.addWidget(self._btn_export_csv)
+
+        # Gold contour save/load (plan §11.2 п.1): writes the currently-edited
+        # ED endo contour to gold/ in the format used by the ONNX segmentation
+        # benchmarks, so the user can iteratively mark 2-3 ground-truth clips
+        # and push them for vendor-comparison (§5.3 п.1).
+        self._btn_save_gold = QPushButton(tr("strain.btn_save_gold"))
+        self._btn_save_gold.setToolTip(tr("strain.btn_save_gold_hint"))
+        self._btn_save_gold.clicked.connect(self.save_gold_contour.emit)
+        actions_layout.addWidget(self._btn_save_gold)
+
+        self._btn_load_gold = QPushButton(tr("strain.btn_load_gold"))
+        self._btn_load_gold.setToolTip(tr("strain.btn_load_gold_hint"))
+        self._btn_load_gold.clicked.connect(self.load_gold_contour.emit)
+        actions_layout.addWidget(self._btn_load_gold)
 
         self._btn_close = QPushButton(tr("strain.btn_close"))
         actions_layout.addWidget(self._btn_close)
