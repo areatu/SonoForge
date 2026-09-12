@@ -2356,7 +2356,23 @@ class MainWindow(QMainWindow):
         # One accumulation of analysed views for the window and the protocol:
         # the controller owns it, the window adopts it (plan §5.3 п.6).
         window.set_study(self._controller.strain_study())
-        window.show_result(result, frames=frames)
+        # DICOM provenance so the strain window can save a gold-contour JSON
+        # with the correct study UID and pixel spacing (§11.2 п.1).
+        snapshot = self._controller.state_manager.snapshot
+        spacing = snapshot.effective_pixel_spacing or (1.0, 1.0)
+        study_uid = ""
+        sop_uid = ""
+        instance = getattr(snapshot, "instance", None)
+        if instance is not None:
+            study_uid = str(getattr(instance, "study_instance_uid", "") or "")
+            sop_uid = str(getattr(instance, "sop_instance_uid", "") or "")
+        window.show_result(
+            result,
+            frames=frames,
+            study_uid=study_uid,
+            sop_instance_uid=sop_uid,
+            pixel_spacing_mm=(float(spacing[0]), float(spacing[1])),
+        )
 
     def _on_ste_view_selected(self, view: str) -> None:
         """Record which apical view (A4C/A2C/A3C) the current clip represents.
@@ -2377,7 +2393,18 @@ class MainWindow(QMainWindow):
         window = self._ensure_strain_window()
         window.set_position(self._ste_position)
         window.set_study(self._controller.strain_study())
-        window.show_result(result, frames=self._strain_frames_for_window)
+        # Reuse metadata captured at the last run — show_result stores it on
+        # the window, and the curves page reopens the same result.
+        snapshot = self._controller.state_manager.snapshot
+        spacing = snapshot.effective_pixel_spacing or (1.0, 1.0)
+        instance = getattr(snapshot, "instance", None)
+        window.show_result(
+            result,
+            frames=self._strain_frames_for_window,
+            study_uid="" if instance is None else str(getattr(instance, "study_instance_uid", "") or ""),
+            sop_instance_uid="" if instance is None else str(getattr(instance, "sop_instance_uid", "") or ""),
+            pixel_spacing_mm=(float(spacing[0]), float(spacing[1])),
+        )
         window.show_curves()
 
     @staticmethod

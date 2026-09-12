@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -33,6 +34,7 @@ from echo_personal_tool.ui.bullseye_widget import BullseyeWidget  # noqa: F401 �
 from echo_personal_tool.ui.cine_panel import CinePanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.control_panel import ControlPanel  # noqa: F401 — re-exported
 from echo_personal_tool.ui.ste import OverviewScreen, ViewSnapshot
+from echo_personal_tool.ui.ste.gold_contour import contour_from_result, default_path_for, load_for
 from echo_personal_tool.ui.strain_curves_view import StrainCurvesView
 
 # --- Extracted submodules (step 1 of decomposition) ---
@@ -92,6 +94,8 @@ class StrainWindow(QMainWindow):
         self._control._btn_save.clicked.connect(self._save_json)
         self._control._btn_export_png.clicked.connect(self._export_png)
         self._control._btn_export_csv.clicked.connect(self._export_csv)
+        self._control.save_gold_contour.connect(self._save_gold_contour)
+        self._control.load_gold_contour.connect(self._load_gold_contour)
         # Plan §6.5: ``C`` cycles the bull's-eye palette. The combo box stays in
         # sync, so the keyboard and the panel never disagree about the palette.
         palette_shortcut = QShortcut(QKeySequence(Qt.Key.Key_C), self)
@@ -169,6 +173,13 @@ class StrainWindow(QMainWindow):
         # State
         self._result: StrainResult | None = None
         self._position: str = "A4C"
+        # DICOM provenance carried with the current clip (set via show_result):
+        # needed to write a gold-contour JSON that the validation harness can
+        # match back to the source clip.
+        self._study_uid: str = ""
+        self._sop_instance_uid: str = ""
+        self._source_path: str = ""
+        self._pixel_spacing_mm: tuple[float, float] = (1.0, 1.0)
         # Multi-view study: every analysed view is kept, so the report can show
         # per-view GLS, the three-view average (GLS_AV) and the 18-segment merge.
         self._study: StrainStudy = StrainStudy()
@@ -200,7 +211,15 @@ class StrainWindow(QMainWindow):
             self._study = study
             self._refresh_overview()
 
-    def show_result(self, result: StrainResult, *, frames: np.ndarray | None = None) -> None:
+    def show_result(
+        self,
+        result: StrainResult,
+        *,
+        frames: np.ndarray | None = None,
+        study_uid: str = "",
+        sop_instance_uid: str = "",
+        pixel_spacing_mm: tuple[float, float] | None = None,
+    ) -> None:
         """Display strain results in the STE window.
 
         Args:
@@ -208,8 +227,29 @@ class StrainWindow(QMainWindow):
             frames: optional full cine (N, H, W[, C]) used as the ultrasound
                 background of the A4C panel. Positions in the result are in the
                 same pixel coordinate space, so overlays line up with the image.
+            study_uid: DICOM Study Instance UID — used as the file-name stem
+                when saving a gold contour (plan §11.2 п.1).
+            sop_instance_uid: DICOM SOP Instance UID, stored verbatim in the
+                gold-contour JSON for provenance.
+            pixel_spacing_mm: physical pixel size (row, col) from the DICOM;
+                defaults to the value carried on the worker result, then 1 mm.
         """
         self._result = result
+        # Record DICOM provenance for gold-contour saves (newer value wins;
+        # unknown fields stay at their default so older callers keep working).
+        self._study_uid = str(study_uid or getattr(result, "study_instance_uid", "") or "")
+        self._sop_instance_uid = str(sop_instance_uid or getattr(result, "sop_instance_uid", "") or "")
+        self._source_path = str(getattr(result, "source_path", "") or "")
+        if pixel_spacing_mm is not None and len(pixel_spacing_mm) == 2:
+            self._pixel_spacing_mm = (float(pixel_spacing_mm[0]), float(pixel_spacing_mm[1]))
+        else:
+            try:
+                ps = getattr(result, "pixel_spacing_mm", None)
+                if ps is not None and len(ps) == 2:
+                    self._pixel_spacing_mm = (float(ps[0]), float(ps[1]))
+            except Exception:  # noqa: BLE001
+                pass
+
         # Record this view in the study; the newest run of a view wins.
         analysis = StrainAnalysis.from_result(result)
         self._analysis = analysis
@@ -785,6 +825,81 @@ class StrainWindow(QMainWindow):
                 self._result.segment_quality,
                 self._qc_accepted_segments,
             )
+
+    def _save_gold_contour(self) -> None:
+        """Save the current ED endo contour as a gold-standard annotation (§11.2 п.1).
+
+        Writes ``gold/lv_{study_uid}_{view}.json`` using the canonical schema
+        consumed by the validation harness. The saved contour is exactly what
+        is on screen (so manual kernel edits are captured); if the user has
+        moved kernels, those edits are what gets saved, not the original
+        auto-contour.
+        """
+        if self._result is None:
+            return
+        try:
+            gold = contour_from_result(
+                self._result,
+                view=self._position,
+                study_uid=self._study_uid,
+                sop_instance_uid=self._sop_instance_uid,
+                pixel_spacing_mm=self._pixel_spacing_mm,
+            )
+        except ValueError as exc:
+            logger.warning("cannot save gold contour: %s", exc)
+            return
+
+        from PySide6.QtWidgets import QFileDialog
+
+        default = str(default_path_for(self._study_uid or "unknown", self._position))
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            tr("strain.save_gold_title"),
+            default,
+            "JSON files (*.json)",
+        )
+        if not path:
+            return
+        try:
+            written = gold.save(pathlib.Path(path).parent, source_path=self._source_path)
+            # Ensure the file name uses the final chosen path (save() writes
+            # its own lv_* name inside the selected directory; rename if the
+            # user picked a different file name).
+            target = pathlib.Path(path)
+            if written != target:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    target.unlink()
+                written.replace(target)
+                written = target
+            logger.info("Saved gold ED contour → %s", written)
+            self._meta_label.setText(
+                self._meta_label.text() + f"   |   {tr('strain.gold_saved', path=str(written.name))}"
+            )
+        except OSError as exc:
+            logger.error("Failed to save gold contour: %s", exc)
+
+    def _load_gold_contour(self) -> None:
+        """Load a gold-contour JSON and draw it over the current panel.
+
+        This is a visual overlay (dashed yellow) for comparison against the
+        current ED contour — it does not replace the tracked contour or
+        recompute anything.
+        """
+        from PySide6.QtWidgets import QFileDialog
+
+        default_dir = str(default_path_for(self._study_uid or "unknown", self._position).parent)
+        path, _ = QFileDialog.getOpenFileName(self, tr("strain.load_gold_title"), default_dir, "JSON files (*.json)")
+        if not path:
+            return
+        gold = load_for(pathlib.Path(path))
+        if gold is None:
+            return
+        # Overlay as a dashed cyan contour on the currently visible panel.
+        self._panel_a4c.show_es_contour(gold.points, color="#00e5ff", smooth=True)
+        self._meta_label.setText(
+            self._meta_label.text() + f"   |   {tr('strain.gold_loaded', view=gold.view, frame=str(gold.frame_index))}"
+        )
 
     def _save_json(self) -> None:
         """Save deformation data to JSON file."""

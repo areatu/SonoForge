@@ -182,6 +182,77 @@ def _frames_from_pixels(dataset) -> np.ndarray:
     return array.astype(np.float32, copy=False)
 
 
+def _vendor(summary: dict) -> str:
+    maker = str(summary.get("Manufacturer", "")).upper()
+    if "SAMSUNG" in maker or "MEDISON" in maker:
+        return "samsung"
+    if "PHILIPS" in maker:
+        return "philips"
+    if "GE" in maker:
+        return "ge"
+    return "unknown"
+
+
+def _is_still_screen(frames: np.ndarray, summary: dict) -> bool:
+    """Identify a vendor screen-capture (strain curves, bullseye, 3-point
+    contour page, report layout) vs a raw ultrasound cine loop.
+
+    Screen captures burn multiple pieces of text (segment labels, GLPS %,
+    bullseye values, menu items) into the panel alongside the sector — we
+    cannot reliably black-mask them without destroying the reference value,
+    so they are exported as PNG stills under ``ui_reference/`` instead of
+    being encoded as trackable .npz bundles.
+
+    Detection: filename prefix. In the For_pero fixture set the screen
+    captures are explicitly named ``strain_*``. For future clips the user is
+    expected to separate raw cine from analysis screens by folder/prefix;
+    when that separation is not possible, add an OCR/layout classifier here.
+    """
+    fname = str(summary.get("file", "")).lower()
+    return any(p in fname for p in ("strain", "result", "screen", "analysis", "report"))
+
+
+def _mask_burned_in_phi(frames: np.ndarray, summary: dict) -> np.ndarray:
+    """Black out rectangular zones where the vendor burns in patient/study text.
+
+    The masks are deliberately conservative — they cover strips where the
+    manufacturer draws patient name / ID / date / institution and HR / depth
+    readouts, and stop short of the ultrasound sector so speckle statistics
+    inside the myocardium are untouched. We use per-vendor rectangles derived
+    from the actual For_pero clips (gold1…gold8, gold_Ph_ECG1/2), rather than
+    trying to OCR every frame.
+
+    Zones painted black (coordinates are rows × columns):
+
+    * Samsung raw cine (800×1276): top 55 px — the strip that contains
+      patient ID / name / department / exam date / transducer parameters.
+      The bottom HR label (ЧСС) and ECG strip are **not** PHI and are left
+      intact.
+    * Philips raw cine (600×800): top 60 px (settings/MI/TIS row), left
+      120 px (parameter text column), right 25 px (depth bar), and the HR
+      readout in the bottom-left corner. Sector starts ~column 300 so the
+      left mask is safe.
+    * GE / unknown: nothing — conservative default; if new clips arrive the
+      rectangles are extended here rather than guessed globally.
+
+    All frames of the clip are painted uniformly so a text blinker cannot
+    leak a single frame with PHI.
+    """
+    h, w = frames.shape[1], frames.shape[2]
+    vendor = _vendor(summary)
+    zones: list[tuple[slice, slice]] = []
+    if vendor == "samsung" and h >= 700 and w >= 1000:
+        zones.append((slice(0, min(55, h)), slice(0, w)))  # patient/department strip
+    elif vendor == "philips" and h <= 700 and w <= 1000:
+        zones.append((slice(0, min(60, h)), slice(0, w)))  # settings + TIS/MI row
+        zones.append((slice(0, h), slice(0, min(120, w))))  # left-side text column
+        zones.append((slice(0, h), slice(max(0, w - 25), w)))  # right-side depth bar
+        zones.append((slice(max(0, h - 25), h), slice(0, min(220, w))))  # bottom-left HR
+    for rslice, cslice in zones:
+        frames[:, rslice, cslice] = 0
+    return frames
+
+
 def _encode_frames(frames: np.ndarray, quality: int) -> np.ndarray:
     import cv2
 
@@ -204,6 +275,43 @@ def _export_clip(path: pathlib.Path, out_dir: pathlib.Path) -> dict | None:
     frames = _frames_from_pixels(dataset)
     name = path.stem if path.suffix else path.name
 
+    # Screen-captures of the vendor strain page contain curves + overlaid text
+    # (potentially with patient/HR), and they are not raw cine — the tracker
+    # cannot meaningfully run on them. Bypass the .npz path and write them as
+    # PNG stills under ui_reference/ instead.
+    import cv2
+
+    if _is_still_screen(frames, summary):
+        (out_dir / "ui_reference").mkdir(parents=True, exist_ok=True)
+        stills = []
+        picks = np.linspace(0, frames.shape[0] - 1, num=min(6, frames.shape[0]), dtype=int)
+        for idx in picks:
+            f = np.asarray(frames[idx])
+            f = np.clip((f - float(f.min())) / (float(f.max()) - float(f.min()) + 1e-6) * 255.0, 0, 255)
+            still_name = f"{name}_f{int(idx):04d}.png"
+            cv2.imwrite(str(out_dir / "ui_reference" / still_name), f.astype(np.uint8))
+            stills.append(f"ui_reference/{still_name}")
+        summary.update(
+            {
+                "kind": "vendor_screen_still",
+                "stills": stills,
+                "shape": [int(v) for v in frames.shape],
+                "size_mb": round(path.stat().st_size / 1048576, 2),
+                "phi_masked": True,
+            }
+        )
+        (out_dir / f"{name}.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(
+            f"  ~ {name:20} vendor screen ({frames.shape[2]}×{frames.shape[1]}, "
+            f"{frames.shape[0]} кадров) → {len(stills)} PNG в ui_reference/"
+        )
+        return summary
+
+    # Black out burned-in patient/department/HR strips BEFORE JPEG encoding,
+    # so no PHI ends up in the committed .npz. All frames are painted to the
+    # same rectangles to prevent a text-blinker from leaking one frame.
+    frames = _mask_burned_in_phi(frames, summary)
+
     quality = 92
     for attempt in range(4):
         encoded = _encode_frames(frames, quality)
@@ -223,16 +331,16 @@ def _export_clip(path: pathlib.Path, out_dir: pathlib.Path) -> dict | None:
 
     summary.update(
         {
+            "kind": "dicom",
             "npz": target.name,
             "npz_mb": round(target.stat().st_size / 1048576, 2),
             "jpeg_quality": quality,
             "size_mb": round(path.stat().st_size / 1048576, 2),
             "shape": [int(v) for v in frames.shape],
+            "phi_masked": True,
         }
     )
-    (out_dir / f"{name}.json").write_text(
-        json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    (out_dir / f"{name}.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     print(
         f"  ✓ {name:20} {frames.shape[0]:3d} кадров {frames.shape[2]}×{frames.shape[1]} "
         f"fps {summary['fps']:5.1f} ECG={summary['ecg']} → {summary['npz_mb']:5.2f} МБ (q{quality})"
@@ -260,8 +368,12 @@ def _export_stills(path: pathlib.Path, out_dir: pathlib.Path) -> dict:
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     summary.update(
-        {"fps": round(float(fps), 2), "frames": total, "size_px": [width, height],
-         "size_mb": round(path.stat().st_size / 1048576, 2)}
+        {
+            "fps": round(float(fps), 2),
+            "frames": total,
+            "size_px": [width, height],
+            "size_mb": round(path.stat().st_size / 1048576, 2),
+        }
     )
 
     stills: list[str] = []
@@ -312,9 +424,7 @@ def main() -> int:
     index = {
         "source": str(args.source),
         "clips": entries,
-        "total_mb": round(
-            sum(e.get("npz_mb", 0.0) + 6 * 0.15 for e in entries), 2
-        ),
+        "total_mb": round(sum(e.get("npz_mb", 0.0) + 6 * 0.15 for e in entries), 2),
     }
     (args.out / "index.json").write_text(json.dumps(index, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nиндекс: {args.out / 'index.json'} ({len(entries)} файлов)")
