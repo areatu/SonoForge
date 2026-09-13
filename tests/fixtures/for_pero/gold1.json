@@ -38,12 +38,13 @@
     "(0040,0253) Performed Procedure Step ID": "20250926101145"
   },
   "npz": "gold1.npz",
-  "npz_mb": 2.69,
-  "jpeg_quality": 68,
+  "npz_mb": 2.53,
+  "jpeg_quality": 76,
   "size_mb": 8.79,
   "shape": [
     55,
     800,
     1276
-  ]
+  ],
+  "phi_masked": true
 }

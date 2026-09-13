@@ -125,6 +125,22 @@ def build(symbols: dict[str, tuple[str, str | None]], soname: str, *, dry_run: b
     # resolved. Emit an empty object in that case instead of skipping it.
     if not symbols:
         print(f"{soname}: no undefined symbols — emitting an empty stub")
+        if dry_run:
+            return
+        OUT.mkdir(parents=True, exist_ok=True)
+        src = OUT / f"{soname}.c"
+        src.write_text("/* auto-generated empty stub — resolved but never called */\n", encoding="utf-8")
+        cmd = ["gcc", "-shared", "-fPIC", "-O0", "-o", str(OUT / soname), str(src), f"-Wl,-soname,{soname}"]
+        versions = tuple(EXTRA_VERSIONS.get(soname, ()))
+        if versions:
+            # Empty version script nodes so the loader sees every version tag
+            # the consumer expects (even though there are no symbols in them).
+            vmap = OUT / f"{soname}.map"
+            vmap.write_text("\n".join(f"{v} {{ }};" for v in versions) + "\n", encoding="utf-8")
+            cmd.append(f"-Wl,--version-script={vmap}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise SystemExit(f"gcc failed for {soname} (empty stub):\n{result.stderr}")
         return
     if dry_run:
         print(f"[dry-run] would build {soname} with {len(symbols)} symbols")

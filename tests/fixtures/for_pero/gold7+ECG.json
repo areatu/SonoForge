@@ -38,12 +38,13 @@
     "(0040,0253) Performed Procedure Step ID": "20251124132127"
   },
   "npz": "gold7+ECG.npz",
-  "npz_mb": 5.3,
+  "npz_mb": 4.64,
   "jpeg_quality": 68,
   "size_mb": 15.38,
   "shape": [
     83,
     800,
     1276
-  ]
+  ],
+  "phi_masked": true
 }

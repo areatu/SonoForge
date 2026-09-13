@@ -1,6 +1,6 @@
 {
   "file": "strain_ph2",
-  "kind": "dicom",
+  "kind": "vendor_screen_still",
   "Modality": "US",
   "Manufacturer": "Philips Medical Systems",
   "ManufacturerModelName": "EPIQ Elite",
@@ -49,13 +49,19 @@
     "(200D,3A06) Private tag data": "0",
     "(200D,3CF4) Private tag data": "[(200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n(200D,003C) Private Creator                     LO: 'Philips US Imaging DD 045'\n(200D,300D) Private tag data                    LO: 'UDM_USD_DATATYPE_DIN_2D_ECHO'\n(200D,3CF1)  Private tag data  1 item(s) ---- \n   (200D,0030) Private Creator                     LO: 'Philips US Imaging DD 033'\n   (200D,003C) Private Cre…"
   },
-  "npz": "strain_ph2.npz",
-  "npz_mb": 2.78,
-  "jpeg_quality": 84,
-  "size_mb": 94.77,
+  "stills": [
+    "ui_reference/strain_ph2_f0000.png",
+    "ui_reference/strain_ph2_f0004.png",
+    "ui_reference/strain_ph2_f0008.png",
+    "ui_reference/strain_ph2_f0013.png",
+    "ui_reference/strain_ph2_f0017.png",
+    "ui_reference/strain_ph2_f0022.png"
+  ],
   "shape": [
     23,
     900,
     1600
-  ]
+  ],
+  "size_mb": 94.77,
+  "phi_masked": true
 }

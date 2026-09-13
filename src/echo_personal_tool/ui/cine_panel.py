@@ -291,8 +291,14 @@ class CinePanel(QWidget):
         self._ecg_marker.setPos(float(frame_index) * self._ecg_frame_time_ms)
 
     def show_contour(self, points: np.ndarray, color: str = "#ff1744", smooth: bool = True) -> None:
-        """Draw closed contour on the plot with optional cubic spline smoothing."""
-        # Remove old ED contour
+        """Draw endocardial contour on the plot with optional cubic spline smoothing.
+
+        The ED endocardium is an OPEN arc (annulus → apex → annulus); we do
+        NOT append the first point at the end to close it, because that
+        draws a straight chord across the LV cavity and hides the actual
+        endocardial border under a red triangle — matching the vendor
+        «3 Point Contour» look (red trace along the endocardium only).
+        """
         if self._ed_contour_item is not None:
             self._plot.removeItem(self._ed_contour_item)
             self._ed_contour_item = None
@@ -301,19 +307,19 @@ class CinePanel(QWidget):
             return
 
         if smooth:
-            pts = _smooth_contour(points, n_output=64)
+            pts = _smooth_contour(points, n_output=96)
         else:
             pts = points
 
-        x = np.append(pts[:, 0], pts[0, 0])
-        y = np.append(pts[:, 1], pts[0, 1])
+        x = np.asarray(pts[:, 0], dtype=float)
+        y = np.asarray(pts[:, 1], dtype=float)
         pen = pg.mkPen(color, width=3)
         self._ed_contour_item = pg.PlotDataItem(x, y, pen=pen)
         self._ed_contour_item.setZValue(5)
         self._plot.addItem(self._ed_contour_item)
 
     def show_es_contour(self, points: np.ndarray, color: str = "#00e676", smooth: bool = True) -> None:
-        """Draw ES contour (green) on the plot."""
+        """Draw ES contour on the plot (dashed). Same open-arc convention as ED."""
         if self._es_contour_item is not None:
             self._plot.removeItem(self._es_contour_item)
             self._es_contour_item = None
@@ -322,12 +328,12 @@ class CinePanel(QWidget):
             return
 
         if smooth:
-            pts = _smooth_contour(points, n_output=64)
+            pts = _smooth_contour(points, n_output=96)
         else:
             pts = points
 
-        x = np.append(pts[:, 0], pts[0, 0])
-        y = np.append(pts[:, 1], pts[0, 1])
+        x = np.asarray(pts[:, 0], dtype=float)
+        y = np.asarray(pts[:, 1], dtype=float)
         pen = pg.mkPen(color, width=2, style=Qt.PenStyle.DashLine)
         self._es_contour_item = pg.PlotDataItem(x, y, pen=pen)
         self._es_contour_item.setZValue(4)
