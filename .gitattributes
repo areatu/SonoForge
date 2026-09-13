@@ -2,7 +2,6 @@
 *.npz filter=lfs diff=lfs merge=lfs -text
 data/dicom/For_pero/gold_Ph_ECG* filter=lfs diff=lfs merge=lfs -text
 data/dicom/For_pero/strain_ph* filter=lfs diff=lfs merge=lfs -text
-# Compact fixtures must be available without LFS (see tools/ste_fixture_export.py)
 tests/fixtures/for_pero/*.npz !filter !diff !merge -text
 tests/fixtures/for_pero/**/*.npz !filter !diff !merge -text
 tests/fixtures/**/*.npz !filter !diff !merge -text
