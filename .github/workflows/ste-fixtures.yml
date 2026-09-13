@@ -37,6 +37,13 @@ jobs:
           set -x
           git fetch --no-tags origin "$SOURCE_REF"
           git show "origin/$SOURCE_REF:.gitattributes" > .gitattributes
+          # Compact fixtures must stay as regular files, not LFS (see .gitattributes).
+          # Keep the exclusion even if origin/main hasn't been updated yet.
+          if ! grep -q "tests/fixtures.*!filter" .gitattributes; then
+            echo 'tests/fixtures/for_pero/*.npz !filter !diff !merge -text' >> .gitattributes
+            echo 'tests/fixtures/for_pero/**/*.npz !filter !diff !merge -text' >> .gitattributes
+            echo 'tests/fixtures/**/*.npz !filter !diff !merge -text' >> .gitattributes
+          fi
           git checkout "origin/$SOURCE_REF" -- "$SOURCE_DIR"
           git add .gitattributes
           git lfs pull --include="$SOURCE_DIR/*" --exclude=""

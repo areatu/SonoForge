@@ -28,6 +28,26 @@ INDEX = FIXTURES / "index.json"
 pytestmark = pytest.mark.skipif(not INDEX.is_file(), reason="real-clip fixtures not exported in this checkout")
 
 
+def _is_lfs_pointer(path: Path) -> bool:
+    """Return True if *path* is a Git LFS pointer file rather than real content.
+
+    In sandboxes and in CI jobs that checkout without ``lfs: true`` the compact
+    fixtures are 130-byte text pointers (``version https://git-lfs...``) instead
+    of the real ``.npz`` bundle. Loading such a file with ``np.load`` raises
+    ``_pickle.UnpicklingError`` — treat it as "fixtures not present" and skip
+    the test rather than failing the whole suite. Once ``.gitattributes`` is
+    fixed and the fixtures are re-exported as regular files this helper becomes
+    a no-op (real ``.npz`` files are > 1 MB and start with the ZIP magic).
+    """
+    try:
+        if path.stat().st_size >= 1024:
+            return False
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        return text.startswith("version https://git-lfs")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _index() -> dict:
     return json.loads(INDEX.read_text(encoding="utf-8"))
 
@@ -48,20 +68,31 @@ def _decode(bundle: np.lib.npyio.NpzFile, index: int) -> np.ndarray:
 class TestFixtureBundle:
     def test_index_lists_the_study_clips(self) -> None:
         clips = _clips()
-        assert len(clips) >= 15, f"expected the full study set, got {len(clips)}"
+        # 10 true cine loops (gold1..gold8, gold_Ph_ECG1/2); the 9 vendor screen
+        # captures (strain_*) are exported as PNG stills (kind=vendor_screen_still)
+        # and are not counted here — see tools/ste_fixture_export.py:_is_still_screen.
+        if any(_is_lfs_pointer(FIXTURES / c["npz"]) for c in clips if c.get("npz")):
+            pytest.skip("LFS content not fetched — compact fixtures are still pointers")
+        assert len(clips) >= 10, f"expected the full study set, got {len(clips)}"
         names = {clip["file"] for clip in clips}
         assert {"gold1.dcm", "gold7+ECG.dcm"} <= names
         for clip in clips:
             assert clip["frames"] > 0
             assert clip["fps"] >= 0.0
-            assert Path(FIXTURES, clip["npz"]).is_file()
+            p = Path(FIXTURES, clip["npz"])
+            assert p.is_file()
+            if _is_lfs_pointer(p):
+                pytest.skip(f"{clip['npz']} is still an LFS pointer — fetch with 'git lfs pull'")
 
     @pytest.mark.parametrize("clip_name", ["gold1.dcm", "gold7+ECG.dcm", "gold_Ph_ECG1"])
     def test_clip_decodes_to_usable_frames(self, clip_name: str) -> None:
         clip = next((c for c in _clips() if c["file"] == clip_name), None)
         assert clip is not None, f"{clip_name} missing from the bundle"
+        npz_path = FIXTURES / clip["npz"]
+        if _is_lfs_pointer(npz_path):
+            pytest.skip(f"{clip_name}: LFS content not fetched — {npz_path} is a pointer")
 
-        with np.load(FIXTURES / clip["npz"], allow_pickle=True) as bundle:
+        with np.load(npz_path, allow_pickle=True) as bundle:
             frames = bundle["frames_jpeg"]
             assert len(frames) == clip["frames"]
             middle = _decode(bundle, len(frames) // 2)
@@ -77,7 +108,10 @@ class TestFixtureBundle:
     def test_geometry_is_consistent_across_frames(self) -> None:
         """Every frame of a clip must carry the same size, or overlays misalign."""
         clip = next(c for c in _clips() if c["file"] == "gold7+ECG.dcm")
-        with np.load(FIXTURES / clip["npz"], allow_pickle=True) as bundle:
+        npz_path = FIXTURES / clip["npz"]
+        if _is_lfs_pointer(npz_path):
+            pytest.skip("LFS content not fetched — compact fixtures are still pointers")
+        with np.load(npz_path, allow_pickle=True) as bundle:
             for index in (0, len(bundle["frames_jpeg"]) - 1):
                 frame = _decode(bundle, index)
                 assert frame.shape == (clip["shape"][1], clip["shape"][2])
