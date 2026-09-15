@@ -17,6 +17,8 @@
 
 [Расширенная русскоязычная справка](docs/HELP_RU.md)
 
+[English user help](docs/HELP_EN.md) · [Техническая справка (RU)](docs/TECHNICAL_HELP_RU.md) · [Technical help (EN)](docs/TECHNICAL_HELP_EN.md)
+
 </div>
 
 ---
