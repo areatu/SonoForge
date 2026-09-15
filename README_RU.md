@@ -15,6 +15,8 @@
 
 [English version](README.md)
 
+[Расширенная русскоязычная справка](docs/HELP_RU.md)
+
 </div>
 
 ---
