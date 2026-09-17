@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build .deb package for ECHO Personal Tool
-# Usage: ./build_deb.sh [--clean]
+# Usage: ./build/linux/build-deb.sh [--clean]   (run from the repository root)
 set -euo pipefail
 
 APP_NAME="sonoforge"
