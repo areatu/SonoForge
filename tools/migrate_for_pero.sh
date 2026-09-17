@@ -4,9 +4,8 @@
 #
 # Copies the LFS study clips out of the public SonoForge repository into the
 # private data repository, preserving the data/dicom/For_pero path. Requires
-# git-lfs and push access to both repositories. Run BEFORE the removal commit
-# is merged into main (or point SRC_REF at any commit that still has the clips,
-# e.g. the tag/commit before the cleanup).
+# git-lfs and push access to both repositories. SRC_REF is pinned to the last
+# commit that still contains the clips, so the script works after the merge too.
 #
 # Usage:
 #   ./tools/migrate_for_pero.sh [--src-ref <ref>] [--keep-workdir]
@@ -14,7 +13,9 @@
 set -euo pipefail
 
 SRC_REPO="https://github.com/areatu/SonoForge.git"
-SRC_REF="main"                      # last ref that still contains the clips
+# Last commit that still contains data/dicom/For_pero (the removal landed in the
+# commit after this one) — pinned so the script works even after the merge.
+SRC_REF="dfeef2360bfa740b8b6c577b711df0d390f0f704"
 DATA_REPO="https://github.com/areatu/Sonoforge_data.git"
 SOURCE_DIR="data/dicom/For_pero"
 KEEP=0
