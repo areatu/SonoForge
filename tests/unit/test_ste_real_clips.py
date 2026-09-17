@@ -1,12 +1,13 @@
 """Real study clips: the fixture bundle must stay loadable and self-describing.
 
-The clips in ``data/dicom/For_pero`` are Git LFS objects, and the development
-sandbox can reach the Git host but not the LFS content host. ``tools/ste_fixture_export.py``
-runs in CI (where LFS *is* reachable) and commits a compact derivative to
-``tests/fixtures/for_pero`` — frames as JPEG plus a scrubbed header summary.
-These tests are the contract for that bundle: they run wherever it exists and skip
-where it does not, so a checkout without the fixtures stays green while a checkout
-with them can never silently lose its real-clip coverage.
+The original clips (``data/dicom/For_pero``) live in the private repository
+``areatu/Sonoforge_data`` — they are not shipped with this public repo. In CI the
+``ste-fixtures.yml`` workflow fetches them and ``tools/ste_fixture_export.py``
+commits a compact derivative to ``tests/fixtures/for_pero`` — frames as JPEG plus
+a scrubbed header summary. These tests are the contract for that bundle: they run
+wherever it exists and skip where it does not, so a checkout without the fixtures
+stays green while a checkout with them can never silently lose its real-clip
+coverage.
 
 What is checked (and what is deliberately not): the bundle must decode to the
 frames and geometry the analysis code needs. Vendor strain values are *not*
