@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 env:
   DATA_REPO: areatu/Sonoforge_data
@@ -94,6 +95,8 @@ jobs:
 
       - name: Commit the derivative back to this branch
         if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "ste-fixture-bot"
           git config user.email "actions@users.noreply.github.com"
@@ -103,4 +106,22 @@ jobs:
             exit 0
           fi
           git commit -m "chore(ste): compact fixtures from the private data repo [skip ci]"
-          git push
+          # The default branch is protected (requires a PR + passing CI), so a
+          # direct push is rejected (GH006). On the default branch we commit to a
+          # dedicated branch and open a PR instead; on other branches the direct
+          # push still works and the PR flow is not needed.
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            BRANCH="chore/ste-fixtures-${GITHUB_SHA::7}"
+            git switch -c "$BRANCH"
+            git push origin "$BRANCH"
+            gh pr create \
+              --base "$DEFAULT_BRANCH" \
+              --head "$BRANCH" \
+              --title "chore(ste): refresh compact fixtures" \
+              --body "Automated refresh of the compact STE fixtures from the private data repo (exporter ${GITHUB_SHA::7})." \
+              --draft
+            echo "opened draft PR from $BRANCH"
+          else
+            git push
+          fi
