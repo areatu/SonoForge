@@ -14,6 +14,15 @@
 > спринтам, `compose/` — документация compose workflow, `bench/` — заметки по
 > бенчмаркам. Ссылки на них из других документов ведут только в локальные чекауты.
 
+## User help / Пользовательская документация
+
+| File / Файл | Description / Описание |
+|------|----------|
+| [`HELP_EN.md`](HELP_EN.md) | English user help covering the current UI, local/server data, measurements, calibration, references, settings, export, shortcuts, and troubleshooting |
+| [`HELP_RU.md`](HELP_RU.md) | Расширенная русскоязычная справка по фактической реализации SonoForge: локальные и серверные данные, измерения, калибровка, справочник, настройки, экспорт, shortcuts и диагностика |
+| [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) | English technical help: formulas, source chain, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
+| [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) | Техническая справка на русском: формулы, источники значений, калибровка, влияние Settings и протоколы DICOMweb/DIMSE/PACS |
+
 ## Отдельные документы
 
 | Файл | Описание |
