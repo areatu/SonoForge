@@ -1,9 +1,11 @@
-"""Export compact, analysis-ready fixtures from the LFS study clips.
+"""Export compact, analysis-ready fixtures from the study clips.
 
-Why this exists: the clips in ``data/dicom/For_pero`` are stored with Git LFS, and
-some sandboxes (including the one this module was developed in) can reach the Git
-host but not the LFS content host. GitHub Actions runners *can* read LFS, so this
-script is run there and commits a compact derivative back into the repository:
+Why this exists: the original clips (``data/dicom/For_pero``) live in the private
+repository ``areatu/Sonoforge_data`` (Git LFS) — they were moved out of this
+public repo because frames contain burned-in patient identifiers. GitHub Actions
+runners fetch them via the ``ste-fixtures.yml`` workflow, which stages them at the
+same path before calling this script; it then commits a compact derivative back
+into the public repository:
 
 * ``tests/fixtures/for_pero/<clip>.npz`` — every frame of the clip, JPEG-encoded,
   plus the measurements the analysis needs (frames, fps, pixel spacing). Full
@@ -17,7 +19,7 @@ script is run there and commits a compact derivative back into the repository:
   captures (Samsung/Philips STE), used as UI references.
 * ``tests/fixtures/for_pero/index.json`` — the inventory of everything above.
 
-Run (in CI, or locally when LFS content is present)::
+Run (in CI, or locally with a clone of the private data repo)::
 
     python tools/ste_fixture_export.py --source data/dicom/For_pero --out tests/fixtures/for_pero
 """
@@ -405,9 +407,16 @@ def main() -> int:
         print(f"нет каталога {args.source} — LFS-контент не выкачан", file=sys.stderr)
         return 2
 
+    # The output directory is regenerated on every run, but it also holds a
+    # hand-written README.md (the public-facing doc for these fixtures); keep it.
+    readme = args.out / "README.md"
+    readme_bytes = readme.read_bytes() if readme.is_file() else None
+
     if args.out.exists():
         shutil.rmtree(args.out)
     (args.out / "ui_reference").mkdir(parents=True, exist_ok=True)
+    if readme_bytes is not None:
+        readme.write_bytes(readme_bytes)
 
     entries = []
     for path in sorted(args.source.iterdir()):
