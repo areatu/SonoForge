@@ -1,61 +1,30 @@
 # STE fixture export diagnostics
 
-ref: 9892496  source: origin/main
+ref: c36e9ad  source: areatu/Sonoforge_data@data/dicom/For_pero
 
 ## sizes in data/dicom/For_pero
-total 469180
--rw-r--r-- 1 runner runner   9220206 Sep 13 16:41 gold1.dcm
--rw-r--r-- 1 runner runner  11267426 Sep 13 16:41 gold2.dcm
--rw-r--r-- 1 runner runner  18699678 Sep 13 16:41 gold3.dcm
--rw-r--r-- 1 runner runner  20688092 Sep 13 16:41 gold4.dcm
--rw-r--r-- 1 runner runner  20796784 Sep 13 16:41 gold5.dcm
--rw-r--r-- 1 runner runner  21424526 Sep 13 16:41 gold6.dcm
--rw-r--r-- 1 runner runner  16131256 Sep 13 16:41 gold7+ECG.dcm
--rw-r--r-- 1 runner runner  16198284 Sep 13 16:41 gold8+ECG.dcm
--rwxr-xr-x 1 runner runner 109309786 Sep 13 16:41 gold_Ph_ECG1
--rwxr-xr-x 1 runner runner   4994344 Sep 13 16:41 gold_Ph_ECG2
--rwxr-xr-x 1 runner runner   3097202 Sep 13 16:41 strain_ph1
--rwxr-xr-x 1 runner runner  99372788 Sep 13 16:41 strain_ph2
--rwxr-xr-x 1 runner runner  99372846 Sep 13 16:41 strain_ph3
--rw-r--r-- 1 runner runner   4727412 Sep 13 16:41 strain_sams1.dcm
--rw-r--r-- 1 runner runner   6222178 Sep 13 16:41 strain_sams2.dcm
--rw-r--r-- 1 runner runner   3090092 Sep 13 16:41 strain_sams3.dcm
--rw-r--r-- 1 runner runner   6222206 Sep 13 16:41 strain_sams4.dcm
--rw-r--r-- 1 runner runner   6222206 Sep 13 16:41 strain_sams5.dcm
--rw-r--r-- 1 runner runner   3338290 Sep 13 16:41 strain_sams6.dcm
+total 469188
+-rw-r--r-- 1 runner runner   9220206 Sep 20 19:02 gold1.dcm
+-rw-r--r-- 1 runner runner  11267426 Sep 20 19:02 gold2.dcm
+-rw-r--r-- 1 runner runner  18699678 Sep 20 19:02 gold3.dcm
+-rw-r--r-- 1 runner runner  20688092 Sep 20 19:02 gold4.dcm
+-rw-r--r-- 1 runner runner  20796784 Sep 20 19:02 gold5.dcm
+-rw-r--r-- 1 runner runner  21424526 Sep 20 19:02 gold6.dcm
+-rw-r--r-- 1 runner runner  16131256 Sep 20 19:02 gold7+ECG.dcm
+-rw-r--r-- 1 runner runner  16198284 Sep 20 19:02 gold8+ECG.dcm
+-rwxr-xr-x 1 runner runner 109309786 Sep 20 19:02 gold_Ph_ECG1
+-rwxr-xr-x 1 runner runner   4994344 Sep 20 19:02 gold_Ph_ECG2
+-rwxr-xr-x 1 runner runner   3097202 Sep 20 19:02 strain_ph1
+-rwxr-xr-x 1 runner runner  99372788 Sep 20 19:02 strain_ph2
+-rwxr-xr-x 1 runner runner  99372846 Sep 20 19:02 strain_ph3
+-rw-r--r-- 1 runner runner   4727412 Sep 20 19:02 strain_sams1.dcm
+-rw-r--r-- 1 runner runner   6222178 Sep 20 19:02 strain_sams2.dcm
+-rw-r--r-- 1 runner runner   3090092 Sep 20 19:02 strain_sams3.dcm
+-rw-r--r-- 1 runner runner   6222206 Sep 20 19:02 strain_sams4.dcm
+-rw-r--r-- 1 runner runner   6222206 Sep 20 19:02 strain_sams5.dcm
+-rw-r--r-- 1 runner runner   3338290 Sep 20 19:02 strain_sams6.dcm
 
 ## pointer files remaining (<1024 bytes)
-
-## git lfs ls-files (first 30)
-111a62e760 * data/dicom/For_pero/gold1.dcm
-58e901a1ec * data/dicom/For_pero/gold2.dcm
-056da7044b * data/dicom/For_pero/gold3.dcm
-44669dc723 * data/dicom/For_pero/gold4.dcm
-47bf625e7b * data/dicom/For_pero/gold5.dcm
-dd8dcb38ce * data/dicom/For_pero/gold6.dcm
-b353500a1f * data/dicom/For_pero/gold7+ECG.dcm
-1ec4702d1f * data/dicom/For_pero/gold8+ECG.dcm
-e4ff7eba39 * data/dicom/For_pero/gold_Ph_ECG1
-caf5d4c8cf * data/dicom/For_pero/gold_Ph_ECG2
-a11ea2c85b * data/dicom/For_pero/strain_ph1
-29e3674bf7 * data/dicom/For_pero/strain_ph2
-bb79e123b7 * data/dicom/For_pero/strain_ph3
-7850dca4a0 * data/dicom/For_pero/strain_sams1.dcm
-3378314124 * data/dicom/For_pero/strain_sams2.dcm
-145d806298 * data/dicom/For_pero/strain_sams3.dcm
-c154cf28a7 * data/dicom/For_pero/strain_sams4.dcm
-34b4d38566 * data/dicom/For_pero/strain_sams5.dcm
-505b7071fc * data/dicom/For_pero/strain_sams6.dcm
-201442c470 * tests/fixtures/for_pero/gold1.npz
-3550c22472 * tests/fixtures/for_pero/gold2.npz
-79eaf6736d * tests/fixtures/for_pero/gold3.npz
-9fb6e01a9a * tests/fixtures/for_pero/gold4.npz
-45d29be207 * tests/fixtures/for_pero/gold5.npz
-605b848680 * tests/fixtures/for_pero/gold6.npz
-efcc9ebbe2 * tests/fixtures/for_pero/gold7+ECG.npz
-52e8a9c074 * tests/fixtures/for_pero/gold8+ECG.npz
-acac122edc * tests/fixtures/for_pero/gold_Ph_ECG1.npz
-48f80d7ca7 * tests/fixtures/for_pero/gold_Ph_ECG2.npz
 
 ## export log
   ✓ gold1                 55 кадров 1276×800 fps  30.0 ECG=False →  2.53 МБ (q76)
