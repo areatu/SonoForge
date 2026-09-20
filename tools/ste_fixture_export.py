@@ -407,9 +407,16 @@ def main() -> int:
         print(f"нет каталога {args.source} — LFS-контент не выкачан", file=sys.stderr)
         return 2
 
+    # The output directory is regenerated on every run, but it also holds a
+    # hand-written README.md (the public-facing doc for these fixtures); keep it.
+    readme = args.out / "README.md"
+    readme_bytes = readme.read_bytes() if readme.is_file() else None
+
     if args.out.exists():
         shutil.rmtree(args.out)
     (args.out / "ui_reference").mkdir(parents=True, exist_ok=True)
+    if readme_bytes is not None:
+        readme.write_bytes(readme_bytes)
 
     entries = []
     for path in sorted(args.source.iterdir()):
