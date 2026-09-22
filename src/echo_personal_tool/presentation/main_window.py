@@ -1741,7 +1741,9 @@ class MainWindow(QMainWindow):
         self._sync_doppler_tool_availability()
 
     def _show_results_dialog(self) -> None:
-        snapshot = self._controller.state_manager.snapshot.measurement_snapshot
+        # The report describes the whole study, not the clip that happens to be
+        # open, so it is built from the session-wide snapshot.
+        snapshot = self._controller.compute_study_snapshot()
         default_name = "echo_measurements.pdf"
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None and instance.path is not None:

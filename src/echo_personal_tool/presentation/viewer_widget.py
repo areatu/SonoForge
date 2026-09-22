@@ -7,6 +7,7 @@ import math
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -7418,6 +7419,23 @@ class ViewerWidget(QWidget):
                 self._caliper_sequence_size = 0
                 if not self._syncing_state:
                     self.linear_caliper_sequence_completed.emit()
+
+    def add_linear_measurements(self, measurements: Iterable[LinearMeasurement]) -> None:
+        """Insert calipers measured outside the click-click flow (e.g. M-mode).
+
+        The viewer is the authoritative list of a clip's calipers, so anything
+        measured elsewhere has to enter through here: writing straight into the
+        study session would make the next viewer report look like a deletion.
+        """
+        added = False
+        for measurement in measurements:
+            self._stored_linear_measurements[self._linear_measurement_key(measurement)] = measurement
+            added = True
+        if not added:
+            return
+        self._emit_stored_linear_measurements()
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
 
     def _emit_stored_linear_measurements(self) -> None:
         measurements = list(self._stored_linear_measurements.values())

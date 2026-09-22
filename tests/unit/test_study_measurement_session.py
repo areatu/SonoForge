@@ -222,9 +222,9 @@ def test_merge_vessel_measurements_replaces_by_instance_and_frame() -> None:
     assert by_frame[2].psv_cm_s == 200.0
 
 
-def test_merge_vessel_measurements_empty_clears() -> None:
+def test_merge_vessel_measurements_empty_keeps_existing() -> None:
     existing = (_vessel_m(100.0, "A", 1),)
-    assert merge_vessel_measurements(existing, ()) == ()
+    assert merge_vessel_measurements(existing, ()) == existing
 
 
 def test_vessel_measurements_filter_by_instance() -> None:

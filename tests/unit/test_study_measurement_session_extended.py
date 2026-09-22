@@ -165,7 +165,8 @@ def test_contains_returns_true_after_get() -> None:
     assert "study1" in store
 
 
-def test_merge_linear_measurements_empty_incoming_clears() -> None:
+def test_merge_linear_measurements_empty_incoming_keeps_study_data() -> None:
+    """An empty report from one clip must not wipe the whole study."""
     store = StudyMeasurementSessionStore()
     store.merge_linear_measurements(
         "s1",
@@ -173,7 +174,18 @@ def test_merge_linear_measurements_empty_incoming_clears() -> None:
     )
     store.merge_linear_measurements("s1", ())
     data = store.get("s1")
-    assert data.linear_measurements == ()
+    assert len(data.linear_measurements) == 1
+    assert data.linear_measurements[0].label == "LVEDD"
+
+
+def test_reset_measurements_is_the_explicit_clear() -> None:
+    store = StudyMeasurementSessionStore()
+    store.merge_linear_measurements(
+        "s1",
+        (LinearMeasurement(label="LVEDD", pixel_length=100, millimeter_length=50),),
+    )
+    store.reset_measurements("s1")
+    assert store.get("s1").linear_measurements == ()
 
 
 def test_doppler_measurement_property() -> None:
