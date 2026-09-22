@@ -143,7 +143,7 @@ class MeasureTab(QWidget):
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
         self._auto_play_check.toggled.connect(self.auto_play_changed.emit)
 
-        self._results_button = QPushButton(tr("tool_panel.measures"))
+        self._results_button = QPushButton(tr("tool_panel.report"))
         self._results_button.setMinimumHeight(32)
         self._results_button.clicked.connect(self.results_requested.emit)
         HoverButtonMixin.install(self._results_button)
@@ -210,7 +210,7 @@ class MeasureTab(QWidget):
 
         self._auto_play_check.setText(tr("preferences.auto_play"))
         self._auto_play_check.setToolTip(tr("preferences.auto_play"))
-        self._results_button.setText(tr("tool_panel.measures"))
+        self._results_button.setText(tr("tool_panel.report"))
         self._menu.reload_text()
         self._patient_metrics.reload_text()
 

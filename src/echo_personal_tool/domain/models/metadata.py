@@ -35,6 +35,44 @@ class InstanceMetadata:
 
 
 @dataclass(frozen=True)
+class PatientDemographics:
+    """Header fields a study report shows about the patient.
+
+    Values are already display-ready strings (``17.05.2024``), because they are
+    meant to be edited in the report dialog before printing, not re-parsed.
+    """
+
+    name: str = ""
+    patient_id: str = ""
+    birth_date: str = ""
+    #: Completed years at the study date; empty when either date is unknown.
+    age: str = ""
+    sex: str = ""
+    study_date: str = ""
+    institution: str = ""
+    equipment: str = ""
+    referring_physician: str = ""
+    height_m: float | None = None
+    weight_kg: float | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        return not any(
+            (
+                self.name,
+                self.patient_id,
+                self.birth_date,
+                self.age,
+                self.sex,
+                self.study_date,
+                self.institution,
+                self.equipment,
+                self.referring_physician,
+            )
+        )
+
+
+@dataclass(frozen=True)
 class SeriesMetadata:
     series_uid: str
     study_uid: str
