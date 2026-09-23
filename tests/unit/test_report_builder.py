@@ -196,36 +196,22 @@ class TestBuildReportGroups:
     def test_tr_vmax_norm_is_reported_in_app_units(self) -> None:
         snapshot = _snapshot(doppler=DopplerResults(tr_vmax_cm_s=310.0))
         groups = build_report_groups(snapshot, sex="M")
-        tr_row = next(
-            value
-            for group in groups
-            for value in group.values
-            if value.label == "TR Vmax"
-        )
+        tr_row = next(value for group in groups for value in group.values if value.label == "TR Vmax")
         assert tr_row.norm == "≤280"
         assert tr_row.pathological is True
 
     def test_indexed_values_use_the_indexed_norm(self) -> None:
-        snapshot = _snapshot(
-            indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_bi_index_ml_m2=40.0)
-        )
+        snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_bi_index_ml_m2=40.0))
         groups = build_report_groups(snapshot, sex="M")
         lv = _values(groups, GROUP_LEFT_VENTRICLE)
         assert "LVMI" in lv
         lavi = _values(groups, GROUP_LEFT_ATRIUM)
         assert "LAVi Bi" in lavi
-        flagged = {
-            value.label
-            for group in groups
-            for value in group.values
-            if value.pathological
-        }
+        flagged = {value.label for group in groups for value in group.values if value.pathological}
         assert {"LVMI", "LAVi Bi"} <= flagged
 
     def test_planimeter_measurements_form_their_own_group(self) -> None:
-        snapshot = _snapshot(
-            planimeter=(PlanimeterResult(label="Thrombus", kind="area", value=3.4, unit="cm²"),)
-        )
+        snapshot = _snapshot(planimeter=(PlanimeterResult(label="Thrombus", kind="area", value=3.4, unit="cm²"),))
         groups = build_report_groups(snapshot, sex="M")
         assert [group.key for group in groups] == [GROUP_PLANIMETRY]
         assert _values(groups, GROUP_PLANIMETRY)["Thrombus"] == "3.40"
@@ -247,9 +233,7 @@ class TestBuildReportGroups:
 
     def test_length_unit_preference_is_applied(self) -> None:
         snapshot = _snapshot(
-            linear_measurements=(
-                LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),
-            )
+            linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),)
         )
         mm = build_report_groups(snapshot, sex="M", length_display_unit="mm")
         cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
@@ -260,9 +244,7 @@ class TestBuildReportGroups:
     def test_percent_calipers_are_reported_in_percent(self, label: str) -> None:
         """A stenosis degree is a percentage, not a length."""
         snapshot = _snapshot(
-            linear_measurements=(
-                LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0),
-            )
+            linear_measurements=(LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0),)
         )
         rows = next(
             (v for g in build_report_groups(snapshot, sex="M") for v in g.values if v.label == label),
@@ -273,9 +255,7 @@ class TestBuildReportGroups:
 
     def test_percent_calipers_ignore_length_unit(self) -> None:
         snapshot = _snapshot(
-            linear_measurements=(
-                LinearMeasurement(label="%S стеноз", pixel_length=0.0, millimeter_length=80.0),
-            )
+            linear_measurements=(LinearMeasurement(label="%S стеноз", pixel_length=0.0, millimeter_length=80.0),)
         )
         mm = build_report_groups(snapshot, sex="M", length_display_unit="mm")
         cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
@@ -298,14 +278,10 @@ class TestBuildReportGroups:
     def test_unpixel_calibrated_values_are_reported_as_pixels(self) -> None:
         snapshot = _snapshot(
             spacing_calibrated=False,
-            linear_measurements=(
-                LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),
-            ),
+            linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),),
         )
         groups = build_report_groups(snapshot, sex="M")
-        row = next(
-            value for group in groups for value in group.values if value.label == "LVEDD"
-        )
+        row = next(value for group in groups for value in group.values if value.label == "LVEDD")
         assert row.unit == "px"
         assert row.value == "120"
 
@@ -321,9 +297,7 @@ class TestBuildReportDocument:
         assert document.patient.name == "Иванов И.И."
         assert document.has_measurements is True
         # Row labels are translated, so compare through tr() as well.
-        assert tr("domain.report.rwt") in {
-            value.label for value in document.pathological_values
-        }
+        assert tr("domain.report.rwt") in {value.label for value in document.pathological_values}
 
     def test_empty_document(self) -> None:
         document = build_report_document(None, None)
@@ -337,7 +311,5 @@ class TestBuildReportDocument:
 
     def test_explicit_bsa_is_not_overwritten(self) -> None:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.93))
-        document = build_report_document(
-            snapshot, PatientInfo(bsa_m2=2.10), sex="M"
-        )
+        document = build_report_document(snapshot, PatientInfo(bsa_m2=2.10), sex="M")
         assert document.patient.bsa_m2 == pytest.approx(2.10)

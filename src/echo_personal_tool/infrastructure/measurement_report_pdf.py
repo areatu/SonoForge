@@ -266,7 +266,9 @@ def _signature_block(document: ReportDocument, styles: dict[str, ParagraphStyle]
     physician = (document.patient.physician or "").strip()
     row = [
         Paragraph(f"{_xml_escape(tr('report.physician'))}: {_xml_escape(physician)}", styles["small"]),
-        Paragraph(f"{_xml_escape(tr('report.study_date'))}: {_xml_escape(document.patient.study_date)}", styles["small"]),
+        Paragraph(
+            f"{_xml_escape(tr('report.study_date'))}: {_xml_escape(document.patient.study_date)}", styles["small"]
+        ),
     ]
     width = A4[0] - 36 * mm
     table = Table([row], colWidths=[width * 0.6, width * 0.4])

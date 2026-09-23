@@ -38,9 +38,7 @@ def _snapshot() -> MeasurementSnapshot:
             lvef_percent=48.0,
         ),
         indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0),
-        linear_measurements=(
-            LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),
-        ),
+        linear_measurements=(LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),),
     )
 
 
@@ -83,10 +81,7 @@ class TestGroupedTable:
         from echo_personal_tool.presentation.report_dialog import ReportDialog
 
         dialog = ReportDialog(_snapshot())
-        titles = [
-            dialog._tree.topLevelItem(i).text(0)
-            for i in range(dialog._tree.topLevelItemCount())
-        ]
+        titles = [dialog._tree.topLevelItem(i).text(0) for i in range(dialog._tree.topLevelItemCount())]
         assert tr("report.group.lv") in titles
         assert tr("report.group.mv") in titles
 
@@ -145,9 +140,7 @@ class TestExportPdf:
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=("", ""),
             ),
-            patch(
-                "echo_personal_tool.presentation.report_dialog.export_report_document_pdf"
-            ) as mock_export,
+            patch("echo_personal_tool.presentation.report_dialog.export_report_document_pdf") as mock_export,
         ):
             dialog._export_pdf()
             mock_export.assert_not_called()
@@ -161,9 +154,7 @@ class TestExportPdf:
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(tmp_path / "report"), ""),
             ),
-            patch(
-                "echo_personal_tool.presentation.report_dialog.export_report_document_pdf"
-            ) as mock_export,
+            patch("echo_personal_tool.presentation.report_dialog.export_report_document_pdf") as mock_export,
             patch("echo_personal_tool.presentation.report_dialog.QDesktopServices"),
         ):
             dialog._export_pdf()
@@ -179,9 +170,7 @@ class TestExportPdf:
                 return_value=(str(tmp_path / "report.pdf"), ""),
             ),
             patch("echo_personal_tool.presentation.report_dialog.export_report_document_pdf"),
-            patch(
-                "echo_personal_tool.presentation.report_dialog.QDesktopServices"
-            ) as mock_desktop,
+            patch("echo_personal_tool.presentation.report_dialog.QDesktopServices") as mock_desktop,
         ):
             dialog._export_pdf()
             mock_desktop.openUrl.assert_called_once()
@@ -200,9 +189,7 @@ class TestExportPdf:
                 "echo_personal_tool.presentation.report_dialog.export_report_document_pdf",
                 side_effect=PdfExportError("font error"),
             ),
-            patch(
-                "echo_personal_tool.presentation.report_dialog.QMessageBox"
-            ) as mock_msgbox,
+            patch("echo_personal_tool.presentation.report_dialog.QMessageBox") as mock_msgbox,
         ):
             dialog._export_pdf()
             mock_msgbox.warning.assert_called_once()

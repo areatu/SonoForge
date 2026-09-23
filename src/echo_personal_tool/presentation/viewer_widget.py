@@ -4415,9 +4415,7 @@ class ViewerWidget(QWidget):
         if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             # Not enough distinct points: keep the drawing so the operator can
             # add the missing point instead of losing the whole contour.
-            self._measurement_label.setText(
-                tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE))
-            )
+            self._measurement_label.setText(tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE)))
             return False
 
         if self._magnetic_snap_enabled:
@@ -6433,10 +6431,7 @@ class ViewerWidget(QWidget):
         if screen_point is None or self._last_contour_point_screen is None:
             return False
         previous = self._last_contour_point_screen
-        return (
-            math.hypot(screen_point[0] - previous[0], screen_point[1] - previous[1])
-            <= _CONTOUR_MIN_POINT_SPACING_PX
-        )
+        return math.hypot(screen_point[0] - previous[0], screen_point[1] - previous[1]) <= _CONTOUR_MIN_POINT_SPACING_PX
 
     def _undo_last_contour_point(self) -> bool:
         """Remove the most recently placed point of the active contour."""
@@ -6549,9 +6544,7 @@ class ViewerWidget(QWidget):
         if chamber not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
             return
         if len(self._active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
-            self._measurement_label.setText(
-                tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE))
-            )
+            self._measurement_label.setText(tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE)))
             return
         spacing, calibrated = self._effective_pixel_spacing()
         probe = Contour(

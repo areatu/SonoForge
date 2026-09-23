@@ -128,7 +128,9 @@ class ReportDialog(QDialog):
         self._sex.addItem(tr("report.sex_unknown"), "")
         self._sex.addItem(tr("report.sex_male"), "M")
         self._sex.addItem(tr("report.sex_female"), "F")
-        self._sex.setCurrentIndex(0 if not self._initial_patient.sex else self._sex_index_for(self._initial_patient.sex))
+        self._sex.setCurrentIndex(
+            0 if not self._initial_patient.sex else self._sex_index_for(self._initial_patient.sex)
+        )
         # Sex decides which reference range applies, so the table is rebuilt.
         self._sex.currentIndexChanged.connect(self._rebuild)
 
@@ -188,9 +190,7 @@ class ReportDialog(QDialog):
     # ── state ────────────────────────────────────────────────────────────
     def patient_info(self) -> PatientInfo:
         """Patient header as currently edited in the dialog."""
-        values: dict[str, object] = {
-            attribute: editor.text().strip() for attribute, editor in self._fields.items()
-        }
+        values: dict[str, object] = {attribute: editor.text().strip() for attribute, editor in self._fields.items()}
         return PatientInfo(
             name=str(values.get("name", "")),
             patient_id=str(values.get("patient_id", "")),

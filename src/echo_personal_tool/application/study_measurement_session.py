@@ -120,9 +120,7 @@ def merge_contours(
     merged = tuple(by_key.values())
     if authoritative_instance_uid is None:
         return merged
-    kept_planimeter_keys = {
-        contour_key(contour) for contour in incoming if is_planimeter_contour(contour)
-    }
+    kept_planimeter_keys = {contour_key(contour) for contour in incoming if is_planimeter_contour(contour)}
     return tuple(
         contour
         for contour in merged

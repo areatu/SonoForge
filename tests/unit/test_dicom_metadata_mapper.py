@@ -167,9 +167,7 @@ class TestPatientDemographics:
             map_patient_demographics,
         )
 
-        demographics = map_patient_demographics(
-            self._dataset(PatientBirthDate="unknown", StudyDate="20240520")
-        )
+        demographics = map_patient_demographics(self._dataset(PatientBirthDate="unknown", StudyDate="20240520"))
         assert demographics.age == ""
         assert demographics.birth_date == "unknown"
 
@@ -178,9 +176,7 @@ class TestPatientDemographics:
             map_patient_demographics,
         )
 
-        demographics = map_patient_demographics(
-            self._dataset(PatientBirthDate="19801231", StudyDate="20240101")
-        )
+        demographics = map_patient_demographics(self._dataset(PatientBirthDate="19801231", StudyDate="20240101"))
         assert demographics.age == "43"
 
     def test_reads_from_a_file(self, tmp_path: Path) -> None:

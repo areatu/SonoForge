@@ -303,10 +303,12 @@ def group_for_label(label: str) -> str:
     if any(keyword in text for keyword in ("площадь", "объем", "объём", "area", "volume", "planim")):
         return GROUP_PLANIMETRY
 
-    if any(
-        keyword in text
-        for keyword in ("ла ", "лп", "la ", "lav", "left atr", "левое предсерд")
-    ) or tokens & {"la", "lal", "lav", "lavi"}:
+    if any(keyword in text for keyword in ("ла ", "лп", "la ", "lav", "left atr", "левое предсерд")) or tokens & {
+        "la",
+        "lal",
+        "lav",
+        "lavi",
+    }:
         return GROUP_LEFT_ATRIUM
     if tokens & {"ra", "rav"} or "пп" in tokens or "правое предсерд" in text or "right atr" in text:
         return GROUP_RIGHT_ATRIUM
@@ -499,9 +501,7 @@ def build_report_groups(
     if item:
         values.append(item)
     if snapshot.diastology_grade:
-        values.append(
-            _text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE)
-        )
+        values.append(_text_value(tr("domain.report.diastolic"), snapshot.diastology_grade, group=GROUP_LEFT_VENTRICLE))
 
     la = snapshot.la_simpson
     if la is not None:
@@ -718,7 +718,7 @@ def build_report_document(
     """Assemble the full report: patient header plus grouped measurements."""
     info = patient or PatientInfo()
     if info.bsa_m2 is None and snapshot is not None and snapshot.indexed is not None:
-        info = PatientInfo(
-            **{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2}
-        )
-    return ReportDocument(patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit))
+        info = PatientInfo(**{**info.__dict__, "bsa_m2": snapshot.indexed.bsa_m2})
+    return ReportDocument(
+        patient=info, groups=build_report_groups(snapshot, sex=sex, length_display_unit=length_display_unit)
+    )

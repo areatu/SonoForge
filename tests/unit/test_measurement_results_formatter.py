@@ -140,9 +140,7 @@ def test_percent_calipers_are_shown_in_percent() -> None:
     for label in sorted(PERCENT_LABELS):
         snapshot = MeasurementSnapshot(
             spacing_calibrated=True,
-            linear_measurements=(
-                LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0),
-            ),
+            linear_measurements=(LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0),),
         )
         text = _plain(format_results_overlay_html(snapshot, sex_male=True, length_display_unit="mm"))
         assert "80.0" in text, label

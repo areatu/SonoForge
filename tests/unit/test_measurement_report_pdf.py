@@ -254,9 +254,7 @@ class TestExportReportDocumentPdf:
         export_report_document_pdf(ReportDocument(), output)
         assert output.read_bytes()[:5] == b"%PDF-"
 
-    def test_wraps_reportlab_failures_in_pdf_export_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wraps_reportlab_failures_in_pdf_export_error(self, tmp_path: Path) -> None:
         from echo_personal_tool.infrastructure import measurement_report_pdf
         from echo_personal_tool.infrastructure.measurement_report_pdf import (
             PdfExportError,
