@@ -334,6 +334,45 @@ class TestLinearCaliper:
         result = w.start_linear_caliper_sequence(("IVSd", "LVEDD"))
         assert result is False
 
+    def test_start_mmode_frame_caliper_sequence_requires_calibration(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is False
+
+    def test_start_mmode_frame_caliper_sequence_marks_labels_vertical(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.apply_mmode_calibration_state(
+            MmodeCalibrationState(
+                roi=DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64),
+                vertical_mm_per_pixel=0.5,
+                horizontal_ms_per_pixel=4.0,
+            )
+        )
+        assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
+        assert {"IVSd", "LVEDD", "LVPWd"} <= w._vertical_caliper_labels
+
+    def test_generic_caliper_resets_mmode_session_vertical_labels(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
+
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        w.apply_mmode_calibration_state(
+            MmodeCalibrationState(
+                roi=DopplerSpectrogramRoi(x0=0, y0=0, width=64, height=64),
+                vertical_mm_per_pixel=0.5,
+                horizontal_ms_per_pixel=4.0,
+            )
+        )
+        assert w.start_mmode_frame_caliper_sequence(("IVSd", "LVEDD", "LVPWd")) is True
+        assert w.start_linear_caliper_for("IVSd") is True
+        assert "IVSd" not in w._vertical_caliper_labels
+        assert "TAPSE" in w._vertical_caliper_labels
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Doppler

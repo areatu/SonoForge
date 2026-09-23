@@ -60,6 +60,14 @@ class TestLinearMeasurementDisplayText:
         text = m.display_text(length_unit="cm")
         assert "2.50" in text
 
+    @pytest.mark.parametrize("label", ["%D", "%S"])
+    def test_percent_labels_use_percent_unit(self, label: str) -> None:
+        m = LinearMeasurement(label=label, pixel_length=0, millimeter_length=45.0)
+        text = m.display_text()
+        assert "45.0%" in text
+        assert "mm" not in text
+        assert "стеноз" not in text
+
 
 class TestPixelToMmLength:
     def test_horizontal_line(self) -> None:

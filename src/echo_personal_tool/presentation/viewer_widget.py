@@ -750,7 +750,8 @@ class ViewerWidget(QWidget):
         self._mmode_line_item: MModeScanLineItem | None = None
         self._mmode_line_click_step: Literal["start", "end"] | None = None
         self._mmode_vertical_lock: bool = False
-        self._vertical_caliper_labels = frozenset({"TAPSE", "M-mode"})
+        self._vertical_caliper_labels: set[str] = {"TAPSE", "M-mode"}
+        self._mmode_session_vertical_labels: set[str] = set()
         self._horizontal_time_caliper_labels = frozenset({"Time"})
         self._current_frame: np.ndarray | None = None
         self._current_state: ViewerState | None = None
@@ -2149,9 +2150,9 @@ class ViewerWidget(QWidget):
             sop_instance_uid=instance_uid,
         )
         if pct_s is not None:
-            pct_key = ("%S стеноз", frame if frame is not None else -1)
+            pct_key = ("%S", frame if frame is not None else -1)
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз",
+                label="%S",
                 pixel_length=0.0,
                 millimeter_length=pct_s,
                 frame_index=frame,
@@ -2339,9 +2340,9 @@ class ViewerWidget(QWidget):
             sop_instance_uid=instance_uid,
         )
         if stenosis is not None:
-            pct_key = ("%S стеноз", frame if frame is not None else -1)
+            pct_key = ("%S", frame if frame is not None else -1)
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз",
+                label="%S",
                 pixel_length=0.0,
                 millimeter_length=stenosis,
                 frame_index=frame,
@@ -3895,6 +3896,7 @@ class ViewerWidget(QWidget):
         return self._calibration_active
 
     def start_linear_caliper_for(self, label: str) -> bool:
+        self._reset_mmode_session_vertical_labels()
         self._caliper_sequence = []
         self._caliper_sequence_size = 0
         return self._begin_linear_caliper(label)
@@ -3908,9 +3910,25 @@ class ViewerWidget(QWidget):
     def start_linear_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
         if not labels:
             return False
+        self._reset_mmode_session_vertical_labels()
         self._caliper_sequence = list(labels[1:])
         self._caliper_sequence_size = len(labels)
         return self._begin_linear_caliper(labels[0])
+
+    def start_mmode_frame_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
+        """Apply a caliper sequence to the current M-mode frame (vertical, M-mode depth scale)."""
+        if not labels or not self.is_mmode_calibrated():
+            return False
+        if not self.start_linear_caliper_sequence(labels):
+            return False
+        self._vertical_caliper_labels.update(labels)
+        self._mmode_session_vertical_labels.update(labels)
+        return True
+
+    def _reset_mmode_session_vertical_labels(self) -> None:
+        if self._mmode_session_vertical_labels:
+            self._vertical_caliper_labels -= self._mmode_session_vertical_labels
+            self._mmode_session_vertical_labels.clear()
 
     def _begin_linear_caliper(self, label: str) -> bool:
         if self._comparison_state.kind:
@@ -5023,6 +5041,7 @@ class ViewerWidget(QWidget):
         self._clear_linear_caliper_graphics()
         self._caliper_sequence = []
         self._caliper_sequence_size = 0
+        self._reset_mmode_session_vertical_labels()
         self._measurement_label.setText(f"{self._current_caliper_label()}: —")
         if not self._syncing_state:
             self._emit_stored_linear_measurements()
@@ -6115,7 +6134,7 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
-                if measurement.label in ("%D стеноз", "%S стеноз", "S1", "S2"):
+                if measurement.label in ("%D", "%S", "S1", "S2"):
                     continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
@@ -6730,9 +6749,9 @@ class ViewerWidget(QWidget):
         if is_stenosis:
             stenosis_pct = self._compute_stenosis_diameter(state.segment1_mm, state.segment2_mm)
             if stenosis_pct is not None:
-                pct_key = ("%D стеноз", frame if frame is not None else -1)
+                pct_key = ("%D", frame if frame is not None else -1)
                 self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                    label="%D стеноз",
+                    label="%D",
                     pixel_length=0.0,
                     millimeter_length=stenosis_pct,
                     frame_index=frame,
@@ -6741,9 +6760,9 @@ class ViewerWidget(QWidget):
         else:
             pct_d = self._compute_percent_d(state.segment1_mm, state.segment2_mm)
             if pct_d is not None:
-                pct_key = ("%D стеноз", frame if frame is not None else -1)
+                pct_key = ("%D", frame if frame is not None else -1)
                 self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                    label="%D стеноз",
+                    label="%D",
                     pixel_length=0.0,
                     millimeter_length=pct_d,
                     frame_index=frame,
@@ -6803,10 +6822,10 @@ class ViewerWidget(QWidget):
                     frame = m.frame_index
                     instance_uid = m.sop_instance_uid
         pct_d = self._compute_percent_d(d1_mm, d2_mm)
-        pct_key = ("%D стеноз", frame if frame is not None else -1)
+        pct_key = ("%D", frame if frame is not None else -1)
         if pct_d is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%D стеноз",
+                label="%D",
                 pixel_length=0.0,
                 millimeter_length=pct_d,
                 frame_index=frame,
@@ -6844,10 +6863,10 @@ class ViewerWidget(QWidget):
                 sop_instance_uid=instance_uid,
             )
         pct_s = self._compute_percent_s()
-        pct_key = ("%S стеноз", frame if frame is not None else -1)
+        pct_key = ("%S", frame if frame is not None else -1)
         if pct_s is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз",
+                label="%S",
                 pixel_length=0.0,
                 millimeter_length=pct_s,
                 frame_index=frame,
@@ -6872,10 +6891,10 @@ class ViewerWidget(QWidget):
                     frame = m.frame_index
                     instance_uid = m.sop_instance_uid
         stenosis = self._compute_stenosis_diameter(d1_mm, d2_mm)
-        pct_key = ("%D стеноз", frame if frame is not None else -1)
+        pct_key = ("%D", frame if frame is not None else -1)
         if stenosis is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%D стеноз",
+                label="%D",
                 pixel_length=0.0,
                 millimeter_length=stenosis,
                 frame_index=frame,
@@ -6932,10 +6951,10 @@ class ViewerWidget(QWidget):
         state.contour1_area_cm2 = area1
         state.contour2_area_cm2 = area2
         stenosis = self._compute_stenosis_area(area1, area2)
-        pct_key = ("%S стеноз", frame if frame is not None else -1)
+        pct_key = ("%S", frame if frame is not None else -1)
         if stenosis is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз",
+                label="%S",
                 pixel_length=0.0,
                 millimeter_length=stenosis,
                 frame_index=frame,
