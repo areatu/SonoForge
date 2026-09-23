@@ -214,6 +214,8 @@ class UserPreferencesDialog(QDialog):
         self._show_caliper_labels.setChecked(current.show_caliper_labels_on_frame)
         self._show_caliper_inline_labels = QCheckBox()
         self._show_caliper_inline_labels.setChecked(current.show_caliper_inline_labels)
+        self._show_doppler_cal_roi = QCheckBox(tr("preferences.show_doppler_cal_roi"))
+        self._show_doppler_cal_roi.setChecked(current.show_doppler_calibration_roi)
         self._reduce_motion = QCheckBox(tr("preferences.reduce_motion"))
         self._reduce_motion.setChecked(current.reduce_motion)
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
@@ -223,6 +225,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.panel_frames"), self._show_panel_frames)
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
+        display_form.addRow(self._show_doppler_cal_roi)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
         tabs.addTab(
@@ -463,6 +466,7 @@ class UserPreferencesDialog(QDialog):
             show_panel_frames=self._show_panel_frames.isChecked(),
             show_caliper_labels_on_frame=self._show_caliper_labels.isChecked(),
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),
+            show_doppler_calibration_roi=self._show_doppler_cal_roi.isChecked(),
             thumbnail_scale=str(self._thumbnail_scale.currentData()),
             magnetic_snap_weight_threshold=float(self._magnetic_weight_spin.value()),
             magnetic_snap_release_strength=float(self._magnetic_release_spin.value()),

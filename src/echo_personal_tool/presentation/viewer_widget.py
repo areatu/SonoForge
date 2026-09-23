@@ -1249,6 +1249,7 @@ class ViewerWidget(QWidget):
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
+        self._doppler.set_show_calibration_roi(preferences.show_doppler_calibration_roi)
         self._render_persistent_linear_calipers()
         self._doppler_auto_calibration_enabled = preferences.doppler_auto_calibration_enabled
         self._calibration_tick_snap_enabled = preferences.calibration_tick_snap_enabled

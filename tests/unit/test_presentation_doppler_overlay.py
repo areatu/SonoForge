@@ -279,6 +279,41 @@ class TestSetAxisMapping:
         assert overlay.axis_mapping() is mapping
 
 
+class TestShowCalibrationRoi:
+    @staticmethod
+    def _roi_x(overlay) -> list:
+        xs = overlay._roi_item.getData()[0]
+        return list(xs) if xs is not None else []
+
+    @staticmethod
+    def _mapping():
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+
+        return DopplerAxisMapping(
+            time_span_ms=1000.0,
+            roi=DopplerSpectrogramRoi(x0=10.0, y0=20.0, width=100.0, height=50.0),
+            baseline_y_px=45.0,
+        )
+
+    def test_default_hides_roi(self, overlay):
+        overlay.set_axis_mapping(self._mapping())
+        assert overlay._show_calibration_roi is False
+        assert self._roi_x(overlay) == []
+
+    def test_enabled_draws_roi_rect(self, overlay):
+        overlay.set_show_calibration_roi(True)
+        overlay.set_axis_mapping(self._mapping())
+        xs, ys = overlay._roi_item.getData()
+        assert list(xs) == [10.0, 110.0, 110.0, 10.0, 10.0]
+        assert list(ys) == [20.0, 20.0, 70.0, 70.0, 20.0]
+
+    def test_disable_clears_roi(self, overlay):
+        overlay.set_show_calibration_roi(True)
+        overlay.set_axis_mapping(self._mapping())
+        overlay.set_show_calibration_roi(False)
+        assert self._roi_x(overlay) == []
+
+
 class TestTracePrompt:
     def test_trace_prompt_in_peak_mode(self, overlay):
         overlay.set_tool_mode("peak")

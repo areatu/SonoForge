@@ -82,6 +82,7 @@ class UserPreferences:
     show_panel_frames: bool = False
     show_caliper_labels_on_frame: bool = True
     show_caliper_inline_labels: bool = False
+    show_doppler_calibration_roi: bool = False
     thumbnail_scale: str = "medium"
     magnetic_snap_weight_threshold: float = DEFAULT_MAGNETIC_WEIGHT
     magnetic_snap_release_strength: float = DEFAULT_MAGNETIC_RELEASE
@@ -243,6 +244,7 @@ def load_user_preferences() -> UserPreferences:
         show_panel_frames=_read_bool(store.value("show_panel_frames"), False),
         show_caliper_labels_on_frame=_read_bool(store.value("show_caliper_labels_on_frame"), True),
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),
+        show_doppler_calibration_roi=_read_bool(store.value("show_doppler_calibration_roi"), False),
         thumbnail_scale=_read_choice(
             store.value("thumbnail_scale"),
             "medium",

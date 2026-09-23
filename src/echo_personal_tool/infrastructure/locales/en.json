@@ -429,6 +429,7 @@
   "preferences.results_overlay_opacity": "Results overlay opacity:",
   "preferences.server_timeout": "Timeout (sec):",
   "preferences.server_url": "Server URL:",
+  "preferences.show_doppler_cal_roi": "Show Doppler calibration ROI",
   "preferences.startup_at": "On startup:",
   "preferences.startup_empty": "Empty",
   "preferences.startup_empty_window": "Empty window",

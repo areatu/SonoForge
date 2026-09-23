@@ -232,6 +232,7 @@ class TestUserPreferencesDataclass:
         assert prefs.startup_mode == "empty"
         assert prefs.reduce_motion is False
         assert prefs.gold_annotation_enabled is False
+        assert prefs.show_doppler_calibration_roi is False
 
 
 class TestAreaToolMode:

@@ -3099,6 +3099,19 @@ class TestUserPreferences:
         w.apply_user_preferences(prefs)
         # Should not raise
 
+    def test_apply_user_preferences_doppler_cal_roi(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((64, 64), dtype=np.uint8))
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        prefs = UserPreferences(show_doppler_calibration_roi=True)
+        w.apply_user_preferences(prefs)
+        assert w._doppler._show_calibration_roi is True
+
+        prefs = UserPreferences(show_doppler_calibration_roi=False)
+        w.apply_user_preferences(prefs)
+        assert w._doppler._show_calibration_roi is False
+
     def test_apply_user_preferences_with_contours(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         w.show_frame(np.zeros((64, 64), dtype=np.uint8))
