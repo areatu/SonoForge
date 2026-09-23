@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from echo_personal_tool.domain.models.linear_measurement import (
+    PERCENT_LABELS,
     LinearMeasurement,
     format_length_mm,
     inline_caliper_text,
@@ -80,3 +81,24 @@ class TestPixelToMmLength:
         # 10 pixels at 0 degrees → column spacing only
         result = pixel_to_mm_length(10.0, 0.0, (0.5, 1.0))
         assert result == pytest.approx(10.0)
+
+
+class TestPercentLabels:
+    """A percentage stored in ``millimeter_length`` must never render as a length."""
+
+    @pytest.mark.parametrize("label", sorted(PERCENT_LABELS))
+    def test_percent_labels_render_as_percent(self, label: str) -> None:
+        m = LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0)
+        text = m.display_text()
+        assert "80.0%" in text
+        assert "mm" not in text
+        assert "cm" not in text
+
+    @pytest.mark.parametrize("label", sorted(PERCENT_LABELS))
+    def test_percent_ignores_length_unit(self, label: str) -> None:
+        m = LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0)
+        assert m.display_text(length_unit="cm") == m.display_text(length_unit="mm")
+
+    def test_length_label_still_renders_mm(self) -> None:
+        m = LinearMeasurement(label="LVEDD", pixel_length=0.0, millimeter_length=55.0)
+        assert "55.0 mm" in m.display_text()

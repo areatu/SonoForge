@@ -8,7 +8,7 @@ from echo_personal_tool.domain.calculations.chamber_simpson import (
     biplane_es_volume_ml,
     es_volume_from_view,
 )
-from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY
+from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY, PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.indexed_results_formatter import (
     append_indexed_for_overlay,
@@ -548,21 +548,10 @@ def format_results_overlay_html(
     linear_for_overlay = list(deduped.values())
 
     for measurement in linear_for_overlay:
-        if measurement.label == "%D":
+        if measurement.label in PERCENT_LABELS:
+            # Comparison ratios and stenosis degrees are percentages, not lengths.
             if measurement.millimeter_length is not None:
-                display_label = tr(_LABEL_I18N_KEY.get("%D", "result.percent_d"))
-                _html_append(
-                    parts,
-                    display_label,
-                    measurement.millimeter_length,
-                    "%",
-                    decimals=1,
-                    sex_male=sex_male,
-                )
-            continue
-        if measurement.label == "%S":
-            if measurement.millimeter_length is not None:
-                display_label = tr(_LABEL_I18N_KEY.get("%S", "result.percent_s"))
+                display_label = tr(_LABEL_I18N_KEY.get(measurement.label, measurement.label))
                 _html_append(
                     parts,
                     display_label,

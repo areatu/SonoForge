@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.ase_reference_norms import (
     NormRange,
@@ -253,12 +254,23 @@ def is_female(sex: str) -> bool:
     return sex.casefold().startswith(("f", "ж", "w"))
 
 
+def is_male(sex: str) -> bool:
+    """Whether a DICOM-style sex code asks for the male reference range."""
+    return sex.casefold().startswith(("m", "м"))
+
+
 def format_sex(sex: str) -> str:
-    """Translated sex label for the report header (``M``/``F``/``Ж``…)."""
+    """Translated sex label for the report header (``M``/``F``/``Ж``…).
+
+    DICOM also allows ``O`` (Other); it is neither sex, so it must not be
+    reported as male.
+    """
     text = (sex or "").strip()
-    if not text:
-        return tr("report.sex_unknown")
-    return tr("report.sex_female") if is_female(text) else tr("report.sex_male")
+    if is_female(text):
+        return tr("report.sex_female")
+    if is_male(text):
+        return tr("report.sex_male")
+    return tr("report.sex_unknown")
 
 
 def group_for_label(label: str) -> str:
@@ -639,6 +651,19 @@ def build_report_groups(
             values.append(entry)
 
     for measurement in snapshot.linear_measurements:
+        if measurement.label in PERCENT_LABELS:
+            # Stenosis/comparison calipers keep a percentage in millimeter_length;
+            # it is neither a length nor affected by the length unit or scaling.
+            entry = _value(
+                measurement.label,
+                measurement.millimeter_length,
+                "%",
+                sex=sex,
+                decimals=1,
+            )
+            if entry:
+                values.append(entry)
+            continue
         if calibrated:
             value = measurement.millimeter_length
             unit = length_unit

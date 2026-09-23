@@ -539,6 +539,8 @@
   "result.pgpeak": "РГпик",
   "result.percent_d": "%D",
   "result.percent_s": "%S",
+  "result.percent_d_stenosis": "%D стеноз",
+  "result.percent_s_stenosis": "%S стеноз",
   "result.s1": "S1",
   "result.s2": "S2",
   "result.s_prime_lat": "s' лат",

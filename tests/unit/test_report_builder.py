@@ -21,6 +21,7 @@ from echo_personal_tool.domain.services.report_builder import (
     GROUP_MITRAL_VALVE,
     GROUP_PLANIMETRY,
     GROUP_TRICUSPID_VALVE,
+    GROUP_VESSELS,
     PatientInfo,
     build_report_document,
     build_report_groups,
@@ -69,6 +70,16 @@ class TestNormLookup:
     )
     def test_format_sex(self, sex: str, expected: bool) -> None:
         assert (format_sex(sex) == format_sex("F")) is expected
+
+    @pytest.mark.parametrize("sex", ["O", "X", "", "  "])
+    def test_unknown_sex_is_not_reported_as_male(self, sex: str) -> None:
+        """DICOM ``O`` means Other; it must not be printed as male."""
+        assert format_sex(sex) == format_sex("")
+        assert format_sex(sex) != format_sex("M")
+        assert format_sex(sex) != format_sex("F")
+
+    def test_male_sex_is_reported_as_male(self) -> None:
+        assert format_sex("M") == format_sex("М") == format_sex("male")
 
 
 class TestNormFormatting:
@@ -244,6 +255,45 @@ class TestBuildReportGroups:
         cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
         assert _values(mm, GROUP_LEFT_VENTRICLE)["LVEDD"] == "62.0"
         assert _values(cm, GROUP_LEFT_VENTRICLE)["LVEDD"] == "6.2"
+
+    @pytest.mark.parametrize("label", ["%D", "%S", "%D стеноз", "%S стеноз"])
+    def test_percent_calipers_are_reported_in_percent(self, label: str) -> None:
+        """A stenosis degree is a percentage, not a length."""
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0),
+            )
+        )
+        rows = next(
+            (v for g in build_report_groups(snapshot, sex="M") for v in g.values if v.label == label),
+            None,
+        )
+        assert rows is not None
+        assert (rows.value, rows.unit) == ("80.0", "%")
+
+    def test_percent_calipers_ignore_length_unit(self) -> None:
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label="%S стеноз", pixel_length=0.0, millimeter_length=80.0),
+            )
+        )
+        mm = build_report_groups(snapshot, sex="M", length_display_unit="mm")
+        cm = build_report_groups(snapshot, sex="M", length_display_unit="cm")
+        row_mm = next(v for g in mm for v in g.values if v.label == "%S стеноз")
+        row_cm = next(v for g in cm for v in g.values if v.label == "%S стеноз")
+        assert (row_mm.value, row_mm.unit) == (row_cm.value, row_cm.unit) == ("80.0", "%")
+
+    def test_percent_and_length_calipers_coexist(self) -> None:
+        snapshot = _snapshot(
+            linear_measurements=(
+                LinearMeasurement(label="LVEDD", pixel_length=120, millimeter_length=62.0),
+                LinearMeasurement(label="%D стеноз", pixel_length=0.0, millimeter_length=60.0),
+            )
+        )
+        groups = build_report_groups(snapshot, sex="M", length_display_unit="mm")
+        assert _values(groups, GROUP_LEFT_VENTRICLE)["LVEDD"] == "62.0"
+        vessel = next(v for g in groups for v in g.values if v.label == "%D стеноз")
+        assert (vessel.value, vessel.unit, vessel.group) == ("60.0", "%", GROUP_VESSELS)
 
     def test_unpixel_calibrated_values_are_reported_as_pixels(self) -> None:
         snapshot = _snapshot(

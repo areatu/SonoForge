@@ -17,9 +17,18 @@ _LABEL_I18N_KEY: dict[str, str] = {
     "LA": "menu.la_lavir",
     "%D": "result.percent_d",
     "%S": "result.percent_s",
+    "%D стеноз": "result.percent_d_stenosis",
+    "%S стеноз": "result.percent_s_stenosis",
     "S1": "result.s1",
     "S2": "result.s2",
 }
+
+#: Labels whose ``millimeter_length`` holds a percentage, not a length.
+#:
+#: The comparison tools store a ratio under ``%D``/``%S``; the vessel stenosis
+#: tools store a stenosis degree under ``%D стеноз``/``%S стеноз``. All four are
+#: percentages and must never be formatted as a length.
+PERCENT_LABELS = frozenset({"%D", "%S", "%D стеноз", "%S стеноз"})
 
 
 @dataclass(frozen=True)
@@ -43,7 +52,7 @@ class LinearMeasurement:
             return f"{display_label}: {self.time_ms:.1f} ms  {tr('mmode.label_hr')} {hr:.0f}"
         if self.millimeter_length is None:
             return f"{display_label}: {self.pixel_length:.1f} px"
-        if self.label in ("%D", "%S"):
+        if self.label in PERCENT_LABELS:
             return f"{display_label}: {self.millimeter_length:.1f}%"
         if self.label in ("S1", "S2"):
             return f"{display_label}: {self.millimeter_length:.2f} cm²"

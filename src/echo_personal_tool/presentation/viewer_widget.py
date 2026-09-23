@@ -2179,9 +2179,9 @@ class ViewerWidget(QWidget):
             sop_instance_uid=instance_uid,
         )
         if pct_s is not None:
-            pct_key = ("%S стеноз", frame if frame is not None else -1)
+            pct_key = ("%S", frame if frame is not None else -1)
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз",
+                label="%S",
                 pixel_length=0.0,
                 millimeter_length=pct_s,
                 frame_index=frame,
@@ -6223,7 +6223,7 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
-                if measurement.label in ("%D стеноз", "%S стеноз", "S1", "S2"):
+                if measurement.label in ("%D", "%S", "%D стеноз", "%S стеноз", "S1", "S2"):
                     continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
@@ -6964,9 +6964,9 @@ class ViewerWidget(QWidget):
         else:
             pct_d = self._compute_percent_d(state.segment1_mm, state.segment2_mm)
             if pct_d is not None:
-                pct_key = ("%D стеноз", frame if frame is not None else -1)
+                pct_key = ("%D", frame if frame is not None else -1)
                 self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                    label="%D стеноз",
+                    label="%D",
                     pixel_length=0.0,
                     millimeter_length=pct_d,
                     frame_index=frame,
@@ -7011,6 +7011,8 @@ class ViewerWidget(QWidget):
         return min(l1, l2) / bigger * 100.0
 
     def _recalculate_percent_d(self) -> None:
+        if self._comparison_state.kind != "diameter":
+            return
         d1_mm: float | None = None
         d2_mm: float | None = None
         frame: int | None = None
@@ -7026,10 +7028,10 @@ class ViewerWidget(QWidget):
                     frame = m.frame_index
                     instance_uid = m.sop_instance_uid
         pct_d = self._compute_percent_d(d1_mm, d2_mm)
-        pct_key = ("%D стеноз", frame if frame is not None else -1)
+        pct_key = ("%D", frame if frame is not None else -1)
         if pct_d is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%D стеноз",
+                label="%D",
                 pixel_length=0.0,
                 millimeter_length=pct_d,
                 frame_index=frame,
@@ -7067,10 +7069,10 @@ class ViewerWidget(QWidget):
                 sop_instance_uid=instance_uid,
             )
         pct_s = self._compute_percent_s()
-        pct_key = ("%S стеноз", frame if frame is not None else -1)
+        pct_key = ("%S", frame if frame is not None else -1)
         if pct_s is not None:
             self._stored_linear_measurements[pct_key] = LinearMeasurement(
-                label="%S стеноз",
+                label="%S",
                 pixel_length=0.0,
                 millimeter_length=pct_s,
                 frame_index=frame,
@@ -7080,6 +7082,8 @@ class ViewerWidget(QWidget):
             del self._stored_linear_measurements[pct_key]
 
     def _recalculate_stenosis_diameter(self) -> None:
+        if self._comparison_state.kind != "stenosis_diameter":
+            return
         d1_mm: float | None = None
         d2_mm: float | None = None
         frame: int | None = None
