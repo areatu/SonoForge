@@ -85,6 +85,24 @@ class TestUserPreferencesDialogValues:
         dlg = UserPreferencesDialog()
         assert not dlg._show_crosshair.isChecked()
 
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_doppler_cal_roi_checkbox_default_off(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert not dlg._show_doppler_cal_roi.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_doppler_cal_roi_checkbox_checked(self, mock_load):
+        prefs = _default_prefs()
+        prefs.show_doppler_calibration_roi = True
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert dlg._show_doppler_cal_roi.isChecked()
+
 
 class TestOnAccept:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
@@ -249,6 +267,20 @@ class TestAreaToolModeCombo:
             dlg._on_accept()
             saved_prefs = mock_save_pref.call_args[0][0]
             assert saved_prefs.area_tool_mode == "freehand"
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_on_accept_saves_doppler_cal_roi(self, mock_load, mock_save_pref, mock_save_srv):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        dlg._show_doppler_cal_roi.setChecked(True)
+        with patch.object(dlg, "accept"):
+            dlg._on_accept()
+            saved_prefs = mock_save_pref.call_args[0][0]
+            assert saved_prefs.show_doppler_calibration_roi is True
 
 
 class TestShowUserPreferencesDialog:

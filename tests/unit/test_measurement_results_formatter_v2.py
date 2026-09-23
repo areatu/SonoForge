@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
@@ -144,6 +146,15 @@ class TestFormatResultsOverlay:
         snap = _snap(linear_measurements=(m,))
         result = format_results_overlay(snap)
         assert "9.0" in result
+
+    @pytest.mark.parametrize("label", ["%D", "%S"])
+    def test_percent_labels_render_with_percent_unit(self, label: str) -> None:
+        m = LinearMeasurement(label=label, pixel_length=0, millimeter_length=45.0)
+        snap = _snap(linear_measurements=(m,))
+        result = format_results_overlay(snap)
+        assert "45.0%" in result
+        assert "mm" not in result
+        assert "стеноз" not in result
 
     def test_with_planimeter(self) -> None:
         p = PlanimeterResult(label="Area", kind="area", value=25.0, unit="cm²")

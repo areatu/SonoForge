@@ -467,6 +467,7 @@
   "preferences.results_overlay_opacity": "Прозрачность оверлея:",
   "preferences.server_timeout": "Таймаут (сек):",
   "preferences.server_url": "URL сервера:",
+  "preferences.show_doppler_cal_roi": "Показывать ROI калибровки Doppler",
   "preferences.startup_at": "При запуске:",
   "preferences.startup_empty": "Пустой",
   "preferences.startup_empty_window": "Пустое окно",

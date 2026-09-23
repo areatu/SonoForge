@@ -2080,22 +2080,33 @@ class MainWindow(QMainWindow):
         else:
             self._show_status("M-mode calibration required")
 
-    def _ensure_mmode_active(self) -> None:
-        """Activate M-mode if not already active."""
-        if not self._mmode_active:
-            self._toggle_mmode()
+    def _start_mmode_frame_sequence_or_calibrate(self, labels: tuple[str, ...], *, ed: bool) -> None:
+        """Apply Teichholz labels to the current M-mode frame instead of launching anatomic M-mode."""
+        self._viewer.try_apply_mmode_from_dicom_or_heuristic()
+        if not self._viewer.is_mmode_calibrated():
+            if self._viewer.start_mmode_panel_calibration():
+                self._show_status(tr("status.mmode_calibration_start"))
+            else:
+                self._show_status(tr("status.load_frame"))
+            return
+        if not self._viewer.start_mmode_frame_caliper_sequence(labels):
+            self._show_status(tr("status.load_frame"))
+            return
+        if ed:
+            self._tool_panel.measure.clear_action_highlight()
+            self._viewer.clear_frame_overlay()
+            self._viewer.append_frame_overlay(tr("status.lv_diastole_overlay"))
+            self._show_status(tr("status.lv_diastole_sequence"))
+        else:
+            self._show_status(tr("status.lv_systole_place"))
 
     def _on_teichholz_ed_from_menu(self) -> None:
-        """Start Teichholz ED workflow from Measures menu."""
-        self._ensure_mmode_active()
-        if self._mmode_widget is not None:
-            self._mmode_widget._start_teichholz_ed()
+        """Start IVSd-LVIDd-LVPWd calipers on the current M-mode frame (no anatomic M-mode panel)."""
+        self._start_mmode_frame_sequence_or_calibrate(("IVSd", "LVEDD", "LVPWd"), ed=True)
 
     def _on_teichholz_es_from_menu(self) -> None:
-        """Start Teichholz ES workflow from Measures menu."""
-        self._ensure_mmode_active()
-        if self._mmode_widget is not None:
-            self._mmode_widget._start_teichholz_es()
+        """Start LVIDs caliper on the current M-mode frame (no anatomic M-mode panel)."""
+        self._start_mmode_frame_sequence_or_calibrate(("LVESD",), ed=False)
 
     def _on_diameter_compare_requested(self) -> None:
         if self._viewer.start_diameter_compare():

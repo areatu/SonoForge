@@ -114,6 +114,7 @@ class DopplerOverlayTools(QWidget):
         self._plot = plot
         self._axis_mapping = DopplerAxisMapping.poc_default()
 
+        self._show_calibration_roi = False
         self._roi_item = pg.PlotDataItem(pen=pg.mkPen("#90caf9", width=1))
         self._roi_item.setZValue(5)
         self._plot.addItem(self._roi_item)
@@ -184,6 +185,10 @@ class DopplerOverlayTools(QWidget):
         self._redraw_intervals()
         self._redraw_traces()
         self._redraw_vessel_graphics()
+
+    def set_show_calibration_roi(self, visible: bool) -> None:
+        self._show_calibration_roi = bool(visible)
+        self._refresh_calibration_graphics()
 
     def axis_mapping(self) -> DopplerAxisMapping:
         return self._axis_mapping
@@ -1006,7 +1011,7 @@ class DopplerOverlayTools(QWidget):
     def _refresh_calibration_graphics(self) -> None:
         mapping = self._axis_mapping
         roi = mapping.roi
-        if roi is not None:
+        if roi is not None and self._show_calibration_roi:
             xs = [roi.x0, roi.x1, roi.x1, roi.x0, roi.x0]
             ys = [roi.y0, roi.y0, roi.y1, roi.y1, roi.y0]
             self._roi_item.setData(xs, ys)

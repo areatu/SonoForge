@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Set
 from dataclasses import dataclass
 
 
@@ -30,7 +31,7 @@ def compute_caliper_label_layout(
     start: tuple[float, float],
     end: tuple[float, float],
     *,
-    vertical_labels: frozenset[str],
+    vertical_labels: Set[str],
     label: str,
     offset_px: float = 10.0,
 ) -> CaliperLabelLayout:
