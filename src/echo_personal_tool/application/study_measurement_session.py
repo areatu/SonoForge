@@ -91,30 +91,88 @@ def contours_for_instance(
     return tuple(contour for contour in contours if contour.sop_instance_uid == instance_uid)
 
 
+def is_planimeter_contour(contour: Contour) -> bool:
+    """True for the generic area/volume planimeter polygons (Площадь1, Объем1, …)."""
+    return contour.chamber.upper() in {"AREA", "VOL"}
+
+
 def merge_contours(
     existing: tuple[Contour, ...],
     incoming: tuple[Contour, ...],
+    *,
+    authoritative_instance_uid: str | None = None,
 ) -> tuple[Contour, ...]:
-    """Replace contours by instance/chamber/view/phase; ignore empty incoming."""
+    """Replace contours by instance/chamber/view/phase; ignore empty incoming.
+
+    ``authoritative_instance_uid`` marks a report that lists *all* planimeter
+    contours of one clip (the viewer only ever holds the contours of the clip it
+    shows). A planimeter polygon of that clip missing from such a report was
+    deleted by the operator, so it is dropped here instead of resurfacing the
+    next time the clip is opened. LV/LA/RV contours keep merge-only semantics:
+    they are re-drawn and refined constantly, and an empty intermediate report
+    must not throw an accepted ED/ES contour away.
+    """
     if not incoming:
         return existing
     by_key = {contour_key(contour): contour for contour in existing}
     for contour in incoming:
         by_key[contour_key(contour)] = contour
-    return tuple(by_key.values())
+    merged = tuple(by_key.values())
+    if authoritative_instance_uid is None:
+        return merged
+    kept_planimeter_keys = {contour_key(contour) for contour in incoming if is_planimeter_contour(contour)}
+    return tuple(
+        contour
+        for contour in merged
+        if not (
+            contour.sop_instance_uid == authoritative_instance_uid
+            and is_planimeter_contour(contour)
+            and contour_key(contour) not in kept_planimeter_keys
+        )
+    )
 
 
 def merge_linear_measurements(
     existing: tuple[LinearMeasurement, ...],
     incoming: tuple[LinearMeasurement, ...],
 ) -> tuple[LinearMeasurement, ...]:
-    """Replace linear measurements by label, frame, and instance; clear when incoming is empty."""
+    """Replace linear measurements by label, frame, and instance.
+
+    An empty ``incoming`` means "this clip has nothing (yet)" — it must never
+    wipe the measurements already taken on the other clips of the study, which
+    is what the report is built from. Clearing is explicit
+    (:meth:`StudyMeasurementSessionStore.reset_measurements`).
+    """
     if not incoming:
-        return ()
+        return existing
     by_key: dict[tuple[str, int, str], LinearMeasurement] = {}
     for measurement in existing:
         frame_key = measurement.frame_index if measurement.frame_index is not None else -1
         by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
+    for measurement in incoming:
+        frame_key = measurement.frame_index if measurement.frame_index is not None else -1
+        by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
+    return tuple(by_key.values())
+
+
+def replace_linear_measurements_for_instance(
+    existing: tuple[LinearMeasurement, ...],
+    instance_uid: str,
+    incoming: tuple[LinearMeasurement, ...],
+) -> tuple[LinearMeasurement, ...]:
+    """Authoritative update of one clip's calipers.
+
+    The viewer holds exactly the calipers of the clip it shows, so its report is
+    the truth for that clip: calipers it no longer lists were deleted and must
+    disappear from the study too (otherwise they come back after a clip switch
+    and stay in the report). Other clips are untouched.
+    """
+    kept = tuple(m for m in existing if m.sop_instance_uid != instance_uid)
+    if not incoming:
+        return kept
+    by_key: dict[tuple[str, int, str], LinearMeasurement] = {
+        (m.label, m.frame_index if m.frame_index is not None else -1, m.sop_instance_uid): m for m in kept
+    }
     for measurement in incoming:
         frame_key = measurement.frame_index if measurement.frame_index is not None else -1
         by_key[(measurement.label, frame_key, measurement.sop_instance_uid)] = measurement
@@ -133,9 +191,9 @@ def merge_vessel_measurements(
     existing: tuple[VesselMeasurement, ...],
     incoming: tuple[VesselMeasurement, ...],
 ) -> tuple[VesselMeasurement, ...]:
-    """Replace vessel measurements by instance and frame; clear when incoming is empty."""
+    """Replace vessel measurements by instance and frame; keep existing on empty."""
     if not incoming:
-        return ()
+        return existing
     by_key: dict[tuple[str, int], VesselMeasurement] = {}
     for measurement in existing:
         by_key[(measurement.sop_instance_uid, measurement.frame_index)] = measurement
@@ -201,11 +259,21 @@ class StudyMeasurementSessionStore:
     def get(self, study_uid: str) -> StudyMeasurementData:
         return self._studies.setdefault(study_uid, StudyMeasurementData())
 
-    def merge_contours(self, study_uid: str, incoming: tuple[Contour, ...]) -> None:
+    def merge_contours(
+        self,
+        study_uid: str,
+        incoming: tuple[Contour, ...],
+        *,
+        authoritative_instance_uid: str | None = None,
+    ) -> None:
         data = self.get(study_uid)
         self._studies[study_uid] = replace(
             data,
-            contours=merge_contours(data.contours, incoming),
+            contours=merge_contours(
+                data.contours,
+                incoming,
+                authoritative_instance_uid=authoritative_instance_uid,
+            ),
         )
 
     def merge_simpson_areas(
@@ -251,6 +319,27 @@ class StudyMeasurementSessionStore:
             data,
             linear_measurements=merge_linear_measurements(data.linear_measurements, incoming),
         )
+
+    def set_linear_measurements_for_instance(
+        self,
+        study_uid: str,
+        instance_uid: str,
+        incoming: tuple[LinearMeasurement, ...],
+    ) -> None:
+        """Store the authoritative caliper set of one clip (deletions included)."""
+        data = self.get(study_uid)
+        self._studies[study_uid] = replace(
+            data,
+            linear_measurements=replace_linear_measurements_for_instance(
+                data.linear_measurements,
+                instance_uid,
+                incoming,
+            ),
+        )
+
+    def clear_instance_measurements(self, study_uid: str, instance_uid: str) -> None:
+        """Drop every caliper of one clip (used by the on-image 'clear' action)."""
+        self.set_linear_measurements_for_instance(study_uid, instance_uid, ())
 
     def merge_doppler_for_instance(
         self,

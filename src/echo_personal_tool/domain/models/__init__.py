@@ -28,6 +28,7 @@ from echo_personal_tool.domain.models.measurements import (
 from echo_personal_tool.domain.models.metadata import (
     InstanceMetadata,
     InstanceRef,
+    PatientDemographics,
     SeriesMetadata,
     StudyMetadata,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "LvefResult",
     "MeasurementSnapshot",
     "MyocardialZone",
+    "PatientDemographics",
     "RPeakResult",
     "SeriesInfo",
     "SeriesMetadata",

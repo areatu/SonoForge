@@ -97,3 +97,97 @@ def test_local_scanner_builds_study_tree(tmp_path: Path) -> None:
     assert len(studies) == 1
     assert len(studies[0].series) == 2
     assert sum(len(s.instances) for s in studies[0].series) == 2
+
+
+class TestPatientDemographics:
+    """The study report header is filled from these DICOM tags."""
+
+    @staticmethod
+    def _dataset(**kwargs):
+        from pydicom.dataset import Dataset, FileMetaDataset
+        from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+        dataset = Dataset()
+        dataset.file_meta = FileMetaDataset()
+        dataset.file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.7"
+        dataset.file_meta.MediaStorageSOPInstanceUID = generate_uid()
+        dataset.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        dataset.SOPClassUID = dataset.file_meta.MediaStorageSOPClassUID
+        dataset.SOPInstanceUID = dataset.file_meta.MediaStorageSOPInstanceUID
+        for key, value in kwargs.items():
+            setattr(dataset, key, value)
+        return dataset
+
+    def test_maps_every_report_field(self) -> None:
+        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+            map_patient_demographics,
+        )
+
+        demographics = map_patient_demographics(
+            self._dataset(
+                PatientName="Иванов^Иван^Иванович",
+                PatientID="12345",
+                PatientBirthDate="19800517",
+                PatientSex="F",
+                StudyDate="20240520",
+                InstitutionName="ГБ 1",
+                Manufacturer="GE",
+                ManufacturerModelName="Vivid E95",
+                ReferringPhysicianName="Петров^Пётр",
+                PatientSize=1.72,
+                PatientWeight=68.0,
+            )
+        )
+        # DICOM keeps family name first; a report reads given name first.
+        assert demographics.name == "Иван Иванович Иванов"
+        assert demographics.patient_id == "12345"
+        assert demographics.birth_date == "17.05.1980"
+        assert demographics.sex == "F"
+        assert demographics.study_date == "20.05.2024"
+        assert demographics.age == "44"
+        assert demographics.institution == "ГБ 1"
+        assert demographics.equipment == "GE Vivid E95"
+        assert demographics.referring_physician == "Пётр Петров"
+        assert demographics.height_m == 1.72
+        assert demographics.weight_kg == 68.0
+        assert demographics.is_empty is False
+
+    def test_missing_header_is_empty_not_broken(self) -> None:
+        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+            map_patient_demographics,
+        )
+
+        demographics = map_patient_demographics(self._dataset())
+        assert demographics.is_empty is True
+        assert demographics.age == ""
+        assert demographics.name == ""
+
+    def test_unparsable_birth_date_gives_no_age(self) -> None:
+        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+            map_patient_demographics,
+        )
+
+        demographics = map_patient_demographics(self._dataset(PatientBirthDate="unknown", StudyDate="20240520"))
+        assert demographics.age == ""
+        assert demographics.birth_date == "unknown"
+
+    def test_birthday_not_yet_reached_this_year(self) -> None:
+        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+            map_patient_demographics,
+        )
+
+        demographics = map_patient_demographics(self._dataset(PatientBirthDate="19801231", StudyDate="20240101"))
+        assert demographics.age == "43"
+
+    def test_reads_from_a_file(self, tmp_path: Path) -> None:
+        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+            read_patient_demographics,
+        )
+
+        path = tmp_path / "patient.dcm"
+        dataset = self._dataset(PatientName="Doe^John", PatientID="777", PatientSex="M")
+        dataset.save_as(str(path), enforce_file_format=True)
+        demographics = read_patient_demographics(path)
+        assert demographics.name == "John Doe"
+        assert demographics.patient_id == "777"
+        assert demographics.sex == "M"

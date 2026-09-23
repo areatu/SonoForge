@@ -301,5 +301,6 @@ def test_tool_panel_has_results_button_under_patient_metrics(qtbot) -> None:
     panel = ToolPanel()
     qtbot.addWidget(panel)
     labels = {button.text() for button in panel.findChildren(QPushButton)}
-    assert "Измерения" in labels
+    # The bottom button opens the structured study report, so it is named after it.
+    assert "Отчёт" in labels
     assert panel.measure._results_button.isVisibleTo(panel)

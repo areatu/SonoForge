@@ -1313,7 +1313,14 @@ class AppController(QObject):
         contour_tuple = tuple(tagged)
         self._state_manager.set_contours(contour_tuple, emit=False)
         study_uid = self._resolve_study_uid()
-        self._measurement_session.merge_contours(study_uid, contour_tuple)
+        # The viewer reports every contour of the clip it shows, so for that
+        # clip the report is authoritative: a planimeter polygon it no longer
+        # lists was deleted and must not resurface on the next visit.
+        self._measurement_session.merge_contours(
+            study_uid,
+            contour_tuple,
+            authoritative_instance_uid=instance.sop_instance_uid,
+        )
         spacing = self._state_manager.snapshot.effective_pixel_spacing or (1.0, 1.0)
         self._measurement_session.merge_simpson_areas(study_uid, contour_tuple, spacing)
         self._recompute_measurements()
@@ -1324,21 +1331,31 @@ class AppController(QObject):
         ):
             raise TypeError("Expected a list of LinearMeasurement objects")
 
-        measurement_tuple = tuple(measurements)
-        logger.warning(
-            "on_linear_measurements_changed: %d measurements",
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        instance_uid = instance.sop_instance_uid if instance is not None else ""
+        tagged: list[LinearMeasurement] = []
+        for measurement in measurements:
+            # Calipers are stored per clip; an untagged one belongs to the clip
+            # that is open, otherwise it would be invisible after a switch.
+            if instance_uid and measurement.sop_instance_uid != instance_uid:
+                tagged.append(dataclasses.replace(measurement, sop_instance_uid=instance_uid))
+            else:
+                tagged.append(measurement)
+        measurement_tuple = tuple(tagged)
+        logger.debug(
+            "on_linear_measurements_changed: %d measurements (instance=%s)",
             len(measurement_tuple),
+            instance_uid,
         )
-        for m in measurement_tuple:
-            logger.warning(
-                "  -> label=%s uid=%s mm=%.1f",
-                m.label,
-                m.sop_instance_uid,
-                m.millimeter_length or 0,
-            )
         self._state_manager.set_linear_measurements(measurement_tuple, emit=False)
         study_uid = self._resolve_study_uid()
-        self._measurement_session.merge_linear_measurements(study_uid, measurement_tuple)
+        # Authoritative for this clip only: other clips of the study keep their
+        # calipers, and calipers deleted here disappear from the study too.
+        self._measurement_session.set_linear_measurements_for_instance(
+            study_uid,
+            instance_uid,
+            measurement_tuple,
+        )
         self._recompute_measurements()
 
     def accept_vessel_measurement(self, measurement: object) -> bool:
@@ -1597,6 +1614,30 @@ class AppController(QObject):
             state=state,
             session=session,
             vessel_measurements=instance_vessel,
+        )
+
+    def compute_study_snapshot(self) -> MeasurementSnapshot | None:
+        """Study-wide snapshot for the report window.
+
+        The on-image overlay is deliberately scoped to the clip being shown, but
+        a protocol describes the whole study: LVEDD from the parasternal clip,
+        the Simpson volumes from A4C/A2C, the Doppler from the PW clips. This
+        therefore uses every caliper, contour and vessel measurement stored in
+        the session instead of the current clip's subset.
+        """
+        state = self._state_manager.snapshot
+        study_uid = self._resolve_study_uid()
+        session = self._measurement_session.get(study_uid)
+        if state.instance is None and not session.linear_measurements and not session.contours:
+            return None
+        return self._build_measurement_snapshot(
+            contours=session.contours,
+            linear_measurements=session.linear_measurements,
+            doppler_dto=session.all_doppler_dto,
+            display_doppler_dto=session.all_doppler_dto,
+            state=state,
+            session=session,
+            vessel_measurements=session.vessel_measurements,
         )
 
     def _recompute_measurements(self) -> None:

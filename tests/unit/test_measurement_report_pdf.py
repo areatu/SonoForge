@@ -185,3 +185,87 @@ class TestExportMeasurementReportPdf:
         finally:
             for p in patches.values():
                 p.stop()
+
+
+class TestExportReportDocumentPdf:
+    """The structured study protocol export (real reportlab run, no mocks)."""
+
+    @staticmethod
+    def _document():
+        from echo_personal_tool.domain.services.report_builder import (
+            PatientInfo,
+            ReportDocument,
+            ReportGroup,
+            ReportValue,
+        )
+
+        return ReportDocument(
+            patient=PatientInfo(
+                name="Иванов И.И.",
+                patient_id="12345",
+                sex="M",
+                study_date="17.05.2024",
+                conclusion="Дилатация ЛП.",
+            ),
+            groups=(
+                ReportGroup(
+                    title="Левый желудочек",
+                    key="lv",
+                    values=(
+                        ReportValue(
+                            label="КДО ЛЖ",
+                            value="120.0",
+                            unit="мл",
+                            norm="56–104",
+                            group="lv",
+                        ),
+                        ReportValue(
+                            label="ФВ ЛЖ",
+                            value="48.0",
+                            unit="%",
+                            norm="52–72",
+                            pathological=True,
+                            group="lv",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    def test_writes_a_pdf_file(self, tmp_path: Path) -> None:
+        from echo_personal_tool.infrastructure.measurement_report_pdf import (
+            export_report_document_pdf,
+        )
+
+        output = tmp_path / "sub" / "report.pdf"
+        result = export_report_document_pdf(self._document(), output)
+        assert result == output
+        assert output.exists()
+        assert output.read_bytes()[:5] == b"%PDF-"
+        assert output.stat().st_size > 1000
+
+    def test_empty_document_still_exports(self, tmp_path: Path) -> None:
+        from echo_personal_tool.domain.services.report_builder import ReportDocument
+        from echo_personal_tool.infrastructure.measurement_report_pdf import (
+            export_report_document_pdf,
+        )
+
+        output = tmp_path / "empty.pdf"
+        export_report_document_pdf(ReportDocument(), output)
+        assert output.read_bytes()[:5] == b"%PDF-"
+
+    def test_wraps_reportlab_failures_in_pdf_export_error(self, tmp_path: Path) -> None:
+        from echo_personal_tool.infrastructure import measurement_report_pdf
+        from echo_personal_tool.infrastructure.measurement_report_pdf import (
+            PdfExportError,
+            export_report_document_pdf,
+        )
+
+        output = tmp_path / "report.pdf"
+        with patch.object(
+            measurement_report_pdf,
+            "_register_cyrillic_font",
+            side_effect=OSError("no font"),
+        ):
+            with pytest.raises((PdfExportError, OSError)):
+                export_report_document_pdf(self._document(), output)

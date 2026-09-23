@@ -42,6 +42,7 @@ from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
 )
+from echo_personal_tool.domain.services.report_builder import PatientInfo
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.profiler import profiled as _prof
@@ -61,9 +62,9 @@ from echo_personal_tool.presentation.ase_reference_dialog import show_ase_refere
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
-from echo_personal_tool.presentation.measurement_results_dialog import MeasurementResultsDialog
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
+from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
@@ -1017,8 +1018,9 @@ class MainWindow(QMainWindow):
             LinearMeasurement(label="LVPWd", pixel_length=0, millimeter_length=lvpwd, sop_instance_uid=instance_uid),
             LinearMeasurement(label="LVESD", pixel_length=0, millimeter_length=lvesd, sop_instance_uid=instance_uid),
         )
-        if study_uid:
-            self._controller._measurement_session.merge_linear_measurements(study_uid, linear)
+        # Enter through the viewer: it owns the clip's caliper list, and its
+        # report is what the study session treats as authoritative.
+        self._viewer.add_linear_measurements(linear)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
         lvmi_str = f"  {tr('domain.report.lvmi')}={result.lvmi_g_m2:.1f} g/m²" if result.lvmi_g_m2 else ""
         self._show_status(
@@ -1740,14 +1742,62 @@ class MainWindow(QMainWindow):
             self._tool_panel.set_patient_metrics(snapshot.height_cm, snapshot.weight_kg)
         self._sync_doppler_tool_availability()
 
+    def _report_patient_info(self, measurement_snapshot) -> PatientInfo:
+        """Report header pre-filled from the DICOM header and the session.
+
+        A video file has no patient block, and a corrupt header must not stop
+        the report from opening, so every failure degrades to an empty header
+        the physician can fill in by hand.
+        """
+        from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
+            read_patient_demographics,
+        )
+
+        instance = self._controller.state_manager.snapshot.instance
+        demographics = None
+        if instance is not None and instance.path is not None and instance.media_format == "dicom":
+            try:
+                demographics = read_patient_demographics(instance.path)
+            except Exception:  # noqa: BLE001 - an unreadable header is not fatal
+                logger.exception("report: cannot read patient header from %s", instance.path)
+
+        indexed = measurement_snapshot.indexed if measurement_snapshot is not None else None
+        height_cm = measurement_snapshot.height_cm if measurement_snapshot is not None else None
+        weight_kg = measurement_snapshot.weight_kg if measurement_snapshot is not None else None
+        if demographics is not None:
+            # The session values win: they are the ones the user can correct in
+            # the tool panel, the header is only the fallback.
+            if height_cm is None and demographics.height_m:
+                height_cm = demographics.height_m * 100.0
+            if weight_kg is None:
+                weight_kg = demographics.weight_kg
+        return PatientInfo(
+            name=demographics.name if demographics else "",
+            patient_id=demographics.patient_id if demographics else "",
+            birth_date=demographics.birth_date if demographics else "",
+            age=demographics.age if demographics else "",
+            sex=demographics.sex if demographics else "",
+            study_date=demographics.study_date if demographics else "",
+            height_cm=height_cm,
+            weight_kg=weight_kg,
+            bsa_m2=indexed.bsa_m2 if indexed is not None else None,
+            institution=demographics.institution if demographics else "",
+            equipment=demographics.equipment if demographics else "",
+            physician=demographics.referring_physician if demographics else "",
+        )
+
     def _show_results_dialog(self) -> None:
-        snapshot = self._controller.state_manager.snapshot.measurement_snapshot
-        default_name = "echo_measurements.pdf"
+        # The report describes the whole study, not the clip that happens to be
+        # open, so it is built from the session-wide snapshot.
+        snapshot = self._controller.compute_study_snapshot()
+        patient = self._report_patient_info(snapshot)
+        default_name = "echo_report.pdf"
         instance = self._controller.state_manager.snapshot.instance
         if instance is not None and instance.path is not None:
-            default_name = f"{instance.path.stem}_results.pdf"
-        dialog = MeasurementResultsDialog(
+            default_name = f"{instance.path.stem}_report.pdf"
+        dialog = ReportDialog(
             snapshot,
+            patient=patient,
             parent=self,
             default_pdf_name=default_name,
             length_display_unit=self._user_preferences.length_display_unit,

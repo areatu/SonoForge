@@ -7,6 +7,7 @@ import math
 import os
 import time
 from collections import OrderedDict
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -34,6 +35,8 @@ from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_o
 from echo_personal_tool.domain.calculations.planimeter import (
     GENERIC_AREA_CHAMBER,
     GENERIC_VOLUME_CHAMBER,
+    closed_polygon_area_cm2,
+    closed_polygon_volume_ml,
     is_planimeter_polygon,
     next_area_label,
     next_volume_label,
@@ -193,7 +196,26 @@ _MAGNETIC_SNAP_WEIGHT_THRESHOLD = 0.15
 _MAGNETIC_RELEASE_STRENGTH = 0.9
 _MAGNETIC_RELEASE_MAX_RADIAL_PX = 15.0
 _WL_DR_CACHE_MAX = 200
-_CONTOUR_DOUBLE_CLICK_INTERVAL_MS = 150
+
+# ── Contour point placement / "finish" gesture ───────────────────────
+# Qt reports a second click as a double-click purely on *time*: it ignores how
+# far apart the two clicks are. The viewer used to treat every double-click as
+# "close the contour", so placing points faster than the double-click interval
+# silently swallowed the second click (the polygon got one point less and often
+# closed by itself). The gesture is therefore recognised here, with a spatial
+# condition of its own, and every click that is *not* a finish gesture places a
+# point — including clicks Qt flagged as double.
+#: Max time between two clicks of a deliberate finish double-click.
+_CONTOUR_FINISH_MAX_INTERVAL_MS = 400.0
+#: Max on-screen distance between the two clicks of a finish double-click.
+_CONTOUR_FINISH_MAX_SCREEN_PX = 12.0
+#: Clicking this close to the first point closes the polygon instead of adding.
+_CONTOUR_CLOSE_FIRST_POINT_PX = 16.0
+#: A polygon needs at least this many points before any gesture can close it.
+_CONTOUR_MIN_POINTS_TO_CLOSE = 3
+#: Clicks closer than this (image px) to the previous point are ignored, so a
+#: trembling hand cannot create zero-length edges that break the area math.
+_CONTOUR_MIN_POINT_SPACING_PX = 0.5
 
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
@@ -213,6 +235,9 @@ class ContourViewBox(pg.ViewBox):
 
     def mouseClickEvent(self, ev) -> None:  # type: ignore[override]
         if ev.button() == Qt.MouseButton.RightButton:
+            # While a contour is open, right-click removes the last point.
+            if self._viewer_widget is not None and self._viewer_widget._handle_contour_mouse_click(ev):
+                return
             ev.accept()
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_doppler_mouse_click(ev):
@@ -793,7 +818,12 @@ class ViewerWidget(QWidget):
         self._caliper_label_index = 0
         self._dist_serial = 1
         self._contour_mode_active = False
-        self._default_double_click_interval: int | None = None
+        # Last accepted contour click (screen px + monotonic ms) — the state the
+        # finish-gesture detector below is built on.
+        self._last_contour_click_ms: float | None = None
+        self._last_contour_click_screen: tuple[float, float] | None = None
+        self._last_contour_point_screen: tuple[float, float] | None = None
+        self._first_contour_point_screen: tuple[float, float] | None = None
         self._contour_mode_kind: Literal["manual", "model", "closed"] | None = None
         self._active_contour_chamber: str = "LV"
         self._contour_stage: Literal["ma_septal", "ma_lateral", "arc", "apex", "polygon"] | None = None
@@ -4013,9 +4043,6 @@ class ViewerWidget(QWidget):
             self._freehand_recording = True
             self._freehand_points = []
             self._measurement_label.setText(tr("viewer.area_freehand_prompt"))
-            # Freehand traces don't place single-click points, so keep the default
-            # double-click window for a comfortable finish double-click.
-            self._restore_default_double_click_interval()
         else:
             self._measurement_label.setText(tr("viewer.area_contour_prompt"))
         return True
@@ -4052,7 +4079,7 @@ class ViewerWidget(QWidget):
         self._active_contour_phase = phase or self._resolve_contour_phase()
         self._active_contour_chamber = chamber
         self._contour_mode_active = True
-        self._enable_fast_contour_click_mode()
+        self._reset_contour_click_tracking()
         self._contour_mode_kind = mode_kind
         self._contour_stage = "polygon" if mode_kind == "closed" else "ma_septal"
         self._active_mitral_septal = None
@@ -4378,19 +4405,54 @@ class ViewerWidget(QWidget):
         self.contour_completed.emit(contour)
         return True
 
-    def _finish_closed_contour(self) -> bool:
-        if len(self._active_arc_points) < 3:
-            self._clear_active_contour_drawing()
-            return False
+    @staticmethod
+    def _dedupe_closed_polygon(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+        """Drop consecutive repeats (and a repeat of the first point at the end).
 
+        Zero-length edges make the shoelace area unstable and confuse the
+        magnetic snap, so a polygon is cleaned before it is measured.
+        """
+        cleaned: list[tuple[float, float]] = []
+        for point in points:
+            if not cleaned:
+                cleaned.append(point)
+                continue
+            last = cleaned[-1]
+            if math.hypot(point[0] - last[0], point[1] - last[1]) > _CONTOUR_MIN_POINT_SPACING_PX:
+                cleaned.append(point)
+        while len(cleaned) > 1:
+            first, last = cleaned[0], cleaned[-1]
+            if math.hypot(first[0] - last[0], first[1] - last[1]) > _CONTOUR_MIN_POINT_SPACING_PX:
+                break
+            cleaned.pop()
+        return cleaned
+
+    def _finish_closed_contour(self) -> bool:
         from echo_personal_tool.domain.services.contour_edge_snap import snap_closed_polygon
 
-        points = list(self._active_arc_points)
+        points = self._dedupe_closed_polygon(list(self._active_arc_points))
+        if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
+            # Not enough distinct points: keep the drawing so the operator can
+            # add the missing point instead of losing the whole contour.
+            self._measurement_label.setText(tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE)))
+            return False
 
         if self._magnetic_snap_enabled:
             edge_map = self._get_edge_map()
             if edge_map is not None:
                 points = snap_closed_polygon(points, edge_map)
+
+        probe = Contour(
+            phase=self._active_contour_phase or "GEN",
+            view=self._active_contour_view,
+            chamber=self._active_contour_chamber,
+            points=list(points),
+            frame_index=self._contour_frame_index(),
+        )
+        if closed_polygon_area_cm2(probe, (1.0, 1.0)) is None:
+            # Collinear/degenerate polygon — the area would be meaningless.
+            self._measurement_label.setText(tr("viewer.area_degenerate_polygon"))
+            return False
 
         chamber = self._active_contour_chamber
         chamber_key = chamber.upper()
@@ -5317,27 +5379,71 @@ class ViewerWidget(QWidget):
         self._contour_stage = None
         self._contour_mode_kind = None
         self._contour_mode_active = False
-        self._restore_default_double_click_interval()
+        self._reset_contour_click_tracking()
         self._set_contour_nodes_pickable(True)
 
-    def _enable_fast_contour_click_mode(self) -> None:
-        """Shorten Qt's double-click window while placing contour points so rapid
-        consecutive clicks register as separate point placements instead of merging
-        into a double-click that prematurely finishes the contour."""
-        app = QApplication.instance()
-        if app is None:
-            return
-        if self._default_double_click_interval is None:
-            self._default_double_click_interval = app.doubleClickInterval()
-        app.setDoubleClickInterval(_CONTOUR_DOUBLE_CLICK_INTERVAL_MS)
+    # ── Contour click tracking / finish gesture ────────────────────
 
-    def _restore_default_double_click_interval(self) -> None:
-        """Restore Qt's original double-click interval once contour mode ends so
-        system dialogs (e.g. folder open) keep the platform default behavior."""
-        app = QApplication.instance()
-        if app is None or self._default_double_click_interval is None:
-            return
-        app.setDoubleClickInterval(self._default_double_click_interval)
+    def _reset_contour_click_tracking(self) -> None:
+        """Forget previous clicks so a new contour starts with a clean gesture state."""
+        self._last_contour_click_ms = None
+        self._last_contour_click_screen = None
+        self._last_contour_point_screen = None
+        self._first_contour_point_screen = None
+
+    @staticmethod
+    def _event_screen_point(ev) -> tuple[float, float] | None:
+        """Screen-space position of a graphics event, or None when unavailable."""
+        try:
+            pos = ev.screenPos()
+        except Exception:  # noqa: BLE001 - test doubles may not provide it
+            return None
+        if pos is None:
+            return None
+        return float(pos.x()), float(pos.y())
+
+    def _remember_contour_click(self, screen_point: tuple[float, float] | None) -> None:
+        self._last_contour_click_ms = time.monotonic() * 1000.0
+        self._last_contour_click_screen = screen_point
+
+    def _is_repeat_click(
+        self,
+        screen_point: tuple[float, float] | None,
+        *,
+        qt_double: bool,
+    ) -> bool:
+        """True when this click lands on the previous one (a real double-click).
+
+        Qt's ``double()`` flag is time-only, so it also fires when the user
+        clicks two *different* contour points quickly. Requiring the clicks to
+        be within :data:`_CONTOUR_FINISH_MAX_SCREEN_PX` of each other is what
+        separates "close the contour" from "next point, fast".
+        """
+        previous = self._last_contour_click_screen
+        previous_ms = self._last_contour_click_ms
+        if previous is None or previous_ms is None or screen_point is None:
+            # Without a reference click the gesture cannot be verified — never
+            # close a contour on a guess.
+            return False
+        elapsed = (time.monotonic() * 1000.0) - previous_ms
+        if elapsed > _CONTOUR_FINISH_MAX_INTERVAL_MS:
+            return False
+        distance = math.hypot(screen_point[0] - previous[0], screen_point[1] - previous[1])
+        return distance <= _CONTOUR_FINISH_MAX_SCREEN_PX
+
+    def _is_close_first_point_click(self, screen_point: tuple[float, float] | None) -> bool:
+        """True when the click lands on the first polygon point (click-to-close)."""
+        if screen_point is None or self._first_contour_point_screen is None:
+            return False
+        if len(self._active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
+            return False
+        first = self._first_contour_point_screen
+        distance = math.hypot(screen_point[0] - first[0], screen_point[1] - first[1])
+        return distance <= _CONTOUR_CLOSE_FIRST_POINT_PX
+
+    def _forget_contour_point_screens(self) -> None:
+        self._first_contour_point_screen = None
+        self._last_contour_point_screen = None
 
     def _set_contour_nodes_pickable(self, enabled: bool) -> None:
         buttons = Qt.MouseButton.LeftButton if enabled else Qt.MouseButton.NoButton
@@ -6135,7 +6241,7 @@ class ViewerWidget(QWidget):
                         )
                     )
             for measurement in self._linear_measurements_for_frame(frame_index):
-                if measurement.label in ("%D", "%S", "S1", "S2"):
+                if measurement.label in ("%D", "%S", "%D стеноз", "%S стеноз", "S1", "S2"):
                     continue
                 self.append_frame_overlay(measurement.display_text())
         if self._comparison_state.kind == "diameter" and self._comparison_state.first_segment_done:
@@ -6271,22 +6377,96 @@ class ViewerWidget(QWidget):
     def _handle_contour_mouse_click(self, ev) -> bool:
         if not self._contour_mode_active:
             return False
+
+        if ev.button() == Qt.MouseButton.RightButton:
+            # Right-click = undo the last point instead of losing the whole contour.
+            if self._undo_last_contour_point():
+                ev.accept()
+                return True
+            return False
+
         if ev.button() != Qt.MouseButton.LeftButton:
             return False
 
         ev.accept()
-        if self._area_tool_mode == "freehand" and self._freehand_recording:
-            if ev.double():
-                self._finish_freehand_contour()
-                return True
-            return True  # single clicks ignored in freehand mode
+        qt_double = bool(ev.double())
+        screen_point = self._event_screen_point(ev)
+        repeat_click = self._is_repeat_click(screen_point, qt_double=qt_double)
 
-        if ev.double():
-            self.finish_contour()
+        if self._area_tool_mode == "freehand" and self._freehand_recording:
+            # Freehand places no single points; a click is either the finish
+            # gesture or the start of the trace bookkeeping.
+            self._remember_contour_click(screen_point)
+            if repeat_click and len(self._freehand_points) >= _CONTOUR_MIN_POINTS_TO_CLOSE:
+                self._finish_freehand_contour()
             return True
 
         point = self._view.mapSceneToView(ev.scenePos())
-        self.handle_contour_click((float(point.x()), float(point.y())))
+        view_point = (float(point.x()), float(point.y()))
+        placed_points = self._active_arc_points if self._contour_stage == "polygon" else None
+
+        if placed_points is not None:
+            if self._is_close_first_point_click(screen_point):
+                # Click on the first point closes the polygon (no duplicate point).
+                self.finish_contour()
+                return True
+            if repeat_click and len(placed_points) >= _CONTOUR_MIN_POINTS_TO_CLOSE:
+                # Deliberate double-click in one spot: finish, do not add the
+                # duplicate point that Qt folded into this event.
+                self.finish_contour()
+                return True
+            if self._is_duplicate_point(view_point, screen_point):
+                # Same spot twice — keep the polygon clean, but remember the
+                # click so a following one still counts as a finish gesture.
+                self._remember_contour_click(screen_point)
+                return True
+            if len(placed_points) == 0:
+                self._first_contour_point_screen = screen_point
+            self._last_contour_point_screen = screen_point
+            self._remember_contour_click(screen_point)
+            self.handle_contour_click(view_point)
+            return True
+
+        # Landmark stages (LV/LA contour: MA septal → MA lateral → apex → arc).
+        # Only a double-click *in one spot* finishes; a Qt "double" that lands
+        # elsewhere is the next landmark placed quickly.
+        if repeat_click:
+            self.finish_contour()
+            return True
+        self._remember_contour_click(screen_point)
+        self.handle_contour_click(view_point)
+        return True
+
+    def _is_duplicate_point(
+        self,
+        view_point: tuple[float, float],
+        screen_point: tuple[float, float] | None,
+    ) -> bool:
+        """True when the click repeats the previous point (trembling hand)."""
+        if not self._active_arc_points:
+            return False
+        last = self._active_arc_points[-1]
+        if math.hypot(view_point[0] - last[0], view_point[1] - last[1]) <= _CONTOUR_MIN_POINT_SPACING_PX:
+            return True
+        if screen_point is None or self._last_contour_point_screen is None:
+            return False
+        previous = self._last_contour_point_screen
+        return math.hypot(screen_point[0] - previous[0], screen_point[1] - previous[1]) <= _CONTOUR_MIN_POINT_SPACING_PX
+
+    def _undo_last_contour_point(self) -> bool:
+        """Remove the most recently placed point of the active contour."""
+        if self._freehand_recording and self._freehand_points:
+            self._freehand_points.pop()
+            self._update_freehand_preview()
+            return True
+        if not self._active_arc_points:
+            return False
+        self._active_arc_points.pop()
+        self._last_contour_point_screen = None
+        if self._contour_stage == "polygon" and not self._active_arc_points:
+            self._first_contour_point_screen = None
+        self._update_active_contour_item()
+        self._update_planimeter_progress_label()
         return True
 
     @staticmethod
@@ -6369,6 +6549,42 @@ class ViewerWidget(QWidget):
             self._active_contour_item.setData(x_values, y_values)
         else:
             self._active_contour_item.setData([], [])
+        self._update_planimeter_progress_label()
+
+    def _update_planimeter_progress_label(self) -> None:
+        """Show the provisional area/volume while the polygon is still open.
+
+        The planimeter is a comparison tool as often as it is an absolute one,
+        so the operator needs the number *while* drawing — not only after the
+        contour is closed and can no longer be corrected cheaply.
+        """
+        if self._contour_stage != "polygon" or not self._active_arc_points:
+            return
+        chamber = (self._active_contour_chamber or "").upper()
+        if chamber not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
+            return
+        if len(self._active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
+            self._measurement_label.setText(tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE)))
+            return
+        spacing, calibrated = self._effective_pixel_spacing()
+        probe = Contour(
+            phase=self._active_contour_phase or "GEN",
+            view=self._active_contour_view,
+            chamber=chamber,
+            points=list(self._active_arc_points),
+            frame_index=self._contour_frame_index(),
+        )
+        if chamber == GENERIC_VOLUME_CHAMBER:
+            value = closed_polygon_volume_ml(probe, spacing)
+            text = tr("viewer.volume_progress", value=f"{value:.1f}") if value is not None else None
+        else:
+            value = closed_polygon_area_cm2(probe, spacing)
+            text = tr("viewer.area_progress", value=f"{value:.2f}") if value is not None else None
+        if text is None:
+            return
+        if not calibrated:
+            text += tr("viewer.area_progress_no_calibration")
+        self._measurement_label.setText(text)
 
     def _handle_calibration_mouse_press(self, ev) -> bool:
         if not self._calibration_active or self._current_frame is None:
@@ -6808,6 +7024,8 @@ class ViewerWidget(QWidget):
         return min(l1, l2) / bigger * 100.0
 
     def _recalculate_percent_d(self) -> None:
+        if self._comparison_state.kind != "diameter":
+            return
         d1_mm: float | None = None
         d2_mm: float | None = None
         frame: int | None = None
@@ -6877,6 +7095,8 @@ class ViewerWidget(QWidget):
             del self._stored_linear_measurements[pct_key]
 
     def _recalculate_stenosis_diameter(self) -> None:
+        if self._comparison_state.kind != "stenosis_diameter":
+            return
         d1_mm: float | None = None
         d2_mm: float | None = None
         frame: int | None = None
@@ -7216,6 +7436,23 @@ class ViewerWidget(QWidget):
                 self._caliper_sequence_size = 0
                 if not self._syncing_state:
                     self.linear_caliper_sequence_completed.emit()
+
+    def add_linear_measurements(self, measurements: Iterable[LinearMeasurement]) -> None:
+        """Insert calipers measured outside the click-click flow (e.g. M-mode).
+
+        The viewer is the authoritative list of a clip's calipers, so anything
+        measured elsewhere has to enter through here: writing straight into the
+        study session would make the next viewer report look like a deletion.
+        """
+        added = False
+        for measurement in measurements:
+            self._stored_linear_measurements[self._linear_measurement_key(measurement)] = measurement
+            added = True
+        if not added:
+            return
+        self._emit_stored_linear_measurements()
+        self._render_persistent_linear_calipers()
+        self._refresh_frame_overlays()
 
     def _emit_stored_linear_measurements(self) -> None:
         measurements = list(self._stored_linear_measurements.values())

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from echo_personal_tool.domain.models import LvViewMetrics
+from echo_personal_tool.domain.models.linear_measurement import (
+    PERCENT_LABELS,
+    LinearMeasurement,
+)
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
     DopplerResults,
@@ -123,3 +127,22 @@ def test_overlay_includes_biplane_volumes() -> None:
         assert "20.2" in html
     finally:
         set_language("ru")
+
+
+def _plain(html: str) -> str:
+    import re
+
+    return re.sub(r"<[^>]+>", "", html)
+
+
+def test_percent_calipers_are_shown_in_percent() -> None:
+    """Stenosis/comparison calipers hold a percentage, not a length."""
+    for label in sorted(PERCENT_LABELS):
+        snapshot = MeasurementSnapshot(
+            spacing_calibrated=True,
+            linear_measurements=(LinearMeasurement(label=label, pixel_length=0.0, millimeter_length=80.0),),
+        )
+        text = _plain(format_results_overlay_html(snapshot, sex_male=True, length_display_unit="mm"))
+        assert "80.0" in text, label
+        assert "80.0  mm" not in text, label
+        assert "80.0  %" in text, label
