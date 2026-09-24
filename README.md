@@ -23,6 +23,10 @@
 
 ---
 
+![SonoForge preview](assets/sonoforge_preview.gif)
+
+---
+
 ## Installation
 
 <details open>
@@ -344,8 +348,8 @@ ruff format src tests
 If you use SonoForge in your research or clinical practice, please cite:
 
 ```bibtex
-@software{kuvilkin2026sonoforge,
-  author       = {Kuvilkin, Vitaliy},
+@software{areatu2026sonoforge,
+  author       = {areatu},
   title        = {SonoForge: Open-Source Desktop Echocardiography Analysis Platform},
   year         = {2026},
   publisher    = {GitHub},

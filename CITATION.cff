@@ -7,8 +7,7 @@ title: "SonoForge"
 message: "If you use this software, please cite it using the metadata from this file."
 type: software
 authors:
-  - family-names: "Kuvilkin"
-    given-names: "Vitaliy"
+  - name: "areatu"
     website: "https://github.com/areatu"
 license: GPL-3.0-only
 repository-code: "https://github.com/areatu/SonoForge"
@@ -20,7 +19,6 @@ keywords:
   - DICOM
   - ONNX
   - segmentation
-  - clinical decision support
   - Qt
 date-released: "2026-07-20"
 version: "0.1.0"

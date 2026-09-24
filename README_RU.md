@@ -344,8 +344,8 @@ ruff format src tests
 Если вы используете SonoForge в научных исследованиях или клинической практике, пожалуйста, указывайте:
 
 ```bibtex
-@software{kuvilkin2026sonoforge,
-  author       = {Kuvilkin, Vitaliy},
+@software{areatu2026sonoforge,
+  author       = {areatu},
   title        = {SonoForge: Open-Source Desktop Echocardiography Analysis Platform},
   year         = {2026},
   publisher    = {GitHub},
