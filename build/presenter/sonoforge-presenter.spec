@@ -125,7 +125,7 @@ hiddenimports = [
     'pylibjpeg_openjpeg', 'pylibjpeg_libjpeg',
     'numpy', 'scipy', 'cv2', 'httpx', 'psutil',
     'pynetdicom', 'yaml', 'jsonschema',
-    'reportlab', 'keyring',
+    'reportlab', 'keyring', 'cryptography',
     'echo_personal_tool',
 ]
 

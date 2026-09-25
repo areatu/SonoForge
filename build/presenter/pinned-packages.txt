@@ -41,3 +41,9 @@ pyyaml==6.0.3
 jsonschema==4.26.0
 reportlab==4.5.1
 keyring==25.7.0
+# Encrypted portable PACS secret store (Fernet) — the pyproject 'presenter'
+# extra. cffi/pycparser are pinned transitive deps; typing-extensions is only
+# required below Python 3.11 and thus not pinned (CI builds on 3.11).
+cryptography==49.0.0
+cffi==2.1.0
+pycparser==3.0

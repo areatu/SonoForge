@@ -171,6 +171,32 @@ class TestPortableStores:
         save_server_settings(ServerSettings(username="demo", password=""))
         assert "demo" not in json.loads(secrets_file.read_text(encoding="utf-8"))
 
+    def test_secret_is_fernet_token_and_device_key_created(self, portable_dir):
+        from echo_personal_tool.infrastructure.server_settings import (
+            ServerSettings,
+            save_server_settings,
+        )
+
+        save_server_settings(ServerSettings(username="demo", password="s3cret"))
+        secrets = json.loads((portable_dir / "secrets.json").read_text(encoding="utf-8"))
+        assert secrets["demo"].startswith("gAAAA"), "expected a Fernet (versioned base64) token"
+        assert (portable_dir / "device.key").is_file(), "per-device key material must stay on the stick"
+
+    def test_without_cryptography_password_is_not_persisted(self, portable_dir, monkeypatch):
+        from echo_personal_tool.infrastructure import server_settings as ss
+
+        # Simulate a full-profile install without the 'presenter' extra.
+        monkeypatch.setattr(ss, "_portable_fernet", lambda: None)
+        ss.save_server_settings(ss.ServerSettings(username="demo", password="s3cret", url="http://pacs:8042"))
+
+        secrets_file = portable_dir / "secrets.json"
+        if secrets_file.is_file():
+            assert "demo" not in json.loads(secrets_file.read_text(encoding="utf-8"))
+
+        reloaded = ss.load_server_settings()
+        assert reloaded.url == "http://pacs:8042", "non-secret fields must still persist"
+        assert reloaded.password == "", "no clear-text fallback may exist"
+
     def test_orthanc_cache_and_logs_on_stick(self, portable_dir):
         assert profile.orthanc_cache_root().is_relative_to(portable_dir)
         assert profile.diag_log_dir().is_relative_to(portable_dir)

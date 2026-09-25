@@ -11,7 +11,7 @@
 
 ### Features
 - `feat(presenter)`: build profile `SONOFORGE_PROFILE=presenter` with feature flags (`infrastructure/profile.py`) and entry point `__main_presenter__.py`
-- `feat(presenter)`: portable storage — preferences/server INIs, obfuscated PACS secrets file, Orthanc cache and diag logs next to the executable (`SonoForgePresenter-data/`)
+- `feat(presenter)`: portable storage — preferences/server INIs, Fernet-encrypted PACS secrets file (new `presenter` extra: `cryptography`), Orthanc cache and diag logs next to the executable (`SonoForgePresenter-data/`)
 - `feat(presenter)`: PyInstaller spec `build/presenter/sonoforge-presenter.spec` (Windows onefile / Linux onedir) + AppImage script + CI workflow `presenter.yml`
 
 ### Refactor

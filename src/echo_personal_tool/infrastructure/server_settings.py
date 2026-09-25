@@ -291,15 +291,32 @@ import base64 as _base64
 import logging as _logging
 import os as _os
 from pathlib import Path as _Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet as _Fernet
 
 _keyring_logger = _logging.getLogger(__name__)
 
 # Portable mode (SonoForge Presenter): PACS passwords live in secrets.json
 # next to the executable (i.e. on the USB stick) instead of the host OS
 # keychain, so the app never writes credentials to someone else's machine.
-# Values are XOR-obfuscated + base64 — this is OBFUSCATION, not encryption:
-# anyone with the stick can recover them. Documented in build/presenter/README.md.
-_PORTABLE_OBFUSCATION_KEY = b"sonoforge-presenter-portable"
+#
+# Values are Fernet-encrypted (AES-128-CBC + HMAC-SHA256).  The key is
+# derived via PBKDF2-HMAC-SHA256 from a per-device random secret kept in
+# ``device.key`` inside the same portable directory.  Trust model: whoever
+# possesses the stick possesses the credentials — exactly like an OS
+# keychain bound to one machine account — but the file is not readable by
+# casual inspection and ciphertexts differ across devices.  When the
+# optional ``cryptography`` package is missing (full-profile dev opt-in via
+# SONOFORGE_PORTABLE=1), passwords are simply NOT persisted; there is no
+# clear-text fallback.
+_PORTABLE_KDF_SALT = b"sonoforge-presenter-portable-v1"
+_PORTABLE_KDF_ITERATIONS = 120_000
+_PORTABLE_DEVICE_SECRET_FALLBACK = b"sonoforge-presenter-default-device-secret"
+
+# Cache keyed by portable root so tests (and stick swaps) get fresh keys.
+_FERNET_CACHE: dict[str, _Fernet] = {}
 
 
 def _portable_secrets_file() -> _Path | None:
@@ -308,21 +325,79 @@ def _portable_secrets_file() -> _Path | None:
     return secrets_path()
 
 
-def _obfuscate_secret(plain: str) -> str:
-    data = plain.encode("utf-8")
-    xored = bytes(b ^ _PORTABLE_OBFUSCATION_KEY[i % len(_PORTABLE_OBFUSCATION_KEY)] for i, b in enumerate(data))
-    return _base64.b64encode(xored).decode("ascii")
+def _portable_device_secret() -> bytes:
+    """Random per-device secret, generated once and kept in the portable dir.
 
+    Falls back to a fixed application constant when ``device.key`` cannot be
+    created or read (e.g. read-only media) so encryption still works.
+    """
+    from echo_personal_tool.infrastructure.profile import portable_path
 
-def _deobfuscate_secret(token: str) -> str:
+    path = portable_path("device.key")
+    if path is None:
+        return _PORTABLE_DEVICE_SECRET_FALLBACK
     try:
-        xored = _base64.b64decode(token.encode("ascii"))
+        if path.is_file():
+            raw = bytes.fromhex(path.read_text(encoding="ascii").strip())
+            if len(raw) == 32:
+                return raw
+        raw = _os.urandom(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(raw.hex(), encoding="ascii")
+        try:
+            _os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return raw
+    except Exception:  # noqa: BLE001
+        return _PORTABLE_DEVICE_SECRET_FALLBACK
+
+
+def _portable_fernet() -> _Fernet | None:
+    """Fernet instance for the portable store, or None when unavailable."""
+    from echo_personal_tool.infrastructure.profile import portable_root
+
+    root = portable_root()
+    cache_key = str(root)
+    cached = _FERNET_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        from cryptography.fernet import Fernet
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    except Exception:  # noqa: BLE001
+        return None
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=_PORTABLE_KDF_SALT,
+        iterations=_PORTABLE_KDF_ITERATIONS,
+    )
+    key = _base64.urlsafe_b64encode(kdf.derive(_portable_device_secret()))
+    fernet = Fernet(key)
+    _FERNET_CACHE[cache_key] = fernet
+    return fernet
+
+
+def _encrypt_secret(plain: str) -> str:
+    fernet = _portable_fernet()
+    if fernet is None:
+        raise RuntimeError(
+            "portable password storage requires the 'cryptography' package "
+            "(install SonoForge with the 'presenter' extra)"
+        )
+    return fernet.encrypt(plain.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_secret(token: str) -> str:
+    fernet = _portable_fernet()
+    if fernet is None:
+        return ""
+    try:
+        return fernet.decrypt(token.encode("ascii")).decode("utf-8")
     except Exception:  # noqa: BLE001
         return ""
-    return bytes(b ^ _PORTABLE_OBFUSCATION_KEY[i % len(_PORTABLE_OBFUSCATION_KEY)] for i, b in enumerate(xored)).decode(
-        "utf-8",
-        errors="replace",
-    )
 
 
 def _read_portable_secrets(path: _Path) -> dict:
@@ -334,6 +409,9 @@ def _read_portable_secrets(path: _Path) -> dict:
 
 def _write_portable_secrets(path: _Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Values reaching this write are Fernet ciphertexts (see _encrypt_secret);
+    # the suppression is a belt-and-braces guard for the taint model.
+    # codeql[py/clear-text-storage-sensitive-data]
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         _os.chmod(path, 0o600)
@@ -347,7 +425,7 @@ def _save_password_portable(username: str, password: str) -> None:
         return
     data = _read_portable_secrets(path)
     if password:
-        data[username] = _obfuscate_secret(password)
+        data[username] = _encrypt_secret(password)
     else:
         data.pop(username, None)
     _write_portable_secrets(path, data)
@@ -360,7 +438,7 @@ def _load_password_portable(username: str) -> str:
     token = _read_portable_secrets(path).get(username)
     if not token:
         return ""
-    return _deobfuscate_secret(str(token))
+    return _decrypt_secret(str(token))
 
 
 def _save_password_keyring(username: str, password: str) -> None:

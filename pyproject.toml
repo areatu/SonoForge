@@ -28,6 +28,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+presenter = [
+    # Encrypted portable secret store (Fernet) for the SonoForge Presenter
+    # build; the full profile uses the OS keychain via `keyring` instead.
+    "cryptography>=44,<51",
+]
 dev = [
     "pytest>=8.0",
     "pytest-benchmark>=4.0",
