@@ -481,7 +481,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
             return
-        if self._viewer_widget._linear_caliper_active:
+        if not self._viewer_widget._caliper_node_edit_allowed():
             ev.ignore()
             return
         ev.accept()
@@ -7596,6 +7596,23 @@ class ViewerWidget(QWidget):
 
     # ── Caliper node drag (endpoint correction) ────────────────────
 
+    def _caliper_node_edit_allowed(self) -> bool:
+        """Endpoint nodes are draggable only while an armed caliper is idle.
+
+        A pending placement click (first/second endpoint, diameter or
+        stenosis comparison) must keep winning over node dragging,
+        otherwise clicking an existing endpoint would start a new segment
+        instead of moving the node.
+        """
+        if not self._linear_caliper_active:
+            return True
+        if self._linear_caliper_start is not None:
+            return False
+        state = self._comparison_state
+        if state.kind in ("diameter", "stenosis_diameter") and state.segment2_end is None:
+            return False
+        return True
+
     def _begin_caliper_node_drag(
         self,
         caliper_key: tuple[str, int],
@@ -7603,7 +7620,7 @@ class ViewerWidget(QWidget):
         x: float,
         y: float,
     ) -> None:
-        if self._linear_caliper_active:
+        if not self._caliper_node_edit_allowed():
             return
         measurement = self._stored_linear_measurements.get(caliper_key)
         if measurement is None:

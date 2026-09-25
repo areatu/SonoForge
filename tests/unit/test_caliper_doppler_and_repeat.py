@@ -345,6 +345,54 @@ class TestCaliperRepeatMode:
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Editing an existing segment while the caliper stays armed
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCaliperNodeEditWhileArmed:
+    def test_armed_idle_node_drag_moves_endpoint(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
+        w.set_state(_make_state())
+
+        w.toggle_linear_caliper()  # arm (repeat mode)
+        _place_caliper(w, (10.0, 10.0), (30.0, 10.0))
+        assert w.is_linear_caliper_active
+
+        key = ("Dist1", 0)
+        assert w._caliper_node_edit_allowed()
+        w._begin_caliper_node_drag(key, 1, 30.0, 10.0)
+        assert w._caliper_drag_active
+        w._apply_caliper_node_drag(50.0, 10.0)
+        w._finish_caliper_node_drag()
+        assert w._stored_linear_measurements[key].end == pytest.approx((50.0, 10.0))
+
+    def test_pending_segment_keeps_creating_new_caliper(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
+        w.set_state(_make_state())
+
+        w.toggle_linear_caliper()
+        _simulate_view_press(w, 10.0, 10.0)  # first endpoint is pending
+        assert w._linear_caliper_start is not None
+        assert not w._caliper_node_edit_allowed()
+        w._begin_caliper_node_drag(("Dist1", 0), 0, 10.0, 10.0)
+        assert w._caliper_drag_active is False
+
+    def test_diameter_comparison_blocks_node_drag(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.show_frame(np.zeros((_FRAME, _FRAME), dtype=np.uint8))
+        w.set_state(_make_state())
+
+        w.toggle_linear_caliper()
+        w._comparison_state.kind = "diameter"
+        w._comparison_state.segment1_start = (10.0, 10.0)
+        assert not w._caliper_node_edit_allowed()
+        w._begin_caliper_node_drag(("Dist1", 0), 0, 10.0, 10.0)
+        assert w._caliper_drag_active is False
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Main window wiring — the Caliper button toggles the repeat mode
 # ═══════════════════════════════════════════════════════════════════
 
