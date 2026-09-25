@@ -62,7 +62,7 @@ Comment=Portable echocardiography analysis and DICOM viewing (lite build)
 Exec=${APP_NAME} %F
 Icon=${PRODUCT,,}
 Terminal=false
-Categories=Medical;Science;Education;
+Categories=Science;
 Keywords=dicom;echocardiography;ultrasound;medical;
 StartupWMClass=${APP_NAME}
 DESKTOP
