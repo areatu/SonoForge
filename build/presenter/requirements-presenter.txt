@@ -1,0 +1,29 @@
+# SonoForge Presenter — build/runtime dependency set (lite profile).
+#
+# Same as the full pyproject.toml dependencies MINUS:
+#   onnxruntime  (AI segmentation — not in Presenter)
+#   pymupdf      (reference PDF rendering — not in Presenter)
+#   openpyxl     (reference constructor Excel import — not in Presenter)
+# and with PySide6-Essentials instead of the full PySide6 metapackage
+# (skips PySide6-Addons → no QtWebEngine, ~175 MB wheel saved).
+#
+# Usage (build machine):
+#   pip install -r build/presenter/requirements-presenter.txt pyinstaller
+#   python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
+
+pyside6-essentials>=6.6
+pyqtgraph>=0.13
+pydicom>=3.0
+pylibjpeg>=2.0
+pylibjpeg-openjpeg>=2.0
+pylibjpeg-libjpeg>=2.0
+numpy>=1.26,<2.0
+scipy>=1.11
+opencv-python-headless>=4.8
+httpx>=0.27
+psutil>=5.9
+pynetdicom>=2.0
+pyyaml>=6.0
+jsonschema>=4.0
+reportlab>=4.0
+keyring>=25.0

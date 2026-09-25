@@ -8,6 +8,7 @@
 |-------|----------|
 | `linux/` | Сборка для Linux (.deb / portable-папка) |
 | `windows/` | Сборка для Windows (.zip / one-file) |
+| `presenter/` | **SonoForge Presenter** — лёгкий портативный профиль (onefile .exe / AppImage), см. [`presenter/README.md`](presenter/README.md) |
 
 ## Linux (`linux/`)
 
@@ -49,8 +50,13 @@ CI-воркфлоу `build.yml`/`release.yml`), [`installer_stub.py`](../install
 
 # Windows (из-под Windows)
 build\windows\build-lite.bat
+
+# SonoForge Presenter (lite portable профиль)
+./build/presenter/build-appimage.sh                       # Linux → AppImage
+python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean   # Windows → onefile .exe
 ```
 
 CI-сборки (релизные артефакты) описаны в
 [`.github/workflows/build.yml`](../.github/workflows/build.yml) и
-[`.github/workflows/release.yml`](../.github/workflows/release.yml).
+[`.github/workflows/release.yml`](../.github/workflows/release.yml);
+Presenter-профиль — в [`.github/workflows/presenter.yml`](../.github/workflows/presenter.yml).
