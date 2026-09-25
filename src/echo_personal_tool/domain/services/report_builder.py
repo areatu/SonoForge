@@ -664,6 +664,32 @@ def build_report_groups(
             if entry:
                 values.append(entry)
             continue
+        if measurement.doppler:
+            # Doppler-zone caliper: report Δt (ms) and velocity amplitude (cm/s)
+            # instead of a B-mode length (which does not exist here).
+            if measurement.time_ms is not None:
+                entry = _value(
+                    f"{measurement.label} Δt",
+                    measurement.time_ms,
+                    "ms",
+                    sex=sex,
+                    decimals=1,
+                    group=GROUP_OTHER,
+                )
+                if entry:
+                    values.append(entry)
+            if measurement.velocity_cm_s is not None:
+                entry = _value(
+                    f"{measurement.label} ΔV",
+                    measurement.velocity_cm_s,
+                    "cm/s",
+                    sex=sex,
+                    decimals=1,
+                    group=GROUP_OTHER,
+                )
+                if entry:
+                    values.append(entry)
+            continue
         if calibrated:
             value = measurement.millimeter_length
             unit = length_unit

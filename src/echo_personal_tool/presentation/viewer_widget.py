@@ -220,6 +220,14 @@ _CONTOUR_MIN_POINT_SPACING_PX = 0.5
 _FREEZE_DIAG = os.environ.get("ECHO_FREEZE_DIAG", "0") == "1"
 _diag_log = logging.getLogger("echo_freeze_diag") if _FREEZE_DIAG else None
 
+#: Prefix of the generic distance caliper labels (Dist1, Dist2, …).
+_GENERIC_DIST_LABEL_PREFIX = "Dist"
+
+
+def _is_generic_dist_label(label: str) -> bool:
+    """True for the generic caliper (DistN), which adapts to the Doppler ROI."""
+    return label.startswith(_GENERIC_DIST_LABEL_PREFIX)
+
 
 class ContourViewBox(pg.ViewBox):
     """ViewBox: clicks for tools; wheel steps frames; no pan/zoom drag."""
@@ -473,7 +481,7 @@ class _CaliperNodeItem(pg.ScatterPlotItem):
         if ev.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(ev)
             return
-        if self._viewer_widget._linear_caliper_active:
+        if not self._viewer_widget._caliper_node_edit_allowed():
             ev.ignore()
             return
         ev.accept()
@@ -783,6 +791,9 @@ class ViewerWidget(QWidget):
         self._current_instance_path: Path | None = None
         self._linear_caliper_active = False
         self._linear_caliper_start: tuple[float, float] | None = None
+        # Generic caliper stays armed after each measurement (scanner-like UX):
+        # click-click → result, next click-click → new DistN measurement.
+        self._caliper_repeat_mode = False
         self._comparison_state = _ComparisonState()
         self._linear_caliper_line_item: pg.PlotDataItem | None = None
         self._linear_caliper_marker_item: pg.ScatterPlotItem | None = None
@@ -2400,9 +2411,15 @@ class ViewerWidget(QWidget):
         )
 
     def activate_generic_dist_caliper(self) -> str | None:
-        """Start click-click caliper with the next DistN label; return label or None."""
+        """Start click-click caliper with the next DistN label; return label or None.
+
+        The generic caliper stays armed after each measurement (repeat mode):
+        two clicks commit DistN, the next two clicks commit DistN+1, and so on
+        until the tool is switched off (button / L hotkey / Esc).
+        """
         label = f"Dist{self._dist_serial}"
         if self.start_linear_caliper_for(label):
+            self._caliper_repeat_mode = True
             self._dist_serial += 1
             return label
         return None
@@ -2423,6 +2440,11 @@ class ViewerWidget(QWidget):
     @property
     def is_linear_caliper_active(self) -> bool:
         return self._linear_caliper_active
+
+    @property
+    def is_caliper_repeat_mode(self) -> bool:
+        """True while the generic caliper stays armed for multiple measurements."""
+        return self._caliper_repeat_mode and self._linear_caliper_active
 
     @_prof
     def toggle_calibration_caliper(self) -> None:
@@ -3369,6 +3391,12 @@ class ViewerWidget(QWidget):
     def _crosshair_panel_bounds(self) -> DopplerSpectrogramRoi | None:
         if self.get_doppler_tool_mode() != "none" and self._doppler_calibration_state is not None:
             return self._doppler_calibration_state.roi
+        if self._linear_caliper_active and _is_generic_dist_label(self._current_caliper_label()):
+            # Generic caliper over the Doppler ROI: show the scanner-style
+            # crosshair so the time/velocity measuring zone is visible.
+            doppler_zone = self._doppler_caliper_zone()
+            if doppler_zone is not None:
+                return doppler_zone
         if (
             self._linear_caliper_active
             and self._current_caliper_label() in self._vertical_caliper_labels
@@ -3927,6 +3955,9 @@ class ViewerWidget(QWidget):
         return self._calibration_active
 
     def start_linear_caliper_for(self, label: str) -> bool:
+        # Anatomical calipers are single-shot; only the generic Dist caliper
+        # (activate_generic_dist_caliper) re-arms itself after each commit.
+        self._caliper_repeat_mode = False
         self._reset_mmode_session_vertical_labels()
         self._caliper_sequence = []
         self._caliper_sequence_size = 0
@@ -3941,6 +3972,7 @@ class ViewerWidget(QWidget):
     def start_linear_caliper_sequence(self, labels: tuple[str, ...]) -> bool:
         if not labels:
             return False
+        self._caliper_repeat_mode = False
         self._reset_mmode_session_vertical_labels()
         self._caliper_sequence = list(labels[1:])
         self._caliper_sequence_size = len(labels)
@@ -5100,6 +5132,7 @@ class ViewerWidget(QWidget):
         if self._comparison_state.kind:
             self._comparison_state.reset()
         self._linear_caliper_active = False
+        self._caliper_repeat_mode = False
         self._linear_caliper_start = None
         self._clear_linear_caliper_graphics()
         self._caliper_sequence = []
@@ -7336,12 +7369,105 @@ class ViewerWidget(QWidget):
         item.setPos(layout.anchor_x + layout.offset_x, layout.anchor_y + layout.offset_y)
         item.setRotation(layout.angle_deg)
 
+    # ── Doppler-zone caliper (Δt in ms + velocity amplitude in cm/s) ──
+
+    def _doppler_caliper_zone(self) -> DopplerSpectrogramRoi | None:
+        """Region where the generic caliper measures time/velocity, not distance.
+
+        Prefers the explicit Doppler calibration (DICOM tags, auto-detection or
+        manual); falls back to a Doppler panel parsed from DICOM that carries
+        its own physical time/velocity scales.
+        """
+        state = self._doppler_calibration_state
+        if (
+            state is not None
+            and self._doppler_calibration_matches_instance()
+            and (state.has_time_scale() or state.has_velocity_scale())
+        ):
+            return state.roi
+        panels = self._resolve_frame_panels()
+        if panels is not None and panels.doppler is not None:
+            panel = panels.doppler
+            if panel.horizontal_ms_per_pixel is not None or panel.vertical_cm_s_per_pixel is not None:
+                return panel.bounds
+        return None
+
+    def _doppler_caliper_measurement(
+        self,
+        start: tuple[float, float],
+        end: tuple[float, float],
+        label: str,
+    ) -> LinearMeasurement | None:
+        """Time/velocity caliper when both points are inside the Doppler ROI.
+
+        Inside the spectral Doppler zone the generic (DistN) caliper behaves
+        like a scanner's Doppler caliper: it reports the interval between the
+        points along the time axis (Δt, ms) and the velocity amplitude between
+        them (cm/s or m/s) — e.g. AcT of the RVOT with one point at the flow
+        onset and the other at the peak. As soon as a point leaves the ROI
+        (B-mode area) this returns None and the caliper measures distance.
+        """
+        if not _is_generic_dist_label(label):
+            return None
+        time_ms: float | None = None
+        velocity_cm_s: float | None = None
+        state = self._doppler_calibration_state
+        if (
+            state is not None
+            and self._doppler_calibration_matches_instance()
+            and (state.has_time_scale() or state.has_velocity_scale())
+            and state.roi.contains(start[0], start[1])
+            and state.roi.contains(end[0], end[1])
+        ):
+            mapping = build_axis_mapping(state)
+            if state.has_time_scale():
+                time_ms = abs(mapping.time_ms_from_x(end[0]) - mapping.time_ms_from_x(start[0]))
+            if state.velocity_span_cm_s > 0.0:
+                velocity_cm_s = abs(mapping.velocity_cm_s_from_y(end[1]) - mapping.velocity_cm_s_from_y(start[1]))
+            elif state.velocity_per_pixel_cm_s:
+                velocity_cm_s = abs(end[1] - start[1]) * abs(state.velocity_per_pixel_cm_s)
+        else:
+            panels = self._resolve_frame_panels()
+            panel = panels.doppler if panels is not None else None
+            if (
+                panel is not None
+                and panel.contains(start[0], start[1])
+                and panel.contains(end[0], end[1])
+                and (panel.horizontal_ms_per_pixel is not None or panel.vertical_cm_s_per_pixel is not None)
+            ):
+                if panel.horizontal_ms_per_pixel is not None:
+                    time_ms = abs(end[0] - start[0]) * panel.horizontal_ms_per_pixel
+                if panel.vertical_cm_s_per_pixel is not None:
+                    velocity_cm_s = abs(end[1] - start[1]) * panel.vertical_cm_s_per_pixel
+        if time_ms is None and velocity_cm_s is None:
+            return None
+        instance_uid = (
+            self._current_state.instance.sop_instance_uid
+            if self._current_state and self._current_state.instance
+            else ""
+        )
+        return LinearMeasurement(
+            label=label,
+            pixel_length=math.hypot(end[0] - start[0], end[1] - start[1]),
+            millimeter_length=None,
+            frame_index=self._contour_frame_index(),
+            start=start,
+            end=end,
+            sop_instance_uid=instance_uid,
+            time_ms=time_ms,
+            velocity_cm_s=velocity_cm_s,
+            doppler=True,
+        )
+
     def _linear_measurement_from_endpoints(
         self,
         start: tuple[float, float],
         end: tuple[float, float],
         label: str,
     ) -> LinearMeasurement:
+        doppler_measurement = self._doppler_caliper_measurement(start, end, label)
+        if doppler_measurement is not None:
+            return doppler_measurement
         dx = end[0] - start[0]
         dy = end[1] - start[1]
         pixel_length = math.hypot(dx, dy)
@@ -7430,12 +7556,22 @@ class ViewerWidget(QWidget):
             self._linear_caliper_active = True
             self._update_linear_caliper_preview(end, end)
             self._measurement_label.setText(tr("viewer.linear_caliper_click_end", label=next_label))
+        elif self._caliper_sequence_size > 1:
+            self._linear_caliper_active = False
+            self._caliper_sequence_size = 0
+            if not self._syncing_state:
+                self.linear_caliper_sequence_completed.emit()
+        elif self._caliper_repeat_mode:
+            # Scanner-like behavior: the caliper stays armed, so the next two
+            # clicks start a fresh measurement with the next Dist label.
+            next_label = f"Dist{self._dist_serial}"
+            self._dist_serial += 1
+            self._set_caliper_label(next_label)
+            self._linear_caliper_active = True
+            self._linear_caliper_start = None
+            self._update_linear_caliper_label_preview_from_state()
         else:
             self._linear_caliper_active = False
-            if self._caliper_sequence_size > 1:
-                self._caliper_sequence_size = 0
-                if not self._syncing_state:
-                    self.linear_caliper_sequence_completed.emit()
 
     def add_linear_measurements(self, measurements: Iterable[LinearMeasurement]) -> None:
         """Insert calipers measured outside the click-click flow (e.g. M-mode).
@@ -7460,6 +7596,23 @@ class ViewerWidget(QWidget):
 
     # ── Caliper node drag (endpoint correction) ────────────────────
 
+    def _caliper_node_edit_allowed(self) -> bool:
+        """Endpoint nodes are draggable only while an armed caliper is idle.
+
+        A pending placement click (first/second endpoint, diameter or
+        stenosis comparison) must keep winning over node dragging,
+        otherwise clicking an existing endpoint would start a new segment
+        instead of moving the node.
+        """
+        if not self._linear_caliper_active:
+            return True
+        if self._linear_caliper_start is not None:
+            return False
+        state = self._comparison_state
+        if state.kind in ("diameter", "stenosis_diameter") and state.segment2_end is None:
+            return False
+        return True
+
     def _begin_caliper_node_drag(
         self,
         caliper_key: tuple[str, int],
@@ -7467,7 +7620,7 @@ class ViewerWidget(QWidget):
         x: float,
         y: float,
     ) -> None:
-        if self._linear_caliper_active:
+        if not self._caliper_node_edit_allowed():
             return
         measurement = self._stored_linear_measurements.get(caliper_key)
         if measurement is None:
