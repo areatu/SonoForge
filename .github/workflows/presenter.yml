@@ -28,6 +28,11 @@ jobs:
         with:
           python-version: ${{ env.PY_VERSION }}
 
+      - name: Install system deps (Qt runtime for offscreen tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+
       - name: Install lite dependencies (no onnxruntime / pymupdf / openpyxl)
         run: |
           python -m pip install --upgrade pip
