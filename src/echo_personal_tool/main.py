@@ -89,7 +89,9 @@ _DIAG_LOGGERS = (
     "echo_personal_tool.infrastructure.dicom_metadata_mapper",
     "echo_personal_tool.presentation.orthanc_study_dialog",
 )
-_diag_log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+from echo_personal_tool.infrastructure.profile import diag_log_dir as _resolve_diag_log_dir
+
+_diag_log_dir = _resolve_diag_log_dir()
 try:
     _diag_log_dir.mkdir(parents=True, exist_ok=True)
     _diag_handler = logging.FileHandler(str(_diag_log_dir / "diag.log"), mode="w", encoding="utf-8")
@@ -104,9 +106,12 @@ except OSError:
 # ── First-run environment check ──
 # When running outside PyInstaller and outside a venv, check if deps/models
 # are available.  The bash launcher (sonoforge) handles this for normal installs;
-# this is a safety net for direct execution.
+# this is a safety net for direct execution.  The Presenter profile has a
+# reduced dependency set, so the full-profile check does not apply to it.
 _is_frozen = getattr(sys, "frozen", False)
-if not _is_frozen:
+from echo_personal_tool.infrastructure.profile import is_presenter as _is_presenter
+
+if not _is_frozen and not _is_presenter():
     try:
         from echo_personal_tool.infrastructure.runtime_setup import (
             check_deps,
@@ -168,10 +173,16 @@ def _schedule_reference_preload(window: MainWindow) -> None:
 
 
 def main() -> int:
+    from echo_personal_tool.infrastructure.profile import (
+        display_name,
+        has_ai_segmentation,
+        has_reference_ui,
+    )
+
     if "--version" in sys.argv or "-V" in sys.argv:
         from echo_personal_tool import __version__
 
-        print(f"SonoForge {__version__}")
+        print(f"{display_name()} {__version__}")
         return 0
 
     patch_pyqtgraph_export_dialog()
@@ -182,7 +193,7 @@ def main() -> int:
     # color-inverted copy of the main window. Must be set before QApplication.
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
-    app.setApplicationName("SonoForge")
+    app.setApplicationName(display_name())
 
     # OpenGL for the pyqtgraph viewport - only when a real GPU backs it. On software GL
     # (llvmpipe in a VM, WARP over RDP, GDI Generic without a driver) the GL viewport is
@@ -210,16 +221,18 @@ def main() -> int:
 
     # Check models after QApplication exists (can show Qt dialog).
     # In frozen (PyInstaller) builds, deps are bundled — only check models.
-    try:
-        from echo_personal_tool.infrastructure.runtime_setup import (
-            check_models,
-            show_setup_dialog,
-        )
+    # The Presenter profile ships without ONNX/models — nothing to download.
+    if has_ai_segmentation():
+        try:
+            from echo_personal_tool.infrastructure.runtime_setup import (
+                check_models,
+                show_setup_dialog,
+            )
 
-        if not check_models():
-            show_setup_dialog()
-    except Exception:
-        pass
+            if not check_models():
+                show_setup_dialog()
+        except Exception:
+            pass
     ensure_bundled_fonts_loaded()
     preferences = load_user_preferences()
     from echo_personal_tool.infrastructure.i18n import set_language
@@ -233,7 +246,8 @@ def main() -> int:
             QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
-    _schedule_reference_preload(window)
+    if has_reference_ui():
+        _schedule_reference_preload(window)
     result = app.exec()
     _cleanup_winmm()
     if is_enabled():

@@ -39,7 +39,6 @@ from echo_personal_tool.domain.services.reference_data_store import ReferenceDat
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 from echo_personal_tool.presentation.structured_reference_widget import StructuredReferenceWidget
-from echo_personal_tool.presentation.web_reference.web_reference_widget import WebReferenceWidget
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_UI
 
 logger = logging.getLogger(__name__)
@@ -425,6 +424,11 @@ class AseReferenceDialog(QDialog):
         # ── Web reference widget (default) ──
         try:
             from echo_personal_tool.infrastructure.i18n import get_language
+
+            # Lazy import: QtWebEngine is excluded from the Presenter build.
+            from echo_personal_tool.presentation.web_reference.web_reference_widget import (
+                WebReferenceWidget,
+            )
 
             self._web_ref_widget = WebReferenceWidget(ReferenceDataStore(language=get_language()).load())
         except Exception as exc:  # noqa: BLE001

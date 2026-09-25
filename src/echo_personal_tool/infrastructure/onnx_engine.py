@@ -12,7 +12,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 import numpy as np
-import onnxruntime as ort
+
+try:  # optional dependency — absent in the Presenter (lite) profile
+    import onnxruntime as ort
+except ImportError:  # pragma: no cover - depends on installed extras
+    ort = None  # type: ignore[assignment]
+
 from scipy import ndimage
 
 from echo_personal_tool.domain.services.segmentation_service import (
@@ -108,6 +113,8 @@ def _verify_model_integrity(model_path: Path, expected_sha256: str | None) -> No
 
 
 def _create_session(model_path: Path) -> Any:
+    if ort is None:
+        raise RuntimeError("onnxruntime is not available in this build")
     return ort.InferenceSession(
         str(model_path),
         providers=["CPUExecutionProvider"],
@@ -158,7 +165,7 @@ class OnnxInferenceEngine:
 
         if session is not None:
             self._session = session
-        elif self._model_path is not None and self._model_path.is_file():
+        elif ort is not None and self._model_path is not None and self._model_path.is_file():
             expected_sha256 = self._resolve_sha256()
             _verify_model_integrity(self._model_path, expected_sha256)
             self._session = _create_session(self._model_path)
@@ -166,7 +173,12 @@ class OnnxInferenceEngine:
             self._session = None
 
     def is_available(self) -> bool:
-        return self._manifest is not None and self._model_path is not None and self._model_path.is_file()
+        return (
+            ort is not None
+            and self._manifest is not None
+            and self._model_path is not None
+            and self._model_path.is_file()
+        )
 
     @property
     def crop_mode(self) -> str:
