@@ -15,6 +15,10 @@
 
 **SonoForge** is a free, open-source desktop application for **echocardiography analysis**, **DICOM viewing**, **cardiac measurements**, and **clinical reporting**. Built for cardiologists, sonographers, and researchers who need a powerful, offline-capable tool that complies with **ASE (American Society of Echocardiography) guidelines**.
 
+For demonstrations away from the workstation, a lightweight portable edition —
+**[SonoForge Presenter](build/presenter/README.md)** — runs directly from a USB stick:
+a single file, no installation, all measurement tools and PACS connectivity on board.
+
 [Русская версия](README_RU.md)
 
 [English user help](docs/HELP_EN.md) · [Technical help (EN)](docs/TECHNICAL_HELP_EN.md) · [Техническая справка (RU)](docs/TECHNICAL_HELP_RU.md)
@@ -70,6 +74,24 @@ First run will automatically set up the environment and install all dependencies
 > **Requires:** macOS 12.0+ (Intel or Apple Silicon)
 
 First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
+
+</details>
+
+<details>
+<summary><strong>Portable USB Stick — SonoForge Presenter</strong></summary>
+
+A lightweight edition for demonstrations on other people's computers: a **single file**
+run directly from the USB stick — no installation, no admin rights, nothing written
+to the host machine outside the OS temp directory.
+
+1. Download `SonoForgePresenter.exe` (Windows) or `SonoForgePresenter-*.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Copy to the USB stick
+3. Double-click to run
+
+Settings, PACS profiles, encrypted passwords, and the DICOM cache live next to the
+executable (on the stick). All measurement tools and PACS connectivity are included;
+AI (ONNX) segmentation and the Reference Constructor UI are not part of this edition.
+Details: [build/presenter/README.md](build/presenter/README.md).
 
 </details>
 
@@ -138,6 +160,8 @@ SonoForge integrates **ONNX Runtime** for real-time cardiac structure segmentati
 - **Active Contour Refinement** — Edge-snapping and gradient-based contour refinement (press `R`)
 - **Open-Arc Simpson** — Manual contour initialization with mitral annulus points and apex
 
+> Part of the full profile; not included in the portable **SonoForge Presenter** build.
+
 ### DICOM Integration and PACS Connectivity
 
 Full DICOM connectivity for seamless integration with hospital information systems:
@@ -188,6 +212,8 @@ The structured reference browser opens as a fast web view (QWebEngine) with auto
 **Expanded Reference Library:**
 Beyond adult echocardiography, the built-in handbook now covers vascular ultrasound, thyroid, kidney, abdominal aorta, and lymph node parameters — including regurgitant fraction for MR/AR, pulmonary hypertension echo signs, 3D LVEF/SVi norms, and severity gradations (AS/AR/TR/PR).
 
+> Part of the full profile; not included in the portable **SonoForge Presenter** build.
+
 ### User Interface and Experience
 
 - **VS Code Dark Theme** — Default clinical-friendly color scheme optimized for long reading sessions; light and system themes also available
@@ -209,6 +235,28 @@ Beyond adult echocardiography, the built-in handbook now covers vascular ultraso
 - **Server Browser Filters** — Filter studies by date (1/3/30 days) with correct chronological sorting
 - **Window/Level Cache** — Cached LUT transforms skip redundant frame re-uploads for responsive contrast adjustment
 - **Shared DICOM Sessions** — One warm DICOM session per file across workers reduces memory overhead
+
+### SonoForge Presenter (Portable Edition)
+
+A **lite build profile** of the same codebase for USB-stick demonstrations — not a
+fork: feature flags plus PyInstaller excludes, the main profile is untouched.
+
+| | Full SonoForge | SonoForge Presenter |
+|---|---|---|
+| Distribution | installer (.deb / .exe / .zip) | single portable file (.exe / .AppImage) |
+| Measurements, Doppler, auto-calibration | yes | yes |
+| Strain/STE and optical flow | yes | yes |
+| PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |
+| PDF reports with ASE normative values | yes | yes |
+| AI (ONNX) segmentation | yes | excluded from the build |
+| Reference Constructor / web handbook | yes | excluded from the build |
+| Settings and secrets | OS keychain + QSettings (registry on Windows / `~/.config` on Linux) | on the stick: INI files + Fernet-encrypted `secrets.ini` |
+| Data written outside the app bundle | home config, `~/.sonoforge` cache, logs | OS temp only (onefile unpack); settings and cache on the stick |
+
+- **Fast start** — no first-run setup, no model downloads, straight into the viewer
+- **Reduced size** — PySide6-Essentials (no QtWebEngine), no onnxruntime/PyMuPDF/openpyxl
+- **Adjustable composition** — the module set is a build configuration; AI and handbook
+  can be re-added later (see [build/presenter/README.md](build/presenter/README.md))
 
 ---
 
@@ -257,6 +305,7 @@ Beyond adult echocardiography, the built-in handbook now covers vascular ultraso
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |
+| [build/presenter/README.md](build/presenter/README.md) | SonoForge Presenter: portable USB-stick edition — packaging, profile flags, portable storage |
 
 ---
 
@@ -277,7 +326,8 @@ src/echo_personal_tool/
 │   ├── onnx_engine.py   # ONNX inference engine
 │   ├── i18n.py          # Internationalization (ru/en)
 │   ├── user_preferences.py  # Persistent user settings (QSettings)
-│   └── server_settings.py   # Server connection management
+│   ├── server_settings.py   # Server connection management
+│   ├── profile.py       # Build profiles (full/presenter), portable storage locations
 ├── application/         # Orchestration layer
 │   ├── app_controller.py # Main application controller
 │   ├── frame_cache.py   # Adaptive frame cache with memory budget
@@ -292,6 +342,12 @@ src/echo_personal_tool/
 ├── constructor/         # Reference browser editor
 └── resources/           # Fonts, icons, ASE reference data
 ```
+
+**Build profiles.** `infrastructure/profile.py` exposes the active profile
+(`SONOFORGE_PROFILE=full|presenter`) as feature flags (`has_ai_segmentation()`,
+`has_reference_ui()`, `portable_enabled()`). Presenter is a packaging configuration
+of the same source — guarded optional imports plus PyInstaller `excludes` — so the
+module composition can be adjusted without deleting code.
 
 ---
 
@@ -308,6 +364,7 @@ src/echo_personal_tool/
 - **PHI Sanitization** — Patient identifiers truncated in log files
 - **In-Memory Processing** — All DICOM data processed in RAM, no temp files
 - **No Cloud Dependencies** — Works fully offline after installation
+- **Portable Encrypted Secrets (Presenter)** — PACS passwords stored as Fernet tokens (AES-128-CBC + HMAC-SHA256, PBKDF2 key from a per-stick `device.key`, file mode 0600) next to the executable; no clear-text fallback
 
 See [SECURITY.md](SECURITY.md) for detailed security documentation.
 
@@ -331,6 +388,10 @@ ruff check src tests
 
 # Format
 ruff format src tests
+
+# Presenter (lite portable profile) — same codebase, reduced dependency set
+pip install -e ".[presenter]"
+SONOFORGE_PROFILE=presenter python -m echo_personal_tool.__main_presenter__
 ```
 
 **Test Coverage:** ~77% with 4400+ unit tests across all layers (domain, application, presentation, infrastructure).
@@ -341,6 +402,7 @@ ruff format src tests
 - Additional AI models (RV segmentation, valve detection)
 - Localization (i18n) for different languages
 - Additional reference databases
+- Tuning the Presenter profile composition (which optional modules ship in the portable build)
 - Bug fixes and performance improvements
 
 ---
