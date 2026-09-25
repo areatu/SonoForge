@@ -214,14 +214,18 @@ class MeasurementToolsPanel(QWidget):
         btn_lav_4c.setToolTip(tr("tools.lav_4c_tip"))
         btn_lav_4c.clicked.connect(self.lav_4c_requested.emit)
         row.addWidget(btn_lav_4c)
-        btn_lav_4c_auto = QPushButton(tr("tools.lav_4c_auto"))
-        btn_lav_4c_auto.setToolTip(tr("tools.lav_4c_auto_tip"))
-        btn_lav_4c_auto.clicked.connect(self.lav_4c_auto_requested.emit)
-        row.addWidget(btn_lav_4c_auto)
-        btn_lav_4c_ai_plus = QPushButton(tr("tools.lav_4c_ai_plus"))
-        btn_lav_4c_ai_plus.setToolTip(tr("tools.lav_4c_ai_plus_tip"))
-        btn_lav_4c_ai_plus.clicked.connect(self.lav_4c_ai_plus_requested.emit)
-        row.addWidget(btn_lav_4c_ai_plus)
+        from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+
+        if has_ai_segmentation():
+            # ONNX-based LA auto-segmentation — not part of the Presenter build.
+            btn_lav_4c_auto = QPushButton(tr("tools.lav_4c_auto"))
+            btn_lav_4c_auto.setToolTip(tr("tools.lav_4c_auto_tip"))
+            btn_lav_4c_auto.clicked.connect(self.lav_4c_auto_requested.emit)
+            row.addWidget(btn_lav_4c_auto)
+            btn_lav_4c_ai_plus = QPushButton(tr("tools.lav_4c_ai_plus"))
+            btn_lav_4c_ai_plus.setToolTip(tr("tools.lav_4c_ai_plus_tip"))
+            btn_lav_4c_ai_plus.clicked.connect(self.lav_4c_ai_plus_requested.emit)
+            row.addWidget(btn_lav_4c_ai_plus)
         btn_lav_bi = QPushButton(tr("tools.lav_2c"))
         btn_lav_bi.setToolTip(tr("tools.lav_2c_tip"))
         btn_lav_bi.clicked.connect(self.lav_bi_requested.emit)

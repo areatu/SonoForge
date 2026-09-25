@@ -357,13 +357,20 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
 
         # --- Other tab: confirm/pfd/startup + Gold + DICOM + References ---
+        from echo_personal_tool.infrastructure.profile import (
+            has_ai_segmentation,
+            has_reference_ui,
+        )
+
+        other_blocks: list[tuple[str, object]] = [
+            ("", other_form),
+            (tr("preferences.block_gold"), gold_form),
+            (tr("preferences.block_dicom"), dicom_form),
+        ]
+        if has_reference_ui():
+            other_blocks.append((tr("preferences.block_references"), refs_form))
         tabs.addTab(
-            _scrollable_grouped(
-                ("", other_form),
-                (tr("preferences.block_gold"), gold_form),
-                (tr("preferences.block_dicom"), dicom_form),
-                (tr("preferences.block_references"), refs_form),
-            ),
+            _scrollable_grouped(*other_blocks),
             tr("preferences.tab_other"),
         )
 
@@ -374,7 +381,9 @@ class UserPreferencesDialog(QDialog):
         exp_form.addRow(tr("prefs.show_strain"), self._show_strain)
         self._show_la_auto = QCheckBox()
         self._show_la_auto.setChecked(current.show_la_auto)
-        exp_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
+        if has_ai_segmentation():
+            # LA auto-segmentation (ONNX) is not part of the Presenter build.
+            exp_form.addRow(tr("prefs.show_la_auto"), self._show_la_auto)
         tabs.addTab(_scrollable_tab(exp_form), tr("prefs.tab_experimental"))
 
         self._server_form = ServerSettingsForm()

@@ -29,6 +29,7 @@
   "app.segmentation_no_contour": "segmentation found no contour — use manual",
   "app.segmentation_open_arc_fail": "segmentation: failed to build open arc",
   "app.segmentation_reject": "segmentation: {reason} (mask {mask}px, arc {arc:.0f}px) — use manual contour",
+  "app.reference_unavailable": "reference viewer is not available in this build",
   "app.segmentation_unavailable": "segmentation unavailable — use manual contour",
   "app.speckle_compute": "speckle tracking: computing...",
   "app.speckle_contour_not_found": "speckle tracking: LV contour not found",

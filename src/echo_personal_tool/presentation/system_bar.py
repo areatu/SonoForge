@@ -298,6 +298,10 @@ class SystemBar(QWidget):
 
         self._status_label.set_full_text("Ready")
 
+    def set_references_visible(self, visible: bool) -> None:
+        """Hide the ASE references button (Presenter build has no reference UI)."""
+        self._btn_references.setVisible(visible)
+
     def set_study_context(self, label: str, modality: str = "") -> None:
         del modality
         self._study_label.setText(label)
