@@ -4,6 +4,21 @@
 
 ---
 
+## Unreleased
+
+### Highlights
+- **SonoForge Presenter** — лёгкий портативный профиль для демонстраций с флешки: без ONNX-сегментации и справочника (QtWebEngine/PyMuPDF/openpyxl исключены из сборки), portable-хранилище настроек и паролей PACS рядом с исполняемым файлом; onefile .exe (Windows) и AppImage (Linux); основной профиль не затронут
+
+### Features
+- `feat(presenter)`: build profile `SONOFORGE_PROFILE=presenter` with feature flags (`infrastructure/profile.py`) and entry point `__main_presenter__.py`
+- `feat(presenter)`: portable storage — preferences/server INIs, obfuscated PACS secrets file, Orthanc cache and diag logs next to the executable (`SonoForgePresenter-data/`)
+- `feat(presenter)`: PyInstaller spec `build/presenter/sonoforge-presenter.spec` (Windows onefile / Linux onedir) + AppImage script + CI workflow `presenter.yml`
+
+### Refactor
+- `refactor(onnx)`: guarded `onnxruntime` import in `onnx_engine` — engine reports unavailable instead of crashing when the dependency is absent
+- `refactor(reference)`: lazy QtWebEngine/PyMuPDF imports in `ase_reference_dialog`/`main_window` — the full profile is unchanged, the lite profile degrades gracefully
+- `refactor(ui)`: AI-segmentation and reference UI elements are hidden per profile (system bar, measures menu, tools panel, preferences dialog, shortcut `I`)
+
 ## v0.3.0 — 2026-09-10
 
 ### Highlights
