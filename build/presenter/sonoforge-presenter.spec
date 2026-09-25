@@ -13,7 +13,7 @@ Profile differences vs `sonoforge-standalone.spec` (full build):
 - Linux: onedir — wrapped into an AppImage by `build-appimage.sh`.
 
 Build:  python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
-Deps:   pip install -r build/presenter/requirements-presenter.txt pyinstaller
+Deps:   pip install -r build/presenter/pinned-packages.txt pyinstaller
 """
 import os
 import sys

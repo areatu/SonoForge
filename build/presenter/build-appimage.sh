@@ -5,7 +5,7 @@
 #  PyInstaller onedir  →  AppDir  →  AppImage (single portable file)
 #
 #  Prereqs: python3.10/3.11 venv with
-#    pip install -r build/presenter/requirements-presenter.txt pyinstaller
+#    pip install -r build/presenter/pinned-packages.txt pyinstaller
 #  The script downloads appimagetool automatically when it is not on PATH.
 #
 #  Output: dist/SonoForge-Presenter-<version>-x86_64.AppImage

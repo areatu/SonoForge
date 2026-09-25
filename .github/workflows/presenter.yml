@@ -31,7 +31,7 @@ jobs:
       - name: Install lite dependencies (no onnxruntime / pymupdf / openpyxl)
         run: |
           python -m pip install --upgrade pip
-          pip install -r build/presenter/requirements-presenter.txt pytest pytest-qt pytest-timeout
+          pip install -r build/presenter/pinned-packages.txt pytest pytest-qt pytest-timeout
 
       - name: Verify excluded deps are absent
         run: |
@@ -82,7 +82,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r build/presenter/requirements-presenter.txt pyinstaller
+          pip install -r build/presenter/pinned-packages.txt pyinstaller
 
       - name: Build onefile exe
         run: python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
@@ -123,7 +123,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r build/presenter/requirements-presenter.txt pyinstaller
+          pip install -r build/presenter/pinned-packages.txt pyinstaller
 
       - name: Build AppImage
         run: ./build/presenter/build-appimage.sh

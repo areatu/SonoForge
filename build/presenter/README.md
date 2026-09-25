@@ -67,7 +67,7 @@ SonoForgePresenter-data/
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate        # Python 3.10/3.11
-pip install -r build/presenter/requirements-presenter.txt pyinstaller
+pip install -r build/presenter/pinned-packages.txt pyinstaller
 
 # Linux → AppImage
 ./build/presenter/build-appimage.sh
@@ -78,7 +78,7 @@ python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --cle
 #   → dist/SonoForgePresenter.exe
 ```
 
-> **Пины зависимостей:** `requirements-presenter.txt` запинен ровно на
+> **Пины зависимостей:** `pinned-packages.txt` запинен ровно на
 > версии из `uv.lock` (воспроизводимость сборок + CI-гейт dependency-review
 > не видит «новых» версий относительно базового графа). При обновлении
 > `uv.lock` обновляйте пины осознанно, например:
@@ -91,7 +91,7 @@ CI: `.github/workflows/presenter.yml` (тег `presenter-v*` или ручной
 Профиль — это **конфигурация сборки**, а не удаление кода:
 
 - **Вернуть AI-сегментацию в Presenter:** убрать `onnxruntime` из `excludes`
-  в spec, добавить его в `requirements-presenter.txt`, вернуть
+  в spec, добавить его в `pinned-packages.txt`, вернуть
   `has_ai_segmentation() → True` в `infrastructure/profile.py` (или убрать
   presenter-ветку), при необходимости бандлить модели через `datas`.
 - **Вернуть справочник:** убрать из `excludes` `PySide6.QtWebEngine*`,
