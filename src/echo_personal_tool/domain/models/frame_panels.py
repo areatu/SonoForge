@@ -8,10 +8,14 @@ from enum import Enum
 from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 from echo_personal_tool.domain.services.ultrasound_region_physics import (
     PHYSICAL_UNIT_CM,
+    PHYSICAL_UNIT_CM_PER_SEC,
     PHYSICAL_UNIT_MM,
     horizontal_ms_per_pixel,
     vertical_mm_per_pixel,
 )
+
+#: Known vendor mis-tag: velocity increment stored with units code 7 (also cm/s).
+_VELOCITY_UNIT_MISTAG = 7
 
 
 class PanelKind(str, Enum):
@@ -51,6 +55,15 @@ class UltrasoundPanel:
         if self.physical_delta_y is None or self.physical_units_y is None:
             return None
         return vertical_mm_per_pixel(abs(self.physical_delta_y), self.physical_units_y)
+
+    @property
+    def vertical_cm_s_per_pixel(self) -> float | None:
+        """Spectral Doppler velocity scale (cm/s per px); None on spatial axes."""
+        if self.physical_delta_y is None or self.physical_units_y is None:
+            return None
+        if self.physical_units_y not in (PHYSICAL_UNIT_CM_PER_SEC, _VELOCITY_UNIT_MISTAG):
+            return None
+        return abs(self.physical_delta_y)
 
     def contains(self, x: float, y: float) -> bool:
         return self.bounds.contains(x, y)

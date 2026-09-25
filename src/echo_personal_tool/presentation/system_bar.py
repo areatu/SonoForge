@@ -149,7 +149,7 @@ class SystemBar(QWidget):
 
         btn_caliper = QPushButton("Caliper")
         btn_caliper.setIcon(_load_icon("straighten"))
-        btn_caliper.setToolTip("Linear distance (Dist1, Dist2, …)")
+        btn_caliper.setToolTip(tr("system_bar.caliper_tooltip"))
         btn_caliper.clicked.connect(self.caliper_requested.emit)
         self._btn_caliper = btn_caliper
 
@@ -342,6 +342,7 @@ class SystemBar(QWidget):
         self._btn_settings.setText(tr("system_bar.settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings"))
         self._btn_caliper.setText(tr("system_bar.caliper"))
+        self._btn_caliper.setToolTip(tr("system_bar.caliper_tooltip"))
         self._btn_calibration.setText(tr("system_bar.calibration_bmode"))
         self._btn_doppler_calibration.setText(tr("system_bar.calibration_doppler"))
         self._btn_references.setText(tr("system_bar.references"))

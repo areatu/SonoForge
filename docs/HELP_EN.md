@@ -87,7 +87,7 @@ The top system bar contains the main commands:
 | `Send to server…` | Send local DICOM objects through STOW-RS or DIMSE C-STORE when a target is configured. |
 | `Calibration B-mode` | Start the manual spatial/depth calibration tool. An automatic attempt may happen separately when applicable. |
 | `Calibration Doppler` | Start the Doppler calibration workflow. |
-| `Caliper` | Start a linear distance measurement. The confirmed shortcut is `L`. |
+| `Caliper` | Linear caliper: while active it takes multiple measurements in a row (`Dist1`, `Dist2`, …); inside the Doppler ROI it measures Δt (ms) and velocity (cm/s or m/s) instead of distance. Shortcut `L`; pressing it again switches the tool off. |
 | `M-Mode` | Show/hide the M-Mode panel and start the M-Mode line workflow. |
 | `References` | Open the structured reference browser and reference documents. |
 | `Settings` | Open Interface, Measurement, Other, Experimental, and Server settings. |
@@ -247,12 +247,15 @@ In supported tools you can select a caliper or contour, drag a node, delete it w
 
 1. Click `Caliper` or press `L`.
 2. Click the start point.
-3. Click the end point.
-4. Read the line/overlay value.
-5. Use `Tab` only when the active linear-caliper workflow exposes a label list.
-6. Select the line and press `Delete` to remove it.
+3. Click the end point — the measurement is committed (`Dist1`).
+4. Read the line/overlay value. The tool stays armed: the next two clicks start `Dist2`, then `Dist3`, and so on — like on an ultrasound scanner you can take several measurements on one frame without pressing `Caliper` again.
+5. To switch the caliper off, press `Caliper`/`L` again or `Esc`.
+6. Use `Tab` only when the active linear-caliper workflow exposes a label list.
+7. Select the line and press `Delete` to remove it.
 
-A normal distance uses start/end clicks. Specialized menu actions preselect labels such as `LVEDD`, `LVESD`, `IVSd`, `LVPWd`, `TAPSE`, `RVOT`, `LA`, or a Doppler peak.
+Inside the calibrated Doppler ROI (the spectrogram zone) the caliper measures the time interval between the points, Δt (ms), and the velocity amplitude (cm/s, switching to m/s at ≥100 cm/s) instead of a distance — for example for AcT (AT) of the RVOT: the first point at the flow onset, the second at the peak. Moving the cursor back to the B-mode zone restores distance measuring (mm). Measurements belong to the file they were taken on and never migrate to other files.
+
+A normal distance uses start/end clicks. Specialized menu actions preselect labels such as `LVEDD`, `LVESD`, `IVSd`, `LVPWd`, `TAPSE`, `RVOT`, `LA`, or a Doppler peak. Specialized (anatomic) calipers remain single-shot: the tool switches off after the measurement is committed.
 
 ### 6.2 LV measurement sequences
 
