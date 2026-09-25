@@ -59,7 +59,9 @@ class ServerSettings:
 
 
 def _profile_store() -> QSettings:
-    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
 
 
 def _settings_to_dict(s: ServerSettings) -> dict[str, Any]:
@@ -131,7 +133,9 @@ def delete_profile(name: str) -> bool:
 
 
 def _settings_store() -> QSettings:
-    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
 
 
 def _read_bool(value: object, default: bool) -> bool:
@@ -283,13 +287,168 @@ def save_server_settings(settings: ServerSettings) -> None:
 
 # ── Keyring helpers ────────────────────────────────────────────────
 
+import base64 as _base64
 import logging as _logging
+import os as _os
+from pathlib import Path as _Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet as _Fernet
 
 _keyring_logger = _logging.getLogger(__name__)
 
+# Portable mode (SonoForge Presenter): PACS passwords live in secrets.ini
+# next to the executable (i.e. on the USB stick) instead of the host OS
+# keychain, so the app never writes credentials to someone else's machine.
+# The INI is managed through QSettings, exactly like preferences.ini and
+# server.ini — the full profile's keyring path is likewise a native store.
+#
+# Values are Fernet-encrypted (AES-128-CBC + HMAC-SHA256).  The key is
+# derived via PBKDF2-HMAC-SHA256 from a per-device random secret kept in
+# ``device.key`` inside the same portable directory.  Trust model: whoever
+# possesses the stick possesses the credentials — exactly like an OS
+# keychain bound to one machine account — but the file is not readable by
+# casual inspection and ciphertexts differ across devices.  When the
+# optional ``cryptography`` package is missing (full-profile dev opt-in via
+# SONOFORGE_PORTABLE=1), passwords are simply NOT persisted; there is no
+# clear-text fallback.
+_PORTABLE_KDF_SALT = b"sonoforge-presenter-portable-v1"
+_PORTABLE_KDF_ITERATIONS = 120_000
+_PORTABLE_DEVICE_SECRET_FALLBACK = b"sonoforge-presenter-default-device-secret"
+
+# Cache keyed by portable root so tests (and stick swaps) get fresh keys.
+_FERNET_CACHE: dict[str, _Fernet] = {}
+
+
+def _portable_secrets_file() -> _Path | None:
+    from echo_personal_tool.infrastructure.profile import secrets_path
+
+    return secrets_path()
+
+
+def _portable_device_secret() -> bytes:
+    """Random per-device secret, generated once and kept in the portable dir.
+
+    Falls back to a fixed application constant when ``device.key`` cannot be
+    created or read (e.g. read-only media) so encryption still works.
+    """
+    from echo_personal_tool.infrastructure.profile import portable_path
+
+    path = portable_path("device.key")
+    if path is None:
+        return _PORTABLE_DEVICE_SECRET_FALLBACK
+    try:
+        if path.is_file():
+            raw = bytes.fromhex(path.read_text(encoding="ascii").strip())
+            if len(raw) == 32:
+                return raw
+        raw = _os.urandom(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(raw.hex(), encoding="ascii")
+        try:
+            _os.chmod(path, 0o600)
+        except OSError:
+            pass
+        return raw
+    except Exception:  # noqa: BLE001
+        return _PORTABLE_DEVICE_SECRET_FALLBACK
+
+
+def _portable_fernet() -> _Fernet | None:
+    """Fernet instance for the portable store, or None when unavailable."""
+    from echo_personal_tool.infrastructure.profile import portable_root
+
+    root = portable_root()
+    cache_key = str(root)
+    cached = _FERNET_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        from cryptography.fernet import Fernet
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    except Exception:  # noqa: BLE001
+        return None
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=_PORTABLE_KDF_SALT,
+        iterations=_PORTABLE_KDF_ITERATIONS,
+    )
+    key = _base64.urlsafe_b64encode(kdf.derive(_portable_device_secret()))
+    fernet = Fernet(key)
+    _FERNET_CACHE[cache_key] = fernet
+    return fernet
+
+
+def _encrypt_secret(plain: str) -> str:
+    fernet = _portable_fernet()
+    if fernet is None:
+        raise RuntimeError(
+            "portable password storage requires the 'cryptography' package "
+            "(install SonoForge with the 'presenter' extra)"
+        )
+    return fernet.encrypt(plain.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_secret(token: str) -> str:
+    fernet = _portable_fernet()
+    if fernet is None:
+        return ""
+    try:
+        return fernet.decrypt(token.encode("ascii")).decode("utf-8")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _secrets_store() -> QSettings:
+    """Dedicated QSettings INI (``secrets.ini``) holding encrypted tokens."""
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, "secrets")
+
+
+def _portable_secret_key(username: str) -> str:
+    """QSettings needs a non-empty key; username-less profiles share one slot."""
+    return username.strip() or "__anonymous__"
+
+
+def _save_password_portable(username: str, password: str) -> None:
+    store = _secrets_store()
+    key = _portable_secret_key(username)
+    if password:
+        # Stored via Qt's native settings API as a Fernet ciphertext token —
+        # the same category of store the full profile uses (OS keychain).
+        store.setValue(key, _encrypt_secret(password))
+    else:
+        store.remove(key)
+    store.sync()
+    path = _portable_secrets_file()
+    if path is not None:
+        try:
+            _os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+
+def _load_password_portable(username: str) -> str:
+    token = _secrets_store().value(_portable_secret_key(username))
+    if not token:
+        return ""
+    return _decrypt_secret(str(token))
+
 
 def _save_password_keyring(username: str, password: str) -> None:
-    """Store password in OS keychain only. Never falls back to QSettings."""
+    """Store password in the portable secrets file or the OS keychain."""
+    if _portable_secrets_file() is not None:
+        try:
+            _save_password_portable(username, password)
+            _purge_password_from_qsettings()
+            return
+        except Exception:  # noqa: BLE001
+            _keyring_logger.warning("portable secret store failed — password NOT saved")
+            return
     try:
         import keyring
 
@@ -308,7 +467,9 @@ def _save_password_keyring(username: str, password: str) -> None:
 
 
 def _load_password_keyring(username: str) -> str:
-    """Load password from OS keychain only. Never reads from QSettings."""
+    """Load password from the portable secrets file or the OS keychain."""
+    if _portable_secrets_file() is not None:
+        return _load_password_portable(username)
     try:
         import keyring
 

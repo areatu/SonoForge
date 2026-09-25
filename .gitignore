@@ -24,11 +24,15 @@ wheels/
 # Virtual environments
 .venv/
 .venv-build/
+.venv-*/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Presenter portable data (dev runs with SONOFORGE_PORTABLE=1 from repo root)
+SonoForgePresenter-data/
 
 # Environment variables
 .env

@@ -29,6 +29,7 @@
   "app.segmentation_no_contour": "сегментация не нашла контур — используйте ручной",
   "app.segmentation_open_arc_fail": "сегментация: не удалось построить open arc",
   "app.segmentation_reject": "сегментация: {reason} (маска {mask}px, дуга {arc:.0f}px) — используйте ручной контур",
+  "app.reference_unavailable": "справочник недоступен в этой сборке",
   "app.segmentation_unavailable": "сегментация недоступна — используйте ручной контур",
   "app.speckle_compute": "speckle tracking: вычисление...",
   "app.speckle_contour_not_found": "speckle tracking: контур LV не найден",

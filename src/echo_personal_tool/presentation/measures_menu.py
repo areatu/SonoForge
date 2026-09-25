@@ -220,12 +220,24 @@ _EXPERIMENTAL_BUTTONS: dict[str, str] = {
     "lav_4c_auto": "show_la_auto",
 }
 
+# ONNX-based AI actions — hidden in the Presenter (lite) build entirely.
+_AI_ONNX_ACTIONS = frozenset({str(MeasurementAction.LAV_4C_AI_PLUS), str(MeasurementAction.LAV_4C_AUTO)})
+
 
 def _filter_menu(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
     preferences: UserPreferences | None = None,
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
-    """Filter menu based on user preferences for experimental features."""
+    """Filter menu based on build profile and user preferences for experimental features."""
+    from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+
+    if not has_ai_segmentation():
+        menu = tuple(
+            (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
+            for group_key, buttons in menu
+        )
+        menu = tuple((group_key, buttons) for group_key, buttons in menu if buttons)
+
     if preferences is None:
         return menu
 

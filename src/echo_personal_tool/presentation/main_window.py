@@ -58,7 +58,6 @@ from echo_personal_tool.infrastructure.user_preferences import (
     load_user_preferences,
     save_user_preferences,
 )
-from echo_personal_tool.presentation.ase_reference_dialog import show_ase_reference_dialog
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
@@ -131,8 +130,10 @@ class MainWindow(QMainWindow):
         user_preferences: UserPreferences | None = None,
     ) -> None:
         super().__init__()
+        from echo_personal_tool.infrastructure.profile import display_name
+
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setWindowTitle("SonoForge")
+        self.setWindowTitle(display_name())
         self._user_preferences = user_preferences or load_user_preferences()
         self._click_to_frame_started_at: float | None = None
         self._playback_active = False
@@ -171,8 +172,16 @@ class MainWindow(QMainWindow):
         self._mmode_collapse_anim = None
 
         self._controller = controller or AppController()
-        orthanc_root = Path.home() / ".sonoforge" / "orthanc"
-        orthanc_root.parent.mkdir(parents=True, exist_ok=True)
+        # Portable builds keep the Orthanc cache on the USB stick instead of ~/.sonoforge
+        from echo_personal_tool.infrastructure.profile import orthanc_cache_root
+
+        orthanc_root = orthanc_cache_root()
+        try:
+            orthanc_root.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Read-only media (e.g. write-protected stick): the app still runs,
+            # only server downloads that need the cache will fail later.
+            pass
         self._orthanc_cache = OrthancSessionCache(orthanc_root)
         self._controller.studies_loaded.connect(self._on_studies_loaded)
         self._controller.scan_failed.connect(self._on_scan_failed)
@@ -193,6 +202,9 @@ class MainWindow(QMainWindow):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._system_bar = SystemBar()
+        from echo_personal_tool.infrastructure.profile import has_reference_ui
+
+        self._system_bar.set_references_visible(has_reference_ui())
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
         self._root_layout.addWidget(self._system_bar)
@@ -292,7 +304,6 @@ class MainWindow(QMainWindow):
             ("L", self._viewer.toggle_linear_caliper),
             ("C", self._start_manual_contour_shortcut),
             ("M", self._start_model_contour_shortcut),
-            ("I", self._request_auto_segment_shortcut),
             ("Return", self._finish_active_tool_shortcut),
             ("Enter", self._finish_active_tool_shortcut),
             ("Escape", self._cancel_active_tool),
@@ -303,6 +314,11 @@ class MainWindow(QMainWindow):
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
         ]
+        from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+
+        if has_ai_segmentation():
+            # "I" triggers ONNX auto-segmentation — not part of the Presenter build.
+            bindings.insert(3, ("I", self._request_auto_segment_shortcut))
         for sequence, handler in bindings:
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -803,7 +819,24 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _show_references(self) -> None:
-        show_ase_reference_dialog(self)
+        self._open_reference_dialog()
+
+    def _open_reference_dialog(self, param_id: str | None = None) -> None:
+        # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
+        # which are excluded from the Presenter (lite) build.
+        from echo_personal_tool.infrastructure.profile import has_reference_ui
+
+        if not has_reference_ui():
+            self._show_status(tr("app.reference_unavailable"))
+            return
+        try:
+            from echo_personal_tool.presentation.ase_reference_dialog import (
+                show_ase_reference_dialog,
+            )
+        except ImportError:
+            self._show_status(tr("app.reference_unavailable"))
+            return
+        show_ase_reference_dialog(self, param_id=param_id)
 
     @_prof
     def _show_user_preferences(self) -> None:
@@ -880,7 +913,7 @@ class MainWindow(QMainWindow):
 
     def _on_results_overlay_parameter_clicked(self, param_id: str) -> None:
         """Open Structured Reference browser at the given parameter."""
-        show_ase_reference_dialog(self, param_id=param_id)
+        self._open_reference_dialog(param_id=param_id)
 
     def _restore_results_overlay_position(self, instance_uid: str | None) -> None:
         instance = self._controller.state_manager.snapshot.instance
