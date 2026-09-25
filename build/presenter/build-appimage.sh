@@ -51,7 +51,9 @@ exec "${HERE}/usr/lib/sonoforge-presenter/SonoForgePresenter" "$@"
 APPRUN
 chmod +x "${APPDIR}/AppRun"
 
-cat > "${APPDIR}/usr/share/applications/${PRODUCT,,}.desktop" << DESKTOP
+# appimagetool requires the .desktop file in the AppDir root (AppImage spec);
+# it is also installed into usr/share/applications for the desktop database.
+cat > "${APPDIR}/${PRODUCT,,}.desktop" << DESKTOP
 [Desktop Entry]
 Type=Application
 Name=SonoForge Presenter
@@ -64,6 +66,7 @@ Categories=Medical;Science;Education;
 Keywords=dicom;echocardiography;ultrasound;medical;
 StartupWMClass=${APP_NAME}
 DESKTOP
+cp "${APPDIR}/${PRODUCT,,}.desktop" "${APPDIR}/usr/share/applications/${PRODUCT,,}.desktop"
 
 # Icon: prefer a 256px render, fall back to the bundled logo as-is
 ICON_SRC="src/echo_personal_tool/resources/logo.png"
