@@ -10,6 +10,10 @@
 - **SonoForge Presenter** — лёгкий портативный профиль для демонстраций с флешки: без ONNX-сегментации и справочника (QtWebEngine/PyMuPDF/openpyxl исключены из сборки), portable-хранилище настроек и паролей PACS рядом с исполняемым файлом; onefile .exe (Windows) и AppImage (Linux); основной профиль не затронут
 
 ### Features
+- `feat(caliper)`: допплеровский режим общего калипера — внутри откалиброванной зоны ROI допплера калипер измеряет Δt (мс) и амплитуду скорости (см/с, при ≥100 см/с — м/с) вместо расстояния (например AcT/AT RVOT: первая точка — начало потока, вторая — пик); при переводе курсора на зону B-mode снова измеряется расстояние
+- `feat(caliper)`: сканер-подобный повторяемый режим — после каждой пары кликов калипер остаётся активным и начинает следующее измерение (Dist1, Dist2, …), несколько измерений на одном кадре без повторного нажатия кнопки; кнопка «Калипер»/`L` работает как переключатель, `Esc` выключает; анатомические калиперы (LVEDD, IVSd, …) остаются одиночными
+- `feat(caliper)`: результаты калипера хранятся строго внутри своего файла (instance) и не переносятся на другие файлы; строки Δt/ΔV допплеровского калипера попадают в отчёт
+- `feat(caliper)`: редактирование существующего отрезка перетаскиванием его точек, пока калипер включён и не размещает новый отрезок
 - `feat(presenter)`: build profile `SONOFORGE_PROFILE=presenter` with feature flags (`infrastructure/profile.py`) and entry point `__main_presenter__.py`
 - `feat(presenter)`: portable storage — preferences/server INIs, Fernet-encrypted PACS secrets file (new `presenter` extra: `cryptography`), Orthanc cache and diag logs next to the executable (`SonoForgePresenter-data/`)
 - `feat(presenter)`: PyInstaller spec `build/presenter/sonoforge-presenter.spec` (Windows onefile / Linux onedir) + AppImage script + CI workflow `presenter.yml`
@@ -18,6 +22,8 @@
 - `refactor(onnx)`: guarded `onnxruntime` import in `onnx_engine` — engine reports unavailable instead of crashing when the dependency is absent
 - `refactor(reference)`: lazy QtWebEngine/PyMuPDF imports in `ase_reference_dialog`/`main_window` — the full profile is unchanged, the lite profile degrades gracefully
 - `refactor(ui)`: AI-segmentation and reference UI elements are hidden per profile (system bar, measures menu, tools panel, preferences dialog, shortcut `I`)
+
+---
 
 ## v0.3.0 — 2026-09-10
 

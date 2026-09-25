@@ -112,6 +112,8 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 ### Doppler and Vascular Measurements
 
 - **PSV/EDV Peak Measurement** — Manual peaks on spectral Doppler with automatic RI and S/D indices
+- **Doppler-Zone Caliper** — Inside the calibrated Doppler ROI the generic caliper measures Δt (ms) and the velocity amplitude (cm/s or m/s) instead of a distance (e.g. AcT RVOT); outside the ROI it measures distance again
+- **Continuous Caliper** — While armed, every click pair commits one measurement (Dist1, Dist2, …) and starts the next one, like on a scanner; results stay scoped to the file they were taken on
 - **Vessel Stenosis** — By diameter (%D) and by area (%S) with guided multi-step workflows
 - **Cycle Averaging Without ECG** — PSV/EDV averaged over automatically detected cardiac cycles, with manual cycle selection
 - **Auto VTI** — Two-click region selection with direction detection, velocity spike filtering, and VTI trace extraction
@@ -235,7 +237,7 @@ Beyond adult echocardiography, the built-in handbook now covers vascular ultraso
 
 | Tool | Key | Description |
 |------|-----|-------------|
-| Linear Caliper | `L` | Distance measurement (LVEDD, IVSd, TAPSE, etc.) |
+| Linear Caliper | `L` | Distance measurement; stays armed for consecutive measurements (Dist1, Dist2, …). Inside the Doppler ROI measures Δt (ms) + velocity (cm/s or m/s) |
 | Simpson Biplane | `C` | LV volume measurement (open-arc contour) |
 | M-Mode | `M` | M-Mode trace and measurements |
 

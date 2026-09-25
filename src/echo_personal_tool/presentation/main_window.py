@@ -2086,10 +2086,21 @@ class MainWindow(QMainWindow):
         self._wire_ui()
 
     def _on_caliper_requested(self, label: str | None = None) -> None:
-        if label and self._viewer.start_linear_caliper_for(label):
-            self._show_status(tr("status.linear_caliper_tool", label=label))
-        elif label := self._viewer.activate_generic_dist_caliper():
-            self._show_status(tr("status.linear_caliper_tool", label=label))
+        if label:
+            if self._viewer.start_linear_caliper_for(label):
+                self._show_status(tr("status.linear_caliper_tool", label=label))
+            else:
+                self._show_status("Load a frame first")
+            return
+        if self._viewer.is_caliper_repeat_mode:
+            # Scanner-like toggle: while the generic caliper is armed, the
+            # button (like the L hotkey) switches it off. Every click pair
+            # commits one measurement and immediately arms the next DistN.
+            self._viewer.toggle_linear_caliper()
+            self._show_status(tr("status.linear_caliper_off"))
+            return
+        if activated := self._viewer.activate_generic_dist_caliper():
+            self._show_status(tr("status.linear_caliper_tool", label=activated))
         else:
             self._show_status("Load a frame first")
 

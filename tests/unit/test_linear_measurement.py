@@ -8,6 +8,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
     PERCENT_LABELS,
     LinearMeasurement,
     format_length_mm,
+    format_velocity_cm_s,
     inline_caliper_text,
     pixel_to_mm_length,
 )
@@ -110,3 +111,80 @@ class TestPercentLabels:
     def test_length_label_still_renders_mm(self) -> None:
         m = LinearMeasurement(label="LVEDD", pixel_length=0.0, millimeter_length=55.0)
         assert "55.0 mm" in m.display_text()
+
+
+class TestDopplerCaliperMeasurement:
+    """Doppler-zone caliper: Δt (ms) + velocity amplitude (cm/s or m/s)."""
+
+    def test_display_text_time_and_velocity(self) -> None:
+        m = LinearMeasurement(
+            label="Dist1",
+            pixel_length=22.4,
+            millimeter_length=None,
+            time_ms=105.0,
+            velocity_cm_s=87.3,
+            doppler=True,
+        )
+        text = m.display_text()
+        assert "105.0 ms" in text
+        assert "87.3 cm/s" in text
+        assert "mm" not in text
+        # Doppler Δt must not render the M-mode HR line.
+        assert "ЧСС" not in text and "HR" not in text
+
+    def test_display_text_switches_to_m_per_s(self) -> None:
+        m = LinearMeasurement(
+            label="Dist2",
+            pixel_length=0.0,
+            millimeter_length=None,
+            time_ms=90.0,
+            velocity_cm_s=350.0,
+            doppler=True,
+        )
+        assert "3.50 m/s" in m.display_text()
+
+    def test_display_text_time_only(self) -> None:
+        m = LinearMeasurement(
+            label="Dist1",
+            pixel_length=0.0,
+            millimeter_length=None,
+            time_ms=150.0,
+            doppler=True,
+        )
+        text = m.display_text()
+        assert "150.0 ms" in text
+        assert "ЧСС" not in text and "HR" not in text
+
+    def test_display_text_velocity_only(self) -> None:
+        m = LinearMeasurement(
+            label="Dist1",
+            pixel_length=0.0,
+            millimeter_length=None,
+            velocity_cm_s=-45.0,
+            doppler=True,
+        )
+        assert "-45.0 cm/s" in m.display_text()
+
+    def test_inline_text(self) -> None:
+        m = LinearMeasurement(
+            label="Dist1",
+            pixel_length=0.0,
+            millimeter_length=None,
+            time_ms=105.0,
+            velocity_cm_s=87.3,
+            doppler=True,
+        )
+        text = inline_caliper_text(m)
+        assert text == "Dist1 105.0 ms 87.3 cm/s"
+
+    def test_format_velocity_units(self) -> None:
+        assert format_velocity_cm_s(99.9) == "99.9 cm/s"
+        assert format_velocity_cm_s(100.0) == "1.00 m/s"
+        assert format_velocity_cm_s(-250.0) == "-2.50 m/s"
+
+    def test_mmode_time_caliper_still_shows_hr(self) -> None:
+        """Non-Doppler time calipers keep the legacy HR display."""
+        m = LinearMeasurement(label="Time", pixel_length=100.0, millimeter_length=None, time_ms=800.0)
+        text = m.display_text()
+        assert "800.0 ms" in text
+        assert ("ЧСС" in text) or ("HR" in text)
