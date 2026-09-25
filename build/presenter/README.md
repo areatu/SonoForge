@@ -78,6 +78,12 @@ python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --cle
 #   → dist/SonoForgePresenter.exe
 ```
 
+> **Пины зависимостей:** `requirements-presenter.txt` запинен ровно на
+> версии из `uv.lock` (воспроизводимость сборок + CI-гейт dependency-review
+> не видит «новых» версий относительно базового графа). При обновлении
+> `uv.lock` обновляйте пины осознанно, например:
+> `grep -A1 '^name = "<пакет>"$' uv.lock`.
+
 CI: `.github/workflows/presenter.yml` (тег `presenter-v*` или ручной запуск).
 
 ## Как менять состав модулей
