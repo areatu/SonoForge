@@ -113,7 +113,11 @@ class UserPreferences:
 
 
 def _settings_store() -> QSettings:
-    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    # Portable builds (SonoForge Presenter) keep an INI next to the
+    # executable instead of touching the host registry / ~/.config.
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
 
 
 def _clamp_int(value: object, default: int, low: int, high: int) -> int:

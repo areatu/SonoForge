@@ -59,7 +59,9 @@ class ServerSettings:
 
 
 def _profile_store() -> QSettings:
-    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
 
 
 def _settings_to_dict(s: ServerSettings) -> dict[str, Any]:
@@ -131,7 +133,9 @@ def delete_profile(name: str) -> bool:
 
 
 def _settings_store() -> QSettings:
-    return QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, _SETTINGS_APP)
 
 
 def _read_bool(value: object, default: bool) -> bool:
@@ -283,13 +287,92 @@ def save_server_settings(settings: ServerSettings) -> None:
 
 # ── Keyring helpers ────────────────────────────────────────────────
 
+import base64 as _base64
 import logging as _logging
+import os as _os
+from pathlib import Path as _Path
 
 _keyring_logger = _logging.getLogger(__name__)
 
+# Portable mode (SonoForge Presenter): PACS passwords live in secrets.json
+# next to the executable (i.e. on the USB stick) instead of the host OS
+# keychain, so the app never writes credentials to someone else's machine.
+# Values are XOR-obfuscated + base64 — this is OBFUSCATION, not encryption:
+# anyone with the stick can recover them. Documented in build/presenter/README.md.
+_PORTABLE_OBFUSCATION_KEY = b"sonoforge-presenter-portable"
+
+
+def _portable_secrets_file() -> _Path | None:
+    from echo_personal_tool.infrastructure.profile import secrets_path
+
+    return secrets_path()
+
+
+def _obfuscate_secret(plain: str) -> str:
+    data = plain.encode("utf-8")
+    xored = bytes(b ^ _PORTABLE_OBFUSCATION_KEY[i % len(_PORTABLE_OBFUSCATION_KEY)] for i, b in enumerate(data))
+    return _base64.b64encode(xored).decode("ascii")
+
+
+def _deobfuscate_secret(token: str) -> str:
+    try:
+        xored = _base64.b64decode(token.encode("ascii"))
+    except Exception:  # noqa: BLE001
+        return ""
+    return bytes(b ^ _PORTABLE_OBFUSCATION_KEY[i % len(_PORTABLE_OBFUSCATION_KEY)] for i, b in enumerate(xored)).decode(
+        "utf-8",
+        errors="replace",
+    )
+
+
+def _read_portable_secrets(path: _Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _write_portable_secrets(path: _Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        _os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def _save_password_portable(username: str, password: str) -> None:
+    path = _portable_secrets_file()
+    if path is None:
+        return
+    data = _read_portable_secrets(path)
+    if password:
+        data[username] = _obfuscate_secret(password)
+    else:
+        data.pop(username, None)
+    _write_portable_secrets(path, data)
+
+
+def _load_password_portable(username: str) -> str:
+    path = _portable_secrets_file()
+    if path is None or not path.is_file():
+        return ""
+    token = _read_portable_secrets(path).get(username)
+    if not token:
+        return ""
+    return _deobfuscate_secret(str(token))
+
 
 def _save_password_keyring(username: str, password: str) -> None:
-    """Store password in OS keychain only. Never falls back to QSettings."""
+    """Store password in the portable secrets file or the OS keychain."""
+    if _portable_secrets_file() is not None:
+        try:
+            _save_password_portable(username, password)
+            _purge_password_from_qsettings()
+            return
+        except Exception:  # noqa: BLE001
+            _keyring_logger.warning("portable secret store failed — password NOT saved")
+            return
     try:
         import keyring
 
@@ -308,7 +391,9 @@ def _save_password_keyring(username: str, password: str) -> None:
 
 
 def _load_password_keyring(username: str) -> str:
-    """Load password from OS keychain only. Never reads from QSettings."""
+    """Load password from the portable secrets file or the OS keychain."""
+    if _portable_secrets_file() is not None:
+        return _load_password_portable(username)
     try:
         import keyring
 
