@@ -147,7 +147,8 @@ def servers_ini_path() -> Path | None:
 
 
 def secrets_path() -> Path | None:
-    return portable_path("secrets.json")
+    """INI holding Fernet-encrypted PACS password tokens (managed via QSettings)."""
+    return portable_path("secrets.ini")
 
 
 def qsettings_for(org: str, app: str):

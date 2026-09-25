@@ -33,7 +33,7 @@
 SonoForgePresenter-data/
 ├── preferences.ini   # QSettings → INI (вместо реестра Windows / ~/.config)
 ├── server.ini        # профили PACS-серверов
-├── secrets.json      # пароли PACS (Fernet: AES-128-CBC + HMAC-SHA256)
+├── secrets.ini       # Fernet-токены паролей PACS (AES-128-CBC + HMAC-SHA256)
 ├── device.key        # случайный секрет устройства (материал ключа PBKDF2)
 ├── logs/diag.log     # диагностика загрузки с сервера
 └── cache/orthanc/    # кэш скачанных DICOM-инстансов
@@ -50,7 +50,7 @@ SonoForgePresenter-data/
    exe на флешке, а не temp;
 4. `SONOFORGE_PORTABLE=1` в dev-режиме → `./SonoForgePresenter-data` в CWD.
 
-> **Безопасность:** `secrets.json` хранит пароли PACS в зашифрованном виде
+> **Безопасность:** `secrets.ini` хранит пароли PACS в зашифрованном виде
 > (Fernet — AES-128-CBC + HMAC-SHA256, пакет `cryptography`). Ключ выводится
 > PBKDF2-HMAC-SHA256 из `device.key` — случайного секрета, созданного один раз
 > на той же флешке. Модель доверия как у ОС-кейчейна, привязанного к машине:

@@ -7,7 +7,7 @@ menu filtering (AI buttons hidden under presenter).
 
 from __future__ import annotations
 
-import json
+import os
 
 import pytest
 
@@ -147,11 +147,11 @@ class TestPortableStores:
         save_server_settings(settings)
         assert (portable_dir / "server.ini").is_file()
 
-        secrets_file = portable_dir / "secrets.json"
+        secrets_file = portable_dir / "secrets.ini"
         assert secrets_file.is_file(), "password must be stored on the stick"
-        secrets = json.loads(secrets_file.read_text(encoding="utf-8"))
-        assert "demo" in secrets
-        assert secrets["demo"] != "s3cret", "password must not be stored in plain text"
+        raw = secrets_file.read_text(encoding="utf-8")
+        assert "demo" in raw
+        assert "s3cret" not in raw, "password must not be stored in plain text"
 
         reloaded = load_server_settings()
         assert reloaded.url == "http://10.0.0.5:8042/dicom-web"
@@ -165,11 +165,11 @@ class TestPortableStores:
         )
 
         save_server_settings(ServerSettings(username="demo", password="pw"))
-        secrets_file = portable_dir / "secrets.json"
-        assert "demo" in json.loads(secrets_file.read_text(encoding="utf-8"))
+        secrets_file = portable_dir / "secrets.ini"
+        assert "demo" in secrets_file.read_text(encoding="utf-8")
 
         save_server_settings(ServerSettings(username="demo", password=""))
-        assert "demo" not in json.loads(secrets_file.read_text(encoding="utf-8"))
+        assert "demo" not in secrets_file.read_text(encoding="utf-8")
 
     def test_secret_is_fernet_token_and_device_key_created(self, portable_dir):
         from echo_personal_tool.infrastructure.server_settings import (
@@ -178,9 +178,12 @@ class TestPortableStores:
         )
 
         save_server_settings(ServerSettings(username="demo", password="s3cret"))
-        secrets = json.loads((portable_dir / "secrets.json").read_text(encoding="utf-8"))
-        assert secrets["demo"].startswith("gAAAA"), "expected a Fernet (versioned base64) token"
+        raw = (portable_dir / "secrets.ini").read_text(encoding="utf-8")
+        assert "gAAAA" in raw, "expected a Fernet (versioned base64) token"
+        assert "s3cret" not in raw
         assert (portable_dir / "device.key").is_file(), "per-device key material must stay on the stick"
+        if os.name == "posix":
+            assert (portable_dir / "secrets.ini").stat().st_mode & 0o777 == 0o600
 
     def test_without_cryptography_password_is_not_persisted(self, portable_dir, monkeypatch):
         from echo_personal_tool.infrastructure import server_settings as ss
@@ -189,9 +192,9 @@ class TestPortableStores:
         monkeypatch.setattr(ss, "_portable_fernet", lambda: None)
         ss.save_server_settings(ss.ServerSettings(username="demo", password="s3cret", url="http://pacs:8042"))
 
-        secrets_file = portable_dir / "secrets.json"
+        secrets_file = portable_dir / "secrets.ini"
         if secrets_file.is_file():
-            assert "demo" not in json.loads(secrets_file.read_text(encoding="utf-8"))
+            assert "demo" not in secrets_file.read_text(encoding="utf-8")
 
         reloaded = ss.load_server_settings()
         assert reloaded.url == "http://pacs:8042", "non-secret fields must still persist"

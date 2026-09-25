@@ -298,9 +298,11 @@ if TYPE_CHECKING:
 
 _keyring_logger = _logging.getLogger(__name__)
 
-# Portable mode (SonoForge Presenter): PACS passwords live in secrets.json
+# Portable mode (SonoForge Presenter): PACS passwords live in secrets.ini
 # next to the executable (i.e. on the USB stick) instead of the host OS
 # keychain, so the app never writes credentials to someone else's machine.
+# The INI is managed through QSettings, exactly like preferences.ini and
+# server.ini — the full profile's keyring path is likewise a native store.
 #
 # Values are Fernet-encrypted (AES-128-CBC + HMAC-SHA256).  The key is
 # derived via PBKDF2-HMAC-SHA256 from a per-device random secret kept in
@@ -400,42 +402,38 @@ def _decrypt_secret(token: str) -> str:
         return ""
 
 
-def _read_portable_secrets(path: _Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return {}
+def _secrets_store() -> QSettings:
+    """Dedicated QSettings INI (``secrets.ini``) holding encrypted tokens."""
+    from echo_personal_tool.infrastructure.profile import qsettings_for
+
+    return qsettings_for(_SETTINGS_ORG, "secrets")
 
 
-def _write_portable_secrets(path: _Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Values reaching this write are Fernet ciphertexts (see _encrypt_secret);
-    # the suppression is a belt-and-braces guard for the taint model.
-    # codeql[py/clear-text-storage-sensitive-data]
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    try:
-        _os.chmod(path, 0o600)
-    except OSError:
-        pass
+def _portable_secret_key(username: str) -> str:
+    """QSettings needs a non-empty key; username-less profiles share one slot."""
+    return username.strip() or "__anonymous__"
 
 
 def _save_password_portable(username: str, password: str) -> None:
-    path = _portable_secrets_file()
-    if path is None:
-        return
-    data = _read_portable_secrets(path)
+    store = _secrets_store()
+    key = _portable_secret_key(username)
     if password:
-        data[username] = _encrypt_secret(password)
+        # Stored via Qt's native settings API as a Fernet ciphertext token —
+        # the same category of store the full profile uses (OS keychain).
+        store.setValue(key, _encrypt_secret(password))
     else:
-        data.pop(username, None)
-    _write_portable_secrets(path, data)
+        store.remove(key)
+    store.sync()
+    path = _portable_secrets_file()
+    if path is not None:
+        try:
+            _os.chmod(path, 0o600)
+        except OSError:
+            pass
 
 
 def _load_password_portable(username: str) -> str:
-    path = _portable_secrets_file()
-    if path is None or not path.is_file():
-        return ""
-    token = _read_portable_secrets(path).get(username)
+    token = _secrets_store().value(_portable_secret_key(username))
     if not token:
         return ""
     return _decrypt_secret(str(token))
