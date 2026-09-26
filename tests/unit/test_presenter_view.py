@@ -88,10 +88,11 @@ def presenter_window(mock_controller, monkeypatch):
     # remember it so the fixture can restore it for later tests.
     saved_language = get_language()
     monkeypatch.setattr(mw_module, "apply_clinical_theme", lambda **kwargs: None)
-    monkeypatch.setattr(
-        "echo_personal_tool.infrastructure.user_preferences.save_user_preferences",
-        lambda preferences: None,
-    )
+    # main_window imports save_user_preferences directly, so patching the
+    # defining module is not enough — patch the name main_window actually
+    # calls, otherwise closing the window persists language="en" into the
+    # real QSettings and leaks into unrelated tests.
+    monkeypatch.setattr(mw_module, "save_user_preferences", lambda preferences: None)
 
     prefs = UserPreferences(
         theme_mode="dark",
@@ -1035,10 +1036,9 @@ class TestPresenterProfileOnlyAccess:
 
         monkeypatch.setenv("SONOFORGE_PROFILE", "full")
         monkeypatch.setattr(mw_module, "apply_clinical_theme", lambda **k: None)
-        monkeypatch.setattr(
-            "echo_personal_tool.infrastructure.user_preferences.save_user_preferences",
-            lambda preferences: None,
-        )
+        # See presenter_window fixture: patch the name main_window imports so
+        # closing the window does not write real preferences.
+        monkeypatch.setattr(mw_module, "save_user_preferences", lambda preferences: None)
         prefs = UserPreferences(
             theme_mode="dark",
             ui_font_size=12,
