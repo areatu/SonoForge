@@ -198,15 +198,26 @@ class SystemBar(QWidget):
         # QToolButton with MenuButtonPopup: the main area toggles Presenter
         # mode (like PowerPoint's "Slide Show" button), the small arrow opens
         # the options menu (audience display, visual preset, pointer).
-        self._btn_presenter = QToolButton()
-        self._btn_presenter.setIcon(_load_icon("presenter"))
-        self._btn_presenter.setObjectName("presenterButton")
-        self._btn_presenter.setCheckable(True)
-        self._btn_presenter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self._btn_presenter.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        self._btn_presenter.setText(tr("presenter.button"))
-        self._btn_presenter.setToolTip(tr("presenter.tooltip"))
-        self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
+        # Presenter mode belongs to the Presenter (lite) build only — the
+        # full profile gets no button at all (same pattern as the ASE
+        # references button).
+        from echo_personal_tool.infrastructure.profile import is_presenter
+
+        self._btn_presenter: QToolButton | None = None
+        if is_presenter():
+            self._btn_presenter = QToolButton()
+            self._btn_presenter.setIcon(_load_icon("presenter"))
+            self._btn_presenter.setObjectName("presenterButton")
+            self._btn_presenter.setCheckable(True)
+            self._btn_presenter.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+            )
+            self._btn_presenter.setPopupMode(
+                QToolButton.ToolButtonPopupMode.MenuButtonPopup
+            )
+            self._btn_presenter.setText(tr("presenter.button"))
+            self._btn_presenter.setToolTip(tr("presenter.tooltip"))
+            self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
 
         # Window control buttons
         self._btn_minimize = QPushButton()
@@ -244,7 +255,8 @@ class SystemBar(QWidget):
             self._btn_maximize,
             self._btn_close,
         ):
-            HoverButtonMixin.install(btn)
+            if btn is not None:
+                HoverButtonMixin.install(btn)
 
         left = QWidget()
         left.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -288,7 +300,8 @@ class SystemBar(QWidget):
             btn_reset,
             self._btn_layout,
         ):
-            actions_layout.addWidget(button)
+            if button is not None:
+                actions_layout.addWidget(button)
 
         self._window_controls = QWidget()
         self._window_controls.setObjectName("windowControls")
@@ -323,6 +336,8 @@ class SystemBar(QWidget):
         """Checked state of the Presenter button (mirror running)."""
         from echo_personal_tool.infrastructure.i18n import tr
 
+        if self._btn_presenter is None:
+            return  # full profile — no Presenter UI
         with QSignalBlocker(self._btn_presenter):
             self._btn_presenter.setChecked(active)
         self._btn_presenter.setToolTip(
@@ -359,7 +374,8 @@ class SystemBar(QWidget):
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_reset.setIcon(_load_icon("refresh"))
         self._btn_layout.setIcon(_load_icon("layout"))
-        self._btn_presenter.setIcon(_load_icon("presenter"))
+        if self._btn_presenter is not None:
+            self._btn_presenter.setIcon(_load_icon("presenter"))
         self._btn_minimize.setIcon(_load_icon("minimize"))
         self._btn_maximize.setIcon(_load_icon("maximize"))
         self._btn_close.setIcon(_load_icon("close"))
@@ -380,8 +396,9 @@ class SystemBar(QWidget):
         self._btn_references.setText(tr("system_bar.references"))
         self._btn_references.setToolTip(tr("system_bar.references"))
         self._btn_reset.setText(tr("system_bar.reset"))
-        self._btn_presenter.setText(tr("presenter.button"))
-        self._btn_presenter.setToolTip(tr("presenter.tooltip"))
+        if self._btn_presenter is not None:
+            self._btn_presenter.setText(tr("presenter.button"))
+            self._btn_presenter.setToolTip(tr("presenter.tooltip"))
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_maximize.setToolTip(tr("system_bar.maximize"))
         self._btn_close.setToolTip(tr("system_bar.close"))

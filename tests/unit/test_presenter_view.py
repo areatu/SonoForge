@@ -24,7 +24,7 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QApplication, QMenu, QWidget
+from PySide6.QtWidgets import QApplication, QMenu, QToolButton, QWidget
 
 pytestmark = pytest.mark.gui
 
@@ -80,6 +80,9 @@ def presenter_window(mock_controller, monkeypatch):
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
 
+    # Presenter mode ships in the Presenter (lite) build only — exercise
+    # the suite under that profile (the real deployment).
+    monkeypatch.setenv("SONOFORGE_PROFILE", "presenter")
     monkeypatch.setattr(mw_module, "apply_clinical_theme", lambda **kwargs: None)
     monkeypatch.setattr(
         "echo_personal_tool.infrastructure.user_preferences.save_user_preferences",
@@ -1011,6 +1014,82 @@ class TestLivePreviewOverlayPositionPacing:
             host_overlay._auto_peak_guide_item = None
 
 
+# ── Profile restriction: presenter mode ships lite-only ─────────────
+
+
+class TestPresenterProfileOnlyAccess:
+    """The Presenter button, menu and F10 belong to the Presenter (lite)
+    build only — the full profile gets no entry points at all (field
+    decision after the mode was stabilized)."""
+
+    def test_full_profile_has_no_presenter_button(self, qapp_session, qtbot, monkeypatch):
+        from echo_personal_tool.presentation.system_bar import SystemBar
+
+        monkeypatch.setenv("SONOFORGE_PROFILE", "full")
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        assert bar._btn_presenter is None
+        # Status sync must be a no-op, not a crash.
+        bar.set_presenter_active(True)
+        bar.reload_icons()
+        bar.reload_text()
+
+    def test_presenter_profile_has_button(self, qapp_session, qtbot, monkeypatch):
+        from echo_personal_tool.presentation.system_bar import SystemBar
+
+        monkeypatch.setenv("SONOFORGE_PROFILE", "presenter")
+        bar = SystemBar()
+        qtbot.addWidget(bar)
+        assert isinstance(bar._btn_presenter, QToolButton)
+        assert bar._btn_presenter.text()
+
+    def test_full_profile_registers_no_f10_shortcut(
+        self, mock_controller, monkeypatch, qtbot
+    ):
+        from PySide6.QtGui import QShortcut
+
+        import echo_personal_tool.presentation.main_window as mw_module
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from echo_personal_tool.presentation.main_window import MainWindow
+
+        monkeypatch.setenv("SONOFORGE_PROFILE", "full")
+        monkeypatch.setattr(mw_module, "apply_clinical_theme", lambda **k: None)
+        monkeypatch.setattr(
+            "echo_personal_tool.infrastructure.user_preferences.save_user_preferences",
+            lambda preferences: None,
+        )
+        prefs = UserPreferences(
+            theme_mode="dark",
+            ui_font_size=12,
+            language="en",
+            confirm_reset=False,
+            magnetic_snap_enabled=False,
+            despeckle_enabled=False,
+        )
+        with (
+            patch(
+                "echo_personal_tool.presentation.main_window.load_user_preferences",
+                return_value=prefs,
+            ),
+            patch(
+                "echo_personal_tool.presentation.main_window.format_results_overlay_html",
+                return_value="",
+            ),
+        ):
+            window = MainWindow(controller=mock_controller)
+        qtbot.addWidget(window)
+        keys = [sc.key().toString() for sc in window.findChildren(QShortcut)]
+        assert "F10" not in keys
+
+    def test_presenter_profile_registers_f10_shortcut(self, presenter_window):
+        from PySide6.QtGui import QShortcut
+
+        keys = [
+            sc.key().toString() for sc in presenter_window.findChildren(QShortcut)
+        ]
+        assert "F10" in keys
+
+
 # ── Presenter profile default layout (narrow activity bar) ──────────
 
 
@@ -1076,9 +1155,12 @@ class TestFullscreenKiosk:
         window._exit_fullscreen_kiosk()
         qtbot.waitUntil(lambda: not window.isFullScreen(), timeout=2000)
         assert window._gallery.isVisible()
-        assert window._tool_panel.isVisible()
         assert window._system_bar.isVisible()
         assert window.statusBar().isVisible()
+        # Panel chrome follows the ACTIVE layout: the Presenter (lite)
+        # profile defaults to the narrow activity bar, the full profile to
+        # the wide tool panel.
+        assert window._activity_bar.isVisible() or window._tool_panel.isVisible()
 
     def test_exit_kiosk_restores_activity_tab_panel(self, presenter_window, qtbot):
         from dataclasses import replace as dc_replace

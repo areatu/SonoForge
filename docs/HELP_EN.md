@@ -786,7 +786,7 @@ These are registered as `WindowShortcut` bindings:
 | `Delete` / `Backspace` | delete the selected caliper or current-phase contour. |
 | `` ` `` | collapse/expand the thumbnail gallery. |
 | `F11` | toggle fullscreen kiosk: the gallery, panels, system bar and status bar are hidden; move the mouse to the top edge to reveal the system bar (auto-hides again). |
-| `F10` | Presenter view — a separate presentation window on the second display. |
+| `F10` | Presenter view — a separate presentation window on the second display (SonoForge Presenter build only). |
 | `Up` / `Down` | select the previous/next gallery instance, not the previous/next cine frame. |
 
 ### 18.2 Main/viewer event-handler keys
@@ -894,6 +894,8 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 ### 19.7 Projector demonstration (Presenter view)
 
 Scenario: a lecture/demo on a projector with "Extend these displays" in Windows, or a second monitor on Linux — same model as PowerPoint/LibreOffice Impress.
+
+The mode ships in the SonoForge Presenter (lite) build only: that build has the `Presenter` button in the top bar and the `F10` shortcut. The full build has neither.
 
 1. Configure "Extend" in the OS display settings.
 2. Click the `Presenter` button in the top bar (or press `F10`). The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.

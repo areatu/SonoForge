@@ -332,15 +332,20 @@ class MainWindow(QMainWindow):
             ("Delete", self._delete_current_contour),
             ("`", self._toggle_gallery_shortcut),
             ("F11", self._toggle_fullscreen_shortcut),
-            ("F10", self._presenter.toggle),
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
         ]
-        from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+        from echo_personal_tool.infrastructure.profile import (
+            has_ai_segmentation,
+            is_presenter,
+        )
 
         if has_ai_segmentation():
             # "I" triggers ONNX auto-segmentation — not part of the Presenter build.
             bindings.insert(3, ("I", self._request_auto_segment_shortcut))
+        if is_presenter():
+            # Presenter mode belongs to the Presenter (lite) build only.
+            bindings.append(("F10", self._presenter.toggle))
         for sequence, handler in bindings:
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -556,6 +561,8 @@ class MainWindow(QMainWindow):
 
     def _install_presenter_menu(self) -> None:
         """(Re)build the Presenter options menu, updating it in place."""
+        if self._system_bar._btn_presenter is None:
+            return  # full profile — no Presenter UI
         self._system_bar._btn_presenter.setMenu(self._build_presenter_menu())
 
     def _toggle_mmode(self) -> None:
@@ -2049,8 +2056,9 @@ class MainWindow(QMainWindow):
         self._system_bar.maximize_requested.connect(self._toggle_maximize)
         self._system_bar.close_requested.connect(self.close)
         self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
-        self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
-        self._install_presenter_menu()
+        if self._system_bar._btn_presenter is not None:
+            self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
+            self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
