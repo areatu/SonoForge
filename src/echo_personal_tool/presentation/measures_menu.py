@@ -414,6 +414,10 @@ class MeasuresMenuWidget(QWidget):
 
     def _build_menu(self) -> None:
         """Build or rebuild the menu with current preferences."""
+        # The buttons about to be deleted may be the current blink target:
+        # stop the timer first, otherwise _toggle_blink touches a dead
+        # C++ object (RuntimeError: ... already deleted).
+        self._stop_blink()
         # Clear existing content
         for section in self._sections if hasattr(self, "_sections") else []:
             section.deleteLater()
@@ -544,18 +548,37 @@ class MeasuresMenuWidget(QWidget):
                 self._ensure_section_visible(button)
                 return
 
-    def clear_highlight(self) -> None:
+    def _stop_blink(self) -> None:
+        """Stop the blink timer and drop the target without touching it.
+
+        The target button may already be deleted (menu rebuild, layout
+        rebuild) — touching it raises RuntimeError from libshiboken.
+        """
         self._blink_timer.stop()
-        if self._blink_target is not None:
-            self._blink_target.setStyleSheet(self._NORMAL_STYLE)
         self._blink_target = None
         self._blink_on = False
 
+    def clear_highlight(self) -> None:
+        target = self._blink_target
+        self._stop_blink()
+        if target is None:
+            return
+        try:
+            target.setStyleSheet(self._NORMAL_STYLE)
+        except RuntimeError:
+            pass
+
     def _toggle_blink(self) -> None:
-        if self._blink_target is None:
+        target = self._blink_target
+        if target is None:
+            self._blink_timer.stop()
             return
         self._blink_on = not self._blink_on
-        self._blink_target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
+        try:
+            target.setStyleSheet(self._BLINK_STYLE if self._blink_on else self._NORMAL_STYLE)
+        except RuntimeError:
+            # Target widget was destroyed while blinking — drop it silently.
+            self._stop_blink()
 
     def _ensure_section_visible(self, button: QPushButton) -> None:
         for section in self._sections:

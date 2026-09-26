@@ -58,6 +58,29 @@ DEFAULT_PDF_FONT_SIZE = 10
 
 DEFAULT_INTERESTING_DICOM_TAGS = "StudyDate,SeriesDescription,HeartRate,FrameRate"
 
+# ── Presenter mode (PowerPoint-style presenter view) ─────────────────
+#
+# While Presenter mode is active the main window keeps the full editing UI
+# on the speaker's display and a clean fullscreen copy of the viewer is
+# mirrored onto the audience display (see presentation/presenter_view.py).
+#
+# ``presenter_visual_preset`` additionally applies (non-destructively, only
+# while the mode is active) the projector-friendly overrides below: thicker
+# lines, larger fonts and inline caliper labels that stay readable from the
+# back of a room.  The user's own preferences are restored on exit.
+PRESENTATION_PRESET_OVERRIDES: dict[str, object] = {
+    "ui_font_size": 14,
+    "results_overlay_font_size": 24,
+    "results_overlay_opacity": 0.85,
+    "caliper_line_width": 3.5,
+    "contour_pen_manual_width": 3.5,
+    "contour_pen_ai_width": 3.5,
+    "contour_pen_simpson_width": 3.5,
+    "show_caliper_labels_on_frame": True,
+    "show_caliper_inline_labels": True,
+    "show_crosshair": True,
+}
+
 
 @dataclass
 class UserPreferences:
@@ -110,6 +133,16 @@ class UserPreferences:
     show_strain: bool = False
     show_la_auto: bool = False
     despeckle_enabled: bool = False
+    # Presenter mode (second-display window for the audience)
+    presenter_screen: str = ""
+    presenter_visual_preset: bool = True
+    presenter_pointer: bool = True
+    # Rendering backend of the AUDIENCE viewer only (the speaker's viewer
+    # keeps its auto-detected backend).  Raster by default: GL viewports in
+    # a second top-level window have been observed to stay black on real
+    # multi-monitor Linux setups (Debian 12 / Qt 6.4 / Intel) while every
+    # raster overlay in the same window renders fine.
+    presenter_audience_render: str = "raster"
 
 
 def _settings_store() -> QSettings:
@@ -314,6 +347,9 @@ def load_user_preferences() -> UserPreferences:
         show_la_auto=_read_bool(store.value("show_la_auto"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
+        presenter_screen=str(store.value("presenter_screen", "")),
+        presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),
+        presenter_pointer=_read_bool(store.value("presenter_pointer"), True),
     )
 
 
