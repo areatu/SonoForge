@@ -22,7 +22,7 @@ from typing import Literal
 
 import numpy as np
 from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPropertyAnimation, QSignalBlocker, Qt, QThreadPool, QTimer
-from PySide6.QtGui import QCloseEvent, QKeyEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QCursor, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -63,6 +63,7 @@ from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
+from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.system_bar import SystemBar
@@ -172,7 +173,9 @@ class MainWindow(QMainWindow):
         self._mmode_collapse_anim = None
 
         self._controller = controller or AppController()
-        # Portable builds keep the Orthanc cache on the USB stick instead of ~/.sonoforge
+        # Presenter mode (PowerPoint-style presenter view on a second display)
+        self._presenter = PresenterMode(self)
+        self._fullscreen_chrome_timer: QTimer | None = None
         from echo_personal_tool.infrastructure.profile import orthanc_cache_root
 
         orthanc_root = orthanc_cache_root()
@@ -311,6 +314,7 @@ class MainWindow(QMainWindow):
             ("Delete", self._delete_current_contour),
             ("`", self._toggle_gallery_shortcut),
             ("F11", self._toggle_fullscreen_shortcut),
+            ("F10", self._presenter.toggle),
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
         ]
@@ -393,14 +397,148 @@ class MainWindow(QMainWindow):
 
     def _toggle_fullscreen_shortcut(self) -> None:
         if self.isFullScreen():
-            self.showNormal()
-            self._gallery.show()
-            if not self._layout_config.activity_bar:
-                self._tool_panel.show()
+            self._exit_fullscreen_kiosk()
         else:
-            self._gallery.hide()
-            self._tool_panel.hide()
-            self.showFullScreen()
+            self._enter_fullscreen_kiosk()
+
+    # ── Fullscreen (F11) kiosk mode ─────────────────────────────────
+    #
+    # Hides ALL chrome — gallery, tool/activity panel, system bar and the
+    # status bar — leaving only the viewer.  Moving the mouse to the top
+    # edge slides the system bar in (auto-hides again after a short delay),
+    # like a video player in fullscreen.  F11 or Esc-chrome returns.
+
+    def _enter_fullscreen_kiosk(self) -> None:
+        self._gallery.hide()
+        self._tool_panel.hide()
+        if self._activity_bar is not None:
+            self._activity_bar.hide()
+        self._system_bar.hide()
+        self.statusBar().hide()
+        self.showFullScreen()
+        self._show_status(tr("status.fullscreen_hint"))
+        self._install_fullscreen_chrome_filter()
+
+    def _exit_fullscreen_kiosk(self) -> None:
+        self._remove_fullscreen_chrome_filter()
+        self.showNormal()
+        self._system_bar.show()
+        cfg = self._layout_config
+        self.statusBar().setVisible(cfg.status_bar_visible)
+        self._gallery.show()
+        if self._activity_bar is not None:
+            self._activity_bar.setVisible(cfg.activity_bar)
+        if cfg.activity_bar:
+            # Activity-bar mode: the wide panel only reappears when a tab
+            # was active before the kiosk.
+            self._restore_activity_tool_panel_if_needed()
+        else:
+            self._tool_panel.show()
+        self._system_bar.update_maximize_button(self.isMaximized())
+
+    def _install_fullscreen_chrome_filter(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def _remove_fullscreen_chrome_filter(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+        if self._fullscreen_chrome_timer is not None:
+            self._fullscreen_chrome_timer.stop()
+
+    def _fullscreen_reveal_chrome(self, *, auto_hide: bool) -> None:
+        """Slide the system bar in while in fullscreen (top-edge hover)."""
+        if not self.isFullScreen():
+            return
+        self._system_bar.show()
+        if auto_hide:
+            if self._fullscreen_chrome_timer is None:
+                self._fullscreen_chrome_timer = QTimer(self)
+                self._fullscreen_chrome_timer.setSingleShot(True)
+                self._fullscreen_chrome_timer.setInterval(2500)
+                self._fullscreen_chrome_timer.timeout.connect(self._fullscreen_hide_chrome)
+            self._fullscreen_chrome_timer.start()
+
+    def _fullscreen_hide_chrome(self) -> None:
+        if not self.isFullScreen():
+            return
+        pos = QCursor.pos()
+        over_bar = self._system_bar.isVisible() and self._system_bar.geometry().contains(
+            self._system_bar.mapFromGlobal(pos)
+        )
+        if not over_bar:
+            self._system_bar.hide()
+
+    def _fullscreen_handle_hover(self, event: QEvent) -> None:
+        """Top-edge hover reveal for the F11 kiosk mode (app-level filter)."""
+        try:
+            global_pos = event.globalPosition().toPoint()
+        except AttributeError:
+            return
+        window_top = self.mapToGlobal(QPoint(0, 0)).y()
+        if global_pos.y() - window_top <= TOP_EDGE_REVEAL_PX:
+            self._fullscreen_reveal_chrome(auto_hide=True)
+            return
+        if self._system_bar.isVisible():
+            over_bar = self._system_bar.geometry().contains(
+                self._system_bar.mapFromGlobal(global_pos)
+            )
+            if not over_bar and (
+                self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive()
+            ):
+                self._fullscreen_reveal_chrome(auto_hide=True)
+
+    # ── Presenter mode (second-display mirror) ──────────────────────
+
+    def _build_presenter_menu(self) -> QMenu:
+        # Reuse the button's menu when possible: rebuilding the menu object
+        # on every state change would leak QMenu instances.
+        menu = self._system_bar._btn_presenter.menu()
+        if menu is None:
+            menu = QMenu(self._system_bar._btn_presenter)
+            menu.setObjectName("presenterMenu")
+        menu.clear()
+        # clear() removes actions but not the submenu widget instances
+        # (audience-display picker) — drop them explicitly.
+        for submenu in menu.findChildren(QMenu, options=Qt.FindDirectChildrenOnly):
+            submenu.deleteLater()
+        toggle_action = menu.addAction(tr("presenter.menu_toggle"))
+        toggle_action.triggered.connect(self._presenter.toggle)
+
+        base = self._presenter.prefs_for_options()
+        screens_menu = menu.addMenu(tr("presenter.menu_screen"))
+        app = QApplication.instance()
+        screens = app.screens() if app is not None else []
+        checked_name = self._presenter.screen_action_checked_name()
+        for screen in screens:
+            action = screens_menu.addAction(screen.name())
+            action.setCheckable(True)
+            action.setChecked(screen.name() == checked_name)
+            action.triggered.connect(lambda _, s=screen: self._presenter.set_screen(s))
+
+        preset_action = menu.addAction(tr("presenter.menu_visual_preset"))
+        preset_action.setCheckable(True)
+        preset_action.setChecked(bool(getattr(base, "presenter_visual_preset", True)))
+        preset_action.triggered.connect(
+            lambda checked: self._presenter.set_visual_preset_enabled(checked)
+        )
+
+        pointer_action = menu.addAction(tr("presenter.menu_pointer"))
+        pointer_action.setCheckable(True)
+        pointer_action.setChecked(bool(getattr(base, "presenter_pointer", True)))
+        pointer_action.triggered.connect(lambda checked: self._presenter.set_pointer_enabled(checked))
+        return menu
+
+    def _presenter_active_changed(self, active: bool) -> None:
+        """Sync the system-bar button with the mirror state."""
+        self._system_bar.set_presenter_active(active)
+        self._install_presenter_menu()
+
+    def _install_presenter_menu(self) -> None:
+        """(Re)build the Presenter options menu, updating it in place."""
+        self._system_bar._btn_presenter.setMenu(self._build_presenter_menu())
 
     def _toggle_mmode(self) -> None:
         self._mmode_active = not self._mmode_active
@@ -514,6 +652,12 @@ class MainWindow(QMainWindow):
     def _load_layout_state(self) -> LayoutConfig:
         raw = self._user_preferences.layout_state_json
         if not raw:
+            # Presenter profile: show the narrow activity bar (with the
+            # popular actions) instead of the wide 280px tool panel.
+            from echo_personal_tool.infrastructure.profile import is_presenter
+
+            if is_presenter():
+                return LayoutConfig(activity_bar=True)
             return LayoutConfig()
         try:
             cfg = LayoutConfig(**json.loads(raw))
@@ -772,6 +916,10 @@ class MainWindow(QMainWindow):
     def _on_activity_action(self, action: str) -> None:
         if action == "caliper":
             self._on_caliper_requested()
+        elif action == "play":
+            self._controller.toggle_playback()
+        elif action == "hr":
+            self._on_heart_rate_requested()
         elif action == "lv2d":
             self._on_lv2d_all_diastole()
         elif action == "esv":
@@ -846,6 +994,9 @@ class MainWindow(QMainWindow):
         self._tool_panel.show_properties_tab()
 
     def _apply_user_preferences(self, preferences: UserPreferences) -> None:
+        # Presenter mode may overlay the projector preset: the caller's
+        # object is kept as the base, the effective copy is applied.
+        preferences = self._presenter.intercept_preferences(preferences)
         self._user_preferences = preferences
         if not preferences.results_overlay_custom_position:
             self._instance_overlay_positions.clear()
@@ -1241,6 +1392,10 @@ class MainWindow(QMainWindow):
             self.setFocus()
             self.activateWindow()
             return
+        if self._presenter.active:
+            self._presenter.stop()
+        if self.isFullScreen():
+            self._remove_fullscreen_chrome_filter()
         self._stop_viewer2_playback()
         self._viewer.disconnect_display_controls()
         # Wait briefly for pending workers to finish so signals don't fire
@@ -1496,6 +1651,7 @@ class MainWindow(QMainWindow):
                     self._viewer.show_calibration_ok_overlay()
                 elif self._viewer.start_calibration_caliper():
                     self._show_status(tr("status.calibration_click"))
+        self._presenter.forward_frame(image)
         if _FREEZE_DIAG:
             _diag_log.warning(
                 "[frame_display] playing=%s scroll=%s render_ms=%.2f",
@@ -1558,6 +1714,9 @@ class MainWindow(QMainWindow):
     def _on_state_changed(self, state: object) -> None:
         if not isinstance(state, ViewerState):
             return
+        self._presenter.forward_state(state)
+        if self._activity_bar is not None:
+            self._activity_bar.set_playing(state.is_playing)
         instance_uid = state.instance.sop_instance_uid if state.instance else None
         instance_changed = instance_uid != self._overlay_sync_instance_uid
         content_changed = False
@@ -1769,6 +1928,7 @@ class MainWindow(QMainWindow):
             display_text = fresh_html
 
         self._viewer.set_results_overlay(display_text)
+        self._presenter.forward_results_overlay(display_text)
 
         snapshot = state.measurement_snapshot
         if snapshot is not None:
@@ -1870,6 +2030,8 @@ class MainWindow(QMainWindow):
         self._system_bar.maximize_requested.connect(self._toggle_maximize)
         self._system_bar.close_requested.connect(self.close)
         self._system_bar.layout_customize_requested.connect(self._show_layout_menu)
+        self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
+        self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
@@ -2870,6 +3032,11 @@ class MainWindow(QMainWindow):
                 self._viewer2._view,
             ):
                 self._active_viewer = self._viewer2
+        # Fullscreen kiosk: reveal the system bar when the pointer touches
+        # the top edge of the window; auto-hide again once it moves away.
+        # Installed on the QApplication only while F11-kiosk is active.
+        if self.isFullScreen() and event.type() == QEvent.Type.MouseMove:
+            self._fullscreen_handle_hover(event)
         if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
             if watched in (self._viewer, self._viewer._graphics, self._viewer._view):
                 if self._handle_key_press(event):

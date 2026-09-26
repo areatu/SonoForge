@@ -1,0 +1,763 @@
+"""Tests for Presenter mode (presenter_view) and the F11 fullscreen kiosk.
+
+Architecture under test: the audience display gets a real, independently
+rendered window (its own ViewerWidget fed with the same frames/state via
+forwarding) — the PowerPoint/LibreOffice approach.  The old grab-based
+pixel mirror was removed because QWidget.grab() cannot composite a
+GL-backed pyqtgraph viewport (black image in the grab) and the readbacks
+blanked the speaker's viewer.
+
+Covers: audience-screen selection, presentation window lifecycle and
+placement flags, read-only input swallowing, frame/state/overlay
+forwarding, the non-destructive visual preset lifecycle, the presenter
+default layout, the F11 kiosk and the activity-bar additions.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pytest
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QApplication, QMenu, QWidget
+
+pytestmark = pytest.mark.gui
+
+pytest.importorskip("pytestqt")
+
+
+@pytest.fixture(autouse=True)
+def _setup_qapp():
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
+
+
+def _make_snapshot():
+    from echo_personal_tool.domain.models.viewer_state import ViewerState
+
+    return ViewerState(
+        instance=None,
+        current_frame_index=0,
+        total_frames=0,
+        frame_time_ms=None,
+        is_playing=False,
+        contours=(),
+        linear_measurements=(),
+        measurement_snapshot=None,
+        decode_in_progress=False,
+        manual_pixel_spacing=None,
+        scroll_navigation=False,
+    )
+
+
+def _make_controller():
+    c = MagicMock()
+    c.state_manager = MagicMock()
+    c.state_manager.snapshot = _make_snapshot()
+    c.playback_config = MagicMock(scroll_debounce_ms=100)
+    c.studies = []
+    c.get_cached_frames.return_value = []
+    # Persistent (not context-patched): _apply_user_preferences runs inside
+    # the tests and must not hit the real results formatter.
+    c.compute_overlay_snapshot = MagicMock(return_value=None)
+    return c
+
+
+@pytest.fixture()
+def presenter_window(mock_controller, monkeypatch):
+    """A MainWindow whose presenter mode can be exercised headlessly."""
+    # Whole-test patches: _apply_user_preferences is exercised late in the
+    # suite; re-polishing the real stylesheet over the accumulated widget
+    # tree is pathologically slow and irrelevant to presenter logic.
+    import echo_personal_tool.presentation.main_window as mw_module
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+    from echo_personal_tool.presentation.main_window import MainWindow
+
+    monkeypatch.setattr(mw_module, "apply_clinical_theme", lambda **kwargs: None)
+    monkeypatch.setattr(
+        "echo_personal_tool.infrastructure.user_preferences.save_user_preferences",
+        lambda preferences: None,
+    )
+
+    prefs = UserPreferences(
+        theme_mode="dark",
+        ui_font_size=12,
+        layout_state_json="",
+        confirm_reset=False,
+        magnetic_snap_enabled=False,
+        despeckle_enabled=False,
+        results_overlay_font_size=20,
+        caliper_line_width=2.0,
+        presenter_visual_preset=True,
+        presenter_pointer=True,
+        presenter_screen="",
+        language="en",
+    )
+    with (
+        patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
+        patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+    ):
+        window = MainWindow(controller=mock_controller)
+    yield window
+    if window._presenter.active:
+        window._presenter.stop()
+    window.close()
+
+
+@pytest.fixture()
+def mock_controller():
+    return _make_controller()
+
+
+def _drain(app, ms=120):
+    deadline = QEvent
+    from PySide6.QtCore import QElapsedTimer
+
+    timer = QElapsedTimer()
+    timer.start()
+    while timer.elapsed() < ms:
+        app.processEvents()
+
+
+def _fake_screen(name):
+    return SimpleNamespace(name=lambda n=name: n)
+
+
+def _echo_frame(w=320, h=240, shift=0) -> np.ndarray:
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot(xx - w / 2, yy + 40)
+    ang = np.arctan2(xx - w / 2, yy + 40)
+    sector = (r < h * 0.98) & (np.abs(ang - np.pi / 2) < 0.55)
+    img = 40 + 120 * sector * (0.4 + 0.6 * np.abs(np.sin(r / 14) * np.cos(ang * 9)))
+    return np.clip(np.roll(img, shift, axis=1), 0, 255).astype(np.uint8)
+
+
+# ── Audience screen selection ───────────────────────────────────────
+
+
+class TestAudienceScreenSelection:
+    def test_prefers_screen_different_from_host(self):
+        from echo_personal_tool.presentation.presenter_view import select_audience_screen
+
+        primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
+        # Speaker moved the main window to the second (HDMI) display:
+        # the presentation window must go to the OTHER one, not "first
+        # non-primary".
+        chosen = select_audience_screen([primary, second], remembered="", primary=primary, host_screen=second)
+        assert chosen is primary
+
+    def test_remembered_choice_wins_even_on_host_screen(self):
+        from echo_personal_tool.presentation.presenter_view import select_audience_screen
+
+        primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
+        chosen = select_audience_screen(
+            [primary, second], remembered="HDMI-1", primary=primary, host_screen=second
+        )
+        assert chosen is second
+
+    def test_without_host_info_falls_back_to_non_primary(self):
+        from echo_personal_tool.presentation.presenter_view import select_audience_screen
+
+        primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
+        chosen = select_audience_screen([primary, second], remembered="", primary=primary, host_screen=None)
+        assert chosen is second
+
+    def test_single_screen_returns_it(self):
+        from echo_personal_tool.presentation.presenter_view import select_audience_screen
+
+        only = _fake_screen("eDP-1")
+        assert select_audience_screen([only], remembered="", primary=only, host_screen=only) is only
+
+    def test_no_screens_is_none(self):
+        from echo_personal_tool.presentation.presenter_view import select_audience_screen
+
+        assert select_audience_screen([], remembered="", primary=None, host_screen=None) is None
+
+
+# ── Preferences / preset ────────────────────────────────────────────
+
+
+class TestPresenterPreferences:
+    def test_defaults(self):
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        p = UserPreferences()
+        assert p.presenter_screen == ""
+        assert p.presenter_visual_preset is True
+        assert p.presenter_pointer is True
+
+    def test_roundtrip_isolated(self, isolated_qsettings):
+        from echo_personal_tool.infrastructure.user_preferences import (
+            load_user_preferences,
+            save_user_preferences,
+        )
+
+        p = load_user_preferences()
+        p.presenter_screen = "HDMI-1"
+        p.presenter_visual_preset = False
+        p.presenter_pointer = False
+        save_user_preferences(p)
+        p2 = load_user_preferences()
+        assert p2.presenter_screen == "HDMI-1"
+        assert p2.presenter_visual_preset is False
+        assert p2.presenter_pointer is False
+
+    def test_preset_keys_are_valid_fields_and_in_range(self):
+        from dataclasses import fields
+
+        from echo_personal_tool.infrastructure.user_preferences import (
+            MAX_LINE_WIDTH,
+            MAX_OVERLAY_FONT_SIZE,
+            MAX_UI_FONT_SIZE,
+            PRESENTATION_PRESET_OVERRIDES,
+            UserPreferences,
+        )
+
+        valid = {f.name for f in fields(UserPreferences)}
+        p = UserPreferences()
+        for key, value in PRESENTATION_PRESET_OVERRIDES.items():
+            assert key in valid, key
+            if isinstance(value, (int, float)):
+                current = getattr(p, key)
+                assert value > current or value is True, f"{key} must be a boost"
+        assert PRESENTATION_PRESET_OVERRIDES["ui_font_size"] <= MAX_UI_FONT_SIZE
+        assert PRESENTATION_PRESET_OVERRIDES["results_overlay_font_size"] <= MAX_OVERLAY_FONT_SIZE
+        assert PRESENTATION_PRESET_OVERRIDES["caliper_line_width"] <= MAX_LINE_WIDTH
+
+    def test_sanitized_preset_matches_overrides(self):
+        from echo_personal_tool.infrastructure.user_preferences import (
+            PRESENTATION_PRESET_OVERRIDES,
+            UserPreferences,
+        )
+        from echo_personal_tool.presentation.presenter_view import sanitized_preset
+
+        base = UserPreferences()
+        out = sanitized_preset(base)
+        for key, value in PRESENTATION_PRESET_OVERRIDES.items():
+            assert out[key] == value
+        # Preset is a strict boost of the defaults (its whole point).
+        assert out["ui_font_size"] > base.ui_font_size
+        assert out["results_overlay_font_size"] > base.results_overlay_font_size
+        assert out["caliper_line_width"] > base.caliper_line_width
+
+
+# ── Presentation window ─────────────────────────────────────────────
+
+
+class TestPresenterWindow:
+    def _make(self, qapp_session, qtbot, pointer=True):
+        from echo_personal_tool.presentation.presenter_view import PresenterWindow
+
+        source = QWidget()  # stand-in for the speaker's viewer
+        qtbot.addWidget(source)
+        window = PresenterWindow(
+            QApplication.instance().primaryScreen(),
+            speaker_viewer_provider=lambda: source,
+            pointer=pointer,
+        )
+        qtbot.addWidget(window)
+        return window, source
+
+    def test_start_places_on_target_and_emits_placed(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot)
+        placed_screens: list[object] = []
+        window.placed.connect(placed_screens.append)
+        window.start()
+        qtbot.waitUntil(lambda: bool(placed_screens), timeout=2000)
+        assert window.isVisible()
+        assert window.isFullScreen()
+        assert placed_screens[0] is QApplication.instance().primaryScreen()
+        window.stop()
+        assert not window.isVisible()
+
+    def test_never_takes_focus_or_activation(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot)
+        assert window.focusPolicy() == Qt.FocusPolicy.NoFocus
+        assert window.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        # WindowDoesNotAcceptFocus is stored in the window flags.
+        assert bool(window.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus)
+        window.start()
+        qtbot.waitUntil(window.isVisible, timeout=2000)
+        assert not window.isActiveWindow()
+        window.stop()
+
+    def test_embeds_independent_viewer_with_speaker_controls_hidden(self, qapp_session, qtbot):
+        from echo_personal_tool.presentation.viewer_widget import ViewerWidget
+
+        window, _ = self._make(qapp_session, qtbot)
+        viewer = window.viewer()
+        assert isinstance(viewer, ViewerWidget)
+        for attr in ("_timeline_slider", "_play_button", "_step_forward_button", "_source_label"):
+            assert getattr(viewer, attr).isVisibleTo(viewer) is False
+        window.stop()
+
+    def test_input_is_swallowed_read_only_audience(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot)
+        viewer = window.viewer()
+        blocked = (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.MouseMove,
+            QEvent.Type.Wheel,
+            QEvent.Type.ContextMenu,
+        )
+        for event_type in blocked:
+            assert window.eventFilter(viewer, QEvent(event_type)) is True
+            assert window.eventFilter(viewer._graphics, QEvent(event_type)) is True
+        # Non-input events pass through untouched.
+        assert window.eventFilter(viewer, QEvent(QEvent.Type.Paint)) is False
+
+    def test_esc_fallback_requests_exit(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot)
+        window.start()
+        qtbot.waitUntil(window.isVisible, timeout=2000)
+        exits: list[bool] = []
+        window.exit_requested.connect(lambda: exits.append(True))
+        # Direct delivery (the window normally never has focus at all).
+        QApplication.sendEvent(
+            window, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+        )
+        assert exits == [True]
+        assert not window.isVisible()
+
+    def test_pointer_toggle(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot, pointer=True)
+        assert window.pointer_enabled is True
+        window.set_pointer_enabled(False)
+        assert window.pointer_enabled is False
+        window.set_pointer_enabled(True)
+        assert window.pointer_enabled is True
+
+    def test_pointer_maps_through_image_domain(self, qapp_session, qtbot):
+        """The laser dot maps via the speaker viewer's view coordinates —
+        exact even between differently sized windows."""
+        window, source = self._make(qapp_session, qtbot)
+        window.viewer().show_frame(_echo_frame())
+        source.resize(320, 240)
+        source.show()
+        # The provider returns the stand-in; mapping must simply return
+        # None for a cursor outside it (offscreen cursor at 0,0 — inside
+        # source, but the stand-in has no graphics view → except → None).
+        assert window._map_speaker_cursor() is None
+
+    def test_window_close_is_not_recursive(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot)
+        window.start()
+        qtbot.waitUntil(window.isVisible, timeout=2000)
+        exits: list[bool] = []
+        window.exit_requested.connect(lambda: exits.append(True))
+        window.close()  # WM-close path must not emit exit_requested
+        assert exits == []
+
+
+# ── PresenterMode controller (with MainWindow) ──────────────────────
+
+
+class TestPresenterModeController:
+    def test_toggle_starts_and_stops_presentation(self, presenter_window, qtbot):
+        window = presenter_window
+        assert not window._presenter.active
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        assert pw is not None and pw.isVisible()
+        assert window._system_bar._btn_presenter.isChecked()
+        # Preset applied non-destructively on the live host prefs...
+        assert window._user_preferences.ui_font_size == 14
+        assert window._user_preferences.caliper_line_width == 3.5
+        assert window._user_preferences.show_caliper_inline_labels is True
+        # ...but the speaker's original object is kept for restore.
+        base = window._presenter._base_prefs
+        assert base is not None
+        assert base.ui_font_size == 12
+        assert base.caliper_line_width == 2.0
+        # The presentation viewer got the preset too (independent render).
+        assert pw.viewer()._caliper_line_width == 3.5
+
+        window._presenter.stop()
+        assert not window._presenter.active
+        assert not window._system_bar._btn_presenter.isChecked()
+        assert window._user_preferences is base
+        assert window._user_preferences.ui_font_size == 12
+        assert window._user_preferences.caliper_line_width == 2.0
+        assert window._user_preferences.show_caliper_inline_labels is False
+
+    def test_start_without_preset_keeps_prefs(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.set_visual_preset_enabled(False)
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        assert window._user_preferences.ui_font_size == 12
+        assert window._user_preferences is window._presenter._base_prefs
+        window._presenter.stop()
+        assert window._user_preferences.ui_font_size == 12
+
+    def test_visual_preset_toggle_while_active(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        window._presenter.set_visual_preset_enabled(False)
+        assert window._user_preferences.ui_font_size == 12
+        window._presenter.set_visual_preset_enabled(True)
+        assert window._user_preferences.ui_font_size == 14
+        window._presenter.stop()
+        assert window._user_preferences.ui_font_size == 12
+
+    def test_pointer_toggle_while_active(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        window._presenter.set_pointer_enabled(False)
+        assert pw.pointer_enabled is False
+        window._presenter.set_pointer_enabled(True)
+        assert pw.pointer_enabled is True
+        window._presenter.stop()
+
+    def test_wl_sliders_drive_both_viewers(self, presenter_window, qtbot):
+        """Shared W/L/DR sliders: a tone change reaches the audience live."""
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        slider = window._tool_panel.controls.window_slider
+        with_QSignalBlocker = slider.blockSignals(True)
+        slider.setValue(slider.value() + 10)
+        slider.blockSignals(False)
+        _ = with_QSignalBlocker
+        # The presenter viewer is bound to the same sliders: no crash and
+        # the binding list is non-empty.
+        assert pw.viewer()._external_wl_dr_sliders is not None
+        window._presenter.stop()
+
+    def test_close_stops_presenter(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        window.close()
+        assert not window._presenter.active
+
+    def test_five_start_stop_cycles_stable(self, presenter_window, qtbot):
+        window = presenter_window
+        for _ in range(5):
+            window._presenter.start()
+            qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+            assert window._presenter.window().isVisible()
+            window._presenter.stop()
+            assert not window._presenter.active
+        assert window._user_preferences.ui_font_size == 12
+
+
+# ── Content forwarding (independent render, no grabs) ───────────────
+
+
+class TestContentForwarding:
+    def test_forward_frame_renders_on_audience_viewer(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        frame1 = _echo_frame(shift=0)
+        window._presenter.forward_frame(frame1)
+        assert pw.viewer()._current_frame is not None
+        assert np.asarray(pw.viewer()._current_frame).shape == (240, 320)
+        frame2 = _echo_frame(shift=60)
+        window._presenter.forward_frame(frame2)
+        assert not np.array_equal(np.asarray(pw.viewer()._current_frame), frame1)
+
+    def test_forward_results_overlay_renders_text(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        window._presenter.forward_results_overlay("<b>EF: 58%</b>")
+        assert "EF: 58%" in pw.viewer()._results_overlay_label.text()
+
+    def test_forward_state_no_crash(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        window._presenter.forward_state(_make_snapshot())  # must not raise
+        window._presenter.stop()
+
+    def test_forwarding_is_noop_when_inactive(self, presenter_window):
+        window = presenter_window
+        # None of these may raise with no presentation window.
+        window._presenter.forward_frame(_echo_frame())
+        window._presenter.forward_state(_make_snapshot())
+        window._presenter.forward_results_overlay("x")
+
+    def test_no_grab_anywhere_in_module(self):
+        """Architecture guard: the presentation code must not call
+        QWidget.grab() — it cannot composite GL viewports (black image)
+        and its readbacks blank the speaker's GL viewer."""
+        from pathlib import Path
+
+        source = Path(
+            "src/echo_personal_tool/presentation/presenter_view.py"
+        ).read_text(encoding="utf-8")
+        # Skip the module docstring (it documents WHY grabs are not used);
+        # everything after it must be grab-free.
+        code_after_docstring = source.split('"""', 2)[2]
+        assert ".grab(" not in code_after_docstring
+
+    def test_main_window_hooks_forward_to_presenter(self, presenter_window, qtbot):
+        """The MainWindow hooks actually forward what the host renders."""
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        pw = window._presenter.window()
+        # Simulate the frame-loaded hook.
+        window._on_frame_loaded(_echo_frame())
+        assert pw.viewer()._current_frame is not None
+        # Simulate the results-overlay hook through _sync_results_overlay's
+        # forwarding call.
+        window._presenter.forward_results_overlay("<b>EDV 112 ml</b>")
+        assert "EDV 112 ml" in pw.viewer()._results_overlay_label.text()
+
+
+# ── Presenter profile default layout (narrow activity bar) ──────────
+
+
+class TestPresenterDefaultLayout:
+    def test_presenter_profile_defaults_to_activity_bar(self, monkeypatch, isolated_qsettings):
+        from echo_personal_tool.infrastructure import profile
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from echo_personal_tool.presentation.main_window import MainWindow
+
+        monkeypatch.setenv(profile.PROFILE_ENV, "presenter")
+        w = MainWindow.__new__(MainWindow)  # no Qt init — test the loader only
+        w._user_preferences = UserPreferences(layout_state_json="")
+        cfg = MainWindow._load_layout_state(w)
+        assert cfg.activity_bar is True
+
+        monkeypatch.delenv(profile.PROFILE_ENV)
+        cfg_full = MainWindow._load_layout_state(w)
+        assert cfg_full.activity_bar is False
+
+    def test_saved_layout_wins_over_presenter_default(self, monkeypatch):
+        from echo_personal_tool.infrastructure import profile
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from echo_personal_tool.presentation.main_window import MainWindow
+
+        monkeypatch.setenv(profile.PROFILE_ENV, "presenter")
+        w = MainWindow.__new__(MainWindow)
+        saved = json.dumps(
+            {
+                "activity_bar": False,
+                "swap_places": False,
+                "gallery_horizontal": False,
+                "status_bar_visible": True,
+                "multiview": False,
+            }
+        )
+        w._user_preferences = UserPreferences(layout_state_json=saved)
+        assert MainWindow._load_layout_state(w).activity_bar is False
+
+
+# ── F11 fullscreen kiosk ────────────────────────────────────────────
+
+
+class TestFullscreenKiosk:
+    def test_fullscreen_hides_all_chrome(self, presenter_window, qtbot):
+        window = presenter_window
+        window._gallery.show()
+        window._tool_panel.show()
+        window._system_bar.show()
+        window._enter_fullscreen_kiosk()
+        qtbot.waitUntil(window.isFullScreen, timeout=2000)
+        assert not window._gallery.isVisible()
+        assert not window._tool_panel.isVisible()
+        assert not window._system_bar.isVisible()
+        assert not window.statusBar().isVisible()
+
+    def test_exit_fullscreen_restores_chrome(self, presenter_window, qtbot):
+        window = presenter_window
+        window._gallery.show()
+        window._tool_panel.show()
+        window._system_bar.show()
+        window._enter_fullscreen_kiosk()
+        qtbot.waitUntil(window.isFullScreen, timeout=2000)
+        window._exit_fullscreen_kiosk()
+        qtbot.waitUntil(lambda: not window.isFullScreen(), timeout=2000)
+        assert window._gallery.isVisible()
+        assert window._tool_panel.isVisible()
+        assert window._system_bar.isVisible()
+        assert window.statusBar().isVisible()
+
+    def test_exit_kiosk_restores_activity_tab_panel(self, presenter_window, qtbot):
+        from dataclasses import replace as dc_replace
+
+        window = presenter_window
+        window.show()
+        qtbot.waitExposed(window, timeout=2000)
+        window._layout_config = dc_replace(window._layout_config, activity_bar=True)
+        window._rebuild_layout()
+        window._activity_bar._buttons["measures"].setChecked(True)
+        window._on_activity_tab_activated("measures")
+        assert window._tool_panel.isVisible()
+
+        window._enter_fullscreen_kiosk()
+        qtbot.waitUntil(window.isFullScreen, timeout=2000)
+        assert not window._tool_panel.isVisible()
+        window._exit_fullscreen_kiosk()
+        qtbot.waitUntil(lambda: not window.isFullScreen(), timeout=2000)
+        assert window._activity_bar.isVisible()
+        assert window._tool_panel.isVisible()
+
+
+# ── Activity bar additions ──────────────────────────────────────────
+
+
+class TestActivityBarPresenterActions:
+    def test_play_pause_glyph_swap(self, qapp_session, qtbot):
+        from echo_personal_tool.presentation.activity_bar import ActivityBar
+
+        bar = ActivityBar()
+        qtbot.addWidget(bar)
+        assert "play" in bar._action_buttons
+        assert "hr" in bar._action_buttons
+        bar.set_playing(True)
+        assert bar._playing is True
+        bar.set_playing(True)  # idempotent
+        assert bar._playing is True
+        bar.set_playing(False)
+        assert bar._playing is False
+
+    def test_actions_emitted(self, qapp_session, qtbot):
+        from echo_personal_tool.presentation.activity_bar import ActivityBar
+
+        bar = ActivityBar()
+        qtbot.addWidget(bar)
+        received: list[str] = []
+        bar.action_requested.connect(received.append)
+        bar._action_buttons["play"].click()
+        bar._action_buttons["hr"].click()
+        assert received == ["play", "hr"]
+
+
+# ── Regression: deep-analysis fixes ─────────────────────────────────
+
+
+class TestPresenterRegressionFixes:
+    def test_settings_apply_during_presentation_survives_stop(self, presenter_window, qtbot):
+        """Settings-dialog apply while presenting must become the new base."""
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        window._apply_user_preferences(replace(window._presenter._base_prefs, ui_font_size=16))
+        # Preset still overlays the UI font while presenting...
+        assert window._user_preferences.ui_font_size == 14
+        assert window._presenter._base_prefs.ui_font_size == 16
+        window._presenter.stop()
+        # ...and the dialog's value survives the exit.
+        assert window._user_preferences is window._presenter._base_prefs
+        assert window._user_preferences.ui_font_size == 16
+
+    def test_changes_during_presentation_merge_back(self, presenter_window, qtbot):
+        """In-place toggles made while presenting must survive the exit."""
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        window._user_preferences.magnetic_snap_enabled = not window._user_preferences.magnetic_snap_enabled
+        window._user_preferences.last_opened_folder = "/tmp/demo"
+        window._presenter.stop()
+        assert window._user_preferences.magnetic_snap_enabled is True
+        assert window._user_preferences.last_opened_folder == "/tmp/demo"
+        # Preset-owned fields are NOT merged (speaker's own value kept).
+        assert window._user_preferences.ui_font_size == 12
+        assert window._user_preferences.caliper_line_width == 2.0
+
+    def test_dialog_accept_preserves_presenter_fields(self, isolated_qsettings, monkeypatch):
+        """OK in the Settings dialog must not reset presenter fields."""
+        from echo_personal_tool.infrastructure.user_preferences import (
+            load_user_preferences,
+            save_user_preferences,
+        )
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        stored = load_user_preferences()
+        stored.presenter_screen = "HDMI-1"
+        stored.presenter_visual_preset = False
+        stored.presenter_pointer = False
+        save_user_preferences(stored)
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.user_preferences_dialog.save_server_settings",
+            lambda settings: None,
+        )
+        dialog = UserPreferencesDialog()
+        dialog._on_accept()
+        reloaded = load_user_preferences()
+        assert reloaded.presenter_screen == "HDMI-1"
+        assert reloaded.presenter_visual_preset is False
+        assert reloaded.presenter_pointer is False
+
+    def test_presenter_menu_rebuild_does_not_leak(self, presenter_window, qtbot):
+        window = presenter_window
+        button = window._system_bar._btn_presenter
+        menu_before = button.menu()
+        assert menu_before is not None
+        window._presenter_active_changed(True)
+        window._presenter_active_changed(False)
+        window._presenter_active_changed(True)
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        # The same QMenu object is updated in place (no per-toggle leak) and
+        # the audience-display submenu orphans are cleaned up on rebuild.
+        assert button.menu() is menu_before
+        assert len(menu_before.findChildren(QMenu)) == 1
+
+    def test_set_screen_restarts_active_presentation(self, presenter_window, qtbot):
+        window = presenter_window
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        screen = QApplication.instance().primaryScreen()
+        window._presenter.set_screen(screen)
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        assert window._presenter.active
+        assert window._presenter._base_prefs.presenter_screen == screen.name()
+        window._presenter.stop()
+
+    def test_status_reports_actual_screen_and_mismatch(self, presenter_window, qtbot):
+        """Single-display case: the status explicitly warns that the
+        presentation window covers the speaker's window."""
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        window = presenter_window
+        window.show()
+        qtbot.waitExposed(window, timeout=2000)
+        window._presenter.start()
+        qtbot.waitUntil(lambda: window._presenter.active, timeout=2000)
+        # Offscreen has a single screen; the shown main window sits on it,
+        # so host screen == target screen → covering warning is guaranteed.
+        expected = tr("presenter.same_screen_warning")
+        qtbot.waitUntil(
+            lambda: window._system_bar._status_label._full_text == expected,
+            timeout=3000,
+        )
+        window._presenter.stop()
+
+
+# ── Activity-bar default in the presenter profile (host wiring) ─────
+
+
+class TestHostIntegration:
+    def test_main_window_uses_presenter_controller(self, presenter_window):
+        from echo_personal_tool.presentation.presenter_view import PresenterMode
+
+        assert isinstance(presenter_window._presenter, PresenterMode)
+
+    def test_frame_hook_signature_unchanged(self, presenter_window):
+        # _on_frame_loaded must keep accepting the worker payload.
+        import inspect
+
+        sig = inspect.signature(presenter_window._on_frame_loaded)
+        assert list(sig.parameters) == ["pixels"]

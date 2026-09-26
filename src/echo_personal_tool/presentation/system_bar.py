@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QToolButton,
     QWidget,
 )
 
@@ -105,6 +106,7 @@ class SystemBar(QWidget):
     maximize_requested = Signal()
     close_requested = Signal()
     layout_customize_requested = Signal()
+    presenter_toggle_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -193,6 +195,19 @@ class SystemBar(QWidget):
         self._btn_layout.setToolTip("Customize Layout")
         self._btn_layout.clicked.connect(self.layout_customize_requested.emit)
 
+        # QToolButton with MenuButtonPopup: the main area toggles Presenter
+        # mode (like PowerPoint's "Slide Show" button), the small arrow opens
+        # the options menu (audience display, visual preset, pointer).
+        self._btn_presenter = QToolButton()
+        self._btn_presenter.setIcon(_load_icon("presenter"))
+        self._btn_presenter.setObjectName("presenterButton")
+        self._btn_presenter.setCheckable(True)
+        self._btn_presenter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._btn_presenter.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self._btn_presenter.setText(tr("presenter.button"))
+        self._btn_presenter.setToolTip(tr("presenter.tooltip"))
+        self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
+
         # Window control buttons
         self._btn_minimize = QPushButton()
         self._btn_minimize.setIcon(_load_icon("minimize"))
@@ -224,6 +239,7 @@ class SystemBar(QWidget):
             self._btn_references,
             btn_reset,
             self._btn_layout,
+            self._btn_presenter,
             self._btn_minimize,
             self._btn_maximize,
             self._btn_close,
@@ -267,6 +283,7 @@ class SystemBar(QWidget):
         for button in (
             btn_caliper,
             self._btn_settings,
+            self._btn_presenter,
             self._btn_references,
             btn_reset,
             self._btn_layout,
@@ -302,6 +319,16 @@ class SystemBar(QWidget):
         """Hide the ASE references button (Presenter build has no reference UI)."""
         self._btn_references.setVisible(visible)
 
+    def set_presenter_active(self, active: bool) -> None:
+        """Checked state of the Presenter button (mirror running)."""
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        with QSignalBlocker(self._btn_presenter):
+            self._btn_presenter.setChecked(active)
+        self._btn_presenter.setToolTip(
+            tr("presenter.tooltip_active") if active else tr("presenter.tooltip")
+        )
+
     def set_study_context(self, label: str, modality: str = "") -> None:
         del modality
         self._study_label.setText(label)
@@ -332,6 +359,7 @@ class SystemBar(QWidget):
         self._btn_references.setIcon(_load_icon("description"))
         self._btn_reset.setIcon(_load_icon("refresh"))
         self._btn_layout.setIcon(_load_icon("layout"))
+        self._btn_presenter.setIcon(_load_icon("presenter"))
         self._btn_minimize.setIcon(_load_icon("minimize"))
         self._btn_maximize.setIcon(_load_icon("maximize"))
         self._btn_close.setIcon(_load_icon("close"))
@@ -352,6 +380,8 @@ class SystemBar(QWidget):
         self._btn_references.setText(tr("system_bar.references"))
         self._btn_references.setToolTip(tr("system_bar.references"))
         self._btn_reset.setText(tr("system_bar.reset"))
+        self._btn_presenter.setText(tr("presenter.button"))
+        self._btn_presenter.setToolTip(tr("presenter.tooltip"))
         self._btn_minimize.setToolTip(tr("system_bar.minimize"))
         self._btn_maximize.setToolTip(tr("system_bar.maximize"))
         self._btn_close.setToolTip(tr("system_bar.close"))
