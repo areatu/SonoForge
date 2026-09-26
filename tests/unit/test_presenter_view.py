@@ -175,18 +175,14 @@ class TestAudienceScreenSelection:
         from echo_personal_tool.presentation.presenter_view import select_audience_screen
 
         primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
-        chosen = select_audience_screen(
-            [primary, second], remembered="HDMI-1", primary=primary, host_screen=second
-        )
+        chosen = select_audience_screen([primary, second], remembered="HDMI-1", primary=primary, host_screen=second)
         assert chosen is primary
 
     def test_remembered_choice_off_host_screen_wins(self):
         from echo_personal_tool.presentation.presenter_view import select_audience_screen
 
         primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
-        chosen = select_audience_screen(
-            [primary, second], remembered="HDMI-1", primary=primary, host_screen=primary
-        )
+        chosen = select_audience_screen([primary, second], remembered="HDMI-1", primary=primary, host_screen=primary)
         assert chosen is second
 
     def test_without_host_info_falls_back_to_non_primary(self):
@@ -528,9 +524,7 @@ class TestContentForwarding:
         and its readbacks blank the speaker's GL viewer."""
         from pathlib import Path
 
-        source = Path(
-            "src/echo_personal_tool/presentation/presenter_view.py"
-        ).read_text(encoding="utf-8")
+        source = Path("src/echo_personal_tool/presentation/presenter_view.py").read_text(encoding="utf-8")
         # Skip the module docstring (it documents WHY grabs are not used);
         # everything after it must be grab-free.
         code_after_docstring = source.split('"""', 2)[2]
@@ -592,9 +586,7 @@ class TestContourCaliperForwarding:
         viewer = self._presentation(presenter_window, qtbot)
         snapshot = presenter_window._controller.state_manager.snapshot
         first = self._contour(snapshot)
-        moved = replace(
-            first, points=[(55.0, 65.0), (125.0, 65.0), (125.0, 155.0), (55.0, 155.0)]
-        )
+        moved = replace(first, points=[(55.0, 65.0), (125.0, 65.0), (125.0, 155.0), (55.0, 155.0)])
         presenter_window._presenter.forward_contours([first])
         presenter_window._presenter.forward_contours([moved])
         assert tuple(viewer._stored_contours) == (moved,)
@@ -657,14 +649,11 @@ class TestContourCaliperForwarding:
         snapshot = presenter_window._controller.state_manager.snapshot
         initial = self._contour(snapshot)
         presenter_window._presenter.forward_contours([initial])
-        refined = replace(
-            initial, points=[(52.0, 62.0), (122.0, 62.0), (122.0, 152.0), (52.0, 152.0)]
-        )
+        refined = replace(initial, points=[(52.0, 62.0), (122.0, 62.0), (122.0, 152.0), (52.0, 152.0)])
         # _finalize_contour_point_drag ends with this emit:
         presenter_window._viewer.contours_changed.emit([refined])
         assert tuple(viewer._stored_contours) == (refined,)
         assert len(viewer._contours) == 1
-
 
     def test_in_place_point_drag_updates_audience(self, presenter_window, qtbot):
         """Regression: host mutates Contour.points in place during drags.
@@ -737,9 +726,7 @@ class TestDopplerForwarding:
         host_overlay = presenter_window._viewer._doppler
         host_overlay._peak_markers.append(self._dto().peaks[0])
         host_overlay._traces.append(self._dto().traces[0])
-        presenter_window._viewer.doppler_markers_changed.emit(
-            host_overlay.get_measurement_dto()
-        )
+        presenter_window._viewer.doppler_markers_changed.emit(host_overlay.get_measurement_dto())
         assert len(viewer._doppler._peak_markers) == 1
         assert viewer._doppler._peak_markers[0].label == "E"
         assert len(viewer._doppler._traces) == 1
@@ -752,15 +739,11 @@ class TestDopplerForwarding:
         host_overlay = presenter_window._viewer._doppler
         host_overlay._peak_markers.append(self._dto().peaks[0])
         host_overlay._traces.append(self._dto().traces[0])
-        presenter_window._viewer.doppler_markers_changed.emit(
-            host_overlay.get_measurement_dto()
-        )
+        presenter_window._viewer.doppler_markers_changed.emit(host_overlay.get_measurement_dto())
         assert len(viewer._doppler._traces) == 1
         host_overlay._peak_markers.clear()
         host_overlay._traces.clear()
-        presenter_window._viewer.doppler_markers_changed.emit(
-            DopplerMeasurementDTO(peaks=(), intervals=(), traces=())
-        )
+        presenter_window._viewer.doppler_markers_changed.emit(DopplerMeasurementDTO(peaks=(), intervals=(), traces=()))
         assert viewer._doppler._traces == []
         assert viewer._doppler._peak_markers == []
 
@@ -796,15 +779,11 @@ class TestDopplerForwarding:
         pw = presenter_window._presenter.window()
         host_overlay = presenter_window._viewer._doppler
         # A finished measurement: dots + text block like the host draws it.
-        host_overlay._vessel_points = pg.ScatterPlotItem(
-            size=10, pen=pg.mkPen("#ffffff", width=1)
-        )
+        host_overlay._vessel_points = pg.ScatterPlotItem(size=10, pen=pg.mkPen("#ffffff", width=1))
         host_overlay._vessel_points.setData(
             [{"pos": (10.0, 40.0), "data": "PSV"}, {"pos": (20.0, 80.0), "data": "EDV"}]
         )
-        host_overlay._vessel_text_item = pg.TextItem(
-            "PSV: 120.0 cm/s\nEDV: 40.0 cm/s\nRI: 0.67", anchor=(1.0, 0.0)
-        )
+        host_overlay._vessel_text_item = pg.TextItem("PSV: 120.0 cm/s\nEDV: 40.0 cm/s\nRI: 0.67", anchor=(1.0, 0.0))
         host_overlay._vessel_text_item.setPos(280.0, 5.0)
         host_overlay._vessel_text_item.show()
         try:
@@ -955,7 +934,6 @@ class TestLivePreviewOverlayPositionPacing:
         assert not pw._live_contour_item.isVisible()
         assert len(viewer._contours) == 1
 
-
     def test_drag_process_mirrors_deformed_polyline(self, presenter_window, qtbot):
         """Field round 7: dragging a point of an EXISTING contour deforms
         the rendered contour item (``_contour_items[idx]``, setData per
@@ -995,9 +973,7 @@ class TestLivePreviewOverlayPositionPacing:
         host_overlay = presenter_window._viewer._doppler
         envelope = pg.PlotDataItem(pen=pg.mkPen("#00e5ff", width=2))
         envelope.setData([10.0, 40.0, 80.0], [30.0, 5.0, 28.0])
-        guide = pg.PlotDataItem(
-            pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine)
-        )
+        guide = pg.PlotDataItem(pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine))
         guide.setData([40.0, 40.0], [50.0, 5.0])
         host_overlay._auto_envelope_item = envelope
         host_overlay._auto_peak_guide_item = guide
@@ -1050,9 +1026,7 @@ class TestPresenterProfileOnlyAccess:
         assert isinstance(bar._btn_presenter, QToolButton)
         assert bar._btn_presenter.text()
 
-    def test_full_profile_registers_no_f10_shortcut(
-        self, mock_controller, monkeypatch, qtbot
-    ):
+    def test_full_profile_registers_no_f10_shortcut(self, mock_controller, monkeypatch, qtbot):
         from PySide6.QtGui import QShortcut
 
         import echo_personal_tool.presentation.main_window as mw_module
@@ -1091,9 +1065,7 @@ class TestPresenterProfileOnlyAccess:
     def test_presenter_profile_registers_f10_shortcut(self, presenter_window):
         from PySide6.QtGui import QShortcut
 
-        keys = [
-            sc.key().toString() for sc in presenter_window.findChildren(QShortcut)
-        ]
+        keys = [sc.key().toString() for sc in presenter_window.findChildren(QShortcut)]
         assert "F10" in keys
 
 
@@ -1356,9 +1328,7 @@ class TestAudienceRenderBackend:
         # QWidget viewport. The class name must NOT contain "OpenGL".
         assert "opengl" not in window.viewport_class_name().lower()
 
-    def test_raster_mode_flips_and_restores_pyqtgraph_config(
-        self, qapp_session, qtbot, monkeypatch
-    ):
+    def test_raster_mode_flips_and_restores_pyqtgraph_config(self, qapp_session, qtbot, monkeypatch):
         """With a GL default, raster construction overrides useOpenGL twice.
 
         The override must flip to False for the audience widget and restore
@@ -1438,9 +1408,7 @@ class TestAudienceRenderBackend:
                 super().__init__(*args, **kwargs)
 
         monkeypatch.setattr(pv, "PresenterWindow", RecordingWindow)
-        presenter_window._user_preferences = UserPreferences(
-            presenter_audience_render="wiregl"
-        )
+        presenter_window._user_preferences = UserPreferences(presenter_audience_render="wiregl")
         presenter_window._presenter.start()
         presenter_window._presenter.stop()
         assert captured["render_mode"] == "raster"
@@ -1519,9 +1487,7 @@ class TestPresenterDiagnostics:
         mode.start()
         window = mode.window()
         assert window is not None
-        monkeypatch.setattr(
-            window, "viewer", lambda: (_ for _ in ()).throw(RuntimeError("dead"))
-        )
+        monkeypatch.setattr(window, "viewer", lambda: (_ for _ in ()).throw(RuntimeError("dead")))
         try:
             mode.forward_frame(np.zeros((4, 4), dtype=np.uint8))
             assert diag.counters["forward_errors"] == 1

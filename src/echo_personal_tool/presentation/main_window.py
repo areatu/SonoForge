@@ -242,20 +242,14 @@ class MainWindow(QMainWindow):
         # Contour/caliper edits are stored with emit=False (no state_changed):
         # the presentation viewer needs this explicit forward to re-render.
         self._viewer.contours_changed.connect(self._presenter.forward_contours)
-        self._viewer.linear_measurements_changed.connect(
-            self._presenter.forward_linear_measurements
-        )
+        self._viewer.linear_measurements_changed.connect(self._presenter.forward_linear_measurements)
         # Doppler markers/VTI traces/calibration/vessel live viewer-locally
         # and never reach state_changed — forward them explicitly.
         self._viewer.doppler_markers_changed.connect(self._presenter.forward_doppler)
         # Results-overlay drags reposition the audience label live.
-        self._viewer.results_overlay_position_changed.connect(
-            self._presenter.forward_results_overlay_position
-        )
+        self._viewer.results_overlay_position_changed.connect(self._presenter.forward_results_overlay_position)
         self._viewer.doppler_calibration_changed.connect(self._presenter.forward_doppler)
-        self._viewer.spectral_calibration_completed.connect(
-            self._presenter.forward_doppler
-        )
+        self._viewer.spectral_calibration_completed.connect(self._presenter.forward_doppler)
         self._viewer._doppler.vessel_changed.connect(self._presenter.forward_doppler)
         self._viewer.linear_caliper_sequence_completed.connect(self._on_linear_caliper_sequence_completed)
         self._viewer.calibration_completed.connect(self._controller.on_manual_calibration)
@@ -505,12 +499,8 @@ class MainWindow(QMainWindow):
             self._fullscreen_reveal_chrome(auto_hide=True)
             return
         if self._system_bar.isVisible():
-            over_bar = self._system_bar.geometry().contains(
-                self._system_bar.mapFromGlobal(global_pos)
-            )
-            if not over_bar and (
-                self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive()
-            ):
+            over_bar = self._system_bar.geometry().contains(self._system_bar.mapFromGlobal(global_pos))
+            if not over_bar and (self._fullscreen_chrome_timer is None or not self._fullscreen_chrome_timer.isActive()):
                 self._fullscreen_reveal_chrome(auto_hide=True)
 
     # ── Presenter mode (second-display mirror) ──────────────────────
@@ -544,9 +534,7 @@ class MainWindow(QMainWindow):
         preset_action = menu.addAction(tr("presenter.menu_visual_preset"))
         preset_action.setCheckable(True)
         preset_action.setChecked(bool(getattr(base, "presenter_visual_preset", True)))
-        preset_action.triggered.connect(
-            lambda checked: self._presenter.set_visual_preset_enabled(checked)
-        )
+        preset_action.triggered.connect(lambda checked: self._presenter.set_visual_preset_enabled(checked))
 
         pointer_action = menu.addAction(tr("presenter.menu_pointer"))
         pointer_action.setCheckable(True)

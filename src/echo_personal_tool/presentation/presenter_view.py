@@ -298,9 +298,7 @@ class PresenterWindow(QWidget):
         # drawing process, not only the committed result.
         import pyqtgraph as pg
 
-        self._live_contour_item = pg.PlotDataItem(
-            pen=pg.mkPen("#ffd54f", width=3)
-        )
+        self._live_contour_item = pg.PlotDataItem(pen=pg.mkPen("#ffd54f", width=3))
         self._live_contour_item.setZValue(40)
         self._live_contour_item.hide()
         self._viewer._view.addItem(self._live_contour_item)
@@ -316,24 +314,18 @@ class PresenterWindow(QWidget):
         # Vessel auto-trace: the cyan envelope contour and the orange peak
         # guide live as plot items on the speaker's doppler overlay and are
         # not part of the measurement DTO — mirror them explicitly.
-        self._live_envelope_item = pg.PlotDataItem(
-            pen=pg.mkPen("#00e5ff", width=2)
-        )
+        self._live_envelope_item = pg.PlotDataItem(pen=pg.mkPen("#00e5ff", width=2))
         self._live_envelope_item.setZValue(24)
         self._live_envelope_item.hide()
         self._viewer._view.addItem(self._live_envelope_item)
-        self._live_peak_guide_item = pg.PlotDataItem(
-            pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine)
-        )
+        self._live_peak_guide_item = pg.PlotDataItem(pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine))
         self._live_peak_guide_item.setZValue(26)
         self._live_peak_guide_item.hide()
         self._viewer._view.addItem(self._live_peak_guide_item)
         # Vessel measurement results: the PSV/EDV dots and the results text
         # block (top-right INSIDE the strip) are plot-local items outside
         # the measurement DTO — mirror them WYSIWYG.
-        self._live_vessel_points = pg.ScatterPlotItem(
-            size=10, pen=pg.mkPen("#ffffff", width=1)
-        )
+        self._live_vessel_points = pg.ScatterPlotItem(size=10, pen=pg.mkPen("#ffffff", width=1))
         self._live_vessel_points.setZValue(25)
         self._live_vessel_points.hide()
         self._viewer._view.addItem(self._live_vessel_points)
@@ -843,11 +835,7 @@ class PresenterMode(QObject):
         self._diag.event(
             "screen_selected",
             chosen=screen.name(),
-            host=(
-                self._host_screen().name()
-                if self._host_screen() is not None
-                else None
-            ),
+            host=(self._host_screen().name() if self._host_screen() is not None else None),
             remembered=getattr(self.prefs_for_options(), "presenter_screen", ""),
         )
 
@@ -855,9 +843,7 @@ class PresenterMode(QObject):
         # dialog replaces it between presentations.
         preferences = self._host._user_preferences
         self._base_prefs = preferences
-        render_mode = str(
-            getattr(preferences, "presenter_audience_render", "raster") or "raster"
-        ).strip().lower()
+        render_mode = str(getattr(preferences, "presenter_audience_render", "raster") or "raster").strip().lower()
         if render_mode not in ("raster", "opengl"):
             render_mode = "raster"
 
@@ -880,18 +866,14 @@ class PresenterMode(QObject):
         except AttributeError:
             pass
         try:
-            viewer.set_scroll_debounce_ms(
-                self._host._controller.playback_config.scroll_debounce_ms
-            )
+            viewer.set_scroll_debounce_ms(self._host._controller.playback_config.scroll_debounce_ms)
         except Exception:
             pass
         # The same W/L/DR sliders drive both viewers — live tone
         # adjustments reach the audience immediately.
         try:
             controls = self._host._tool_panel.controls
-            viewer.bind_display_controls(
-                controls.window_slider, controls.level_slider, controls.dr_slider
-            )
+            viewer.bind_display_controls(controls.window_slider, controls.level_slider, controls.dr_slider)
         except Exception:
             pass
         self._window = window
@@ -964,11 +946,7 @@ class PresenterMode(QObject):
         fields: dict[str, object] = {
             "audience": self._viewer_frame_summary(window.viewer()),
             "audience_visible": window.isVisible(),
-            "audience_screen": (
-                window.windowHandle().screen().name()
-                if window.windowHandle() is not None
-                else None
-            ),
+            "audience_screen": (window.windowHandle().screen().name() if window.windowHandle() is not None else None),
             "host": self._viewer_frame_summary(getattr(self._host, "_viewer", None)),
             "host_paints": self._paint_counter.count,
             "rendered": diag.counters.get("frames_rendered", 0),
@@ -1032,26 +1010,19 @@ class PresenterMode(QObject):
                         pen = dragged.opts.get("pen")
                         if pen is not None:
                             window._live_contour_item.setPen(pen)
-                        window._live_contour_item.setData(
-                            [float(v) for v in x], [float(v) for v in y]
-                        )
+                        window._live_contour_item.setData([float(v) for v in x], [float(v) for v in y])
                         shown = True
             # In-progress contour (click nodes / freehand stroke).
             if not shown:
                 host_item = getattr(host, "_active_contour_item", None)
-                drawing = (
-                    bool(getattr(host, "_contour_mode_active", False))
-                    and host_item is not None
-                )
+                drawing = bool(getattr(host, "_contour_mode_active", False)) and host_item is not None
                 if drawing:
                     x, y = host_item.getData()
                     if x is not None and len(x) > 0:
                         pen = host_item.opts.get("pen")
                         if pen is not None:
                             window._live_contour_item.setPen(pen)
-                        window._live_contour_item.setData(
-                            [float(v) for v in x], [float(v) for v in y]
-                        )
+                        window._live_contour_item.setData([float(v) for v in x], [float(v) for v in y])
                         shown = True
             if shown:
                 window._live_contour_item.show()
@@ -1067,9 +1038,7 @@ class PresenterMode(QObject):
                         pen = line_item.opts.get("pen")
                         if pen is not None:
                             window._live_caliper_item.setPen(pen)
-                        window._live_caliper_item.setData(
-                            [float(v) for v in x], [float(v) for v in y]
-                        )
+                        window._live_caliper_item.setData([float(v) for v in x], [float(v) for v in y])
                         cal_shown = True
             if cal_shown:
                 window._live_caliper_item.show()
@@ -1081,11 +1050,7 @@ class PresenterMode(QObject):
                 ("_auto_envelope_item", window._live_envelope_item),
                 ("_auto_peak_guide_item", window._live_peak_guide_item),
             ):
-                source = (
-                    getattr(host_doppler, host_attr, None)
-                    if host_doppler is not None
-                    else None
-                )
+                source = getattr(host_doppler, host_attr, None) if host_doppler is not None else None
                 mirrored = False
                 if source is not None:
                     try:
@@ -1096,20 +1061,14 @@ class PresenterMode(QObject):
                         pen = source.opts.get("pen")
                         if pen is not None:
                             live_item.setPen(pen)
-                        live_item.setData(
-                            [float(v) for v in x], [float(v) for v in y]
-                        )
+                        live_item.setData([float(v) for v in x], [float(v) for v in y])
                         mirrored = True
                 if mirrored:
                     live_item.show()
                 else:
                     live_item.hide()
             # Vessel results: PSV/EDV dots + the results text block.
-            source_points = (
-                getattr(host_doppler, "_vessel_points", None)
-                if host_doppler is not None
-                else None
-            )
+            source_points = getattr(host_doppler, "_vessel_points", None) if host_doppler is not None else None
             dots_mirrored = False
             if source_points is not None:
                 try:
@@ -1131,17 +1090,11 @@ class PresenterMode(QObject):
                 window._live_vessel_points.show()
             else:
                 window._live_vessel_points.hide()
-            source_text = (
-                getattr(host_doppler, "_vessel_text_item", None)
-                if host_doppler is not None
-                else None
-            )
+            source_text = getattr(host_doppler, "_vessel_text_item", None) if host_doppler is not None else None
             text_mirrored = False
             if source_text is not None and source_text.isVisible():
                 try:
-                    window._live_vessel_text.textItem.setHtml(
-                        source_text.textItem.toHtml()
-                    )
+                    window._live_vessel_text.textItem.setHtml(source_text.textItem.toHtml())
                     window._live_vessel_text.setPos(source_text.pos())
                     text_mirrored = True
                 except Exception:  # noqa: BLE001 — probe is best effort
@@ -1157,9 +1110,7 @@ class PresenterMode(QObject):
             self._diag.exception("live_preview", exc)
 
     def _record_forward_ms(self, ms: float) -> None:
-        self._fwd_ema_ms = (
-            ms if self._fwd_ema_ms <= 0.0 else 0.9 * self._fwd_ema_ms + 0.1 * ms
-        )
+        self._fwd_ema_ms = ms if self._fwd_ema_ms <= 0.0 else 0.9 * self._fwd_ema_ms + 0.1 * ms
 
     def _on_placed(self, actual_screen) -> None:
         """Report where the presentation window actually landed."""
@@ -1177,9 +1128,7 @@ class PresenterMode(QObject):
             self._show_status(tr("presenter.same_screen_warning"))
             return
         if actual_screen is not None and actual_screen is not self._window.target_screen():
-            self._show_status(
-                tr("presenter.placement_mismatch").format(screen=actual_screen.name())
-            )
+            self._show_status(tr("presenter.placement_mismatch").format(screen=actual_screen.name()))
             return
         name = actual_screen.name() if actual_screen is not None else "?"
         self._show_status(tr("presenter.status_on_screen").format(screen=name))
@@ -1232,9 +1181,7 @@ class PresenterMode(QObject):
         try:
             viewer = window.viewer()
             snapshot = self._host._controller.state_manager.snapshot
-            playing = bool(snapshot.is_playing) or bool(
-                self._host._controller.is_scroll_active()
-            )
+            playing = bool(snapshot.is_playing) or bool(self._host._controller.is_scroll_active())
             if playing:
                 # Adaptive pacing: rendering the audience copy costs real
                 # main-thread time; when it is expensive, skip intermediate
@@ -1242,11 +1189,7 @@ class PresenterMode(QObject):
                 # NEVER pace idle frames: a file switch delivers exactly ONE
                 # frame — skipping it left the old image on the audience
                 # while contours already arrived (field report #3).
-                limit = (
-                    1
-                    if self._fwd_ema_ms <= 12.0
-                    else (2 if self._fwd_ema_ms <= 25.0 else 3)
-                )
+                limit = 1 if self._fwd_ema_ms <= 12.0 else (2 if self._fwd_ema_ms <= 25.0 else 3)
                 if limit > 1 and self._fwd_seq % limit != 0:
                     diag.counter("frames_skipped")
                     return
@@ -1315,10 +1258,7 @@ class PresenterMode(QObject):
             return
         try:
             viewer = window.viewer()
-            fresh = [
-                replace(contour, points=list(contour.points))
-                for contour in contours
-            ]
+            fresh = [replace(contour, points=list(contour.points)) for contour in contours]
             viewer.apply_contours(fresh)
             viewer._refresh_frame_overlays()
             window._live_contour_item.hide()
@@ -1340,9 +1280,7 @@ class PresenterMode(QObject):
             return
         try:
             snapshot = self._host._controller.state_manager.snapshot
-            window.viewer().set_state(
-                replace(snapshot, linear_measurements=tuple(measurements))
-            )
+            window.viewer().set_state(replace(snapshot, linear_measurements=tuple(measurements)))
         except Exception as exc:  # noqa: BLE001
             self._diag.counter("forward_errors")
             self._diag.exception("forward_linear_measurements", exc)
@@ -1355,9 +1293,7 @@ class PresenterMode(QObject):
         if window is None:
             return
         try:
-            window.viewer().set_results_overlay_position(
-                float(x_ratio), float(y_ratio)
-            )
+            window.viewer().set_results_overlay_position(float(x_ratio), float(y_ratio))
         except Exception as exc:  # noqa: BLE001
             self._diag.counter("forward_errors")
             self._diag.exception("forward_overlay_position", exc)

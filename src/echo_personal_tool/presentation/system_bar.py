@@ -209,12 +209,8 @@ class SystemBar(QWidget):
             self._btn_presenter.setIcon(_load_icon("presenter"))
             self._btn_presenter.setObjectName("presenterButton")
             self._btn_presenter.setCheckable(True)
-            self._btn_presenter.setToolButtonStyle(
-                Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-            )
-            self._btn_presenter.setPopupMode(
-                QToolButton.ToolButtonPopupMode.MenuButtonPopup
-            )
+            self._btn_presenter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            self._btn_presenter.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
             self._btn_presenter.setText(tr("presenter.button"))
             self._btn_presenter.setToolTip(tr("presenter.tooltip"))
             self._btn_presenter.clicked.connect(self.presenter_toggle_requested.emit)
@@ -340,9 +336,7 @@ class SystemBar(QWidget):
             return  # full profile — no Presenter UI
         with QSignalBlocker(self._btn_presenter):
             self._btn_presenter.setChecked(active)
-        self._btn_presenter.setToolTip(
-            tr("presenter.tooltip_active") if active else tr("presenter.tooltip")
-        )
+        self._btn_presenter.setToolTip(tr("presenter.tooltip_active") if active else tr("presenter.tooltip"))
 
     def set_study_context(self, label: str, modality: str = "") -> None:
         del modality
