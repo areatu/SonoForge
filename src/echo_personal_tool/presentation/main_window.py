@@ -245,6 +245,14 @@ class MainWindow(QMainWindow):
         self._viewer.linear_measurements_changed.connect(
             self._presenter.forward_linear_measurements
         )
+        # Doppler markers/VTI traces/calibration/vessel live viewer-locally
+        # and never reach state_changed — forward them explicitly.
+        self._viewer.doppler_markers_changed.connect(self._presenter.forward_doppler)
+        self._viewer.doppler_calibration_changed.connect(self._presenter.forward_doppler)
+        self._viewer.spectral_calibration_completed.connect(
+            self._presenter.forward_doppler
+        )
+        self._viewer._doppler.vessel_changed.connect(self._presenter.forward_doppler)
         self._viewer.linear_caliper_sequence_completed.connect(self._on_linear_caliper_sequence_completed)
         self._viewer.calibration_completed.connect(self._controller.on_manual_calibration)
         self._viewer.doppler_markers_changed.connect(self._controller.on_doppler_markers_changed)

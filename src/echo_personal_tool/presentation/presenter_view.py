@@ -60,6 +60,7 @@ from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QScreen
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
+from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
@@ -989,6 +990,7 @@ class PresenterMode(QObject):
                 pushed["initial_overlay_chars"] = len(text)
         except (RuntimeError, AttributeError) as exc:
             self._diag.exception("sync_initial_overlay", exc)
+        self.forward_doppler()
         self._diag.event("content_sync", **pushed)
 
     # ── content forwarding (no pixel copying) ───────────────────────
@@ -1024,6 +1026,10 @@ class PresenterMode(QObject):
             return
         diag.counter("frames_rendered")
         self._record_forward_ms((time.perf_counter() - started) * 1000.0)
+        if not playing:
+            # Idle path: the host has already re-animated the saved doppler
+            # measurement for this frame (_on_frame_loaded) — mirror it.
+            self.forward_doppler()
 
     def forward_state(self, state) -> None:
         """Mirror a viewer-state update onto the presentation viewer."""
@@ -1058,16 +1064,30 @@ class PresenterMode(QObject):
         ``emit=False`` — ``state_changed`` never fires while the presenter
         drags contour points (Simpson manual / auto-Simpson refinement), so
         this explicit forward is the only path that reaches the audience.
-        Re-uses ``set_state`` with just the ``contours`` field replaced: the
-        frame and instance are unchanged, so its re-render is limited to the
-        contour overlay.
+
+        Two subtleties make a plain ``set_state`` re-render unreliable here:
+
+        - the host mutates ``Contour.points`` **in place** during point
+          drags, and the audience stored set aliases those lists — the
+          value-equality check inside ``set_state`` then sees "no change"
+          and skips the re-render (observed on a real machine: dragging
+          contour points did not update the audience, while mitral-annulus
+          edits — which create new Contour objects — did);
+        - therefore the audience gets *fresh copies* via
+          ``apply_contours`` (public API), which re-renders
+          unconditionally.
         """
         window = self._window
         if window is None:
             return
         try:
-            snapshot = self._host._controller.state_manager.snapshot
-            window.viewer().set_state(replace(snapshot, contours=tuple(contours)))
+            viewer = window.viewer()
+            fresh = [
+                replace(contour, points=list(contour.points))
+                for contour in contours
+            ]
+            viewer.apply_contours(fresh)
+            viewer._refresh_frame_overlays()
         except Exception as exc:  # noqa: BLE001
             self._diag.counter("forward_errors")
             self._diag.exception("forward_contours", exc)
@@ -1094,6 +1114,57 @@ class PresenterMode(QObject):
             self._diag.exception("forward_linear_measurements", exc)
             return
         self._diag.counter("linear_forwarded")
+
+    def forward_doppler(self, *_args) -> None:
+        """Mirror the doppler display (markers/VTI traces/vessel) to the audience.
+
+        The spectral strip's markers (peak dots, interval markers), VTI/vessel
+        traces and the calibration state live viewer-locally: only explicit
+        signals carry them, and none reach ``state_changed``.  Called from the
+        host's ``doppler_markers_changed`` / ``doppler_calibration_changed`` /
+        ``spectral_calibration_completed`` / overlay ``vessel_changed`` hooks,
+        and after every idle frame forward (the host re-animates the saved
+        measurement for the new frame before our hook runs).
+        """
+        window = self._window
+        if window is None:
+            return
+        try:
+            host_viewer = self._host._viewer
+            audience = window.viewer()
+            # 1. markers + traces (VTI etc.) — DTO round-trip; also clears
+            #    previous audience markers/vessel so deletions propagate.
+            audience.restore_doppler_measurements(host_viewer.get_doppler_dto())
+            # 2. calibration (ROI/baseline/axis mapping) — markers are in
+            #    view pixels; the audience needs the same axes mapping.
+            calibration = host_viewer.get_doppler_calibration_state()
+            if calibration is not None:
+                audience.apply_doppler_calibration_state(calibration, persist=False)
+            # 3. vessel caliper display (PSV/EDV dots and lines).
+            vessel_values = host_viewer._doppler.get_vessel_values()
+            if vessel_values is not None:
+                psv, edv = vessel_values
+                snapshot = self._host._controller.state_manager.snapshot
+                audience._doppler.show_vessel_measurement(
+                    VesselMeasurement(
+                        psv_cm_s=float(psv),
+                        edv_cm_s=float(edv),
+                        ri=None,
+                        sd=None,
+                        mv_approx=0.0,
+                        sop_instance_uid=(
+                            snapshot.instance.sop_instance_uid
+                            if snapshot.instance is not None
+                            else ""
+                        ),
+                        frame_index=snapshot.current_frame_index,
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_doppler", exc)
+            return
+        self._diag.counter("doppler_forwarded")
 
     # ── stop / lifecycle ────────────────────────────────────────────
 

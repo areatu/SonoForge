@@ -656,6 +656,142 @@ class TestContourCaliperForwarding:
         assert len(viewer._contours) == 1
 
 
+    def test_in_place_point_drag_updates_audience(self, presenter_window, qtbot):
+        """Regression: host mutates Contour.points in place during drags.
+
+        The audience stored set aliases those lists; the value-equality
+        check in set_state then saw "no change" and skipped the re-render
+        (field report: point edits invisible while mitral-annulus edits —
+        new Contour objects — came through). forward_contours must apply
+        fresh copies unconditionally.
+        """
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        contour = self._contour(snapshot)
+        # Initial forward — the audience stores a fresh copy.
+        presenter_window._presenter.forward_contours([contour])
+        stored = tuple(viewer._stored_contours)
+        assert stored[0] == contour and stored[0] is not contour
+        # In-place mutation, exactly like the drag path (points[:] = ...):
+        contour.points[:] = [(70.0, 80.0), (130.0, 80.0), (130.0, 170.0)]
+        # Drag end: the same (mutated) objects are emitted again.
+        presenter_window._presenter.forward_contours([contour])
+        stored = tuple(viewer._stored_contours)
+        assert stored[0].points[0] == (70.0, 80.0)
+        assert stored[0] is not contour  # fresh copy, no aliasing
+        assert len(viewer._contours) == 1  # re-rendered
+
+    def test_forward_contours_does_not_alias_host_lists(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        contour = self._contour(snapshot)
+        presenter_window._presenter.forward_contours([contour])
+        stored = tuple(viewer._stored_contours)[0]
+        contour.points.append((999.0, 999.0))  # later in-place host edit
+        assert stored.points[-1] != (999.0, 999.0)
+
+
+class TestDopplerForwarding:
+    """Markers/VTI traces/vessel live viewer-locally; none of the edit
+    signals reach state_changed, so the audience saw an empty strip
+    (field report)."""
+
+    def _presentation(self, presenter_window, qtbot):
+        presenter_window._presenter.start()
+        qtbot.waitUntil(lambda: presenter_window._presenter.active, timeout=2000)
+        return presenter_window._presenter.window().viewer()
+
+    def _dto(self):
+        from echo_personal_tool.domain.models.doppler import (
+            DopplerMeasurementDTO,
+            DopplerPeakMarker,
+            DopplerTrace,
+        )
+
+        return DopplerMeasurementDTO(
+            peaks=(DopplerPeakMarker(label="E", time_ms=120.0, velocity_cm_s=80.0),),
+            intervals=(),
+            traces=(
+                DopplerTrace(
+                    label="VTI",
+                    points=((10.0, 5.0), (50.0, 60.0), (90.0, 8.0)),
+                ),
+            ),
+        )
+
+    def test_markers_hook_reaches_audience(self, presenter_window, qtbot):
+        """forward_doppler pulls the HOST overlay state (the signal payload
+        is the same DTO the overlay just built) and restores it on the
+        audience viewer."""
+        viewer = self._presentation(presenter_window, qtbot)
+        host_overlay = presenter_window._viewer._doppler
+        host_overlay._peak_markers.append(self._dto().peaks[0])
+        host_overlay._traces.append(self._dto().traces[0])
+        presenter_window._viewer.doppler_markers_changed.emit(
+            host_overlay.get_measurement_dto()
+        )
+        assert len(viewer._doppler._peak_markers) == 1
+        assert viewer._doppler._peak_markers[0].label == "E"
+        assert len(viewer._doppler._traces) == 1
+        assert viewer._doppler._traces[0].label == "VTI"
+
+    def test_trace_deletion_propagates(self, presenter_window, qtbot):
+        from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
+
+        viewer = self._presentation(presenter_window, qtbot)
+        host_overlay = presenter_window._viewer._doppler
+        host_overlay._peak_markers.append(self._dto().peaks[0])
+        host_overlay._traces.append(self._dto().traces[0])
+        presenter_window._viewer.doppler_markers_changed.emit(
+            host_overlay.get_measurement_dto()
+        )
+        assert len(viewer._doppler._traces) == 1
+        host_overlay._peak_markers.clear()
+        host_overlay._traces.clear()
+        presenter_window._viewer.doppler_markers_changed.emit(
+            DopplerMeasurementDTO(peaks=(), intervals=(), traces=())
+        )
+        assert viewer._doppler._traces == []
+        assert viewer._doppler._peak_markers == []
+
+    def test_calibration_hook_sets_audience_axis_mapping(self, presenter_window, qtbot):
+        from echo_personal_tool.domain.models.doppler_roi import (
+            DopplerCalibrationState,
+            DopplerKind,
+            DopplerSpectrogramRoi,
+        )
+
+        viewer = self._presentation(presenter_window, qtbot)
+        state = DopplerCalibrationState(
+            roi=DopplerSpectrogramRoi(x0=40.0, y0=30.0, width=240.0, height=170.0),
+            baseline_y_px=120.0,
+            time_origin_ms=0.0,
+            time_span_ms=1000.0,
+            velocity_span_cm_s=200.0,
+            kind=DopplerKind.SPECTRAL,
+        )
+        presenter_window._viewer._doppler_calibration_state = state
+        presenter_window._viewer.doppler_calibration_changed.emit(state)
+        assert viewer._doppler_calibration_state is not None
+        assert viewer._doppler_calibration_state.time_span_ms == 1000.0
+
+    def test_vessel_display_reaches_audience(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        host_overlay = presenter_window._viewer._doppler
+        # A finished vessel measurement leaves PSV/EDV pixel anchors:
+        host_overlay._vessel_psv_px = (0.0, 40.0)
+        host_overlay._vessel_edv_px = (0.0, 80.0)
+        presenter_window._presenter.forward_doppler()
+        values = viewer._doppler.get_vessel_values()
+        assert values is not None
+        psv, edv = values
+        host_psv, host_edv = host_overlay.get_vessel_values()
+        assert psv == host_psv and edv == host_edv
+
+    def test_forward_doppler_inactive_is_noop(self, presenter_window):
+        presenter_window._presenter.forward_doppler()
+
+
 # ── Presenter profile default layout (narrow activity bar) ──────────
 
 
