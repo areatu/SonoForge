@@ -775,18 +775,53 @@ class TestDopplerForwarding:
         assert viewer._doppler_calibration_state is not None
         assert viewer._doppler_calibration_state.time_span_ms == 1000.0
 
-    def test_vessel_display_reaches_audience(self, presenter_window, qtbot):
-        viewer = self._presentation(presenter_window, qtbot)
+    def test_vessel_results_mirror_wysiwyg(self, presenter_window, qtbot):
+        """Field round 8: vessel results live in a text block top-right
+        INSIDE the strip (``_vessel_text_item``) + PSV/EDV dots — plot-local,
+        outside the DTO. Mirror them WYSIWYG (exact host text, incl.
+        RI/S/D/MV formatting and position)."""
+        import pyqtgraph as pg
+
+        self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
         host_overlay = presenter_window._viewer._doppler
-        # A finished vessel measurement leaves PSV/EDV pixel anchors:
-        host_overlay._vessel_psv_px = (0.0, 40.0)
-        host_overlay._vessel_edv_px = (0.0, 80.0)
-        presenter_window._presenter.forward_doppler()
-        values = viewer._doppler.get_vessel_values()
-        assert values is not None
-        psv, edv = values
-        host_psv, host_edv = host_overlay.get_vessel_values()
-        assert psv == host_psv and edv == host_edv
+        # A finished measurement: dots + text block like the host draws it.
+        host_overlay._vessel_points = pg.ScatterPlotItem(
+            size=10, pen=pg.mkPen("#ffffff", width=1)
+        )
+        host_overlay._vessel_points.setData(
+            [{"pos": (10.0, 40.0), "data": "PSV"}, {"pos": (20.0, 80.0), "data": "EDV"}]
+        )
+        host_overlay._vessel_text_item = pg.TextItem(
+            "PSV: 120.0 cm/s\nEDV: 40.0 cm/s\nRI: 0.67", anchor=(1.0, 0.0)
+        )
+        host_overlay._vessel_text_item.setPos(280.0, 5.0)
+        host_overlay._vessel_text_item.show()
+        try:
+            presenter_window._presenter._sync_live_overlays()
+            assert pw._live_vessel_points.isVisible()
+            assert len(pw._live_vessel_points.points()) == 2
+            assert pw._live_vessel_text.isVisible()
+            assert "PSV: 120.0 cm/s" in pw._live_vessel_text.textItem.toPlainText()
+            assert "RI: 0.67" in pw._live_vessel_text.textItem.toPlainText()
+            live_pos = pw._live_vessel_text.pos()
+            assert (round(live_pos.x(), 3), round(live_pos.y(), 3)) == (280.0, 5.0)
+            # Measurement cleared on the host → hidden on the audience.
+            host_overlay._vessel_points = None
+            host_overlay._vessel_text_item = None
+            presenter_window._presenter._sync_live_overlays()
+            assert not pw._live_vessel_points.isVisible()
+            assert not pw._live_vessel_text.isVisible()
+        finally:
+            host_overlay._vessel_points = None
+            host_overlay._vessel_text_item = None
+
+    def test_vessel_results_hidden_without_host_text(self, presenter_window, qtbot):
+        self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
+        presenter_window._presenter._sync_live_overlays()
+        assert not pw._live_vessel_points.isVisible()
+        assert not pw._live_vessel_text.isVisible()
 
     def test_forward_doppler_inactive_is_noop(self, presenter_window):
         presenter_window._presenter.forward_doppler()

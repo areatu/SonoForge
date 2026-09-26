@@ -60,7 +60,6 @@ from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QKeyEvent, QPainter, QScreen
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
-from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
@@ -329,6 +328,19 @@ class PresenterWindow(QWidget):
         self._live_peak_guide_item.setZValue(26)
         self._live_peak_guide_item.hide()
         self._viewer._view.addItem(self._live_peak_guide_item)
+        # Vessel measurement results: the PSV/EDV dots and the results text
+        # block (top-right INSIDE the strip) are plot-local items outside
+        # the measurement DTO — mirror them WYSIWYG.
+        self._live_vessel_points = pg.ScatterPlotItem(
+            size=10, pen=pg.mkPen("#ffffff", width=1)
+        )
+        self._live_vessel_points.setZValue(25)
+        self._live_vessel_points.hide()
+        self._viewer._view.addItem(self._live_vessel_points)
+        self._live_vessel_text = pg.TextItem("", anchor=(1.0, 0.0), fill=(0, 0, 0, 200))
+        self._live_vessel_text.setZValue(30)
+        self._live_vessel_text.hide()
+        self._viewer._view.addItem(self._live_vessel_text)
 
         self._overlay = _PointerOverlay(self, self._map_speaker_cursor)
         self._overlay.set_enabled(pointer)
@@ -499,6 +511,8 @@ class PresenterWindow(QWidget):
             self._live_caliper_item,
             self._live_envelope_item,
             self._live_peak_guide_item,
+            self._live_vessel_points,
+            self._live_vessel_text,
         ):
             try:
                 self._viewer._view.removeItem(item)
@@ -1090,6 +1104,52 @@ class PresenterMode(QObject):
                     live_item.show()
                 else:
                     live_item.hide()
+            # Vessel results: PSV/EDV dots + the results text block.
+            source_points = (
+                getattr(host_doppler, "_vessel_points", None)
+                if host_doppler is not None
+                else None
+            )
+            dots_mirrored = False
+            if source_points is not None:
+                try:
+                    spots = [
+                        {
+                            "pos": spot.pos(),
+                            "size": spot.size(),
+                            "pen": spot.pen(),
+                            "brush": spot.brush(),
+                        }
+                        for spot in source_points.points()
+                    ]
+                except Exception:  # noqa: BLE001 — probe is best effort
+                    spots = []
+                if spots:
+                    window._live_vessel_points.setData(spots)
+                    dots_mirrored = True
+            if dots_mirrored:
+                window._live_vessel_points.show()
+            else:
+                window._live_vessel_points.hide()
+            source_text = (
+                getattr(host_doppler, "_vessel_text_item", None)
+                if host_doppler is not None
+                else None
+            )
+            text_mirrored = False
+            if source_text is not None and source_text.isVisible():
+                try:
+                    window._live_vessel_text.textItem.setHtml(
+                        source_text.textItem.toHtml()
+                    )
+                    window._live_vessel_text.setPos(source_text.pos())
+                    text_mirrored = True
+                except Exception:  # noqa: BLE001 — probe is best effort
+                    text_mirrored = False
+            if text_mirrored:
+                window._live_vessel_text.show()
+            else:
+                window._live_vessel_text.hide()
         except (RuntimeError, AttributeError) as exc:
             self._diag.exception("live_preview", exc)
             return
@@ -1329,26 +1389,8 @@ class PresenterMode(QObject):
             calibration = host_viewer.get_doppler_calibration_state()
             if calibration is not None:
                 audience.apply_doppler_calibration_state(calibration, persist=False)
-            # 3. vessel caliper display (PSV/EDV dots and lines).
-            vessel_values = host_viewer._doppler.get_vessel_values()
-            if vessel_values is not None:
-                psv, edv = vessel_values
-                snapshot = self._host._controller.state_manager.snapshot
-                audience._doppler.show_vessel_measurement(
-                    VesselMeasurement(
-                        psv_cm_s=float(psv),
-                        edv_cm_s=float(edv),
-                        ri=None,
-                        sd=None,
-                        mv_approx=0.0,
-                        sop_instance_uid=(
-                            snapshot.instance.sop_instance_uid
-                            if snapshot.instance is not None
-                            else ""
-                        ),
-                        frame_index=snapshot.current_frame_index,
-                    )
-                )
+            # Vessel results (PSV/EDV dots + results text) are mirrored
+            # WYSIWYG by the 30 Hz live tick — see _sync_live_overlays.
         except Exception as exc:  # noqa: BLE001
             self._diag.counter("forward_errors")
             self._diag.exception("forward_doppler", exc)
