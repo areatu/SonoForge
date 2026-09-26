@@ -51,6 +51,7 @@ Exit: ``F10`` anywhere, or the Presenter button in the system bar.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -63,6 +64,11 @@ from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.user_preferences import (
     PRESENTATION_PRESET_OVERRIDES,
     UserPreferences,
+)
+from echo_personal_tool.presentation.presenter_diagnostics import (
+    PresenterDiagnostics,
+    qimage_brightness,
+    summarize_array,
 )
 from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
@@ -108,8 +114,11 @@ def select_audience_screen(
 
     Resolution order:
 
-    1. explicitly remembered screen name (a deliberate user choice is
-       honored even when it equals the host screen);
+    1. explicitly remembered screen name — a deliberate user choice is
+       honored even when it equals the host screen, UNLESS another screen
+       exists (a stale remembered name saved on a single-display machine
+       would otherwise put the fullscreen presentation on top of the
+       working window on a two-display machine — observed in the field);
     2. the first screen that is NOT the speaker's current screen — the
        presentation window must never land on the display the presenter
        works on (a fullscreen window there would cover the application);
@@ -124,6 +133,8 @@ def select_audience_screen(
     if remembered:
         for screen in screens:
             if screen.name() == remembered:
+                if host_screen is not None and screen is host_screen:
+                    break  # stale choice would cover the app — fall through
                 return screen
     if host_screen is not None:
         for screen in screens:
@@ -189,6 +200,27 @@ class _PointerOverlay(QWidget):
 # ── Presentation window ─────────────────────────────────────────────
 
 
+def _create_viewer(render_mode: str) -> ViewerWidget:
+    """ViewerWidget with the requested pyqtgraph rendering backend.
+
+    ``useOpenGL`` is a pyqtgraph *construction-time* config option: it is
+    temporarily overridden around widget creation and immediately restored
+    so the speaker's viewer (and anything else constructed later) keeps the
+    backend auto-detected in ``main()``.
+    """
+    import pyqtgraph as pg
+
+    requested = render_mode == "opengl"
+    previous = bool(pg.getConfigOption("useOpenGL"))
+    if previous != requested:
+        pg.setConfigOption("useOpenGL", requested)
+    try:
+        return ViewerWidget()
+    finally:
+        if previous != requested:
+            pg.setConfigOption("useOpenGL", previous)
+
+
 class PresenterWindow(QWidget):
     """Fullscreen, independently rendered viewer on the audience display.
 
@@ -212,11 +244,16 @@ class PresenterWindow(QWidget):
         speaker_viewer_provider: Callable[[], QWidget | None],
         pointer: bool = True,
         parent: QWidget | None = None,
+        render_mode: str = "raster",
+        diag: PresenterDiagnostics | None = None,
     ) -> None:
         super().__init__(parent)
         self._target_screen = target_screen
         self._speaker_viewer_provider = speaker_viewer_provider
         self._closed = False
+        self._diag = diag
+        self._render_mode = "opengl" if render_mode == "opengl" else "raster"
+        self._last_drift_log = 0.0
 
         self.setObjectName("presenterWindow")
         self.setWindowFlag(Qt.WindowType.Window, True)
@@ -232,8 +269,13 @@ class PresenterWindow(QWidget):
         if cursor is not None:
             self.setCursor(cursor)
 
-        # The independently rendered viewer shown to the audience.
-        self._viewer = ViewerWidget()
+        # The independently rendered viewer shown to the audience.  Its
+        # rendering backend is deliberate: raster by default (see
+        # ``UserPreferences.presenter_audience_render``) because GL
+        # viewports in a second top-level window have been observed to
+        # stay black on real multi-monitor Linux boxes while every raster
+        # overlay in the same window renders fine.
+        self._viewer = _create_viewer(self._render_mode)
         self._viewer.setObjectName("presenterViewer")
         self._hide_speaker_controls(self._viewer)
         layout = QVBoxLayout(self)
@@ -289,6 +331,32 @@ class PresenterWindow(QWidget):
         return self._viewer
 
     @property
+    def render_mode(self) -> str:
+        """Rendering backend requested for the audience viewer."""
+        return self._render_mode
+
+    def viewport_class_name(self) -> str:
+        """Actual viewport widget class — "OpenGL…" means GL, "QWidget" raster."""
+        return _viewport_class(self._viewer)
+
+    def gl_viewport_brightness(self) -> float | None:
+        """Mean framebuffer brightness when the viewport is GL, else ``None``.
+
+        A ~0 value while the frame data is non-black is the definitive
+        "GL renders black on this screen" signature.
+        """
+        try:
+            viewport = self._viewer._graphics.viewport()
+        except (RuntimeError, AttributeError):
+            return None
+        if viewport is None or "opengl" not in type(viewport).__name__.lower():
+            return None
+        try:
+            return qimage_brightness(viewport.grabFramebuffer())
+        except Exception:  # noqa: BLE001
+            return None
+
+    @property
     def pointer_enabled(self) -> bool:
         return self._overlay.enabled
 
@@ -308,12 +376,31 @@ class PresenterWindow(QWidget):
         sequence is show → setScreen(handle) → geometry → fullscreen.
         """
         self._closed = False
+        diag = self._diag
+        if diag is not None:
+            diag.event(
+                "placement_begin",
+                target=self._target_screen.name(),
+                target_geometry=self._target_screen.geometry(),
+                render_mode=self._render_mode,
+            )
         self.show()  # realize the platform window (lands on default screen)
         handle = self.windowHandle()
+        if diag is not None:
+            diag.event(
+                "placement_shown",
+                handle_screen=handle.screen().name() if handle is not None else None,
+            )
         if handle is not None:
             handle.setScreen(self._target_screen)
         self.setGeometry(self._target_screen.geometry())
         self.showFullScreen()
+        if diag is not None and handle is not None:
+            diag.event(
+                "placement_fullscreen",
+                handle_screen=handle.screen().name(),
+                geometry=self.geometry(),
+            )
         self._timer.start()
         QTimer.singleShot(0, self._verify_placement)
 
@@ -322,11 +409,25 @@ class PresenterWindow(QWidget):
         actual = handle.screen() if handle is not None else None
         if actual is not self._target_screen and handle is not None:
             # Platform put the window on another screen: re-assert.
+            if self._diag is not None:
+                self._diag.event(
+                    "placement_reassert",
+                    actual=actual.name() if actual is not None else None,
+                    wanted=self._target_screen.name(),
+                )
             handle.setScreen(self._target_screen)
             self.setGeometry(self._target_screen.geometry())
             self.showFullScreen()
             handle = self.windowHandle()
             actual = handle.screen() if handle is not None else actual
+        if self._diag is not None:
+            self._diag.event(
+                "placement_done",
+                actual=actual.name() if actual is not None else None,
+                viewport=self.viewport_class_name(),
+                fullscreen=self.isFullScreen(),
+                visible=self.isVisible(),
+            )
         self.placed.emit(actual)
 
     def _keep_on_top(self) -> None:
@@ -337,6 +438,15 @@ class PresenterWindow(QWidget):
         if handle is not None and handle.screen() is not self._target_screen:
             # The window drifted to another screen (display hot-plug):
             # bring it back to the audience display.
+            if self._diag is not None:
+                now = time.monotonic()
+                if now - self._last_drift_log > 1.0:
+                    self._last_drift_log = now
+                    self._diag.event(
+                        "placement_drift",
+                        actual=handle.screen().name(),
+                        wanted=self._target_screen.name(),
+                    )
             handle.setScreen(self._target_screen)
             self.setGeometry(self._target_screen.geometry())
             self.showFullScreen()
@@ -502,6 +612,28 @@ def _clamp(value: object, fallback: object, low: float, high: float) -> object:
     return max(low, min(high, parsed))
 
 
+class _PaintCounter(QObject):
+    """Counts Paint events of a watched widget (diagnostics only)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.count = 0
+
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        if event.type() == QEvent.Type.Paint:
+            self.count += 1
+        return False
+
+
+def _viewport_class(viewer: QWidget) -> str:
+    """Class name of the viewer's viewport ("OpenGL…" = GL, "QWidget" = raster)."""
+    try:
+        viewport = viewer._graphics.viewport()
+    except (RuntimeError, AttributeError):
+        return "dead"
+    return type(viewport).__name__ if viewport is not None else "?"
+
+
 # ── Controller ──────────────────────────────────────────────────────
 
 
@@ -547,6 +679,22 @@ class PresenterMode(QObject):
         # Guard: start/stop/repin apply the already-final object and must
         # not be re-intercepted (which would rebase onto the overlay copy).
         self._internal_apply = False
+        # Real-machine diagnostics (file log; disabled under pytest and by
+        # SONOFORGE_PRESENTER_DIAG=0).  Everything the forwarding chain
+        # used to swallow silently is recorded here with a traceback.
+        self._diag = PresenterDiagnostics()
+        # Forwarding cost EMA + frame sequence for adaptive pacing.
+        self._fwd_ema_ms = 0.0
+        self._fwd_seq = 0
+        # Diagnostics helpers: host-viewer paint counter, 1 Hz content
+        # probe, and a keepalive repaint against GL-idle blanking.
+        self._paint_counter = _PaintCounter()
+        self._probe_timer = QTimer(self)
+        self._probe_timer.setInterval(1000)
+        self._probe_timer.timeout.connect(self._probe_tick)
+        self._keepalive_timer = QTimer(self)
+        self._keepalive_timer.setInterval(250)
+        self._keepalive_timer.timeout.connect(self._keepalive_tick)
 
     # ── state ───────────────────────────────────────────────────────
 
@@ -618,13 +766,34 @@ class PresenterMode(QObject):
             return
         screen = self.resolve_screen()
         if screen is None:
+            self._diag.event(
+                "start_aborted",
+                reason="no_screen",
+                remembered=getattr(self.prefs_for_options(), "presenter_screen", ""),
+            )
             self._show_status(tr("presenter.no_screen"))
             return
+        self._log_environment()
+        self._diag.event(
+            "screen_selected",
+            chosen=screen.name(),
+            host=(
+                self._host_screen().name()
+                if self._host_screen() is not None
+                else None
+            ),
+            remembered=getattr(self.prefs_for_options(), "presenter_screen", ""),
+        )
 
         # Always re-read the host's live preferences object: the Settings
         # dialog replaces it between presentations.
         preferences = self._host._user_preferences
         self._base_prefs = preferences
+        render_mode = str(
+            getattr(preferences, "presenter_audience_render", "raster") or "raster"
+        ).strip().lower()
+        if render_mode not in ("raster", "opengl"):
+            render_mode = "raster"
 
         def speaker_provider() -> QWidget | None:
             return getattr(self._host, "_active_viewer", None) or self._host._viewer
@@ -633,6 +802,8 @@ class PresenterMode(QObject):
             screen,
             speaker_viewer_provider=speaker_provider,
             pointer=bool(getattr(preferences, "presenter_pointer", True)),
+            render_mode=render_mode,
+            diag=self._diag,
         )
         window.destroyed.connect(self._on_window_destroyed)
         window.exit_requested.connect(self.stop)
@@ -663,12 +834,124 @@ class PresenterMode(QObject):
         self._apply_final(self._effective_for(preferences))
         self._sync_initial_content()
         self._notify_active()
+        self._diag.event(
+            "session_started",
+            render_mode=render_mode,
+            audience_viewport=window.viewport_class_name(),
+            host_viewport=_viewport_class(self._host._viewer),
+            speaker_viewer=_viewport_class(speaker_provider()),
+        )
+        self._paint_counter.count = 0
+        try:
+            self._host._viewer.installEventFilter(self._paint_counter)
+        except (RuntimeError, AttributeError):
+            pass
+        self._probe_timer.start()
+        self._keepalive_timer.start()
+
+    def _log_environment(self) -> None:
+        """One-time environment dump at presenter start (diagnostics)."""
+        diag = self._diag
+        if not diag.enabled:
+            return
+        try:
+            import pyqtgraph as pg
+
+            pg_version = str(getattr(pg, "__version__", "?"))
+            use_opengl = bool(pg.getConfigOption("useOpenGL"))
+        except Exception:  # noqa: BLE001
+            pg_version, use_opengl = "?", None
+        try:
+            from PySide6.QtCore import qVersion
+            from PySide6.QtGui import QGuiApplication
+
+            qt_version = qVersion()
+            platform_name = QGuiApplication.platformName()
+        except Exception:  # noqa: BLE001
+            qt_version, platform_name = "?", "?"
+        app = QApplication.instance()
+        screens = [
+            {
+                "name": s.name(),
+                "geometry": s.geometry(),
+                "dpr": s.devicePixelRatio(),
+                "primary": app is not None and s is app.primaryScreen(),
+            }
+            for s in (app.screens() if app is not None else [])
+        ]
+        diag.event(
+            "environment",
+            qt=qt_version,
+            pyqtgraph=pg_version,
+            useOpenGL_config=use_opengl,
+            platform=platform_name,
+            screens=screens,
+        )
+
+    def _probe_tick(self) -> None:
+        """1 Hz data-level probe of both viewers (diagnostics file)."""
+        diag = self._diag
+        window = self._window
+        if not diag.enabled or window is None:
+            return
+        fields: dict[str, object] = {
+            "audience": self._viewer_frame_summary(window.viewer()),
+            "audience_visible": window.isVisible(),
+            "audience_screen": (
+                window.windowHandle().screen().name()
+                if window.windowHandle() is not None
+                else None
+            ),
+            "host": self._viewer_frame_summary(getattr(self._host, "_viewer", None)),
+            "host_paints": self._paint_counter.count,
+            "rendered": diag.counters.get("frames_rendered", 0),
+            "fwd_ema_ms": round(self._fwd_ema_ms, 1),
+        }
+        brightness = window.gl_viewport_brightness()
+        if brightness is not None:
+            fields["audience_gl_brightness"] = round(brightness, 1)
+        diag.event("probe", **fields)
+
+    @staticmethod
+    def _viewer_frame_summary(viewer) -> dict:
+        try:
+            return summarize_array(viewer._current_frame)
+        except (RuntimeError, AttributeError):
+            return {"frame": "unavailable"}
+
+    def _keepalive_tick(self) -> None:
+        """Scheduled repaint of the speaker's viewer.
+
+        Qt 6.4 (Debian 12) with GL viewports: a viewer that is not
+        repainting can be left blank by backing-store recompositions
+        triggered by other windows — observed as "the image appears and
+        disappears on the speaker's monitor" while the cursor is over
+        tool panels.  A cheap scheduled update keeps the content
+        recomposited; it cannot blank anything by itself.
+        """
+        try:
+            self._host._viewer.update()
+        except (RuntimeError, AttributeError):
+            return
+        self._diag.counter("keepalive")
+
+    def _record_forward_ms(self, ms: float) -> None:
+        self._fwd_ema_ms = (
+            ms if self._fwd_ema_ms <= 0.0 else 0.9 * self._fwd_ema_ms + 0.1 * ms
+        )
 
     def _on_placed(self, actual_screen) -> None:
         """Report where the presentation window actually landed."""
         if self._window is None:
             return
         host_screen = self._host_screen()
+        self._diag.event(
+            "placed_report",
+            actual=actual_screen.name() if actual_screen is not None else None,
+            target=self._window.target_screen().name(),
+            host=host_screen.name() if host_screen is not None else None,
+            viewport=self._window.viewport_class_name(),
+        )
         if host_screen is not None and actual_screen is host_screen:
             self._show_status(tr("presenter.same_screen_warning"))
             return
@@ -686,22 +969,27 @@ class PresenterMode(QObject):
         if window is None:
             return
         viewer = window.viewer()
+        pushed: dict[str, object] = {}
         try:
             frame = self._host._viewer._current_frame
             if frame is not None:
                 viewer.show_frame(np.asarray(frame))
-        except (RuntimeError, AttributeError):
-            pass
+                pushed["initial_frame"] = summarize_array(frame)
+        except (RuntimeError, AttributeError) as exc:
+            self._diag.exception("sync_initial_frame", exc)
         try:
             viewer.set_state(self._host._controller.state_manager.snapshot)
-        except Exception:
-            pass
+            pushed["initial_state"] = True
+        except Exception as exc:  # noqa: BLE001
+            self._diag.exception("sync_initial_state", exc)
         try:
             text = self._host._viewer._results_overlay_label.text()
             if text:
                 viewer.set_results_overlay(text)
-        except (RuntimeError, AttributeError):
-            pass
+                pushed["initial_overlay_chars"] = len(text)
+        except (RuntimeError, AttributeError) as exc:
+            self._diag.exception("sync_initial_overlay", exc)
+        self._diag.event("content_sync", **pushed)
 
     # ── content forwarding (no pixel copying) ───────────────────────
 
@@ -710,18 +998,32 @@ class PresenterMode(QObject):
         window = self._window
         if window is None:
             return
+        diag = self._diag
+        self._fwd_seq += 1
+        # Adaptive pacing: rendering the audience copy costs real
+        # main-thread time; when it is expensive, skip intermediate frames
+        # instead of stalling the speaker's playback.
+        limit = 1 if self._fwd_ema_ms <= 12.0 else (2 if self._fwd_ema_ms <= 25.0 else 3)
+        if limit > 1 and self._fwd_seq % limit != 0:
+            diag.counter("frames_skipped")
+            return
+        started = time.perf_counter()
         try:
             viewer = window.viewer()
             snapshot = self._host._controller.state_manager.snapshot
-            playing = bool(snapshot.is_playing) or bool(self._host._controller.is_scroll_active())
+            playing = bool(snapshot.is_playing) or bool(
+                self._host._controller.is_scroll_active()
+            )
             if playing:
                 viewer.show_frame_fast(np.asarray(image))
             else:
                 viewer.show_frame(np.asarray(image))
-        except RuntimeError:
-            pass
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — recorded, never fatal
+            diag.counter("forward_errors")
+            diag.exception("forward_frame", exc)
+            return
+        diag.counter("frames_rendered")
+        self._record_forward_ms((time.perf_counter() - started) * 1000.0)
 
     def forward_state(self, state) -> None:
         """Mirror a viewer-state update onto the presentation viewer."""
@@ -730,10 +1032,11 @@ class PresenterMode(QObject):
             return
         try:
             window.viewer().set_state(state)
-        except RuntimeError:
-            pass
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_state", exc)
+            return
+        self._diag.counter("states_forwarded")
 
     def forward_results_overlay(self, text: str) -> None:
         """Mirror the results-overlay text onto the presentation viewer."""
@@ -742,14 +1045,16 @@ class PresenterMode(QObject):
             return
         try:
             window.viewer().set_results_overlay(text)
-        except RuntimeError:
-            pass
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_results_overlay", exc)
+            return
+        self._diag.counter("overlays_forwarded")
 
     # ── stop / lifecycle ────────────────────────────────────────────
 
     def stop(self) -> None:
+        self._stop_diagnostics_helpers()
         window = self._window
         if window is not None:
             self._window = None
@@ -758,9 +1063,18 @@ class PresenterMode(QObject):
                 window.deleteLater()
             except RuntimeError:
                 pass
+        self._diag.finish("stop")
         self._restore_preferences()
         self._show_status(tr("presenter.status_off"))
         self._notify_active()
+
+    def _stop_diagnostics_helpers(self) -> None:
+        self._probe_timer.stop()
+        self._keepalive_timer.stop()
+        try:
+            self._host._viewer.removeEventFilter(self._paint_counter)
+        except (RuntimeError, AttributeError):
+            pass
 
     def toggle(self) -> None:
         if self.active:
@@ -778,6 +1092,8 @@ class PresenterMode(QObject):
         # Window destroyed externally (WM close during shutdown, etc.).
         if self._window is not None:
             self._window = None
+            self._stop_diagnostics_helpers()
+            self._diag.finish("window_destroyed")
             self._restore_preferences()
             self._show_status(tr("presenter.status_off"))
             self._notify_active()

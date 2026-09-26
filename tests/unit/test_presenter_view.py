@@ -153,12 +153,29 @@ class TestAudienceScreenSelection:
         chosen = select_audience_screen([primary, second], remembered="", primary=primary, host_screen=second)
         assert chosen is primary
 
-    def test_remembered_choice_wins_even_on_host_screen(self):
+    def test_stale_remembered_host_screen_is_ignored_when_alternative_exists(self):
+        """A remembered screen equal to the host screen must not cover the app.
+
+        Field report: `presenter_screen` saved on a single-display machine
+        (or picked experimentally) names the display the application runs
+        on; on a two-display machine honoring it would put the fullscreen
+        presentation on top of the working window and the status warning
+        would be hidden underneath it.
+        """
         from echo_personal_tool.presentation.presenter_view import select_audience_screen
 
         primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
         chosen = select_audience_screen(
             [primary, second], remembered="HDMI-1", primary=primary, host_screen=second
+        )
+        assert chosen is primary
+
+    def test_remembered_choice_off_host_screen_wins(self):
+        from echo_personal_tool.presentation.presenter_view import select_audience_screen
+
+        primary, second = _fake_screen("DP-1"), _fake_screen("HDMI-1")
+        chosen = select_audience_screen(
+            [primary, second], remembered="HDMI-1", primary=primary, host_screen=primary
         )
         assert chosen is second
 
@@ -761,3 +778,250 @@ class TestHostIntegration:
 
         sig = inspect.signature(presenter_window._on_frame_loaded)
         assert list(sig.parameters) == ["pixels"]
+
+
+# ── Rendering backend of the audience viewer ────────────────────────
+
+
+class TestAudienceRenderBackend:
+    def test_default_render_mode_is_raster(self, qapp_session, qtbot):
+        from echo_personal_tool.presentation.presenter_view import PresenterWindow
+
+        window = PresenterWindow(
+            QApplication.instance().primaryScreen(),
+            speaker_viewer_provider=lambda: None,
+        )
+        qtbot.addWidget(window)
+        assert window.render_mode == "raster"
+        # Offscreen platform: pyqtgraph useOpenGL defaults to False → plain
+        # QWidget viewport. The class name must NOT contain "OpenGL".
+        assert "opengl" not in window.viewport_class_name().lower()
+
+    def test_raster_mode_flips_and_restores_pyqtgraph_config(
+        self, qapp_session, qtbot, monkeypatch
+    ):
+        """With a GL default, raster construction overrides useOpenGL twice.
+
+        The override must flip to False for the audience widget and restore
+        True right after — the speaker's viewer keeps its own backend.
+        """
+        import pyqtgraph as pg
+
+        from echo_personal_tool.presentation.presenter_view import PresenterWindow
+
+        requests: list[tuple[str, object]] = []
+        monkeypatch.setattr(pg, "getConfigOption", lambda name: True, raising=False)
+        monkeypatch.setattr(
+            pg,
+            "setConfigOption",
+            lambda name, value: requests.append((name, value)),
+            raising=False,
+        )
+        window = PresenterWindow(
+            QApplication.instance().primaryScreen(),
+            speaker_viewer_provider=lambda: None,
+            render_mode="raster",
+        )
+        qtbot.addWidget(window)
+        assert requests == [("useOpenGL", False), ("useOpenGL", True)]
+
+    def test_opengl_mode_needs_no_flip(self, qapp_session, qtbot, monkeypatch):
+        import pyqtgraph as pg
+
+        from echo_personal_tool.presentation.presenter_view import PresenterWindow
+
+        requests: list[tuple[str, object]] = []
+        monkeypatch.setattr(pg, "getConfigOption", lambda name: True, raising=False)
+        monkeypatch.setattr(
+            pg,
+            "setConfigOption",
+            lambda name, value: requests.append((name, value)),
+            raising=False,
+        )
+        window = PresenterWindow(
+            QApplication.instance().primaryScreen(),
+            speaker_viewer_provider=lambda: None,
+            render_mode="opengl",
+        )
+        qtbot.addWidget(window)
+        assert requests == []
+
+    def test_prefs_drive_render_mode(self, presenter_window, monkeypatch):
+        """PresenterWindow gets render_mode from presenter_audience_render."""
+        import echo_personal_tool.presentation.presenter_view as pv
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        captured = {}
+        real_window = pv.PresenterWindow
+
+        class RecordingWindow(real_window):
+            def __init__(self, *args, **kwargs):
+                captured["render_mode"] = kwargs.get("render_mode")
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr(pv, "PresenterWindow", RecordingWindow)
+        prefs = UserPreferences(presenter_audience_render="opengl")
+        presenter_window._user_preferences = prefs
+        presenter_window._presenter.start()
+        presenter_window._presenter.stop()
+        assert captured["render_mode"] == "opengl"
+
+    def test_invalid_render_mode_falls_back_to_raster(self, presenter_window, monkeypatch):
+        import echo_personal_tool.presentation.presenter_view as pv
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+        captured = {}
+        real_window = pv.PresenterWindow
+
+        class RecordingWindow(real_window):
+            def __init__(self, *args, **kwargs):
+                captured["render_mode"] = kwargs.get("render_mode")
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr(pv, "PresenterWindow", RecordingWindow)
+        presenter_window._user_preferences = UserPreferences(
+            presenter_audience_render="wiregl"
+        )
+        presenter_window._presenter.start()
+        presenter_window._presenter.stop()
+        assert captured["render_mode"] == "raster"
+
+
+# ── Presenter diagnostics ───────────────────────────────────────────
+
+
+class TestPresenterDiagnostics:
+    def _make(self, tmp_path, enabled=True):
+        from echo_personal_tool.presentation.presenter_diagnostics import (
+            PresenterDiagnostics,
+        )
+
+        return PresenterDiagnostics(path=tmp_path / "presenter_diag.log", enabled=enabled)
+
+    def test_events_written_to_file(self, tmp_path):
+        diag = self._make(tmp_path)
+        diag.event("hello", size=3, ratio=1.5, note=None)
+        diag.counter("frames_rendered")
+        diag.counter("frames_rendered", 4)
+        diag.finish("stop")
+        text = (tmp_path / "presenter_diag.log").read_text(encoding="utf-8")
+        assert "session_start" in text
+        assert "hello size=3 ratio=1.5 note=none" in text
+        assert "session_end reason=stop" in text
+        assert "frames_rendered=5" in text
+
+    def test_exception_writes_traceback(self, tmp_path):
+        diag = self._make(tmp_path)
+        try:
+            raise ValueError("boom")
+        except ValueError as exc:
+            diag.exception("forward_frame", exc)
+        text = (tmp_path / "presenter_diag.log").read_text(encoding="utf-8")
+        assert "forward_frame error=ValueError('boom')" in text
+        assert "Traceback" in text
+
+    def test_disabled_writes_nothing(self, tmp_path):
+        diag = self._make(tmp_path, enabled=False)
+        diag.event("nope")
+        diag.exception("nope", RuntimeError("x"))
+        diag.finish("stop")
+        assert not (tmp_path / "presenter_diag.log").exists()
+
+    def test_default_disabled_under_pytest(self, monkeypatch, tmp_path):
+        from echo_personal_tool.presentation import presenter_diagnostics as pd
+
+        monkeypatch.setattr(pd.os, "environ", {"PYTEST_CURRENT_TEST": "x"})
+        assert pd.default_enabled() is False
+        monkeypatch.setattr(pd.os, "environ", {"SONOFORGE_PRESENTER_DIAG": "0"})
+        assert pd.default_enabled() is False
+        monkeypatch.setattr(pd.os, "environ", {})
+        assert pd.default_enabled() is True
+
+    def test_summarize_array(self):
+        import numpy as np
+
+        from echo_personal_tool.presentation.presenter_diagnostics import summarize_array
+
+        assert summarize_array(None) == {"frame": "none"}
+        summary = summarize_array(np.array([[10, 200], [30, 40]], dtype=np.uint8))
+        assert summary["frame"] == "2x2"
+        assert summary["min"] == 10
+        assert summary["max"] == 200
+
+    def test_forward_errors_are_recorded(self, presenter_window, monkeypatch, tmp_path):
+        """A failing audience render must not be silently dropped anymore."""
+        from echo_personal_tool.presentation.presenter_diagnostics import (
+            PresenterDiagnostics,
+        )
+
+        mode = presenter_window._presenter
+        diag = PresenterDiagnostics(path=tmp_path / "pdiag.log", enabled=True)
+        mode._diag = diag
+        mode.start()
+        window = mode.window()
+        assert window is not None
+        monkeypatch.setattr(
+            window, "viewer", lambda: (_ for _ in ()).throw(RuntimeError("dead"))
+        )
+        try:
+            mode.forward_frame(np.zeros((4, 4), dtype=np.uint8))
+            assert diag.counters["forward_errors"] == 1
+        finally:
+            mode.stop()
+        text = (tmp_path / "pdiag.log").read_text(encoding="utf-8")
+        assert "forward_frame error=RuntimeError('dead')" in text
+
+
+# ── Forward pacing and speaker keepalive ────────────────────────────
+
+
+class TestForwardPacingAndKeepalive:
+    def test_ema_tracks_render_cost(self, presenter_window):
+        mode = presenter_window._presenter
+        mode._record_forward_ms(10.0)
+        assert mode._fwd_ema_ms == 10.0
+        mode._record_forward_ms(30.0)
+        assert mode._fwd_ema_ms == 0.9 * 10.0 + 0.1 * 30.0
+
+    def test_pacing_skips_when_expensive(self, presenter_window, monkeypatch):
+        """When the audience render is slow, intermediate frames are skipped."""
+        import numpy as np
+
+        mode = presenter_window._presenter
+        if not mode.active:
+            mode.start()
+        window = mode.window()
+        try:
+            mode._fwd_seq = 0
+            calls = {"fast": 0, "full": 0}
+            viewer = window.viewer()
+            # The fixture controller's MagicMock is_scroll_active() is truthy
+            # → forward_frame takes the playback (show_frame_fast) path.
+            monkeypatch.setattr(
+                viewer,
+                "show_frame_fast",
+                lambda frame: calls.__setitem__("fast", calls["fast"] + 1),
+            )
+            mode._fwd_ema_ms = 30.0  # worst bucket → every 3rd frame
+            for _ in range(6):
+                mode.forward_frame(np.zeros((2, 2), dtype=np.uint8))
+            assert calls["fast"] == 2
+            assert mode._diag.counters.get("frames_skipped", 0) >= 4
+        finally:
+            if mode.active:
+                mode.stop()
+
+    def test_keepalive_timer_ticking_while_active(self, presenter_window, qtbot):
+        """A scheduled update() counters GL-idle blanking of the host viewer."""
+        mode = presenter_window._presenter
+        mode.start()
+        try:
+            assert mode._keepalive_timer.isActive()
+            assert mode._probe_timer.isActive()
+            paints_before = mode._paint_counter.count
+            qtbot.wait(600)  # keepalive fires ~2 times at 250 ms
+            assert mode._paint_counter.count >= paints_before
+        finally:
+            mode.stop()
+        assert not mode._keepalive_timer.isActive()
+        assert not mode._probe_timer.isActive()

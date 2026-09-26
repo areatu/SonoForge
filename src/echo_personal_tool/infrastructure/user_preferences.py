@@ -133,10 +133,16 @@ class UserPreferences:
     show_strain: bool = False
     show_la_auto: bool = False
     despeckle_enabled: bool = False
-    # Presenter mode (second-display mirror for the audience)
+    # Presenter mode (second-display window for the audience)
     presenter_screen: str = ""
     presenter_visual_preset: bool = True
     presenter_pointer: bool = True
+    # Rendering backend of the AUDIENCE viewer only (the speaker's viewer
+    # keeps its auto-detected backend).  Raster by default: GL viewports in
+    # a second top-level window have been observed to stay black on real
+    # multi-monitor Linux setups (Debian 12 / Qt 6.4 / Intel) while every
+    # raster overlay in the same window renders fine.
+    presenter_audience_render: str = "raster"
 
 
 def _settings_store() -> QSettings:
