@@ -314,6 +314,21 @@ class PresenterWindow(QWidget):
         self._live_caliper_item.setZValue(40)
         self._live_caliper_item.hide()
         self._viewer._view.addItem(self._live_caliper_item)
+        # Vessel auto-trace: the cyan envelope contour and the orange peak
+        # guide live as plot items on the speaker's doppler overlay and are
+        # not part of the measurement DTO — mirror them explicitly.
+        self._live_envelope_item = pg.PlotDataItem(
+            pen=pg.mkPen("#00e5ff", width=2)
+        )
+        self._live_envelope_item.setZValue(24)
+        self._live_envelope_item.hide()
+        self._viewer._view.addItem(self._live_envelope_item)
+        self._live_peak_guide_item = pg.PlotDataItem(
+            pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine)
+        )
+        self._live_peak_guide_item.setZValue(26)
+        self._live_peak_guide_item.hide()
+        self._viewer._view.addItem(self._live_peak_guide_item)
 
         self._overlay = _PointerOverlay(self, self._map_speaker_cursor)
         self._overlay.set_enabled(pointer)
@@ -479,7 +494,12 @@ class PresenterWindow(QWidget):
         self._closed = True
         self._timer.stop()
         self._overlay.set_enabled(False)
-        for item in (self._live_contour_item, self._live_caliper_item):
+        for item in (
+            self._live_contour_item,
+            self._live_caliper_item,
+            self._live_envelope_item,
+            self._live_peak_guide_item,
+        ):
             try:
                 self._viewer._view.removeItem(item)
             except (RuntimeError, Exception):  # noqa: BLE001 — teardown-safe
@@ -984,23 +1004,41 @@ class PresenterMode(QObject):
         try:
             host = self._host._viewer
             audience = window.viewer()
-            # In-progress contour (click nodes / freehand stroke).
-            host_item = getattr(host, "_active_contour_item", None)
-            drawing = (
-                bool(getattr(host, "_contour_mode_active", False))
-                and host_item is not None
-            )
             shown = False
-            if drawing:
-                x, y = host_item.getData()
-                if x is not None and len(x) > 0:
-                    pen = host_item.opts.get("pen")
-                    if pen is not None:
-                        window._live_contour_item.setPen(pen)
-                    window._live_contour_item.setData(
-                        [float(v) for v in x], [float(v) for v in y]
-                    )
-                    shown = True
+            # Point drag of an EXISTING contour: the deformed polyline is
+            # the rendered contour item of the active drag session (its
+            # geometry is setData-ed on every move step).
+            drag_index = getattr(host, "_drag_overlay_contour_index", None)
+            if isinstance(drag_index, int) and drag_index >= 0:
+                contour_items = getattr(host, "_contour_items", [])
+                if drag_index < len(contour_items):
+                    dragged = contour_items[drag_index]
+                    x, y = dragged.getData()
+                    if x is not None and len(x) > 0:
+                        pen = dragged.opts.get("pen")
+                        if pen is not None:
+                            window._live_contour_item.setPen(pen)
+                        window._live_contour_item.setData(
+                            [float(v) for v in x], [float(v) for v in y]
+                        )
+                        shown = True
+            # In-progress contour (click nodes / freehand stroke).
+            if not shown:
+                host_item = getattr(host, "_active_contour_item", None)
+                drawing = (
+                    bool(getattr(host, "_contour_mode_active", False))
+                    and host_item is not None
+                )
+                if drawing:
+                    x, y = host_item.getData()
+                    if x is not None and len(x) > 0:
+                        pen = host_item.opts.get("pen")
+                        if pen is not None:
+                            window._live_contour_item.setPen(pen)
+                        window._live_contour_item.setData(
+                            [float(v) for v in x], [float(v) for v in y]
+                        )
+                        shown = True
             if shown:
                 window._live_contour_item.show()
             else:
@@ -1023,6 +1061,35 @@ class PresenterMode(QObject):
                 window._live_caliper_item.show()
             else:
                 window._live_caliper_item.hide()
+            # Vessel auto-trace envelope + peak guide.
+            host_doppler = getattr(host, "_doppler", None)
+            for host_attr, live_item in (
+                ("_auto_envelope_item", window._live_envelope_item),
+                ("_auto_peak_guide_item", window._live_peak_guide_item),
+            ):
+                source = (
+                    getattr(host_doppler, host_attr, None)
+                    if host_doppler is not None
+                    else None
+                )
+                mirrored = False
+                if source is not None:
+                    try:
+                        x, y = source.getData()
+                    except Exception:  # noqa: BLE001 — probe is best effort
+                        x, y = None, None
+                    if x is not None and len(x) > 0:
+                        pen = source.opts.get("pen")
+                        if pen is not None:
+                            live_item.setPen(pen)
+                        live_item.setData(
+                            [float(v) for v in x], [float(v) for v in y]
+                        )
+                        mirrored = True
+                if mirrored:
+                    live_item.show()
+                else:
+                    live_item.hide()
         except (RuntimeError, AttributeError) as exc:
             self._diag.exception("live_preview", exc)
             return

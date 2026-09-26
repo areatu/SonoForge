@@ -911,6 +911,71 @@ class TestLivePreviewOverlayPositionPacing:
         assert len(viewer._contours) == 1
 
 
+    def test_drag_process_mirrors_deformed_polyline(self, presenter_window, qtbot):
+        """Field round 7: dragging a point of an EXISTING contour deforms
+        the rendered contour item (``_contour_items[idx]``, setData per
+        move step) — the creation-preview item is not involved, so the
+        drag session must mirror that polyline instead."""
+        import pyqtgraph as pg
+
+        self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
+        host = presenter_window._viewer
+        dragged = pg.PlotDataItem(pen=pg.mkPen("#ff5252", width=3))
+        dragged.setData([50.0, 75.0, 120.0], [60.0, 95.0, 150.0])
+        host._contour_items = [dragged]
+        host._drag_overlay_contour_index = 0
+        try:
+            presenter_window._presenter._sync_live_overlays()
+            live = pw._live_contour_item
+            assert live.isVisible()
+            x, y = live.getData()
+            assert list(x) == [50.0, 75.0, 120.0]
+            assert live.opts["pen"] == dragged.opts["pen"]
+            # Drag ends → session cleared → preview hidden.
+            host._drag_overlay_contour_index = None
+            presenter_window._presenter._sync_live_overlays()
+            assert not live.isVisible()
+        finally:
+            host._drag_overlay_contour_index = None
+            host._contour_items = []
+
+    def test_vessel_auto_trace_envelope_mirrored(self, presenter_window, qtbot):
+        """Field round 7: the vessel auto-trace envelope and peak guide are
+        plot-local items outside the DTO — mirror them at 30 Hz."""
+        import pyqtgraph as pg
+
+        self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
+        host_overlay = presenter_window._viewer._doppler
+        envelope = pg.PlotDataItem(pen=pg.mkPen("#00e5ff", width=2))
+        envelope.setData([10.0, 40.0, 80.0], [30.0, 5.0, 28.0])
+        guide = pg.PlotDataItem(
+            pen=pg.mkPen("#ff9800", width=2, style=Qt.PenStyle.DashLine)
+        )
+        guide.setData([40.0, 40.0], [50.0, 5.0])
+        host_overlay._auto_envelope_item = envelope
+        host_overlay._auto_peak_guide_item = guide
+        try:
+            presenter_window._presenter._sync_live_overlays()
+            live_env = pw._live_envelope_item
+            assert live_env.isVisible()
+            assert list(live_env.getData()[0]) == [10.0, 40.0, 80.0]
+            assert live_env.opts["pen"] == envelope.opts["pen"]
+            live_guide = pw._live_peak_guide_item
+            assert live_guide.isVisible()
+            assert list(live_guide.getData()[1]) == [50.0, 5.0]
+            # Cleared on the host → hidden on the audience.
+            host_overlay._auto_envelope_item = None
+            host_overlay._auto_peak_guide_item = None
+            presenter_window._presenter._sync_live_overlays()
+            assert not live_env.isVisible()
+            assert not live_guide.isVisible()
+        finally:
+            host_overlay._auto_envelope_item = None
+            host_overlay._auto_peak_guide_item = None
+
+
 # ── Presenter profile default layout (narrow activity bar) ──────────
 
 
