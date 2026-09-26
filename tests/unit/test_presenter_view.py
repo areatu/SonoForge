@@ -77,12 +77,16 @@ def presenter_window(mock_controller, monkeypatch):
     # suite; re-polishing the real stylesheet over the accumulated widget
     # tree is pathologically slow and irrelevant to presenter logic.
     import echo_personal_tool.presentation.main_window as mw_module
+    from echo_personal_tool.infrastructure.i18n import get_language, set_language
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
 
     # Presenter mode ships in the Presenter (lite) build only — exercise
     # the suite under that profile (the real deployment).
     monkeypatch.setenv("SONOFORGE_PROFILE", "presenter")
+    # MainWindow._apply_user_preferences sets the module-global i18n language;
+    # remember it so the fixture can restore it for later tests.
+    saved_language = get_language()
     monkeypatch.setattr(mw_module, "apply_clinical_theme", lambda **kwargs: None)
     monkeypatch.setattr(
         "echo_personal_tool.infrastructure.user_preferences.save_user_preferences",
@@ -108,10 +112,13 @@ def presenter_window(mock_controller, monkeypatch):
         patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
     ):
         window = MainWindow(controller=mock_controller)
-    yield window
-    if window._presenter.active:
-        window._presenter.stop()
-    window.close()
+    try:
+        yield window
+    finally:
+        if window._presenter.active:
+            window._presenter.stop()
+        window.close()
+        set_language(saved_language)
 
 
 @pytest.fixture()

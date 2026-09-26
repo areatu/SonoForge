@@ -50,3 +50,42 @@ def test_rv_section_has_fac_button() -> None:
     menu = MeasuresMenuWidget()
     fac_buttons = [btn for btn in menu.findChildren(QPushButton) if btn.text() == "FAC ПЖ"]
     assert len(fac_buttons) == 1
+
+
+def _flush_deferred_deletes() -> None:
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    QCoreApplication.processEvents()
+
+
+def test_blink_target_deleted_while_timer_active() -> None:
+    """Regression: RuntimeError from libshiboken when the blink target is
+    destroyed while the 500 ms timer keeps running."""
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    target = menu._blink_target
+    assert target is not None
+    assert menu._blink_timer.isActive()
+
+    target.deleteLater()
+    _flush_deferred_deletes()
+
+    menu._toggle_blink()  # must not raise
+    assert menu._blink_target is None
+    assert not menu._blink_timer.isActive()
+    menu.clear_highlight()  # must not raise either
+
+
+def test_menu_rebuild_stops_blink() -> None:
+    menu = MeasuresMenuWidget()
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+    assert menu._blink_timer.isActive()
+
+    menu.rebuild_with_preferences(None)
+
+    assert menu._blink_target is None
+    assert not menu._blink_timer.isActive()
+    _flush_deferred_deletes()
+    menu._toggle_blink()
+    menu.clear_highlight()
