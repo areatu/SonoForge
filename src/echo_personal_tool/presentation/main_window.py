@@ -248,6 +248,10 @@ class MainWindow(QMainWindow):
         # Doppler markers/VTI traces/calibration/vessel live viewer-locally
         # and never reach state_changed — forward them explicitly.
         self._viewer.doppler_markers_changed.connect(self._presenter.forward_doppler)
+        # Results-overlay drags reposition the audience label live.
+        self._viewer.results_overlay_position_changed.connect(
+            self._presenter.forward_results_overlay_position
+        )
         self._viewer.doppler_calibration_changed.connect(self._presenter.forward_doppler)
         self._viewer.spectral_calibration_completed.connect(
             self._presenter.forward_doppler

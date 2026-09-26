@@ -293,6 +293,28 @@ class PresenterWindow(QWidget):
         if viewport is not None:
             viewport.installEventFilter(self)
 
+        # In-progress drawing previews (contour clicks / freehand stroke /
+        # linear-caliper drag): mirrored at ~30 Hz from the speaker's
+        # viewer while the tools are active — the audience sees the
+        # drawing process, not only the committed result.
+        import pyqtgraph as pg
+
+        self._live_contour_item = pg.PlotDataItem(
+            pen=pg.mkPen("#ffd54f", width=3)
+        )
+        self._live_contour_item.setZValue(40)
+        self._live_contour_item.hide()
+        self._viewer._view.addItem(self._live_contour_item)
+        self._live_caliper_item = pg.PlotDataItem(
+            pen=pg.mkPen("#4dd0e1", width=3),
+            symbol="+",
+            symbolSize=12,
+            symbolPen=pg.mkPen("#4dd0e1", width=2),
+        )
+        self._live_caliper_item.setZValue(40)
+        self._live_caliper_item.hide()
+        self._viewer._view.addItem(self._live_caliper_item)
+
         self._overlay = _PointerOverlay(self, self._map_speaker_cursor)
         self._overlay.set_enabled(pointer)
         self._overlay.raise_()
@@ -457,6 +479,11 @@ class PresenterWindow(QWidget):
         self._closed = True
         self._timer.stop()
         self._overlay.set_enabled(False)
+        for item in (self._live_contour_item, self._live_caliper_item):
+            try:
+                self._viewer._view.removeItem(item)
+            except (RuntimeError, Exception):  # noqa: BLE001 — teardown-safe
+                pass
         try:
             self._viewer.disconnect_display_controls()
         except Exception:
@@ -696,6 +723,10 @@ class PresenterMode(QObject):
         self._keepalive_timer = QTimer(self)
         self._keepalive_timer.setInterval(250)
         self._keepalive_timer.timeout.connect(self._keepalive_tick)
+        # ~30 Hz mirror of the speaker's in-progress drawing.
+        self._live_timer = QTimer(self)
+        self._live_timer.setInterval(33)
+        self._live_timer.timeout.connect(self._sync_live_overlays)
 
     # ── state ───────────────────────────────────────────────────────
 
@@ -849,6 +880,7 @@ class PresenterMode(QObject):
             pass
         self._probe_timer.start()
         self._keepalive_timer.start()
+        self._live_timer.start()
 
     def _log_environment(self) -> None:
         """One-time environment dump at presenter start (diagnostics)."""
@@ -936,6 +968,67 @@ class PresenterMode(QObject):
             return
         self._diag.counter("keepalive")
 
+    def _sync_live_overlays(self) -> None:
+        """~30 Hz mirror of the speaker's in-progress drawing.
+
+        Both preview workflows keep their geometry in viewer-local plot
+        items, which nothing re-broadcasts: the active-contour item
+        (click-by-click nodes and the freehand stroke) and the linear
+        caliper's line. Poll them and paint the same data on the audience
+        view — the audience watches the drawing process, not just the
+        committed result.
+        """
+        window = self._window
+        if window is None:
+            return
+        try:
+            host = self._host._viewer
+            audience = window.viewer()
+            # In-progress contour (click nodes / freehand stroke).
+            host_item = getattr(host, "_active_contour_item", None)
+            drawing = (
+                bool(getattr(host, "_contour_mode_active", False))
+                and host_item is not None
+            )
+            shown = False
+            if drawing:
+                x, y = host_item.getData()
+                if x is not None and len(x) > 0:
+                    pen = host_item.opts.get("pen")
+                    if pen is not None:
+                        window._live_contour_item.setPen(pen)
+                    window._live_contour_item.setData(
+                        [float(v) for v in x], [float(v) for v in y]
+                    )
+                    shown = True
+            if shown:
+                window._live_contour_item.show()
+            else:
+                window._live_contour_item.hide()
+            # In-progress linear caliper (endpoint drag).
+            cal_shown = False
+            if bool(getattr(host, "_linear_caliper_active", False)):
+                line_item = getattr(host, "_linear_caliper_line_item", None)
+                if line_item is not None:
+                    x, y = line_item.getData()
+                    if x is not None and len(x) >= 2:
+                        pen = line_item.opts.get("pen")
+                        if pen is not None:
+                            window._live_caliper_item.setPen(pen)
+                        window._live_caliper_item.setData(
+                            [float(v) for v in x], [float(v) for v in y]
+                        )
+                        cal_shown = True
+            if cal_shown:
+                window._live_caliper_item.show()
+            else:
+                window._live_caliper_item.hide()
+        except (RuntimeError, AttributeError) as exc:
+            self._diag.exception("live_preview", exc)
+            return
+        except Exception as exc:  # noqa: BLE001 — preview must never fatal
+            self._diag.exception("live_preview", exc)
+
     def _record_forward_ms(self, ms: float) -> None:
         self._fwd_ema_ms = (
             ms if self._fwd_ema_ms <= 0.0 else 0.9 * self._fwd_ema_ms + 0.1 * ms
@@ -990,6 +1083,12 @@ class PresenterMode(QObject):
                 pushed["initial_overlay_chars"] = len(text)
         except (RuntimeError, AttributeError) as exc:
             self._diag.exception("sync_initial_overlay", exc)
+        try:
+            x_ratio, y_ratio = self._host._viewer.results_overlay_position()
+            viewer.set_results_overlay_position(float(x_ratio), float(y_ratio))
+            pushed["initial_overlay_pos"] = (round(float(x_ratio), 3), round(float(y_ratio), 3))
+        except (RuntimeError, AttributeError):
+            pass
         self.forward_doppler()
         self._diag.event("content_sync", **pushed)
 
@@ -1002,13 +1101,6 @@ class PresenterMode(QObject):
             return
         diag = self._diag
         self._fwd_seq += 1
-        # Adaptive pacing: rendering the audience copy costs real
-        # main-thread time; when it is expensive, skip intermediate frames
-        # instead of stalling the speaker's playback.
-        limit = 1 if self._fwd_ema_ms <= 12.0 else (2 if self._fwd_ema_ms <= 25.0 else 3)
-        if limit > 1 and self._fwd_seq % limit != 0:
-            diag.counter("frames_skipped")
-            return
         started = time.perf_counter()
         try:
             viewer = window.viewer()
@@ -1017,6 +1109,20 @@ class PresenterMode(QObject):
                 self._host._controller.is_scroll_active()
             )
             if playing:
+                # Adaptive pacing: rendering the audience copy costs real
+                # main-thread time; when it is expensive, skip intermediate
+                # frames instead of stalling the speaker's playback.
+                # NEVER pace idle frames: a file switch delivers exactly ONE
+                # frame — skipping it left the old image on the audience
+                # while contours already arrived (field report #3).
+                limit = (
+                    1
+                    if self._fwd_ema_ms <= 12.0
+                    else (2 if self._fwd_ema_ms <= 25.0 else 3)
+                )
+                if limit > 1 and self._fwd_seq % limit != 0:
+                    diag.counter("frames_skipped")
+                    return
                 viewer.show_frame_fast(np.asarray(image))
             else:
                 viewer.show_frame(np.asarray(image))
@@ -1088,6 +1194,7 @@ class PresenterMode(QObject):
             ]
             viewer.apply_contours(fresh)
             viewer._refresh_frame_overlays()
+            window._live_contour_item.hide()
         except Exception as exc:  # noqa: BLE001
             self._diag.counter("forward_errors")
             self._diag.exception("forward_contours", exc)
@@ -1114,6 +1221,21 @@ class PresenterMode(QObject):
             self._diag.exception("forward_linear_measurements", exc)
             return
         self._diag.counter("linear_forwarded")
+
+    def forward_results_overlay_position(self, x_ratio: float, y_ratio: float) -> None:
+        """Mirror a results-overlay drag onto the presentation viewer."""
+        window = self._window
+        if window is None:
+            return
+        try:
+            window.viewer().set_results_overlay_position(
+                float(x_ratio), float(y_ratio)
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_overlay_position", exc)
+            return
+        self._diag.counter("overlay_positions_forwarded")
 
     def forward_doppler(self, *_args) -> None:
         """Mirror the doppler display (markers/VTI traces/vessel) to the audience.
@@ -1186,6 +1308,7 @@ class PresenterMode(QObject):
     def _stop_diagnostics_helpers(self) -> None:
         self._probe_timer.stop()
         self._keepalive_timer.stop()
+        self._live_timer.stop()
         try:
             self._host._viewer.removeEventFilter(self._paint_counter)
         except (RuntimeError, AttributeError):

@@ -792,6 +792,125 @@ class TestDopplerForwarding:
         presenter_window._presenter.forward_doppler()
 
 
+# ── Live drawing preview + overlay position + idle-frame pacing ─────
+
+
+class TestLivePreviewOverlayPositionPacing:
+    """Field round 6: (1) overlay drags were invisible on the audience,
+    (2) the in-progress drawing process was invisible, (3) a file switch
+    sometimes needed a second click — the single frame of the switch was
+    dropped by playback pacing."""
+
+    def _presentation(self, presenter_window, qtbot):
+        presenter_window._presenter.start()
+        qtbot.waitUntil(lambda: presenter_window._presenter.active, timeout=2000)
+        return presenter_window._presenter.window().viewer()
+
+    def test_idle_frame_never_skipped_by_pacing(self, presenter_window, qtbot, monkeypatch):
+        """Regression: pacing must only thin out PLAYBACK frames — a file
+        switch delivers exactly one idle frame and it must always render."""
+
+        presenter_window._presenter.start()
+        qtbot.waitUntil(lambda: presenter_window._presenter.active, timeout=2000)
+        mode = presenter_window._presenter
+        pw = mode.window()
+        try:
+            monkeypatch.setattr(
+                presenter_window._controller,
+                "is_scroll_active",
+                lambda: False,
+                raising=False,
+            )
+            mode._fwd_ema_ms = 30.0  # worst bucket
+            mode._fwd_seq = 0  # a % limit != 0 phase would skip playback
+            skipped_before = mode._diag.counters.get("frames_skipped", 0)
+            mode.forward_frame(_echo_frame(shift=5))
+            assert pw.viewer()._current_frame is not None
+            assert mode._diag.counters.get("frames_skipped", 0) == skipped_before
+        finally:
+            mode.stop()
+
+    def test_overlay_position_forward_updates_audience(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        presenter_window._presenter.forward_results_overlay_position(0.7, 0.6)
+        assert viewer.results_overlay_position() == (0.7, 0.6)
+        assert viewer._results_overlay_custom_position is True
+
+    def test_overlay_position_hook_wired(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        presenter_window._viewer.results_overlay_position_changed.emit(0.25, 0.75)
+        assert viewer.results_overlay_position() == (0.25, 0.75)
+
+    def test_live_contour_preview_mirrors_host_drawing(self, presenter_window, qtbot):
+        import pyqtgraph as pg
+
+        self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
+        host = presenter_window._viewer
+        # Simulate the click-by-click contour flow: the host viewer holds an
+        # active-contour item with the points placed so far.
+        active = pg.PlotDataItem(pen=pg.mkPen("#ffd54f", width=3))
+        active.setData([50.0, 90.0, 130.0], [60.0, 60.0, 120.0])
+        host._contour_mode_active = True
+        host._active_contour_item = active
+        try:
+            presenter_window._presenter._sync_live_overlays()
+            live = pw._live_contour_item
+            assert live.isVisible()
+            x, y = live.getData()
+            assert list(x) == [50.0, 90.0, 130.0]
+            assert list(y) == [60.0, 60.0, 120.0]
+            # Pen mirrors the host's active style (WYSIWYG).
+            assert live.opts["pen"] == active.opts["pen"]
+            # Drawing finished → preview hidden.
+            host._contour_mode_active = False
+            presenter_window._presenter._sync_live_overlays()
+            assert not live.isVisible()
+        finally:
+            host._contour_mode_active = False
+            host._active_contour_item = None
+
+    def test_live_caliper_preview_mirrors_host_drag(self, presenter_window, qtbot):
+        import pyqtgraph as pg
+
+        self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
+        host = presenter_window._viewer
+        line = pg.PlotDataItem(pen=pg.mkPen("#4dd0e1", width=3))
+        line.setData([10.0, 50.0], [10.0, 40.0])
+        host._linear_caliper_active = True
+        host._linear_caliper_line_item = line
+        try:
+            presenter_window._presenter._sync_live_overlays()
+            live = pw._live_caliper_item
+            assert live.isVisible()
+            x, y = live.getData()
+            assert list(x) == [10.0, 50.0]
+            assert list(y) == [10.0, 40.0]
+            host._linear_caliper_active = False
+            presenter_window._presenter._sync_live_overlays()
+            assert not live.isVisible()
+        finally:
+            host._linear_caliper_active = False
+            host._linear_caliper_line_item = None
+
+    def test_committed_contour_hides_live_preview(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        pw = presenter_window._presenter.window()
+        snapshot = presenter_window._controller.state_manager.snapshot
+        from echo_personal_tool.domain.models.contour import Contour
+
+        contour = Contour(
+            phase="ED",
+            points=[(50.0, 60.0), (120.0, 60.0), (120.0, 150.0)],
+            frame_index=snapshot.current_frame_index,
+        )
+        pw._live_contour_item.show()
+        presenter_window._presenter.forward_contours([contour])
+        assert not pw._live_contour_item.isVisible()
+        assert len(viewer._contours) == 1
+
+
 # ── Presenter profile default layout (narrow activity bar) ──────────
 
 
