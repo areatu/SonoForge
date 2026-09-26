@@ -239,6 +239,12 @@ class MainWindow(QMainWindow):
         self._viewer.contour_landmark_rejected.connect(self._show_status)
         self._viewer.contours_changed.connect(self._controller.on_contours_changed)
         self._viewer.linear_measurements_changed.connect(self._controller.on_linear_measurements_changed)
+        # Contour/caliper edits are stored with emit=False (no state_changed):
+        # the presentation viewer needs this explicit forward to re-render.
+        self._viewer.contours_changed.connect(self._presenter.forward_contours)
+        self._viewer.linear_measurements_changed.connect(
+            self._presenter.forward_linear_measurements
+        )
         self._viewer.linear_caliper_sequence_completed.connect(self._on_linear_caliper_sequence_completed)
         self._viewer.calibration_completed.connect(self._controller.on_manual_calibration)
         self._viewer.doppler_markers_changed.connect(self._controller.on_doppler_markers_changed)
@@ -892,6 +898,7 @@ class MainWindow(QMainWindow):
         self._viewer2.scroll_frame_selected.connect(self._on_viewer2_frame_selected)
         self._viewer2.contour_completed.connect(self._on_contour_completed)
         self._viewer2.contours_changed.connect(self._controller.on_contours_changed)
+        self._viewer2.contours_changed.connect(self._presenter.forward_contours)
         # Sync viewer2 state from controller's current instance
         self._sync_viewer2_state()
 

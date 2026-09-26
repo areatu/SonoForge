@@ -1051,6 +1051,50 @@ class PresenterMode(QObject):
             return
         self._diag.counter("overlays_forwarded")
 
+    def forward_contours(self, contours) -> None:
+        """Mirror an edited contour set onto the presentation viewer.
+
+        ``AppController.on_contours_changed`` stores contours with
+        ``emit=False`` — ``state_changed`` never fires while the presenter
+        drags contour points (Simpson manual / auto-Simpson refinement), so
+        this explicit forward is the only path that reaches the audience.
+        Re-uses ``set_state`` with just the ``contours`` field replaced: the
+        frame and instance are unchanged, so its re-render is limited to the
+        contour overlay.
+        """
+        window = self._window
+        if window is None:
+            return
+        try:
+            snapshot = self._host._controller.state_manager.snapshot
+            window.viewer().set_state(replace(snapshot, contours=tuple(contours)))
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_contours", exc)
+            return
+        self._diag.counter("contours_forwarded")
+
+    def forward_linear_measurements(self, measurements) -> None:
+        """Mirror edited linear measurements (calipers) onto the presentation.
+
+        Same rationale as :meth:`forward_contours` — caliper edits reach the
+        controller with ``emit=False`` and would never re-render the
+        audience viewer through ``state_changed``.
+        """
+        window = self._window
+        if window is None:
+            return
+        try:
+            snapshot = self._host._controller.state_manager.snapshot
+            window.viewer().set_state(
+                replace(snapshot, linear_measurements=tuple(measurements))
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._diag.counter("forward_errors")
+            self._diag.exception("forward_linear_measurements", exc)
+            return
+        self._diag.counter("linear_forwarded")
+
     # ── stop / lifecycle ────────────────────────────────────────────
 
     def stop(self) -> None:

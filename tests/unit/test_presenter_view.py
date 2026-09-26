@@ -541,6 +541,121 @@ class TestContentForwarding:
         assert "EDV 112 ml" in pw.viewer()._results_overlay_label.text()
 
 
+# ── Contour / caliper forwarding (edit paths use emit=False) ────────
+
+
+class TestContourCaliperForwarding:
+    """Contour point drags never fire state_changed (controller stores with
+    ``emit=False``) — without the explicit contours_changed hook the
+    audience display kept showing the initial contour (field report:
+    Simpson manual / auto-Simpson refinement invisible on the second
+    monitor)."""
+
+    def _presentation(self, presenter_window, qtbot):
+        presenter_window._presenter.start()
+        qtbot.waitUntil(lambda: presenter_window._presenter.active, timeout=2000)
+        return presenter_window._presenter.window().viewer()
+
+    def _contour(self, snapshot):
+        from echo_personal_tool.domain.models.contour import Contour
+
+        return Contour(
+            phase="ED",
+            view="A4C",
+            chamber="LV",
+            points=[(50.0, 60.0), (120.0, 60.0), (120.0, 150.0), (50.0, 150.0)],
+            source="manual",
+            frame_index=snapshot.current_frame_index,
+            sop_instance_uid=None,
+        )
+
+    def test_forward_contours_updates_audience_viewer(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        contour = self._contour(snapshot)
+        presenter_window._presenter.forward_contours([contour])
+        assert tuple(viewer._stored_contours) == (contour,)
+        # rendered items rebuilt from the new stored set
+        assert len(viewer._contours) == 1
+
+    def test_forward_contours_replaces_previous_set(self, presenter_window, qtbot):
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        first = self._contour(snapshot)
+        moved = replace(
+            first, points=[(55.0, 65.0), (125.0, 65.0), (125.0, 155.0), (55.0, 155.0)]
+        )
+        presenter_window._presenter.forward_contours([first])
+        presenter_window._presenter.forward_contours([moved])
+        assert tuple(viewer._stored_contours) == (moved,)
+        assert len(viewer._contours) == 1
+
+    def test_forward_contours_inactive_is_noop(self, presenter_window):
+        snapshot = presenter_window._controller.state_manager.snapshot
+        presenter_window._presenter.forward_contours([self._contour(snapshot)])
+
+    def test_forward_linear_measurements_updates_audience(self, presenter_window, qtbot):
+        from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        measurement = LinearMeasurement(
+            label="D1",
+            pixel_length=42.0,
+            millimeter_length=None,
+            frame_index=snapshot.current_frame_index,
+            start=(10.0, 10.0),
+            end=(50.0, 10.0),
+            sop_instance_uid="",
+        )
+        presenter_window._presenter.forward_linear_measurements([measurement])
+        key = ("D1", snapshot.current_frame_index)
+        assert viewer._stored_linear_measurements.get(key) == measurement
+
+    def test_hook_contours_changed_reaches_audience(self, presenter_window, qtbot):
+        """Real-hook regression: the viewer signal must re-render the audience.
+
+        Before the fix nothing mirrored edits: state_changed is not emitted
+        on the contours path, so forward_state was never called.
+        """
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        contour = self._contour(snapshot)
+        presenter_window._viewer.contours_changed.emit([contour])
+        assert tuple(viewer._stored_contours) == (contour,)
+
+    def test_hook_linear_measurements_reaches_audience(self, presenter_window, qtbot):
+        from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
+
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        measurement = LinearMeasurement(
+            label="D2",
+            pixel_length=30.0,
+            millimeter_length=None,
+            frame_index=snapshot.current_frame_index,
+            start=(5.0, 5.0),
+            end=(35.0, 5.0),
+            sop_instance_uid="",
+        )
+        presenter_window._viewer.linear_measurements_changed.emit([measurement])
+        assert viewer._stored_linear_measurements.get(("D2", snapshot.current_frame_index)) == measurement
+
+    def test_drag_end_emit_updates_audience(self, presenter_window, qtbot):
+        """The exact field flow: viewer drag-end emits the updated contour."""
+        viewer = self._presentation(presenter_window, qtbot)
+        snapshot = presenter_window._controller.state_manager.snapshot
+        initial = self._contour(snapshot)
+        presenter_window._presenter.forward_contours([initial])
+        refined = replace(
+            initial, points=[(52.0, 62.0), (122.0, 62.0), (122.0, 152.0), (52.0, 152.0)]
+        )
+        # _finalize_contour_point_drag ends with this emit:
+        presenter_window._viewer.contours_changed.emit([refined])
+        assert tuple(viewer._stored_contours) == (refined,)
+        assert len(viewer._contours) == 1
+
+
 # ── Presenter profile default layout (narrow activity bar) ──────────
 
 
