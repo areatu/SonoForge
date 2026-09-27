@@ -665,12 +665,9 @@ class MainWindow(QMainWindow):
     def _load_layout_state(self) -> LayoutConfig:
         raw = self._user_preferences.layout_state_json
         if not raw:
-            # Presenter profile: show the narrow activity bar (with the
-            # popular actions) instead of the wide 280px tool panel.
-            from echo_personal_tool.infrastructure.profile import is_presenter
-
-            if is_presenter():
-                return LayoutConfig(activity_bar=True)
+            # Fresh install: wide tool panel with the gallery on the left in
+            # every profile (presenter included — the narrow activity bar is
+            # still available from the layout menu).
             return LayoutConfig()
         try:
             cfg = LayoutConfig(**json.loads(raw))

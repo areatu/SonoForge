@@ -1073,7 +1073,7 @@ class TestPresenterProfileOnlyAccess:
 
 
 class TestPresenterDefaultLayout:
-    def test_presenter_profile_defaults_to_activity_bar(self, monkeypatch, isolated_qsettings):
+    def test_presenter_profile_defaults_to_tool_panel(self, monkeypatch, isolated_qsettings):
         from echo_personal_tool.infrastructure import profile
         from echo_personal_tool.infrastructure.user_preferences import UserPreferences
         from echo_personal_tool.presentation.main_window import MainWindow
@@ -1082,7 +1082,7 @@ class TestPresenterDefaultLayout:
         w = MainWindow.__new__(MainWindow)  # no Qt init — test the loader only
         w._user_preferences = UserPreferences(layout_state_json="")
         cfg = MainWindow._load_layout_state(w)
-        assert cfg.activity_bar is True
+        assert cfg.activity_bar is False
 
         monkeypatch.delenv(profile.PROFILE_ENV)
         cfg_full = MainWindow._load_layout_state(w)
@@ -1136,10 +1136,9 @@ class TestFullscreenKiosk:
         assert window._gallery.isVisible()
         assert window._system_bar.isVisible()
         assert window.statusBar().isVisible()
-        # Panel chrome follows the ACTIVE layout: the Presenter (lite)
-        # profile defaults to the narrow activity bar, the full profile to
-        # the wide tool panel.
-        assert window._activity_bar.isVisible() or window._tool_panel.isVisible()
+        # Panel chrome follows the ACTIVE layout: both profiles default to
+        # the wide tool panel (the activity bar is opt-in).
+        assert window._tool_panel.isVisible()
 
     def test_exit_kiosk_restores_activity_tab_panel(self, presenter_window, qtbot):
         from dataclasses import replace as dc_replace
