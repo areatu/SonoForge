@@ -410,6 +410,18 @@ class PresenterWindow(QWidget):
 
     # ── placement (the Qt multi-monitor recipe) ─────────────────────
 
+    def _enter_fullscreen(self) -> None:
+        """Enter fullscreen without requesting activation.
+
+        ``QWidget.showFullScreen()`` internally requests activation; on a
+        window flagged ``WindowDoesNotAcceptFocus`` (this one never takes
+        focus from the speaker) Qt logs ``requestActivate() called for ...
+        which has Qt::WindowDoesNotAcceptFocus set``.  Setting the window
+        state keeps ``WA_ShowWithoutActivating`` honoured yet fullscreen.
+        """
+        self.setWindowState(self.windowState() | Qt.WindowState.WindowFullScreen)
+        self.show()
+
     def start(self) -> None:
         """Show fullscreen on the target screen and verify placement.
 
@@ -436,7 +448,7 @@ class PresenterWindow(QWidget):
         if handle is not None:
             handle.setScreen(self._target_screen)
         self.setGeometry(self._target_screen.geometry())
-        self.showFullScreen()
+        self._enter_fullscreen()
         if diag is not None and handle is not None:
             diag.event(
                 "placement_fullscreen",
@@ -459,7 +471,7 @@ class PresenterWindow(QWidget):
                 )
             handle.setScreen(self._target_screen)
             self.setGeometry(self._target_screen.geometry())
-            self.showFullScreen()
+            self._enter_fullscreen()
             handle = self.windowHandle()
             actual = handle.screen() if handle is not None else actual
         if self._diag is not None:
@@ -491,7 +503,7 @@ class PresenterWindow(QWidget):
                     )
             handle.setScreen(self._target_screen)
             self.setGeometry(self._target_screen.geometry())
-            self.showFullScreen()
+            self._enter_fullscreen()
         self.raise_()
 
     def stop(self) -> None:
