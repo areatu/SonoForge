@@ -27,7 +27,34 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 ---
 
+## Main application
+
 ![SonoForge preview](assets/sonoforge_preview.gif)
+
+---
+
+## SonoForge Presenter — DICOM as a presentation
+
+![SonoForge Presenter](assets/presenter.png)
+
+![Presenter mode demo](assets/presenter_demo.gif)
+
+A portable SonoForge edition for lectures and case review: **the audience sees a clean
+full-screen echo while you keep the full measuring workstation on your laptop** — like a
+PowerPoint slide show, but with live DICOM.
+
+1. **Your workstation, their clean screen.** The audience display shows only the image,
+   full screen — you keep every tool.
+2. **Everything mirrors live** — point-by-point and freehand contours, node edits, calipers,
+   Doppler/VTI, vessel PSV/EDV, the results overlay. Every change appears instantly.
+3. **Presenter extras** — audience-display picker, laser pointer, and a projector visual
+   preset (thick lines, large labels).
+4. **Runs from a USB stick** — one file, no installation, no admin rights, no AI models;
+   Windows and Linux.
+
+Press `F10` → present. Download `SonoForgePresenter.exe` / `SonoForgePresenter-*.AppImage`
+from [Releases](https://github.com/areatu/SonoForge/releases); details in
+[build/presenter/README.md](build/presenter/README.md).
 
 ---
 
@@ -257,12 +284,6 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 - **Reduced size** — PySide6-Essentials (no QtWebEngine), no onnxruntime/PyMuPDF/openpyxl
 - **Adjustable composition** — the module set is a build configuration; AI and handbook
   can be re-added later (see [build/presenter/README.md](build/presenter/README.md))
-
----
-
-## Demo
-
-[![SonoForge Demo](https://img.youtube.com/vi/vbcIFMZP-3o/maxresdefault.jpg)](https://youtu.be/vbcIFMZP-3o)
 
 ---
 

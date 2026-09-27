@@ -27,6 +27,38 @@
 
 ---
 
+## Основное приложение
+
+![SonoForge preview](assets/sonoforge_preview.gif)
+
+---
+
+## SonoForge Presenter — DICOM как презентация
+
+![SonoForge Presenter](assets/presenter.png)
+
+![Демонстрация режима докладчика](assets/presenter_demo.gif)
+
+Портативное издание SonoForge для лекций и разбора случаев: **у аудитории — чистый
+полноэкранный просмотр эхо, у вас — все инструменты измерений**. Как показ слайдов в
+PowerPoint, только вместо слайдов — живой DICOM.
+
+1. **У вас — рабочая станция, у аудитории — чистый экран.** Выбираете дисплей аудитории;
+   второй экран показывает только изображение, во весь экран.
+2. **Всё зеркалится в реальном времени** — контуры по точкам и freehand, правка узлов,
+   калиперы, допплер/VTI, сосудистые PSV/EDV, оверлей результатов: аудитория видит каждую
+   правку мгновенно.
+3. **Фишки докладчика** — выбор дисплея аудитории, лазерная указка, визуальный профиль
+   проектора (толстые линии, крупные подписи).
+4. **Запускается с флешки** — один файл, без установки и прав администратора, без моделей
+   AI; Windows и Linux.
+
+Нажмите `F10` → докладывайте. Скачать `SonoForgePresenter.exe` / `SonoForgePresenter-*.AppImage`
+можно в [Releases](https://github.com/areatu/SonoForge/releases); подробности —
+[build/presenter/README.md](build/presenter/README.md).
+
+---
+
 ## Установка
 
 <details open>
@@ -252,12 +284,6 @@ SonoForge использует **ONNX Runtime** для сегментации с
 - **Быстрый старт** — без первоначальной настройки и скачивания моделей, сразу в просмотрщике
 - **Уменьшенный размер** — PySide6-Essentials (без QtWebEngine), без onnxruntime/PyMuPDF/openpyxl
 - **Настраиваемый состав** — набор модулей это параметр сборки; AI и справочник можно вернуть позже (см. [build/presenter/README.md](build/presenter/README.md))
-
----
-
-## Демонстрация
-
-[![SonoForge Demo](https://img.youtube.com/vi/4OS_V4SR9SI/maxresdefault.jpg)](https://youtu.be/4OS_V4SR9SI)
 
 ---
 
