@@ -221,7 +221,15 @@ _EXPERIMENTAL_BUTTONS: dict[str, str] = {
 }
 
 # ONNX-based AI actions — hidden in the Presenter (lite) build entirely.
-_AI_ONNX_ACTIONS = frozenset({str(MeasurementAction.LAV_4C_AI_PLUS), str(MeasurementAction.LAV_4C_AUTO)})
+# LV Auto (MBS Simpson) runs ONNX auto-segmentation, so without ONNX the
+# whole "menu.lv_auto" section would be dead weight.
+_AI_ONNX_ACTIONS = frozenset(
+    {
+        str(MeasurementAction.LAV_4C_AI_PLUS),
+        str(MeasurementAction.LAV_4C_AUTO),
+        str(MeasurementAction.MBS_SIMPSON),
+    }
+)
 
 
 def _filter_menu(

@@ -234,17 +234,25 @@ class TestMenuFiltering:
     def test_full_profile_keeps_ai_buttons(self):
         from echo_personal_tool.presentation.measures_menu import _MENU, _filter_menu
 
-        values = self._action_values(_filter_menu(_MENU, None))
+        filtered = _filter_menu(_MENU, None)
+        values = self._action_values(filtered)
         assert "lav_4c_ai_plus" in values
         assert "lav_4c_auto" in values
+        # LV Auto (ONNX auto-segmentation) stays in the full profile
+        assert "mbs_simpson" in values
+        assert any(key == "menu.lv_auto" for key, _ in filtered)
 
     def test_presenter_hides_ai_buttons(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv(profile.PROFILE_ENV, "presenter")
         from echo_personal_tool.presentation.measures_menu import _MENU, _filter_menu
 
-        values = self._action_values(_filter_menu(_MENU, None))
+        filtered = _filter_menu(_MENU, None)
+        values = self._action_values(filtered)
         assert "lav_4c_ai_plus" not in values
         assert "lav_4c_auto" not in values
+        # LV Auto needs ONNX auto-segmentation — the section is hidden
+        assert "mbs_simpson" not in values
+        assert all(key != "menu.lv_auto" for key, _ in filtered)
         # non-ONNX tools survive
-        assert "mbs_simpson" in values
+        assert "manual_simpson" in values
         assert "speckle_tracking" in values
