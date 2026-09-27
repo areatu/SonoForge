@@ -268,7 +268,7 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 ## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (current release: **v0.3.0**).
+> Check the installed version anytime: `sonoforge --version` (current release: **v0.3.1**).
 
 ### 1. Open DICOM Data
 
