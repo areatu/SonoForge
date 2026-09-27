@@ -159,14 +159,24 @@ jobs:
           path: artifacts
           pattern: SonoForgePresenter-*
 
-      - name: Create release
+      - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "SonoForge Presenter $TAG" \
-            --notes "Lite portable build: no ONNX AI segmentation, no reference UI, portable USB-stick storage. Full PACS support." \
-            artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe \
-            artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+          # Attach to an existing release (e.g. the main vX.Y.Z one) when the
+          # tag is already published; otherwise create a dedicated Presenter
+          # release (the presenter-vX.Y.Z flow).
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              --repo "$GITHUB_REPOSITORY" --clobber \
+              artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe \
+              artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SonoForge Presenter $TAG" \
+              --notes "Lite portable build: no ONNX AI segmentation, no reference UI, portable USB-stick storage. Full PACS support." \
+              artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe \
+              artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+          fi
