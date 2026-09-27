@@ -113,6 +113,8 @@ class ActivityBar(QWidget):
 
         _labels = {
             "caliper": (tr("activity.caliper_big"), tr("activity.caliper_small")),
+            "play": (tr("activity.play_big"), tr("activity.play_small")),
+            "hr": (tr("activity.hr_big"), tr("activity.hr_small")),
             "lv2d": (tr("activity.lv2d_big"), tr("activity.lv2d_small")),
             "esv": (tr("activity.esv_big"), tr("activity.esv_small")),
             "edv": (tr("activity.edv_big"), tr("activity.edv_small")),
@@ -120,6 +122,8 @@ class ActivityBar(QWidget):
         }
         for name in [
             "caliper",
+            "play",
+            "hr",
             "lv2d",
             "esv",
             "edv",
@@ -129,10 +133,33 @@ class ActivityBar(QWidget):
             btn = _TextButton(big, small)
             btn.clicked.connect(lambda _, n=name: self.action_requested.emit(n))
             HoverButtonMixin.install(btn)
-            layout.addWidget(btn)
             self._action_buttons[name] = btn
 
+        # Playback actions sit right under the caliper; the LV quantification
+        # block starts after a small separator.
+        for name in ["caliper", "play", "hr"]:
+            layout.addWidget(self._action_buttons[name])
+        layout.addSpacing(8)
+        for name in ["lv2d", "esv", "edv", "es"]:
+            layout.addWidget(self._action_buttons[name])
+
         layout.addStretch(1)
+
+        self._playing = False
+
+    def set_playing(self, playing: bool) -> None:
+        """Swap the play/pause button glyph to match the playback state."""
+        if self._playing == playing:
+            return
+        self._playing = playing
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        btn = self._action_buttons.get("play")
+        if btn is not None:
+            btn.set_labels(
+                tr("activity.pause_big") if playing else tr("activity.play_big"),
+                tr("activity.play_small"),
+            )
 
     def _on_click(self, name: str) -> None:
         btn = self._buttons[name]
@@ -156,6 +183,8 @@ class ActivityBar(QWidget):
             btn.setToolTip(tab_names.get(name, name.capitalize()))
         action_tooltips = {
             "caliper": tr("tool_panel.linear_caliper"),
+            "play": tr("viewer.play"),
+            "hr": tr("system_bar.heart_rate_tooltip"),
             "lv2d": tr("tools.lv2d_all_diastole"),
             "esv": tr("tools.lv2d_es"),
             "edv": tr("tools.ed_auto"),
@@ -163,6 +192,11 @@ class ActivityBar(QWidget):
         }
         action_labels = {
             "caliper": (tr("activity.caliper_big"), tr("activity.caliper_small")),
+            "play": (
+                tr("activity.pause_big") if self._playing else tr("activity.play_big"),
+                tr("activity.play_small"),
+            ),
+            "hr": (tr("activity.hr_big"), tr("activity.hr_small")),
             "lv2d": (tr("activity.lv2d_big"), tr("activity.lv2d_small")),
             "esv": (tr("activity.esv_big"), tr("activity.esv_small")),
             "edv": (tr("activity.edv_big"), tr("activity.edv_small")),

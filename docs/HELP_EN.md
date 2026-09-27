@@ -785,7 +785,8 @@ These are registered as `WindowShortcut` bindings:
 | `Esc` | cancel the active tool or preliminary contour. |
 | `Delete` / `Backspace` | delete the selected caliper or current-phase contour. |
 | `` ` `` | collapse/expand the thumbnail gallery. |
-| `F11` | toggle fullscreen; the gallery and panels are hidden in fullscreen. |
+| `F11` | toggle fullscreen kiosk: the gallery, panels, system bar and status bar are hidden; move the mouse to the top edge to reveal the system bar (auto-hides again). |
+| `F10` | Presenter view — a separate presentation window on the second display (SonoForge Presenter build only). |
 | `Up` / `Down` | select the previous/next gallery instance, not the previous/next cine frame. |
 
 ### 18.2 Main/viewer event-handler keys
@@ -889,6 +890,21 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 3. Save the settings.
 4. Close and reopen `References` to rescan the folder.
 5. Use `File → Reload` for the active document; use `Add document…` for a file from another location.
+
+### 19.7 Projector demonstration (Presenter view)
+
+Scenario: a lecture/demo on a projector with "Extend these displays" in Windows, or a second monitor on Linux — same model as PowerPoint/LibreOffice Impress.
+
+The mode ships in the SonoForge Presenter (lite) build only: that build has the `Presenter` button in the top bar and the `F10` shortcut. The full build has neither.
+
+1. Configure "Extend" in the OS display settings.
+2. Click the `Presenter` button in the top bar (or press `F10`). The main window stays on your monitor with all panels and tools; the second display (audience) gets a separate fullscreen viewer window that renders there independently — no thumbnail gallery, no tool panels, no system bar.
+3. Everything you do (frames, calipers, contours, results overlay, W/L/DR sliders) is shown to the audience instantly — the windows exchange decoded frames via signals, no pixel copying (correct with OpenGL rendering).
+4. Button options (menu arrow): pick the audience display (default: the display without the application window; the choice is remembered), "Projector visual preset" (thick lines, large fonts, inline value labels — applied only while presenting and restored on exit), "Laser pointer" (a large translucent dot on the audience display follows your mouse).
+5. The presentation window is read-only and never takes focus — keyboard and mouse always stay with your window.
+6. Exit: `F10` or the `Presenter` button. Without a second display a status warning explains that the presentation covers the working window.
+
+Fullscreen without a second display: `F11` hides the entire UI; move the mouse to the top edge to reveal the top bar (auto-hides again).
 
 ---
 
