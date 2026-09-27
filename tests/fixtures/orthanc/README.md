@@ -1,35 +1,37 @@
 # Orthanc DICOMweb JSON Fixtures
 
-Реальные JSON-ответы Orthanc для unit-тестов.
+> [Русская версия](README_RU.md)
 
-## Структура
+Real Orthanc JSON responses for unit tests.
+
+## Structure
 
 ```
 tests/fixtures/orthanc/
-├── README.md                          # Этот файл
-├── qido/                              # QIDO-RS ответы
-│   ├── studies_single.json            # Одно исследование
-│   ├── studies_multi.json             # Несколько исследований
-│   ├── studies_empty.json             # Пустой ответ
-│   ├── series_echo.json               # Серии ЭхоКГ
-│   └── series_ct.json                 # Серия КТ
-├── wado/                              # WADO-RS ответы
-│   ├── instance_metadata.json         # Метаданные инстанса
-│   └── instances_echo.json            # Список инстансов
-├── stow/                              # STOW-RS ответы
-│   ├── success.json                   # Успешная загрузка
-│   ├── partial_failure.json           # Частичная ошибка
-│   └── all_failed.json                # Полная ошибка
-└── errors/                            # Ошибки сервера
-    ├── 500_internal.json              # Внутренняя ошибка
-    ├── 401_unauthorized.json          # Ошибка аутентификации
-    ├── 404_not_found.json             # Не найдено
-    └── 408_timeout.json               # Таймаут
+├── README.md                          # This file
+├── qido/                              # QIDO-RS responses
+│   ├── studies_single.json            # Single study
+│   ├── studies_multi.json             # Multiple studies
+│   ├── studies_empty.json             # Empty response
+│   ├── series_echo.json               # Echo series
+│   └── series_ct.json                 # CT series
+├── wado/                              # WADO-RS responses
+│   ├── instance_metadata.json         # Instance metadata
+│   └── instances_echo.json            # Instance list
+├── stow/                              # STOW-RS responses
+│   ├── success.json                   # Successful upload
+│   ├── partial_failure.json           # Partial failure
+│   └── all_failed.json                # Complete failure
+└── errors/                            # Server errors
+    ├── 500_internal.json              # Internal error
+    ├── 401_unauthorized.json          # Authentication error
+    ├── 404_not_found.json             # Not found
+    └── 408_timeout.json               # Timeout
 ```
 
-## Формат
+## Format
 
-Все файлы соответствуют формату DICOM JSON (DICOM PS3.18 F.2.2):
+All files follow the DICOM JSON format (DICOM PS3.18 F.2.2):
 
 ```json
 {
@@ -40,7 +42,7 @@ tests/fixtures/orthanc/
 }
 ```
 
-## Использование в тестах
+## Usage in tests
 
 ```python
 import json
@@ -57,9 +59,9 @@ def test_parse_studies():
     assert studies[0].patient_name == "Doe^John"
 ```
 
-## Обновление фикстур
+## Updating fixtures
 
-Для сбора новых фикстур из реального Orthanc:
+To collect new fixtures from a real Orthanc:
 
 ```python
 import httpx

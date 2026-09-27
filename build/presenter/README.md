@@ -1,76 +1,77 @@
 # SonoForge Presenter (lite portable profile)
 
-**SonoForge Presenter** — облегчённый портативный профиль SonoForge для
-демонстраций с флешки на чужих компьютерах (проектор, «между слайдами»).
-Собирается из **того же исходного дерева**, что и полный SonoForge: профиль
-включается переменной окружения `SONOFORGE_PROFILE=presenter` (точка входа
-`__main_presenter__.py`), а тяжёлые модули исключаются на этапе упаковки
-(`sonoforge-presenter.spec`). Код основного профиля не изменяется
-деструктивно — все правки аддитивны (guarded/lazy-импорты).
+> [Русская версия](README_RU.md)
 
-## Состав продукта
+**SonoForge Presenter** is a lightweight portable SonoForge profile for
+demonstrations from a USB stick on other people's computers (a projector, "between
+slides"). It is built from **the same source tree** as the full SonoForge: the
+profile is enabled by the `SONOFORGE_PROFILE=presenter` environment variable (entry
+point `__main_presenter__.py`), and heavy modules are excluded at packaging time
+(`sonoforge-presenter.spec`). The main profile's code is not changed destructively —
+all edits are additive (guarded/lazy imports).
 
-| | Полный SonoForge | Presenter |
+## Product composition
+
+| | Full SonoForge | Presenter |
 |---|---|---|
-| AI-сегментация (ONNX, ЛЖ/ЛП) | да (+скачивание моделей ~193 МБ) | **нет** (кнопки скрыты, `onnxruntime` исключён) |
-| Справочник ASE (web + PDF) | да (QtWebEngine, PyMuPDF) | **нет** (QtWebEngine/fitz исключены, кнопка скрыта) |
-| Конструктор справочника | да (openpyxl) | **нет** |
-| Нормативы в отчётах (YAML ~180 КБ) | да | **да** (сравнение измерений с нормой сохранено) |
-| Измерения, доплер, M-mode, strain/STE | да | **да** |
-| PACS: Orthanc REST, DICOMweb (QIDO/WADO/STOW), DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, встроенный SCP) | да | **да** |
-| Отчёты PDF (reportlab) | да | **да** |
-| Хранение настроек | реестр/`~/.config`, пароли в OS keyring | **portable**: файлы рядом с exe/AppImage |
+| AI segmentation (ONNX, LV/LA) | yes (+ ~193 MB model download) | **no** (buttons hidden, `onnxruntime` excluded) |
+| ASE reference (web + PDF) | yes (QtWebEngine, PyMuPDF) | **no** (QtWebEngine/fitz excluded, button hidden) |
+| Reference constructor | yes (openpyxl) | **no** |
+| Reference values in reports (YAML ~180 KB) | yes | **yes** (measurement-vs-normal comparison kept) |
+| Measurements, Doppler, M-mode, strain/STE | yes | **yes** |
+| PACS: Orthanc REST, DICOMweb (QIDO/WADO/STOW), DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, built-in SCP) | yes | **yes** |
+| PDF reports (reportlab) | yes | **yes** |
+| Settings storage | registry/`~/.config`, passwords in the OS keyring | **portable**: files next to the exe/AppImage |
 
-Оценка размера: ~120–180 МБ (вместо ~350–450 МБ полного onefile-сборки).
-Модели не скачиваются, first-run setup отсутствует — старт сразу в приложение.
+Estimated size: ~120–180 MB (instead of ~350–450 MB for the full onefile build).
+Models are not downloaded and there is no first-run setup — the app starts right away.
 
-## Portable-режим (флешка)
+## Portable mode (USB stick)
 
-При `SONOFORGE_PORTABLE=1` (по умолчанию в Presenter) все данные пишутся
-в папку **`SonoForgePresenter-data/` рядом с исполняемым файлом**:
+With `SONOFORGE_PORTABLE=1` (the default in Presenter) all data is written to a folder
+**`SonoForgePresenter-data/` next to the executable**:
 
 ```
 SonoForgePresenter-data/
-├── preferences.ini   # QSettings → INI (вместо реестра Windows / ~/.config)
-├── server.ini        # профили PACS-серверов
-├── secrets.ini       # Fernet-токены паролей PACS (AES-128-CBC + HMAC-SHA256)
-├── device.key        # случайный секрет устройства (материал ключа PBKDF2)
-├── logs/diag.log     # диагностика загрузки с сервера
-└── cache/orthanc/    # кэш скачанных DICOM-инстансов
+├── preferences.ini   # QSettings → INI (instead of the Windows registry / ~/.config)
+├── server.ini        # PACS server profiles
+├── secrets.ini       # Fernet tokens for PACS passwords (AES-128-CBC + HMAC-SHA256)
+├── device.key        # random device secret (PBKDF2 key material)
+├── logs/diag.log     # server loading diagnostics
+└── cache/orthanc/    # cache of downloaded DICOM instances
 ```
 
-На хост-машину не пишется ничего, кроме временного каталога распаковки
-(Windows onefile: `%TEMP%\_MEIxxxx`, удаляется при выходе).
+Nothing is written to the host machine except the temporary extraction directory
+(Windows onefile: `%TEMP%\_MEIxxxx`, deleted on exit).
 
-Расположение portable-каталога определяется так:
-1. `SONOFORGE_PORTABLE_DIR` — явное переопределение (тесты/разработка);
-2. каталог файла из `$APPIMAGE` (AppImage-рантайм) — данные остаются на флешке,
-   а не внутри временной squashfs-точки монтирования;
-3. каталог замороженного exe (`sys.executable`) — Windows onefile: это сам
-   exe на флешке, а не temp;
-4. `SONOFORGE_PORTABLE=1` в dev-режиме → `./SonoForgePresenter-data` в CWD.
+The portable directory location is resolved as follows:
+1. `SONOFORGE_PORTABLE_DIR` — explicit override (tests/development);
+2. the directory of the `$APPIMAGE` file (AppImage runtime) — data stays on the stick
+   rather than inside the transient squashfs mount point;
+3. the frozen exe's directory (`sys.executable`) — Windows onefile: that is the exe on
+   the stick, not temp;
+4. `SONOFORGE_PORTABLE=1` in dev mode → `./SonoForgePresenter-data` in the CWD.
 
-> **Безопасность:** `secrets.ini` хранит пароли PACS в зашифрованном виде
-> (Fernet — AES-128-CBC + HMAC-SHA256, пакет `cryptography`). Ключ выводится
-> PBKDF2-HMAC-SHA256 из `device.key` — случайного секрета, созданного один раз
-> на той же флешке. Модель доверия как у ОС-кейчейна, привязанного к машине:
-> владелец флешки может восстановить пароли, но файл не читается «глазами» и
-> шифротексты различаются на разных устройствах. Держите флешку при себе;
-> при потере — смените пароли PACS. Отключить сохранение паролей можно, не
-> заполняя поле пароля в настройках сервера. Без установленного
-> `cryptography` (полный профиль + `SONOFORGE_PORTABLE=1`) пароли просто не
-> сохраняются — cleartext-fallback не существует.
+> **Security:** `secrets.ini` stores PACS passwords encrypted (Fernet — AES-128-CBC +
+> HMAC-SHA256, the `cryptography` package). The key is derived via PBKDF2-HMAC-SHA256
+> from `device.key` — a random secret created once on the same stick. The trust model is
+> like a machine-bound OS keychain: the stick's owner can recover the passwords, but the
+> file is not human-readable and the ciphertexts differ across devices. Keep the stick
+> with you; if it is lost, change the PACS passwords. You can disable password storage by
+> leaving the password field empty in the server settings. Without `cryptography`
+> installed (full profile + `SONOFORGE_PORTABLE=1`), passwords are simply not saved —
+> there is no cleartext fallback.
 
-## Запуск с флешки
+## Running from a USB stick
 
-- **Windows:** `SonoForgePresenter.exe` двойным кликом. Onefile распаковывается
-  в `%TEMP%` хоста при каждом запуске (USB 3.0: ~2–4 с; USB 2.0 дольше).
-  Права администратора и установка не нужны. Windows 10/11 x64.
-- **Linux:** `./SonoForge-Presenter-<ver>-x86_64.AppImage` (нужен FUSE;
-  на машинах без FUSE: `--appimage-extract-and-run`). Стартует быстрее
-  Windows-onefile — squashfs монтируется, а не распаковывается.
+- **Windows:** double-click `SonoForgePresenter.exe`. The onefile unpacks to the host's
+  `%TEMP%` on each launch (USB 3.0: ~2–4 s; USB 2.0 is slower). No admin rights or
+  installation required. Windows 10/11 x64.
+- **Linux:** `./SonoForge-Presenter-<ver>-x86_64.AppImage` (requires FUSE; on machines
+  without FUSE: `--appimage-extract-and-run`). Starts faster than the Windows onefile —
+  squashfs is mounted, not unpacked.
 
-## Сборка
+## Building
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate        # Python 3.10/3.11
@@ -85,142 +86,129 @@ python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --cle
 #   → dist/SonoForgePresenter.exe
 ```
 
-> **Пины зависимостей:** `pinned-packages.txt` запинен ровно на
-> версии из `uv.lock` (воспроизводимость сборок + CI-гейт dependency-review
-> не видит «новых» версий относительно базового графа). При обновлении
-> `uv.lock` обновляйте пины осознанно, например:
-> `grep -A1 '^name = "<пакет>"$' uv.lock`.
+> **Dependency pins:** `pinned-packages.txt` is pinned exactly to the versions in `uv.lock`
+> (reproducible builds + the dependency-review CI gate does not see "new" versions relative
+> to the base graph). When updating `uv.lock`, update the pins deliberately, e.g.:
+> `grep -A1 '^name = "<package>"$' uv.lock`.
 
-CI: `.github/workflows/presenter.yml` (тег `presenter-v*` или ручной запуск).
+CI: `.github/workflows/presenter.yml` (tag `presenter-v*` or a manual run).
 
-## Как менять состав модулей
+## Changing the module set
 
-Профиль — это **конфигурация сборки**, а не удаление кода:
+The profile is a **build configuration**, not code removal:
 
-- **Вернуть AI-сегментацию в Presenter:** убрать `onnxruntime` из `excludes`
-  в spec, добавить его в `pinned-packages.txt`, вернуть
-  `has_ai_segmentation() → True` в `infrastructure/profile.py` (или убрать
-  presenter-ветку), при необходимости бандлить модели через `datas`.
-- **Вернуть справочник:** убрать из `excludes` `PySide6.QtWebEngine*`,
-  `PySide6.QtWebChannel`, `fitz`/`pymupdf`, `openpyxl` и app-модули
-  (`ase_reference_dialog`, `structured_reference_widget`, `web_reference`,
-  `constructor`); вернуть `has_reference_ui() → True`; добавить в `datas`
-  `resources/references` целиком (включая images/ и PDF, +35 МБ).
-- **Новые фичи основного профиля** автоматически доступны в Presenter,
-  если не завязаны на исключённые зависимости. Механизм деградации:
-  guarded-импорт (`try/except ImportError`) + флаг профиля + `excludes`.
+- **Bring AI segmentation back into Presenter:** remove `onnxruntime` from `excludes` in
+  the spec, add it to `pinned-packages.txt`, restore `has_ai_segmentation() → True` in
+  `infrastructure/profile.py` (or remove the presenter branch), and bundle the models via
+  `datas` if needed.
+- **Bring the reference back:** remove `PySide6.QtWebEngine*`, `PySide6.QtWebChannel`,
+  `fitz`/`pymupdf`, `openpyxl` and the app modules (`ase_reference_dialog`,
+  `structured_reference_widget`, `web_reference`, `constructor`) from `excludes`; restore
+  `has_reference_ui() → True`; add all of `resources/references` to `datas` (including
+  images/ and PDF, +35 MB).
+- **New main-profile features** are automatically available in Presenter unless they depend
+  on the excluded dependencies. The degradation mechanism: a guarded import
+  (`try/except ImportError`) + a profile flag + `excludes`.
 
-## Запуск из исходников (dev)
+## Running from source (dev)
 
 ```bash
-# Presenter-профиль без упаковки:
+# Presenter profile without packaging:
 SONOFORGE_PROFILE=presenter SONOFORGE_PORTABLE=1 python -m echo_personal_tool.__main_presenter__
 
-# Portable-данные в конкретный каталог (тесты):
+# Portable data in a specific directory (tests):
 SONOFORGE_PORTABLE_DIR=/tmp/stick python -m echo_personal_tool.__main_presenter__
 ```
 
-## Режим докладчика (второй дисплей для аудитории)
+## Presenter mode (second display for the audience)
 
-Классический сценарий презентации «Расширить эти дисплеи» (Windows) или
-второй монитор (Linux) поддержан напрямую — так же, как в PowerPoint и
-LibreOffice Impress:
+The classic "Extend these displays" (Windows) or second-monitor (Linux) presentation
+scenario is supported directly — just like PowerPoint and LibreOffice Impress:
 
-- **ваш монитор** — обычное окно SonoForge со всеми панелями и инструментами;
-- **дисплей аудитории (проектор)** — отдельное полноэкранное окно
-  просмотрщика, которое **рендерится самостоятельно** на этом дисплее:
-  только изображение и оверлеи, без галереи миниатюр, панелей и верхней
-  строки.
+- **your monitor** — the regular SonoForge window with all panels and tools;
+- **the audience display (projector)** — a separate full-screen viewer window that
+  **renders itself** on that display: only the image and overlays, no thumbnail gallery,
+  panels, or top bar.
 
-Ключевое архитектурное решение: второе окно получает те же декодированные
-кадры и состояние через сигналы и рисует их само — **никакого копирования
-пикселей** (`QWidget.grab`) между экранами. Пиксельное «зеркало» не работает
-с OpenGL-вьюпортом pyqtgraph: grab не умеет компоновать GL-содержимое
-(чёрный кадр на проекторе), а его readback-и гасили картинку основного
-окна. Независимый рендер устраняет обе проблемы по построению.
+Key architectural decision: the second window receives the same decoded frames and state
+through signals and draws them itself — **no pixel copying** (`QWidget.grab`) between
+screens. Pixel "mirroring" does not work with the pyqtgraph OpenGL viewport: grab cannot
+compose GL content (a black frame on the projector), and its readbacks dimmed the main
+window's image. Independent rendering eliminates both problems by construction.
 
-Запуск: кнопка `Докладчик` в верхней панели (со стрелкой-меню) или `F10`.
-Выход: `F10` или повторный клик по кнопке. Окно демонстрации не
-перехватывает фокус и активацию — основное окно не теряет клавиатуру.
+Launch: the `Presenter` button in the top bar (with a dropdown arrow) or `F10`.
+Exit: `F10` or clicking the button again. The demonstration window does not steal focus
+or activation — the main window keeps the keyboard.
 
-Возможности:
+Capabilities:
 
-- **Независимый рендер** — кадры, калиперы, контуры, M-mode/допплер и
-  оверлей результатов отображаются вторым просмотрщиком мгновенно
-  (пересылка привязана к реальному декодированию кадров). Ползунки W/L/DR
-  общие — правка тона сразу видна аудитории.
-- **Надёжное размещение окна** — show → `windowHandle().setScreen()` →
-  fullscreen с отложенной проверкой (известная проблема Qt: `setScreen`
-  до показа окна не переживает создание платформенного окна). Статус-строка
-  сообщает фактический дисплей демонстрации.
-- **Визуальный профиль проектора** (включён по умолчанию): толще линии и
-  контуры (3.5 px), крупнее шрифты (14 pt интерфейс, 24 pt оверлей,
-  непрозрачность 0.85), инлайн-подписи калиперов. Только на время показа;
-  настройки пользователя восстанавливаются при выходе.
-- **Указка** — большая полупрозрачная красная точка повторяет мышь
-  докладчика (точное маппирование через общее изображение).
-- **Выбор дисплея** — меню кнопки; по умолчанию дисплей, где НЕ находится
-  окно приложения. Запоминается (`presenter_screen`). Окно демонстрации
-  только для чтения: клики/колесо поглощаются.
-- Кнопка/режим доступны **только в Presenter-сборке (lite)**: в полной
-  сборке кнопка, её меню и `F10` не создаются.
+- **Independent rendering** — frames, calipers, contours, M-mode/Doppler, and the results
+  overlay appear in the second viewer instantly (forwarding is tied to real frame
+  decoding). The W/L/DR sliders are shared — a tone edit is immediately visible to the
+  audience.
+- **Reliable window placement** — show → `windowHandle().setScreen()` → fullscreen with a
+  deferred check (a known Qt issue: `setScreen` before showing the window does not survive
+  the platform-window creation). The status line reports the actual demonstration display.
+- **Projector visual profile** (enabled by default): thicker lines and contours (3.5 px),
+  larger fonts (14 pt UI, 24 pt overlay, opacity 0.85), inline caliper labels. Only for the
+  duration of the show; user settings are restored on exit.
+- **Pointer** — a large semi-transparent red dot follows the presenter's mouse (exact
+  mapping through the shared image).
+- **Display selection** — the button's menu; by default, the display that does NOT contain
+  the application window. It is remembered (`presenter_screen`). The demonstration window
+  is read-only: clicks/wheel are absorbed.
+- The button/mode is available **only in the Presenter (lite) build**: in the full build the
+  button, its menu, and `F10` are not created.
 
-Смежные улучшения: `F11` — полноэкранный режим-киоск; в Presenter-профиле
-доступна узкая панель активности (калипер, пуск/пауза, ЧСС, LV2D,
-ESV/EDV/ES), но по умолчанию, как и в полном профиле, открывается широкая
-панель инструментов.
+Related improvements: `F11` — fullscreen kiosk mode; the Presenter profile offers a narrow
+activity bar (caliper, play/pause, HR, LV2D, ESV/EDV/ES), but by default, as in the full
+profile, the wide tool panel opens.
 
-Бенчмарк: `QT_QPA_PLATFORM=offscreen python bench/presenter_mirror_bench.py`.
+Benchmark: `QT_QPA_PLATFORM=offscreen python bench/presenter_mirror_bench.py`.
 
-### Рендер экрана аудитории и диагностика
+### Audience-screen rendering and diagnostics
 
-- Бэкенд рендера окна демонстрации задаёт настройка `presenter_audience_render`
-  (по умолчанию `raster`, опция `opengl`). Растровый viewport выбран намеренно:
-  на реальной multi-monitor Linux-машине (Debian 12, Qt 6.4, Intel) GL-viewport
-  второго окна оставался чёрным, тогда как растровые оверлеи того же окна
-  рисовались; у докладчика бэкенд не меняется (авто-детект в `main()`).
-- Режим ведёт файловый журнал `presenter_diag.log` в том же каталоге, что и
-  обычный `diag.log` (`profile.diag_log_dir()`): окружение (Qt, pyqtgraph,
-  useOpenGL, список экранов с геометрией и DPR), каждый шаг размещения окна,
-  счётчики кадров/ошибок с трассировками, 1 Гц-зонд данных кадра обоих
-  просмотрщиков и яркости GL-фреймбуфера аудитории. Отключается
-  `SONOFORGE_PRESENTER_DIAG=0`; под pytest по умолчанию выключен.
-- Защита от устаревшего `presenter_screen`: если запомненное имя совпадает с
-  экраном приложения и существует другой дисплей, значение игнорируется
-  (иначе полноэкранная демонстрация накрывает рабочее окно, а предупреждение
-  статуса остаётся под ней).
-- Keepalive-перерисовка просмотрщика докладчика (250 мс) против наблюдаемого
-  на Qt 6.4 «гаснущей при простое» картинки основного окна; адаптивный
-  пейсинг форвардинга (каждый 2-й/3-й кадр при дорогом рендере) защищает
-  воспроизведение у докладчика.
-- Контуры и калиперы синхронизируются в окно демонстрации прямыми
-  форвардами `contours_changed` / `linear_measurements_changed`: контроллер
-  сохраняет правки (перетаскивание точек Simpson manual / auto-Simpson,
-  калиперы) с `emit=False`, поэтому без форварда аудитория видела бы только
-  исходный контур. Обновление приходит при отпускании мыши.
-- Контурные правки синхронизируются свежими копиями контуров через
-  `apply_contours` (безусловная перерисовка): host мутирует точки контура
-  на месте, и сравнение по значению в `set_state` иначе пропускало бы
-  обновление (аудитория алиасила бы те же списки точек).
-- Допплер зеркалируется целиком (маркеры пиков/интервалов, VTI- и сосудистые
-  трейсы, калибровка осей, PSV/EDV) сигналом `forward_doppler` — эти данные
-  живут в просмотрщике локально и в `state_changed` не попадают.
-- Процесс рисования демонстрируется в реальном времени (~30 Гц): активный
-  контур (клик-точки/freehand) и предварительная линия калипера зеркалятся
-  в окно демонстрации, после фиксации результат отрисовывается постоянно,
-  а предпросмотр скрывается. Туда же — процесс перетаскивания
-  точек существующего контура (полилиния активной drag-сессии),
-  auto-trace конверт сосудистого режима и оранжевый guide луча. А также результаты сосудистых
-  измерений: текстовый блок PSV/EDV/RI/S/D у верхнего края полосы допплера
-  (с точным форматированием и позицией) и точки PSV/EDV.
-- Пейсинг форвардинга кадров действует только во время воспроизведения/
-  скролла — статичные кадры (смена файла, шаг, навигация) рендерятся
-  всегда: единственный кадр смены файла не может быть пропущен.
-- Перетаскивание оверлея результатов зеркалится сигналом
-  `forward_results_overlay_position`; начальная позиция передаётся при
-  старте презентации.
+- The demonstration window's render backend is set by the `presenter_audience_render`
+  preference (default `raster`, option `opengl`). A raster viewport was chosen deliberately:
+  on a real multi-monitor Linux machine (Debian 12, Qt 6.4, Intel) the second window's GL
+  viewport stayed black, while the same window's raster overlays drew fine; the presenter's
+  backend is unchanged (auto-detected in `main()`).
+- The mode writes a file log `presenter_diag.log` in the same directory as the regular
+  `diag.log` (`profile.diag_log_dir()`): environment (Qt, pyqtgraph, useOpenGL, the screen
+  list with geometry and DPR), every window-placement step, frame/error counters with
+  tracebacks, a 1 Hz probe of both viewers' frame data and the audience GL framebuffer
+  brightness. Disabled by `SONOFORGE_PRESENTER_DIAG=0`; off by default under pytest.
+- Protection against a stale `presenter_screen`: if the remembered name matches the
+  application screen and another display exists, the value is ignored (otherwise the
+  full-screen demonstration covers the working window and the status warning stays under it).
+- A keepalive repaint of the presenter's viewer (250 ms) counters the Qt 6.4 "fading when
+  idle" of the main window image; adaptive forwarding pacing (every 2nd/3rd frame when
+  rendering is expensive) protects playback on the presenter's side.
+- Contours and calipers are synchronized to the demonstration window via direct
+  `contours_changed` / `linear_measurements_changed` forwards: the controller saves edits
+  (dragging Simpson manual / auto-Simpson points, calipers) with `emit=False`, so without
+  forwarding the audience would only see the initial contour. The update arrives on mouse
+  release.
+- Contour edits are synchronized as fresh contour copies through `apply_contours`
+  (unconditional redraw): the host mutates the contour points in place, and a by-value
+  comparison in `set_state` would otherwise skip the update (the audience would alias the
+  same point lists).
+- Doppler is mirrored in full (peak/interval markers, VTI and vessel traces, axis
+  calibration, PSV/EDV) via the `forward_doppler` signal — this data lives locally in the
+  viewer and does not reach `state_changed`.
+- The drawing process is demonstrated in real time (~30 Hz): the active contour (click
+  points/freehand) and the preliminary caliper line are mirrored to the demonstration
+  window; after commitment the result is drawn persistently and the preview is hidden. Same
+  for dragging points of an existing contour (the polyline of the active drag session), the
+  vessel-mode auto-trace envelope, and the orange beam guide. Also the vessel measurement
+  results: the PSV/EDV/RI/S/D text block at the top edge of the Doppler strip (with exact
+  formatting and position) and the PSV/EDV points.
+- Frame-forwarding pacing applies only during playback/scroll — static frames (file change,
+  step, navigation) are always rendered: the single file-change frame cannot be skipped.
+- Dragging the results overlay is mirrored via the `forward_results_overlay_position`
+  signal; the initial position is passed at presentation start.
 
-## Smoke-тесты
+## Smoke tests
 
 ```bash
 SONOFORGE_PROFILE=presenter QT_QPA_PLATFORM=offscreen \

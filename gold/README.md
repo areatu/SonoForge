@@ -1,30 +1,33 @@
 # Gold Standard
 
-Эталонные аннотации для валидации сегментации LV/LA.
+> [Русская версия](README_RU.md)
 
-## Файлы
+Reference annotations for validating LV/LA segmentation.
 
-| Файл | Описание |
-|------|----------|
-| `lv_*.json` | Gold standard для LV (left ventricle) сегментации |
-| `la_*.json` | Gold standard для LA (left atrium) сегментации |
+## Files
 
-## Формат
+| File | Description |
+|------|-------------|
+| `lv_*.json` | Gold standard for LV (left ventricle) segmentation |
+| `la_*.json` | Gold standard for LA (left atrium) segmentation |
 
-JSON файлы содержат координаты контуров в нормализованных координатах (0-1) для конкретного DICOM исследования (идентифицированного по Study Instance UID).
+## Format
 
-## Использование
+The JSON files contain contour coordinates in normalized coordinates (0–1) for a
+specific DICOM study (identified by Study Instance UID).
 
-Данные используются для:
-- Валидации ONNX моделей сегментации
-- Расчёта метрик качества (Dice, Hausdorff)
-- Бенчмарков производительности
+## Usage
 
-## Сопутствующие скрипты
+The data is used for:
+- Validating ONNX segmentation models
+- Computing quality metrics (Dice, Hausdorff)
+- Performance benchmarks
 
-| Скрипт | Назначение |
-|--------|------------|
-| [`scripts/generate_manifest_from_gold.py`](../scripts/generate_manifest_from_gold.py) | Генерация манифеста из gold-аннотаций |
-| [`scripts/repair_gold_collisions.py`](../scripts/repair_gold_collisions.py) | Исправление коллизий в gold-данных |
-| [`scripts/ste_gold_qa.py`](../scripts/ste_gold_qa.py) | QA gold-клипов для STE |
-| [`scripts/run_lv_auto_bench.py`](../scripts/run_lv_auto_bench.py), [`scripts/run_la_auto_bench.py`](../scripts/run_la_auto_bench.py) | Бенчмарки сегментации по этим эталонам (см. [`../bench/`](../bench/)) |
+## Related scripts
+
+| Script | Purpose |
+|--------|---------|
+| [`scripts/generate_manifest_from_gold.py`](../scripts/generate_manifest_from_gold.py) | Generate a manifest from gold annotations |
+| [`scripts/repair_gold_collisions.py`](../scripts/repair_gold_collisions.py) | Fix collisions in gold data |
+| [`scripts/ste_gold_qa.py`](../scripts/ste_gold_qa.py) | QA of the STE gold clips |
+| [`scripts/run_lv_auto_bench.py`](../scripts/run_lv_auto_bench.py), [`scripts/run_la_auto_bench.py`](../scripts/run_la_auto_bench.py) | Segmentation benchmarks against these references (see [`../bench/`](../bench/)) |

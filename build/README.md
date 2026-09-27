@@ -1,62 +1,65 @@
 # Build
 
-Скрипты и конфигурации для сборки приложения. Все скрипты запускаются **из корня репозитория**.
+> [Русская версия](README_RU.md)
 
-## Структура
+Scripts and configuration for building the application. All scripts are run
+**from the repository root**.
 
-| Папка | Описание |
-|-------|----------|
-| `linux/` | Сборка для Linux (.deb / portable-папка) |
-| `windows/` | Сборка для Windows (.zip / one-file) |
-| `presenter/` | **SonoForge Presenter** — лёгкий портативный профиль (onefile .exe / AppImage), см. [`presenter/README.md`](presenter/README.md) |
+## Structure
+
+| Folder | Description |
+|--------|-------------|
+| `linux/` | Linux build (.deb / portable folder) |
+| `windows/` | Windows build (.zip / one-file) |
+| `presenter/` | **SonoForge Presenter** — lightweight portable profile (onefile .exe / AppImage), see [`presenter/README.md`](presenter/README.md) |
 
 ## Linux (`linux/`)
 
-| Файл | Описание |
-|------|----------|
-| `build.sh` | Portable-папка (PyInstaller, folder mode) |
-| `build-lite.sh` | Лёгкий .deb (~50 МБ, только код; зависимости и модели докачиваются при первом запуске) |
-| `build-deb.sh` | Полный .deb со всем содержимым (PyInstaller onedir, модели внутри) |
-| `build.spec` | PyInstaller spec для folder-сборки |
-| `sonoforge-launcher` | Bash-лаунчер с автоустановкой зависимостей |
+| File | Description |
+|------|-------------|
+| `build.sh` | Portable folder (PyInstaller, folder mode) |
+| `build-lite.sh` | Lightweight .deb (~50 MB, code only; dependencies and models are fetched on first run) |
+| `build-deb.sh` | Full .deb with everything bundled (PyInstaller onedir, models inside) |
+| `build.spec` | PyInstaller spec for the folder build |
+| `sonoforge-launcher` | Bash launcher with automatic dependency installation |
 
-Desktop entry для Linux лежит в [`scripts/sonoforge.desktop`](../scripts/sonoforge.desktop).
+The Linux desktop entry lives in [`scripts/sonoforge.desktop`](../scripts/sonoforge.desktop).
 
 ## Windows (`windows/`)
 
-| Файл | Описание |
-|------|----------|
-| `build.bat` | Полная сборка (PyInstaller) |
-| `build-lite.bat` | Лёгкий .zip (~50 МБ, зависимости докачиваются) |
+| File | Description |
+|------|-------------|
+| `build.bat` | Full build (PyInstaller) |
+| `build-lite.bat` | Lightweight .zip (~50 MB, dependencies fetched on first run) |
 | `build.spec` | PyInstaller spec |
-| `sonoforge-launcher.bat` | Batch-лаунчер с автоустановкой |
+| `sonoforge-launcher.bat` | Batch launcher with automatic installation |
 
-Сопутствующие файлы в корне и в `scripts/`:
-[`sonoforge-standalone.spec`](../sonoforge-standalone.spec) (one-file spec, используется
-CI-воркфлоу `build.yml`/`release.yml`), [`installer_stub.py`](../installer_stub.py) и
+Related files at the root and in `scripts/`:
+[`sonoforge-standalone.spec`](../sonoforge-standalone.spec) (one-file spec, used by
+the CI workflows `build.yml`/`release.yml`), [`installer_stub.py`](../installer_stub.py) and
 [`scripts/create_installer.py`](../scripts/create_installer.py) (self-extracting
-установщик), [`scripts/setup.bat`](../scripts/setup.bat) /
+installer), [`scripts/setup.bat`](../scripts/setup.bat) /
 [`scripts/uninstall.bat`](../scripts/uninstall.bat), [`launcher.py`](../launcher.py)
-(лаунчер лёгких сборок: ищет Python, ставит зависимости, качает модели).
+(launcher for the lightweight builds: finds Python, installs dependencies, downloads models).
 
-## Сборка
+## Building
 
 ```bash
-# Linux: лёгкий .deb
+# Linux: lightweight .deb
 ./build/linux/build-lite.sh
 
-# Linux: полный .deb
+# Linux: full .deb
 ./build/linux/build-deb.sh [--clean]
 
-# Windows (из-под Windows)
+# Windows (from Windows)
 build\windows\build-lite.bat
 
-# SonoForge Presenter (lite portable профиль)
+# SonoForge Presenter (lite portable profile)
 ./build/presenter/build-appimage.sh                       # Linux → AppImage
 python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean   # Windows → onefile .exe
 ```
 
-CI-сборки (релизные артефакты) описаны в
-[`.github/workflows/build.yml`](../.github/workflows/build.yml) и
+CI builds (release artifacts) are described in
+[`.github/workflows/build.yml`](../.github/workflows/build.yml) and
 [`.github/workflows/release.yml`](../.github/workflows/release.yml);
-Presenter-профиль — в [`.github/workflows/presenter.yml`](../.github/workflows/presenter.yml).
+the Presenter profile is in [`.github/workflows/presenter.yml`](../.github/workflows/presenter.yml).

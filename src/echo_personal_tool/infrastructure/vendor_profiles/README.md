@@ -1,5 +1,7 @@
 # Vendor Profiles for DICOM Ultrasound Calibration
 
+> [Русская версия](README_RU.md)
+
 ## Overview
 
 This module provides vendor-specific profiles for handling DICOM ultrasound

@@ -1,24 +1,28 @@
-# Референсные интерфейсы STE (внутренние материалы)
+# STE reference interfaces (internal materials)
 
-Здесь лежат **локальные** скриншоты вендорских пакетов STE, используемые только как визуальные
-референсы при разработке UI (см. `docs/STE_IMPROVEMENT_PLAN.md`, приложение F).
+> [Русская версия](README_RU.md)
 
-## Содержимое
+This folder holds **local** screenshots of vendor STE packages, used only as visual
+references during UI development (see `docs/STE_IMPROVEMENT_PLAN.md`, appendix F).
 
-| Файл | Источник | Что показывает |
-|------|----------|----------------|
-| `ge_echopac_afi_gls_curves_bullseye.jpg` | GE EchoPAC AFI (Global Longitudinal Strain) | Раскладка 2×2 `4CH/2CH/APLAX/bull's eye`, кривые сегментов с подписанной легендой, линия AVC, ЭКГ-полоса с тик-маркерами, 17-сегментная мишень «Peak Systolic Strain», colorbar 20/0/−20, строки `6LPS_LAX/A4C/A2C/Avg` |
-| `philips_epiq_autostrain_3views_bullseye_strain_ttp.jpg` | Philips AutoStrain LV (EPIQ CVx, маркетинговый материал) | Три вида в ряд с линиями эндо/средняя/эпи, ЭКГ под каждым видом, переключатель слоя `Endo/Mid/LV Length`, строки `GLS Endo Peak A4C/A2C/A3C/Avg`, две 18-сегментные мишени (strain и time-to-peak) с colorbar |
+## Contents
 
-## Правовой статус
+| File | Source | What it shows |
+|------|--------|---------------|
+| `ge_echopac_afi_gls_curves_bullseye.jpg` | GE EchoPAC AFI (Global Longitudinal Strain) | 2×2 layout `4CH/2CH/APLAX/bull's eye`, segment curves with a labeled legend, AVC line, ECG strip with tick markers, 17-segment "Peak Systolic Strain" bullseye, 20/0/−20 colorbar, `6LPS_LAX/A4C/A2C/Avg` rows |
+| `philips_epiq_autostrain_3views_bullseye_strain_ttp.jpg` | Philips AutoStrain LV (EPIQ CVx, marketing material) | Three views in a row with endo/mid/epi lines, ECG under each view, `Endo/Mid/LV Length` layer toggle, `GLS Endo Peak A4C/A2C/A3C/Avg` rows, two 18-segment bullseyes (strain and time-to-peak) with a colorbar |
 
-Материалы принадлежат соответствующим производителям и приведены исключительно для внутреннего
-сравнения. Файлы изображений **исключены из Git** (см. `.gitignore`) — в репозиторий попадает только
-этот README. Не распространять во внешних публикациях, презентациях и сборках продукта.
+## Legal status
 
-## Чего здесь не хватает (см. §11.2 плана)
+The materials belong to their respective manufacturers and are provided solely for
+internal comparison. The image files are **excluded from Git** (see `.gitignore`) — only
+this README is committed. Do not distribute in external publications, presentations, or
+product builds.
 
-1. Скриншоты интерфейса **Samsung** (соответствующие клипы лежат в папке Google Drive — из рабочей
-   песочницы домен `drive.google.com` недоступен, файлы нужно приложить в чат или положить в репозиторий).
-2. Числовые вендорские значения GLS для тестовых клипов (DICOM SR, PDF-отчёт или скриншот с числами) —
-   нужны для количественного сопоставления (bias/LoA), а не только визуального.
+## What is missing here (see §11.2 of the plan)
+
+1. **Samsung** UI screenshots (the corresponding clips are in a Google Drive folder — the
+   `drive.google.com` domain is unreachable from the work sandbox; the files must be
+   attached to the chat or placed in the repository).
+2. Numeric vendor GLS values for the test clips (DICOM SR, PDF report, or a screenshot with
+   the numbers) — needed for quantitative comparison (bias/LoA), not just visual.

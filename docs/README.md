@@ -1,41 +1,43 @@
 # Documentation
 
-Техническая документация, спеки и планы реализации.
+> [Русская версия](README_RU.md)
 
-## Структура
+Technical documentation, specs, and implementation plans.
 
-| Папка | Описание |
-|-------|----------|
-| `superpowers/specs/` | Технические спеки фич (STE, DICOMweb/DIMSE, lazy loading, M-Mode, ONNX-сегментация, reference browser и др.) |
-| `reviews/` | Ревью кода и решений |
-| `screenshots/` | Скриншоты приложения для документации; `screenshots/ste_references/` — вендорские референсы (изображения не коммитятся, см. `.gitignore`) |
+## Structure
 
-> Локальные (не коммитятся, см. `.gitignore`): `superpowers/plans/` — планы по
-> спринтам, `compose/` — документация compose workflow, `bench/` — заметки по
-> бенчмаркам. Ссылки на них из других документов ведут только в локальные чекауты.
+| Folder | Description |
+|--------|-------------|
+| `superpowers/specs/` | Technical feature specs (STE, DICOMweb/DIMSE, lazy loading, M-Mode, ONNX segmentation, reference browser, etc.) |
+| `reviews/` | Code and design reviews |
+| `screenshots/` | Application screenshots for documentation; `screenshots/ste_references/` — vendor references (images are not committed, see `.gitignore`) |
 
-## User help / Пользовательская документация
+> Local (not committed, see `.gitignore`): `superpowers/plans/` — sprint plans,
+> `compose/` — compose workflow documentation, `bench/` — benchmark notes.
+> Links to them from other documents only resolve in local checkouts.
 
-| File / Файл | Description / Описание |
-|------|----------|
+## User help
+
+| File | Description |
+|------|-------------|
 | [`HELP_EN.md`](HELP_EN.md) | English user help covering the current UI, local/server data, measurements, calibration, references, settings, export, shortcuts, and troubleshooting |
-| [`HELP_RU.md`](HELP_RU.md) | Расширенная русскоязычная справка по фактической реализации SonoForge: локальные и серверные данные, измерения, калибровка, справочник, настройки, экспорт, shortcuts и диагностика |
+| [`HELP_RU.md`](HELP_RU.md) | Extended Russian help for the actual SonoForge implementation: local and server data, measurements, calibration, references, settings, export, shortcuts, and diagnostics |
 | [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) | English technical help: formulas, source chain, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
-| [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) | Техническая справка на русском: формулы, источники значений, калибровка, влияние Settings и протоколы DICOMweb/DIMSE/PACS |
+| [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) | Russian technical help: formulas, value sources, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
 
-## Отдельные документы
+## Standalone documents
 
-| Файл | Описание |
-|------|----------|
-| `STE_IMPROVEMENT_PLAN.md` | План развития модуля STE до коммерческого уровня (rev.4, действующий; §5.2 — состояние реализации) |
-| `STE_TRACKING_VERIFICATION.md` | Верификация STE-трекинга |
-| `STE_VENDOR_REFERENCE.md` | Вендорские референсные значения STE (Samsung RS85, Philips EPIQ) |
-| `speckle_tracking_analysis.md` | Измерительный анализ текущего STE-трекинга (диагностика) |
-| `dicom_parcer_advanced.md` | Продвинутый парсинг DICOM-тегов |
-| `DICOM_VTI_tag_fix.md` | Исправление VTI-тегов |
-| `doppler_baseline_samsung.md` | Базовые допплеровские параметры Samsung |
-| `outlier_rejection.md` | Отсеивание аномальных данных |
-| `web_reference_review.md` | Ревью web-просмотра справочника |
-| `new_reference_parameters.yaml` | Новые параметры справочника (сосуды, щитовидная железа, почки и др.) с верифицированными источниками |
+| File | Description |
+|------|-------------|
+| `STE_IMPROVEMENT_PLAN.md` | Plan for bringing the STE module to commercial quality (rev.4, current; §5.2 — implementation status) |
+| `STE_TRACKING_VERIFICATION.md` | STE tracking verification |
+| `STE_VENDOR_REFERENCE.md` | Vendor STE reference values (Samsung RS85, Philips EPIQ) |
+| `speckle_tracking_analysis.md` | Measurement analysis of the current STE tracking (diagnostics) |
+| `dicom_parcer_advanced.md` | Advanced DICOM tag parsing |
+| `DICOM_VTI_tag_fix.md` | VTI tag fix |
+| `doppler_baseline_samsung.md` | Samsung Doppler baseline parameters |
+| `outlier_rejection.md` | Outlier rejection |
+| `web_reference_review.md` | Review of the web reference viewer |
+| `new_reference_parameters.yaml` | New reference parameters (vessels, thyroid, kidneys, etc.) with verified sources |
 
-Данные и всё, что с ними связано, описаны в [`../data/README.md`](../data/README.md).
+Data and everything related to it are described in [`../data/README.md`](../data/README.md).

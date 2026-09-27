@@ -1,9 +1,11 @@
 # Tools
 
-Вспомогательные инструменты разработки и CI (не часть приложения).
+> [Русская версия](README_RU.md)
 
-| Файл | Описание |
-|------|----------|
-| `ste_fixture_export.py` | Экспорт компактных фикстур из реальных STE-клипов в `tests/fixtures/for_pero/` (кадры в JPEG + обезличенные заголовки). Запускается воркфлоу [`ste-fixtures.yml`](../.github/workflows/ste-fixtures.yml) |
-| `migrate_for_pero.sh` | Одноразовая миграция клипов `data/dicom/For_pero` из публичного репозитория в закрытый `areatu/Sonoforge_data` (см. [`../data/README.md`](../data/README.md)) |
-| `qtstub/mkstub.py` | Генерация заглушек GL/EGL/dbus-библиотек для запуска PySide6 в «голых» контейнерах без GPU (заготовленные библиотеки — локально, `qtstub/lib/` в `.gitignore`) |
+Development and CI helper tools (not part of the application).
+
+| File | Description |
+|------|-------------|
+| `ste_fixture_export.py` | Export compact fixtures from real STE clips into `tests/fixtures/for_pero/` (frames as JPEG + de-identified headers). Run by the [`ste-fixtures.yml`](../.github/workflows/ste-fixtures.yml) workflow |
+| `migrate_for_pero.sh` | One-off migration of the `data/dicom/For_pero` clips from the public repository to the private `areatu/Sonoforge_data` (see [`../data/README.md`](../data/README.md)) |
+| `qtstub/mkstub.py` | Generate GL/EGL/dbus library stubs to run PySide6 in "bare" containers without a GPU (prebuilt libraries are local, `qtstub/lib/` is in `.gitignore`) |

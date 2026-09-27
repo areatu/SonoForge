@@ -1,34 +1,35 @@
 # Data
 
-Клинические данные (исходные DICOM-клипы) в этом публичном репозитории **не
-хранятся** — они содержат идентифицирующую информацию и вынесены в закрытый
-репозиторий.
+> [Русская версия](README_RU.md)
 
-## Где лежат исходные клипы
+Clinical data (source DICOM clips) is **not stored** in this public repository —
+it contains identifying information and has been moved to a private repository.
 
-| Репозиторий | Содержимое | Доступ |
-|-------------|------------|--------|
-| [`areatu/Sonoforge_data`](https://github.com/areatu/Sonoforge_data) | `data/dicom/For_pero` — 19 STE-клипов (Samsung RS85, Philips; часть с ЭКГ), Git LFS | закрытый |
+## Where the source clips live
 
-Исторически клипы жили здесь, в `data/dicom/For_pero` (Git LFS). 2026-09-17
-папка перенесена в закрытый репозиторий из-за ФИО, впаянных в кадры; в публичной
-истории остались только LFS-указатели.
+| Repository | Contents | Access |
+|------------|----------|--------|
+| [`areatu/Sonoforge_data`](https://github.com/areatu/Sonoforge_data) | `data/dicom/For_pero` — 19 STE clips (Samsung RS85, Philips; some with ECG), Git LFS | private |
 
-## Производные данные (публичные, в этом репозитории)
+Historically the clips lived here, in `data/dicom/For_pero` (Git LFS). On 2026-09-17
+the folder was moved to a private repository because names were burned into the
+frames; only LFS pointers remain in the public history.
 
-| Путь | Что это |
-|------|---------|
-| `tests/fixtures/for_pero/` | Компактные фикстуры, выгруженные из клипов: кадры в JPEG + выхолощенные заголовки (`index.json`, `_diagnostics.md`). Обычные файлы, не LFS. |
-| `gold/` | Эталонные аннотации сегментации LV/LA |
+## Derived data (public, in this repository)
 
-## Как фикстуры попадают в публичный репозиторий
+| Path | What it is |
+|------|------------|
+| `tests/fixtures/for_pero/` | Compact fixtures exported from the clips: frames as JPEG + stripped headers (`index.json`, `_diagnostics.md`). Regular files, not LFS. |
+| `gold/` | Reference segmentation annotations for LV/LA |
 
-Воркфлоу [`ste-fixtures.yml`](../.github/workflows/ste-fixtures.yml):
-1. клонирует закрытый `areatu/Sonoforge_data` (секрет `SONOFORGE_DATA_TOKEN`),
-2. запускает `tools/ste_fixture_export.py`,
-3. коммитит компактный результат в `tests/fixtures/for_pero/` ветки, которая его запустила.
+## How fixtures reach the public repository
 
-Локальная перегенерация (нужен доступ к закрытому репозиторию):
+Workflow [`ste-fixtures.yml`](../.github/workflows/ste-fixtures.yml):
+1. clones the private `areatu/Sonoforge_data` (secret `SONOFORGE_DATA_TOKEN`),
+2. runs `tools/ste_fixture_export.py`,
+3. commits the compact result to `tests/fixtures/for_pero/` of the branch that triggered it.
+
+Local regeneration (requires access to the private repository):
 
 ```bash
 git clone https://github.com/areatu/Sonoforge_data.git /tmp/sonoforge_data
@@ -37,8 +38,8 @@ python tools/ste_fixture_export.py \
     --out tests/fixtures/for_pero
 ```
 
-## Служебные скрипты
+## Utility scripts
 
-| Скрипт | Назначение |
-|--------|------------|
-| `../tools/migrate_for_pero.sh` | Одноразовая миграция клипов из публичного репозитория в закрытый (коммит с клипами зафиксирован в скрипте — работает и после слияния) |
+| Script | Purpose |
+|--------|---------|
+| `../tools/migrate_for_pero.sh` | One-off migration of the clips from the public repository to the private one (the commit with the clips is pinned in the script, so it works after the merge too) |
