@@ -677,3 +677,23 @@ class TestVesselCycleCorrection:
         psv, _ = viewer._doppler.get_vessel_values()
         assert psv == pytest.approx(median_psv)
         assert viewer._doppler.vessel_status() == "done"
+
+
+def test_vessel_sensitivity_overlay_stays_on_viewer_screen(viewer, monkeypatch):
+    """Regression: a maximised/fullscreen host window pushed the smoothing
+    strip (High/Normal/Low) past the right monitor edge onto the second screen."""
+    from PySide6.QtCore import QRect
+
+    avail = QRect(0, 0, 1920, 1080)
+    screen = MagicMock()
+    screen.availableGeometry.return_value = avail
+    monkeypatch.setattr(viewer._graphics, "screen", lambda: screen)
+    monkeypatch.setattr(viewer._graphics, "geometry", lambda: QRect(0, 0, 5000, 2000))
+
+    viewer._position_vessel_sensitivity_overlay()
+
+    overlay = viewer._vessel_sensitivity
+    assert overlay.x() >= avail.x()
+    assert overlay.y() >= avail.y()
+    assert overlay.x() + overlay.width() <= avail.x() + avail.width()
+    assert overlay.y() + overlay.height() <= avail.y() + avail.height()

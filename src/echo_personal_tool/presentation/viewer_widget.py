@@ -2692,13 +2692,22 @@ class ViewerWidget(QWidget):
         self._position_vessel_sensitivity_overlay()
 
     def _position_vessel_sensitivity_overlay(self) -> None:
+        # The overlay is a top-level Qt.Tool window, so move() takes *global*
+        # coordinates.  The right edge of a maximised/fullscreen host window
+        # (presenter mode) can push the strip past the monitor edge, where it
+        # silently reappears on the second display — clamp it to the screen
+        # the viewer actually lives on.
         geo = self._graphics.geometry()
         vw = self._vessel_sensitivity.width()
         vh = self._vessel_sensitivity.height()
-        self._vessel_sensitivity.move(
-            geo.x() + geo.width() - vw - 5 + 235,
-            geo.y() + (geo.height() - vh) // 2 + 310,
-        )
+        x = geo.x() + geo.width() - vw - 5 + 235
+        y = geo.y() + (geo.height() - vh) // 2 + 310
+        screen = self._graphics.screen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            x = max(avail.x(), min(x, avail.x() + avail.width() - vw))
+            y = max(avail.y(), min(y, avail.y() + avail.height() - vh))
+        self._vessel_sensitivity.move(x, y)
 
     def _on_vessel_preset_changed(self, preset: str) -> None:
         if not self.is_vessel_available():
