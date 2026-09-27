@@ -188,3 +188,10 @@ class TestDopplerCaliperMeasurement:
         text = m.display_text()
         assert "800.0 ms" in text
         assert ("ЧСС" in text) or ("HR" in text)
+
+    def test_inline_text_mmode_time_shows_ms_not_px(self) -> None:
+        """Regression: the label over the M-mode Time/HR segment showed pixels."""
+        m = LinearMeasurement(label="Time", pixel_length=100.0, millimeter_length=None, time_ms=800.0)
+        text = inline_caliper_text(m)
+        assert "px" not in text
+        assert "800.0 ms" in text

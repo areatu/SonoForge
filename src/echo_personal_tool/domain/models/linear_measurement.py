@@ -103,6 +103,9 @@ def inline_caliper_text(measurement: LinearMeasurement, *, length_unit: str = "m
         parts = measurement.doppler_value_parts()
         if parts:
             return f"{measurement.label} {' '.join(parts)}"
+    if measurement.time_ms is not None:
+        hr = 60000.0 / measurement.time_ms if measurement.time_ms > 0 else 0.0
+        return f"{measurement.label} {measurement.time_ms:.1f} ms  {tr('mmode.label_hr')} {hr:.0f}"
     if measurement.millimeter_length is None:
         return f"{measurement.label} {measurement.pixel_length:.1f} px"
     return f"{measurement.label} {format_length_mm(measurement.millimeter_length, length_unit)}"
