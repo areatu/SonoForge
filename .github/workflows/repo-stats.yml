@@ -1,0 +1,71 @@
+# Long-term repository traffic statistics.
+#
+# GitHub's built-in Insights -> Traffic page (and the Traffic REST API behind it)
+# only keeps the last 14 days. This workflow runs jgehrcke/github-repo-stats once
+# a day: every run snapshots views/clones (total + unique per day), top referrers,
+# top paths, stargazers and forks, and commits the snapshots plus a regenerated
+# HTML/PDF report to the `github-repo-stats` branch of this repository. Nothing
+# leaves GitHub — no external service, no database.
+#
+# One-time setup (see PR/discussion for the full walkthrough):
+#   1. Create a personal access token that can read the Traffic API of this repo
+#      and push to it. Fine-grained PAT, "Only select repositories" -> SonoForge,
+#      repository permissions: Administration: Read-only, Contents: Read and write
+#      (Metadata: Read-only is added automatically). A classic PAT with the `repo`
+#      scope works too. The default GITHUB_TOKEN can NOT read the Traffic API.
+#   2. Store it as the repository secret GHRS_GITHUB_API_TOKEN
+#      (Settings -> Secrets and variables -> Actions -> New repository secret).
+#   3. Optional but recommended: create an empty orphan data branch so the data
+#      branch does not start as a copy of `main`:
+#        git switch --orphan github-repo-stats
+#        git commit --allow-empty -m "chore: create empty github-repo-stats branch"
+#        git push -u origin github-repo-stats
+#        git switch main
+#   4. Merge this workflow into `main` (scheduled workflows only run from the
+#      default branch), then trigger it once by hand: Actions -> "Repo traffic
+#      stats" -> Run workflow.
+#
+# Reports: the `github-repo-stats` branch gets a README that links to the latest
+# PDF report (rendered directly on GitHub). To get the interactive HTML report,
+# enable GitHub Pages for the `github-repo-stats` branch (root) and set
+# `ghpagesprefix` below.
+
+name: Repo traffic stats
+
+on:
+  schedule:
+    # Daily, towards the end of the UTC day so the newest data point is as
+    # complete as possible. Off the full hour to avoid GitHub's cron congestion.
+    - cron: "17 23 * * *"
+  workflow_dispatch:
+
+# Only the PAT is used; the workflow token needs nothing.
+permissions:
+  contents: read
+
+# Never let a manual run overlap with the scheduled one (both push to the same branch).
+concurrency:
+  group: repo-stats
+  cancel-in-progress: false
+
+jobs:
+  stats:
+    name: Snapshot traffic and rebuild report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Run github-repo-stats
+        # Pinned to the head of the upstream RELEASE branch
+        # (v1.4.2 + digest-pinned base image, 2025-08-22).
+        uses: jgehrcke/github-repo-stats@d80572c9029636cd0e97e3a79e7a9c293bea3b02 # RELEASE
+        with:
+          # Repository to collect stats for. Same as the data repository here,
+          # so the parameter is only spelled out for clarity.
+          repository: ${{ github.repository }}
+          # Branch (in this repo) that receives snapshots and reports.
+          databranch: github-repo-stats
+          # Uncomment after enabling GitHub Pages for the `github-repo-stats` branch.
+          # The HTML report will then live at
+          # https://areatu.github.io/SonoForge/areatu/SonoForge/latest-report/report.html
+          # ghpagesprefix: https://areatu.github.io/SonoForge
+          ghtoken: ${{ secrets.GHRS_GITHUB_API_TOKEN }}
