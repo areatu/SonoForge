@@ -427,10 +427,16 @@ class OrthancDownloadWorker(QRunnable):
         instances_by_series: dict[str, list[InstanceMetadata]] = defaultdict(list)
         study_datetime: datetime | None = None
 
-        for series_dir in sorted(study_dir.iterdir()):
-            if not series_dir.is_dir():
+        for entry in sorted(study_dir.iterdir()):
+            if entry.is_dir():
+                # Legacy layout: session/<study>/<series>/<sop>.dcm
+                candidates = sorted(entry.glob("*.dcm"))
+            elif entry.suffix.lower() == ".dcm":
+                # Current layout: session/<study>/<sop>.dcm
+                candidates = [entry]
+            else:
                 continue
-            for dcm_path in sorted(series_dir.glob("*.dcm")):
+            for dcm_path in candidates:
                 try:
                     validate_dicom_header(dcm_path)
                     ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)

@@ -926,20 +926,34 @@ class OrthancStudyDialog(QDialog):
             session_dir = self._cache.session_path(self._session_id)
             if session_dir.is_dir():
                 target_dir = Path(self._save_to_disk_path)
-                for study_dir in session_dir.iterdir():
-                    if not study_dir.is_dir():
-                        continue
-                    study_target = target_dir / study_dir.name
-                    study_target.mkdir(parents=True, exist_ok=True)
-                    for series_dir in study_dir.iterdir():
-                        if not series_dir.is_dir():
-                            continue
-                        series_target = study_target / series_dir.name
-                        series_target.mkdir(parents=True, exist_ok=True)
-                        for dcm_file in series_dir.glob("*.dcm"):
-                            shutil.copy2(dcm_file, series_target / dcm_file.name)
-                            copied_count += 1
+                copied_count = self._copy_session_files(session_dir, target_dir)
                 log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
+
+    @staticmethod
+    def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
+        """Export a download session, preserving <study>/<series>/<file>.dcm."""
+        copied_count = 0
+        for study_dir in session_dir.iterdir():
+            if not study_dir.is_dir():
+                continue
+            study_target = target_dir / study_dir.name
+            study_target.mkdir(parents=True, exist_ok=True)
+            for entry in sorted(study_dir.iterdir()):
+                if entry.is_dir():
+                    # Legacy layout: <study>/<series>/<sop>.dcm
+                    files = [(f, entry.name) for f in sorted(entry.glob("*.dcm"))]
+                elif entry.suffix.lower() == ".dcm":
+                    # Current layout: <study>/<sop>.dcm
+                    files = [(entry, None)]
+                else:
+                    continue
+                for dcm_file, legacy_series in files:
+                    series_name = OrthancStudyDialog._series_name_for(dcm_file, legacy_series)
+                    series_target = study_target / series_name if series_name else study_target
+                    series_target.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(dcm_file, series_target / dcm_file.name)
+                    copied_count += 1
+        return copied_count
 
         self._reset_after_download()
         self._session_id = None
@@ -967,6 +981,27 @@ class OrthancStudyDialog(QDialog):
                 message,
             )
         self.accept()
+
+    @staticmethod
+    def _series_name_for(dcm_file: Path, legacy_series_name: str | None) -> str:
+        """Series folder name for an exported instance ("" = study folder).
+
+        Legacy cache sessions keep the series directory name on disk; the
+        current flat layout has to read it back from the DICOM header so the
+        exported structure stays the same.
+        """
+        if legacy_series_name:
+            return legacy_series_name
+        try:
+            import pydicom
+
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True, force=True)
+            uid = str(getattr(ds, "SeriesInstanceUID", "") or "").strip()
+            if uid:
+                return uid
+        except Exception:  # noqa: BLE001
+            log.warning("[DLG] cannot read SeriesInstanceUID from %s", dcm_file, exc_info=True)
+        return ""
 
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():

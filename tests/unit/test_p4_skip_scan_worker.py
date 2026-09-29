@@ -174,3 +174,41 @@ def test_metadata_groups_instances_by_series(tmp_path: Path) -> None:
     series_uids = {s.series_uid for s in study.series}
     assert SERIES_UID in series_uids
     assert SERIES2 in series_uids
+
+
+def test_metadata_reads_legacy_nested_layout(tmp_path: Path) -> None:
+    """Cache sessions written before the layout fix keep working."""
+    cache = OrthancSessionCache(tmp_path)
+    session_id = cache.create_session()
+    legacy_dir = tmp_path / f"session-{session_id}" / STUDY_UID / SERIES_UID
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / f"{INSTANCE_UID}.dcm").write_bytes(_make_dicom_bytes(STUDY_UID, SERIES_UID, INSTANCE_UID))
+
+    worker = OrthancDownloadWorker(FakeDicomWebClient(FIXTURES), cache, session_id, STUDY_UID, [SERIES_UID])
+    studies = worker._build_studies_metadata()
+
+    assert len(studies) == 1
+    assert studies[0].study_uid == STUDY_UID
+    assert len(studies[0].series) == 1
+    assert studies[0].series[0].series_uid == SERIES_UID
+    assert [i.sop_instance_uid for i in studies[0].series[0].instances] == [INSTANCE_UID]
+
+
+def test_metadata_reads_flat_and_legacy_layout_together(tmp_path: Path) -> None:
+    """Current flat files and legacy nested files are both discovered."""
+    second_instance = "1.2.410.200001.1.1185.2062614048.1.20240404.1120546412.448.4"
+    cache = OrthancSessionCache(tmp_path)
+    session_id = cache.create_session()
+    cache.save_instance(
+        session_id, STUDY_UID, SERIES_UID, INSTANCE_UID, _make_dicom_bytes(STUDY_UID, SERIES_UID, INSTANCE_UID)
+    )
+    legacy_dir = tmp_path / f"session-{session_id}" / STUDY_UID / SERIES_UID
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / f"{second_instance}.dcm").write_bytes(_make_dicom_bytes(STUDY_UID, SERIES_UID, second_instance))
+
+    worker = OrthancDownloadWorker(FakeDicomWebClient(FIXTURES), cache, session_id, STUDY_UID, [SERIES_UID])
+    studies = worker._build_studies_metadata()
+
+    assert len(studies) == 1
+    instances = {i.sop_instance_uid for i in studies[0].series[0].instances}
+    assert instances == {INSTANCE_UID, second_instance}

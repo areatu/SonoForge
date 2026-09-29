@@ -32,9 +32,13 @@ class OrthancSessionCache:
     ) -> Path:
         # Validate UIDs to prevent path traversal
         safe_study = safe_uid_path_component(study_uid)
-        safe_series = safe_uid_path_component(series_uid)
+        safe_uid_path_component(series_uid)
         safe_sop = safe_uid_path_component(sop_uid)
-        path = self._root / f"session-{session_id}" / safe_study / safe_series / f"{safe_sop}.dcm"
+        # Layout: session-<id>/<study UID>/<sop UID>.dcm
+        # The series directory level is intentionally omitted: four levels of
+        # full DICOM UIDs exceed the Windows MAX_PATH limit (260), which made
+        # every write fail with [Errno 2] during real server downloads.
+        path = self._root / f"session-{session_id}" / safe_study / f"{safe_sop}.dcm"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         # Set restrictive permissions (owner read/write only)
