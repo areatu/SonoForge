@@ -134,3 +134,36 @@ def test_builds_own_retrieve_service_when_not_injected(make_dialog, tmp_path) ->
         )
         mock_factory.assert_called_once()
     assert dialog._retrieve_service is retrieve
+
+
+def test_status_label_cannot_stretch_dialog(make_dialog, tmp_path) -> None:
+    """CHANGELOG item 2: a long failure chain must not widen the dialog.
+
+    The status label wraps and is clipped; the full text is only logged.
+    """
+    dialog = make_dialog(
+        FakeDicomWebClient(),
+        OrthancSessionCache(tmp_path),
+        server_settings=ServerSettings(use_mock=True),
+    )
+    label = dialog._status_label
+    assert label.wordWrap()
+    assert label.minimumWidth() == 0
+
+    dialog.resize(800, 520)
+    dialog._set_status("cache write failed: [Errno 2] " * 40)
+
+    assert len(label.text()) <= 240
+    assert label.text().endswith("…")
+
+    dialog.adjustSize()
+    assert dialog.width() <= 800
+
+
+def test_clip_keeps_short_text_and_bounds_long_text() -> None:
+    from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
+
+    assert OrthancStudyDialog._clip("short", 240) == "short"
+    clipped = OrthancStudyDialog._clip("x" * 1000, 400)
+    assert len(clipped) == 400
+    assert clipped.endswith("…")

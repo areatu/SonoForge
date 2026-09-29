@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from echo_personal_tool.application.workers.orthanc_download_worker import (
+    DownloadFailure,
     OrthancDownloadWorker,
+    aggregate_error_messages,
 )
 from echo_personal_tool.domain.models.orthanc import InstanceInfo
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
@@ -193,7 +195,7 @@ class TestRetryBackoff:
         original_attempt = worker._attempt_download
 
         def failing_attempt(study_uid, series_uid, instance_uid):
-            return None
+            return DownloadFailure("download failed: boom")
 
         worker._attempt_download = failing_attempt
 
@@ -347,3 +349,82 @@ def test_cancel_reaches_retrieve_service_and_still_clears_session_once(tmp_path:
     assert capture.cancelled == [session_id]
     assert capture.done == []
     assert not (tmp_path / f"session-{session_id}").exists()
+
+
+class TestErrorReporting:
+    """CHANGELOG item 1: real failure reasons, deduped and bounded."""
+
+    def test_aggregate_dedupes_repeated_reasons(self) -> None:
+        text = aggregate_error_messages(["cache write failed: [Errno 2]"] * 4 + ["download failed: timeout"])
+        assert "cache write failed: [Errno 2] ×4" in text
+        assert "download failed: timeout" in text
+        assert len(text) <= 160
+
+    def test_aggregate_limits_unique_reasons(self) -> None:
+        text = aggregate_error_messages([f"reason-{index}" for index in range(6)])
+        assert text.startswith("reason-0; reason-1; reason-2;")
+        assert "+3 more" in text
+        assert len(text) <= 160
+
+    def test_aggregate_caps_total_length(self) -> None:
+        text = aggregate_error_messages([f"{index}" + "x" * 300 for index in range(3)])
+        assert len(text) <= 160
+        assert text.endswith("…")
+
+    def test_aggregate_ignores_blank_reasons(self) -> None:
+        assert aggregate_error_messages([]) == ""
+        assert aggregate_error_messages(["", "   "]) == ""
+
+    def _worker(self, client, tmp_path: Path) -> OrthancDownloadWorker:
+        cache = OrthancSessionCache(tmp_path)
+        session_id = cache.create_session()
+        return OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
+
+    def test_cache_write_failure_is_not_retried(self, tmp_path: Path) -> None:
+        worker = self._worker(FakeDicomWebClient(FIXTURES), tmp_path)
+        with (
+            patch.object(worker, "_interruptible_sleep") as sleep,
+            patch.object(worker._cache, "save_instance", side_effect=OSError(2, "No such file or directory")),
+        ):
+            result = worker._download_one(STUDY_UID, SERIES_UID, INSTANCE_UID)
+        assert isinstance(result, DownloadFailure)
+        assert result.retryable is False
+        assert "cache write failed" in result.reason
+        assert "No such file" in result.reason
+        sleep.assert_not_called()
+
+    def test_network_failure_reports_reason_and_retries(self, tmp_path: Path) -> None:
+        worker = self._worker(_FailingDownloadClient(FIXTURES), tmp_path)
+        with patch.object(worker, "_interruptible_sleep") as sleep:
+            result = worker._download_one(STUDY_UID, SERIES_UID, INSTANCE_UID)
+        assert isinstance(result, DownloadFailure)
+        assert result.retryable is True
+        assert "download failed" in result.reason
+        assert "WADO timeout" in result.reason
+        assert sleep.call_count == 2  # still retried for a network error
+
+    def test_empty_payload_reports_reason(self, tmp_path: Path) -> None:
+        client = MagicMock()
+        client.download_instance.return_value = b""
+        worker = self._worker(client, tmp_path)
+        with patch.object(worker, "_interruptible_sleep"):
+            result = worker._download_one(STUDY_UID, SERIES_UID, INSTANCE_UID)
+        assert isinstance(result, DownloadFailure)
+        assert result.reason == "empty response from server"
+        assert "empty data" not in result.reason
+
+    def test_failed_signal_uses_real_reason(self, tmp_path: Path) -> None:
+        client = _FailingDownloadClient(FIXTURES)
+        cache = OrthancSessionCache(tmp_path)
+        session_id = cache.create_session()
+        capture = _SignalCapture()
+        worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
+        capture.connect(worker)
+        with patch.object(OrthancDownloadWorker, "_interruptible_sleep"):
+            worker.run()
+
+        assert len(capture.failed) == 1
+        message = capture.failed[0][1]
+        assert "empty data" not in message
+        assert "download failed: WADO timeout" in message
+        assert len(message) <= 160
