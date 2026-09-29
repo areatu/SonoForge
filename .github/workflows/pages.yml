@@ -45,6 +45,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # build.sh embeds the traffic report from the github-repo-stats data
+      # branch; a default shallow checkout does not have that ref.
+      - name: Fetch traffic report data
+        run: git fetch --depth=1 origin github-repo-stats:refs/remotes/origin/github-repo-stats
+
       - name: Install media tools (ffmpeg for GIF → MP4, ImageMagick for posters/thumbnails)
         run: |
           sudo apt-get update -qq
