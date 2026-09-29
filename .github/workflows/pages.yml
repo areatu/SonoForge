@@ -1,0 +1,71 @@
+# Project website on GitHub Pages: https://areatu.github.io/SonoForge/
+#
+# The site is assembled by site/build.sh from
+#   - site/                (landing page: HTML/CSS/JS),
+#   - assets/ + docs/screenshots/ (demo media, converted GIF → MP4 here with ffmpeg),
+#   - the `github-repo-stats` data branch (traffic report, kept at the same URL as before:
+#     /areatu/SonoForge/latest-report/report.html — also reachable as /stats/).
+#
+# One-time setup: Settings → Pages → Build and deployment → Source: "GitHub Actions"
+# (instead of "Deploy from a branch"). Nothing else to configure.
+
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "assets/**"
+      - "docs/screenshots/**"
+      - ".github/workflows/pages.yml"
+  # Rebuild after every daily traffic snapshot so the embedded report stays current.
+  workflow_run:
+    workflows: ["Repo traffic stats"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; do not cancel in-progress production deploys.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    # Skip rebuilds triggered by a failed stats run (push/manual runs are unaffected).
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install media tools (ffmpeg for GIF → MP4, ImageMagick for posters/thumbnails)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg imagemagick
+
+      - name: Assemble _site
+        run: bash site/build.sh _site
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
