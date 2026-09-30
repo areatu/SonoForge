@@ -48,6 +48,11 @@ _STUDY_UID_ROLE = Qt.ItemDataRole.UserRole
 _SERIES_UID_ROLE = Qt.ItemDataRole.UserRole + 1
 _SORT_ROLE = Qt.ItemDataRole.UserRole + 2
 _CANCEL_FORCE_CLOSE_MS = 30_000
+# The status line must never widen the dialog: long failure chains go to the
+# log in full, while the label and the error box get a bounded slice.
+_STATUS_TEXT_LIMIT = 240
+_DIALOG_TEXT_LIMIT = 400
+_STATUS_LABEL_MAX_WIDTH = 640
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +227,10 @@ class OrthancStudyDialog(QDialog):
         self._tree.itemClicked.connect(self._on_item_clicked)
 
         self._status_label = QLabel()
+        self._status_label.setWordWrap(True)
+        self._status_label.setMinimumWidth(0)
+        self._status_label.setMaximumWidth(_STATUS_LABEL_MAX_WIDTH)
+        self._status_label.setAlignment(Qt.AlignmentFlag.AlignLeading | Qt.AlignmentFlag.AlignTop)
         self._progress = QProgressBar()
         self._progress.hide()
 
@@ -282,7 +291,7 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         log.info("[DLG] _init_network called")
-        self._status_label.setText(tr("orthanc.searching"))
+        self._set_status(tr("orthanc.searching"))
         self._load_studies_async()
 
     def _load_studies_async(self) -> None:
@@ -290,7 +299,7 @@ class OrthancStudyDialog(QDialog):
         if not self._is_alive():
             return
         if not self._query_source_available():
-            self._status_label.setText(tr("orthanc.dimse_disabled"))
+            self._set_status(tr("orthanc.dimse_disabled"))
             return
         text = self._search_edit.text().strip()
         patient_name = text or None
@@ -416,12 +425,12 @@ class OrthancStudyDialog(QDialog):
         if source_val != "dimse":
             return
         if not self._query_source_available():
-            self._status_label.setText(tr("orthanc.dimse_disabled"))
+            self._set_status(tr("orthanc.dimse_disabled"))
             return
         retrieval = self._retrieval_source_label(
             self._server_settings.retrieval_source if self._server_settings is not None else "auto"
         )
-        self._status_label.setText(tr("orthanc.dimse_info_banner", retrieval=retrieval))
+        self._set_status(tr("orthanc.dimse_info_banner", retrieval=retrieval))
 
     def _query_source_available(self) -> bool:
         """True when the currently selected query source can actually run.
@@ -459,7 +468,7 @@ class OrthancStudyDialog(QDialog):
             error_item = QTreeWidgetItem(["", "", tr("orthanc.find_error", message=error[:200])])
             error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
             self._tree.addTopLevelItem(error_item)
-            self._status_label.setText(tr("orthanc.find_error", message=error[:200]))
+            self._set_status(tr("orthanc.find_error", message=error[:200]))
             self._tree.blockSignals(False)
             self._update_load_button()
             return
@@ -468,9 +477,9 @@ class OrthancStudyDialog(QDialog):
             self._build_study_tree(studies)
             self._filter_studies_by_date(self._date_filter_combo.currentData())
         if error:
-            self._status_label.setText(tr("orthanc.find_error", message=error[:200]))
+            self._set_status(tr("orthanc.find_error", message=error[:200]))
         elif not studies:
-            self._status_label.setText(tr("orthanc.ready"))
+            self._set_status(tr("orthanc.ready"))
         self._update_load_button()
 
     def _build_study_tree(self, studies: list) -> None:
@@ -493,7 +502,7 @@ class OrthancStudyDialog(QDialog):
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
             self._tree.addTopLevelItem(item)
         self._tree.blockSignals(False)
-        self._status_label.setText(tr("orthanc.ready"))
+        self._set_status(tr("orthanc.ready"))
 
     def _load_studies(self) -> None:
         """Synchronous wrapper for _on_find button — uses async internally."""
@@ -678,7 +687,7 @@ class OrthancStudyDialog(QDialog):
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.show()
-        self._status_label.setText(tr("orthanc.preparing"))
+        self._set_status(tr("orthanc.preparing"))
 
         self._pending_downloads = list(all_series)
         self._completed_downloads = 0
@@ -721,7 +730,7 @@ class OrthancStudyDialog(QDialog):
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.show()
-        self._status_label.setText(tr("orthanc.saving_to_disk", path=directory))
+        self._set_status(tr("orthanc.saving_to_disk", path=directory))
 
         self._pending_downloads = list(all_series)
         self._completed_downloads = 0
@@ -753,7 +762,7 @@ class OrthancStudyDialog(QDialog):
             return
 
         study_uid, series_uids = self._pending_downloads.pop(0)
-        self._status_label.setText(
+        self._set_status(
             tr("orthanc.loading_progress", current=self._completed_downloads + 1, total=self._total_studies)
         )
         worker = OrthancDownloadWorker(
@@ -799,7 +808,7 @@ class OrthancStudyDialog(QDialog):
             return
 
         study_uid, series_uids = self._pending_downloads.pop(0)
-        self._status_label.setText(
+        self._set_status(
             tr("orthanc.disk_download_progress", current=self._completed_downloads + 1, total=self._total_studies)
         )
         worker = OrthancDownloadWorker(
@@ -827,7 +836,7 @@ class OrthancStudyDialog(QDialog):
 
     def _on_cancel(self) -> None:
         if self._downloading and self._worker is not None:
-            self._status_label.setText(tr("orthanc.download_cancelled"))
+            self._set_status(tr("orthanc.download_cancelled"))
             self._cancel_btn.setEnabled(False)
             self._worker.cancel()
             self._force_close_timer.start(_CANCEL_FORCE_CLOSE_MS)
@@ -858,18 +867,18 @@ class OrthancStudyDialog(QDialog):
             self._progress.setRange(0, total)
             self._progress.setValue(min(current, total))
         short_uid = self._short_uid(series_uid)
-        self._status_label.setText(tr("orthanc.loading_detail", current=current, total=total, uid=short_uid))
+        self._set_status(tr("orthanc.loading_detail", current=current, total=total, uid=short_uid))
 
     def _on_status(self, message: str) -> None:
         if not self._is_alive():
             return
-        self._status_label.setText(message)
+        self._set_status(message)
 
     def _on_series_done(self, series_uid: str, status: str) -> None:
         if not self._is_alive():
             return
         if status == "failed":
-            self._status_label.setText(tr("orthanc.series_error_status", uid=self._short_uid(series_uid)))
+            self._set_status(tr("orthanc.series_error_status", uid=self._short_uid(series_uid)))
 
     def _on_studies_ready(self, studies: list[StudyMetadata]) -> None:
         if not self._is_alive():
@@ -894,9 +903,7 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _on_single_study_done: uid=%s", study_uid[:16])
         self._completed_downloads += 1
-        self._status_label.setText(
-            tr("orthanc.series_done", current=self._completed_downloads, total=self._total_studies)
-        )
+        self._set_status(tr("orthanc.series_done", current=self._completed_downloads, total=self._total_studies))
         self._start_next_download()
 
     def _on_single_study_done_to_disk(self, session_id: str, study_uid: str) -> None:
@@ -905,7 +912,7 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _on_single_study_done_to_disk: uid=%s", study_uid[:16])
         self._completed_downloads += 1
-        self._status_label.setText(
+        self._set_status(
             tr("orthanc.disk_download_progress", current=self._completed_downloads, total=self._total_studies)
         )
         self._start_next_download_to_disk()
@@ -926,20 +933,34 @@ class OrthancStudyDialog(QDialog):
             session_dir = self._cache.session_path(self._session_id)
             if session_dir.is_dir():
                 target_dir = Path(self._save_to_disk_path)
-                for study_dir in session_dir.iterdir():
-                    if not study_dir.is_dir():
-                        continue
-                    study_target = target_dir / study_dir.name
-                    study_target.mkdir(parents=True, exist_ok=True)
-                    for series_dir in study_dir.iterdir():
-                        if not series_dir.is_dir():
-                            continue
-                        series_target = study_target / series_dir.name
-                        series_target.mkdir(parents=True, exist_ok=True)
-                        for dcm_file in series_dir.glob("*.dcm"):
-                            shutil.copy2(dcm_file, series_target / dcm_file.name)
-                            copied_count += 1
+                copied_count = self._copy_session_files(session_dir, target_dir)
                 log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
+
+    @staticmethod
+    def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
+        """Export a download session, preserving <study>/<series>/<file>.dcm."""
+        copied_count = 0
+        for study_dir in session_dir.iterdir():
+            if not study_dir.is_dir():
+                continue
+            study_target = target_dir / study_dir.name
+            study_target.mkdir(parents=True, exist_ok=True)
+            for entry in sorted(study_dir.iterdir()):
+                if entry.is_dir():
+                    # Legacy layout: <study>/<series>/<sop>.dcm
+                    files = [(f, entry.name) for f in sorted(entry.glob("*.dcm"))]
+                elif entry.suffix.lower() == ".dcm":
+                    # Current layout: <study>/<sop>.dcm
+                    files = [(entry, None)]
+                else:
+                    continue
+                for dcm_file, legacy_series in files:
+                    series_name = OrthancStudyDialog._series_name_for(dcm_file, legacy_series)
+                    series_target = study_target / series_name if series_name else study_target
+                    series_target.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(dcm_file, series_target / dcm_file.name)
+                    copied_count += 1
+        return copied_count
 
         self._reset_after_download()
         self._session_id = None
@@ -952,7 +973,7 @@ class OrthancStudyDialog(QDialog):
                 saved=str(saved),
                 total=str(self._total_studies),
             )
-            self._status_label.setText(message)
+            self._set_status(message)
             QMessageBox.warning(
                 self,
                 tr("orthanc.download_error.title"),
@@ -960,7 +981,7 @@ class OrthancStudyDialog(QDialog):
             )
         else:
             message = tr("orthanc.disk_download_complete", path=self._save_to_disk_path)
-            self._status_label.setText(message)
+            self._set_status(message)
             QMessageBox.information(
                 self,
                 tr("orthanc.download_complete"),
@@ -968,13 +989,50 @@ class OrthancStudyDialog(QDialog):
             )
         self.accept()
 
+    @staticmethod
+    def _series_name_for(dcm_file: Path, legacy_series_name: str | None) -> str:
+        """Series folder name for an exported instance ("" = study folder).
+
+        Legacy cache sessions keep the series directory name on disk; the
+        current flat layout has to read it back from the DICOM header so the
+        exported structure stays the same.
+        """
+        if legacy_series_name:
+            return legacy_series_name
+        try:
+            import pydicom
+
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True, force=True)
+            uid = str(getattr(ds, "SeriesInstanceUID", "") or "").strip()
+            if uid:
+                return uid
+        except Exception:  # noqa: BLE001
+            log.warning("[DLG] cannot read SeriesInstanceUID from %s", dcm_file, exc_info=True)
+        return ""
+
+    @staticmethod
+    def _clip(text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return text[: limit - 1].rstrip() + "…"
+
+    def _set_status(self, text: str) -> None:
+        """Show ``text`` in the status line without resizing the dialog.
+
+        The full text goes to the log; the label gets at most
+        ``_STATUS_TEXT_LIMIT`` characters so a long error chain cannot stretch
+        the window past its ``resize(800, 520)``.
+        """
+        log.debug("[DLG] status: %s", text)
+        self._status_label.setText(self._clip(text, _STATUS_TEXT_LIMIT))
+
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():
             return
         log.warning("[DLG] _on_single_study_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
         self._completed_downloads += 1
         self._failed_downloads += 1
-        self._status_label.setText(
+        self._set_status(
             tr(
                 "orthanc.series_error",
                 current=self._completed_downloads,
@@ -1012,7 +1070,7 @@ class OrthancStudyDialog(QDialog):
             saved=str(saved),
             total=str(self._total_studies),
         )
-        self._status_label.setText(message)
+        self._set_status(message)
         QMessageBox.warning(
             self,
             tr("orthanc.download_error.title"),
@@ -1032,7 +1090,7 @@ class OrthancStudyDialog(QDialog):
         self._session_id = None
         self._result = (session_id, study_uid)
         self._progress.setValue(self._progress.maximum())
-        self._status_label.setText(tr("orthanc.download_complete"))
+        self._set_status(tr("orthanc.download_complete"))
         self.accept()
 
     def _on_failed(self, _uid: str, message: str) -> None:
@@ -1054,7 +1112,9 @@ class OrthancStudyDialog(QDialog):
         self._cancel_btn.setEnabled(True)
         self._update_load_button()
         QMessageBox.warning(
-            self, tr("orthanc.download_error.title"), tr("orthanc.download_error.body", message=message)
+            self,
+            tr("orthanc.download_error.title"),
+            tr("orthanc.download_error.body", message=self._clip(message, _DIALOG_TEXT_LIMIT)),
         )
 
     def _on_cancelled(self, _session_id: str) -> None:

@@ -6,6 +6,18 @@
 
 ## Unreleased
 
+### Fixes
+- `fix(orthanc)`: загрузка исследований с PACS больше не заканчивается «0 загружено / empty data». Кэш писал инстансы в `session-<uuid>/<исследование>/<серия>/<инстанс>.dcm`, и для реальных UID путь достигал 264 символов — выше лимита Windows MAX_PATH (260), поэтому каждый `save_instance()` падал с `FileNotFoundError [Errno 2]`, а воркер превращал это в «empty data» (сеть при этом работала: QIDO 200, WADO отдавал данные). Теперь файлы лежат как `session-<uuid>/<исследование>/<инстанс>.dcm` (~202 символа), метаданные читаются и из старой вложенной структуры, а «Сохранить на диск» по-прежнему выгружает `<исследование>/<серия>/<файл>.dcm` — SeriesInstanceUID берётся из заголовка файла.
+
+- `fix(orthanc)`: причины сбоев загрузки вместо заглушки «empty data». `_attempt_download()` возвращает `DownloadFailure(reason, retryable)`, ошибки кэша (`FileNotFoundError`/`OSError` от `save_instance()`) помечены неретраибульными и больше не съедают 3 попытки с бэкоффом, а список причин агрегируется `aggregate_error_messages()`: дедупликация `×N`, максимум 3 уникальных сообщения, каждая причина ≤80 и суммарно ≤160 символов; детали по инстансам остаются в логе.
+- `fix(orthanc)`: длинная строка статуса больше не расширяет диалог загрузки. `_status_label` получил `setWordWrap(True)`, `setMinimumWidth(0)` и `setMaximumWidth(640)`, все `setText()` заменены на `_set_status()` (полный текст — в `log.debug`, в label усечённый до 240 символов), текст в `QMessageBox` из `_on_failed()` ограничен 400 символами.
+
+### CI
+- `ci(pages)`: сайт-лендинг `site/` (EN/RU, без фреймворков) и workflow `pages.yml` публикуют проект на https://areatu.github.io/SonoForge/; в `repo-stats.yml` включён `ghpagesprefix`, поэтому отчёт о трафике остаётся по прежнему адресу и доступен как `/stats/`; сгенерированный `_site/` добавлен в `.gitignore`.
+
+### Осталось доделать (сессия 2026-09-29, ветка `fix/server_dicom`)
+1. **Проверка.** Тесты к пп. 1–2 позаписей выше написаны (`aggregate_error_messages`, неретраибульная ошибка кэша, ширина диалога), осталось прогнать полный `pytest tests/unit`: локальный прогон падает на `tests/acceptance/test_constructor_workflow.py`, который открывает GUI-диалог и виснет без дисплея (к изменениям не относится). Пройдено: `ruff check src tests`, `ruff format --check`, `pytest tests/unit/test_orthanc_cache.py tests/unit/test_orthanc_download_worker.py tests/unit/test_p4_skip_scan_worker.py tests/unit/test_orthanc_export_layout.py tests/unit/test_orthanc_study_dialog.py tests/unit/test_security_path_safety.py`.
+
 ---
 
 ## v0.3.1 — 2026-09-27

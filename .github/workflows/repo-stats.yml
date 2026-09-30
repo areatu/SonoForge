@@ -67,5 +67,5 @@ jobs:
           # Uncomment after enabling GitHub Pages for the `github-repo-stats` branch.
           # The HTML report will then live at
           # https://areatu.github.io/SonoForge/areatu/SonoForge/latest-report/report.html
-          # ghpagesprefix: https://areatu.github.io/SonoForge
+          ghpagesprefix: https://areatu.github.io/SonoForge
           ghtoken: ${{ secrets.GHRS_GITHUB_API_TOKEN }}

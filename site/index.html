@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SonoForge — Open-source desktop echocardiography analysis</title>
+  <meta name="description" content="SonoForge is a free, open-source desktop application for echocardiography analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports. Windows, Linux, macOS. Works offline.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0f14">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://areatu.github.io/SonoForge/">
+  <link rel="alternate" hreflang="en" href="https://areatu.github.io/SonoForge/?lang=en">
+  <link rel="alternate" hreflang="ru" href="https://areatu.github.io/SonoForge/?lang=ru">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SonoForge">
+  <meta property="og:title" content="SonoForge — Open-source desktop echocardiography analysis">
+  <meta property="og:description" content="DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical reports. Free, open source, offline. Windows · Linux · macOS.">
+  <meta property="og:url" content="https://areatu.github.io/SonoForge/">
+  <meta property="og:image" content="https://areatu.github.io/SonoForge/media/preview-poster.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add("js");</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "SonoForge",
+    "applicationCategory": "MedicalApplication",
+    "operatingSystem": "Windows, Linux, macOS",
+    "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "url": "https://areatu.github.io/SonoForge/",
+    "codeRepository": "https://github.com/areatu/SonoForge",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "description": "Open-source desktop echocardiography analysis platform: DICOM viewer, cardiac measurements, Doppler, AI segmentation, PACS connectivity and clinical reporting."
+  }
+  </script>
+</head>
+<body>
+
+<!-- Inline icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/><polyline points="3 12 8 12 10 9 13 15 15 12 21 12"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c2 0 2-6 4-6s2 12 4 12 2-12 4-12 2 12 4 12 2-6 4-6"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+    <symbol id="i-usb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="9" width="10" height="13" rx="2"/><rect x="9.5" y="2" width="5" height="7"/><line x1="11" y1="5" x2="11" y2="5.01"/><line x1="13" y1="5" x2="13" y2="5.01"/></symbol>
+    <symbol id="i-linux" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c-2.5 0-4 2-4 5 0 2-1 3-2 5s-2 4-1 6c.5 1 2 1.5 3 1.5h8c1 0 2.5-.5 3-1.5 1-2 0-4-1-6s-2-3-2-5c0-3-1.5-5-4-5z"/><circle cx="10" cy="8" r=".6"/><circle cx="14" cy="8" r=".6"/><path d="M10.5 11h3l-1.5 1.5z"/></symbol>
+    <symbol id="i-windows" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></symbol>
+    <symbol id="i-apple" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.3 1.3-2.7 1.3-2.7s-2.6-1-2.6-3.9zM14 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.2-.6 2.8-1.4z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  </defs>
+</svg>
+
+<a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="ru">К содержимому</span></a>
+
+<header class="nav" id="top">
+  <div class="container nav-inner">
+    <a class="brand" href="#top" aria-label="SonoForge">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+        <path d="M16 3 4 27h24z" fill="none" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M6 20h4l2-5 3 9 3-12 2 8h6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>SonoForge</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#features"><span lang="en">Features</span><span lang="ru">Возможности</span></a>
+      <a href="#screens"><span lang="en">Screenshots</span><span lang="ru">Скриншоты</span></a>
+      <a href="#presenter">Presenter</a>
+      <a href="#download"><span lang="en">Download</span><span lang="ru">Скачать</span></a>
+      <a href="#docs"><span lang="en">Docs</span><span lang="ru">Документация</span></a>
+    </nav>
+    <div class="nav-actions">
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-set-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-set-lang="ru" aria-pressed="false">RU</button>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/areatu/SonoForge" rel="noopener">
+        <svg class="ic"><use href="#i-github"/></svg>
+        <span>GitHub</span>
+        <span class="stars" id="star-count" hidden><svg class="ic ic-xs"><use href="#i-star"/></svg><span data-stars></span></span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy reveal">
+      <p class="eyebrow">
+        <span class="dot"></span>
+        <span lang="en">Open source · GPL-3.0 · Windows, Linux, macOS</span>
+        <span lang="ru">Открытый код · GPL-3.0 · Windows, Linux, macOS</span>
+      </p>
+      <h1>
+        <span lang="en">Echocardiography analysis on your desktop. <em>Offline, open, ASE-aligned.</em></span>
+        <span lang="ru">Анализ эхокардиографии на вашем компьютере. <em>Офлайн, открыто, по рекомендациям ASE.</em></span>
+      </h1>
+      <p class="lead">
+        <span lang="en">SonoForge is a free desktop application for echo analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports — built for cardiologists, sonographers and researchers.</span>
+        <span lang="ru">SonoForge — бесплатное десктопное приложение для анализа эхокардиографических исследований: просмотр DICOM, кардиологические и допплеровские измерения, AI‑сегментация, подключение к PACS и клинические PDF‑отчёты — для кардиологов, сонографов и исследователей.</span>
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" id="cta-download" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener">
+          <svg class="ic"><use href="#i-download"/></svg>
+          <span data-cta-label><span lang="en">Download</span><span lang="ru">Скачать</span></span>
+          <span class="cta-meta" data-cta-meta></span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/areatu/SonoForge" rel="noopener">
+          <svg class="ic"><use href="#i-github"/></svg>
+          <span lang="en">View on GitHub</span><span lang="ru">Репозиторий</span>
+        </a>
+        <a class="btn btn-link" href="https://github.com/areatu/SonoForge/blob/main/docs/HELP_EN.md" rel="noopener" data-doc-help>
+          <span lang="en">User guide</span><span lang="ru">Руководство</span>
+          <svg class="ic ic-xs"><use href="#i-external"/></svg>
+        </a>
+      </div>
+      <ul class="facts" aria-label="Key facts">
+        <li><strong>100%</strong><span lang="en">local — no cloud, no telemetry</span><span lang="ru">локально — без облака и телеметрии</span></li>
+        <li><strong>4400+</strong><span lang="en">unit tests, ~77% coverage</span><span lang="ru">unit‑тестов, покрытие ~77%</span></li>
+        <li><strong>ASE</strong><span lang="en">reference norms built in</span><span lang="ru">референсные нормы встроены</span></li>
+        <li><strong>DICOMweb + DIMSE</strong><span lang="en">PACS connectivity with TLS</span><span lang="ru">подключение к PACS с TLS</span></li>
+      </ul>
+    </div>
+
+    <figure class="media hero-media reveal" data-video="media/preview.mp4" data-gif="media/preview.gif">
+      <img src="media/preview-poster.jpg" width="720" height="405" alt="SonoForge main window: apical four-chamber view with an automatic left-ventricle contour, gallery of series on the left and the measurement panel on the right" fetchpriority="high">
+      <button class="media-play" type="button">
+        <span class="media-play-icon"><svg class="ic"><use href="#i-play"/></svg></span>
+        <span lang="en">Play the demo</span><span lang="ru">Смотреть демо</span>
+      </button>
+      <figcaption>
+        <span lang="en">Main application: LV auto-EF workflow on an A4C cine.</span>
+        <span lang="ru">Основное приложение: авто‑ФВ ЛЖ на cine‑петле A4C.</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="section" id="features">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">What's inside</span><span lang="ru">Что внутри</span></p>
+      <h2><span lang="en">From a caliper to a signed-off report</span><span lang="ru">От калипера до готового отчёта</span></h2>
+      <p class="lead">
+        <span lang="en">A complete echo workstation toolset — from basic linear measurements to AI-assisted segmentation — with every value indexed, referenced and exportable.</span>
+        <span lang="ru">Полный набор инструментов эхо‑рабочей станции — от базовых линейных измерений до AI‑сегментации; каждое значение индексируется, сверяется с нормами и экспортируется.</span>
+      </p>
+    </header>
+
+    <div class="grid grid-3">
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-heart"/></svg></div>
+        <h3><span lang="en">Cardiac measurements</span><span lang="ru">Кардиологические измерения</span></h3>
+        <p lang="en">Linear B‑mode/M‑mode calipers with live labels, Simpson biplane volumes with open‑arc mitral annulus tracking, RV function, LV mass and RWT, automatic BSA indexing and HR from the ECG trace.</p>
+        <p lang="ru">Линейные калиперы B/M‑режима с подписями в реальном времени, объёмы по биплановому Симпсону с открытой дугой митрального кольца, функция ПЖ, масса ЛЖ и ОТС, автоматическая индексация по ППТ и ЧСС по ЭКГ.</p>
+        <ul class="tags"><li>LVEDD · IVSd · LVPWd</li><li>EDV · ESV · LVEF</li><li>LAVi · RAVi</li><li>TAPSE · FAC</li><li>LVM · LVMI · RWT</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-wave"/></svg></div>
+        <h3><span lang="en">Doppler &amp; vascular</span><span lang="ru">Допплер и сосуды</span></h3>
+        <p lang="en">PSV/EDV peaks with automatic RI and S/D, a caliper that measures Δt and velocity inside the Doppler ROI, two‑click auto‑VTI, vessel stenosis by diameter and area, cycle averaging without ECG and study‑wide E/e′.</p>
+        <p lang="ru">Пики PSV/EDV с автоматическими RI и S/D, калипер, измеряющий Δt и скорость внутри допплеровской зоны, авто‑VTI в два клика, стеноз сосуда по диаметру и площади, усреднение по циклам без ЭКГ и сквозное E/e′ по исследованию.</p>
+        <ul class="tags"><li>PSV · EDV · RI · S/D</li><li>Auto VTI</li><li>%D · %S</li><li>E/e′</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-sliders"/></svg></div>
+        <h3><span lang="en">Doppler auto‑calibration</span><span lang="ru">Автокалибровка допплера</span></h3>
+        <p lang="en">Velocity scale from ruler ticks with grid‑line fallback, sweep‑speed calibration, evidence‑fusion baseline detection for Samsung and GE systems, and a manual two‑click wizard that always wins over auto‑detection.</p>
+        <p lang="ru">Шкала скоростей по тикам линейки с fallback на сетку, калибровка скорости развёртки, многометодное определение базовой линии для Samsung и GE и ручной мастер в два клика, который всегда имеет приоритет над автоматикой.</p>
+        <ul class="tags"><li>Samsung RS85</li><li>GE</li><li lang="en">DICOM tags</li><li lang="ru">DICOM‑теги</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-cpu"/></svg></div>
+        <h3><span lang="en">AI segmentation</span><span lang="ru">AI‑сегментация</span> <span class="badge"><span lang="en">Full profile</span><span lang="ru">Полный профиль</span></span></h3>
+        <p lang="en">ONNX Runtime on the CPU: automatic LV contouring in A4C with EchoNet‑Dynamic, LA segmentation with optical‑flow assist, mitral annulus detection, temporal fusion across neighbouring frames and edge‑snapping contour refinement.</p>
+        <p lang="ru">ONNX Runtime на CPU: автоконтур ЛЖ в A4C по модели EchoNet‑Dynamic, сегментация ЛП с оптическим потоком, определение митрального кольца, сглаживание по соседним кадрам и доработка контура с привязкой к границам.</p>
+        <ul class="tags"><li>EchoNet‑Dynamic</li><li>ONNX</li><li lang="en">SHA‑256 verified models</li><li lang="ru">SHA‑256‑контроль моделей</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-server"/></svg></div>
+        <h3><span lang="en">DICOM &amp; PACS</span><span lang="ru">DICOM и PACS</span></h3>
+        <p lang="en">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) and classic DIMSE — C‑FIND, C‑GET, C‑MOVE with an embedded Storage SCP, C‑STORE — with TLS and certificate validation. Works with Orthanc, DCM4CHEE, Conquest and any compliant server.</p>
+        <p lang="ru">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) и классический DIMSE — C‑FIND, C‑GET, C‑MOVE со встроенным Storage SCP, C‑STORE — с TLS и проверкой сертификатов. Работает с Orthanc, DCM4CHEE, Conquest и любым совместимым сервером.</p>
+        <ul class="tags"><li>DICOMweb</li><li>DIMSE</li><li>TLS</li><li>Orthanc</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-file"/></svg></div>
+        <h3><span lang="en">Reports &amp; reference norms</span><span lang="ru">Отчёты и референсные нормы</span></h3>
+        <p lang="en">Study summary with indexed values, clinical‑grade PDF export with reference ranges, built‑in age‑ and sex‑specific ASE tables, and DICOM SR‑compatible structured output back to PACS.</p>
+        <p lang="ru">Сводка по исследованию с индексированными значениями, PDF‑отчёты с референсными диапазонами, встроенные таблицы ASE по полу и возрасту и структурированный вывод в формате DICOM SR обратно в PACS.</p>
+        <ul class="tags"><li>PDF</li><li>DICOM SR</li><li lang="en">ASE norms</li><li lang="ru">Нормы ASE</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-book"/></svg></div>
+        <h3><span lang="en">Reference Constructor</span><span lang="ru">Конструктор справочника</span> <span class="badge"><span lang="en">Full profile</span><span lang="ru">Полный профиль</span></span></h3>
+        <p lang="en">Build your own library of guideline tables, nomograms, checklists and PDFs: import from Excel or YAML, edit inline, search instantly in the web‑based viewer and export as PDF/HTML for colleagues.</p>
+        <p lang="ru">Собственная библиотека таблиц норм, номограмм, чек‑листов и PDF: импорт из Excel или YAML, правка прямо в таблице, мгновенный поиск в веб‑справочнике и экспорт в PDF/HTML для коллег.</p>
+        <ul class="tags"><li>Excel · YAML</li><li lang="en">Web viewer</li><li lang="ru">Веб‑справочник</li><li lang="en">Vascular · thyroid · kidney</li><li lang="ru">Сосуды · щитовидная · почки</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-shield"/></svg></div>
+        <h3><span lang="en">Privacy by design</span><span lang="ru">Конфиденциальность по умолчанию</span></h3>
+        <p lang="en">All DICOM data is processed in memory — no PHI is written to disk, no cloud uploads, no telemetry. File and UID validation before parsing, network timeouts, and patient identifiers truncated in logs.</p>
+        <p lang="ru">Все DICOM‑данные обрабатываются в оперативной памяти — персональные данные не пишутся на диск, нет облака и телеметрии. Проверка файлов и UID до парсинга, сетевые таймауты, идентификаторы пациентов обрезаются в логах.</p>
+        <ul class="tags"><li lang="en">Offline</li><li lang="ru">Офлайн</li><li lang="en">No PHI on disk</li><li lang="ru">Без PHI на диске</li><li>SECURITY.md</li></ul>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon"><svg class="ic"><use href="#i-layout"/></svg></div>
+        <h3><span lang="en">Workstation UX</span><span lang="ru">Интерфейс рабочей станции</span></h3>
+        <p lang="en">Dark clinical theme, dual viewer for side‑by‑side phases, thumbnail gallery, smooth cine playback with adaptive frame cache, window/level, crosshair, full keyboard workflow and live English/Russian switching.</p>
+        <p lang="ru">Тёмная клиническая тема, двойной просмотрщик для сравнения фаз, галерея миниатюр, плавное cine‑воспроизведение с адаптивным кэшем кадров, окно/уровень, перекрестие, полная работа с клавиатуры и переключение EN/RU на лету.</p>
+        <ul class="tags"><li lang="en">Dual viewer</li><li lang="ru">Двойной просмотр</li><li>Cine</li><li>EN / RU</li></ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCREENSHOTS ============ -->
+<section class="section section-alt" id="screens">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">In the viewer</span><span lang="ru">В просмотрщике</span></p>
+      <h2><span lang="en">Screenshots</span><span lang="ru">Скриншоты</span></h2>
+      <p class="lead"><span lang="en">Click any image to open it full size.</span><span lang="ru">Нажмите на изображение, чтобы открыть его в полном размере.</span></p>
+    </header>
+    <div class="gallery">
+      <a class="shot reveal" href="screenshots/lv-linear-measurements.png" data-lightbox>
+        <img src="screenshots/thumbs/lv-linear-measurements.jpg" loading="lazy" width="1200" height="721" alt="Parasternal long-axis view with linear LV measurements and the computed LV mass, RWT and LVMI">
+        <span class="shot-cap"><span lang="en">Linear LV measurements (PLAX) → LV mass, RWT, LVMI</span><span lang="ru">Линейные измерения ЛЖ (PLAX) → масса ЛЖ, ОТС, ИММЛЖ</span></span>
+      </a>
+      <a class="shot reveal" href="screenshots/mmode-measurements.png" data-lightbox>
+        <img src="screenshots/thumbs/mmode-measurements.jpg" loading="lazy" width="1200" height="721" alt="Anatomic M-mode trace with IVSd, LVIDd, LVIDs, LVPWd calipers and Teichholz volumes">
+        <span class="shot-cap"><span lang="en">Anatomic M‑mode: Teichholz EDV/ESV/EF, HR from the trace</span><span lang="ru">Анатомический M‑режим: КДО/КСО/ФВ по Тейхольцу, ЧСС по трассе</span></span>
+      </a>
+      <a class="shot reveal" href="screenshots/la-segmentation.png" data-lightbox>
+        <img src="screenshots/thumbs/la-segmentation.jpg" loading="lazy" width="1200" height="721" alt="Apical four-chamber view with a left-atrium contour and LV Simpson contour, LAV and indexed values in the overlay">
+        <span class="shot-cap"><span lang="en">LA segmentation + LV Simpson (A4C): LAV, iLAV, iEDV</span><span lang="ru">Сегментация ЛП + Simpson ЛЖ (A4C): LAV, iLAV, iEDV</span></span>
+      </a>
+      <a class="shot reveal" href="screenshots/lv-auto-segmentation.png" data-lightbox>
+        <img src="screenshots/thumbs/lv-auto-segmentation.jpg" loading="lazy" width="1200" height="750" alt="Automatic left-ventricle contour produced by the EchoNet-Dynamic model in an A4C view">
+        <span class="shot-cap"><span lang="en">LV auto‑segmentation (EchoNet‑Dynamic, ONNX)</span><span lang="ru">Авто‑сегментация ЛЖ (EchoNet‑Dynamic, ONNX)</span></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRESENTER ============ -->
+<section class="section" id="presenter">
+  <div class="container">
+    <div class="split">
+      <div class="split-copy reveal">
+        <p class="eyebrow"><span lang="en">Portable edition</span><span lang="ru">Портативное издание</span></p>
+        <h2>SonoForge Presenter — <span lang="en">DICOM as a presentation</span><span lang="ru">DICOM как презентация</span></h2>
+        <p class="lead">
+          <span lang="en">For lectures and case review: the audience sees a clean full‑screen echo while you keep the full measuring workstation on your laptop — like a slide show, but with live DICOM.</span>
+          <span lang="ru">Для лекций и разборов случаев: аудитория видит чистый полноэкранный эхо‑кадр, а у вас на ноутбуке — полная рабочая станция с измерениями. Как показ слайдов, только вместо слайдов — живой DICOM.</span>
+        </p>
+        <ul class="checks">
+          <li><span lang="en"><strong>Your workstation, their clean screen.</strong> The audience display shows only the image, full screen — you keep every tool.</span><span lang="ru"><strong>У вас — рабочая станция, у аудитории — чистый экран.</strong> Второй дисплей показывает только изображение во весь экран — все инструменты остаются у вас.</span></li>
+          <li><span lang="en"><strong>Everything mirrors live</strong> — contours, node edits, calipers, Doppler/VTI, vessel PSV/EDV, the results overlay.</span><span lang="ru"><strong>Всё зеркалится в реальном времени</strong> — контуры, правка узлов, калиперы, допплер/VTI, сосудистые PSV/EDV, оверлей результатов.</span></li>
+          <li><span lang="en"><strong>Presenter extras</strong> — audience‑display picker, laser pointer, projector visual preset with thick lines and large labels.</span><span lang="ru"><strong>Фишки докладчика</strong> — выбор дисплея аудитории, лазерная указка, визуальный профиль проектора с толстыми линиями и крупными подписями.</span></li>
+          <li><span lang="en"><strong>Runs from a USB stick</strong> — one file, no installation, no admin rights, nothing written to the host outside the temp directory. Windows and Linux.</span><span lang="ru"><strong>Запускается с флешки</strong> — один файл, без установки и прав администратора, на хост ничего не пишется вне временного каталога. Windows и Linux.</span></li>
+        </ul>
+        <p class="kbd-hint"><span lang="en">Press</span><span lang="ru">Нажмите</span> <kbd>F10</kbd> <span lang="en">→ present.</span><span lang="ru">→ докладывайте.</span></p>
+        <div class="cta">
+          <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-win">
+            <svg class="ic"><use href="#i-windows"/></svg><span>Presenter · Windows .exe</span><span class="cta-meta" data-asset-meta></span>
+          </a>
+          <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-linux">
+            <svg class="ic"><use href="#i-linux"/></svg><span>Presenter · Linux AppImage</span><span class="cta-meta" data-asset-meta></span>
+          </a>
+          <a class="btn btn-link" href="https://github.com/areatu/SonoForge/blob/main/build/presenter/README.md" rel="noopener" data-doc-presenter>
+            <span lang="en">Presenter details</span><span lang="ru">Подробнее о Presenter</span><svg class="ic ic-xs"><use href="#i-external"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="split-media reveal">
+        <img class="illustration" src="media/presenter.png" width="1568" height="517" loading="lazy" alt="Illustration: a presenter with SonoForge on a laptop; the audience screen shows only the clean echo image">
+        <figure class="media" data-video="media/presenter.mp4" data-gif="media/presenter.gif">
+          <img src="media/presenter-poster.jpg" width="1600" height="528" loading="lazy" alt="Presenter mode demo: measurement UI on the laptop, clean full-screen image on the audience display">
+          <button class="media-play" type="button">
+            <span class="media-play-icon"><svg class="ic"><use href="#i-play"/></svg></span>
+            <span lang="en">Play Presenter demo</span><span lang="ru">Демо режима докладчика</span>
+          </button>
+        </figure>
+      </div>
+    </div>
+
+    <div class="table-wrap reveal">
+      <table class="compare">
+        <caption><span lang="en">Same codebase, two build profiles</span><span lang="ru">Одна кодовая база, два профиля сборки</span></caption>
+        <thead>
+          <tr><th scope="col"></th><th scope="col"><span lang="en">Full SonoForge</span><span lang="ru">Полный SonoForge</span></th><th scope="col">SonoForge Presenter</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row"><span lang="en">Distribution</span><span lang="ru">Дистрибуция</span></th><td><span lang="en">installer (.deb / .exe / .dmg)</span><span lang="ru">установщик (.deb / .exe / .dmg)</span></td><td><span lang="en">single portable file (.exe / .AppImage)</span><span lang="ru">один портативный файл (.exe / .AppImage)</span></td></tr>
+          <tr><th scope="row"><span lang="en">Measurements, Doppler, auto‑calibration</span><span lang="ru">Измерения, допплер, автокалибровка</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><th scope="row"><span lang="en">Strain/STE and optical flow</span><span lang="ru">Strain/STE и оптический поток</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><th scope="row">PACS: DICOMweb + DIMSE, TLS</th><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><th scope="row"><span lang="en">PDF reports with ASE norms</span><span lang="ru">PDF‑отчёты с нормами ASE</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><th scope="row"><span lang="en">AI (ONNX) segmentation</span><span lang="ru">AI‑сегментация (ONNX)</span></th><td class="yes">✓</td><td class="no"><span lang="en">excluded from the build</span><span lang="ru">исключена из сборки</span></td></tr>
+          <tr><th scope="row"><span lang="en">Reference Constructor / web handbook</span><span lang="ru">Конструктор справочника / веб‑справочник</span></th><td class="yes">✓</td><td class="no"><span lang="en">excluded from the build</span><span lang="ru">исключён из сборки</span></td></tr>
+          <tr><th scope="row"><span lang="en">Settings and secrets</span><span lang="ru">Настройки и секреты</span></th><td><span lang="en">OS keychain + QSettings</span><span lang="ru">системная связка ключей + QSettings</span></td><td><span lang="en">on the stick: INI + Fernet‑encrypted secrets</span><span lang="ru">на флешке: INI + секреты, зашифрованные Fernet</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DOWNLOAD ============ -->
+<section class="section section-alt" id="download">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Get SonoForge</span><span lang="ru">Установка</span></p>
+      <h2><span lang="en">Download &amp; install</span><span lang="ru">Скачать и установить</span></h2>
+      <p class="lead">
+        <span lang="en">Latest release: <strong data-release-tag>v0.3.1</strong> <span class="muted" data-release-date></span>. Free, GPL‑3.0. First run creates its environment automatically and offers to download the AI models.</span>
+        <span lang="ru">Текущий релиз: <strong data-release-tag>v0.3.1</strong> <span class="muted" data-release-date></span>. Бесплатно, GPL‑3.0. При первом запуске окружение настраивается автоматически, AI‑модели предлагается скачать отдельно.</span>
+      </p>
+    </header>
+
+    <div class="tabs reveal" data-tabs>
+      <div class="tab-list" role="tablist" aria-label="Platform">
+        <button role="tab" id="tab-linux" aria-controls="panel-linux" aria-selected="true" data-os="linux"><svg class="ic"><use href="#i-linux"/></svg> Linux</button>
+        <button role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" data-os="windows"><svg class="ic"><use href="#i-windows"/></svg> Windows</button>
+        <button role="tab" id="tab-macos" aria-controls="panel-macos" aria-selected="false" data-os="macos"><svg class="ic"><use href="#i-apple"/></svg> macOS</button>
+        <button role="tab" id="tab-presenter" aria-controls="panel-presenter" aria-selected="false" data-os="presenter"><svg class="ic"><use href="#i-usb"/></svg> Presenter (USB)</button>
+        <button role="tab" id="tab-source" aria-controls="panel-source" aria-selected="false" data-os="source"><svg class="ic"><use href="#i-code"/></svg> <span lang="en">From source</span><span lang="ru">Из исходников</span></button>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="panel-linux" aria-labelledby="tab-linux">
+        <div class="panel-grid">
+          <div>
+            <h3>Linux (.deb) <span class="badge badge-accent"><span lang="en">Recommended</span><span lang="ru">Рекомендуется</span></span></h3>
+            <p lang="en">Debian/Ubuntu package. Installs the <code>sonoforge</code> launcher; the first run creates a virtual environment, installs Python dependencies and optionally downloads the AI segmentation models.</p>
+            <p lang="ru">Пакет для Debian/Ubuntu. Устанавливает лаунчер <code>sonoforge</code>; при первом запуске создаётся виртуальное окружение, ставятся Python‑зависимости и (по желанию) скачиваются AI‑модели.</p>
+            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="deb"><svg class="ic"><use href="#i-download"/></svg><span>.deb</span><span class="cta-meta" data-asset-meta></span></a>
+          </div>
+          <div class="code" data-code>
+            <button class="copy" type="button" aria-label="Copy"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button>
+<pre><code><span class="c" data-asset-cmd="deb"># 1. Download sonoforge_&lt;version&gt;_amd64.deb from Releases</span>
+sudo dpkg -i sonoforge_*.deb
+sonoforge</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="panel-windows" aria-labelledby="tab-windows" hidden>
+        <div class="panel-grid">
+          <div>
+            <h3>Windows 10 / 11 (64‑bit)</h3>
+            <p lang="en">Download the Windows build, run it and follow the prompts; SonoForge sets up its environment on first launch. Start it from the Start menu or desktop shortcut afterwards.</p>
+            <p lang="ru">Скачайте сборку для Windows, запустите и следуйте подсказкам; окружение настраивается при первом запуске. Дальше — из меню «Пуск» или ярлыка на рабочем столе.</p>
+            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="windows"><svg class="ic"><use href="#i-download"/></svg><span>SonoForge.exe</span><span class="cta-meta" data-asset-meta></span></a>
+          </div>
+          <div class="note">
+            <p lang="en">Windows SmartScreen may warn about an unsigned application — this is expected for an open‑source build. Verify the download against the checksums on the release page if in doubt.</p>
+            <p lang="ru">Windows SmartScreen может предупредить о неподписанном приложении — для open‑source‑сборки это ожидаемо. При сомнениях сверьте файл с контрольными суммами на странице релиза.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="panel-macos" aria-labelledby="tab-macos" hidden>
+        <div class="panel-grid">
+          <div>
+            <h3>macOS 12.0+ <span class="badge">Apple Silicon</span></h3>
+            <p lang="en">Open the disk image and drag <code>SonoForge.app</code> to Applications. First run creates the virtual environment, installs dependencies and optionally downloads the AI models.</p>
+            <p lang="ru">Откройте образ диска и перетащите <code>SonoForge.app</code> в «Программы». При первом запуске создаётся виртуальное окружение, ставятся зависимости и (по желанию) скачиваются AI‑модели.</p>
+            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="macos"><svg class="ic"><use href="#i-download"/></svg><span>.dmg</span><span class="cta-meta" data-asset-meta></span></a>
+          </div>
+          <div class="note">
+            <p lang="en">If macOS blocks the first launch (“unidentified developer”), right‑click the app → <em>Open</em> once, or allow it in <em>System Settings → Privacy &amp; Security</em>.</p>
+            <p lang="ru">Если macOS блокирует первый запуск («неустановленный разработчик»), нажмите на приложение правой кнопкой → <em>Открыть</em> один раз или разрешите его в <em>Системные настройки → Конфиденциальность и безопасность</em>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="panel-presenter" aria-labelledby="tab-presenter" hidden>
+        <div class="panel-grid">
+          <div>
+            <h3>SonoForge Presenter — <span lang="en">portable</span><span lang="ru">портативный</span></h3>
+            <p lang="en">A single file for the USB stick: copy, double‑click, present. Settings, PACS profiles, encrypted passwords and the DICOM cache live next to the executable. All measurement tools and PACS connectivity included; AI segmentation and the Reference Constructor are not part of this edition.</p>
+            <p lang="ru">Один файл на флешке: скопировали, дважды щёлкнули, докладываете. Настройки, профили PACS, зашифрованные пароли и кэш DICOM лежат рядом с исполняемым файлом. Все инструменты измерений и PACS включены; AI‑сегментация и Конструктор справочника в это издание не входят.</p>
+            <div class="cta">
+              <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-win"><svg class="ic"><use href="#i-windows"/></svg><span>SonoForgePresenter.exe</span><span class="cta-meta" data-asset-meta></span></a>
+              <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-linux"><svg class="ic"><use href="#i-linux"/></svg><span>AppImage</span><span class="cta-meta" data-asset-meta></span></a>
+            </div>
+          </div>
+          <div class="code" data-code>
+            <button class="copy" type="button" aria-label="Copy"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button>
+<pre><code><span class="c"># Linux: make the AppImage executable once</span>
+chmod +x SonoForge-Presenter-*-x86_64.AppImage
+./SonoForge-Presenter-*-x86_64.AppImage</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="panel-source" aria-labelledby="tab-source" hidden>
+        <div class="panel-grid">
+          <div>
+            <h3><span lang="en">From source</span><span lang="ru">Из исходников</span> <span class="badge">Python 3.10–3.11</span></h3>
+            <p lang="en">For developers and anyone who wants the very latest <code>main</code>. <a href="https://github.com/astral-sh/uv" rel="noopener">uv</a> is the recommended way; plain pip works too.</p>
+            <p lang="ru">Для разработчиков и тех, кому нужен самый свежий <code>main</code>. Рекомендуемый путь — <a href="https://github.com/astral-sh/uv" rel="noopener">uv</a>; обычный pip тоже подойдёт.</p>
+            <a class="btn btn-ghost" href="https://github.com/areatu/SonoForge/blob/main/CONTRIBUTING.md" rel="noopener"><svg class="ic"><use href="#i-github"/></svg> CONTRIBUTING.md</a>
+          </div>
+          <div class="code" data-code>
+            <button class="copy" type="button" aria-label="Copy"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button>
+<pre><code>git clone https://github.com/areatu/SonoForge.git
+cd SonoForge
+
+<span class="c"># with uv (recommended)</span>
+uv sync --extra dev
+uv run sonoforge
+
+<span class="c"># or with pip</span>
+pip install -e ".[dev]"
+python -m echo_personal_tool</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="all-releases reveal">
+      <a href="https://github.com/areatu/SonoForge/releases" rel="noopener"><span lang="en">All releases and changelogs on GitHub</span><span lang="ru">Все релизы и списки изменений на GitHub</span> <svg class="ic ic-xs"><use href="#i-external"/></svg></a>
+    </p>
+
+    <aside class="disclaimer reveal" role="note">
+      <svg class="ic"><use href="#i-alert"/></svg>
+      <div>
+        <p lang="en"><strong>Research and educational use only.</strong> SonoForge is not intended for clinical diagnosis, treatment decisions or patient care, and has not been reviewed or approved by the FDA, CE or any other regulatory body. Always consult a qualified healthcare professional for medical decisions.</p>
+        <p lang="ru"><strong>Только для исследовательских и образовательных целей.</strong> SonoForge не предназначен для клинической диагностики, принятия решений о лечении или ведения пациентов и не проходил проверку или одобрение FDA, CE или иного регулирующего органа. При принятии медицинских решений всегда консультируйтесь с квалифицированным специалистом.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============ QUICK START ============ -->
+<section class="section" id="quickstart">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Five minutes in</span><span lang="ru">Первые пять минут</span></p>
+      <h2><span lang="en">Quick start</span><span lang="ru">Быстрый старт</span></h2>
+    </header>
+    <ol class="steps">
+      <li class="reveal">
+        <h3><span lang="en">Open a study</span><span lang="ru">Откройте исследование</span></h3>
+        <p lang="en"><em>File → Open Folder</em> for a directory of DICOM, MP4 or JPEG files, or <em>File → Load from Server</em> to browse a PACS (Orthanc, DICOMweb, DIMSE).</p>
+        <p lang="ru"><em>Файл → Открыть папку</em> для каталога с DICOM, MP4 или JPEG, либо <em>Файл → Загрузить с сервера</em>, чтобы открыть PACS (Orthanc, DICOMweb, DIMSE).</p>
+      </li>
+      <li class="reveal">
+        <h3><span lang="en">Navigate</span><span lang="ru">Навигация</span></h3>
+        <p lang="en">Pick a series in the gallery, scroll frames with the mouse wheel or arrow keys, play the cine loop with <kbd>Space</kbd>.</p>
+        <p lang="ru">Выберите серию в галерее, листайте кадры колёсиком или стрелками, запускайте cine‑петлю клавишей <kbd>Space</kbd>.</p>
+      </li>
+      <li class="reveal">
+        <h3><span lang="en">Measure</span><span lang="ru">Измеряйте</span></h3>
+        <p lang="en"><kbd>L</kbd> linear caliper (stays armed for Dist1, Dist2, …; measures Δt and velocity inside a Doppler ROI) · <kbd>C</kbd> Simpson biplane · <kbd>M</kbd> M‑mode · <kbd>I</kbd> LV auto‑contour · <kbd>R</kbd> refine contour.</p>
+        <p lang="ru"><kbd>L</kbd> линейный калипер (остаётся активным: Dist1, Dist2, …; в зоне допплера измеряет Δt и скорость) · <kbd>C</kbd> Simpson биплан · <kbd>M</kbd> M‑режим · <kbd>I</kbd> автоконтур ЛЖ · <kbd>R</kbd> доработка контура.</p>
+      </li>
+      <li class="reveal">
+        <h3><span lang="en">Review and export</span><span lang="ru">Проверьте и экспортируйте</span></h3>
+        <p lang="en">The results panel shows every value indexed to BSA and checked against age/sex reference ranges. Export a PDF report or store a DICOM SR back to PACS.</p>
+        <p lang="ru">Панель результатов показывает все значения с индексацией по ППТ и сверкой с нормами по полу и возрасту. Экспортируйте PDF‑отчёт или сохраните DICOM SR обратно в PACS.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ DOCS ============ -->
+<section class="section section-alt" id="docs">
+  <div class="container">
+    <header class="section-head reveal">
+      <p class="eyebrow"><span lang="en">Read more</span><span lang="ru">Читать дальше</span></p>
+      <h2><span lang="en">Documentation</span><span lang="ru">Документация</span></h2>
+    </header>
+    <div class="grid grid-3 docs-grid">
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/docs/HELP_EN.md" rel="noopener">
+        <svg class="ic"><use href="#i-book"/></svg>
+        <span><strong>User help (EN)</strong><small lang="en">Every tool and workflow, step by step</small><small lang="ru">Все инструменты и сценарии по шагам</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/docs/HELP_RU.md" rel="noopener">
+        <svg class="ic"><use href="#i-book"/></svg>
+        <span><strong>Справка пользователя (RU)</strong><small lang="en">Extended Russian user guide</small><small lang="ru">Расширенное русскоязычное руководство</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/docs/TECHNICAL_HELP_EN.md" rel="noopener">
+        <svg class="ic"><use href="#i-code"/></svg>
+        <span><strong>Technical help (EN)</strong><small lang="en">Architecture, calibration internals, formats</small><small lang="ru">Архитектура, внутренности калибровки, форматы</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/docs/TECHNICAL_HELP_RU.md" rel="noopener">
+        <svg class="ic"><use href="#i-code"/></svg>
+        <span><strong>Техническая справка (RU)</strong><small lang="en">Technical reference in Russian</small><small lang="ru">Технический справочник на русском</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/build/presenter/README.md" rel="noopener">
+        <svg class="ic"><use href="#i-usb"/></svg>
+        <span><strong>SonoForge Presenter</strong><small lang="en">Packaging, profile flags, portable storage</small><small lang="ru">Сборка, флаги профиля, portable‑хранилище</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/SECURITY.md" rel="noopener">
+        <svg class="ic"><use href="#i-shield"/></svg>
+        <span><strong>SECURITY.md</strong><small lang="en">PHI handling, model integrity, HIPAA notes</small><small lang="ru">Обработка PHI, целостность моделей, HIPAA</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/ROADMAP.md" rel="noopener">
+        <svg class="ic"><use href="#i-chart"/></svg>
+        <span><strong>ROADMAP.md</strong><small lang="en">Feature status and what's next</small><small lang="ru">Статус функций и планы</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/CHANGELOG.md" rel="noopener">
+        <svg class="ic"><use href="#i-file"/></svg>
+        <span><strong>CHANGELOG.md</strong><small lang="en">Every change, release by release</small><small lang="ru">Все изменения по релизам</small></span>
+      </a>
+      <a class="doc reveal" href="https://github.com/areatu/SonoForge/blob/main/CONTRIBUTING.md" rel="noopener">
+        <svg class="ic"><use href="#i-github"/></svg>
+        <span><strong>CONTRIBUTING.md</strong><small lang="en">Dev setup, code style, tests</small><small lang="ru">Окружение разработчика, стиль кода, тесты</small></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CITE ============ -->
+<section class="section" id="cite">
+  <div class="container split split-narrow">
+    <div class="split-copy reveal">
+      <p class="eyebrow"><span lang="en">Research</span><span lang="ru">Наука</span></p>
+      <h2><span lang="en">Citing SonoForge</span><span lang="ru">Как цитировать</span></h2>
+      <p class="lead">
+        <span lang="en">If SonoForge helped your research or teaching, please cite it. Releases are archived on Zenodo with a DOI.</span>
+        <span lang="ru">Если SonoForge пригодился в исследовании или преподавании, пожалуйста, сошлитесь на него. Релизы архивируются на Zenodo с DOI.</span>
+      </p>
+      <p><a class="btn btn-ghost" href="https://doi.org/10.5281/zenodo.21463212" rel="noopener">DOI 10.5281/zenodo.21463212 <svg class="ic ic-xs"><use href="#i-external"/></svg></a></p>
+    </div>
+    <div class="code reveal" data-code>
+      <button class="copy" type="button" aria-label="Copy"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button>
+<pre><code>@software{areatu2026sonoforge,
+  author    = {areatu},
+  title     = {SonoForge: Open-Source Desktop Echocardiography Analysis Platform},
+  year      = {2026},
+  publisher = {GitHub},
+  url       = {https://github.com/areatu/SonoForge},
+  doi       = {10.5281/zenodo.21463212},
+  license   = {GPL-3.0}
+}</code></pre>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div>
+      <a class="brand" href="#top"><span>SonoForge</span></a>
+      <p class="muted">
+        <span lang="en">Built for cardiologists, sonographers and researchers. Free software under GPL‑3.0.</span>
+        <span lang="ru">Создано для кардиологов, сонографов и исследователей. Свободное ПО под лицензией GPL‑3.0.</span>
+      </p>
+    </div>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/areatu/SonoForge" rel="noopener">GitHub</a>
+      <a href="https://github.com/areatu/SonoForge/issues" rel="noopener"><span lang="en">Report a bug</span><span lang="ru">Сообщить об ошибке</span></a>
+      <a href="https://github.com/areatu/SonoForge/discussions" rel="noopener"><span lang="en">Discussions</span><span lang="ru">Обсуждения</span></a>
+      <a href="https://github.com/areatu/SonoForge/blob/main/LICENSE" rel="noopener"><span lang="en">License</span><span lang="ru">Лицензия</span></a>
+      <a href="https://github.com/areatu/SonoForge/blob/main/README_RU.md" rel="noopener">README (RU)</a>
+      <a href="areatu/SonoForge/latest-report/report.html"><span lang="en">Project stats</span><span lang="ru">Статистика проекта</span></a>
+    </nav>
+  </div>
+</footer>
+
+<!-- Lightbox -->
+<dialog class="lightbox" id="lightbox" aria-label="Screenshot">
+  <button class="lightbox-close" type="button" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
+  <img alt="">
+  <p class="lightbox-cap"></p>
+</dialog>
+
+<script src="app.js" defer></script>
+</body>
+</html>

@@ -99,3 +99,5 @@ tools/qtstub/lib/
 
 # Graphify output
 graphify-out/
+
+_site/

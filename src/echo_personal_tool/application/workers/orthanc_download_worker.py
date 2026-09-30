@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime
 from threading import Event, Lock, local
 
@@ -32,6 +34,51 @@ from echo_personal_tool.infrastructure.orthanc_client import (
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 _MAX_CONCURRENT_DOWNLOADS = 4
+_MAX_UNIQUE_ERRORS = 3
+_MAX_ERROR_REASON = 80
+_MAX_ERROR_TEXT = 160
+
+
+@dataclass(frozen=True)
+class DownloadFailure:
+    """A failed single-instance download.
+
+    ``reason`` is a short human-readable cause that is safe to show in the
+    status line; ``retryable`` tells whether another attempt can help.
+    """
+
+    reason: str
+    retryable: bool = True
+
+
+def aggregate_error_messages(
+    reasons: Sequence[str],
+    *,
+    max_unique: int = _MAX_UNIQUE_ERRORS,
+    max_total: int = _MAX_ERROR_TEXT,
+) -> str:
+    """Collapse failure reasons for the UI: dedupe, cap length and count.
+
+    The same cause repeated for many instances becomes ``reason ×N`` so the
+    status label stays readable; the result never exceeds ``max_total`` chars.
+    """
+    counts: dict[str, int] = {}
+    for raw in reasons:
+        reason = str(raw).strip()
+        if not reason:
+            continue
+        if len(reason) > _MAX_ERROR_REASON:
+            reason = reason[: _MAX_ERROR_REASON - 1].rstrip() + "…"
+        counts[reason] = counts.get(reason, 0) + 1
+
+    parts = [f"{reason} ×{count}" if count > 1 else reason for reason, count in list(counts.items())[:max_unique]]
+    hidden = len(counts) - max_unique
+    if hidden > 0:
+        parts.append(f"+{hidden} more")
+    text = "; ".join(parts)
+    if len(text) > max_total:
+        text = text[: max_total - 1].rstrip() + "…"
+    return text
 
 
 class OrthancDownloadSignals(QObject):
@@ -213,19 +260,25 @@ class OrthancDownloadWorker(QRunnable):
                     series_uid, instance_uid = futures[future]
                     try:
                         result = future.result()
-                        if result is not None:
+                        if isinstance(result, bytes):
                             with self._lock:
                                 saved_count += 1
                         else:
+                            reason = result.reason if isinstance(result, DownloadFailure) else "unknown failure"
+                            logger.warning(
+                                "[DIAG] instance failed instance=%s reason=%s",
+                                instance_uid[:16],
+                                reason,
+                            )
                             with self._lock:
                                 failed_count += 1
-                                errors.append(f"instance {instance_uid[:16]}: empty data")
+                                errors.append(reason)
                     except DownloadCancelled:
                         break
                     except Exception as exc:
                         with self._lock:
                             failed_count += 1
-                            errors.append(f"instance {instance_uid[:16]}: {exc}")
+                            errors.append(str(exc) or type(exc).__name__)
 
                     with self._lock:
                         done = saved_count + failed_count
@@ -257,7 +310,7 @@ class OrthancDownloadWorker(QRunnable):
                 self.signals.studies_ready.emit(self._build_studies_metadata())
                 self.signals.done.emit(self._session_id, self._study_uid)
             else:
-                detail = "; ".join(errors[:5]) if errors else ""
+                detail = aggregate_error_messages(errors)
                 message = tr("orthanc.downloaded", done=str(saved_count), total=str(total))
                 if detail:
                     message = tr(
@@ -320,18 +373,32 @@ class OrthancDownloadWorker(QRunnable):
         study_uid: str,
         series_uid: str,
         instance_uid: str,
-    ) -> bytes | None:
-        """Download single instance with retries. Returns bytes or None on failure."""
+    ) -> bytes | DownloadFailure:
+        """Download a single instance with retries.
+
+        Returns the payload on success, otherwise the last
+        :class:`DownloadFailure`. Non-retryable failures (cache writes) are
+        reported immediately instead of burning the full retry budget.
+        """
         if self._cancelled.is_set():
-            return None
+            return DownloadFailure("cancelled", retryable=False)
 
         max_attempts = 3
+        last: DownloadFailure | None = None
         for attempt in range(1, max_attempts + 1):
             if self._cancelled.is_set():
-                return None
-            data = self._attempt_download(study_uid, series_uid, instance_uid)
-            if data is not None:
-                return data
+                return DownloadFailure("cancelled", retryable=False)
+            result = self._attempt_download(study_uid, series_uid, instance_uid)
+            if isinstance(result, bytes):
+                return result
+            last = result
+            if not result.retryable:
+                logger.warning(
+                    "[DIAG] no retry, non-retryable instance=%s reason=%s",
+                    instance_uid[:16],
+                    result.reason,
+                )
+                return result
             if attempt < max_attempts:
                 logger.warning(
                     "[DIAG] download retry %d/%d instance=%s",
@@ -341,7 +408,7 @@ class OrthancDownloadWorker(QRunnable):
                 )
                 self._interruptible_sleep(2 ** (attempt - 1))
 
-        return None
+        return last if last is not None else DownloadFailure("unknown failure", retryable=False)
 
     def _interruptible_sleep(self, seconds: int) -> None:
         """Sleep in 0.2s increments so cancellation is responsive."""
@@ -354,34 +421,24 @@ class OrthancDownloadWorker(QRunnable):
         study_uid: str,
         series_uid: str,
         instance_uid: str,
-    ) -> bytes | None:
-        """Download single instance once. Returns bytes or None on failure."""
+    ) -> bytes | DownloadFailure:
+        """Download a single instance once.
+
+        Returns the payload, or a :class:`DownloadFailure` with a short
+        cause and a flag telling whether a retry can help.
+        """
         if self._cancelled.is_set():
-            return None
+            return DownloadFailure("cancelled", retryable=False)
 
         # Use retrieve service if available (supports DIMSE/C-GET/C-MOVE)
         if self._retrieve_service is not None:
             try:
                 data = self._retrieve_service.retrieve_instance(study_uid, series_uid, instance_uid)
-                if not data:
-                    return None
-                self._cache.save_instance(
-                    self._session_id,
-                    study_uid,
-                    series_uid,
-                    instance_uid,
-                    data,
-                )
-                return data
             except DownloadCancelled:
                 raise
-            except Exception as exc:
-                logger.warning(
-                    "[DIAG] download failed instance=%s error=%s",
-                    instance_uid[:16],
-                    exc,
-                )
-                return None
+            except Exception as exc:  # noqa: BLE001
+                return self._download_failed(instance_uid, "retrieve", exc, retryable=True)
+            return self._store_instance(study_uid, series_uid, instance_uid, data)
 
         # Use thread-local client for downloads to avoid both connection churn
         # and thread-safety issues with shared httpx.Client across threads.
@@ -392,8 +449,35 @@ class OrthancDownloadWorker(QRunnable):
             client = self._client
         try:
             data = client.download_instance(study_uid, series_uid, instance_uid)
-            if not data:
-                return None
+        except DownloadCancelled:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return self._download_failed(instance_uid, "download", exc, retryable=True)
+        return self._store_instance(study_uid, series_uid, instance_uid, data)
+
+    @staticmethod
+    def _download_failed(instance_uid: str, stage: str, exc: BaseException, *, retryable: bool) -> DownloadFailure:
+        reason = f"{stage} failed: {exc}" if str(exc) else f"{stage} failed: {type(exc).__name__}"
+        logger.warning(
+            "[DIAG] %s failed instance=%s error=%s",
+            stage,
+            instance_uid[:16],
+            exc,
+        )
+        return DownloadFailure(reason, retryable=retryable)
+
+    def _store_instance(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+        data: bytes | None,
+    ) -> bytes | DownloadFailure:
+        """Persist a downloaded payload; cache errors are never retryable."""
+        if not data:
+            logger.warning("[DIAG] empty payload instance=%s", instance_uid[:16])
+            return DownloadFailure("empty response from server")
+        try:
             self._cache.save_instance(
                 self._session_id,
                 study_uid,
@@ -401,16 +485,9 @@ class OrthancDownloadWorker(QRunnable):
                 instance_uid,
                 data,
             )
-            return data
-        except DownloadCancelled:
-            raise
-        except Exception as exc:
-            logger.warning(
-                "[DIAG] download failed instance=%s error=%s",
-                instance_uid[:16],
-                exc,
-            )
-            return None
+        except Exception as exc:  # noqa: BLE001
+            return self._download_failed(instance_uid, "cache write", exc, retryable=False)
+        return data
 
     def _finish_cancelled(self) -> None:
         self._cache.clear_session(self._session_id)
@@ -427,10 +504,16 @@ class OrthancDownloadWorker(QRunnable):
         instances_by_series: dict[str, list[InstanceMetadata]] = defaultdict(list)
         study_datetime: datetime | None = None
 
-        for series_dir in sorted(study_dir.iterdir()):
-            if not series_dir.is_dir():
+        for entry in sorted(study_dir.iterdir()):
+            if entry.is_dir():
+                # Legacy layout: session/<study>/<series>/<sop>.dcm
+                candidates = sorted(entry.glob("*.dcm"))
+            elif entry.suffix.lower() == ".dcm":
+                # Current layout: session/<study>/<sop>.dcm
+                candidates = [entry]
+            else:
                 continue
-            for dcm_path in sorted(series_dir.glob("*.dcm")):
+            for dcm_path in candidates:
                 try:
                     validate_dicom_header(dcm_path)
                     ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
