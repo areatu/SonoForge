@@ -15,8 +15,11 @@
 ### CI
 - `ci(pages)`: сайт-лендинг `site/` (EN/RU, без фреймворков) и workflow `pages.yml` публикуют проект на https://areatu.github.io/SonoForge/; в `repo-stats.yml` включён `ghpagesprefix`, поэтому отчёт о трафике остаётся по прежнему адресу и доступен как `/stats/`; сгенерированный `_site/` добавлен в `.gitignore`.
 
-### Осталось доделать (сессия 2026-09-29, ветка `fix/server_dicom`)
-1. **Проверка.** Тесты к пп. 1–2 позаписей выше написаны (`aggregate_error_messages`, неретраибульная ошибка кэша, ширина диалога), осталось прогнать полный `pytest tests/unit`: локальный прогон падает на `tests/acceptance/test_constructor_workflow.py`, который открывает GUI-диалог и виснет без дисплея (к изменениям не относится). Пройдено: `ruff check src tests`, `ruff format --check`, `pytest tests/unit/test_orthanc_cache.py tests/unit/test_orthanc_download_worker.py tests/unit/test_p4_skip_scan_worker.py tests/unit/test_orthanc_export_layout.py tests/unit/test_orthanc_study_dialog.py tests/unit/test_security_path_safety.py`.
+### Проверка
+- `ruff check src tests` и `ruff format --check` — чисто (702 файла отформатированы).
+- Полный `pytest tests/unit` на слитом main (`b599dee`): **2416 passed, 3 skipped, 2 xfailed, 6 failed** (23 мин, `--timeout=30`). Все 6 падений воспроизводятся на базовом коммите `3d28aa4` — то есть до ветки `fix/server_dicom` — и к изменениям не относятся: `test_presenter_profile.py::TestPortableStores` ×3 (portable-хранилище `secrets.ini`), `test_ste_phantom.py::test_wall_leaving_the_sector_is_excluded_and_stated`, `test_tracking_verification.py` ×2 (порог p95 verified/rejected).
+- `tests/acceptance/test_constructor_workflow.py` открывает GUI-диалог и виснет без дисплея, поэтому acceptance-набор отдельно не запускался.
+- Ранее пройдено точечно: `test_orthanc_cache.py`, `test_orthanc_download_worker.py`, `test_p4_skip_scan_worker.py`, `test_orthanc_export_layout.py`, `test_orthanc_study_dialog.py`, `test_security_path_safety.py`.
 
 ---
 
