@@ -29,6 +29,7 @@
 
 | Файл | Описание |
 |------|----------|
+| [`superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`](superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md) | Спека Multiview: два клипа, общий фрагмент, маркеры МК и синхронизация по циклам |
 | `STE_IMPROVEMENT_PLAN.md` | План развития модуля STE до коммерческого уровня (rev.4, действующий; §5.2 — состояние реализации) |
 | `STE_TRACKING_VERIFICATION.md` | Верификация STE-трекинга |
 | `STE_VENDOR_REFERENCE.md` | Вендорские референсные значения STE (Samsung RS85, Philips EPIQ) |

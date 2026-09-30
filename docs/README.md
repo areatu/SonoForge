@@ -29,6 +29,7 @@ Technical documentation, specs, and implementation plans.
 
 | File | Description |
 |------|-------------|
+| [`superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`](superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md) | Russian specification for two-clip multiview, event markers, and cycle-synchronized playback |
 | `STE_IMPROVEMENT_PLAN.md` | Plan for bringing the STE module to commercial quality (rev.4, current; §5.2 — implementation status) |
 | `STE_TRACKING_VERIFICATION.md` | STE tracking verification |
 | `STE_VENDOR_REFERENCE.md` | Vendor STE reference values (Samsung RS85, Philips EPIQ) |
