@@ -43,6 +43,7 @@
     <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
@@ -131,12 +132,17 @@
         <span lang="en">SonoForge is a free desktop application for echo analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports — built for cardiologists, sonographers and researchers.</span>
         <span lang="ru">SonoForge — бесплатное десктопное приложение для анализа эхокардиографических исследований: просмотр DICOM, кардиологические и допплеровские измерения, AI‑сегментация, подключение к PACS и клинические PDF‑отчёты — для кардиологов, сонографов и исследователей.</span>
       </p>
-      <div class="cta">
-        <a class="btn btn-primary" id="cta-download" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener">
-          <svg class="ic"><use href="#i-download"/></svg>
-          <span data-cta-label><span lang="en">Download</span><span lang="ru">Скачать</span></span>
-          <span class="cta-meta" data-cta-meta></span>
+      <div class="cta cta-downloads">
+        <a class="btn btn-primary" id="cta-download-linux" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener">
+          <svg class="ic"><use href="#i-linux"/></svg>
+          <span lang="en">Download for Linux</span><span lang="ru">Скачать для Linux</span>
         </a>
+        <a class="btn btn-ghost" id="cta-download-windows" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener">
+          <svg class="ic"><use href="#i-windows"/></svg>
+          <span lang="en">Download for Windows</span><span lang="ru">Скачать для Windows</span>
+        </a>
+      </div>
+      <div class="cta cta-resources">
         <a class="btn btn-ghost" href="https://github.com/areatu/SonoForge" rel="noopener">
           <svg class="ic"><use href="#i-github"/></svg>
           <span lang="en">View on GitHub</span><span lang="ru">Репозиторий</span>
@@ -151,7 +157,10 @@
         <li><strong><span data-count="4400">4400</span>+</strong><span lang="en">unit tests, ~77% coverage</span><span lang="ru">unit‑тестов, покрытие ~77%</span></li>
         <li><strong>ASE</strong><span lang="en">reference norms built in</span><span lang="ru">референсные нормы встроены</span></li>
         <li><strong>DICOMweb + DIMSE</strong><span lang="en">PACS connectivity with TLS</span><span lang="ru">подключение к PACS с TLS</span></li>
+        <li><strong>MP4 · JPEG</strong><span lang="en">open videos and still images alongside DICOM</span><span lang="ru">просмотр видео и изображений наряду с DICOM</span></li>
+        <li><strong>.dcm · MP4 · JPEG</strong><span lang="en">save DICOM copies, export clips and snapshots for colleagues and presentations</span><span lang="ru">сохранение копий DICOM, экспорт видео и снимков для обмена с коллегами и демонстраций</span></li>
       </ul>
+      <p class="sharing-note"><span lang="en">Sharing on social media? Remove patient-identifying information first.</span><span lang="ru">Перед публикацией в соцсетях удалите данные, позволяющие идентифицировать пациента.</span></p>
     </div>
 
     <figure class="media hero-media" data-video="media/preview.mp4" data-gif="media/preview.gif" data-tilt>
@@ -164,19 +173,13 @@
       </button>
       <ul class="media-chips" aria-hidden="true">
         <li class="chip chip--tl"><b>Auto EF</b><span lang="en">Simpson biplane</span><span lang="ru">биплан Симпсона</span></li>
-        <li class="chip chip--br"><b>A4C</b><span lang="en">60 fps · ONNX</span><span lang="ru">60 к/с · ONNX</span></li>
+        <li class="chip chip--br"><b>A4C</b><span lang="en">30 fps · ONNX</span><span lang="ru">30 к/с · ONNX</span></li>
       </ul>
       <figcaption>
         <span lang="en">Main application: LV auto-EF workflow on an A4C cine.</span>
         <span lang="ru">Основное приложение: авто‑ФВ ЛЖ на cine‑петле A4C.</span>
       </figcaption>
     </figure>
-  </div>
-  <div class="hero-trace" aria-hidden="true">
-    <svg viewBox="0 0 1200 110" preserveAspectRatio="none" focusable="false">
-      <path class="trace-base" d="M-20 70h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h160"/>
-      <path class="trace-pulse" d="M-20 70h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h160"/>
-    </svg>
   </div>
 </section>
 
@@ -224,81 +227,77 @@
         <span lang="en">A complete echo workstation toolset — from basic linear measurements to AI-assisted segmentation — with every value indexed, referenced and exportable.</span>
         <span lang="ru">Полный набор инструментов эхо‑рабочей станции — от базовых линейных измерений до AI‑сегментации; каждое значение индексируется, сверяется с нормами и экспортируется.</span>
       </p>
+      <button class="btn btn-ghost btn-sm feature-motion" type="button" data-feature-motion hidden>
+        <svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>
+        <span data-feature-motion-label><span lang="en">Pause previews</span><span lang="ru">Остановить анимации</span></span>
+      </button>
     </header>
 
     <div class="grid grid-3">
-      <article class="card reveal">
+      <article class="card feature-card reveal">
         <div class="card-icon" data-icon="heart"><svg class="ic"><use href="#i-heart"/></svg></div>
         <h3><span lang="en">Cardiac measurements</span><span lang="ru">Кардиологические измерения</span></h3>
         <p lang="en">Linear B‑mode/M‑mode calipers with live labels, Simpson biplane volumes with open‑arc mitral annulus tracking, RV function, LV mass and RWT, automatic BSA indexing and HR from the ECG trace.</p>
         <p lang="ru">Линейные калиперы B/M‑режима с подписями в реальном времени, объёмы по биплановому Симпсону с открытой дугой митрального кольца, функция ПЖ, масса ЛЖ и ОТС, автоматическая индексация по ППТ и ЧСС по ЭКГ.</p>
         <ul class="tags"><li>LVEDD · IVSd · LVPWd</li><li>EDV · ESV · LVEF</li><li>LAVi · RAVi</li><li>TAPSE · FAC</li><li>LVM · LVMI · RWT</li></ul>
-      <div class="mini-viz" aria-hidden="true">
-          <svg viewBox="0 0 240 56" role="presentation" focusable="false">
-            <path class="mv-guide" d="M0 16h240M0 40h240"/>
-            <path class="mv-wall" d="M46 6c22 8 22 36 0 44M194 6c-22 8-22 36 0 44"/>
-            <path class="mv-cal" d="M74 25h92"/>
-            <path class="mv-cap" d="M74 18v14M166 18v14"/>
-            <text class="mv-label" x="120" y="16" text-anchor="middle">LVIDd 48 mm</text>
-            <text class="mv-sub" x="120" y="50" text-anchor="middle">LVMI 88 g/m²</text>
-          </svg>
-        </div>
+        <figure class="feature-preview" aria-hidden="true">
+          <img src="media/features/cardiac-poster.jpg" data-feature-gif="media/features/cardiac.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
+        </figure>
       </article>
 
-      <article class="card reveal">
+      <article class="card feature-card reveal">
         <div class="card-icon" data-icon="wave"><svg class="ic"><use href="#i-wave"/></svg></div>
         <h3><span lang="en">Doppler &amp; vascular</span><span lang="ru">Допплер и сосуды</span></h3>
         <p lang="en">PSV/EDV peaks with automatic RI and S/D, a caliper that measures Δt and velocity inside the Doppler ROI, two‑click auto‑VTI, vessel stenosis by diameter and area, cycle averaging without ECG and study‑wide E/e′.</p>
         <p lang="ru">Пики PSV/EDV с автоматическими RI и S/D, калипер, измеряющий Δt и скорость внутри допплеровской зоны, авто‑VTI в два клика, стеноз сосуда по диаметру и площади, усреднение по циклам без ЭКГ и сквозное E/e′ по исследованию.</p>
         <ul class="tags"><li>PSV · EDV · RI · S/D</li><li>Auto VTI</li><li>%D · %S</li><li>E/e′</li></ul>
-      <div class="mini-viz" aria-hidden="true">
-          <svg viewBox="0 0 240 56" role="presentation" focusable="false">
-            <path class="mv-guide" d="M0 42h240"/>
-            <path class="mv-spec" d="M0 42C14 8 26 8 40 42 54 14 66 14 80 42 94 4 106 4 120 42 134 16 146 16 160 42 174 10 186 10 200 42 214 22 226 22 240 42Z"/>
-            <path class="mv-sweep" d="M0 4v48"/>
-          </svg>
-        </div>
+        <figure class="feature-preview" aria-hidden="true">
+          <img src="media/features/doppler-poster.jpg" data-feature-gif="media/features/doppler.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
+        </figure>
       </article>
 
-      <article class="card reveal">
+      <article class="card feature-card reveal">
         <div class="card-icon" data-icon="sliders"><svg class="ic"><use href="#i-sliders"/></svg></div>
         <h3><span lang="en">Doppler auto‑calibration</span><span lang="ru">Автокалибровка допплера</span></h3>
         <p lang="en">Velocity scale from ruler ticks with grid‑line fallback, sweep‑speed calibration, evidence‑fusion baseline detection for Samsung and GE systems, and a manual two‑click wizard that always wins over auto‑detection.</p>
         <p lang="ru">Шкала скоростей по тикам линейки с fallback на сетку, калибровка скорости развёртки, многометодное определение базовой линии для Samsung и GE и ручной мастер в два клика, который всегда имеет приоритет над автоматикой.</p>
         <ul class="tags"><li>Samsung RS85</li><li>GE</li><li lang="en">DICOM tags</li><li lang="ru">DICOM‑теги</li></ul>
+        <figure class="feature-preview" aria-hidden="true">
+          <img src="media/features/calibration-poster.jpg" data-feature-gif="media/features/calibration.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
+        </figure>
       </article>
 
-      <article class="card reveal">
+      <article class="card feature-card reveal">
         <div class="card-icon" data-icon="cpu"><svg class="ic"><use href="#i-cpu"/></svg></div>
         <h3><span lang="en">AI segmentation</span><span lang="ru">AI‑сегментация</span> <span class="badge"><span lang="en">Full profile</span><span lang="ru">Полный профиль</span></span></h3>
         <p lang="en">ONNX Runtime on the CPU: automatic LV contouring in A4C with EchoNet‑Dynamic, LA segmentation with optical‑flow assist, mitral annulus detection, temporal fusion across neighbouring frames and edge‑snapping contour refinement.</p>
         <p lang="ru">ONNX Runtime на CPU: автоконтур ЛЖ в A4C по модели EchoNet‑Dynamic, сегментация ЛП с оптическим потоком, определение митрального кольца, сглаживание по соседним кадрам и доработка контура с привязкой к границам.</p>
         <ul class="tags"><li>EchoNet‑Dynamic</li><li>ONNX</li><li lang="en">SHA‑256 verified models</li><li lang="ru">SHA‑256‑контроль моделей</li></ul>
-      <div class="mini-viz" aria-hidden="true">
-          <svg viewBox="0 0 240 56" role="presentation" focusable="false">
-            <path class="mv-fan" d="M120 4 26 52h188z"/>
-            <path class="mv-contour" d="M96 22c10-9 34-9 44 1 7 7 8 17 1 23-9 8-33 8-43-1-6-6-7-16-2-23z"/>
-            <circle class="mv-node" cx="96" cy="22" r="2.2"/>
-            <circle class="mv-node mv-node--2" cx="141" cy="24" r="2.2"/>
-            <circle class="mv-node mv-node--3" cx="98" cy="45" r="2.2"/>
-          </svg>
-        </div>
+        <figure class="feature-preview" aria-hidden="true">
+          <img src="media/features/segmentation-poster.jpg" data-feature-gif="media/features/segmentation.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
+        </figure>
       </article>
 
-      <article class="card reveal">
+      <article class="card feature-card reveal">
         <div class="card-icon" data-icon="server"><svg class="ic"><use href="#i-server"/></svg></div>
         <h3><span lang="en">DICOM &amp; PACS</span><span lang="ru">DICOM и PACS</span></h3>
         <p lang="en">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) and classic DIMSE — C‑FIND, C‑GET, C‑MOVE with an embedded Storage SCP, C‑STORE — with TLS and certificate validation. Works with Orthanc, DCM4CHEE, Conquest and any compliant server.</p>
         <p lang="ru">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) и классический DIMSE — C‑FIND, C‑GET, C‑MOVE со встроенным Storage SCP, C‑STORE — с TLS и проверкой сертификатов. Работает с Orthanc, DCM4CHEE, Conquest и любым совместимым сервером.</p>
         <ul class="tags"><li>DICOMweb</li><li>DIMSE</li><li>TLS</li><li>Orthanc</li></ul>
+        <figure class="feature-preview" aria-hidden="true">
+          <img src="media/features/pacs-poster.jpg" data-feature-gif="media/features/pacs.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
+        </figure>
       </article>
 
-      <article class="card reveal">
+      <article class="card feature-card reveal">
         <div class="card-icon" data-icon="file"><svg class="ic"><use href="#i-file"/></svg></div>
         <h3><span lang="en">Reports &amp; reference norms</span><span lang="ru">Отчёты и референсные нормы</span></h3>
         <p lang="en">Study summary with indexed values, clinical‑grade PDF export with reference ranges, built‑in age‑ and sex‑specific ASE tables, and DICOM SR‑compatible structured output back to PACS.</p>
         <p lang="ru">Сводка по исследованию с индексированными значениями, PDF‑отчёты с референсными диапазонами, встроенные таблицы ASE по полу и возрасту и структурированный вывод в формате DICOM SR обратно в PACS.</p>
         <ul class="tags"><li>PDF</li><li>DICOM SR</li><li lang="en">ASE norms</li><li lang="ru">Нормы ASE</li></ul>
+        <figure class="feature-preview" aria-hidden="true">
+          <img src="media/features/reports-poster.jpg" data-feature-gif="media/features/reports.gif" loading="lazy" decoding="async" width="480" height="224" alt="">
+        </figure>
       </article>
 
       <article class="card reveal">
@@ -641,8 +640,8 @@ python -m echo_personal_tool</code></pre>
       <p class="eyebrow"><span lang="en">Research</span><span lang="ru">Наука</span></p>
       <h2><span lang="en">Citing SonoForge</span><span lang="ru">Как цитировать</span></h2>
       <p class="lead">
-        <span lang="en">If SonoForge helped your research or teaching, please cite it. Releases are archived on Zenodo with a DOI.</span>
-        <span lang="ru">Если SonoForge пригодился в исследовании или преподавании, пожалуйста, сошлитесь на него. Релизы архивируются на Zenodo с DOI.</span>
+        <span lang="en">If SonoForge helped your research or teaching, please cite it using the all-versions DOI below. It links to the latest release archived on Zenodo.</span>
+        <span lang="ru">Если SonoForge пригодился в исследовании или преподавании, пожалуйста, сошлитесь на него, используя общий DOI для всех версий. Он ведёт к актуальному релизу на Zenodo.</span>
       </p>
       <p><a class="btn btn-ghost" href="https://doi.org/10.5281/zenodo.21463212" rel="noopener">DOI 10.5281/zenodo.21463212 <svg class="ic ic-xs"><use href="#i-external"/></svg></a></p>
     </div>
@@ -652,7 +651,7 @@ python -m echo_personal_tool</code></pre>
   author    = {areatu},
   title     = {SonoForge: Open-Source Desktop Echocardiography Analysis Platform},
   year      = {2026},
-  publisher = {GitHub},
+  publisher = {Zenodo},
   url       = {https://github.com/areatu/SonoForge},
   doi       = {10.5281/zenodo.21463212},
   license   = {GPL-3.0}
