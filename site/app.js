@@ -11,6 +11,11 @@
   var doc = document;
   var root = doc.documentElement;
 
+  /* ---------------- Motion preferences ---------------- */
+  var motionOK = !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var finePointer = window.matchMedia && matchMedia("(hover: hover) and (pointer: fine)").matches;
+  var raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (fn) { return setTimeout(fn, 16); };
+
   /* ---------------- Language ---------------- */
   var STRINGS = {
     en: {
@@ -45,6 +50,7 @@
   var currentLang = "en";
   var lastReleases = null; // re-render release metadata (dates, labels) when the language changes
   function setLang(lang, persist) {
+    var changed = currentLang !== lang && doc.body;
     currentLang = lang;
     root.setAttribute("data-lang", lang);
     root.setAttribute("lang", lang);
@@ -60,6 +66,12 @@
     if (lastReleases) applyReleases(lastReleases);
     if (persist) {
       try { localStorage.setItem("sonoforge.lang", lang); } catch (e) { /* ignore */ }
+    }
+    if (changed && motionOK) { // soft cross-fade of the page copy when the language changes
+      doc.body.classList.remove("lang-switching");
+      void doc.body.offsetWidth;
+      doc.body.classList.add("lang-switching");
+      setTimeout(function () { doc.body.classList.remove("lang-switching"); }, 400);
     }
   }
   doc.querySelectorAll("[data-set-lang]").forEach(function (b) {
@@ -91,9 +103,26 @@
   doc.querySelectorAll("[data-tabs]").forEach(function (tabs) {
     var list = tabs.querySelectorAll('[role="tab"]');
     var panels = tabs.querySelectorAll('[role="tabpanel"]');
-    function select(tab) {
+    var glider = tabs.querySelector(".tab-glider");
+
+    function moveGlider(tab) {
+      if (!glider || !tab) return;
+      // The pill only makes sense while the tabs share one row; on narrow screens
+      // they wrap and each tab simply highlights itself.
+      var wrapped = list.length > 1 && list[0].offsetTop !== list[list.length - 1].offsetTop;
+      if (wrapped) { glider.classList.remove("is-ready"); return; }
+      var listRect = glider.parentElement.getBoundingClientRect();
+      var r = tab.getBoundingClientRect();
+      glider.style.width = r.width + "px";
+      glider.style.transform = "translateX(" + (r.left - listRect.left) + "px)";
+      glider.classList.add("is-ready");
+    }
+    function select(tab, animate) {
       list.forEach(function (t) { t.setAttribute("aria-selected", String(t === tab)); t.tabIndex = t === tab ? 0 : -1; });
       panels.forEach(function (p) { p.hidden = p.id !== tab.getAttribute("aria-controls"); });
+      if (animate === false && glider) glider.style.transition = "none";
+      moveGlider(tab);
+      if (animate === false && glider) { void glider.offsetWidth; glider.style.transition = ""; }
     }
     list.forEach(function (t, i) {
       t.addEventListener("click", function () { select(t); });
@@ -106,7 +135,12 @@
       });
     });
     var detected = tabs.querySelector('[role="tab"][data-os="' + os + '"]');
-    if (detected) { detected.classList.add("detected"); select(detected); }
+    if (detected) detected.classList.add("detected");
+    select(detected || list[0], false);
+    var relayout = function () { moveGlider(tabs.querySelector('[role="tab"][aria-selected="true"]')); };
+    window.addEventListener("resize", relayout, { passive: true });
+    if (doc.fonts && doc.fonts.ready && doc.fonts.ready.then) doc.fonts.ready.then(relayout);
+    setTimeout(relayout, 300);
   });
 
   /* ---------------- Copy buttons ---------------- */
@@ -283,29 +317,264 @@
   if (lb && typeof lb.showModal === "function") {
     var lbImg = lb.querySelector("img");
     var lbCap = lb.querySelector(".lightbox-cap");
-    doc.querySelectorAll("[data-lightbox]").forEach(function (a) {
-      a.addEventListener("click", function (e) {
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // let "open in new tab" work
-        e.preventDefault();
-        var thumb = a.querySelector("img");
+    var shots = Array.prototype.slice.call(doc.querySelectorAll("[data-lightbox]"));
+    var shotIndex = -1;
+
+    function openShot(a, dir) {
+      var thumb = a.querySelector("img");
+      lbImg.style.opacity = "0";
+      var next = new Image();
+      var apply = function () {
         lbImg.src = a.href; lbImg.alt = thumb ? thumb.alt : "";
         var cap = a.querySelector('.shot-cap [lang="' + currentLang + '"]') || a.querySelector(".shot-cap");
         lbCap.textContent = cap ? cap.textContent : "";
-        lb.showModal();
+        lbImg.style.opacity = "1";
+        lbImg.style.transform = dir ? "translateX(" + (dir > 0 ? 18 : -18) + "px)" : "";
+        raf(function () { lbImg.style.transform = ""; });
+      };
+      next.onload = apply;
+      next.onerror = apply;
+      next.src = a.href;
+      setTimeout(apply, 120); // belt and braces: the image may already be in the browser cache
+      shotIndex = shots.indexOf(a);
+    }
+
+    shots.forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; // let "open in new tab" work
+        e.preventDefault();
+        openShot(a, 0);
+        if (!lb.open) lb.showModal();
       });
     });
+
+    function step(dir) {
+      if (shotIndex < 0 || !shots.length) return;
+      var next = shots[(shotIndex + dir + shots.length) % shots.length];
+      openShot(next, dir);
+    }
+    var prevBtn = lb.querySelector("[data-lb-prev]");
+    var nextBtn = lb.querySelector("[data-lb-next]");
+    if (prevBtn) prevBtn.addEventListener("click", function () { step(-1); });
+    if (nextBtn) nextBtn.addEventListener("click", function () { step(1); });
+    if (shots.length < 2) {
+      if (prevBtn) prevBtn.hidden = true;
+      if (nextBtn) nextBtn.hidden = true;
+    }
+
     lb.querySelector(".lightbox-close").addEventListener("click", function () { lb.close(); });
-    lb.addEventListener("click", function (e) { if (e.target === lb) lb.close(); });
+    lb.addEventListener("click", function (e) {
+      var nav = e.target.closest ? e.target.closest("[data-lb-prev],[data-lb-next]") : null;
+      if (nav) return; // handled above
+      if (e.target === lb) lb.close();
+    });
+    doc.addEventListener("keydown", function (e) {
+      if (!lb.open) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+    });
     lb.addEventListener("close", function () { lbImg.removeAttribute("src"); });
   }
 
-  /* ---------------- Reveal on scroll + active nav ---------------- */
+  /* ---------------- Reveal bookkeeping ----------------
+     `pending` holds everything still waiting to animate in. IntersectionObserver does the
+     regular work; the catch-up below covers the case where an element is jumped past
+     faster than the observer can report it (scrollbar drag, anchor link, restored scroll). */
+  var pending = [];
+  function revealNow(el) { el.classList.add("in"); }
+  function catchUpPending() {
+    if (!pending.length) return;
+    var vh = window.innerHeight || root.clientHeight;
+    pending = pending.filter(function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.top < vh * 0.98) { revealNow(el); return false; }
+      return true;
+    });
+  }
+
+  /* ---------------- Scroll state: progress bar, header, back-to-top ---------------- */
+  var navEl = doc.querySelector("[data-nav]");
+  var topBtn = doc.querySelector("[data-to-top]");
+  var ticking = false;
+
+  function onScrollFrame() {
+    ticking = false;
+    catchUpPending();
+    var y = window.pageYOffset || root.scrollTop || 0;
+    var max = Math.max(1, (root.scrollHeight || doc.body.scrollHeight) - window.innerHeight);
+    var p = Math.min(1, Math.max(0, y / max));
+    root.style.setProperty("--scroll", p.toFixed(4));
+    if (navEl) navEl.classList.toggle("is-scrolled", y > 8);
+    if (topBtn) topBtn.classList.toggle("is-visible", y > window.innerHeight * 0.8);
+  }
+  function onScroll() { if (!ticking) { ticking = true; raf(onScrollFrame); } }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+  onScrollFrame();
+
+  /* ---------------- Section rail (desktop) ---------------- */
+  var rail = null;
+  if (finePointer && motionOK) {
+    var railLinks = Array.prototype.slice.call(doc.querySelectorAll(".nav-links a[href^='#']"))
+      .filter(function (l) { return doc.querySelector(l.getAttribute("href")); });
+    if (railLinks.length > 2) {
+      rail = doc.createElement("nav");
+      rail.className = "rail";
+      rail.setAttribute("aria-label", "Section navigation");
+      railLinks.forEach(function (l) {
+        var a = doc.createElement("a");
+        a.href = l.getAttribute("href");
+        var span = doc.createElement("span");
+        span.innerHTML = l.innerHTML; // keeps both language variants, so it follows the language toggle
+        a.appendChild(span);
+        rail.appendChild(a);
+      });
+      doc.body.appendChild(rail);
+      var railItems = Array.prototype.slice.call(rail.querySelectorAll("a"));
+      if ("IntersectionObserver" in window) {
+        var railIO = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (!en.isIntersecting) return;
+            railItems.forEach(function (a) { a.classList.toggle("is-active", a.getAttribute("href") === "#" + en.target.id); });
+          });
+        }, { rootMargin: "-45% 0px -50% 0px" });
+        railItems.forEach(function (a) {
+          var s = doc.querySelector(a.getAttribute("href"));
+          if (s) railIO.observe(s);
+        });
+      }
+    }
+  }
+
+  /* ---------------- Counters in the hero facts ---------------- */
+  doc.querySelectorAll("[data-count]").forEach(function (el) {
+    var target = parseFloat(el.getAttribute("data-count"));
+    if (!motionOK || !isFinite(target)) return;
+    el.textContent = "0";
+    var started = false;
+    function run() {
+      if (started) return;
+      started = true;
+      var t0 = performance.now(), dur = 1300;
+      (function step(now) {
+        var k = Math.min(1, (now - t0) / dur);
+        var eased = 1 - Math.pow(1 - k, 3); // ease-out cubic
+        el.textContent = Math.round(target * eased).toLocaleString(currentLang === "ru" ? "ru-RU" : "en-US");
+        if (k < 1) raf(step);
+      })(t0);
+    }
+    if ("IntersectionObserver" in window) {
+      var cio = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { if (en.isIntersecting) { run(); cio.disconnect(); } });
+      }, { threshold: 0.4 });
+      cio.observe(el);
+    } else { run(); }
+  });
+
+  /* ---------------- Hero: cursor parallax + media tilt ---------------- */
+  var heroScope = doc.querySelector("[data-tilt-scope]");
+  if (heroScope && finePointer && motionOK) {
+    heroScope.querySelectorAll("[data-parallax]").forEach(function (el) {
+      el.style.setProperty("--d", String(parseFloat(el.getAttribute("data-parallax")) * 90));
+    });
+    var tiltCard = heroScope.querySelector("[data-tilt]");
+    var target = { px: 0, py: 0, tx: 0, ty: 0 };
+    var current = { px: 0, py: 0, tx: 0, ty: 0 };
+    var running = false;
+    function spring() {
+      var settled = true;
+      ["px", "py", "tx", "ty"].forEach(function (k) {
+        current[k] += (target[k] - current[k]) * 0.12;
+        if (Math.abs(target[k] - current[k]) > 0.001) settled = false;
+      });
+      heroScope.style.setProperty("--px", current.px.toFixed(3));
+      heroScope.style.setProperty("--py", current.py.toFixed(3));
+      if (tiltCard) {
+        tiltCard.style.setProperty("--tx", current.tx.toFixed(3));
+        tiltCard.style.setProperty("--ty", current.ty.toFixed(3));
+      }
+      if (settled) { running = false; return; }
+      raf(spring);
+    }
+    function kick() { if (!running) { running = true; raf(spring); } }
+    heroScope.addEventListener("pointermove", function (e) {
+      var r = heroScope.getBoundingClientRect();
+      var nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+      var ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+      target.px = Math.max(-1, Math.min(1, nx)) * -18;
+      target.py = Math.max(-1, Math.min(1, ny)) * -14;
+      if (tiltCard) {
+        var tr = tiltCard.getBoundingClientRect();
+        var overMedia = e.clientX >= tr.left && e.clientX <= tr.right && e.clientY >= tr.top && e.clientY <= tr.bottom;
+        var mx = ((e.clientX - tr.left) / tr.width) * 2 - 1;
+        var my = ((e.clientY - tr.top) / tr.height) * 2 - 1;
+        target.tx = overMedia ? Math.max(-1, Math.min(1, mx)) : 0;
+        target.ty = overMedia ? Math.max(-1, Math.min(1, my)) : 0;
+        tiltCard.classList.toggle("is-tilting", overMedia);
+      }
+      kick();
+    }, { passive: true });
+    heroScope.addEventListener("pointerleave", function () {
+      target.px = target.py = target.tx = target.ty = 0;
+      if (tiltCard) tiltCard.classList.remove("is-tilting");
+      kick();
+    }, { passive: true });
+  }
+
+  /* ---------------- Cards: cursor spotlight ---------------- */
+  if (finePointer) {
+    var spotCard = null;
+    doc.addEventListener("pointermove", function (e) {
+      var card = e.target && e.target.closest ? e.target.closest(".card") : null;
+      if (card !== spotCard) spotCard = card;
+      if (!card) return;
+      var r = card.getBoundingClientRect();
+      card.style.setProperty("--mx", (e.clientX - r.left).toFixed(1) + "px");
+      card.style.setProperty("--my", (e.clientY - r.top).toFixed(1) + "px");
+    }, { passive: true });
+  }
+
+  /* ---------------- Gallery: gentle 3D tilt on the thumbnails ---------------- */
+  if (finePointer && motionOK) {
+    doc.querySelectorAll("[data-shot]").forEach(function (shot) {
+      shot.addEventListener("pointermove", function (e) {
+        var r = shot.getBoundingClientRect();
+        var mx = ((e.clientX - r.left) / r.width - 0.5) * 2;
+        var my = ((e.clientY - r.top) / r.height - 0.5) * 2;
+        shot.style.transform = "perspective(900px) rotateX(" + (-my * 2.2).toFixed(2) + "deg) rotateY(" + (mx * 2.6).toFixed(2) + "deg) translateY(-4px)";
+      }, { passive: true });
+      shot.addEventListener("pointerleave", function () { shot.style.removeProperty("transform"); });
+      shot.addEventListener("blur", function () { shot.style.removeProperty("transform"); });
+    });
+  }
+
+  /* ---------------- Reveal on scroll (staggered) + active nav ---------------- */
   var reveals = doc.querySelectorAll(".reveal");
-  if ("IntersectionObserver" in window && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  reveals.forEach(function (el) {
+    var parent = el.parentElement;
+    if (!parent) return;
+    var siblings = Array.prototype.filter.call(parent.children, function (c) { return c.classList.contains("reveal"); });
+    var i = siblings.indexOf(el);
+    if (i > 0 && siblings.length > 1) el.style.setProperty("--reveal-delay", Math.min(i, 6) * 70 + "ms");
+  });
+  reveals.forEach(function (el) {
+    el.addEventListener("animationend", function () { el.style.removeProperty("--reveal-delay"); });
+  });
+
+  var stepBlocks = doc.querySelectorAll("[data-steps]");
+  pending = Array.prototype.slice.call(reveals).concat(Array.prototype.slice.call(stepBlocks));
+  if ("IntersectionObserver" in window && motionOK) {
     var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        revealNow(en.target);
+        io.unobserve(en.target);
+        var k = pending.indexOf(en.target);
+        if (k >= 0) pending.splice(k, 1);
+      });
     }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
-    reveals.forEach(function (el) { io.observe(el); });
+    pending.forEach(function (el) { io.observe(el); });
+    catchUpPending(); // anything already above the fold on load (deep links) shows at once
 
     var links = Array.prototype.slice.call(doc.querySelectorAll(".nav-links a[href^='#']"));
     var sections = links.map(function (l) { return doc.querySelector(l.getAttribute("href")); }).filter(Boolean);
@@ -317,7 +586,8 @@
     }, { rootMargin: "-40% 0px -55% 0px" });
     sections.forEach(function (s) { nav.observe(s); });
   } else {
-    reveals.forEach(function (el) { el.classList.add("in"); });
+    pending.forEach(revealNow);
+    pending = [];
   }
 
   /* ---------------- Init ---------------- */
