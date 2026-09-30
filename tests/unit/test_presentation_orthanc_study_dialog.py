@@ -213,6 +213,14 @@ class TestOnCancel:
             dialog._on_cancel()
             mock_reject.assert_called_once()
 
+    def test_cancel_downloading_without_worker_closes(self, dialog):
+        """Finished worker + stuck flag: close immediately, never recurse."""
+        dialog._downloading = True
+        dialog._worker = None
+        with patch.object(dialog, "_force_close_if_still_downloading") as mock_close:
+            dialog._on_cancel()
+        mock_close.assert_called_once()
+
 
 class TestForceClose:
     def test_force_close_when_downloading(self, dialog):
@@ -370,6 +378,59 @@ class TestResetAfterDownload:
         dialog._reset_after_download()
         assert dialog._downloading is False
         assert dialog._worker is None
+
+
+class TestOnDiskDownloadDone:
+    """Regression: a stuck ``_downloading`` flag locks the dialog forever."""
+
+    def _prepare(self, dialog, tmp_path):
+        dialog._downloading = True
+        dialog._worker = MagicMock()
+        dialog._session_id = "test-session"
+        dialog._save_to_disk_path = str(tmp_path)
+        dialog._cache.session_path.return_value = tmp_path
+
+    def test_success_resets_and_accepts(self, dialog, tmp_path):
+        self._prepare(dialog, tmp_path)
+        with (
+            patch.object(dialog, "_copy_session_files", return_value=3),
+            patch.object(dialog, "accept") as mock_accept,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
+        ):
+            dialog._on_disk_download_done()
+        assert dialog._downloading is False
+        assert dialog._worker is None
+        assert dialog._session_id is None
+        mock_accept.assert_called_once()
+
+    def test_copy_error_still_resets(self, dialog, tmp_path):
+        self._prepare(dialog, tmp_path)
+        with (
+            patch.object(dialog, "_copy_session_files", side_effect=OSError("No space left on device")),
+            patch.object(dialog, "accept") as mock_accept,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox") as mock_box,
+        ):
+            dialog._on_disk_download_done()
+        assert dialog._downloading is False
+        assert dialog._worker is None
+        assert dialog._tree.isEnabled()
+        mock_accept.assert_not_called()
+        mock_box.warning.assert_called_once()
+
+    def test_partial_copy_error_keeps_ui_unblocked(self, dialog, tmp_path):
+        self._prepare(dialog, tmp_path)
+        dialog._completed_downloads = 2
+        dialog._failed_downloads = 1
+        dialog._total_studies = 3
+        with (
+            patch.object(dialog, "_copy_session_files", side_effect=PermissionError("denied")),
+            patch.object(dialog, "accept") as mock_accept,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
+        ):
+            dialog._on_disk_download_done(partial=True)
+        assert dialog._downloading is False
+        assert dialog._find_btn.isEnabled()
+        mock_accept.assert_not_called()
 
 
 class TestSeriesLoadingState:
