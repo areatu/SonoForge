@@ -638,7 +638,9 @@ class MultiViewController(QObject):
             Qt.ConnectionType.QueuedConnection,
         )
         worker.signals.failed.connect(
-            lambda message, pane_id=pane_id, generation=generation: self._on_pane_frame_failed(pane_id, generation, message),
+            lambda message, pane_id=pane_id, generation=generation: self._on_pane_frame_failed(
+                pane_id, generation, message
+            ),
             Qt.ConnectionType.QueuedConnection,
         )
         QThreadPool.globalInstance().start(worker)
@@ -782,8 +784,16 @@ class MultiViewController(QObject):
         schedule = self._schedule
         if schedule is None or not schedule.is_valid:
             return self._tr("multiview.status.markers_incomplete")
-        cycles = self._tr("multiview.cycles.one") if self.session.selected_cycle_count == 1 else self._tr("multiview.cycles.two")
-        basis = self._tr("multiview.status.basis_phase") if schedule.timing_known else self._tr("multiview.status.basis_phase_unknown")
+        cycles = (
+            self._tr("multiview.cycles.one")
+            if self.session.selected_cycle_count == 1
+            else self._tr("multiview.cycles.two")
+        )
+        basis = (
+            self._tr("multiview.status.basis_phase")
+            if schedule.timing_known
+            else self._tr("multiview.status.basis_phase_unknown")
+        )
         return self._tr("multiview.status.event_cycle", cycles=cycles, basis=basis)
 
     def pane_rate_texts(self) -> tuple[str, str]:

@@ -132,9 +132,7 @@ class MultiViewPaneWidget(QWidget):
         self._marker_right_spacer = QSpacerItem(0, 0)
         marker_row.addSpacerItem(self._marker_left_spacer)
         self._marker_strip = MarkerStrip()
-        self._marker_strip.marker_clicked.connect(
-            lambda frame: self.marker_seek_requested.emit(self.pane_id, frame)
-        )
+        self._marker_strip.marker_clicked.connect(lambda frame: self.marker_seek_requested.emit(self.pane_id, frame))
         self._marker_strip.marker_remove_requested.connect(
             lambda ordinal: self.marker_remove_requested.emit(self.pane_id, ordinal)
         )
@@ -263,7 +261,9 @@ class MultiViewPaneWidget(QWidget):
             button = QPushButton(self._tr("multiview.marker.set", label=label))
             button.setObjectName("multiviewMarkerButton")
             button.setCheckable(False)
-            button.clicked.connect(lambda _checked=False, ordinal=ordinal: self.marker_place_requested.emit(self.pane_id, ordinal))
+            button.clicked.connect(
+                lambda _checked=False, ordinal=ordinal: self.marker_place_requested.emit(self.pane_id, ordinal)
+            )
             self._marker_buttons.append(button)
             self._marker_buttons_layout.addWidget(button)
         clear_button = QPushButton(self._tr("multiview.marker.clear"))

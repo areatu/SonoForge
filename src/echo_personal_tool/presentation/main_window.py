@@ -920,8 +920,7 @@ class MainWindow(QMainWindow):
         for pane in (self._pane_left, self._pane_right):
             if pane is not None:
                 pane.set_marker_bar_visible(
-                    self._multiview_enabled()
-                    and self._multiview.session.playback_mode is PlaybackMode.EVENT_CYCLE
+                    self._multiview_enabled() and self._multiview.session.playback_mode is PlaybackMode.EVENT_CYCLE
                 )
 
     def _release_content_layout(self) -> None:

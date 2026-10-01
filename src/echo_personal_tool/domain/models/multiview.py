@@ -133,9 +133,7 @@ class MultiViewSession:
     selected_cycle_count: int = 1
     global_rate: float = DEFAULT_GLOBAL_RATE
     #: Start frame each pane contributes to the common window.
-    common_start: dict[PaneId, int] = field(
-        default_factory=lambda: {PaneId.LEFT: 0, PaneId.RIGHT: 0}
-    )
+    common_start: dict[PaneId, int] = field(default_factory=lambda: {PaneId.LEFT: 0, PaneId.RIGHT: 0})
     is_playing: bool = False
 
     def pane(self, pane_id: PaneId) -> MultiViewPaneState:

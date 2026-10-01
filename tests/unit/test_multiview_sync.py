@@ -447,7 +447,9 @@ class TestCycleSchedule:
     def test_locate_walks_the_cycles(self) -> None:
         left = _instance(frames=100, frame_time_ms=10.0, uid="l")
         right = _instance(frames=100, frame_time_ms=10.0, uid="r")
-        schedule = build_cycle_schedule(left, [SyncCycle(0, 80), SyncCycle(80, 170)], right, [SyncCycle(0, 80), SyncCycle(80, 170)], 1.0)
+        schedule = build_cycle_schedule(
+            left, [SyncCycle(0, 80), SyncCycle(80, 170)], right, [SyncCycle(0, 80), SyncCycle(80, 170)], 1.0
+        )
         entry, phase = schedule.locate(0.0)
         assert entry is schedule.entries[0]
         assert phase == pytest.approx(0.0)
