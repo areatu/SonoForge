@@ -7,19 +7,22 @@ bilingual (EN/RU toggle), no framework, no build tooling beyond a shell script.
 |---|---|
 | `index.html` | The page. Every piece of copy exists twice, as `lang="en"` / `lang="ru"` siblings; CSS shows only the active language. |
 | `styles.css` | Dark theme, responsive layout, components (cards, tabs, gallery, lightbox). System fonts only — no external requests. |
-| `app.js` | Progressive enhancement: language toggle, OS‑aware download buttons (GitHub Releases API, cached in `sessionStorage`), copy buttons, tabs with a sliding pill, poster→video facade with GIF fallback, lightbox with arrow‑key navigation, staggered reveal‑on‑scroll, scroll progress, hero counters, cursor parallax/tilt, section rail. The page is fully usable without it. |
+| `app.js` | Progressive enhancement: language toggle, live release asset links (GitHub Releases API, cached in `sessionStorage`), copy buttons, OS‑aware download tabs with a sliding pill, poster→video facade with GIF fallback, lazy feature GIFs with a pause control, lightbox with arrow‑key navigation, staggered reveal‑on‑scroll, scroll progress, hero counters, cursor parallax/tilt, section rail. The page is fully usable without it. |
 | `404.html` | Custom not‑found page (uses absolute `/SonoForge/` paths). |
 | `favicon.svg` | Site icon. |
+| `media/features/` | Six compact GIF previews and JPEG posters, shipped as static assets. |
+| `generate_feature_media.py` | Optional Pillow-based authoring tool; recreates the feature assets from existing project media. |
+| `tests/test_site.py` | Dependency-free landing-page / media / citation regression checks. |
 | `build.sh` | Assembles the deployable `_site/` directory (see below). |
 
 ## Build & preview locally
 
 ```bash
 bash site/build.sh            # → ./_site   (needs ImageMagick; ffmpeg optional but recommended)
-python3 -m http.server -d _site 8000
+python3 -m http.server --bind 0.0.0.0 -d _site 8000
 ```
 
-`build.sh` copies the page, converts `assets/*.gif` demos to MP4 (falls back to copying the GIFs when
+`build.sh` copies the page and prebuilt feature previews, converts `assets/*.gif` demos to MP4 (falls back to copying the GIFs when
 ffmpeg is missing — the page detects that at runtime), extracts JPEG posters, makes gallery thumbnails from
 `docs/screenshots/`, and pulls the traffic report from the `github-repo-stats` branch into
 `areatu/SonoForge/latest-report/` (also linked as `/stats/`).
@@ -36,19 +39,71 @@ Repository setting required once: **Settings → Pages → Source: GitHub Action
 
 ## Motion layer
 
-The landing page deliberately stays framework‑free, so all animation lives in two places:
+The landing page deliberately stays framework‑free, so interactive motion lives in two places:
 
 * **CSS** (`styles.css`, section *"Motion & polish layer"*) — entrance of the hero, scroll progress bar, drifting
-  hero orbs and the sonar sweep, the ECG trace running under the hero, the technology ticker, card spotlights and
-  icon reactions, mini visualisations inside three feature cards, table/step/row staggers, the tab pill, the
+  hero orbs and the sonar sweep, the technology ticker, card spotlights and
+  icon reactions, table/step/row staggers, the tab pill, the
   back‑to‑top ring, the section rail and the lightbox.
 * **JS** (`app.js`) — only what CSS cannot do: scroll state (`--scroll`, sticky‑header class, back‑to‑top
   visibility), the counter roll‑up, smoothed cursor parallax + media tilt, staggered reveal delays, gallery tilt,
-  section rail markup and lightbox prev/next.
+  section rail markup, lightbox prev/next and feature GIF playback (visible cards only, with a pause control).
 
-Rules kept everywhere: only `transform`/`opacity` are animated; nothing is hidden unless `html.js` is present;
-every effect is disabled under `prefers-reduced-motion: reduce` (verify with DevTools → Rendering → Emulate);
+CSS motion stays on `transform`/`opacity` where possible; nothing is hidden unless `html.js` is present;
+automatic motion is disabled under `prefers-reduced-motion: reduce` (verify with DevTools → Rendering → Emulate);
 the hero orbs and the sonar sweep are dropped on phones to keep scrolling smooth.
+
+## Feature previews
+
+The first six cards have **480×224 GIFs**, with JPEG posters as the initial / no-JS / reduced-motion
+state. The third row intentionally has no previews. GIFs load only while their card is in view; they
+return to the poster off-screen, in a hidden tab, when paused, or if a GIF cannot be loaded. The pause
+button is keyboard-accessible and follows EN/RU switching. Changing the OS motion preference live is
+also supported. All six GIFs together are below 512 KiB; no external image hosts or runtime libraries.
+
+| Preview | Source / animation |
+|---|---|
+| Cardiac measurements | Cropped `docs/screenshots/lv-linear-measurements.png`, with the original caliper positions / readings revealed in sequence. |
+| Doppler & vascular | Actual vascular PW spectrum from frame 930 of `assets/sonoforge_preview.gif`; highlights measured cycles and PSV/EDV. |
+| Auto-calibration | The same real spectrum, with baseline, velocity ruler and time ticks highlighted in sequence. |
+| AI segmentation | A4C / contour frames 21–32 of `assets/presenter_demo.gif`, with contour detection, tracking and refinement stages. |
+| DICOM & PACS | Illustrative transfer diagram with moving packets and an existing cropped echo thumbnail. |
+| Reports & norms | Illustrative report / ASE-reference diagram with progressive rows and PDF export. No patient data or invented clinical readings. |
+
+The clinical crops omit patient identifiers and acquisition dates. Preview overlays are illustrative;
+they are not new clinical results or performance benchmarks.
+
+To regenerate (optional; the normal build only copies the checked-in files):
+
+```bash
+python3 -m pip install 'Pillow>=10'
+# Debian/Ubuntu: fonts-dejavu-core supplies the generator's fonts
+python3 site/generate_feature_media.py
+```
+
+## Checks
+
+```bash
+python3 -m unittest discover -s site/tests -v
+node --check site/app.js
+# Optional full CFF schema validation: pip install cffconvert
+cffconvert --validate
+```
+
+Before publishing, preview EN/RU at desktop and phone widths, both with JavaScript disabled and with
+reduced motion enabled. Check pause/resume, off-screen posters and a missing-GIF fallback. Hero Linux
+and Windows links must both stay visible regardless of detected OS or GitHub API availability.
+
+## Citation DOI
+
+The default citation link and BibTeX use the **all-versions DOI**
+[`10.5281/zenodo.21463212`](https://doi.org/10.5281/zenodo.21463212), which resolves to the latest Zenodo
+release. The general BibTeX links to the repository rather than a version tag and does not pin a version.
+
+`CITATION.cff` keeps the current release version/date but uses the same concept DOI for general citations.
+Its identifiers distinguish the concept DOI from
+[`10.5281/zenodo.23000446`](https://doi.org/10.5281/zenodo.23000446), which identifies **v0.3.1 only**.
+The concept DOI is listed first for converters that prioritize the identifier list over the top-level DOI.
 
 ## Editing tips
 

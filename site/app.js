@@ -1,7 +1,7 @@
 /* SonoForge landing page — progressive enhancement only.
    Everything on the page works without this file; the script adds:
-   language toggle, OS-aware download buttons (GitHub Releases API), copy buttons,
-   tabs, poster→video media facade with GIF fallback, lightbox, reveal-on-scroll. */
+   language toggle, release asset links (GitHub Releases API), OS-aware tabs, copy buttons,
+   poster→video media facade with GIF fallback, feature GIFs, lightbox, reveal-on-scroll. */
 (function () {
   "use strict";
 
@@ -21,7 +21,7 @@
     en: {
       title: "SonoForge — Open-source desktop echocardiography analysis",
       description: "SonoForge is a free, open-source desktop application for echocardiography analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports. Windows, Linux, macOS. Works offline.",
-      downloadFor: { linux: "Download for Linux", windows: "Download for Windows", macos: "Download for macOS", generic: "Download" },
+      pausePreviews: "Pause previews", resumePreviews: "Resume previews",
       help: "https://github.com/" + REPO + "/blob/main/docs/HELP_EN.md",
       presenter: "https://github.com/" + REPO + "/blob/main/build/presenter/README.md",
       copied: "Copied", copy: "Copy", gifFallback: "GIF preview", published: "released"
@@ -29,7 +29,7 @@
     ru: {
       title: "SonoForge — открытая платформа для анализа эхокардиографии",
       description: "SonoForge — бесплатное открытое десктопное приложение для анализа эхокардиографии: просмотр DICOM, кардиологические и допплеровские измерения, AI-сегментация, подключение к PACS и клинические PDF-отчёты. Windows, Linux, macOS. Работает офлайн.",
-      downloadFor: { linux: "Скачать для Linux", windows: "Скачать для Windows", macos: "Скачать для macOS", generic: "Скачать" },
+      pausePreviews: "Остановить анимации", resumePreviews: "Включить анимации",
       help: "https://github.com/" + REPO + "/blob/main/docs/HELP_RU.md",
       presenter: "https://github.com/" + REPO + "/blob/main/build/presenter/README_RU.md",
       copied: "Скопировано", copy: "Копировать", gifFallback: "GIF-превью", published: "выпущен"
@@ -62,7 +62,7 @@
     });
     doc.querySelectorAll("[data-doc-help]").forEach(function (a) { a.href = STRINGS[lang].help; });
     doc.querySelectorAll("[data-doc-presenter]").forEach(function (a) { a.href = STRINGS[lang].presenter; });
-    updateCtaLabel();
+    updateFeatureMotionLabel();
     if (lastReleases) applyReleases(lastReleases);
     if (persist) {
       try { localStorage.setItem("sonoforge.lang", lang); } catch (e) { /* ignore */ }
@@ -90,15 +90,6 @@
     return "generic";
   }
   var os = detectOS();
-  var osToAsset = { linux: "deb", windows: "windows", macos: "macos" };
-
-  var ctaLabelEl = doc.querySelector("[data-cta-label]");
-  function updateCtaLabel() {
-    if (!ctaLabelEl) return;
-    var labels = STRINGS[currentLang].downloadFor;
-    ctaLabelEl.textContent = labels[os] || labels.generic;
-  }
-
   /* ---------------- Tabs ---------------- */
   doc.querySelectorAll("[data-tabs]").forEach(function (tabs) {
     var list = tabs.querySelectorAll('[role="tab"]');
@@ -243,22 +234,6 @@
       }
     });
 
-    // Hero CTA follows the detected OS.
-    var cta = doc.getElementById("cta-download");
-    var kind = osToAsset[os];
-    var hit = kind && found[kind];
-    if (cta) {
-      var m = cta.querySelector("[data-cta-meta]");
-      if (hit) {
-        cta.href = hit.asset.browser_download_url;
-        cta.title = hit.asset.name;
-        if (m) m.textContent = hit.release.tag_name + " · " + fmtSize(hit.asset.size);
-      } else {
-        cta.href = latest.html_url || RELEASES_URL;
-        if (m) m.textContent = latest.tag_name;
-      }
-    }
-
     // Exact wget line for the .deb snippet.
     var debCmd = doc.querySelector('[data-asset-cmd="deb"]');
     if (debCmd && found.deb) {
@@ -311,6 +286,66 @@
       if (p && p.catch) p.catch(function () { video.controls = true; });
     });
   });
+
+  /* ---------------- Feature previews: GIFs only while visible ----------------
+     Posters are the no-JS / reduced-motion default. Swapping back to a poster also
+     stops decoding off-screen GIFs; the small animations are cached by the browser. */
+  var featureMotionQuery = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)");
+  var featureMotionBtn = doc.querySelector("[data-feature-motion]");
+  var featurePaused = false;
+  var featurePreviews = Array.prototype.map.call(doc.querySelectorAll("[data-feature-gif]"), function (img) {
+    return { img: img, poster: img.getAttribute("src"), gif: img.getAttribute("data-feature-gif"), visible: false, failed: false };
+  });
+
+  function updateFeatureMotionLabel() {
+    if (!featureMotionBtn) return;
+    var label = featureMotionBtn.querySelector("[data-feature-motion-label]");
+    var icon = featureMotionBtn.querySelector("use");
+    if (label) label.textContent = STRINGS[currentLang][featurePaused ? "resumePreviews" : "pausePreviews"];
+    if (icon) icon.setAttribute("href", featurePaused ? "#i-play" : "#i-pause");
+  }
+
+  function syncFeaturePreviews() {
+    var allowed = !(featureMotionQuery && featureMotionQuery.matches);
+    featurePreviews.forEach(function (preview) {
+      var playing = allowed && !featurePaused && !doc.hidden && preview.visible && !preview.failed;
+      var src = playing ? preview.gif : preview.poster;
+      if (preview.img.getAttribute("src") !== src) preview.img.setAttribute("src", src);
+    });
+    if (featureMotionBtn) featureMotionBtn.hidden = !allowed || !featurePreviews.length;
+    updateFeatureMotionLabel();
+  }
+
+  featurePreviews.forEach(function (preview) {
+    preview.img.addEventListener("error", function () {
+      if (preview.img.getAttribute("src") !== preview.gif) return;
+      preview.failed = true;
+      syncFeaturePreviews(); // a missing GIF must never replace the usable poster with a broken image
+    });
+  });
+  if (featurePreviews.length && "IntersectionObserver" in window) {
+    var featureIO = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        featurePreviews.forEach(function (preview) {
+          if (preview.img === entry.target) preview.visible = entry.isIntersecting;
+        });
+      });
+      syncFeaturePreviews();
+    }, { threshold: 0.15 });
+    featurePreviews.forEach(function (preview) { featureIO.observe(preview.img); });
+  } else {
+    featurePreviews.forEach(function (preview) { preview.visible = true; });
+  }
+  if (featureMotionBtn) featureMotionBtn.addEventListener("click", function () {
+    featurePaused = !featurePaused;
+    syncFeaturePreviews();
+  });
+  if (featureMotionQuery) {
+    if (featureMotionQuery.addEventListener) featureMotionQuery.addEventListener("change", syncFeaturePreviews);
+    else if (featureMotionQuery.addListener) featureMotionQuery.addListener(syncFeaturePreviews);
+  }
+  doc.addEventListener("visibilitychange", syncFeaturePreviews);
+  syncFeaturePreviews();
 
   /* ---------------- Lightbox ---------------- */
   var lb = doc.getElementById("lightbox");
