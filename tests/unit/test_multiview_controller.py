@@ -678,5 +678,6 @@ class TestRobustness:
         controller = MagicMock()
         mv = MultiViewController(controller)
         first = mv._now_ms()
-        time.sleep(0.01)
+        # 0.01 s is below the clock granularity of some Windows runners.
+        time.sleep(0.05)
         assert mv._now_ms() > first
