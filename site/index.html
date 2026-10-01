@@ -47,6 +47,10 @@
     <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
     <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/><polyline points="3 12 8 12 10 9 13 15 15 12 21 12"/></symbol>
     <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c2 0 2-6 4-6s2 12 4 12 2-12 4-12 2 12 4 12 2-6 4-6"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
@@ -70,13 +74,14 @@
 
 <a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="ru">К содержимому</span></a>
 
-<header class="nav" id="top">
+<header class="nav" id="top" data-nav>
+  <div class="nav-progress" aria-hidden="true"><span data-scroll-progress></span></div>
   <div class="container nav-inner">
     <a class="brand" href="#top" aria-label="SonoForge">
       <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
         <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
-        <path d="M16 3 4 27h24z" fill="none" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/>
-        <path d="M6 20h4l2-5 3 9 3-12 2 8h6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path class="brand-frame" d="M16 3 4 27h24z" fill="none" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/>
+        <path class="brand-wave" d="M6 20h4l2-5 3 9 3-12 2 8h6" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span>SonoForge</span>
     </a>
@@ -104,17 +109,23 @@
 <main id="main">
 
 <!-- ============ HERO ============ -->
-<section class="hero">
+<section class="hero" data-tilt-scope>
+  <div class="hero-fx" aria-hidden="true">
+    <span class="fx-orb fx-orb--a" data-parallax="0.18"></span>
+    <span class="fx-orb fx-orb--b" data-parallax="0.1"></span>
+    <span class="fx-orb fx-orb--c" data-parallax="0.26"></span>
+    <span class="fx-sonar" data-parallax="0.06"></span>
+  </div>
   <div class="container hero-grid">
-    <div class="hero-copy reveal">
+    <div class="hero-copy">
       <p class="eyebrow">
         <span class="dot"></span>
         <span lang="en">Open source · GPL-3.0 · Windows, Linux, macOS</span>
         <span lang="ru">Открытый код · GPL-3.0 · Windows, Linux, macOS</span>
       </p>
       <h1>
-        <span lang="en">Echocardiography analysis on your desktop. <em>Offline, open, ASE-aligned.</em></span>
-        <span lang="ru">Анализ эхокардиографии на вашем компьютере. <em>Офлайн, открыто, по рекомендациям ASE.</em></span>
+        <span lang="en">Echocardiography analysis on your desktop.<br><em>Offline, open, <span class="nb">ASE-aligned.</span></em></span>
+        <span lang="ru">Анализ эхокардиографии на вашем компьютере.<br><em>Офлайн, открыто, по рекомендациям ASE.</em></span>
       </h1>
       <p class="lead">
         <span lang="en">SonoForge is a free desktop application for echo analysis: DICOM viewer, cardiac and Doppler measurements, AI segmentation, PACS connectivity and clinical PDF reports — built for cardiologists, sonographers and researchers.</span>
@@ -136,24 +147,70 @@
         </a>
       </div>
       <ul class="facts" aria-label="Key facts">
-        <li><strong>100%</strong><span lang="en">local — no cloud, no telemetry</span><span lang="ru">локально — без облака и телеметрии</span></li>
-        <li><strong>4400+</strong><span lang="en">unit tests, ~77% coverage</span><span lang="ru">unit‑тестов, покрытие ~77%</span></li>
+        <li><strong><span data-count="100">100</span>%</strong><span lang="en">local — no cloud, no telemetry</span><span lang="ru">локально — без облака и телеметрии</span></li>
+        <li><strong><span data-count="4400">4400</span>+</strong><span lang="en">unit tests, ~77% coverage</span><span lang="ru">unit‑тестов, покрытие ~77%</span></li>
         <li><strong>ASE</strong><span lang="en">reference norms built in</span><span lang="ru">референсные нормы встроены</span></li>
         <li><strong>DICOMweb + DIMSE</strong><span lang="en">PACS connectivity with TLS</span><span lang="ru">подключение к PACS с TLS</span></li>
       </ul>
     </div>
 
-    <figure class="media hero-media reveal" data-video="media/preview.mp4" data-gif="media/preview.gif">
+    <figure class="media hero-media" data-video="media/preview.mp4" data-gif="media/preview.gif" data-tilt>
       <img src="media/preview-poster.jpg" width="720" height="405" alt="SonoForge main window: apical four-chamber view with an automatic left-ventricle contour, gallery of series on the left and the measurement panel on the right" fetchpriority="high">
+      <span class="media-glow" aria-hidden="true"></span>
+      <span class="media-ping" aria-hidden="true"></span>
       <button class="media-play" type="button">
         <span class="media-play-icon"><svg class="ic"><use href="#i-play"/></svg></span>
         <span lang="en">Play the demo</span><span lang="ru">Смотреть демо</span>
       </button>
+      <ul class="media-chips" aria-hidden="true">
+        <li class="chip chip--tl"><b>Auto EF</b><span lang="en">Simpson biplane</span><span lang="ru">биплан Симпсона</span></li>
+        <li class="chip chip--br"><b>A4C</b><span lang="en">60 fps · ONNX</span><span lang="ru">60 к/с · ONNX</span></li>
+      </ul>
       <figcaption>
         <span lang="en">Main application: LV auto-EF workflow on an A4C cine.</span>
         <span lang="ru">Основное приложение: авто‑ФВ ЛЖ на cine‑петле A4C.</span>
       </figcaption>
     </figure>
+  </div>
+  <div class="hero-trace" aria-hidden="true">
+    <svg viewBox="0 0 1200 110" preserveAspectRatio="none" focusable="false">
+      <path class="trace-base" d="M-20 70h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h160"/>
+      <path class="trace-pulse" d="M-20 70h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h150l10-26 12 40 10-58 12 44 12-14h160"/>
+    </svg>
+  </div>
+</section>
+
+<!-- ============ TECH TICKER ============ -->
+<section class="ticker" aria-label="Technology">
+  <div class="ticker-track" data-ticker>
+    <ul class="ticker-list">
+      <li>DICOMweb · QIDO‑RS · WADO‑RS · STOW‑RS</li>
+      <li>DIMSE C‑FIND · C‑GET · C‑MOVE</li>
+      <li>Orthanc · DCM4CHEE · Conquest</li>
+      <li>EchoNet‑Dynamic</li>
+      <li>ONNX Runtime · CPU inference</li>
+      <li>ASE reference norms</li>
+      <li>DICOM SR · PDF reports</li>
+      <li>PySide6 · Qt</li>
+      <li>pyqtgraph</li>
+      <li>pydicom · pynetdicom</li>
+      <li>OpenCV · NumPy · SciPy</li>
+      <li>GPL‑3.0 · offline by design</li>
+    </ul>
+    <ul class="ticker-list" aria-hidden="true">
+      <li>DICOMweb · QIDO‑RS · WADO‑RS · STOW‑RS</li>
+      <li>DIMSE C‑FIND · C‑GET · C‑MOVE</li>
+      <li>Orthanc · DCM4CHEE · Conquest</li>
+      <li>EchoNet‑Dynamic</li>
+      <li>ONNX Runtime · CPU inference</li>
+      <li>ASE reference norms</li>
+      <li>DICOM SR · PDF reports</li>
+      <li>PySide6 · Qt</li>
+      <li>pyqtgraph</li>
+      <li>pydicom · pynetdicom</li>
+      <li>OpenCV · NumPy · SciPy</li>
+      <li>GPL‑3.0 · offline by design</li>
+    </ul>
   </div>
 </section>
 
@@ -171,23 +228,40 @@
 
     <div class="grid grid-3">
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-heart"/></svg></div>
+        <div class="card-icon" data-icon="heart"><svg class="ic"><use href="#i-heart"/></svg></div>
         <h3><span lang="en">Cardiac measurements</span><span lang="ru">Кардиологические измерения</span></h3>
         <p lang="en">Linear B‑mode/M‑mode calipers with live labels, Simpson biplane volumes with open‑arc mitral annulus tracking, RV function, LV mass and RWT, automatic BSA indexing and HR from the ECG trace.</p>
         <p lang="ru">Линейные калиперы B/M‑режима с подписями в реальном времени, объёмы по биплановому Симпсону с открытой дугой митрального кольца, функция ПЖ, масса ЛЖ и ОТС, автоматическая индексация по ППТ и ЧСС по ЭКГ.</p>
         <ul class="tags"><li>LVEDD · IVSd · LVPWd</li><li>EDV · ESV · LVEF</li><li>LAVi · RAVi</li><li>TAPSE · FAC</li><li>LVM · LVMI · RWT</li></ul>
+      <div class="mini-viz" aria-hidden="true">
+          <svg viewBox="0 0 240 56" role="presentation" focusable="false">
+            <path class="mv-guide" d="M0 16h240M0 40h240"/>
+            <path class="mv-wall" d="M46 6c22 8 22 36 0 44M194 6c-22 8-22 36 0 44"/>
+            <path class="mv-cal" d="M74 25h92"/>
+            <path class="mv-cap" d="M74 18v14M166 18v14"/>
+            <text class="mv-label" x="120" y="16" text-anchor="middle">LVIDd 48 mm</text>
+            <text class="mv-sub" x="120" y="50" text-anchor="middle">LVMI 88 g/m²</text>
+          </svg>
+        </div>
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-wave"/></svg></div>
+        <div class="card-icon" data-icon="wave"><svg class="ic"><use href="#i-wave"/></svg></div>
         <h3><span lang="en">Doppler &amp; vascular</span><span lang="ru">Допплер и сосуды</span></h3>
         <p lang="en">PSV/EDV peaks with automatic RI and S/D, a caliper that measures Δt and velocity inside the Doppler ROI, two‑click auto‑VTI, vessel stenosis by diameter and area, cycle averaging without ECG and study‑wide E/e′.</p>
         <p lang="ru">Пики PSV/EDV с автоматическими RI и S/D, калипер, измеряющий Δt и скорость внутри допплеровской зоны, авто‑VTI в два клика, стеноз сосуда по диаметру и площади, усреднение по циклам без ЭКГ и сквозное E/e′ по исследованию.</p>
         <ul class="tags"><li>PSV · EDV · RI · S/D</li><li>Auto VTI</li><li>%D · %S</li><li>E/e′</li></ul>
+      <div class="mini-viz" aria-hidden="true">
+          <svg viewBox="0 0 240 56" role="presentation" focusable="false">
+            <path class="mv-guide" d="M0 42h240"/>
+            <path class="mv-spec" d="M0 42C14 8 26 8 40 42 54 14 66 14 80 42 94 4 106 4 120 42 134 16 146 16 160 42 174 10 186 10 200 42 214 22 226 22 240 42Z"/>
+            <path class="mv-sweep" d="M0 4v48"/>
+          </svg>
+        </div>
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-sliders"/></svg></div>
+        <div class="card-icon" data-icon="sliders"><svg class="ic"><use href="#i-sliders"/></svg></div>
         <h3><span lang="en">Doppler auto‑calibration</span><span lang="ru">Автокалибровка допплера</span></h3>
         <p lang="en">Velocity scale from ruler ticks with grid‑line fallback, sweep‑speed calibration, evidence‑fusion baseline detection for Samsung and GE systems, and a manual two‑click wizard that always wins over auto‑detection.</p>
         <p lang="ru">Шкала скоростей по тикам линейки с fallback на сетку, калибровка скорости развёртки, многометодное определение базовой линии для Samsung и GE и ручной мастер в два клика, который всегда имеет приоритет над автоматикой.</p>
@@ -195,15 +269,24 @@
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-cpu"/></svg></div>
+        <div class="card-icon" data-icon="cpu"><svg class="ic"><use href="#i-cpu"/></svg></div>
         <h3><span lang="en">AI segmentation</span><span lang="ru">AI‑сегментация</span> <span class="badge"><span lang="en">Full profile</span><span lang="ru">Полный профиль</span></span></h3>
         <p lang="en">ONNX Runtime on the CPU: automatic LV contouring in A4C with EchoNet‑Dynamic, LA segmentation with optical‑flow assist, mitral annulus detection, temporal fusion across neighbouring frames and edge‑snapping contour refinement.</p>
         <p lang="ru">ONNX Runtime на CPU: автоконтур ЛЖ в A4C по модели EchoNet‑Dynamic, сегментация ЛП с оптическим потоком, определение митрального кольца, сглаживание по соседним кадрам и доработка контура с привязкой к границам.</p>
         <ul class="tags"><li>EchoNet‑Dynamic</li><li>ONNX</li><li lang="en">SHA‑256 verified models</li><li lang="ru">SHA‑256‑контроль моделей</li></ul>
+      <div class="mini-viz" aria-hidden="true">
+          <svg viewBox="0 0 240 56" role="presentation" focusable="false">
+            <path class="mv-fan" d="M120 4 26 52h188z"/>
+            <path class="mv-contour" d="M96 22c10-9 34-9 44 1 7 7 8 17 1 23-9 8-33 8-43-1-6-6-7-16-2-23z"/>
+            <circle class="mv-node" cx="96" cy="22" r="2.2"/>
+            <circle class="mv-node mv-node--2" cx="141" cy="24" r="2.2"/>
+            <circle class="mv-node mv-node--3" cx="98" cy="45" r="2.2"/>
+          </svg>
+        </div>
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-server"/></svg></div>
+        <div class="card-icon" data-icon="server"><svg class="ic"><use href="#i-server"/></svg></div>
         <h3><span lang="en">DICOM &amp; PACS</span><span lang="ru">DICOM и PACS</span></h3>
         <p lang="en">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) and classic DIMSE — C‑FIND, C‑GET, C‑MOVE with an embedded Storage SCP, C‑STORE — with TLS and certificate validation. Works with Orthanc, DCM4CHEE, Conquest and any compliant server.</p>
         <p lang="ru">DICOMweb (QIDO‑RS, WADO‑RS, STOW‑RS) и классический DIMSE — C‑FIND, C‑GET, C‑MOVE со встроенным Storage SCP, C‑STORE — с TLS и проверкой сертификатов. Работает с Orthanc, DCM4CHEE, Conquest и любым совместимым сервером.</p>
@@ -211,7 +294,7 @@
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-file"/></svg></div>
+        <div class="card-icon" data-icon="file"><svg class="ic"><use href="#i-file"/></svg></div>
         <h3><span lang="en">Reports &amp; reference norms</span><span lang="ru">Отчёты и референсные нормы</span></h3>
         <p lang="en">Study summary with indexed values, clinical‑grade PDF export with reference ranges, built‑in age‑ and sex‑specific ASE tables, and DICOM SR‑compatible structured output back to PACS.</p>
         <p lang="ru">Сводка по исследованию с индексированными значениями, PDF‑отчёты с референсными диапазонами, встроенные таблицы ASE по полу и возрасту и структурированный вывод в формате DICOM SR обратно в PACS.</p>
@@ -219,7 +302,7 @@
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-book"/></svg></div>
+        <div class="card-icon" data-icon="book"><svg class="ic"><use href="#i-book"/></svg></div>
         <h3><span lang="en">Reference Constructor</span><span lang="ru">Конструктор справочника</span> <span class="badge"><span lang="en">Full profile</span><span lang="ru">Полный профиль</span></span></h3>
         <p lang="en">Build your own library of guideline tables, nomograms, checklists and PDFs: import from Excel or YAML, edit inline, search instantly in the web‑based viewer and export as PDF/HTML for colleagues.</p>
         <p lang="ru">Собственная библиотека таблиц норм, номограмм, чек‑листов и PDF: импорт из Excel или YAML, правка прямо в таблице, мгновенный поиск в веб‑справочнике и экспорт в PDF/HTML для коллег.</p>
@@ -227,7 +310,7 @@
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-shield"/></svg></div>
+        <div class="card-icon" data-icon="shield"><svg class="ic"><use href="#i-shield"/></svg></div>
         <h3><span lang="en">Privacy by design</span><span lang="ru">Конфиденциальность по умолчанию</span></h3>
         <p lang="en">All DICOM data is processed in memory — no PHI is written to disk, no cloud uploads, no telemetry. File and UID validation before parsing, network timeouts, and patient identifiers truncated in logs.</p>
         <p lang="ru">Все DICOM‑данные обрабатываются в оперативной памяти — персональные данные не пишутся на диск, нет облака и телеметрии. Проверка файлов и UID до парсинга, сетевые таймауты, идентификаторы пациентов обрезаются в логах.</p>
@@ -235,7 +318,7 @@
       </article>
 
       <article class="card reveal">
-        <div class="card-icon"><svg class="ic"><use href="#i-layout"/></svg></div>
+        <div class="card-icon" data-icon="layout"><svg class="ic"><use href="#i-layout"/></svg></div>
         <h3><span lang="en">Workstation UX</span><span lang="ru">Интерфейс рабочей станции</span></h3>
         <p lang="en">Dark clinical theme, dual viewer for side‑by‑side phases, thumbnail gallery, smooth cine playback with adaptive frame cache, window/level, crosshair, full keyboard workflow and live English/Russian switching.</p>
         <p lang="ru">Тёмная клиническая тема, двойной просмотрщик для сравнения фаз, галерея миниатюр, плавное cine‑воспроизведение с адаптивным кэшем кадров, окно/уровень, перекрестие, полная работа с клавиатуры и переключение EN/RU на лету.</p>
@@ -254,20 +337,24 @@
       <p class="lead"><span lang="en">Click any image to open it full size.</span><span lang="ru">Нажмите на изображение, чтобы открыть его в полном размере.</span></p>
     </header>
     <div class="gallery">
-      <a class="shot reveal" href="screenshots/lv-linear-measurements.png" data-lightbox>
+      <a class="shot reveal" data-shot href="screenshots/lv-linear-measurements.png" data-lightbox>
         <img src="screenshots/thumbs/lv-linear-measurements.jpg" loading="lazy" width="1200" height="721" alt="Parasternal long-axis view with linear LV measurements and the computed LV mass, RWT and LVMI">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
         <span class="shot-cap"><span lang="en">Linear LV measurements (PLAX) → LV mass, RWT, LVMI</span><span lang="ru">Линейные измерения ЛЖ (PLAX) → масса ЛЖ, ОТС, ИММЛЖ</span></span>
       </a>
-      <a class="shot reveal" href="screenshots/mmode-measurements.png" data-lightbox>
+      <a class="shot reveal" data-shot href="screenshots/mmode-measurements.png" data-lightbox>
         <img src="screenshots/thumbs/mmode-measurements.jpg" loading="lazy" width="1200" height="721" alt="Anatomic M-mode trace with IVSd, LVIDd, LVIDs, LVPWd calipers and Teichholz volumes">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
         <span class="shot-cap"><span lang="en">Anatomic M‑mode: Teichholz EDV/ESV/EF, HR from the trace</span><span lang="ru">Анатомический M‑режим: КДО/КСО/ФВ по Тейхольцу, ЧСС по трассе</span></span>
       </a>
-      <a class="shot reveal" href="screenshots/la-segmentation.png" data-lightbox>
+      <a class="shot reveal" data-shot href="screenshots/la-segmentation.png" data-lightbox>
         <img src="screenshots/thumbs/la-segmentation.jpg" loading="lazy" width="1200" height="721" alt="Apical four-chamber view with a left-atrium contour and LV Simpson contour, LAV and indexed values in the overlay">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
         <span class="shot-cap"><span lang="en">LA segmentation + LV Simpson (A4C): LAV, iLAV, iEDV</span><span lang="ru">Сегментация ЛП + Simpson ЛЖ (A4C): LAV, iLAV, iEDV</span></span>
       </a>
-      <a class="shot reveal" href="screenshots/lv-auto-segmentation.png" data-lightbox>
+      <a class="shot reveal" data-shot href="screenshots/lv-auto-segmentation.png" data-lightbox>
         <img src="screenshots/thumbs/lv-auto-segmentation.jpg" loading="lazy" width="1200" height="750" alt="Automatic left-ventricle contour produced by the EchoNet-Dynamic model in an A4C view">
+        <span class="shot-zoom" aria-hidden="true"><svg class="ic ic-xs"><use href="#i-expand"/></svg></span>
         <span class="shot-cap"><span lang="en">LV auto‑segmentation (EchoNet‑Dynamic, ONNX)</span><span lang="ru">Авто‑сегментация ЛЖ (EchoNet‑Dynamic, ONNX)</span></span>
       </a>
     </div>
@@ -291,7 +378,7 @@
           <li><span lang="en"><strong>Presenter extras</strong> — audience‑display picker, laser pointer, projector visual preset with thick lines and large labels.</span><span lang="ru"><strong>Фишки докладчика</strong> — выбор дисплея аудитории, лазерная указка, визуальный профиль проектора с толстыми линиями и крупными подписями.</span></li>
           <li><span lang="en"><strong>Runs from a USB stick</strong> — one file, no installation, no admin rights, nothing written to the host outside the temp directory. Windows and Linux.</span><span lang="ru"><strong>Запускается с флешки</strong> — один файл, без установки и прав администратора, на хост ничего не пишется вне временного каталога. Windows и Linux.</span></li>
         </ul>
-        <p class="kbd-hint"><span lang="en">Press</span><span lang="ru">Нажмите</span> <kbd>F10</kbd> <span lang="en">→ present.</span><span lang="ru">→ докладывайте.</span></p>
+        <p class="kbd-hint"><span lang="en">Press</span><span lang="ru">Нажмите</span> <kbd data-kbd-press>F10</kbd> <span lang="en">→ present.</span><span lang="ru">→ докладывайте.</span></p>
         <div class="cta">
           <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-win">
             <svg class="ic"><use href="#i-windows"/></svg><span>Presenter · Windows .exe</span><span class="cta-meta" data-asset-meta></span>
@@ -306,7 +393,7 @@
       </div>
 
       <div class="split-media reveal">
-        <img class="illustration" src="media/presenter.png" width="1568" height="517" loading="lazy" alt="Illustration: a presenter with SonoForge on a laptop; the audience screen shows only the clean echo image">
+        <img class="illustration" data-float src="media/presenter.png" width="1568" height="517" loading="lazy" alt="Illustration: a presenter with SonoForge on a laptop; the audience screen shows only the clean echo image">
         <figure class="media" data-video="media/presenter.mp4" data-gif="media/presenter.gif">
           <img src="media/presenter-poster.jpg" width="1600" height="528" loading="lazy" alt="Presenter mode demo: measurement UI on the laptop, clean full-screen image on the audience display">
           <button class="media-play" type="button">
@@ -317,7 +404,7 @@
       </div>
     </div>
 
-    <div class="table-wrap reveal">
+    <div class="table-wrap reveal" data-rows>
       <table class="compare">
         <caption><span lang="en">Same codebase, two build profiles</span><span lang="ru">Одна кодовая база, два профиля сборки</span></caption>
         <thead>
@@ -352,6 +439,7 @@
 
     <div class="tabs reveal" data-tabs>
       <div class="tab-list" role="tablist" aria-label="Platform">
+        <span class="tab-glider" aria-hidden="true"></span>
         <button role="tab" id="tab-linux" aria-controls="panel-linux" aria-selected="true" data-os="linux"><svg class="ic"><use href="#i-linux"/></svg> Linux</button>
         <button role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" data-os="windows"><svg class="ic"><use href="#i-windows"/></svg> Windows</button>
         <button role="tab" id="tab-macos" aria-controls="panel-macos" aria-selected="false" data-os="macos"><svg class="ic"><use href="#i-apple"/></svg> macOS</button>
@@ -472,7 +560,8 @@ python -m echo_personal_tool</code></pre>
       <p class="eyebrow"><span lang="en">Five minutes in</span><span lang="ru">Первые пять минут</span></p>
       <h2><span lang="en">Quick start</span><span lang="ru">Быстрый старт</span></h2>
     </header>
-    <ol class="steps">
+    <ol class="steps" data-steps>
+      <span class="steps-line" aria-hidden="true"></span>
       <li class="reveal">
         <h3><span lang="en">Open a study</span><span lang="ru">Откройте исследование</span></h3>
         <p lang="en"><em>File → Open Folder</em> for a directory of DICOM, MP4 or JPEG files, or <em>File → Load from Server</em> to browse a PACS (Orthanc, DICOMweb, DIMSE).</p>
@@ -574,6 +663,11 @@ python -m echo_personal_tool</code></pre>
 
 </main>
 
+<a class="to-top" href="#top" data-to-top aria-label="Back to top">
+  <svg class="to-top-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19"/><circle class="to-top-arc" cx="22" cy="22" r="19" data-to-top-arc/></svg>
+  <svg class="ic" aria-hidden="true"><use href="#i-arrow-up"/></svg>
+</a>
+
 <footer class="footer">
   <div class="container footer-inner">
     <div>
@@ -597,9 +691,12 @@ python -m echo_personal_tool</code></pre>
 <!-- Lightbox -->
 <dialog class="lightbox" id="lightbox" aria-label="Screenshot">
   <button class="lightbox-close" type="button" aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
+  <button class="lightbox-nav lightbox-nav--prev" type="button" data-lb-prev aria-label="Previous screenshot"><svg class="ic"><use href="#i-arrow-left"/></svg></button>
+  <button class="lightbox-nav lightbox-nav--next" type="button" data-lb-next aria-label="Next screenshot"><svg class="ic"><use href="#i-arrow-right"/></svg></button>
   <img alt="">
   <p class="lightbox-cap"></p>
 </dialog>
+
 
 <script src="app.js" defer></script>
 </body>
