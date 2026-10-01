@@ -64,7 +64,7 @@ def _study() -> StudyMetadata:
 
 
 @pytest.fixture()
-def multiview(qtbot, monkeypatch, clips):
+def multiview(qtbot, monkeypatch, clips, isolated_qsettings):
     from unittest.mock import patch
 
     from echo_personal_tool.application.app_controller import AppController

@@ -30,7 +30,7 @@ def _instance(uid: str, *, study: str = "study.1", frames: int = 30, name: str |
 
 
 @pytest.fixture()
-def window(qtbot):
+def window(qtbot, isolated_qsettings):
     from echo_personal_tool.application.app_controller import AppController
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
@@ -165,7 +165,9 @@ class TestGalleryGuards:
     def test_plain_click_on_the_active_left_pane_stays_on_the_controller(self, window) -> None:
         _enable(window)
         window._multiview.activate(PaneId.LEFT)
-        with patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)):
+        with patch(
+            "PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)
+        ):
             handled = window._multiview_route_gallery_click(_instance("plain"))
         assert handled is False
         assert window._layout_config.multiview is True
