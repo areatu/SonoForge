@@ -6,3 +6,5 @@
 
 **Latest report PDF**: [report.pdf](https://github.com/areatu/SonoForge/raw/github-repo-stats/areatu/SonoForge/latest-report/report.pdf)
 
+
+**Latest report HTML via GitHub pages**: [report.html](https://areatu.github.io/SonoForge/areatu/SonoForge/latest-report/report.html)
