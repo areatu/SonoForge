@@ -8,6 +8,7 @@
 #   assets/*.gif                                       → media/*.mp4 (needs ffmpeg) + JPEG posters;
 #                                                        without ffmpeg the GIFs are copied and the
 #                                                        page falls back to them automatically
+#   site/media/features/*                             → media/features/ (prebuilt GIFs + posters)
 #   assets/presenter.png                               → media/presenter.png
 #   docs/screenshots/*.png (selected)                  → screenshots/ + screenshots/thumbs/*.jpg
 #   branch github-repo-stats:<owner>/<repo>/latest-report  → same path on the site (traffic report)
@@ -33,6 +34,9 @@ mkdir -p "$OUT/media" "$OUT/screenshots/thumbs" "$OUT/stats"
 log "static files"
 cp "$SITE/index.html" "$SITE/404.html" "$SITE/styles.css" "$SITE/app.js" "$SITE/favicon.svg" "$OUT/"
 : > "$OUT/.nojekyll"
+
+# Small, prebuilt card animations; no image-generation dependency in the Pages build.
+cp -R "$SITE/media/features" "$OUT/media/features"
 
 # ---------------------------------------------------------------- demo media
 # name | source GIF | poster frame index (ImageMagick) | poster time offset in s (ffmpeg)

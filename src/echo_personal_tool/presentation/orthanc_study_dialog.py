@@ -841,6 +841,12 @@ class OrthancStudyDialog(QDialog):
             self._worker.cancel()
             self._force_close_timer.start(_CANCEL_FORCE_CLOSE_MS)
             return
+        if self._downloading:
+            # Nothing is running anymore — drop the stuck flag and close now
+            # instead of waiting for the force-close timer.
+            log.info("[DLG] cancel with no active worker, force closing")
+            self._force_close_if_still_downloading()
+            return
         self.reject()
 
     def _force_close_if_still_downloading(self) -> None:
@@ -926,15 +932,66 @@ class OrthancStudyDialog(QDialog):
             self._save_to_disk_path,
             partial,
         )
+        # Worker already finished: no cancel handshake is pending anymore.
+        self._worker = None
 
         # Copy files from cache to user-selected directory (whatever succeeded)
         copied_count = 0
+        copy_error: str | None = None
         if self._session_id is not None:
             session_dir = self._cache.session_path(self._session_id)
             if session_dir.is_dir():
                 target_dir = Path(self._save_to_disk_path)
-                copied_count = self._copy_session_files(session_dir, target_dir)
-                log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
+                try:
+                    copied_count = self._copy_session_files(session_dir, target_dir)
+                    log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
+                except OSError as exc:
+                    # The reset below must run even here: skipping it leaves
+                    # ``_downloading`` stuck and locks the dialog forever.
+                    copy_error = str(exc)
+                    log.warning("[DLG] copy to %s failed: %s", self._save_to_disk_path, exc)
+
+        self._reset_after_download()
+        self._session_id = None
+        self._progress.setValue(self._progress.maximum())
+        if copy_error is not None:
+            message = tr("orthanc.download_error.body", message=self._clip(copy_error, _DIALOG_TEXT_LIMIT))
+            self._set_status(message)
+            self._progress.hide()
+            self._tree.setEnabled(True)
+            self._find_btn.setEnabled(True)
+            self._cancel_btn.setText(tr("orthanc.cancel"))
+            self._cancel_btn.setEnabled(True)
+            self._update_load_button()
+            QMessageBox.warning(
+                self,
+                tr("orthanc.download_error.title"),
+                message,
+            )
+            return
+        if partial:
+            saved = self._completed_downloads - self._failed_downloads
+            message = tr(
+                "orthanc.disk_download_partial",
+                path=self._save_to_disk_path,
+                saved=str(saved),
+                total=str(self._total_studies),
+            )
+            self._set_status(message)
+            QMessageBox.warning(
+                self,
+                tr("orthanc.download_error.title"),
+                message,
+            )
+        else:
+            message = tr("orthanc.disk_download_complete", path=self._save_to_disk_path)
+            self._set_status(message)
+            QMessageBox.information(
+                self,
+                tr("orthanc.download_complete"),
+                message,
+            )
+        self.accept()
 
     @staticmethod
     def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
@@ -961,33 +1018,6 @@ class OrthancStudyDialog(QDialog):
                     shutil.copy2(dcm_file, series_target / dcm_file.name)
                     copied_count += 1
         return copied_count
-
-        self._reset_after_download()
-        self._session_id = None
-        self._progress.setValue(self._progress.maximum())
-        if partial:
-            saved = self._completed_downloads - self._failed_downloads
-            message = tr(
-                "orthanc.disk_download_partial",
-                path=self._save_to_disk_path,
-                saved=str(saved),
-                total=str(self._total_studies),
-            )
-            self._set_status(message)
-            QMessageBox.warning(
-                self,
-                tr("orthanc.download_error.title"),
-                message,
-            )
-        else:
-            message = tr("orthanc.disk_download_complete", path=self._save_to_disk_path)
-            self._set_status(message)
-            QMessageBox.information(
-                self,
-                tr("orthanc.download_complete"),
-                message,
-            )
-        self.accept()
 
     @staticmethod
     def _series_name_for(dcm_file: Path, legacy_series_name: str | None) -> str:

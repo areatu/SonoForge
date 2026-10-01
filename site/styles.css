@@ -81,6 +81,12 @@ html[data-lang="ru"] [lang="en"] { display: none !important; }
 .cta-meta { font-weight: 500; opacity: 0.8; font-size: 0.85em; }
 .cta-meta:empty { display: none; }
 .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin: 1.5rem 0; }
+.cta-downloads { margin-bottom: 0.75rem; }
+.cta-resources { margin-top: 0; }
+@media (min-width: 961px) and (max-width: 1100px) {
+  .cta-downloads { gap: 0.5rem; }
+  .cta-downloads .btn { padding-inline: 0.75rem; font-size: 0.85rem; gap: 0.4em; }
+}
 
 /* ---------- Nav ---------- */
 .nav {
@@ -134,6 +140,7 @@ html[data-lang="ru"] [lang="en"] { display: none !important; }
 .facts { list-style: none; margin: 1.75rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1.5rem; }
 .facts li { display: flex; flex-direction: column; gap: 0.1rem; padding-left: 0.9rem; border-left: 2px solid var(--border-strong); font-size: 0.9rem; color: var(--muted); }
 .facts strong { color: var(--text); font-size: 1.05rem; letter-spacing: -0.01em; }
+.sharing-note { margin: 0.9rem 0 0; font-size: 0.8rem; color: var(--muted); max-width: 60ch; }
 
 @media (max-width: 960px) {
   .hero-grid { grid-template-columns: 1fr; }
@@ -462,23 +469,6 @@ h1 em { background-size: 220% 100%; animation: sheen 9s linear infinite; }
 @keyframes chip-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @media (max-width: 720px) { .media-chips { display: none; } }
 
-/* Hero ECG trace: a light pulse runs along the line. */
-.hero-trace {
-  position: absolute; left: 0; right: 0; bottom: 0; height: clamp(56px, 8vw, 108px); z-index: -1; pointer-events: none;
-  mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent), linear-gradient(180deg, transparent, #000 45%);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent), linear-gradient(180deg, transparent, #000 45%);
-  mask-composite: intersect; -webkit-mask-composite: source-in;
-  opacity: 0.75;
-}
-.hero-trace svg { width: 100%; height: 100%; display: block; }
-.trace-base, .trace-pulse { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.trace-base { stroke: rgba(56, 189, 248, 0.2); stroke-width: 1.2; }
-.trace-pulse {
-  stroke: rgba(165, 243, 252, 0.95); stroke-width: 1.8; stroke-dasharray: 70 1420; filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.75));
-  animation: trace-run 7s linear infinite;
-}
-@keyframes trace-run { from { stroke-dashoffset: 1490; } to { stroke-dashoffset: 0; } }
-
 /* ---------- Technology ticker ---------- */
 .ticker {
   border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--bg-alt);
@@ -544,39 +534,16 @@ h1 em { background-size: 220% 100%; animation: sheen 9s linear infinite; }
 .tags li:hover { color: var(--accent); transform: translateY(-1px); }
 @keyframes chip-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
 
-/* ---------- Mini visualisations inside three feature cards ---------- */
-.mini-viz { margin-top: 1rem; aspect-ratio: 240 / 56; max-width: 280px; opacity: 0.9; }
-.mini-viz svg { width: 100%; height: 100%; overflow: visible; }
-.mv-guide, .mv-wall, .mv-cal, .mv-cap, .mv-spec, .mv-sweep, .mv-fan, .mv-contour, .mv-sub { fill: none; }
-.mv-guide { stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; }
-.mv-wall, .mv-fan { stroke: rgba(56, 189, 248, 0.3); stroke-width: 1.4; }
-.mv-fan { fill: rgba(56, 189, 248, 0.05); stroke-linejoin: round; }
-.mv-cal, .mv-cap { stroke: var(--accent); stroke-width: 1.6; }
-.mv-cal { stroke-dasharray: 96; stroke-dashoffset: 0; }
-.mv-cap { stroke-width: 1.4; opacity: 1; }
-.mv-label, .mv-sub { font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; }
-.mv-label { fill: var(--accent); }
-.mv-sub { fill: var(--muted); }
-.mv-spec { stroke: rgba(56, 189, 248, 0.75); stroke-width: 1.6; fill: rgba(56, 189, 248, 0.1); }
-.mv-sweep { stroke: rgba(165, 243, 252, 0.75); stroke-width: 1.5; filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.7)); }
-.mv-contour { stroke: #f59e0b; stroke-width: 1.6; stroke-dasharray: 240; stroke-dashoffset: 0; }
-.mv-node { fill: #f59e0b; transform-box: fill-box; transform-origin: center; }
-
-/* The measurements card: the caliper sweeps out and the label fades in. */
-.reveal.in .mv-cal { animation: mv-caliper 5.5s var(--ease-out) infinite; }
-.reveal.in .mv-cap { animation: mv-cap 5.5s var(--ease-out) infinite; }
-@keyframes mv-caliper { 0% { stroke-dashoffset: 96; } 22%, 100% { stroke-dashoffset: 0; } }
-@keyframes mv-cap { 0%, 16% { opacity: 0; } 30%, 100% { opacity: 1; } }
-/* The Doppler card: a sweep line runs across the spectrum. */
-.reveal.in .mv-sweep { animation: mv-sweep 4.5s linear infinite; }
-@keyframes mv-sweep { 0% { transform: translateX(0); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateX(240px); opacity: 0; } }
-/* The AI card: the contour draws itself and nodes pulse. */
-.reveal.in .mv-contour { animation: mv-draw 6s var(--ease-out) infinite; }
-.reveal.in .mv-node { animation: mv-node 2.4s var(--ease-out) infinite; }
-.reveal.in .mv-node--2 { animation-delay: 0.7s; }
-.reveal.in .mv-node--3 { animation-delay: 1.4s; }
-@keyframes mv-draw { 0% { stroke-dashoffset: 240; } 40%, 100% { stroke-dashoffset: 0; } }
-@keyframes mv-node { 0%, 100% { opacity: 0.35; transform: scale(1); } 45% { opacity: 1; transform: scale(1.5); } }
+/* ---------- Feature GIF previews: static posters without JS / reduced motion ---------- */
+.feature-card .tags { margin-bottom: 1rem; }
+.feature-preview {
+  margin: auto 0 0; width: 100%; aspect-ratio: 15 / 7;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  overflow: hidden; background: #080c11;
+}
+.feature-preview img { width: 100%; height: 100%; object-fit: cover; }
+.feature-motion { margin-top: 0.5rem; }
+.feature-motion[hidden] { display: none; }
 
 /* ---------- Gallery: tilt, zoom affordance, animated captions ---------- */
 .gallery { perspective: 1200px; }
@@ -747,11 +714,10 @@ html.js .tab-list [role="tab"][aria-selected="true"] { background: transparent; 
 /* ---------- Reduced motion: nothing moves ---------- */
 @media (prefers-reduced-motion: reduce) {
   .hero-copy > *, .hero-media, .fx-orb, .fx-sonar, h1 em, .eyebrow .dot::after, .media-ping,
-  .media-play-icon::before, .chip, .trace-pulse, .ticker-track, .brand:hover .brand-wave, .brand:hover .brand-frame,
+  .media-play-icon::before, .chip, .ticker-track, .brand:hover .brand-wave, .brand:hover .brand-frame,
   .lang button[aria-pressed="true"], .illustration, kbd[data-kbd-press], .section-head.in .eyebrow::after,
   .lightbox[open], .lightbox[open]::backdrop, .tab-panel:not([hidden]), .steps-line::after,
-  .js .reveal.in .tags li, [data-rows].in tbody tr, [data-rows].in .yes, .reveal.in .mv-cal, .reveal.in .mv-cap,
-  .reveal.in .mv-sweep, .reveal.in .mv-contour, .reveal.in .mv-node, .section:target {
+  .js .reveal.in .tags li, [data-rows].in tbody tr, [data-rows].in .yes, .section:target {
     animation: none !important;
   }
   .hero-copy > *, .hero-media, .js .reveal, .js .reveal.in { opacity: 1 !important; transform: none !important; }
