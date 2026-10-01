@@ -106,6 +106,7 @@ class SystemBar(QWidget):
     maximize_requested = Signal()
     close_requested = Signal()
     layout_customize_requested = Signal()
+    multiview_toggle_requested = Signal()
     presenter_toggle_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -195,6 +196,15 @@ class SystemBar(QWidget):
         self._btn_layout.setToolTip("Customize Layout")
         self._btn_layout.clicked.connect(self.layout_customize_requested.emit)
 
+        # Multiview entry point: two different clips of the same study side by
+        # side.  Kept in sync with the layout-menu checkbox (spec 4.1).
+        self._btn_multiview = QPushButton()
+        self._btn_multiview.setIcon(_load_icon("two_panes"))
+        self._btn_multiview.setObjectName("multiviewButton")
+        self._btn_multiview.setCheckable(True)
+        self._btn_multiview.setToolTip(tr("multiview.button_tooltip"))
+        self._btn_multiview.clicked.connect(self.multiview_toggle_requested.emit)
+
         # QToolButton with MenuButtonPopup: the main area toggles Presenter
         # mode (like PowerPoint's "Slide Show" button), the small arrow opens
         # the options menu (audience display, visual preset, pointer).
@@ -246,6 +256,7 @@ class SystemBar(QWidget):
             self._btn_references,
             btn_reset,
             self._btn_layout,
+            self._btn_multiview,
             self._btn_presenter,
             self._btn_minimize,
             self._btn_maximize,
@@ -295,6 +306,7 @@ class SystemBar(QWidget):
             self._btn_references,
             btn_reset,
             self._btn_layout,
+            self._btn_multiview,
         ):
             if button is not None:
                 actions_layout.addWidget(button)
@@ -327,6 +339,10 @@ class SystemBar(QWidget):
     def set_references_visible(self, visible: bool) -> None:
         """Hide the ASE references button (Presenter build has no reference UI)."""
         self._btn_references.setVisible(visible)
+
+    def set_multiview_checked(self, checked: bool) -> None:
+        """Reflect the Multiview state on the toolbar button."""
+        self._btn_multiview.setChecked(checked)
 
     def set_presenter_active(self, active: bool) -> None:
         """Checked state of the Presenter button (mirror running)."""

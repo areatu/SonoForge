@@ -148,6 +148,8 @@ class ThumbnailGalleryWidget(QListWidget):
 
     instance_selected = Signal(object)
     export_mp4_requested = Signal(object)
+    #: (instance, "left" | "right") - Multiview context-menu routing.
+    open_in_pane_requested = Signal(object, str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -174,6 +176,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu)
 
+        self._multiview_enabled = False
         self._thumbnail_cache: dict[str, QIcon] = {}
         self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._items_by_uid: dict[str, QListWidgetItem] = {}
@@ -186,6 +189,11 @@ class ThumbnailGalleryWidget(QListWidget):
         self._scroll_timer.setInterval(_SCROLL_DEBOUNCE_MS)
         self._scroll_timer.timeout.connect(self.request_visible_previews)
         self.verticalScrollBar().valueChanged.connect(lambda _v: self._scroll_timer.start())
+
+    def set_multiview_enabled(self, enabled: bool) -> None:
+        """Show the "open in pane" actions and the Ctrl+click hint."""
+        self._multiview_enabled = bool(enabled)
+        self.setToolTip(tr("multiview.gallery.ctrl_hint") if self._multiview_enabled else "")
 
     def cell_width(self) -> int:
         return self._cell_w
@@ -356,6 +364,16 @@ class ThumbnailGalleryWidget(QListWidget):
         if not isinstance(instance, InstanceMetadata):
             return
         menu = QMenu(self)
+        if self._multiview_enabled:
+            menu.addAction(
+                tr("multiview.gallery.open_left"),
+                lambda: self.open_in_pane_requested.emit(instance, "left"),
+            )
+            menu.addAction(
+                tr("multiview.gallery.open_right"),
+                lambda: self.open_in_pane_requested.emit(instance, "right"),
+            )
+            menu.addSeparator()
         if instance.media_format == "dicom":
             menu.addAction(
                 tr("gallery.copy_dicom"),

@@ -1958,6 +1958,50 @@ class ViewerWidget(QWidget):
         self._clear_persistent_linear_calipers()
         self._clear_ghost_overlay()
 
+    def set_transport_state(
+        self,
+        *,
+        frame_index: int,
+        total_frames: int,
+        frame_time_ms: float | None,
+        is_playing: bool,
+    ) -> None:
+        """Update only the transport widgets (slider, counters, play button).
+
+        Used by the Multiview panes, which drive frames through their own loader
+        instead of a ``ViewerState``.  No measurement or contour state is
+        touched, so a pane never inherits the annotations of another clip.
+        """
+        try:
+            total = max(0, int(total_frames))
+            maximum = max(0, total - 1)
+            if self._timeline_slider.maximum() != maximum:
+                self._timeline_slider.setRange(0, maximum)
+            controls_enabled = total > 1
+            self._timeline_slider.setEnabled(controls_enabled)
+            self._play_button.setEnabled(controls_enabled)
+            target = min(max(0, int(frame_index)), maximum)
+            if self._timeline_slider.value() != target:
+                self._timeline_slider.blockSignals(True)
+                self._timeline_slider.setValue(target)
+                self._timeline_slider.blockSignals(False)
+            play_text = tr("viewer.pause") if is_playing else tr("viewer.play")
+            if self._play_button.text() != play_text:
+                self._play_button.setText(play_text)
+            fps_text = f"FPS: {1000.0 / frame_time_ms:.1f}" if frame_time_ms and frame_time_ms > 0 else "FPS: —"
+            if self._fps_label.text() != fps_text:
+                self._fps_label.setText(fps_text)
+            if total > 0:
+                current = min(target + 1, total)
+                source_text = tr("viewer.frame_counter", current=str(current), total=str(total))
+            else:
+                source_text = tr("viewer.frame_none")
+            if self._source_label.text() != source_text:
+                self._source_label.setText(source_text)
+        except RuntimeError:
+            # Widget already destroyed during window teardown.
+            return
+
     @_prof
     def set_state(self, viewer_state: ViewerState) -> None:
         if self._syncing_state:

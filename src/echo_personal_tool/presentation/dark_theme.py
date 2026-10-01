@@ -891,6 +891,107 @@ QMessageBox QLabel#qt_msgbox_icon {{
     font-size: 14px;
 }}
 
+/* ── Multiview (two clips side by side) ─────────────────────── */
+#multiviewPane_left, #multiviewPane_right {{
+    background: {p["bg_dark"]};
+    border: 1px solid {p["border"]};
+    border-radius: 6px;
+}}
+#multiviewPane_left[active="true"], #multiviewPane_right[active="true"] {{
+    border: 2px solid {p["accent"]};
+}}
+#multiviewPaneHeader {{
+    background: {p["bg_panel"]};
+    border-bottom: 1px solid {p["border"]};
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}}
+#multiviewPaneLetter, #multiviewPaneFile {{
+    color: {p["text"]};
+    font-weight: bold;
+}}
+#multiviewPaneView, #multiviewPaneFrame {{
+    color: {p["text_dim"]};
+}}
+#multiviewPaneActive {{
+    color: {p["accent"]};
+    font-weight: bold;
+}}
+#multiviewPaneReplace, #multiviewPaneMenu {{
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: {p["text_dim"]};
+}}
+#multiviewPaneReplace:hover, #multiviewPaneMenu:hover {{
+    background: {p["bg_button_hover"]};
+    color: {p["text"]};
+}}
+#multiviewPlaceholder {{
+    color: {p["text_dim"]};
+    background: {p["bg_dark"]};
+}}
+#multiviewMarkerBar {{
+    background: {p["bg_control"]};
+    border: 1px solid {p["border"]};
+    border-radius: 2px;
+}}
+#multiviewMarkerButton {{
+    background: {p["bg_control"]};
+    border: 1px solid {p["border"]};
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: {p["text_dim"]};
+}}
+#multiviewMarkerButton[placed="true"] {{
+    background: {p["accent_selected"]};
+    border-color: {p["accent"]};
+    color: {p["text"]};
+}}
+#multiviewMarkerButton:disabled {{
+    color: {p["text_dim"]};
+}}
+#multiviewMarkerClear, #multiviewMarkerClearAll {{
+    background: transparent;
+    border: 1px solid transparent;
+    color: {p["text_dim"]};
+    padding: 2px 6px;
+}}
+#multiviewMarkerClear:hover, #multiviewMarkerClearAll:hover {{
+    background: {p["bg_button_hover"]};
+    color: {p["text"]};
+}}
+#multiviewTransport {{
+    background: {p["bg_panel"]};
+    border: 1px solid {p["border"]};
+    border-radius: 6px;
+}}
+#multiviewMode_independent, #multiviewMode_common_window, #multiviewMode_event_cycle {{
+    background: {p["bg_control"]};
+    border: 1px solid {p["border"]};
+    border-radius: 4px;
+    padding: 3px 10px;
+    color: {p["text_dim"]};
+}}
+#multiviewMode_independent:checked, #multiviewMode_common_window:checked,
+#multiviewMode_event_cycle:checked {{
+    background: {p["accent_selected"]};
+    border-color: {p["accent"]};
+    color: {p["text"]};
+}}
+#multiviewTransportStatus {{
+    color: {p["text_dim"]};
+}}
+#multiviewTransportRateLeft, #multiviewTransportRateRight {{
+    color: {p["accent"]};
+    font-weight: bold;
+}}
+#multiviewButton:checked {{
+    background: {p["bg_button_hover"]};
+    border: 1px solid {p["accent"]};
+}}
+
 /* ── Menu Bar & Menus ──────────────────────────────────────── */
 QMenuBar {{
     background: {p["bg_panel"]};
