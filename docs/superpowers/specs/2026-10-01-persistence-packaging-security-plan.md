@@ -1,0 +1,185 @@
+# Plan: Managed Persistence, Platform Paths, and Windows Packaging
+
+**Date:** 2026-10-01
+**Status:** Draft (plan)
+**Type:** Architecture / Packaging / Security
+**Scope:** data-storage security concept, platform path handling, Windows distribution
+**Related:**
+- `SECURITY.md`, `README.md` (Security and Privacy sections) — claims to be revised
+- `src/echo_personal_tool/infrastructure/profile.py` — portable-mode helpers
+- `src/echo_personal_tool/infrastructure/orthanc_cache.py` — PHI session cache (lifecycle gap)
+- `src/echo_personal_tool/infrastructure/runtime_setup.py`, `onnx_engine.py`, `onnx_worker.py` — XDG-style hardcoded model paths
+- `docs/superpowers/specs/2026-08-07-memory-optim-spec.md` — where the disk frame cache was rejected under the old "no PHI on disk" rule
+- `scripts/setup.bat`, `scripts/create_installer.py`, `installer_stub.py` — existing (unwired) installer
+- `.github/workflows/release.yml` — publishes raw onefile `SonoForge.exe`, no installer
+
+---
+
+## 1. Executive Summary
+
+Three converging changes:
+
+1. **Security concept** — replace the absolute claim "no PHI is written to disk" with
+   **managed persistence**: PHI may reside on disk only in explicitly defined zones with
+   permissions, quota, and a documented lifecycle. Processing pipelines stay in RAM;
+   anything written is either (a) a user-initiated export, (b) a managed cache, or
+   (c) the user's own study data (measurements) with a clear retention policy.
+2. **Platform paths** — one path module (platformdirs/QStandardPaths-based) replacing
+   four inconsistent hardcoded locations; migration from old locations.
+3. **Windows packaging** — a real per-user installer (default, no UAC →
+   `%LOCALAPPDATA%\Programs\SonoForge`) with optional per-machine mode (admin,
+   Program Files); fix README/release artifact mismatches. No separate "portable SKU"
+   for the main app — the onefile exe stays as a secondary artifact short-term, and
+   SonoForge Presenter remains the official portable product.
+
+Relaxing the "no disk" rule unblocks (later phases): measurement persistence,
+per-study height/weight, crash recovery, optional disk frame cache, thumbnails cache,
+report drafts, recent-studies list.
+
+---
+
+## 2. Answers to Open Questions (recorded decisions)
+
+### 2.1 Two builds (installer + portable) — or is that too much?
+
+**Decision: one installer artifact covering both privilege modes; no second product build.**
+- Inno Setup 6: `PrivilegesRequired=lowest` + `PrivilegesRequiredOverridesAllowed=dialog`
+  → dialog "Just for me / For all users" in a single `SonoForge-Setup-<ver>-x64.exe`.
+- Per-user default installs to `%LOCALAPPDATA%\Programs\SonoForge` (no UAC — solves the
+  "hospital user is not admin" problem). Per-machine goes to Program Files (admin).
+- App data (models, cache, logs) is **always per-user** (`%LOCALAPPDATA%\SonoForge`),
+  even for per-machine installs: model download/update never needs admin.
+- The raw onefile `SonoForge.exe` stays in releases short-term as a "portable/advanced"
+  artifact (zero extra CI cost), documented as "put in a permanent folder, not Downloads".
+  Candidate for removal after 1–2 releases: the portable niche is covered by Presenter.
+- Installer packages the **onedir** build (`build/windows/build.spec` folder mode), not
+  onefile — faster startup, no `%TEMP%\_MEIxxx` unpack on every run.
+- The `launcher.py` + venv + `pip install` on first run scheme is retired for the main
+  distribution (fragile, requires system Python); the self-contained PyInstaller folder
+  replaces it. `.deb` lite flow on Linux is out of scope here.
+- Code signing (Authenticode) is tracked as a separate organizational task; SmartScreen
+  warnings affect both onefile and installer until signed.
+
+### 2.2 Hardcoded paths and README
+
+**Decision: single source of truth for paths + migration + README corrections.**
+- See WP2. README mismatches confirmed against actual release assets:
+  - `SonoForge-Setup-*.exe` is promised but only `SonoForge.exe` is published (until WP1 lands);
+  - macOS: README says `.zip`, releases ship `SonoForge-macos-arm64.dmg`;
+  - "First run will automatically set up the environment and install all dependencies"
+    is true for the .deb/lite flow only — for the standalone exe only AI models download.
+
+### 2.3 Updated security concept; what "nothing on disk" constrained; architecture?
+
+**Decision: managed persistence (zones + lifecycle), not zero writes.**
+What the old rule constrained in the current code:
+1. No disk cache for decoded frames (explicitly rejected in the 2026-08-07 memory spec) —
+   everything must fit the RAM `FrameCache` budget; weak PCs re-decode constantly.
+2. `StudyMeasurementSessionStore` is in-memory only — restart loses all measurements;
+   no autosave, no crash recovery, no "continue tomorrow".
+3. Height/Weight are session-only and re-entered every time.
+4. No recent-studies (MRU) list, no report drafts (both would persist identifiers).
+5. The Orthanc download cache already writes raw PHI DICOM to disk as a compromise
+   (`orthanc_cache.py`) — i.e., the rule was already broken in practice, undocumented.
+6. Good things the rule produced and that STAY: sanitized logs (no names, truncated UIDs),
+   `np.memmap` read-only mapping of the original file instead of copies, keyring secrets.
+
+New concept — storage zones (see WP3). Architecture unlocked (see WP4): measurement
+persistence, per-study demographics, optional disk frame cache, thumbnail cache, MRU.
+
+---
+
+## 3. Workstreams
+
+### WP1 — Windows packaging (installer)
+
+| # | Task | Notes |
+|---|------|-------|
+| 1.1 | Inno Setup script (new `build/windows/sonoforge.iss`) | per-user default → `%LOCALAPPDATA%\Programs\SonoForge`; optional per-machine via dialog; Start Menu + Desktop shortcuts; ARP uninstall entry; kills running app on install/uninstall |
+| 1.2 | Package onedir build (`build/windows/build.spec`) | retire `installer_stub.py`/`scripts/create_installer.py` zip-stub flow |
+| 1.3 | CI: extend `release.yml` `build-windows` job | run ISCC (e.g. `choco install innosetup` or a maintained GH action); upload `SonoForge-Setup-<version>-x64.exe`; keep uploading `SonoForge.exe` as `SonoForge-<version>-portable.exe` short-term |
+| 1.4 | Uninstaller semantics | remove app dir, shortcuts, ARP entry; **never** touch `%LOCALAPPDATA%\SonoForge` data without an explicit checkbox ("remove user data") |
+| 1.5 | README/HELP updates | correct artifact names (see WP2/§5); describe "install for me / for all users" |
+| 1.6 | (Separate track) Authenticode signing | org task: certificate + signtool step in CI |
+
+Acceptance: clean install on a non-admin Windows account → app runs from Start Menu,
+survives reboot, uninstalls cleanly; no UAC prompt in per-user mode.
+
+### WP2 — Platform paths
+
+Current state (all confirmed in code):
+
+| Consumer | Current path | Issue |
+|---|---|---|
+| `runtime_setup.py`, `onnx_engine.py`, `onnx_worker.py` | `Path.home()/".local"/"share"/"sonoforge"` | XDG hardcode; on Windows → `C:\Users\X\.local\share` |
+| `app_controller.py`, `main_window.py`, `profile.diag_log_dir` | `%LOCALAPPDATA%\SonoForge\logs` (fallback `~/SonoForge/logs`) | definition duplicated ×3; Linux fallback wrong |
+| `profile.orthanc_cache_root` | `~/.sonoforge/orthanc` | a third dotdir |
+| `launcher.py`, `scripts/uninstall.bat` | `%LOCALAPPDATA%\SonoForge` | separate tree (`venv`, `models`) |
+
+| # | Task | Notes |
+|---|------|-------|
+| 2.1 | New `infrastructure/paths.py` (or extend `profile.py`) | `platformdirs` (tiny dep) or `QStandardPaths.AppLocalDataLocation`; expose `data_dir()`, `models_dir()`, `cache_dir()`, `logs_dir()`, `orthanc_cache_dir()`; portable overrides keep priority (`profile.portable_path`) |
+| 2.2 | Target layout | Windows: `%LOCALAPPDATA%\SonoForge\{models,cache\orthanc,logs}`; Linux: `$XDG_DATA_HOME/sonoforge/...` (default `~/.local/share/sonoforge`); macOS: `~/Library/Application Support/SonoForge/...` |
+| 2.3 | Replace all hardcoded call sites | incl. removing triplicated `_LOG_DIR` |
+| 2.4 | Migration on startup | detect old locations (`~/.local/share/sonoforge` on Windows, `~/.sonoforge/orthanc`, `~/SonoForge`) → move models/cache/logs into the new layout once; keep read-fallback for one release |
+| 2.5 | README/HELP/docs corrections | `SonoForge-Setup-*.exe` → actual names; macOS `.zip` → `SonoForge-macos-arm64.dmg`; first-run wording per distribution |
+
+Acceptance: fresh Windows install creates no dotdirs in `%USERPROFILE%`; models land in
+`%LOCALAPPDATA%\SonoForge\models`; old installs migrate without re-downloading models.
+
+### WP3 — Security concept: managed persistence
+
+Zones:
+
+| Zone | Content | PHI? | Controls | Lifecycle |
+|---|---|---|---|---|
+| Z1 install dir | binaries, models manifest | no | read-only | replaced on update |
+| Z2 app data | settings, keyring refs, device keys | no | user ACL | kept until uninstall ("remove user data" opt-in) |
+| Z3 managed cache | Orthanc session cache; (later) frame/thumbnail cache | **yes** | user ACL / 0600; quota; visible in Settings | auto-clean by age **and at startup**; "Clear cache" button; optional "clear on exit" |
+| Z4 user exports | PDF/MP4/«save to disk» DICOM | **yes** | user-chosen folder | user's responsibility; UI warns content includes patient data |
+| Z5 logs | diagnostics | sanitized (no names, truncated UIDs — keep as-is) | user ACL | rotation + max size |
+
+| # | Task | Notes |
+|---|------|-------|
+| 3.1 | Fix `OrthancSessionCache` lifecycle | `clear_stale()` is currently dead code — call it at startup (and keep `clear_all()` on clean exit); after a crash the raw PHI cache must not live forever |
+| 3.2 | Settings UI | "Cache" section: location, size, "Clear cache", optional "Clear cache on exit" |
+| 3.3 | Rewrite `SECURITY.md` + README privacy block | replace "no PHI is written to disk" with the zone table + retention rules; state OS-level reliance (BitLocker/FileVault) for at-rest protection of Z3/Z4; note pagefile/hibernation/crash-dumps are outside app control |
+| 3.4 | Data inventory / processing record | short appendix mapping to 152-FZ / GDPR Art.32 / HIPAA Security Rule expectations (minimization, access control, retention, auditability) |
+| 3.5 | Keep unchanged | log sanitization, DICOM/UID validation, model SHA256, keyring, TLS options |
+| 3.6 | Explicitly out of scope | custom encryption of cache, "secure delete", fighting pagefile/hiberfil/WER dumps |
+
+Acceptance: after force-killing the app mid-download, next start clears or ages out the
+stale cache; SECURITY.md matches actual behavior (no absolute claims left); Settings
+shows and clears the cache.
+
+### WP4 — Architecture enabled by managed persistence (later phases)
+
+| # | Task | Zone | Value |
+|---|---|---|---|
+| 4.1 | Measurement persistence keyed by Study Instance UID (autosave, restore on reopen, crash recovery) | Z3/Z2 hybrid — own store (e.g. per-study JSON/SQLite under app data), documented | biggest product win; commercial stations all persist measurements |
+| 4.2 | Per-study Height/Weight persistence | same store | stop re-entering |
+| 4.3 | Optional disk cache for decoded frames (LRU, quota) | Z3 | fast study switching, weak-PC relief (the 2026-08-07 rejected item) |
+| 4.4 | Thumbnail cache for local folder scans | Z3 | faster galleries |
+| 4.5 | Report drafts + recent studies (MRU) | Z2 (MRU stores UIDs/paths only, no names) | ergonomics |
+
+Each item gets its own spec under `docs/superpowers/specs/` before implementation;
+4.1 is the recommended first candidate.
+
+---
+
+## 4. Phasing
+
+| Phase | Content | Rationale |
+|---|---|---|
+| **P0 (quick wins)** | 3.1 cache lifecycle fix, 3.3 docs honesty, 2.5 README corrections | cheap, removes real PHI risk and false claims |
+| **P1** | WP2 paths + migration | prerequisite for everything touching storage |
+| **P2** | WP1 installer + CI + 3.2 Settings cache UI | user-visible distribution fix |
+| **P3** | 3.4 compliance appendix | after behavior is stable |
+| **P4** | WP4 items, each behind its own spec | product features, not security debt |
+
+## 5. Risks
+
+- **Migration mistakes** (models/cache moved wrong) → fallback-read old paths for one release; migration unit-tested against fixtures.
+- **Inno + CI friction** (ISCC on windows-latest) → pin installer action/choco version; keep raw exe published until installer proven.
+- **Scope creep in WP4** — persistence of measurements is a product feature with its own UX (export/import, delete-all); do not fold it into P0–P2.
+- **Docs drift again** → acceptance criterion "SECURITY.md statements trace to code" for review checklists.
