@@ -1523,6 +1523,7 @@
   "multiview.gallery.open_left": "Open on the left",
   "multiview.gallery.open_right": "Open on the right",
   "multiview.gallery.ctrl_hint": "Ctrl+click - load the clip into the second pane",
+  "multiview.gallery.start_hint": "Select a second file to start Multiview mode",
   "multiview.study.mismatch": "Multiview compares clips of one study. Clip '{name}' belongs to another study.",
   "multiview.duplicate": "This clip is already open in pane {pane}. No duplicate is created.",
   "multiview.replace.hint": "Pane {pane}: pick a clip in the gallery to replace the current one",
