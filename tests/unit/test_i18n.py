@@ -164,6 +164,12 @@ def test_load_locales_missing_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
 @pytest.fixture(autouse=True)
 def restore_russian() -> None:
+    locales_dir = i18n_mod._LOCALES_DIR
     yield
+    # Another autouse fixture requests monkeypatch, so pytest may run this
+    # teardown while a test's temporary locale directory is still active.
+    # Restore the real path before reloading to avoid leaking an empty catalog
+    # into tests collected after this module.
+    i18n_mod._LOCALES_DIR = locales_dir
     i18n_mod._load_locales()
     set_language("ru")
