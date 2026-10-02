@@ -78,7 +78,7 @@ def _drain_global_thread_pool():
 @pytest.fixture(autouse=True)
 def _isolate_orthanc_cache_root(request, tmp_path, monkeypatch):
     """Keep MainWindow tests from inspecting or deleting a real user cache."""
-    if request.module.__name__.endswith("test_presenter_profile"):
+    if request.module.__name__.endswith(("test_presenter_profile", "test_paths")):
         yield
         return
 
