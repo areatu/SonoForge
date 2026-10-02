@@ -154,7 +154,7 @@ class MultiViewPaneWidget(QWidget):
         layout.addWidget(self._marker_bar)
 
         # ── empty placeholder over the image area ───────────────────
-        self._placeholder = QLabel(self._tr("multiview.placeholder.select_second"))
+        self._placeholder = QLabel(self._tr("multiview.placeholder.select_second"), self)
         self._placeholder.setObjectName("multiviewPlaceholder")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setWordWrap(True)

@@ -45,6 +45,12 @@ class TestPaneHeader:
         assert pane._placeholder.isVisible()
         assert pane._placeholder.text() == tr("multiview.placeholder.select_second")
 
+    def test_placeholder_is_a_child_of_the_pane(self, pane) -> None:
+        # A parentless placeholder would become a stray top-level window
+        # ("SonoForge <2>") at startup with Multiview restored.
+        assert pane.isAncestorOf(pane._placeholder)
+        assert pane._placeholder.window() is pane.window()
+
     def test_loaded_pane_hides_the_placeholder(self, pane) -> None:
         pane.set_header(file_name="a4c.dcm", frame_text="3/30", has_clip=True, error=None)
         assert not pane._placeholder.isVisible()
