@@ -1,7 +1,7 @@
 # Plan: Managed Persistence, Platform Paths, and Windows Packaging
 
 **Date:** 2026-10-01
-**Status:** Plan; WP3 implementation snapshot updated 2026-10-02
+**Status:** Plan; WP1 and WP3 implementation snapshots updated 2026-10-02
 **Type:** Architecture / Packaging / Security
 **Scope:** data-storage security concept, platform path handling, Windows distribution
 **Related:**
@@ -10,8 +10,8 @@
 - `src/echo_personal_tool/infrastructure/orthanc_cache.py` — PHI session cache (lifecycle gap)
 - `src/echo_personal_tool/infrastructure/runtime_setup.py`, `onnx_engine.py`, `onnx_worker.py` — XDG-style hardcoded model paths
 - `docs/superpowers/specs/2026-08-07-memory-optim-spec.md` — where the disk frame cache was rejected under the old "no PHI on disk" rule
-- `scripts/setup.bat`, `scripts/create_installer.py`, `installer_stub.py` — existing (unwired) installer
-- `.github/workflows/release.yml` — publishes raw onefile `SonoForge.exe`, no installer
+- `scripts/setup.bat` — helper used by the lightweight Windows ZIP only; the old `scripts/create_installer.py` / `installer_stub.py` zip-stub flow is retired
+- `.github/workflows/release.yml` — builds the Inno Setup installer and versioned portable EXE
 
 ---
 
@@ -29,8 +29,10 @@ Three converging changes:
 3. **Windows packaging** — a real per-user installer (default, no UAC →
    `%LOCALAPPDATA%\Programs\SonoForge`) with optional per-machine mode (admin,
    Program Files); fix README/release artifact mismatches. No separate "portable SKU"
-   for the main app — the onefile exe stays as a secondary artifact short-term, and
-   SonoForge Presenter remains the official portable product.
+   for the main app — the onefile EXE stays as a secondary artifact short-term under
+   `SonoForge-<version>-portable.exe`; the fixed `SonoForge.exe` name remains as a
+   compatibility alias for the existing stable download URL. SonoForge Presenter
+   remains the official portable product.
 
 Relaxing the "no disk" rule unblocks (later phases): measurement persistence,
 per-study height/weight, crash recovery, optional disk frame cache, thumbnails cache,
@@ -49,9 +51,11 @@ report drafts, recent-studies list.
   "hospital user is not admin" problem). Per-machine goes to Program Files (admin).
 - App data (models, cache, logs) is **always per-user** (`%LOCALAPPDATA%\SonoForge`),
   even for per-machine installs: model download/update never needs admin.
-- The raw onefile `SonoForge.exe` stays in releases short-term as a "portable/advanced"
-  artifact (zero extra CI cost), documented as "put in a permanent folder, not Downloads".
-  Candidate for removal after 1–2 releases: the portable niche is covered by Presenter.
+- The raw onefile build stays in releases short-term as a "portable/advanced" artifact
+  named `SonoForge-<version>-portable.exe`, documented as "put in a permanent folder,
+  not Downloads". The exact `SonoForge.exe` asset is also retained as a compatibility
+  alias for the existing stable URL. Candidate for removal after 1–2 releases: the
+  portable niche is covered by Presenter.
 - Installer packages the **onedir** build (`build/windows/build.spec` folder mode), not
   onefile — faster startup, no `%TEMP%\_MEIxxx` unpack on every run.
 - The `launcher.py` + venv + `pip install` on first run scheme is retired for the main
@@ -64,7 +68,7 @@ report drafts, recent-studies list.
 
 **Decision: single source of truth for paths + migration + README corrections.**
 - See WP2. README mismatches confirmed against actual release assets:
-  - `SonoForge-Setup-*.exe` is promised but only `SonoForge.exe` is published (until WP1 lands);
+  - before WP1, `SonoForge-Setup-*.exe` was promised but only `SonoForge.exe` was published; WP1 now adds the installer;
   - macOS: README says `.zip`, releases ship `SonoForge-macos-arm64.dmg`;
   - "First run will automatically set up the environment and install all dependencies"
     is true for the .deb/lite flow only — for the standalone exe only AI models download.
@@ -95,15 +99,27 @@ persistence, per-study demographics, optional disk frame cache, thumbnail cache,
 
 | # | Task | Notes |
 |---|------|-------|
-| 1.1 | Inno Setup script (new `build/windows/sonoforge.iss`) | per-user default → `%LOCALAPPDATA%\Programs\SonoForge`; optional per-machine via dialog; Start Menu + Desktop shortcuts; ARP uninstall entry; kills running app on install/uninstall |
+| 1.1 | Inno Setup script (new `build/windows/sonoforge.iss`) | per-user default → `%LOCALAPPDATA%\Programs\SonoForge`; optional per-machine via dialog; Start Menu + Desktop shortcuts; ARP uninstall entry; closes running app through Restart Manager on install/uninstall (without forced termination) |
 | 1.2 | Package onedir build (`build/windows/build.spec`) | retire `installer_stub.py`/`scripts/create_installer.py` zip-stub flow |
-| 1.3 | CI: extend `release.yml` `build-windows` job | run ISCC (e.g. `choco install innosetup` or a maintained GH action); upload `SonoForge-Setup-<version>-x64.exe`; keep uploading `SonoForge.exe` as `SonoForge-<version>-portable.exe` short-term |
+| 1.3 | CI: extend `release.yml` `build-windows` job | install Inno Setup 6.7.1 with Chocolatey; compile and upload `SonoForge-Setup-<version>-x64.exe`; upload the onefile build as `SonoForge-<version>-portable.exe` and retain `SonoForge.exe` as a compatibility alias |
 | 1.4 | Uninstaller semantics | remove app dir, shortcuts, ARP entry; **never** touch `%LOCALAPPDATA%\SonoForge` data without an explicit checkbox ("remove user data") |
 | 1.5 | README/HELP updates | correct artifact names (see WP2/§5); describe "install for me / for all users" |
 | 1.6 | (Separate track) Authenticode signing | org task: certificate + signtool step in CI |
 
 Acceptance: clean install on a non-admin Windows account → app runs from Start Menu,
 survives reboot, uninstalls cleanly; no UAC prompt in per-user mode.
+
+**Implementation status (2026-10-02):** WP1 items 1.1–1.5 are implemented on this
+branch. The new Inno Setup script installs the PyInstaller onedir payload per-user by
+default, offers an all-users mode, creates Start Menu/Desktop shortcuts and an ARP
+entry, requests app closure through Windows Restart Manager during install/uninstall,
+and removes the current account's `%LOCALAPPDATA%\SonoForge` data only after an explicit
+checkbox selection. Silent uninstall preserves user data. The release workflow compiles
+the setup, publishes the versioned portable EXE plus the existing fixed-name
+compatibility alias, generates a release `SHA256SUMS` manifest, and includes a per-user
+install/uninstall smoke test. This session cannot execute the Windows workflow; real
+non-admin-account/reboot acceptance remains pending its CI run and manual platform
+verification. Authenticode remains the separate organizational task in 1.6.
 
 ### WP2 — Platform paths
 

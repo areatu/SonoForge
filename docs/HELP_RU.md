@@ -46,7 +46,7 @@ SonoForge может:
 
 ### Запуск
 
-Ссылки на релизные файлы и шаги установки приведены в [README проекта](../README_RU.md). Установите Linux-пакет `sonoforge_<version>_amd64.deb` и запускайте его командой `sonoforge`; в Windows запустите отдельный `SonoForge.exe`, а в macOS откройте `SonoForge.app` из `SonoForge-macos-arm64.dmg` (Apple Silicon). Файл Windows — не установщик и не создаёт ярлыки в меню «Пуск». Запуск из исходников:
+Ссылки на релизные файлы и шаги установки приведены в [README проекта](../README_RU.md). Установите Linux-пакет `sonoforge_<version>_amd64.deb` и запускайте командой `sonoforge`; в Windows запустите `SonoForge-Setup-<version>-x64.exe` (по умолчанию — для текущего пользователя, также можно выбрать установку для всех пользователей) и откройте SonoForge из меню «Пуск» либо используйте `SonoForge-<version>-portable.exe` без установки; на Apple Silicon откройте `SonoForge.app` из `SonoForge-macos-arm64.dmg`. Деинсталлятор Windows сохраняет `%LOCALAPPDATA%\SonoForge`, если явно не выбрать **Also remove SonoForge user data**. Запуск из исходников:
 
 ```bash
 uv run sonoforge

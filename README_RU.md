@@ -78,14 +78,17 @@ sonoforge
 </details>
 
 <details>
-<summary><strong>Windows (отдельный .exe)</strong></summary>
+<summary><strong>Windows (установщик; также доступна portable-версия .exe)</strong></summary>
 
-1. Скачайте **`SonoForge.exe`** из [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge.exe).
-2. Сохраните файл в постоянной папке и запустите. Это отдельное приложение, а не установщик; ярлыки меню «Пуск» не создаются.
+1. Откройте [Releases](https://github.com/areatu/SonoForge/releases/latest), скачайте **`SonoForge-Setup-<version>-x64.exe`** и запустите файл.
+2. Выберите установку **для меня** (по умолчанию, без UAC) или **для всех пользователей** (потребуются права администратора). Установщик создаёт ярлыки в меню «Пуск» и на рабочем столе; запускать SonoForge можно любым из них.
+3. При первом запуске приложение предложит скачать AI-модели для сегментации. Загрузку можно пропустить; тогда автоматическая AI-сегментация будет недоступна.
 
-> **Требуется:** Windows 10/11 (64-бит)
+Чтобы удалить приложение, откройте Windows **Параметры → Приложения → Установленные приложения** (в Windows 10 — **Приложения и возможности**) и выберите SonoForge либо воспользуйтесь панелью управления **Программы и компоненты**. Удаление убирает приложение и ярлыки, но по умолчанию сохраняет `%LOCALAPPDATA%\SonoForge`. Выберите в деинсталляторе **Also remove SonoForge user data** только если нужно удалить также модели, кэш, журналы и настройки этой учётной записи.
 
-Зависимости приложения уже включены в сборку: Python и виртуальное окружение устанавливать не нужно. При первом запуске SonoForge предложит скачать AI-модели для сегментации. Загрузку можно пропустить; тогда автоматическая AI-сегментация будет недоступна.
+> **Требуется:** Windows 10/11 (64-бит). Установщик и portable-сборка не подписаны Authenticode; Windows SmartScreen может показать предупреждение. При сомнениях сверьте файл с `SHA256SUMS`, приложенным к релизу.
+
+Зависимости приложения уже включены; устанавливать Python и виртуальное окружение не нужно. Для запуска без установки скачайте **`SonoForge-<version>-portable.exe`** с той же страницы релиза. Portable-файл не создаёт ярлыки; данные приложения по-прежнему хранятся в каталоге данных текущего пользователя Windows.
 
 </details>
 
@@ -274,7 +277,7 @@ SonoForge использует **ONNX Runtime** для сегментации с
 
 | | Полный SonoForge | SonoForge Presenter |
 |---|---|---|
-| распространение | Linux `.deb`; отдельный Windows `SonoForge.exe`; macOS Apple Silicon `SonoForge-macos-arm64.dmg` | один портативный файл (`SonoForgePresenter.exe` / версионированный `SonoForge-Presenter-<version>-x86_64.AppImage`) |
+| распространение | Linux `.deb`; Windows-установщик `SonoForge-Setup-<version>-x64.exe` (и portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-macos-arm64.dmg` | один портативный файл (`SonoForgePresenter.exe` / версионированный `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | измерения, допплер, автокалибровка | да | да |
 | Strain/STE и оптический поток | да | да |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | да | да |

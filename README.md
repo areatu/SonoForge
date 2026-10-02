@@ -77,14 +77,17 @@ The first launch creates a per-user virtual environment and installs the Python 
 </details>
 
 <details>
-<summary><strong>Windows (standalone .exe)</strong></summary>
+<summary><strong>Windows (installer; portable .exe also available)</strong></summary>
 
-1. Download **`SonoForge.exe`** from [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge.exe).
-2. Save it in a permanent folder and run it. This is a standalone application, not a setup installer; it does not create Start Menu shortcuts.
+1. From [Releases](https://github.com/areatu/SonoForge/releases/latest), download **`SonoForge-Setup-<version>-x64.exe`** and run it.
+2. Choose **for me** (the default; no elevation/UAC required) or **for all users** (requires administrator privileges). Setup creates Start Menu and Desktop shortcuts; you can launch SonoForge from either.
+3. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
 
-> **Requires:** Windows 10/11 (64-bit)
+To uninstall, open Windows **Settings → Apps → Installed apps** (called **Apps & features** on Windows 10) and select SonoForge, or use Control Panel's **Programs and Features**. The uninstaller removes the application and shortcuts but keeps `%LOCALAPPDATA%\SonoForge` by default. Select **Also remove SonoForge user data** in the uninstaller only if you also want to delete that account's models, cache, logs, and settings.
 
-The application dependencies are bundled; Python and a virtual environment are not installed. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
+> **Requires:** Windows 10/11 (64-bit). Setup and portable builds are not Authenticode-signed; Windows SmartScreen may show a warning. If in doubt, verify the download against `SHA256SUMS` attached to the release.
+
+The application dependencies are bundled; Python and a virtual environment are not installed. Prefer a no-install run? Download **`SonoForge-<version>-portable.exe`** from the same release page. It creates no shortcuts; application data still uses the current Windows account's application-data directory.
 
 </details>
 
@@ -273,7 +276,7 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 | | Full SonoForge | SonoForge Presenter |
 |---|---|---|
-| Distribution | Linux `.deb`; Windows standalone `SonoForge.exe`; macOS Apple Silicon `SonoForge-macos-arm64.dmg` | single portable file (`SonoForgePresenter.exe` / versioned `SonoForge-Presenter-<version>-x86_64.AppImage`) |
+| Distribution | Linux `.deb`; Windows installer `SonoForge-Setup-<version>-x64.exe` (plus portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-macos-arm64.dmg` | single portable file (`SonoForgePresenter.exe` / versioned `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | Measurements, Doppler, auto-calibration | yes | yes |
 | Strain/STE and optical flow | yes | yes |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |

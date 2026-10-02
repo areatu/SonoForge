@@ -410,7 +410,7 @@
           <tr><th scope="col"></th><th scope="col"><span lang="en">Full SonoForge</span><span lang="ru">Полный SonoForge</span></th><th scope="col">SonoForge Presenter</th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row"><span lang="en">Distribution</span><span lang="ru">Дистрибуция</span></th><td><span lang="en">Linux .deb; standalone Windows .exe; Apple-Silicon macOS .dmg</span><span lang="ru">Linux .deb; отдельный Windows .exe; macOS .dmg для Apple Silicon</span></td><td><span lang="en">single portable file (.exe / .AppImage)</span><span lang="ru">один портативный файл (.exe / .AppImage)</span></td></tr>
+          <tr><th scope="row"><span lang="en">Distribution</span><span lang="ru">Дистрибуция</span></th><td><span lang="en">Linux .deb; Windows setup installer plus portable .exe; Apple-Silicon macOS .dmg</span><span lang="ru">Linux .deb; Windows-установщик и portable .exe; macOS .dmg для Apple Silicon</span></td><td><span lang="en">single portable file (.exe / .AppImage)</span><span lang="ru">один портативный файл (.exe / .AppImage)</span></td></tr>
           <tr><th scope="row"><span lang="en">Measurements, Doppler, auto‑calibration</span><span lang="ru">Измерения, допплер, автокалибровка</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><th scope="row"><span lang="en">Strain/STE and optical flow</span><span lang="ru">Strain/STE и оптический поток</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><th scope="row">PACS: DICOMweb + DIMSE, TLS</th><td class="yes">✓</td><td class="yes">✓</td></tr>
@@ -467,13 +467,16 @@ sonoforge</code></pre>
         <div class="panel-grid">
           <div>
             <h3>Windows 10 / 11 (64‑bit)</h3>
-            <p lang="en">Download and run the standalone <code>SonoForge.exe</code>. It is not an installer and creates no Start Menu shortcuts; Python and application dependencies are bundled. On first launch you may download the optional AI models or skip them.</p>
-            <p lang="ru">Скачайте и запустите отдельный файл <code>SonoForge.exe</code>. Это не установщик: ярлыки в меню «Пуск» не создаются, Python и зависимости уже включены. При первом запуске можно скачать AI‑модели или пропустить загрузку.</p>
-            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="windows"><svg class="ic"><use href="#i-download"/></svg><span>SonoForge.exe</span><span class="cta-meta" data-asset-meta></span></a>
+            <p lang="en">Download <code>SonoForge-Setup-&lt;version&gt;-x64.exe</code> for a normal installation. Choose “for me” (default, no UAC) or “for all users” (administrator privileges); Setup creates Start Menu and Desktop shortcuts. User data is kept after uninstall unless you explicitly select the data-removal checkbox. Python and application dependencies are bundled; on first launch you may download the optional AI models or skip them.</p>
+            <p lang="ru">Для обычной установки скачайте <code>SonoForge-Setup-&lt;version&gt;-x64.exe</code>. Выберите установку «для меня» (по умолчанию, без UAC) или «для всех пользователей» (нужны права администратора); установщик создаёт ярлыки в меню «Пуск» и на рабочем столе. После удаления данные пользователя сохраняются, если явно не выбрать соответствующий флажок. Python и зависимости уже включены; при первом запуске можно скачать AI‑модели или пропустить загрузку.</p>
+            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="windows"><svg class="ic"><use href="#i-download"/></svg><span>SonoForge Setup</span><span class="cta-meta" data-asset-meta></span></a>
+            <p lang="en">Prefer a no-install run? Use the versioned <code>SonoForge-&lt;version&gt;-portable.exe</code>.</p>
+            <p lang="ru">Для запуска без установки используйте версионированный файл <code>SonoForge-&lt;version&gt;-portable.exe</code>.</p>
+            <a class="btn" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="windows-portable"><svg class="ic"><use href="#i-download"/></svg><span>Portable .exe</span><span class="cta-meta" data-asset-meta></span></a>
           </div>
           <div class="note">
-            <p lang="en">Windows SmartScreen may warn about an unsigned application — this is expected for an open‑source build. Verify the download against the checksums on the release page if in doubt.</p>
-            <p lang="ru">Windows SmartScreen может предупредить о неподписанном приложении — для open‑source‑сборки это ожидаемо. При сомнениях сверьте файл с контрольными суммами на странице релиза.</p>
+            <p lang="en">Windows SmartScreen may warn about the unsigned setup or portable application. Verify downloads against the checksums on the release page if in doubt.</p>
+            <p lang="ru">Windows SmartScreen может предупредить о неподписанном установщике или portable-приложении. При сомнениях сверьте файл с контрольными суммами на странице релиза.</p>
           </div>
         </div>
       </div>

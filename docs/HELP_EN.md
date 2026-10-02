@@ -46,7 +46,7 @@ SonoForge can:
 
 ### Starting the application
 
-For release downloads and the install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`, run the standalone Windows `SonoForge.exe`, or open `SonoForge.app` from `SonoForge-macos-arm64.dmg` (Apple Silicon). The Windows file is not an installer and does not create Start Menu shortcuts. From source:
+For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
 
 ```bash
 uv run sonoforge

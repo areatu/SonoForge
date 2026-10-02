@@ -2,8 +2,8 @@
 
 > [Русская версия](README_RU.md)
 
-Utilities for model training, export, and benchmarking, plus installation
-helper scripts. Run from the repository root.
+Utilities for model training, export, and benchmarking, plus helper scripts
+for the lightweight Windows ZIP build. Run from the repository root.
 
 ## Models: training, export, benchmarks
 
@@ -24,9 +24,8 @@ helper scripts. Run from the repository root.
 
 | File | Description |
 |------|-------------|
-| `create_installer.py` | Build the Windows self-extracting installer (uses `installer_stub.py` from the root) |
-| `setup.bat` | Install the lightweight build on Windows |
-| `uninstall.bat` | Uninstall on Windows |
+| `setup.bat` | Install the lightweight ZIP build on Windows |
+| `uninstall.bat` | Uninstall the lightweight ZIP build on Windows |
 | `run_constructor.py` | Launch the Reference Constructor dialog quickly, without the whole application |
 | `run_tests.sh` | Test runner wrapper (Cyrillic paths, `PYTHONPATH`, offscreen Qt) |
 | `sonoforge.desktop` | Linux desktop entry |

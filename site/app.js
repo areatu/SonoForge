@@ -183,7 +183,8 @@
 
   var matchers = {
     deb: function (n) { return /^sonoforge_.+_amd64\.deb$/i.test(n); },
-    windows: function (n) { return /^SonoForge\.exe$/i.test(n); },
+    windows: function (n) { return /^SonoForge-Setup-.+-x64\.exe$/i.test(n); },
+    "windows-portable": function (n) { return /^SonoForge-.+-portable\.exe$/i.test(n); },
     macos: function (n) { return /^SonoForge-macos-arm64\.dmg$/i.test(n); },
     "presenter-win": function (n) { return /^SonoForgePresenter\.exe$/i.test(n); },
     "presenter-linux": function (n) { return /^SonoForge-Presenter-.+-x86_64\.AppImage$/i.test(n); }
