@@ -150,17 +150,44 @@ class TestGalleryGuards:
             assert window._multiview_load_into_pane(PaneId.RIGHT, _instance("other")) is False
         assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "first"
 
-    def test_ctrl_click_enables_the_mode_and_loads_the_right_pane(self, window) -> None:
-        clip = _instance("ctrl")
-        with (
-            patch.object(window, "_multiview_study_uid", return_value="study.1"),
-            patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: True)),
-        ):
-            handled = window._multiview_route_gallery_click(clip)
+    def _gallery_click(self, window, clip, *, ctrl: bool) -> bool:
+        with patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: ctrl)):
+            return window._multiview_route_gallery_click(clip)
+
+    def test_ctrl_click_off_mode_shows_the_start_hint(self, window) -> None:
+        handled = self._gallery_click(window, _instance("first"), ctrl=True)
+        assert handled is False
+        assert window._layout_config.multiview is False
+        assert window._multiview_start_hint_uid == "first"
+        assert window._gallery.multiview_start_hint_visible() is True
+
+    def test_second_click_on_the_same_clip_hides_the_start_hint(self, window) -> None:
+        self._gallery_click(window, _instance("first"), ctrl=True)
+        handled = self._gallery_click(window, _instance("first"), ctrl=False)
+        assert handled is False
+        assert window._multiview_start_hint_uid is None
+        assert window._gallery.multiview_start_hint_visible() is False
+        assert window._layout_config.multiview is False
+
+    def test_next_clip_launches_multiview_from_the_start_hint(self, window) -> None:
+        self._gallery_click(window, _instance("first"), ctrl=True)
+        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
+            handled = self._gallery_click(window, _instance("second"), ctrl=False)
         assert handled is True
         assert window._layout_config.multiview is True
-        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "ctrl"
+        assert window._multiview_start_hint_uid is None
+        assert window._gallery.multiview_start_hint_visible() is False
+        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
         assert window._multiview.session.active_pane is PaneId.RIGHT
+
+    def test_ctrl_click_reaches_the_route_through_instance_selected(self, window) -> None:
+        with (
+            patch.object(window._controller, "load_instance"),
+            patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: True)),
+        ):
+            window._on_instance_selected(_instance("wired"))
+        assert window._multiview_start_hint_uid == "wired"
+        assert window._layout_config.multiview is False
 
     def test_plain_click_on_the_active_left_pane_stays_on_the_controller(self, window) -> None:
         _enable(window)

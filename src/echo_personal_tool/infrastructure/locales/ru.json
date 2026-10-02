@@ -1523,6 +1523,7 @@
   "multiview.gallery.open_left": "Открыть слева",
   "multiview.gallery.open_right": "Открыть справа",
   "multiview.gallery.ctrl_hint": "Ctrl+клик — загрузить клип во вторую панель",
+  "multiview.gallery.start_hint": "Выберите второй файл для запуска режима Multiview",
   "multiview.study.mismatch": "Multiview сравнивает клипы одного исследования. Клип «{name}» относится к другому исследованию.",
   "multiview.duplicate": "Этот клип уже открыт в панели {pane}. Дубль не создаётся.",
   "multiview.replace.hint": "Панель {pane}: выберите клип в галерее — он заменит текущий",

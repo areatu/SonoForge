@@ -10,6 +10,7 @@ from collections.abc import Callable
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
+    QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -189,6 +190,47 @@ class ThumbnailGalleryWidget(QListWidget):
         self._scroll_timer.setInterval(_SCROLL_DEBOUNCE_MS)
         self._scroll_timer.timeout.connect(self.request_visible_previews)
         self.verticalScrollBar().valueChanged.connect(lambda _v: self._scroll_timer.start())
+
+        self._mv_start_hint = QLabel(self.viewport())
+        self._mv_start_hint.setObjectName("multiviewStartHint")
+        self._mv_start_hint.setWordWrap(True)
+        self._mv_start_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._mv_start_hint.setStyleSheet(
+            f"QLabel {{ background-color: rgba(20, 22, 28, 230); color: {ACCENT_BRIGHT};"
+            " border: 1px solid rgba(255, 255, 255, 40); border-radius: 6px;"
+            " padding: 6px 10px; }"
+        )
+        self._mv_start_hint.hide()
+
+    def set_multiview_start_hint(self, visible: bool) -> None:
+        """Overlay asking for the second clip before Multiview is launched."""
+        visible = bool(visible)
+        if visible:
+            self._mv_start_hint.setText(tr("multiview.gallery.start_hint"))
+            self._position_start_hint()
+            if self._mv_start_hint.width() > 0:
+                self._mv_start_hint.show()
+                self._mv_start_hint.raise_()
+                return
+        self._mv_start_hint.hide()
+
+    def multiview_start_hint_visible(self) -> bool:
+        return self._mv_start_hint.isVisible()
+
+    def _position_start_hint(self) -> None:
+        margin = 8
+        width = self.viewport().width() - 2 * margin
+        if width <= 0:
+            self._mv_start_hint.setGeometry(0, 0, 0, 0)
+            return
+        self._mv_start_hint.setFixedWidth(width)
+        self._mv_start_hint.adjustSize()
+        self._mv_start_hint.move(margin, margin)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        if self._mv_start_hint.isVisible():
+            self._position_start_hint()
 
     def set_multiview_enabled(self, enabled: bool) -> None:
         """Show the "open in pane" actions and the Ctrl+click hint."""

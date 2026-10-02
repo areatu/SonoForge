@@ -168,6 +168,8 @@ class MainWindow(QMainWindow):
         self._multiview_transport: MultiViewTransportBar | None = None
         #: Pane armed by "Replace clip": the next gallery click lands there.
         self._multiview_pending_pane: PaneId | None = None
+        #: UID of the first Ctrl+click pick while Multiview is still off.
+        self._multiview_start_hint_uid: str | None = None
         self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
         self._user_maximized = False
@@ -987,6 +989,7 @@ class MainWindow(QMainWindow):
     def _rebuild_layout(self) -> None:
         cfg = self._layout_config
         self._gallery.set_multiview_enabled(cfg.multiview)
+        self._set_multiview_start_hint(None)
         self._content_widget.setUpdatesEnabled(False)
         try:
             self._teardown_multiview()
@@ -1695,16 +1698,50 @@ class MainWindow(QMainWindow):
             logger.debug("[multiview] study uid unresolved", exc_info=True)
             return None
 
+    def _set_multiview_start_hint(self, uid: str | None) -> None:
+        self._multiview_start_hint_uid = uid
+        self._gallery.set_multiview_start_hint(uid is not None)
+
+    def _route_multiview_start(self, selected: InstanceMetadata, ctrl: bool) -> bool:
+        """Arming flow while Multiview is off (spec §6.1).
+
+        The first Ctrl+click only asks for a second clip; the next click on a
+        *different* clip launches the mode. Clicking the armed clip again
+        dismisses the hint. Returns True when the click was consumed.
+        """
+        hint_uid = self._multiview_start_hint_uid
+        if hint_uid is None:
+            if ctrl:
+                self._set_multiview_start_hint(selected.sop_instance_uid)
+            return False
+        if selected.sop_instance_uid == hint_uid:
+            self._set_multiview_start_hint(None)
+            return False
+        self._set_multiview_start_hint(None)
+        from dataclasses import replace
+
+        self._layout_config = replace(self._layout_config, multiview=True)
+        self._rebuild_layout()
+        self._system_bar.set_multiview_checked(True)
+        self._multiview_load_into_pane(PaneId.RIGHT, selected)
+        self._multiview.activate(PaneId.RIGHT)
+        self._active_viewer = self._viewer2
+        return True
+
     def _multiview_route_gallery_click(self, selected: InstanceMetadata) -> bool:
         """Return True when Multiview consumed the gallery click.
 
+        * Multiview off → ``_route_multiview_start``: Ctrl+click arms the mode
+          with an overlay hint, the second clip launches it (spec §6.1);
         * plain click → the active pane; the left pane is the main viewer, so
           such a click stays on the ``AppController`` path;
-        * Ctrl+click → the right pane, enabling Multiview first (spec §6.1);
+        * Ctrl+click → the right pane;
         * a pane armed by «Заменить клип» receives the next click.
         """
         modifiers = QApplication.keyboardModifiers()
         ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        if not self._multiview_enabled():
+            return self._route_multiview_start(selected, ctrl)
         armed = self._multiview_pending_pane
         self._multiview_pending_pane = None
         if ctrl:
@@ -1716,12 +1753,6 @@ class MainWindow(QMainWindow):
         if target is PaneId.LEFT and not ctrl:
             self._multiview.activate(PaneId.LEFT)
             return False
-        if not self._multiview_enabled():
-            from dataclasses import replace
-
-            self._layout_config = replace(self._layout_config, multiview=True)
-            self._rebuild_layout()
-            self._system_bar.set_multiview_checked(True)
         if not self._multiview_load_into_pane(PaneId.RIGHT, selected):
             return True
         self._multiview.activate(PaneId.RIGHT)
@@ -1757,10 +1788,8 @@ class MainWindow(QMainWindow):
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
             return
-        if self._multiview_enabled():
-            handled = self._multiview_route_gallery_click(selected)
-            if handled:
-                return
+        if self._multiview_route_gallery_click(selected):
+            return
         self._click_to_frame_started_at = perf_counter()
         previous = self._controller.state_manager.snapshot.instance
         if previous is not None:
