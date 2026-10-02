@@ -1,7 +1,7 @@
 # Plan: Managed Persistence, Platform Paths, and Windows Packaging
 
 **Date:** 2026-10-01
-**Status:** Draft (plan)
+**Status:** Plan; WP3 implementation snapshot updated 2026-10-02
 **Type:** Architecture / Packaging / Security
 **Scope:** data-storage security concept, platform path handling, Windows distribution
 **Related:**
@@ -133,24 +133,37 @@ Zones:
 
 | Zone | Content | PHI? | Controls | Lifecycle |
 |---|---|---|---|---|
-| Z1 install dir | binaries, models manifest | no | read-only | replaced on update |
-| Z2 app data | settings, keyring refs, device keys | no | user ACL | kept until uninstall ("remove user data" opt-in) |
-| Z3 managed cache | Orthanc session cache; (later) frame/thumbnail cache | **yes** | user ACL / 0600; quota; visible in Settings | auto-clean by age **and at startup**; "Clear cache" button; optional "clear on exit" |
-| Z4 user exports | PDF/MP4/«save to disk» DICOM | **yes** | user-chosen folder | user's responsibility; UI warns content includes patient data |
-| Z5 logs | diagnostics | sanitized (no names, truncated UIDs — keep as-is) | user ACL | rotation + max size |
+| Z1 install dir | binaries, model manifest/weights | no (models are not patient studies) | host installation permissions; model SHA256 verification | replaced on update |
+| Z2 app data | settings, server profiles, keyring refs, Presenter device key | may include identifying paths/usernames/endpoints | OS profile/ACL and OS keychain (full profile); Presenter secrets remain within the stick trust boundary | kept according to OS/user policy |
+| Z3 managed cache | Orthanc session cache; (later) frame/thumbnail cache | **yes** | UID/path validation; per-file POSIX `0600` where supported (no directory-mode/ACL configuration); Windows inherits folder/volume ACL; fixed 20 GiB write-admission limit per app process, shown in Settings | stale sessions >7 days removed at startup; clear button; normal-exit clear enabled by default; open-study session preserved by manual clear |
+| Z4 user exports | PDF/MP4/«save to disk» DICOM | **yes** | user-chosen folder; application does not encrypt or manage retention | user's responsibility; UI warning is not currently implemented |
+| Z5 logs | diagnostics | UID truncation and PHI-aware tag filtering are used; exceptions/paths may still disclose details | host/profile log directories; current file handlers are not rotated | log retention/sharing is user's responsibility; `errors.log` path consolidation remains in WP2 |
 
 | # | Task | Notes |
 |---|------|-------|
-| 3.1 | Fix `OrthancSessionCache` lifecycle | `clear_stale()` is currently dead code — call it at startup (and keep `clear_all()` on clean exit); after a crash the raw PHI cache must not live forever |
-| 3.2 | Settings UI | "Cache" section: location, size, "Clear cache", optional "Clear cache on exit" |
+| 3.1 | Fix `OrthancSessionCache` lifecycle | Call `clear_stale()` at startup; clear on normal exit by default with a persisted opt-out; enforce a 20 GiB per-process write-admission quota; manual clear preserves active study sessions |
+| 3.2 | Settings UI | "Downloaded DICOM cache" block: location, current size, fixed quota, "Clear cache", optional "Clear cache on exit" |
 | 3.3 | Rewrite `SECURITY.md` + README privacy block | replace "no PHI is written to disk" with the zone table + retention rules; state OS-level reliance (BitLocker/FileVault) for at-rest protection of Z3/Z4; note pagefile/hibernation/crash-dumps are outside app control |
 | 3.4 | Data inventory / processing record | short appendix mapping to 152-FZ / GDPR Art.32 / HIPAA Security Rule expectations (minimization, access control, retention, auditability) |
 | 3.5 | Keep unchanged | log sanitization, DICOM/UID validation, model SHA256, keyring, TLS options |
-| 3.6 | Explicitly out of scope | custom encryption of cache, "secure delete", fighting pagefile/hiberfil/WER dumps |
+| 3.6 | Explicitly out of scope | custom cache encryption, secure-delete claims, fighting pagefile/hiberfil/WER dumps, and an in-app user/role system. WP3 treats one OS account as the local access boundary; use distinct OS accounts/ACLs for distinct operators. Write a separate threat model/spec before supporting shared OS logins or requiring user-separated records; assess encrypted-volume requirements separately for Presenter media containing PHI. |
 
-Acceptance: after force-killing the app mid-download, next start clears or ages out the
-stale cache; SECURITY.md matches actual behavior (no absolute claims left); Settings
-shows and clears the cache.
+Acceptance: after force-killing the app mid-download, the partial session is removed at
+startup once it is older than 7 days; SECURITY.md matches actual behavior (no absolute
+claims left); Settings shows path, size and quota, clears inactive cache sessions, and
+persists the normal-exit cleanup preference; a single app process cannot write beyond
+the 20 GiB cache limit. Concurrent processes sharing the same root are not coordinated.
+
+**Implementation snapshot (2026-10-02):** WP3 code and documentation are in place on
+this branch. The cache limit is a fixed 20 GiB per-process write-admission ceiling (not
+user-configurable); concurrent processes sharing a cache root are not coordinated, and
+existing over-limit data is not retroactively deleted. Exports and operating-system
+copies are outside this quota. POSIX file mode `0600` does not set Windows ACLs or
+directory permissions. The application does not encrypt cache
+files or provide secure deletion. Ninety cache, worker, QSettings-persistence, and locale
+tests pass in the available environment. Qt GUI tests could not be executed in this sandbox
+because `libGL.so.1` is unavailable; this is an environment limitation, not a test pass.
+This snapshot is not an independent security or regulatory review.
 
 ### WP4 — Architecture enabled by managed persistence (later phases)
 

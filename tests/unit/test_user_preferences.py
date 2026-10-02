@@ -164,10 +164,17 @@ class TestSaveAndLoadPreferences:
         assert loaded.language == "en"
         assert loaded.show_strain is True
 
+    def test_orthanc_cache_clear_on_exit_roundtrip(self, isolated_prefs):
+        prefs = UserPreferences(orthanc_cache_clear_on_exit=False)
+        save_user_preferences(prefs)
+        loaded = load_user_preferences()
+        assert loaded.orthanc_cache_clear_on_exit is False
+
     def test_load_defaults_when_empty(self, isolated_prefs):
         loaded = load_user_preferences()
         assert loaded.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE
         assert loaded.language == "en"
+        assert loaded.orthanc_cache_clear_on_exit is True
 
     def test_clamping_on_load(self, isolated_prefs):
         store = QSettings("sonoforge-test", "prefs-test")

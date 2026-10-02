@@ -283,6 +283,69 @@ class TestAreaToolModeCombo:
             assert saved_prefs.show_doppler_calibration_roi is True
 
 
+class TestManagedCacheSettings:
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_cache_controls_show_location_size_and_default_cleanup(self, mock_load, tmp_path):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        cache = OrthancSessionCache(tmp_path)
+        session = cache.create_session()
+        (cache.session_path(session) / "sample.dcm").write_bytes(b"DICM")
+        dlg = UserPreferencesDialog(orthanc_cache=cache)
+
+        assert dlg._cache_location_label.text() == str(tmp_path)
+        assert dlg._cache_size_label.text() == "4 B"
+        assert dlg._cache_quota_label.text() == "20.0 GiB"
+        assert dlg._cache_clear_on_exit.isChecked() is True
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_cache_cleanup_preference_is_saved(self, mock_load, mock_save, mock_save_server):
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        dlg._cache_clear_on_exit.setChecked(False)
+        with patch.object(dlg, "accept"):
+            dlg._on_accept()
+        saved = mock_save.call_args[0][0]
+        assert saved.orthanc_cache_clear_on_exit is False
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.QMessageBox.information")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_clear_cache_preserves_open_study_sessions(self, mock_load, mock_information, tmp_path):
+        mock_load.return_value = _default_prefs()
+        from PySide6.QtWidgets import QMessageBox
+
+        from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        cache = OrthancSessionCache(tmp_path)
+        active = cache.create_session()
+        inactive = cache.create_session()
+        (cache.session_path(active) / "active.dcm").write_bytes(b"active")
+        (cache.session_path(inactive) / "inactive.dcm").write_bytes(b"inactive")
+        dlg = UserPreferencesDialog(
+            orthanc_cache=cache,
+            protected_cache_sessions=lambda: {active},
+        )
+
+        with patch(
+            "echo_personal_tool.presentation.user_preferences_dialog.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ) as mock_question:
+            dlg._clear_cache()
+
+        mock_question.assert_called_once()
+        assert cache.session_path(active).is_dir()
+        assert not cache.session_path(inactive).exists()
+        assert dlg._cache_size_label.text() == "6 B"
+        mock_information.assert_called_once()
+
+
 class TestShowUserPreferencesDialog:
     @patch("echo_personal_tool.presentation.ui_animations.exec_animated", return_value=0)
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")

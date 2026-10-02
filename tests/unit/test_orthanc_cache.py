@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+import pytest
+
+from echo_personal_tool.infrastructure.orthanc_cache import (
+    OrthancCacheQuotaExceeded,
+    OrthancSessionCache,
+)
 
 # Realistic UIDs (60 chars each) as returned by the production Orthanc server.
 STUDY_UID = "1.2.410.200001.1.1185.2062614048.1.20260929.1094518981.328.1"
@@ -47,7 +54,7 @@ def test_clear_all_removes_all_sessions(tmp_path: Path) -> None:
 
 
 def test_instance_stored_directly_under_study_dir(tmp_path: Path) -> None:
-    """No series directory level: session/<study>/<sop>.dcm."""
+    """No series directory level: session/<study>/<sop>."""
     cache = OrthancSessionCache(tmp_path)
     session = cache.create_session()
     path = cache.save_instance(session, STUDY_UID, SERIES_UID, SOP_UID, b"DICM")
@@ -63,3 +70,65 @@ def test_instance_path_fits_windows_max_path(tmp_path: Path) -> None:
     reported = Path(_REPORTED_CACHE_ROOT) / path.relative_to(tmp_path)
     assert len(str(reported)) < 260, f"path too long for Windows: {reported}"
     assert path.exists()
+
+
+def test_size_bytes_counts_cached_regular_files(tmp_path: Path) -> None:
+    cache = OrthancSessionCache(tmp_path)
+    session = cache.create_session()
+    cache.save_instance(session, STUDY_UID, SERIES_UID, SOP_UID, b"DICM")
+    assert cache.size_bytes() == 4
+
+
+def test_clear_all_preserves_sessions_still_in_use(tmp_path: Path) -> None:
+    cache = OrthancSessionCache(tmp_path)
+    active = cache.create_session()
+    inactive = cache.create_session()
+    cache.save_instance(active, STUDY_UID, SERIES_UID, SOP_UID, b"active")
+    cache.save_instance(inactive, STUDY_UID, SERIES_UID, SOP_UID, b"inactive")
+
+    removed = cache.clear_all(preserve_session_ids={active})
+
+    assert removed == 1
+    assert cache.session_path(active).is_dir()
+    assert not cache.session_path(inactive).exists()
+
+
+def test_session_id_for_cache_path(tmp_path: Path) -> None:
+    cache = OrthancSessionCache(tmp_path)
+    session = cache.create_session()
+    instance = cache.save_instance(session, STUDY_UID, SERIES_UID, SOP_UID, b"DICM")
+    assert cache.session_id_for_path(instance) == session
+    assert cache.session_id_for_path(tmp_path / "outside.dcm") is None
+
+
+def test_clear_stale_removes_old_sessions_only(tmp_path: Path) -> None:
+    cache = OrthancSessionCache(tmp_path)
+    stale = cache.create_session()
+    fresh = cache.create_session()
+    stale_path = cache.session_path(stale)
+    old_time = time.time() - (8 * 86400)
+    os.utime(stale_path, (old_time, old_time))
+
+    removed = cache.clear_stale()
+
+    assert removed == 1
+    assert not stale_path.exists()
+    assert cache.session_path(fresh).is_dir()
+
+
+def test_cache_quota_rejects_write_without_removing_existing_data(tmp_path: Path) -> None:
+    cache = OrthancSessionCache(tmp_path, max_size_bytes=4)
+    session = cache.create_session()
+    cache.save_instance(session, STUDY_UID, SERIES_UID, SOP_UID, b"DICM")
+
+    with pytest.raises(OrthancCacheQuotaExceeded, match="quota"):
+        cache.save_instance(
+            session,
+            STUDY_UID,
+            SERIES_UID,
+            "1.2.3.4",
+            b"extra",
+        )
+
+    assert cache.size_bytes() == 4
+    assert len(list(cache.session_path(session).rglob("*.dcm"))) == 1

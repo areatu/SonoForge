@@ -108,17 +108,22 @@ First run will automatically create a virtual environment, install Python depend
 <summary><strong>Portable USB Stick — SonoForge Presenter</strong></summary>
 
 A lightweight edition for demonstrations on other people's computers: a **single file**
-run directly from the USB stick — no installation, no admin rights, nothing written
-to the host machine outside the OS temp directory.
+run directly from the USB stick — no installation and no admin rights required. It is
+not a zero-footprint mode: one-file extraction uses OS temporary storage, settings and
+the DICOM cache live on the stick, and the main-window error log may use the host
+user's log directory. See [SECURITY.md](SECURITY.md) for the data inventory.
 
 1. Download `SonoForgePresenter.exe` (Windows) or `SonoForgePresenter-*.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
 2. Copy to the USB stick
 3. Double-click to run
 
-Settings, PACS profiles, encrypted passwords, and the DICOM cache live next to the
-executable (on the stick). All measurement tools and PACS connectivity are included;
-AI (ONNX) segmentation and the Reference Constructor UI are not part of this edition.
-Details: [build/presenter/README.md](build/presenter/README.md).
+Settings, PACS profiles, encrypted password tokens, and the DICOM cache live next to
+the executable (on the stick). The cache may contain PHI and is not encrypted: new writes are capped at 20 GiB per
+running app process. It is cleared on normal exit by default and pruned at startup when
+sessions are older than 7 days. The user can retain it between runs in Settings. The main-window
+`errors.log` may still be written under the host user's log directory. All measurement
+tools and PACS connectivity are included; AI (ONNX) segmentation and the Reference
+Constructor UI are not part of this edition. Details: [build/presenter/README.md](build/presenter/README.md).
 
 </details>
 
@@ -278,7 +283,7 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 | AI (ONNX) segmentation | yes | excluded from the build |
 | Reference Constructor / web handbook | yes | excluded from the build |
 | Settings and secrets | OS keychain + QSettings (registry on Windows / `~/.config` on Linux) | on the stick: INI files + Fernet-encrypted `secrets.ini` |
-| Data written outside the app bundle | home config, `~/.sonoforge` cache, logs | OS temp only (onefile unpack); settings and cache on the stick |
+| Data written outside the app bundle | home config, `~/.sonoforge` cache, logs | onefile extraction in OS temp; settings, secrets and DICOM cache on the stick; main-window `errors.log` may use the host user's log directory |
 
 - **Fast start** — no first-run setup, no model downloads, straight into the viewer
 - **Reduced size** — PySide6-Essentials (no QtWebEngine), no onnxruntime/PyMuPDF/openpyxl
@@ -322,7 +327,8 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 | Document | Description |
 |----------|-------------|
-| [SECURITY.md](SECURITY.md) | PHI handling, data security, model integrity, HIPAA considerations |
+| [SECURITY.md](SECURITY.md) | PHI handling, storage lifecycle, data security, model integrity |
+| [docs/security/data-inventory.md](docs/security/data-inventory.md) | Data inventory and mapping to selected security expectations |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |
@@ -374,20 +380,26 @@ module composition can be adjusted without deleting code.
 
 ## Security and Privacy
 
-> **Your data stays local.** SonoForge processes all DICOM data in memory — no PHI (Protected Health Information) is written to disk, no cloud uploads, no telemetry, no analytics.
+DICOM data handling depends on how the application is used: local-folder source files are
+not copied into the managed cache, but PACS downloads are written to a local DICOM cache
+and user-requested exports are written to the selected destination. The app does not
+silently upload studies to a vendor cloud or send analytics/telemetry. DICOM protocol
+support and clinical measurement references do not by themselves establish a regulatory
+status, security certification, or compliance for a particular deployment.
 
-### Security Features
+### Security Features and Limitations
 
 - **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
 - **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 section 6.1
 - **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
-- **Network Timeouts** — Configurable timeouts for DICOMweb/DIMSE connections
-- **PHI Sanitization** — Patient identifiers truncated in log files
-- **In-Memory Processing** — All DICOM data processed in RAM, no temp files
-- **No Cloud Dependencies** — Works fully offline after installation
-- **Portable Encrypted Secrets (Presenter)** — PACS passwords stored as Fernet tokens (AES-128-CBC + HMAC-SHA256, PBKDF2 key from a per-stick `device.key`, file mode 0600) next to the executable; no clear-text fallback
+- **Managed PACS Cache** — 20 GiB write-admission limit per running app; an over-limit download is rejected rather than evicting existing sessions (concurrent app instances are not coordinated)
+- **Cache Retention** — Cleared on normal exit by default, stale sessions older than 7 days are removed at startup, and Settings can manually clear non-active sessions
+- **Cache Protection** — No app-level DICOM encryption; POSIX files use mode `0600` where supported, while Windows inherits folder ACLs. Enable OS/volume encryption for data at rest
+- **Network Transport** — DICOMweb does not force HTTPS for remote endpoints; certificate verification defaults on for HTTPS. DIMSE TLS is optional and off by default
+- **Diagnostics** — UID truncation and PHI-aware tag filtering are used, but logs are not a complete audit trail and should be reviewed before sharing
+- **Portable Encrypted Secrets (Presenter)** — PACS password tokens are encrypted next to the executable; this does not encrypt the DICOM cache or exports
 
-See [SECURITY.md](SECURITY.md) for detailed security documentation.
+See [SECURITY.md](SECURITY.md) and the [data inventory](docs/security/data-inventory.md) for detailed data flows, the storage model, and deployment responsibilities.
 
 ---
 

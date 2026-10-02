@@ -53,7 +53,7 @@ def mock_controller():
 
 
 @pytest.fixture()
-def main_window(mock_controller):
+def main_window(mock_controller, tmp_path):
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
 
@@ -71,6 +71,10 @@ def main_window(mock_controller):
         language="ru",
     )
     with (
+        patch(
+            "echo_personal_tool.infrastructure.profile.orthanc_cache_root",
+            return_value=tmp_path / "orthanc-cache",
+        ),
         patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
         patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
         patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
@@ -573,6 +577,81 @@ class TestCloseEvent:
         event = QCloseEvent()
         main_window.closeEvent(event)
         assert not main_window._mmode_active
+
+    def test_cache_clears_on_exit_by_default(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        with patch.object(main_window._orthanc_cache, "clear_all") as clear_all:
+            main_window._user_preferences.orthanc_cache_clear_on_exit = True
+            main_window.closeEvent(QCloseEvent())
+            clear_all.assert_called_once_with()
+
+    def test_cache_can_be_kept_on_exit(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        with patch.object(main_window._orthanc_cache, "clear_all") as clear_all:
+            main_window._user_preferences.orthanc_cache_clear_on_exit = False
+            main_window.closeEvent(QCloseEvent())
+            clear_all.assert_not_called()
+
+
+class TestOrthancCacheStartupCleanup:
+    def test_removes_stale_cache_sessions_at_startup(self, mock_controller, tmp_path):
+        import os
+        import time
+
+        from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+        from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+        from echo_personal_tool.presentation.main_window import MainWindow
+
+        root = tmp_path / "orthanc-cache"
+        cache = OrthancSessionCache(root)
+        stale_session = cache.create_session()
+        stale_dir = cache.session_path(stale_session)
+        old_time = time.time() - (8 * 86400)
+        os.utime(stale_dir, (old_time, old_time))
+        prefs = UserPreferences(orthanc_cache_clear_on_exit=False)
+        with (
+            patch("echo_personal_tool.infrastructure.profile.orthanc_cache_root", return_value=root),
+            patch("echo_personal_tool.presentation.main_window.apply_clinical_theme"),
+            patch("echo_personal_tool.presentation.main_window.load_user_preferences", return_value=prefs),
+            patch("echo_personal_tool.presentation.main_window.format_results_overlay_html", return_value=""),
+            patch.object(mock_controller, "compute_overlay_snapshot", return_value=None),
+        ):
+            window = MainWindow(controller=mock_controller)
+
+        assert not stale_dir.exists()
+        window.close()
+
+
+class TestActiveOrthancCacheSessions:
+    def test_tracks_cache_sessions_backing_open_studies(self, main_window):
+        from types import SimpleNamespace
+
+        session = main_window._orthanc_cache.create_session()
+        instance_path = main_window._orthanc_cache.save_instance(
+            session,
+            "1.2.3.4",
+            "1.2.3.5",
+            "1.2.3.6",
+            b"DICM",
+        )
+        main_window._controller.studies = [
+            SimpleNamespace(series=[SimpleNamespace(instances=[SimpleNamespace(path=instance_path)])])
+        ]
+
+        assert main_window._active_orthanc_cache_sessions() == {session}
+
+    def test_ignores_local_files_outside_cache(self, main_window, tmp_path):
+        from types import SimpleNamespace
+
+        external_file = tmp_path / "local-study.dcm"
+        external_file.write_bytes(b"DICM")
+        main_window._controller.studies = [
+            SimpleNamespace(series=[SimpleNamespace(instances=[SimpleNamespace(path=external_file)])])
+        ]
+
+        assert main_window._active_orthanc_cache_sessions() == set()
 
 
 class TestOpenFolderPath:

@@ -76,6 +76,19 @@ def _drain_global_thread_pool():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_orthanc_cache_root(request, tmp_path, monkeypatch):
+    """Keep MainWindow tests from inspecting or deleting a real user cache."""
+    if request.module.__name__.endswith("test_presenter_profile"):
+        yield
+        return
+
+    from echo_personal_tool.infrastructure import profile
+
+    monkeypatch.setattr(profile, "orthanc_cache_root", lambda: tmp_path / "orthanc-cache")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _gc_per_test():
     """Freeze GC during each test; collect only between tests.
 
@@ -363,13 +376,15 @@ def make_viewer(qtbot):
 
 
 @pytest.fixture
-def make_main_window(qtbot):
+def make_main_window(qtbot, tmp_path):
     """Factory fixture: create a MainWindow with real AppController.
 
     Usage:
         window = make_main_window()
         assert window.isVisible() or True
     """
+    from unittest.mock import patch
+
     from echo_personal_tool.application.app_controller import AppController
     from echo_personal_tool.infrastructure.user_preferences import UserPreferences
     from echo_personal_tool.presentation.main_window import MainWindow
@@ -377,7 +392,11 @@ def make_main_window(qtbot):
     def _factory(controller=None, user_preferences=None, **kwargs):
         ctrl = controller or AppController()
         prefs = user_preferences or UserPreferences(layout_state_json="")
-        w = MainWindow(controller=ctrl, user_preferences=prefs, **kwargs)
+        with patch(
+            "echo_personal_tool.infrastructure.profile.orthanc_cache_root",
+            return_value=tmp_path / "orthanc-cache",
+        ):
+            w = MainWindow(controller=ctrl, user_preferences=prefs, **kwargs)
         qtbot.addWidget(w)
         return w
 

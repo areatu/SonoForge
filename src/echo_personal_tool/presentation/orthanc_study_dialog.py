@@ -165,6 +165,7 @@ class OrthancStudyDialog(QDialog):
         self._completed_downloads = 0
         self._failed_downloads = 0
         self._total_studies = 0
+        self._partial_download_warnings: list[str] = []
         self._downloaded_studies: list[StudyMetadata] = []
         self._force_close_timer = QTimer(self)
         self._force_close_timer.setSingleShot(True)
@@ -689,6 +690,7 @@ class OrthancStudyDialog(QDialog):
         self._progress.show()
         self._set_status(tr("orthanc.preparing"))
 
+        self._partial_download_warnings = []
         self._pending_downloads = list(all_series)
         self._completed_downloads = 0
         self._failed_downloads = 0
@@ -732,6 +734,7 @@ class OrthancStudyDialog(QDialog):
         self._progress.show()
         self._set_status(tr("orthanc.saving_to_disk", path=directory))
 
+        self._partial_download_warnings = []
         self._pending_downloads = list(all_series)
         self._completed_downloads = 0
         self._failed_downloads = 0
@@ -783,6 +786,7 @@ class OrthancStudyDialog(QDialog):
         worker.signals.status.connect(self._on_status)
         worker.signals.done.connect(self._on_single_study_done)
         worker.signals.failed.connect(self._on_single_study_failed)
+        worker.signals.partial_failed.connect(self._on_partial_instance_failure)
         worker.signals.cancelled.connect(self._on_cancelled)
         worker.signals.series_done.connect(self._on_series_done)
         worker.signals.studies_ready.connect(self._on_studies_ready)
@@ -829,6 +833,7 @@ class OrthancStudyDialog(QDialog):
         worker.signals.status.connect(self._on_status)
         worker.signals.done.connect(self._on_single_study_done_to_disk)
         worker.signals.failed.connect(self._on_single_study_failed)
+        worker.signals.partial_failed.connect(self._on_partial_instance_failure)
         worker.signals.cancelled.connect(self._on_cancelled)
         worker.signals.series_done.connect(self._on_series_done)
         worker.signals.studies_ready.connect(self._on_studies_ready)
@@ -969,14 +974,22 @@ class OrthancStudyDialog(QDialog):
                 message,
             )
             return
-        if partial:
-            saved = self._completed_downloads - self._failed_downloads
-            message = tr(
-                "orthanc.disk_download_partial",
-                path=self._save_to_disk_path,
-                saved=str(saved),
-                total=str(self._total_studies),
-            )
+        partial_warning = self._partial_instance_warning_text()
+        if partial or partial_warning:
+            messages: list[str] = []
+            if partial:
+                saved = self._completed_downloads - self._failed_downloads
+                messages.append(
+                    tr(
+                        "orthanc.disk_download_partial",
+                        path=self._save_to_disk_path,
+                        saved=str(saved),
+                        total=str(self._total_studies),
+                    )
+                )
+            if partial_warning:
+                messages.append(partial_warning)
+            message = self._clip("\n".join(messages), _DIALOG_TEXT_LIMIT)
             self._set_status(message)
             QMessageBox.warning(
                 self,
@@ -1056,6 +1069,16 @@ class OrthancStudyDialog(QDialog):
         log.debug("[DLG] status: %s", text)
         self._status_label.setText(self._clip(text, _STATUS_TEXT_LIMIT))
 
+    def _on_partial_instance_failure(self, study_uid: str, message: str) -> None:
+        """Remember per-instance failures while preserving successfully fetched files."""
+        if not self._is_alive():
+            return
+        log.warning("[DLG] partial instance download: study=%s message=%s", study_uid[:16], message)
+        self._partial_download_warnings.append(self._clip(message, _DIALOG_TEXT_LIMIT))
+
+    def _partial_instance_warning_text(self) -> str:
+        return self._clip("\n".join(self._partial_download_warnings), _DIALOG_TEXT_LIMIT)
+
     def _on_single_study_failed(self, _uid: str, message: str) -> None:
         if not self._is_alive():
             return
@@ -1100,6 +1123,10 @@ class OrthancStudyDialog(QDialog):
             saved=str(saved),
             total=str(self._total_studies),
         )
+        details = self._partial_instance_warning_text()
+        if details:
+            message = f"{message}\n{details}"
+        message = self._clip(message, _DIALOG_TEXT_LIMIT)
         self._set_status(message)
         QMessageBox.warning(
             self,
@@ -1120,7 +1147,16 @@ class OrthancStudyDialog(QDialog):
         self._session_id = None
         self._result = (session_id, study_uid)
         self._progress.setValue(self._progress.maximum())
-        self._set_status(tr("orthanc.download_complete"))
+        partial_warning = self._partial_instance_warning_text()
+        if partial_warning:
+            self._set_status(partial_warning)
+            QMessageBox.warning(
+                self,
+                tr("orthanc.download_error.title"),
+                partial_warning,
+            )
+        else:
+            self._set_status(tr("orthanc.download_complete"))
         self.accept()
 
     def _on_failed(self, _uid: str, message: str) -> None:

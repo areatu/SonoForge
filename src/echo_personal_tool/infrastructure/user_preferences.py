@@ -121,6 +121,9 @@ class UserPreferences:
     pdf_font_size: int = DEFAULT_PDF_FONT_SIZE
     startup_mode: str = "empty"
     last_opened_folder: str = ""
+    # Orthanc downloads contain raw DICOM/PHI. Preserve the existing normal-exit
+    # cleanup behavior by default; the cache UI lets users opt out explicitly.
+    orthanc_cache_clear_on_exit: bool = True
     theme_mode: str = "vscode_dark"
     language: str = "en"
     auto_play: bool = False
@@ -333,6 +336,7 @@ def load_user_preferences() -> UserPreferences:
         ),
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
+        orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
             store.value("theme_mode"), "vscode_dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
         ),

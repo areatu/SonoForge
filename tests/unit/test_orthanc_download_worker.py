@@ -26,6 +26,7 @@ class _SignalCapture:
         self.series_done: list[tuple[str, str]] = []
         self.done: list[tuple[str, str]] = []
         self.failed: list[tuple[str, str]] = []
+        self.partial_failed: list[tuple[str, str]] = []
         self.cancelled: list[str] = []
 
     def connect(self, worker: OrthancDownloadWorker) -> None:
@@ -35,12 +36,24 @@ class _SignalCapture:
         worker.signals.series_done.connect(lambda series_uid, status: self.series_done.append((series_uid, status)))
         worker.signals.done.connect(lambda session_id, study_uid: self.done.append((session_id, study_uid)))
         worker.signals.failed.connect(lambda uid, message: self.failed.append((uid, message)))
+        worker.signals.partial_failed.connect(lambda uid, message: self.partial_failed.append((uid, message)))
         worker.signals.cancelled.connect(lambda session_id: self.cancelled.append(session_id))
 
 
 class _FailingDownloadClient(FakeDicomWebClient):
     def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         raise TimeoutError("WADO timeout")
+
+
+class _PartialDownloadClient(FakeDicomWebClient):
+    def query_instances(self, study_uid: str, series_uid: str) -> list[InstanceInfo]:
+        return [
+            InstanceInfo(INSTANCE_UID, SERIES_UID, STUDY_UID),
+            InstanceInfo("1.2.410.200001.1.1185.2062614048.1.20240404.1120546412.448.4", SERIES_UID, STUDY_UID),
+        ]
+
+    def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
+        return b"downloaded-payload"
 
 
 class _QueryErrorClient(FakeDicomWebClient):
@@ -80,6 +93,31 @@ def test_download_saves_instances_and_emits_done(tmp_path: Path) -> None:
     assert capture.done[0][1] == STUDY_UID
     assert capture.failed == []
     assert capture.cancelled == []
+
+
+def test_partial_instance_failure_is_reported_without_discarding_successes(tmp_path: Path) -> None:
+    client = _PartialDownloadClient(FIXTURES)
+    payload = b"downloaded-payload"
+    cache = OrthancSessionCache(tmp_path, max_size_bytes=len(payload))
+    session_id = cache.create_session()
+    capture = _SignalCapture()
+
+    worker = OrthancDownloadWorker(client, cache, session_id, STUDY_UID, [SERIES_UID])
+    capture.connect(worker)
+    with patch.object(worker, "_build_studies_metadata", return_value=[]):
+        worker.run()
+
+    assert capture.done == [(session_id, STUDY_UID)]
+    assert capture.failed == []
+    assert len(capture.partial_failed) == 1
+    assert capture.partial_failed[0][0] == STUDY_UID
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    assert "1/2" in capture.partial_failed[0][1]
+    assert tr("orthanc.cache_quota_exceeded") in capture.partial_failed[0][1]
+    saved_files = list(cache.session_path(session_id).rglob("*.dcm"))
+    assert len(saved_files) == 1
+    assert saved_files[0].read_bytes() == payload
 
 
 def test_series_failed_when_download_fails(tmp_path: Path) -> None:

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.server_settings import save_server_settings
 from echo_personal_tool.infrastructure.user_preferences import (
     MAX_LINE_WIDTH,
@@ -62,10 +63,17 @@ def show_user_preferences_dialog(
     parent: QWidget | None = None,
     *,
     on_apply: Callable[[UserPreferences], None] | None = None,
+    orthanc_cache: OrthancSessionCache | None = None,
+    protected_cache_sessions: Callable[[], set[str]] | None = None,
 ) -> bool:
     from echo_personal_tool.presentation.ui_animations import exec_animated
 
-    dialog = UserPreferencesDialog(parent, on_apply=on_apply)
+    dialog = UserPreferencesDialog(
+        parent,
+        on_apply=on_apply,
+        orthanc_cache=orthanc_cache,
+        protected_cache_sessions=protected_cache_sessions,
+    )
     return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
 
@@ -102,9 +110,17 @@ class UserPreferencesDialog(QDialog):
         parent: QWidget | None = None,
         *,
         on_apply: Callable[[UserPreferences], None] | None = None,
+        orthanc_cache: OrthancSessionCache | None = None,
+        protected_cache_sessions: Callable[[], set[str]] | None = None,
     ) -> None:
         super().__init__(parent)
         self._on_apply = on_apply
+        if orthanc_cache is None:
+            from echo_personal_tool.infrastructure.profile import orthanc_cache_root
+
+            orthanc_cache = OrthancSessionCache(orthanc_cache_root())
+        self._orthanc_cache = orthanc_cache
+        self._protected_cache_sessions = protected_cache_sessions
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self._drag_pos = None
@@ -356,7 +372,27 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
 
-        # --- Other tab: confirm/pfd/startup + Gold + DICOM + References ---
+        # --- Managed DICOM download cache ---
+        cache_form = QFormLayout()
+        self._cache_location_label = QLabel(str(self._orthanc_cache.root))
+        self._cache_location_label.setWordWrap(True)
+        self._cache_location_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._cache_size_label = QLabel(self._format_cache_size(self._orthanc_cache.size_bytes()))
+        self._cache_quota_label = QLabel(self._format_cache_size(self._orthanc_cache.max_size_bytes))
+        self._cache_clear_button = QPushButton(tr("preferences.cache_clear"))
+        self._cache_clear_button.clicked.connect(self._clear_cache)
+        self._cache_clear_on_exit = QCheckBox(tr("preferences.cache_clear_on_exit"))
+        self._cache_clear_on_exit.setChecked(current.orthanc_cache_clear_on_exit)
+        self._cache_hint = QLabel(tr("preferences.cache_retention_hint"))
+        self._cache_hint.setWordWrap(True)
+        cache_form.addRow(tr("preferences.cache_location"), self._cache_location_label)
+        cache_form.addRow(tr("preferences.cache_size"), self._cache_size_label)
+        cache_form.addRow(tr("preferences.cache_quota"), self._cache_quota_label)
+        cache_form.addRow("", self._cache_clear_button)
+        cache_form.addRow("", self._cache_clear_on_exit)
+        cache_form.addRow(self._cache_hint)
+
+        # --- Other tab: confirm/pfd/startup + Gold + DICOM + Cache + References ---
         from echo_personal_tool.infrastructure.profile import (
             has_ai_segmentation,
             has_reference_ui,
@@ -366,6 +402,7 @@ class UserPreferencesDialog(QDialog):
             ("", other_form),
             (tr("preferences.block_gold"), gold_form),
             (tr("preferences.block_dicom"), dicom_form),
+            (tr("preferences.block_cache"), cache_form),
         ]
         if has_reference_ui():
             other_blocks.append((tr("preferences.block_references"), refs_form))
@@ -411,6 +448,70 @@ class UserPreferencesDialog(QDialog):
         layout.addWidget(tabs)
         layout.addLayout(reset_row)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _format_cache_size(size_bytes: int) -> str:
+        size = float(max(0, size_bytes))
+        for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+            if size < 1024.0 or unit == "TiB":
+                return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+            size /= 1024.0
+        return "0 B"
+
+    def _clear_cache(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            tr("preferences.cache_clear_title"),
+            tr("preferences.cache_clear_confirm"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            preserve = set(self._protected_cache_sessions() if self._protected_cache_sessions else ())
+        except Exception:  # noqa: BLE001
+            QMessageBox.warning(
+                self,
+                tr("preferences.cache_clear_title"),
+                tr("preferences.cache_clear_failed"),
+            )
+            return
+
+        before = self._orthanc_cache.size_bytes()
+        try:
+            removed = self._orthanc_cache.clear_all(preserve_session_ids=preserve)
+        except OSError:
+            QMessageBox.warning(
+                self,
+                tr("preferences.cache_clear_title"),
+                tr("preferences.cache_clear_failed"),
+            )
+            self._cache_size_label.setText(self._format_cache_size(self._orthanc_cache.size_bytes()))
+            return
+        after = self._orthanc_cache.size_bytes()
+        freed = max(0, before - after)
+        self._cache_size_label.setText(self._format_cache_size(after))
+        active_cache_remains = any(self._orthanc_cache.session_path(session_id).exists() for session_id in preserve)
+
+        if removed == 0 and after == 0:
+            message = tr("preferences.cache_clear_empty")
+        elif removed == 0 and after > 0 and not active_cache_remains:
+            message = tr("preferences.cache_clear_failed")
+        elif active_cache_remains:
+            message = tr(
+                "preferences.cache_clear_done_preserved",
+                sessions=str(removed),
+                size=self._format_cache_size(freed),
+            )
+        else:
+            message = tr(
+                "preferences.cache_clear_done",
+                sessions=str(removed),
+                size=self._format_cache_size(freed),
+            )
+        QMessageBox.information(self, tr("preferences.cache_clear_title"), message)
 
     def _reset_to_defaults(self) -> None:
         answer = QMessageBox.question(
@@ -491,6 +592,7 @@ class UserPreferencesDialog(QDialog):
             pdf_font_size=self._pdf_font_spin.value(),
             startup_mode=str(self._startup_mode.currentData()),
             last_opened_folder=stored.last_opened_folder,
+            orthanc_cache_clear_on_exit=self._cache_clear_on_exit.isChecked(),
             theme_mode=str(self._theme_combo.currentData()),
             language=str(self._language_combo.currentData()),
             reduce_motion=self._reduce_motion.isChecked(),
