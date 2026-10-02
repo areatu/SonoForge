@@ -12,7 +12,14 @@ from PySide6.QtWidgets import QApplication
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata
+from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.main_window import MainWindow
+
+
+@pytest.fixture(autouse=True)
+def _isolate_qsettings(isolated_qsettings):
+    """MainWindow persists preferences on rebuild — keep them out of the real store."""
+    return isolated_qsettings
 
 
 def _sample_instance(dicom_path: Path, *, pixel_spacing: tuple[float, float] | None) -> InstanceMetadata:
@@ -42,7 +49,7 @@ def test_manual_ed_shows_panel_and_overlay_without_pixel_spacing(qtbot, syntheti
         total_frames=10,
         frame_time_ms=33.3,
     )
-    window = MainWindow(controller=controller)
+    window = MainWindow(controller=controller, user_preferences=UserPreferences(language="ru"))
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)
@@ -65,7 +72,7 @@ def test_mbs_ed_updates_after_node_drag(qtbot, synthetic_dicom_path) -> None:
         total_frames=10,
         frame_time_ms=33.3,
     )
-    window = MainWindow(controller=controller)
+    window = MainWindow(controller=controller, user_preferences=UserPreferences(language="ru"))
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)
@@ -99,7 +106,7 @@ def test_overlay_restored_after_frame_change(qtbot, synthetic_dicom_path) -> Non
         total_frames=10,
         frame_time_ms=33.3,
     )
-    window = MainWindow(controller=controller)
+    window = MainWindow(controller=controller, user_preferences=UserPreferences(language="ru"))
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)

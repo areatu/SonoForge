@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 # Debug file logging
@@ -694,7 +694,9 @@ class MainWindow(QMainWindow):
             return LayoutConfig()
         try:
             cfg = LayoutConfig(**json.loads(raw))
-            return cfg
+            # Multiview is an explicit per-session mode (spec 4): never restore
+            # it at startup, whatever a previous run (or test) persisted here.
+            return replace(cfg, multiview=False)
         except (json.JSONDecodeError, TypeError, ValueError):
             return LayoutConfig()
 

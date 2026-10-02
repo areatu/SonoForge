@@ -10,6 +10,13 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
+
+@pytest.fixture(autouse=True)
+def _isolate_qsettings(isolated_qsettings):
+    """Layout rebuilds persist to QSettings — keep them out of the real store."""
+    return isolated_qsettings
+
+
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.models.metadata import InstanceMetadata
@@ -154,6 +161,18 @@ class TestLoadLayoutState:
         )
         cfg = window._load_layout_state()
         assert cfg == LayoutConfig()
+
+    def test_multiview_is_never_restored(self, qtbot) -> None:
+        window = self._make_window(qtbot)
+        window._user_preferences.layout_state_json = json.dumps(
+            {
+                "swap_places": True,
+                "multiview": True,
+            }
+        )
+        cfg = window._load_layout_state()
+        assert cfg.swap_places is True
+        assert cfg.multiview is False
 
 
 # ── MainWindow._has_chamber_contour ────────────────────────────────

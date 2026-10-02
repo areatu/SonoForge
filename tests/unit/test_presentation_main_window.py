@@ -23,6 +23,12 @@ def _setup_qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def _isolate_qsettings(isolated_qsettings):
+    """Layout rebuilds persist to QSettings — keep them out of the real store."""
+    return isolated_qsettings
+
+
 @pytest.fixture()
 def mock_controller():
     from echo_personal_tool.domain.models.viewer_state import ViewerState
