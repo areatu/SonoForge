@@ -38,6 +38,11 @@ def _viewer_in_content_tree(window: MainWindow) -> bool:
     splitter_idx = window._content_layout.indexOf(window._content_splitter)
     if splitter_idx >= 0 and window._content_splitter.indexOf(viewer) >= 0:
         return True
+    # Multiview: the main viewer lives inside its pane widget, which in turn
+    # sits in the content splitter.
+    pane = getattr(window, "_pane_left", None)
+    if pane is not None and window._content_splitter.indexOf(pane) >= 0 and pane.viewer is viewer:
+        return True
     return False
 
 
@@ -85,8 +90,15 @@ def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
     if cfg_kwargs.get("multiview"):
         assert window._viewer2 is not None
         assert window._viewer2.isVisible()
-        assert window._content_splitter.indexOf(window._viewer2) >= 0
+        # The second clip lives in its own pane widget inside the splitter.
+        pane_right = window._pane_right
+        assert pane_right is not None
+        assert window._content_splitter.indexOf(pane_right) >= 0
+        assert pane_right.viewer is window._viewer2
         assert window._content_layout.indexOf(window._tool_panel) >= 0
+        # Shared transport under the two panes; marker bars hidden by default.
+        assert window._multiview_transport is not None
+        assert window._multiview_transport.isVisible()
 
 
 def test_horizontal_gallery_toggle_does_not_destroy_gallery(qtbot) -> None:

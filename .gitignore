@@ -97,6 +97,10 @@ CHANGELOG_SESSION.md
 # Local dev helper for bare containers (stub GL/EGL/dbus libs for PySide6)
 tools/qtstub/lib/
 
+# Local offscreen test harness (stub Qt libs + pytest wrapper)
+.mvtest/
+.fulltest.log
+
 # Graphify output
 graphify-out/
 

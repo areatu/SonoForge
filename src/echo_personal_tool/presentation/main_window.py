@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
+from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import (
     format_results_overlay_html,
@@ -62,6 +63,9 @@ from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.mmode_widget import MModeWidget
+from echo_personal_tool.presentation.multiview_controller import MultiViewController
+from echo_personal_tool.presentation.multiview_pane import MultiViewPaneWidget
+from echo_personal_tool.presentation.multiview_transport import MultiViewTransportBar
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.report_dialog import ReportDialog
@@ -159,10 +163,11 @@ class MainWindow(QMainWindow):
         self._layout_config = self._load_layout_state()
         self._bottom_container: QWidget | None = None
         self._viewer2: ViewerWidget | None = None
-        self._viewer2_instance: InstanceMetadata | None = None
-        self._viewer2_frame_index: int = 0
-        self._viewer2_playing: bool = False
-        self._viewer2_total_frames: int = 0
+        self._pane_left: MultiViewPaneWidget | None = None
+        self._pane_right: MultiViewPaneWidget | None = None
+        self._multiview_transport: MultiViewTransportBar | None = None
+        #: Pane armed by "Replace clip": the next gallery click lands there.
+        self._multiview_pending_pane: PaneId | None = None
         self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
         self._user_maximized = False
@@ -173,6 +178,9 @@ class MainWindow(QMainWindow):
         self._mmode_collapse_anim = None
 
         self._controller = controller or AppController()
+        # Multiview session (two clips of one study). Created before the first
+        # _rebuild_layout() so the panes exist when the layout asks for them.
+        self._multiview = MultiViewController(self._controller, self)
         # Presenter mode (PowerPoint-style presenter view on a second display)
         self._presenter = PresenterMode(self)
         self._fullscreen_chrome_timer: QTimer | None = None
@@ -192,6 +200,11 @@ class MainWindow(QMainWindow):
         self._controller.frame_load_failed.connect(self._on_frame_load_failed)
         self._controller.scroll_settled.connect(self._on_scroll_settled)
         self._controller.status_message.connect(self._show_status)
+        self._multiview.status_message.connect(self._show_status)
+        self._multiview.warning_requested.connect(self._on_multiview_warning)
+        self._multiview.replace_requested.connect(self._on_multiview_replace_requested)
+        self._multiview.session_changed.connect(self._refresh_multiview_transport)
+        self._multiview.left_pane_released.connect(self._on_multiview_left_released)
         apply_clinical_theme(
             font_size=self._user_preferences.ui_font_size,
             theme=self._user_preferences.theme_mode,
@@ -208,6 +221,8 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.infrastructure.profile import has_reference_ui
 
         self._system_bar.set_references_visible(has_reference_ui())
+        self._system_bar.multiview_toggle_requested.connect(self._on_multiview_button)
+        self._system_bar.set_multiview_checked(self._layout_config.multiview)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
         self._root_layout.addWidget(self._system_bar)
@@ -223,6 +238,7 @@ class MainWindow(QMainWindow):
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
         self._gallery.instance_selected.connect(self._on_instance_selected)
         self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
+        self._gallery.open_in_pane_requested.connect(self._on_open_in_pane_requested)
 
         self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._content_splitter.setHandleWidth(2)
@@ -270,7 +286,6 @@ class MainWindow(QMainWindow):
         self._viewer.context_properties_requested.connect(self._show_properties_tab)
         self._viewer.context_reset_requested.connect(self._on_reset_measurements_requested)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
-        self._controller.state_manager.state_changed.connect(self._on_state_changed_for_viewer2)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
 
@@ -353,6 +368,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _start_manual_contour_shortcut(self) -> None:
+        if self._multiview_tool_blocked("manual_contour"):
+            return
         if self._viewer.start_contour():
             self._show_status(tr("status.manual_contour"))
         else:
@@ -360,6 +377,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _start_model_contour_shortcut(self) -> None:
+        if self._multiview_tool_blocked("model_contour"):
+            return
         start_mode = self._viewer.start_model_contour()
         if start_mode:
             self._viewer.clear_frame_overlay()
@@ -370,6 +389,8 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _request_auto_segment_shortcut(self) -> None:
+        if self._multiview_tool_blocked("lv_auto"):
+            return
         if self._viewer.get_doppler_tool_mode() != "none":
             return
         if not self._controller.is_lv_auto_session_active():
@@ -705,6 +726,202 @@ class MainWindow(QMainWindow):
 
         self._layout_config = replace(self._layout_config, **{attr: checked})
         self._rebuild_layout()
+        self._system_bar.set_multiview_checked(self._layout_config.multiview)
+
+    def _on_multiview_button(self) -> None:
+        """Toolbar button: the single entry point of the Multiview mode.
+
+        The layout-menu checkbox calls the same handler, so both entry points
+        stay in sync (spec 4.1).
+        """
+        from dataclasses import replace
+
+        self._layout_config = replace(self._layout_config, multiview=not self._layout_config.multiview)
+        self._rebuild_layout()
+        self._system_bar.set_multiview_checked(self._layout_config.multiview)
+
+    # ── Multiview session ───────────────────────────────────────────
+
+    def _multiview_enabled(self) -> bool:
+        return self._layout_config.multiview
+
+    def _ensure_multiview_transport(self) -> None:
+        """Place the shared transport bar under the two cine panes."""
+        if self._multiview_transport is None:
+            transport = MultiViewTransportBar()
+            transport.mode_changed.connect(self._multiview.set_mode)
+            transport.play_pause_clicked.connect(self._multiview.toggle_play)
+            transport.stop_clicked.connect(self._multiview.stop)
+            transport.rate_changed.connect(self._multiview.set_rate)
+            transport.cycle_count_changed.connect(self._multiview.set_cycle_count)
+            transport.unlink_clicked.connect(lambda: self._multiview.set_mode(PlaybackMode.INDEPENDENT))
+            self._multiview_transport = transport
+        transport = self._multiview_transport
+        transport.refresh_mode(self._multiview.session.playback_mode)
+        transport.set_rate(self._multiview.session.global_rate)
+        transport.set_cycle_count(self._multiview.session.selected_cycle_count)
+        if self._root_layout.indexOf(transport) < 0:
+            status_index = self._root_layout.indexOf(self.statusBar())
+            if status_index >= 0:
+                self._root_layout.insertWidget(status_index, transport)
+            else:
+                self._root_layout.addWidget(transport)
+        transport.show()
+        self._refresh_multiview_transport()
+
+    def _teardown_multiview(self) -> None:
+        """Leave Multiview: hide the panes, hand the main viewer back.
+
+        The session itself survives so re-enabling the mode restores the second
+        clip, its frame and its markers (spec 4.3).
+        """
+        if self._multiview_enabled():
+            return
+        self._multiview.pause()
+        transport = self._multiview_transport
+        if transport is not None and self._root_layout.indexOf(transport) >= 0:
+            self._root_layout.removeWidget(transport)
+            transport.hide()
+        for pane_id in (PaneId.LEFT, PaneId.RIGHT):
+            pane = self._pane_left if pane_id is PaneId.LEFT else self._pane_right
+            if pane is None:
+                continue
+            if pane_id is PaneId.LEFT:
+                # The main viewer returns to the content area on its own.
+                self._viewer.setParent(self._content_widget)
+            pane.hide()
+            pane.setParent(self._content_widget)
+
+    def _ensure_multiview_panes(self) -> None:
+        """Create the pane wrappers (idempotent)."""
+        if self._pane_left is None:
+            self._pane_left = MultiViewPaneWidget(PaneId.LEFT, self._viewer, self)
+            self._multiview.attach_pane(PaneId.LEFT, self._pane_left)
+            self._wire_pane(self._pane_left, owned_by_main=True)
+        if self._viewer2 is None:
+            self._ensure_viewer2()
+        self._sync_left_pane_from_controller()
+        self._multiview.refresh()
+
+    def _sync_left_pane_from_controller(self) -> None:
+        """Adopt the clip the main viewer currently shows into the left pane.
+
+        The left pane is the main viewer, so Multiview never loads a clip into
+        it on its own: it mirrors whatever ``AppController`` already opened.
+        """
+        state = self._controller.state_manager.snapshot
+        instance = state.instance
+        if instance is None:
+            return
+        pane = self._multiview.session.pane(PaneId.LEFT)
+        if pane.instance is not None and pane.instance.sop_instance_uid == instance.sop_instance_uid:
+            return
+        pane.instance = instance
+        pane.study_uid = self._multiview_study_uid(instance)
+        pane.current_frame = state.current_frame_index
+        pane.load_error = None
+        pane.generation += 1
+        pane.clear_markers()
+        self._multiview.session.common_start[PaneId.LEFT] = pane.current_frame
+        if self._multiview.session.active_pane is None:
+            self._multiview.activate(PaneId.LEFT)
+
+    def _wire_pane(self, pane: MultiViewPaneWidget, *, owned_by_main: bool) -> None:
+        """Connect one pane to the Multiview controller.
+
+        The left pane wraps the application's main viewer, which keeps its own
+        controller wiring; only the right pane is fully owned by Multiview.
+        """
+        pane_id = pane.pane_id
+        pane.activated.connect(self._on_pane_activated)
+        pane.replace_requested.connect(self._multiview.request_replace)
+        pane.pane_cleared.connect(self._on_pane_cleared)
+        pane.marker_place_requested.connect(self._multiview.place_marker)
+        pane.marker_remove_requested.connect(self._multiview.remove_marker)
+        pane.marker_rename_requested.connect(self._multiview.rename_marker)
+        pane.markers_cleared.connect(self._multiview.clear_markers)
+        pane.all_markers_cleared.connect(self._multiview.clear_all_markers)
+        pane.marker_seek_requested.connect(self._multiview.seek_marker)
+        pane.view_label_changed.connect(lambda _pane_id, _label: None)
+        if owned_by_main:
+            return
+        viewer = pane.viewer
+        viewer.play_pause_requested.connect(lambda: self._multiview.toggle_play(pane_id))
+        viewer.frame_selected.connect(lambda index: self._on_pane_frame_selected(pane_id, index))
+        viewer.scroll_frame_selected.connect(lambda index: self._multiview.scroll_by(pane_id, index))
+
+    def _multiview_tool_blocked(self, tool_name: str) -> bool:
+        """Stage 1 of Multiview is view-only.
+
+        Measurements, contours, Doppler tools and LV-auto need a pane-scoped
+        state model that does not exist yet, so they are refused with an
+        explanation instead of silently running on the hidden main viewer
+        (spec §10.2).  Returns True when the caller must stop.
+        """
+        if not self._multiview_enabled():
+            return False
+        self._show_status(tr("multiview.blocked.tools"))
+        logger.info("[multiview] tool %s refused: pane-scoped state not ready", tool_name)
+        return True
+
+    def _on_pane_activated(self, pane_id: PaneId) -> None:
+        self._multiview.activate(pane_id)
+        if pane_id is PaneId.RIGHT and self._viewer2 is not None:
+            self._active_viewer = self._viewer2
+
+    def _on_pane_cleared(self, pane_id: PaneId) -> None:
+        self._multiview.clear_pane(pane_id)
+
+    def _on_pane_frame_selected(self, pane_id: PaneId, index: int) -> None:
+        if self._multiview.session.playback_mode is PlaybackMode.INDEPENDENT:
+            self._multiview.set_frame(pane_id, index)
+            return
+        # Synchronised modes: manual positioning moves the shared playhead.
+        self._multiview.seek_marker(pane_id, index)
+
+    def _on_multiview_replace_requested(self, pane_id: PaneId) -> None:
+        """Arm the pane and ask the user to pick a clip in the gallery."""
+        self._multiview_pending_pane = pane_id
+        pane = self._pane_left if pane_id is PaneId.LEFT else self._pane_right
+        label = "A" if pane_id is PaneId.LEFT else "B"
+        self._show_status(tr("multiview.replace.hint", pane=label))
+        if pane is not None:
+            pane.set_active(True)
+
+    def _on_multiview_warning(self, title: str, body: str) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        answer = QMessageBox.question(
+            self,
+            title,
+            body,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.No:
+            self._multiview.pause()
+            self._show_status(tr("multiview.status.independent"))
+
+    def _on_multiview_left_released(self, frame_index: int) -> None:
+        """Hand the main viewer back to AppController at a given frame."""
+        if frame_index > 0:
+            self._controller.state_manager.set_frame(frame_index)
+        self._refresh_multiview_transport()
+
+    def _refresh_multiview_transport(self) -> None:
+        transport = self._multiview_transport
+        if transport is None:
+            return
+        transport.refresh_mode(self._multiview.session.playback_mode)
+        transport.set_playing(self._multiview.session.is_playing)
+        transport.set_status(self._multiview.status_text())
+        left_rate, right_rate = self._multiview.pane_rate_texts()
+        transport.set_pane_rates(left_rate, right_rate)
+        for pane in (self._pane_left, self._pane_right):
+            if pane is not None:
+                pane.set_marker_bar_visible(
+                    self._multiview_enabled() and self._multiview.session.playback_mode is PlaybackMode.EVENT_CYCLE
+                )
 
     def _release_content_layout(self) -> None:
         """Remove widgets from the horizontal content row without destroying them."""
@@ -743,8 +960,11 @@ class MainWindow(QMainWindow):
         right: QWidget | None,
     ) -> None:
         self._viewer.show()
-        if cfg.multiview and self._viewer2 is not None:
-            self._viewer2.show()
+        if cfg.multiview:
+            if self._pane_left is not None:
+                self._pane_left.show()
+            if self._pane_right is not None:
+                self._pane_right.show()
 
         if cfg.gallery_horizontal:
             if self._bottom_container is not None:
@@ -766,8 +986,10 @@ class MainWindow(QMainWindow):
 
     def _rebuild_layout(self) -> None:
         cfg = self._layout_config
+        self._gallery.set_multiview_enabled(cfg.multiview)
         self._content_widget.setUpdatesEnabled(False)
         try:
+            self._teardown_multiview()
             self._release_content_layout()
             self._teardown_bottom_gallery()
             self._clear_splitter(self._content_splitter)
@@ -780,13 +1002,15 @@ class MainWindow(QMainWindow):
             )
 
             if cfg.multiview:
-                self._ensure_viewer2()
-                self._content_splitter.addWidget(self._viewer)
-                self._content_splitter.addWidget(self._viewer2)
+                self._ensure_multiview_panes()
+                assert self._pane_left is not None and self._pane_right is not None
+                self._content_splitter.addWidget(self._pane_left)
+                self._content_splitter.addWidget(self._pane_right)
                 self._content_splitter.setHandleWidth(2)
                 self._content_splitter.blockSignals(True)
                 self._content_splitter.setSizes([800, 800])
                 self._content_splitter.blockSignals(False)
+                self._ensure_multiview_transport()
                 center: QWidget = self._content_splitter
             elif use_splitter:
                 # M-mode: wrap viewer + MModeWidget in vertical splitter
@@ -886,25 +1110,25 @@ class MainWindow(QMainWindow):
         return None
 
     def _ensure_viewer2(self) -> None:
+        """Create the right pane of the Multiview layout (idempotent)."""
         if self._viewer2 is not None:
             try:
                 _ = self._viewer2.width()
                 return
             except RuntimeError:
                 self._viewer2 = None
-        self._viewer2 = ViewerWidget()
-        self._viewer2.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
-        self._viewer2.installEventFilter(self)
-        self._viewer2._graphics.installEventFilter(self)
-        self._viewer2._view.installEventFilter(self)
-        self._viewer2.play_pause_requested.connect(self._toggle_viewer2_playback)
-        self._viewer2.frame_selected.connect(self._on_viewer2_frame_selected)
-        self._viewer2.scroll_frame_selected.connect(self._on_viewer2_frame_selected)
-        self._viewer2.contour_completed.connect(self._on_contour_completed)
-        self._viewer2.contours_changed.connect(self._controller.on_contours_changed)
-        self._viewer2.contours_changed.connect(self._presenter.forward_contours)
-        # Sync viewer2 state from controller's current instance
-        self._sync_viewer2_state()
+        viewer = ViewerWidget()
+        viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
+        viewer.installEventFilter(self)
+        viewer._graphics.installEventFilter(self)
+        viewer._view.installEventFilter(self)
+        # Stage 1 of Multiview is view-only: annotations stay pane-local and are
+        # never forwarded to the main controller (spec 10.2).
+        self._viewer2 = viewer
+        pane = MultiViewPaneWidget(PaneId.RIGHT, viewer, self)
+        self._pane_right = pane
+        self._multiview.attach_pane(PaneId.RIGHT, pane)
+        self._wire_pane(pane, owned_by_main=False)
 
     def _detach_viewer2(self) -> None:
         if self._viewer2 is None:
@@ -1407,7 +1631,7 @@ class MainWindow(QMainWindow):
             self._presenter.stop()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
-        self._stop_viewer2_playback()
+        self._multiview.shutdown()
         self._viewer.disconnect_display_controls()
         # Wait briefly for pending workers to finish so signals don't fire
         # on destroyed C++ objects.  2s cap avoids hanging on stuck tasks.
@@ -1419,6 +1643,9 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_studies_loaded(self, studies: object) -> None:
+        # A new study/patient invalidates every Multiview pane: never mix clips
+        # of two studies in the same pair (spec 4.3).
+        self._multiview.reset_session()
         study_list = list(studies)  # type: ignore[arg-type]
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
@@ -1439,6 +1666,89 @@ class MainWindow(QMainWindow):
         )
         self._gallery.request_visible_previews()
 
+    # ── gallery → pane routing (spec §6) ────────────────────────────
+
+    def _on_open_in_pane_requested(self, instance: object, side: str) -> None:
+        """Context menu «Открыть слева» / «Открыть справа»."""
+        if not isinstance(instance, InstanceMetadata):
+            return
+        pane_id = PaneId.LEFT if side == "left" else PaneId.RIGHT
+        if pane_id is PaneId.LEFT:
+            # The left pane is the main viewer: reuse the controller path.
+            self._multiview.activate(PaneId.LEFT)
+            self._on_instance_selected(instance)
+            return
+        if not self._multiview_enabled():
+            from dataclasses import replace
+
+            self._layout_config = replace(self._layout_config, multiview=True)
+            self._rebuild_layout()
+            self._system_bar.set_multiview_checked(True)
+        if self._multiview_load_into_pane(PaneId.RIGHT, instance):
+            self._multiview.activate(PaneId.RIGHT)
+            self._active_viewer = self._viewer2
+
+    def _multiview_study_uid(self, instance: InstanceMetadata) -> str | None:
+        try:
+            return self._controller.resolve_study_uid(instance)
+        except Exception:  # noqa: BLE001 - unknown study must not break loading
+            logger.debug("[multiview] study uid unresolved", exc_info=True)
+            return None
+
+    def _multiview_route_gallery_click(self, selected: InstanceMetadata) -> bool:
+        """Return True when Multiview consumed the gallery click.
+
+        * plain click → the active pane; the left pane is the main viewer, so
+          such a click stays on the ``AppController`` path;
+        * Ctrl+click → the right pane, enabling Multiview first (spec §6.1);
+        * a pane armed by «Заменить клип» receives the next click.
+        """
+        modifiers = QApplication.keyboardModifiers()
+        ctrl = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        armed = self._multiview_pending_pane
+        self._multiview_pending_pane = None
+        if ctrl:
+            target = PaneId.RIGHT
+        elif armed is not None:
+            target = armed
+        else:
+            target = self._multiview.session.active_pane or PaneId.LEFT
+        if target is PaneId.LEFT and not ctrl:
+            self._multiview.activate(PaneId.LEFT)
+            return False
+        if not self._multiview_enabled():
+            from dataclasses import replace
+
+            self._layout_config = replace(self._layout_config, multiview=True)
+            self._rebuild_layout()
+            self._system_bar.set_multiview_checked(True)
+        if not self._multiview_load_into_pane(PaneId.RIGHT, selected):
+            return True
+        self._multiview.activate(PaneId.RIGHT)
+        self._active_viewer = self._viewer2
+        return True
+
+    def _multiview_load_into_pane(self, pane_id: PaneId, instance: InstanceMetadata) -> bool:
+        """Load a clip into one pane after the study/duplicate guards."""
+        session = self._multiview.session
+        target_pane = session.pane(pane_id)
+        other_id = session.other(pane_id)
+        other_pane = session.pane(other_id)
+        if other_pane.instance is not None and other_pane.instance_uid == instance.sop_instance_uid:
+            self._show_status(tr("multiview.duplicate", pane="A" if other_id is PaneId.LEFT else "B"))
+            self._multiview.activate(other_id)
+            return False
+        study_uid = self._multiview_study_uid(instance)
+        if other_pane.instance is not None and other_pane.study_uid and study_uid and other_pane.study_uid != study_uid:
+            name = instance.path.name if instance.path is not None else instance.sop_instance_uid
+            self._show_status(tr("multiview.study.mismatch", name=name))
+            return False
+        if target_pane.instance is not None and target_pane.instance_uid == instance.sop_instance_uid:
+            self._multiview.activate(pane_id)
+            return False
+        self._multiview.load_instance(pane_id, instance, study_uid)
+        return True
+
     def _on_scan_failed(self, message: str) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
@@ -1447,15 +1757,10 @@ class MainWindow(QMainWindow):
     def _on_instance_selected(self, selected: object) -> None:
         if not isinstance(selected, InstanceMetadata):
             return
-        modifiers = QApplication.keyboardModifiers()
-        if modifiers & Qt.KeyboardModifier.ControlModifier:
-            if not self._layout_config.multiview:
-                from dataclasses import replace
-
-                self._layout_config = replace(self._layout_config, multiview=True)
-                self._rebuild_layout()
-            self._load_instance_into_viewer2(selected)
-            return
+        if self._multiview_enabled():
+            handled = self._multiview_route_gallery_click(selected)
+            if handled:
+                return
         self._click_to_frame_started_at = perf_counter()
         previous = self._controller.state_manager.snapshot.instance
         if previous is not None:
@@ -1515,119 +1820,6 @@ class MainWindow(QMainWindow):
             self._manual_ed_frame = None
             self._manual_es_frame = None
         self._controller.load_instance(selected)
-
-    def _load_instance_into_viewer2(self, instance: InstanceMetadata) -> None:
-        self._ensure_viewer2()
-        if instance.path is None:
-            return
-        self._viewer2_instance = instance
-        self._viewer2_frame_index = 0
-        self._load_viewer2_frame(0)
-
-    def _load_viewer2_frame(self, frame_index: int) -> None:
-        if self._viewer2 is None or self._viewer2_instance is None:
-            return
-        instance = self._viewer2_instance
-        cache = self._controller._frame_cache
-        if cache is not None and cache.is_ready(instance.path):
-            try:
-                pixels = cache.get(frame_index)
-                self._on_viewer2_frame_loaded(np.asarray(pixels), instance)
-                return
-            except (RuntimeError, IndexError):
-                pass
-        from echo_personal_tool.application.workers.frame_loader_worker import FrameLoaderWorker
-
-        worker = FrameLoaderWorker(
-            instance.path,
-            frame_index,
-            instance.media_format,
-            total_frames=instance.number_of_frames,
-        )
-        worker.signals.finished.connect(
-            lambda pixels, inst=instance: (
-                self._on_viewer2_frame_loaded(pixels, inst) if self._viewer2 is not None else None
-            ),
-            Qt.ConnectionType.QueuedConnection,
-        )
-
-        worker.signals.failed.connect(
-            lambda msg: self._show_status(f"viewer2 load failed: {msg}") if self._viewer2 is not None else None,
-            Qt.ConnectionType.QueuedConnection,
-        )
-
-        QThreadPool.globalInstance().start(worker)
-
-    def _on_viewer2_frame_selected(self, frame_index: int) -> None:
-        self._viewer2_frame_index = frame_index
-        self._load_viewer2_frame(frame_index)
-
-    def _on_viewer2_frame_loaded(self, pixels: object, instance: InstanceMetadata) -> None:
-        if self._viewer2 is None:
-            return
-        image = np.asarray(pixels)
-        self._viewer2.show_frame(image)
-
-    def _toggle_viewer2_playback(self) -> None:
-        """Toggle playback for viewer2 independently."""
-        if self._viewer2_instance is None or self._viewer2 is None:
-            return
-        self._viewer2_playing = not self._viewer2_playing
-        if self._viewer2_playing:
-            self._start_viewer2_playback()
-        else:
-            self._stop_viewer2_playback()
-
-    def _start_viewer2_playback(self) -> None:
-        """Start playback timer for viewer2."""
-        if not self._viewer2_playing or self._viewer2_instance is None:
-            return
-        instance = self._viewer2_instance
-        total = instance.number_of_frames or 1
-        self._viewer2_total_frames = total
-        frame_time_ms = instance.frame_time_ms or 33.3
-        self._viewer2_timer = QTimer(self)
-        self._viewer2_timer.setInterval(int(frame_time_ms))
-        self._viewer2_timer.timeout.connect(self._viewer2_tick)
-        self._viewer2_timer.start()
-
-    def _stop_viewer2_playback(self) -> None:
-        """Stop playback timer for viewer2."""
-        if hasattr(self, "_viewer2_timer") and self._viewer2_timer is not None:
-            self._viewer2_timer.stop()
-            self._viewer2_timer = None
-
-    def _viewer2_tick(self) -> None:
-        """Advance viewer2 by one frame during playback."""
-        if not self._viewer2_playing or self._viewer2_instance is None:
-            self._stop_viewer2_playback()
-            return
-        self._viewer2_frame_index += 1
-        if self._viewer2_frame_index >= self._viewer2_total_frames:
-            self._viewer2_frame_index = 0
-        self._load_viewer2_frame(self._viewer2_frame_index)
-
-    def _sync_viewer2_state(self) -> None:
-        """Sync viewer2 display with controller's current instance."""
-        if self._viewer2 is None:
-            return
-        state = self._controller.state_manager.snapshot
-        if state.instance is not None:
-            # Show same instance in viewer2 if not already loaded
-            if self._viewer2_instance != state.instance:
-                self._load_instance_into_viewer2(state.instance)
-        elif self._viewer2_instance is not None:
-            self._viewer2_instance = None
-            self._viewer2_playing = False
-            self._stop_viewer2_playback()
-
-    def _on_state_changed_for_viewer2(self, state: ViewerState) -> None:
-        """Sync viewer2 when main viewer changes instance."""
-        if self._viewer2 is None:
-            return
-        # If main viewer changed instance, sync viewer2 to show same instance
-        if state.instance is not None and self._viewer2_instance != state.instance:
-            self._load_instance_into_viewer2(state.instance)
 
     @_prof
     def _on_frame_loaded(self, pixels: object) -> None:
@@ -1689,6 +1881,14 @@ class MainWindow(QMainWindow):
                 self._show_status(tr("status.calibration_click"))
 
     def _on_slider_frame_selected(self, index: int) -> None:
+        if (
+            self._multiview_enabled()
+            and self._multiview.session.playback_mode is not PlaybackMode.INDEPENDENT
+            and self._multiview.session.is_playing
+        ):
+            # Manual positioning in a synchronised mode moves the shared playhead.
+            self._multiview.seek_marker(PaneId.LEFT, index)
+            return
         self._slider_navigating = True
         self._controller.state_manager.set_frame(index)
 
@@ -1749,6 +1949,9 @@ class MainWindow(QMainWindow):
         if instance_changed:
             self._refresh_dicom_inspector()
         self._update_properties_panel(state)
+        if self._multiview_enabled():
+            self._sync_left_pane_from_controller()
+            self._multiview.on_main_frame_changed(state.current_frame_index)
 
     def _update_properties_panel(self, state: ViewerState) -> None:
         """Update the properties panel with current instance info."""
@@ -2079,6 +2282,8 @@ class MainWindow(QMainWindow):
     ) -> None:
         if not isinstance(action, MeasurementAction):
             return
+        if self._multiview_tool_blocked(f"measure:{action}"):
+            return
         if action in {MeasurementAction.MANUAL_SIMPSON, MeasurementAction.MBS_SIMPSON}:
             self._controller.set_simpson_workflow_context(
                 phase=phase,
@@ -2260,6 +2465,8 @@ class MainWindow(QMainWindow):
         self._wire_ui()
 
     def _on_caliper_requested(self, label: str | None = None) -> None:
+        if self._multiview_tool_blocked("caliper"):
+            return
         if label:
             if self._viewer.start_linear_caliper_for(label):
                 self._show_status(tr("status.linear_caliper_tool", label=label))
@@ -2380,6 +2587,8 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.measurements_reset"))
 
     def _on_calibration_requested(self) -> None:
+        if self._multiview_tool_blocked("calibration"):
+            return
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
             return
@@ -2390,6 +2599,8 @@ class MainWindow(QMainWindow):
             self._show_status(tr("status.calibration_cancelled"))
 
     def _on_heart_rate_requested(self) -> None:
+        if self._multiview_tool_blocked("heart_rate"):
+            return
         snapshot = self._controller.state_manager.snapshot
         if snapshot.instance is None:
             self._show_status("Load a cine first")
@@ -2696,6 +2907,8 @@ class MainWindow(QMainWindow):
         return mapping.get(preset_name, preset_name)
 
     def _on_doppler_calibration_requested(self) -> None:
+        if self._multiview_tool_blocked("doppler_calibration"):
+            return
         if self._viewer._current_frame is None:
             self._show_status("Load a frame first")
             return
@@ -2742,6 +2955,8 @@ class MainWindow(QMainWindow):
         del view, phase
 
     def _on_lv2d_all_diastole(self) -> None:
+        if self._multiview_tool_blocked("lv2d"):
+            return
         self._tool_panel.measure.clear_action_highlight()
         if self._viewer.start_linear_caliper_sequence(("IVSd", "LVEDD", "LVPWd")):
             self._viewer.clear_frame_overlay()
@@ -2755,6 +2970,8 @@ class MainWindow(QMainWindow):
         self._show_status(tr("status.lv_diastole_done"))
 
     def _on_lv2d_es(self) -> None:
+        if self._multiview_tool_blocked("lv2d_es"):
+            return
         if self._viewer.start_linear_caliper_for("LVESD"):
             self._show_status(tr("status.lv_systole_place"))
         else:
@@ -3076,10 +3293,39 @@ class MainWindow(QMainWindow):
             return
         super().keyPressEvent(event)
 
+    #: Hotkeys that start a measurement/contour tool. Multiview stage 1 refuses
+    #: them instead of silently drawing on the hidden main viewer (spec 10.2).
+    _MULTIVIEW_TOOL_KEYS = frozenset(
+        {
+            Qt.Key.Key_L,
+            Qt.Key.Key_C,
+            Qt.Key.Key_M,
+            Qt.Key.Key_K,
+            Qt.Key.Key_T,
+            Qt.Key.Key_V,
+            Qt.Key.Key_R,
+            Qt.Key.Key_G,
+            Qt.Key.Key_I,
+            Qt.Key.Key_BracketLeft,
+            Qt.Key.Key_BracketRight,
+            Qt.Key.Key_Delete,
+            Qt.Key.Key_Backspace,
+        }
+    )
+
     def _handle_key_press(self, event: QKeyEvent) -> bool:
         v = self._active_viewer or self._viewer
+        if self._multiview_enabled() and event.key() in self._MULTIVIEW_TOOL_KEYS:
+            self._multiview_tool_blocked("hotkey")
+            event.accept()
+            return True
         if event.key() == Qt.Key.Key_Space:
             if self._controller.state_manager.snapshot.decode_in_progress:
+                event.accept()
+                return True
+            if self._multiview_enabled() and self._multiview.session.playback_mode is not PlaybackMode.INDEPENDENT:
+                # Space drives the shared playback, never one clip only.
+                self._multiview.toggle_play(self._multiview.session.active_pane)
                 event.accept()
                 return True
             self._controller.toggle_playback()

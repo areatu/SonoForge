@@ -17,6 +17,11 @@ from echo_personal_tool.domain.models import InstanceMetadata
 from echo_personal_tool.presentation.main_window import MainWindow
 
 
+@pytest.fixture(autouse=True)
+def _isolated_qsettings(isolated_qsettings):
+    """Hotkeys depend on the layout flags, so never touch the real prefs store."""
+
+
 def _sample_instance(dicom_path: Path) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid="1.2.3.4.5",
