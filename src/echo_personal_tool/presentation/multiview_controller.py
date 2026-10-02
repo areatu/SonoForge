@@ -77,6 +77,12 @@ class MultiViewController(QObject):
         self._clock_origin_ms = 0.0
         self._hold_until_ms: float | None = None
         self._warned_retiming = False
+        #: Independent playback of the right pane: its own clock (spec §8.1).
+        self._indep_timer = QTimer(self)
+        self._indep_timer.setInterval(_CLOCK_INTERVAL_MS)
+        self._indep_timer.timeout.connect(self._on_indep_tick)
+        self._indep_origin_ms = 0.0
+        self._indep_start_frame = 0
 
     # ── wiring ──────────────────────────────────────────────────────
 
@@ -89,6 +95,7 @@ class MultiViewController(QObject):
     def shutdown(self) -> None:
         """Stop the clock and drop pane references (window teardown)."""
         self._clock_timer.stop()
+        self._indep_timer.stop()
         self._panes.clear()
 
     # ── helpers ─────────────────────────────────────────────────────
@@ -207,6 +214,10 @@ class MultiViewController(QObject):
             self.session.common_start[pane_id] = frame_index
             self._plan_window()
         pane.current_frame = frame_index
+        if mode is PlaybackMode.INDEPENDENT and pane_id is PaneId.RIGHT and pane.playing:
+            # Keep independent playback running from the frame the user chose.
+            self._indep_origin_ms = self._now_ms()
+            self._indep_start_frame = frame_index
         if pane_id is PaneId.LEFT and not self._owns_left:
             self._release_left(frame_index)
             self._refresh_ui()
@@ -337,21 +348,72 @@ class MultiViewController(QObject):
             return
         self.session.is_playing = False
         self._clock_timer.stop()
+        self._indep_timer.stop()
         self._hold_until_ms = None
+        for pane_id in (PaneId.LEFT, PaneId.RIGHT):
+            self.session.pane(pane_id).playing = False
         self._refresh_ui()
 
     def toggle_play(self, pane_id: PaneId | None = None) -> None:
-        """Any pane's Play/Pause drives the shared playback in sync modes."""
+        """Any pane's Play/Pause drives the shared playback in sync modes.
+
+        In ``INDEPENDENT`` each pane keeps its own playback: the left pane is
+        owned by ``AppController``, the right pane by this controller, and a
+        missing ``pane_id`` resolves to the active pane (spec §8.1).
+        """
         if self.session.playback_mode is PlaybackMode.INDEPENDENT:
-            if pane_id is None:
-                return
-            if pane_id is PaneId.LEFT:
+            target = pane_id if pane_id is not None else (self.session.active_pane or PaneId.LEFT)
+            if target is PaneId.LEFT:
                 self._controller.toggle_playback()
+                self._refresh_ui()
+                return
+            self._toggle_independent_pane()
             return
         if self.session.is_playing:
             self.pause()
         else:
             self.play()
+
+    def _toggle_independent_pane(self) -> None:
+        """Start/stop the right pane's own playback clock (spec §8.1)."""
+        pane = self.session.pane(PaneId.RIGHT)
+        if not pane.has_clip:
+            return
+        if pane.playing:
+            pane.playing = False
+            self.session.is_playing = False
+            self._indep_timer.stop()
+        else:
+            instance = pane.instance
+            frame_time_ms = instance.frame_time_ms if instance is not None else None
+            if not frame_time_ms or frame_time_ms <= 0 or pane.total_frames <= 1:
+                return
+            pane.playing = True
+            self.session.is_playing = True
+            self._indep_origin_ms = self._now_ms()
+            self._indep_start_frame = pane.current_frame
+            self._indep_timer.start()
+        self._refresh_ui()
+
+    def _on_indep_tick(self) -> None:
+        """Advance the right pane's frame index and wrap around the clip."""
+        pane = self.session.pane(PaneId.RIGHT)
+        instance = pane.instance
+        if not pane.playing or instance is None:
+            self._indep_timer.stop()
+            return
+        frame_time_ms = instance.frame_time_ms or 0.0
+        total = pane.total_frames
+        if frame_time_ms <= 0 or total <= 1:
+            self.pause()
+            return
+        elapsed_ms = max(0.0, self._now_ms() - self._indep_origin_ms)
+        offset = int(elapsed_ms / frame_time_ms)
+        frame_index = (self._indep_start_frame + offset) % total
+        if frame_index == pane.current_frame:
+            return
+        pane.current_frame = frame_index
+        self._request_pane_frame(PaneId.RIGHT)
 
     def stop(self) -> None:
         """Return both clips to the start position of the current mode."""
@@ -381,6 +443,28 @@ class MultiViewController(QObject):
         left = self.session.pane(PaneId.LEFT)
         right = self.session.pane(PaneId.RIGHT)
         return left.has_clip and right.has_clip
+
+    def pane_is_playing(self, pane_id: PaneId) -> bool:
+        """State a pane's own Play/Pause button should show (spec §8.1)."""
+        if self.session.playback_mode is not PlaybackMode.INDEPENDENT:
+            return self.session.is_playing
+        if pane_id is PaneId.LEFT:
+            return self._left_native_playing()
+        return self.session.pane(pane_id).playing
+
+    def any_playback_active(self) -> bool:
+        """Shared transport label: true while any pane is playing."""
+        if self.session.playback_mode is PlaybackMode.INDEPENDENT:
+            return self.pane_is_playing(PaneId.LEFT) or self.pane_is_playing(PaneId.RIGHT)
+        return self.session.is_playing
+
+    def _left_native_playing(self) -> bool:
+        """Mirror AppController's playback state; conservative for doubles."""
+        try:
+            value = self._controller.state_manager.snapshot.is_playing
+        except Exception:  # noqa: BLE001 - controller may be a test double
+            return False
+        return value if isinstance(value, bool) else False
 
     # ── mode / rate ─────────────────────────────────────────────────
 
@@ -722,7 +806,7 @@ class MultiViewController(QObject):
                 frame_index=pane.current_frame,
                 total_frames=total,
                 frame_time_ms=None if instance is None else instance.frame_time_ms,
-                is_playing=self.session.is_playing,
+                is_playing=self.pane_is_playing(pane_id),
             )
         except RuntimeError:
             return

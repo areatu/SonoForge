@@ -106,7 +106,7 @@ class FakeClock:
 
 
 @pytest.fixture()
-def rig(monkeypatch):
+def rig(qapp, monkeypatch):
     controller = MagicMock()
     controller._frame_cache = FakeCache()
     mv = MultiViewController(controller)
@@ -208,6 +208,62 @@ class TestIndependentMode:
         assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 29
         rig.mv.set_frame(PaneId.RIGHT, -5)
         assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 0
+
+    def test_toggle_play_right_runs_its_own_playback(self, rig) -> None:
+        _load_both(rig)
+        assert rig.mv.session.playback_mode is PlaybackMode.INDEPENDENT
+        rig.mv.toggle_play(PaneId.RIGHT)
+        pane = rig.mv.session.pane(PaneId.RIGHT)
+        assert pane.playing is True
+        assert rig.mv.session.is_playing is True
+        assert rig.mv._indep_timer.isActive() is True
+        rig.mv.toggle_play(PaneId.RIGHT)
+        assert pane.playing is False
+        assert rig.mv.session.is_playing is False
+        assert rig.mv._indep_timer.isActive() is False
+
+    def test_right_playback_advances_and_wraps_the_clip(self, rig) -> None:
+        _load_both(rig, right_kwargs={"frames": 4, "frame_time_ms": 100.0})
+        rig.mv.toggle_play(PaneId.RIGHT)
+        rig.clock.now += 0.1
+        rig.mv._on_indep_tick()
+        assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 1
+        rig.clock.now += 0.3
+        rig.mv._on_indep_tick()
+        assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 0
+
+    def test_pause_stops_the_right_pane_playback(self, rig) -> None:
+        _load_both(rig)
+        rig.mv.toggle_play(PaneId.RIGHT)
+        rig.mv.pause()
+        assert rig.mv.session.pane(PaneId.RIGHT).playing is False
+        assert rig.mv._indep_timer.isActive() is False
+        assert rig.mv.session.is_playing is False
+
+    def test_toggle_play_without_a_pane_follows_the_active_pane(self, rig) -> None:
+        _load_both(rig)  # activates the left pane
+        rig.mv.toggle_play(None)
+        rig.controller.toggle_playback.assert_called_once_with()
+        rig.mv.activate(PaneId.RIGHT)
+        rig.mv.toggle_play(None)
+        assert rig.mv.session.pane(PaneId.RIGHT).playing is True
+
+    def test_seek_reanchors_the_independent_playback(self, rig) -> None:
+        _load_both(rig)
+        rig.mv.toggle_play(PaneId.RIGHT)
+        rig.clock.now += 5.0
+        rig.mv.set_frame(PaneId.RIGHT, 10)
+        assert rig.mv._indep_start_frame == 10
+        rig.mv._on_indep_tick()
+        assert rig.mv.session.pane(PaneId.RIGHT).current_frame == 10
+
+    def test_pane_play_state_drives_the_button_label(self, rig) -> None:
+        _load_both(rig)
+        assert rig.mv.pane_is_playing(PaneId.RIGHT) is False
+        assert rig.mv.any_playback_active() is False
+        rig.mv.toggle_play(PaneId.RIGHT)
+        assert rig.mv.pane_is_playing(PaneId.RIGHT) is True
+        assert rig.mv.any_playback_active() is True
 
 
 # ── common window (spec §8.2) ───────────────────────────────────────

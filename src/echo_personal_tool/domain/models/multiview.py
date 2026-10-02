@@ -98,6 +98,9 @@ class MultiViewPaneState:
     #: Last error message shown in the pane header (kept so the header can
     #: offer a retry instead of showing the previous clip under a new name).
     load_error: str | None = None
+    #: True while this pane runs its own playback in ``INDEPENDENT`` mode
+    #: (spec §8.1).  Synchronised modes keep a single session-wide flag.
+    playing: bool = False
 
     @property
     def has_clip(self) -> bool:
