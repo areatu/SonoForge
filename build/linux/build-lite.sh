@@ -107,7 +107,12 @@ cat > "${DEB_PKG}/DEBIAN/postrm" << 'POSTRM'
 #!/bin/bash
 set -e
 if [ "$1" = "purge" ]; then
-    rm -rf ~/.local/share/sonoforge
+    DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+    case "$DATA_HOME" in
+        /*) ;;
+        *) DATA_HOME="${HOME}/.local/share" ;;
+    esac
+    rm -rf "${DATA_HOME}/sonoforge"
 fi
 POSTRM
 chmod 755 "${DEB_PKG}/DEBIAN/postrm"

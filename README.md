@@ -52,8 +52,9 @@ PowerPoint slide show, but with live DICOM.
 4. **Runs from a USB stick** — one file, no installation, no admin rights, no AI models;
    Windows and Linux.
 
-Press `F10` → present. Download `SonoForgePresenter.exe` / `SonoForgePresenter-*.AppImage`
-from [Releases](https://github.com/areatu/SonoForge/releases); details in
+Press `F10` → present. Download `SonoForgePresenter.exe` (Windows) or the versioned
+`SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from
+[Releases](https://github.com/areatu/SonoForge/releases); details in
 [build/presenter/README.md](build/presenter/README.md).
 
 ---
@@ -63,44 +64,40 @@ from [Releases](https://github.com/areatu/SonoForge/releases); details in
 <details open>
 <summary><strong>Linux (.deb) — Recommended</strong></summary>
 
+1. Open [Releases](https://github.com/areatu/SonoForge/releases) and download the versioned package `sonoforge_<version>_amd64.deb`.
+2. In the directory containing the downloaded file, install and run it:
+
 ```bash
-# Download latest release
-wget https://github.com/areatu/SonoForge/releases/latest/download/sonoforge_*.deb
-
-# Install
-sudo dpkg -i sonoforge_*.deb
-
-# Run
+sudo apt install ./sonoforge_*.deb
 sonoforge
 ```
 
-First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
+The first launch creates a per-user virtual environment and installs the Python dependencies. The launcher offers to download the AI segmentation models; if you decline there, the application may also show its setup dialog, where you can skip the download and continue with the non-AI tools. Automatic segmentation remains unavailable until the models are installed. The data directory follows `XDG_DATA_HOME` (by default `~/.local/share/sonoforge`).
 
 </details>
 
 <details>
-<summary><strong>Windows (.exe)</strong></summary>
+<summary><strong>Windows (standalone .exe)</strong></summary>
 
-1. Download `SonoForge-Setup-*.exe` from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Run the installer and follow the setup wizard
-3. Launch SonoForge from the Start Menu or desktop shortcut
+1. Download **`SonoForge.exe`** from [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge.exe).
+2. Save it in a permanent folder and run it. This is a standalone application, not a setup installer; it does not create Start Menu shortcuts.
 
 > **Requires:** Windows 10/11 (64-bit)
 
-First run will automatically set up the environment and install all dependencies.
+The application dependencies are bundled; Python and a virtual environment are not installed. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
 
 </details>
 
 <details>
-<summary><strong>macOS (.zip)</strong></summary>
+<summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Download `SonoForge-macOS-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Extract to Applications folder
-3. Run `SonoForge.app`
+1. Download **`SonoForge-macos-arm64.dmg`** from [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg).
+2. Open the disk image and drag `SonoForge.app` to Applications.
+3. Launch `SonoForge.app` from Applications.
 
-> **Requires:** macOS 12.0+ (Intel or Apple Silicon)
+> **Requires:** macOS 12.0+ on Apple Silicon (arm64). An Intel build is not currently published.
 
-First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
+Application dependencies are bundled; Python and a virtual environment are not installed. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
 
 </details>
 
@@ -109,21 +106,22 @@ First run will automatically create a virtual environment, install Python depend
 
 A lightweight edition for demonstrations on other people's computers: a **single file**
 run directly from the USB stick — no installation and no admin rights required. It is
-not a zero-footprint mode: one-file extraction uses OS temporary storage, settings and
-the DICOM cache live on the stick, and the main-window error log may use the host
-user's log directory. See [SECURITY.md](SECURITY.md) for the data inventory.
+not a zero-footprint mode: one-file extraction uses OS temporary storage, while settings,
+secrets, cache, fonts, and application logs are stored on the stick. See
+[SECURITY.md](SECURITY.md) for the data inventory.
 
-1. Download `SonoForgePresenter.exe` (Windows) or `SonoForgePresenter-*.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Copy to the USB stick
+1. Download `SonoForgePresenter.exe` (Windows) or the versioned `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Copy the file to the USB stick
 3. Double-click to run
 
-Settings, PACS profiles, encrypted password tokens, and the DICOM cache live next to
-the executable (on the stick). The cache may contain PHI and is not encrypted: new writes are capped at 20 GiB per
-running app process. It is cleared on normal exit by default and pruned at startup when
-sessions are older than 7 days. The user can retain it between runs in Settings. The main-window
-`errors.log` may still be written under the host user's log directory. All measurement
-tools and PACS connectivity are included; AI (ONNX) segmentation and the Reference
-Constructor UI are not part of this edition. Details: [build/presenter/README.md](build/presenter/README.md).
+Settings, PACS profiles, encrypted password tokens, the DICOM cache, and application
+logs live next to the executable (on the stick). One-file extraction also uses the OS
+temporary directory. The cache may contain PHI and is not encrypted: new writes are
+capped at 20 GiB per running app process. It is cleared on normal exit by default and
+pruned at startup when sessions are older than 7 days. The user can retain it between
+runs in Settings. All measurement tools and PACS connectivity are included; AI (ONNX)
+segmentation and the Reference Constructor UI are not part of this edition. Details:
+[build/presenter/README.md](build/presenter/README.md).
 
 </details>
 
@@ -275,7 +273,7 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 | | Full SonoForge | SonoForge Presenter |
 |---|---|---|
-| Distribution | installer (.deb / .exe / .zip) | single portable file (.exe / .AppImage) |
+| Distribution | Linux `.deb`; Windows standalone `SonoForge.exe`; macOS Apple Silicon `SonoForge-macos-arm64.dmg` | single portable file (`SonoForgePresenter.exe` / versioned `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | Measurements, Doppler, auto-calibration | yes | yes |
 | Strain/STE and optical flow | yes | yes |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |
@@ -283,7 +281,9 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 | AI (ONNX) segmentation | yes | excluded from the build |
 | Reference Constructor / web handbook | yes | excluded from the build |
 | Settings and secrets | OS keychain + QSettings (registry on Windows / `~/.config` on Linux) | on the stick: INI files + Fernet-encrypted `secrets.ini` |
-| Data written outside the app bundle | home config, `~/.sonoforge` cache, logs | onefile extraction in OS temp; settings, secrets and DICOM cache on the stick; main-window `errors.log` may use the host user's log directory |
+| Data written outside the app bundle | per-user platform data directory for models, DICOM cache, fonts, and logs; QSettings/keychain remain OS-managed | onefile extraction in OS temp; settings, secrets, DICOM cache, fonts, and application logs on the stick |
+
+Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%LOCALAPPDATA%\SonoForge` on Windows, `$XDG_DATA_HOME/sonoforge` on Linux (default `~/.local/share/sonoforge`), or `~/Library/Application Support/SonoForge` on macOS. Older model/cache/log folders are migrated on first launch when possible. Portable mode takes priority and keeps its data beside the executable.
 
 - **Fast start** — no first-run setup, no model downloads, straight into the viewer
 - **Reduced size** — PySide6-Essentials (no QtWebEngine), no onnxruntime/PyMuPDF/openpyxl

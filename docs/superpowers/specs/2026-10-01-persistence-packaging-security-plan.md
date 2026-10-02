@@ -120,12 +120,14 @@ Current state (all confirmed in code):
 |---|------|-------|
 | 2.1 | New `infrastructure/paths.py` (or extend `profile.py`) | `platformdirs` (tiny dep) or `QStandardPaths.AppLocalDataLocation`; expose `data_dir()`, `models_dir()`, `cache_dir()`, `logs_dir()`, `orthanc_cache_dir()`; portable overrides keep priority (`profile.portable_path`) |
 | 2.2 | Target layout | Windows: `%LOCALAPPDATA%\SonoForge\{models,cache\orthanc,logs}`; Linux: `$XDG_DATA_HOME/sonoforge/...` (default `~/.local/share/sonoforge`); macOS: `~/Library/Application Support/SonoForge/...` |
-| 2.3 | Replace all hardcoded call sites | incl. removing triplicated `_LOG_DIR` |
-| 2.4 | Migration on startup | detect old locations (`~/.local/share/sonoforge` on Windows, `~/.sonoforge/orthanc`, `~/SonoForge`) → move models/cache/logs into the new layout once; keep read-fallback for one release |
+| 2.3 | Replace all hardcoded call sites | route platform-path resolution through the shared module, including the duplicated `_LOG_DIR` expressions; this does not fold the separate logging refactor into WP2 |
+| 2.4 | Migration on startup | detect old `~/.local/share/sonoforge/models`, `~/.sonoforge/{orthanc,fonts}`, and legacy `~/SonoForge/logs` / `%LOCALAPPDATA%\\SonoForge\\logs`; move models/cache/logs into the new layout once without overwriting; keep model/cache read-fallback for one release |
 | 2.5 | README/HELP/docs corrections | `SonoForge-Setup-*.exe` → actual names; macOS `.zip` → `SonoForge-macos-arm64.dmg`; first-run wording per distribution |
 
 Acceptance: fresh Windows install creates no dotdirs in `%USERPROFILE%`; models land in
 `%LOCALAPPDATA%\SonoForge\models`; old installs migrate without re-downloading models.
+
+**Implementation status (2026-10-02):** WP2 items 2.1–2.4 and P0 item 2.5 are implemented on this branch. `infrastructure/paths.py` is the shared source for per-user data, models, cache, logs, fonts, and launcher venv paths; portable paths retain priority. Startup performs a non-overwriting, marker-based migration and keeps legacy model/cache reads for the migration release. Linux and Windows lightweight launchers query the same module before model checks. Unit tests cover Windows/Linux/macOS path resolution, XDG behavior, migration, conflict preservation, portable-mode isolation, and fallback reads. A real fresh Windows install and Apple-Silicon DMG smoke test still require their respective platforms.
 
 ### WP3 — Security concept: managed persistence
 
@@ -137,7 +139,7 @@ Zones:
 | Z2 app data | settings, server profiles, keyring refs, Presenter device key | may include identifying paths/usernames/endpoints | OS profile/ACL and OS keychain (full profile); Presenter secrets remain within the stick trust boundary | kept according to OS/user policy |
 | Z3 managed cache | Orthanc session cache; (later) frame/thumbnail cache | **yes** | UID/path validation; per-file POSIX `0600` where supported (no directory-mode/ACL configuration); Windows inherits folder/volume ACL; fixed 20 GiB write-admission limit per app process, shown in Settings | stale sessions >7 days removed at startup; clear button; normal-exit clear enabled by default; open-study session preserved by manual clear |
 | Z4 user exports | PDF/MP4/«save to disk» DICOM | **yes** | user-chosen folder; application does not encrypt or manage retention | user's responsibility; UI warning is not currently implemented |
-| Z5 logs | diagnostics | UID truncation and PHI-aware tag filtering are used; exceptions/paths may still disclose details | host/profile log directories; current file handlers are not rotated | log retention/sharing is user's responsibility; `errors.log` path consolidation remains in WP2 |
+| Z5 logs | diagnostics | UID truncation and PHI-aware tag filtering are used; exceptions/paths may still disclose details | platform app-data `logs` directory; Presenter logs follow the portable data root; current file handlers are not rotated | log retention/sharing is user's responsibility |
 
 | # | Task | Notes |
 |---|------|-------|

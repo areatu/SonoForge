@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from echo_personal_tool.infrastructure import onnx_engine
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
 
 
@@ -33,6 +34,15 @@ def _write_manifest(models_dir: Path, *, include_onnx_file: bool = True) -> Path
     manifest_path = models_dir / "model_manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     return onnx_path
+
+
+def test_default_models_dir_reads_legacy_location_for_compatibility(tmp_path: Path) -> None:
+    current = tmp_path / "new" / "models"
+    legacy = tmp_path / "old" / "models"
+    _write_manifest(legacy)
+
+    with patch.object(onnx_engine, "models_dirs_for_read", return_value=(current, legacy)):
+        assert onnx_engine._default_models_dir() == legacy
 
 
 def test_is_available_true_when_manifest_and_model_exist(tmp_path: Path) -> None:

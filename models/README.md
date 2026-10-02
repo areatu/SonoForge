@@ -24,9 +24,8 @@ ONNX models for automatic segmentation.
 
 ## Usage
 
-Models are loaded automatically from:
-1. `~/.local/share/sonoforge/models/` (installed version)
-2. `models/` (from source)
-3. `_MEIPASS/models/` (PyInstaller)
+Models are loaded automatically from the bundled `_MEIPASS/models/` directory when present, then from the per-user application-data directory, then from `models/` in a source checkout.
+
+The per-user directory is `models/` under `%LOCALAPPDATA%\SonoForge` on Windows, `$XDG_DATA_HOME/sonoforge` on Linux (default `~/.local/share/sonoforge`), or `~/Library/Application Support/SonoForge` on macOS. Portable mode keeps models beside the executable. The previous `~/.local/share/sonoforge/models/` location remains a read fallback during the migration release.
 
 See `model_manifest.json` for the configuration.

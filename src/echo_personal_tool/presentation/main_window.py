@@ -9,8 +9,10 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from echo_personal_tool.infrastructure.paths import logs_dir
+
 # Debug file logging
-_LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+_LOG_DIR = logs_dir()
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _LOG_PATH = _LOG_DIR / "errors.log"
 _file_handler = logging.FileHandler(str(_LOG_PATH), mode="a", encoding="utf-8")

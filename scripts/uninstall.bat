@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 set APP_NAME=SonoForge
 set INSTALL_DIR=%~dp0
 set MENU_DIR=%ProgramData%\Microsoft\Windows\Start Menu\Programs\%APP_NAME%
+if not defined LOCALAPPDATA set LOCALAPPDATA=%USERPROFILE%\AppData\Local
 set DATA_DIR=%LOCALAPPDATA%\%APP_NAME%
 
 echo.

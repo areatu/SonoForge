@@ -1,19 +1,35 @@
 """SonoForge launcher — finds Python, sets up venv, installs deps, runs the app."""
 
 import os
+import shutil
 import subprocess
 import sys
-import shutil
 from pathlib import Path
 
 APP_NAME = "SonoForge"
-DATA_DIR = Path(os.environ.get("LOCALAPPDATA", "")) / "SonoForge"
-VENV_DIR = DATA_DIR / "venv"
-MODELS_DIR = DATA_DIR / "models"
-MODELS_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
-
 INSTALL_DIR = Path(__file__).resolve().parent
 LIB_DIR = INSTALL_DIR / "lib"
+
+# The launcher is also kept at the repository root for the lightweight builds.
+# Resolve paths through the same module as the application, not a second
+# platform-specific approximation.
+for _package_root in (INSTALL_DIR / "src", LIB_DIR):
+    if (_package_root / "echo_personal_tool").is_dir():
+        sys.path.insert(0, str(_package_root))
+        break
+
+from echo_personal_tool.infrastructure.paths import (
+    data_dir,
+    migrate_legacy_paths,
+    models_dir,
+    models_dirs_for_read,
+    venv_dir,
+)
+
+DATA_DIR = data_dir()
+VENV_DIR = venv_dir()
+MODELS_DIR = models_dir()
+MODELS_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
 
 
 def find_python():
@@ -84,9 +100,14 @@ def install_deps():
     return True
 
 
+def models_available():
+    """Return whether models exist in the current or one-release legacy path."""
+    return any((candidate / "model_manifest.json").is_file() for candidate in models_dirs_for_read())
+
+
 def download_models():
     """Download AI models if not present."""
-    if (MODELS_DIR / "model_manifest.json").exists():
+    if models_available():
         return True
     print()
     print(f"[{APP_NAME}] AI models are required for automatic cardiac segmentation.")
@@ -160,6 +181,9 @@ def main():
     # Check version for display
     out = subprocess.check_output([python_path, "--version"], stderr=subprocess.STDOUT, text=True)
     print(f"[{APP_NAME}] Using: {python_path} ({out.strip()})")
+
+    for warning in migrate_legacy_paths():
+        print(f"[{APP_NAME}] Path migration: {warning}", file=sys.stderr)
 
     create_venv(python_path)
     install_deps()

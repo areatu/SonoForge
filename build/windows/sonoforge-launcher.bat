@@ -7,10 +7,9 @@ REM  Checks environment, installs deps/models if needed, then launches.
 REM ============================================
 
 set APP_NAME=SonoForge
-set DATA_DIR=%USERPROFILE%\.local\share\sonoforge
-set VENV_DIR=%DATA_DIR%\venv
-set MODELS_DIR=%DATA_DIR%\models
-set LIB_DIR=%~dp0lib
+set "LIB_DIR=%~dp0..\lib"
+if not exist "%LIB_DIR%\echo_personal_tool" set "LIB_DIR=%~dp0lib"
+if not exist "%LIB_DIR%\echo_personal_tool" set "LIB_DIR=%~dp0..\..\src"
 set MODELS_URL=https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz
 
 echo [SonoForge] Checking environment...
@@ -85,6 +84,20 @@ if %PYMINOR% LSS 10 (
 
 echo [SonoForge] Using: %PYTHON% (Python %PYMAJOR%.%PYMINOR%)
 
+REM Resolve paths and migrate with the same module used by the application.
+set "PYTHONPATH=%LIB_DIR%;%PYTHONPATH%"
+for /f "delims=" %%P in ('%PYTHON% -m echo_personal_tool.infrastructure.paths --print-data-dir') do set "DATA_DIR=%%P"
+if "%DATA_DIR%"=="" (
+    if defined LOCALAPPDATA (set "DATA_DIR=%LOCALAPPDATA%\SonoForge") else set "DATA_DIR=%USERPROFILE%\AppData\Local\SonoForge"
+)
+for /f "delims=" %%P in ('%PYTHON% -m echo_personal_tool.infrastructure.paths --print-models-dir') do set "MODELS_DIR=%%P"
+if "%MODELS_DIR%"=="" set "MODELS_DIR=%DATA_DIR%\models"
+%PYTHON% -m echo_personal_tool.infrastructure.paths --migrate
+if errorlevel 1 echo [SonoForge] Legacy data migration will be retried when the app starts.
+for /f "delims=" %%P in ('%PYTHON% -m echo_personal_tool.infrastructure.paths --print-models-read-dir') do set "MODELS_READ_DIR=%%P"
+if "%MODELS_READ_DIR%"=="" set "MODELS_READ_DIR=%MODELS_DIR%"
+set "VENV_DIR=%DATA_DIR%\venv"
+
 REM ── 2. Create venv if missing ──
 if not exist "%VENV_DIR%" (
     echo [SonoForge] Creating virtual environment...
@@ -115,7 +128,7 @@ if "%NEED_INSTALL%"=="1" (
 )
 
 REM ── 4. Download models (optional) ──
-if not exist "%MODELS_DIR%\model_manifest.json" (
+if not exist "%MODELS_READ_DIR%\model_manifest.json" (
     echo.
     echo [SonoForge] AI models are required for automatic cardiac segmentation.
     echo [SonoForge] Download size: ~300 MB

@@ -8,6 +8,8 @@ from pathlib import Path
 
 from PySide6.QtGui import QFont, QFontDatabase
 
+from echo_personal_tool.infrastructure.paths import fonts_cache_dir
+
 FONT_FAMILY_UI = "Inter"
 FONT_FAMILY_MONO = "JetBrains Mono"
 DEFAULT_UI_POINT_SIZE = 13
@@ -22,7 +24,7 @@ _FONT_FILES = (
     "JetBrainsMono-Bold.ttf",
 )
 
-_FONT_CACHE_DIR = Path.home() / ".sonoforge" / "fonts"
+_FONT_CACHE_DIR = fonts_cache_dir()
 _loaded = False
 
 

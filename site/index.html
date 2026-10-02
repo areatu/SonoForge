@@ -410,7 +410,7 @@
           <tr><th scope="col"></th><th scope="col"><span lang="en">Full SonoForge</span><span lang="ru">Полный SonoForge</span></th><th scope="col">SonoForge Presenter</th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row"><span lang="en">Distribution</span><span lang="ru">Дистрибуция</span></th><td><span lang="en">installer (.deb / .exe / .dmg)</span><span lang="ru">установщик (.deb / .exe / .dmg)</span></td><td><span lang="en">single portable file (.exe / .AppImage)</span><span lang="ru">один портативный файл (.exe / .AppImage)</span></td></tr>
+          <tr><th scope="row"><span lang="en">Distribution</span><span lang="ru">Дистрибуция</span></th><td><span lang="en">Linux .deb; standalone Windows .exe; Apple-Silicon macOS .dmg</span><span lang="ru">Linux .deb; отдельный Windows .exe; macOS .dmg для Apple Silicon</span></td><td><span lang="en">single portable file (.exe / .AppImage)</span><span lang="ru">один портативный файл (.exe / .AppImage)</span></td></tr>
           <tr><th scope="row"><span lang="en">Measurements, Doppler, auto‑calibration</span><span lang="ru">Измерения, допплер, автокалибровка</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><th scope="row"><span lang="en">Strain/STE and optical flow</span><span lang="ru">Strain/STE и оптический поток</span></th><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><th scope="row">PACS: DICOMweb + DIMSE, TLS</th><td class="yes">✓</td><td class="yes">✓</td></tr>
@@ -431,8 +431,8 @@
       <p class="eyebrow"><span lang="en">Get SonoForge</span><span lang="ru">Установка</span></p>
       <h2><span lang="en">Download &amp; install</span><span lang="ru">Скачать и установить</span></h2>
       <p class="lead">
-        <span lang="en">Latest release: <strong data-release-tag>v0.3.1</strong> <span class="muted" data-release-date></span>. Free, GPL‑3.0. First run creates its environment automatically and offers to download the AI models.</span>
-        <span lang="ru">Текущий релиз: <strong data-release-tag>v0.3.1</strong> <span class="muted" data-release-date></span>. Бесплатно, GPL‑3.0. При первом запуске окружение настраивается автоматически, AI‑модели предлагается скачать отдельно.</span>
+        <span lang="en">Latest release: <strong data-release-tag>v0.3.1</strong> <span class="muted" data-release-date></span>. Free, GPL‑3.0. The Linux .deb sets up its Python environment on first run; Windows and macOS builds bundle their dependencies. The full builds can offer an optional AI-model download.</span>
+        <span lang="ru">Текущий релиз: <strong data-release-tag>v0.3.1</strong> <span class="muted" data-release-date></span>. Бесплатно, GPL‑3.0. Linux‑пакет настраивает Python‑окружение при первом запуске; сборки для Windows и macOS уже содержат зависимости. В полном профиле предлагается отдельно скачать AI‑модели.</span>
       </p>
     </header>
 
@@ -450,14 +450,14 @@
         <div class="panel-grid">
           <div>
             <h3>Linux (.deb) <span class="badge badge-accent"><span lang="en">Recommended</span><span lang="ru">Рекомендуется</span></span></h3>
-            <p lang="en">Debian/Ubuntu package. Installs the <code>sonoforge</code> launcher; the first run creates a virtual environment, installs Python dependencies and optionally downloads the AI segmentation models.</p>
-            <p lang="ru">Пакет для Debian/Ubuntu. Устанавливает лаунчер <code>sonoforge</code>; при первом запуске создаётся виртуальное окружение, ставятся Python‑зависимости и (по желанию) скачиваются AI‑модели.</p>
+            <p lang="en">Debian/Ubuntu package. Installs the <code>sonoforge</code> launcher; the first run creates a per-user virtual environment, installs Python dependencies and offers an optional AI-model download. If skipped in the launcher, the app may offer it once more in its setup dialog.</p>
+            <p lang="ru">Пакет для Debian/Ubuntu. Устанавливает лаунчер <code>sonoforge</code>; при первом запуске создаётся пользовательское виртуальное окружение, ставятся Python‑зависимости и предлагается скачать AI‑модели. После отказа в лаунчере приложение может предложить загрузку ещё раз в окне настройки.</p>
             <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="deb"><svg class="ic"><use href="#i-download"/></svg><span>.deb</span><span class="cta-meta" data-asset-meta></span></a>
           </div>
           <div class="code" data-code>
             <button class="copy" type="button" aria-label="Copy"><svg class="ic ic-xs"><use href="#i-copy"/></svg></button>
 <pre><code><span class="c" data-asset-cmd="deb"># 1. Download sonoforge_&lt;version&gt;_amd64.deb from Releases</span>
-sudo dpkg -i sonoforge_*.deb
+sudo apt install ./sonoforge_*.deb
 sonoforge</code></pre>
           </div>
         </div>
@@ -467,8 +467,8 @@ sonoforge</code></pre>
         <div class="panel-grid">
           <div>
             <h3>Windows 10 / 11 (64‑bit)</h3>
-            <p lang="en">Download the Windows build, run it and follow the prompts; SonoForge sets up its environment on first launch. Start it from the Start menu or desktop shortcut afterwards.</p>
-            <p lang="ru">Скачайте сборку для Windows, запустите и следуйте подсказкам; окружение настраивается при первом запуске. Дальше — из меню «Пуск» или ярлыка на рабочем столе.</p>
+            <p lang="en">Download and run the standalone <code>SonoForge.exe</code>. It is not an installer and creates no Start Menu shortcuts; Python and application dependencies are bundled. On first launch you may download the optional AI models or skip them.</p>
+            <p lang="ru">Скачайте и запустите отдельный файл <code>SonoForge.exe</code>. Это не установщик: ярлыки в меню «Пуск» не создаются, Python и зависимости уже включены. При первом запуске можно скачать AI‑модели или пропустить загрузку.</p>
             <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="windows"><svg class="ic"><use href="#i-download"/></svg><span>SonoForge.exe</span><span class="cta-meta" data-asset-meta></span></a>
           </div>
           <div class="note">
@@ -482,9 +482,9 @@ sonoforge</code></pre>
         <div class="panel-grid">
           <div>
             <h3>macOS 12.0+ <span class="badge">Apple Silicon</span></h3>
-            <p lang="en">Open the disk image and drag <code>SonoForge.app</code> to Applications. First run creates the virtual environment, installs dependencies and optionally downloads the AI models.</p>
-            <p lang="ru">Откройте образ диска и перетащите <code>SonoForge.app</code> в «Программы». При первом запуске создаётся виртуальное окружение, ставятся зависимости и (по желанию) скачиваются AI‑модели.</p>
-            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="macos"><svg class="ic"><use href="#i-download"/></svg><span>.dmg</span><span class="cta-meta" data-asset-meta></span></a>
+            <p lang="en">Open the Apple-Silicon disk image and drag <code>SonoForge.app</code> to Applications. Python and app dependencies are bundled; on first launch you may download the optional AI models or skip them. An Intel build is not currently published.</p>
+            <p lang="ru">Откройте образ для Apple Silicon и перетащите <code>SonoForge.app</code> в «Программы». Python и зависимости уже включены; при первом запуске можно скачать AI‑модели или пропустить загрузку. Сборка для Intel сейчас не публикуется.</p>
+            <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="macos"><svg class="ic"><use href="#i-download"/></svg><span>SonoForge-macos-arm64.dmg</span><span class="cta-meta" data-asset-meta></span></a>
           </div>
           <div class="note">
             <p lang="en">If macOS blocks the first launch (“unidentified developer”), right‑click the app → <em>Open</em> once, or allow it in <em>System Settings → Privacy &amp; Security</em>.</p>
@@ -497,8 +497,8 @@ sonoforge</code></pre>
         <div class="panel-grid">
           <div>
             <h3>SonoForge Presenter — <span lang="en">portable</span><span lang="ru">портативный</span></h3>
-            <p lang="en">A single file for the USB stick: copy, double‑click, present. Settings, PACS profiles, encrypted passwords and the DICOM cache live next to the executable. All measurement tools and PACS connectivity included; AI segmentation and the Reference Constructor are not part of this edition.</p>
-            <p lang="ru">Один файл на флешке: скопировали, дважды щёлкнули, докладываете. Настройки, профили PACS, зашифрованные пароли и кэш DICOM лежат рядом с исполняемым файлом. Все инструменты измерений и PACS включены; AI‑сегментация и Конструктор справочника в это издание не входят.</p>
+            <p lang="en">A single file for the USB stick: copy, double‑click, present. Settings, PACS profiles, encrypted passwords, the DICOM cache and application logs live next to the executable; one-file extraction also uses OS temporary storage. All measurement tools and PACS connectivity included; AI segmentation and the Reference Constructor are not part of this edition.</p>
+            <p lang="ru">Один файл на флешке: скопировали, дважды щёлкнули, докладываете. Настройки, профили PACS, зашифрованные пароли, DICOM‑кэш и журналы приложения лежат рядом с исполняемым файлом; распаковка onefile также использует системный временный каталог. Все инструменты измерений и PACS включены; AI‑сегментация и Конструктор справочника в это издание не входят.</p>
             <div class="cta">
               <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-win"><svg class="ic"><use href="#i-windows"/></svg><span>SonoForgePresenter.exe</span><span class="cta-meta" data-asset-meta></span></a>
               <a class="btn btn-primary" href="https://github.com/areatu/SonoForge/releases/latest" rel="noopener" data-asset="presenter-linux"><svg class="ic"><use href="#i-linux"/></svg><span>AppImage</span><span class="cta-meta" data-asset-meta></span></a>

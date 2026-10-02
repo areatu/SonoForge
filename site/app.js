@@ -182,11 +182,11 @@
   }
 
   var matchers = {
-    deb: function (n) { return /\.deb$/i.test(n); },
-    windows: function (n) { return /\.exe$/i.test(n) && !/presenter/i.test(n); },
-    macos: function (n) { return /\.(dmg|zip)$/i.test(n) && /mac/i.test(n); },
-    "presenter-win": function (n) { return /presenter/i.test(n) && /\.exe$/i.test(n); },
-    "presenter-linux": function (n) { return /presenter/i.test(n) && /\.appimage$/i.test(n); }
+    deb: function (n) { return /^sonoforge_.+_amd64\.deb$/i.test(n); },
+    windows: function (n) { return /^SonoForge\.exe$/i.test(n); },
+    macos: function (n) { return /^SonoForge-macos-arm64\.dmg$/i.test(n); },
+    "presenter-win": function (n) { return /^SonoForgePresenter\.exe$/i.test(n); },
+    "presenter-linux": function (n) { return /^SonoForge-Presenter-.+-x86_64\.AppImage$/i.test(n); }
   };
 
   function fmtSize(bytes) {

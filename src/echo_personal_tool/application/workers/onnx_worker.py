@@ -15,6 +15,7 @@ import numpy as np
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
 
 from echo_personal_tool.infrastructure.onnx_engine import OnnxInferenceEngine
+from echo_personal_tool.infrastructure.paths import models_dirs_for_read
 
 _log = logging.getLogger(__name__)
 
@@ -25,10 +26,10 @@ _pool_shutting_down = False
 
 
 def _default_models_dir() -> Path:
-    # User data dir (installed mode: downloaded by launcher/runtime_setup)
-    user_models = Path.home() / ".local" / "share" / "sonoforge" / "models"
-    if (user_models / "model_manifest.json").is_file():
-        return user_models
+    # Canonical user data dir first, then the previous location for one release.
+    for user_models in models_dirs_for_read():
+        if (user_models / "model_manifest.json").is_file():
+            return user_models
     # Ancestor traversal (dev mode)
     for ancestor in Path(__file__).resolve().parents:
         manifest_path = ancestor / "models" / "model_manifest.json"

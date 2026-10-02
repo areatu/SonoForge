@@ -6,9 +6,6 @@
 set -euo pipefail
 
 APP_NAME="sonoforge"
-DATA_DIR="${HOME}/.local/share/${APP_NAME}"
-VENV_DIR="${DATA_DIR}/venv"
-MODELS_DIR="${DATA_DIR}/models"
 LIB_DIR="/opt/${APP_NAME}/lib"
 PYTHON_MIN="3.10"
 MODELS_RELEASE_URL="https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
@@ -62,6 +59,23 @@ PYTHON=$(find_python) || {
     exit 1
 }
 info "Using: $PYTHON ($($PYTHON --version 2>&1))"
+
+# Resolve and migrate storage through the application path module before the
+# launcher checks or downloads models. This also keeps custom XDG_DATA_HOME.
+export PYTHONPATH="${LIB_DIR}:${PYTHONPATH:-}"
+DATA_DIR=$("${PYTHON}" -m echo_personal_tool.infrastructure.paths --print-data-dir) || {
+    err "Could not resolve the SonoForge data directory."
+    exit 1
+}
+MODELS_DIR=$("${PYTHON}" -m echo_personal_tool.infrastructure.paths --print-models-dir) || {
+    err "Could not resolve the SonoForge models directory."
+    exit 1
+}
+if ! "${PYTHON}" -m echo_personal_tool.infrastructure.paths --migrate; then
+    warn "Legacy data migration could not be started; SonoForge will try again on launch."
+fi
+MODELS_READ_DIR=$("${PYTHON}" -m echo_personal_tool.infrastructure.paths --print-models-read-dir) || MODELS_READ_DIR="${MODELS_DIR}"
+VENV_DIR="${DATA_DIR}/venv"
 
 # ── 2. Create venv if missing ──
 if [ ! -d "${VENV_DIR}" ]; then
@@ -157,7 +171,7 @@ download_models() {
     fi
 }
 
-if [ ! -f "${MODELS_DIR}/model_manifest.json" ]; then
+if [ ! -f "${MODELS_READ_DIR}/model_manifest.json" ]; then
     echo ""
     info "AI models are required for automatic cardiac segmentation."
     info "Download size: ~300 MB"
