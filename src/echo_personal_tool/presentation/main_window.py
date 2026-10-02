@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
         self._viewer = ViewerWidget()
         self._viewer._controller_ref = self._controller
         self._viewer.set_scroll_debounce_ms(self._controller.playback_config.scroll_debounce_ms)
-        self._viewer.play_pause_requested.connect(self._controller.toggle_playback)
+        self._viewer.play_pause_requested.connect(self._on_main_play_pause_requested)
         self._viewer.frame_selected.connect(self._on_slider_frame_selected)
         self._viewer.scroll_frame_selected.connect(
             lambda index: self._controller.state_manager.set_frame(index, scroll=True)
@@ -858,6 +858,18 @@ class MainWindow(QMainWindow):
         viewer.frame_selected.connect(lambda index: self._on_pane_frame_selected(pane_id, index))
         viewer.scroll_frame_selected.connect(lambda index: self._multiview.scroll_by(pane_id, index))
 
+    def _on_main_play_pause_requested(self) -> None:
+        """The main viewer is the left pane: let Multiview route its Play.
+
+        In a synchronised mode Play must start both clips through the shared
+        clock, not only the left one (spec §5.3); outside Multiview the
+        regular AppController keeps the playback.
+        """
+        if self._multiview_enabled():
+            self._multiview.toggle_play(PaneId.LEFT)
+        else:
+            self._controller.toggle_playback()
+
     def _multiview_tool_blocked(self, tool_name: str) -> bool:
         """Stage 1 of Multiview is view-only.
 
@@ -921,7 +933,7 @@ class MainWindow(QMainWindow):
         if transport is None:
             return
         transport.refresh_mode(self._multiview.session.playback_mode)
-        transport.set_playing(self._multiview.session.is_playing)
+        transport.set_playing(self._multiview.any_playback_active())
         transport.set_status(self._multiview.status_text())
         left_rate, right_rate = self._multiview.pane_rate_texts()
         transport.set_pane_rates(left_rate, right_rate)
@@ -3358,8 +3370,9 @@ class MainWindow(QMainWindow):
             if self._controller.state_manager.snapshot.decode_in_progress:
                 event.accept()
                 return True
-            if self._multiview_enabled() and self._multiview.session.playback_mode is not PlaybackMode.INDEPENDENT:
-                # Space drives the shared playback, never one clip only.
+            if self._multiview_enabled():
+                # Space drives the shared playback in sync modes and the
+                # active pane's own playback in independent mode (spec §5.3).
                 self._multiview.toggle_play(self._multiview.session.active_pane)
                 event.accept()
                 return True

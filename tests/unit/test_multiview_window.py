@@ -275,6 +275,26 @@ class TestPlaybackRouting:
             window._handle_key_press(_key_event(" "))
             controller_toggle.assert_called_once_with()
 
+    def test_space_drives_the_active_pane_in_independent_mode(self, window) -> None:
+        _enable(window)
+        with patch.object(window, "_multiview_study_uid", return_value="study.1"):
+            window._multiview_load_into_pane(PaneId.RIGHT, _instance("second"))
+        window._multiview.activate(PaneId.RIGHT)
+        with patch.object(window._multiview, "toggle_play") as toggle:
+            window._handle_key_press(_key_event(" "))
+            toggle.assert_called_once_with(PaneId.RIGHT)
+
+    def test_main_viewer_play_routes_through_multiview(self, window) -> None:
+        _enable(window)
+        with patch.object(window._multiview, "toggle_play") as toggle:
+            window._viewer.play_pause_requested.emit()
+        toggle.assert_called_once_with(PaneId.LEFT)
+
+    def test_main_viewer_play_keeps_the_controller_without_multiview(self, window) -> None:
+        with patch.object(window._controller, "toggle_playback") as controller_toggle:
+            window._viewer.play_pause_requested.emit()
+        controller_toggle.assert_called_once_with()
+
     def test_slider_drag_moves_the_shared_playhead(self, window) -> None:
         _enable(window)
         window._multiview.set_mode(PlaybackMode.COMMON_WINDOW)
