@@ -9,6 +9,13 @@ import pytest
 pytestmark = pytest.mark.gui
 from PySide6.QtWidgets import QApplication
 
+
+@pytest.fixture(autouse=True)
+def _isolate_qsettings(isolated_qsettings):
+    """Layout rebuilds persist to QSettings — keep them out of the real store."""
+    return isolated_qsettings
+
+
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.infrastructure.user_preferences import UserPreferences
 from echo_personal_tool.presentation.main_window import LayoutConfig, MainWindow
