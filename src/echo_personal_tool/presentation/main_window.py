@@ -729,6 +729,8 @@ class MainWindow(QMainWindow):
         self._layout_config = replace(self._layout_config, **{attr: checked})
         self._rebuild_layout()
         self._system_bar.set_multiview_checked(self._layout_config.multiview)
+        if attr == "multiview" and not checked:
+            self._show_status(tr("multiview.status.exited"))
 
     def _on_multiview_button(self) -> None:
         """Toolbar button: the single entry point of the Multiview mode.
@@ -741,6 +743,8 @@ class MainWindow(QMainWindow):
         self._layout_config = replace(self._layout_config, multiview=not self._layout_config.multiview)
         self._rebuild_layout()
         self._system_bar.set_multiview_checked(self._layout_config.multiview)
+        if not self._layout_config.multiview:
+            self._show_status(tr("multiview.status.exited"))
 
     # ── Multiview session ───────────────────────────────────────────
 
