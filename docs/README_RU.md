@@ -25,6 +25,15 @@
 | [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) | English technical help: formulas, source chain, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
 | [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) | Техническая справка на русском: формулы, источники значений, калибровка, влияние Settings и протоколы DICOMweb/DIMSE/PACS |
 
+## Безопасность и целостность релизов
+
+| Файл | Описание |
+|------|----------|
+| [`security/data-inventory.md`](security/data-inventory.md) | Инвентарь данных и сопоставление с отдельными требованиями безопасности |
+| [`security/code-signing.md`](security/code-signing.md) | Подпись кода и проверка релизов: статус подписи по платформам, проверки `SHA256SUMS` и подтверждения происхождения сборки, варианты и стоимость, политика подписи кода |
+
+См. также [`../SECURITY.md`](../SECURITY.md).
+
 ## Отдельные документы
 
 | Файл | Описание |
