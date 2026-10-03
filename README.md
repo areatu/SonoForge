@@ -52,8 +52,9 @@ PowerPoint slide show, but with live DICOM.
 4. **Runs from a USB stick** — one file, no installation, no admin rights, no AI models;
    Windows and Linux.
 
-Press `F10` → present. Download `SonoForgePresenter.exe` / `SonoForgePresenter-*.AppImage`
-from [Releases](https://github.com/areatu/SonoForge/releases); details in
+Press `F10` → present. Download `SonoForgePresenter.exe` (Windows) or the versioned
+`SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from
+[Releases](https://github.com/areatu/SonoForge/releases); details in
 [build/presenter/README.md](build/presenter/README.md).
 
 ---
@@ -63,44 +64,43 @@ from [Releases](https://github.com/areatu/SonoForge/releases); details in
 <details open>
 <summary><strong>Linux (.deb) — Recommended</strong></summary>
 
+1. Open [Releases](https://github.com/areatu/SonoForge/releases) and download the versioned package `sonoforge_<version>_amd64.deb`.
+2. In the directory containing the downloaded file, install and run it:
+
 ```bash
-# Download latest release
-wget https://github.com/areatu/SonoForge/releases/latest/download/sonoforge_*.deb
-
-# Install
-sudo dpkg -i sonoforge_*.deb
-
-# Run
+sudo apt install ./sonoforge_*.deb
 sonoforge
 ```
 
-First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
+The first launch creates a per-user virtual environment and installs the Python dependencies. The launcher offers to download the AI segmentation models; if you decline there, the application may also show its setup dialog, where you can skip the download and continue with the non-AI tools. Automatic segmentation remains unavailable until the models are installed. The data directory follows `XDG_DATA_HOME` (by default `~/.local/share/sonoforge`).
 
 </details>
 
 <details>
-<summary><strong>Windows (.exe)</strong></summary>
+<summary><strong>Windows (installer; portable .exe also available)</strong></summary>
 
-1. Download `SonoForge-Setup-*.exe` from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Run the installer and follow the setup wizard
-3. Launch SonoForge from the Start Menu or desktop shortcut
+1. From [Releases](https://github.com/areatu/SonoForge/releases/latest), download **`SonoForge-Setup-<version>-x64.exe`** and run it.
+2. Choose **for me** (the default; no elevation/UAC required) or **for all users** (requires administrator privileges). Setup creates Start Menu and Desktop shortcuts; you can launch SonoForge from either.
+3. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
 
-> **Requires:** Windows 10/11 (64-bit)
+To uninstall, open Windows **Settings → Apps → Installed apps** (called **Apps & features** on Windows 10) and select SonoForge, or use Control Panel's **Programs and Features**. The uninstaller removes the application and shortcuts but keeps `%LOCALAPPDATA%\SonoForge` by default. Select **Also remove SonoForge user data** in the uninstaller only if you also want to delete that account's models, cache, logs, and settings.
 
-First run will automatically set up the environment and install all dependencies.
+> **Requires:** Windows 10/11 (64-bit). Setup and portable builds are not Authenticode-signed; Windows SmartScreen may show a warning. If in doubt, verify the download against `SHA256SUMS` attached to the release.
+
+The application dependencies are bundled; Python and a virtual environment are not installed. Prefer a no-install run? Download **`SonoForge-<version>-portable.exe`** from the same release page. It creates no shortcuts; application data still uses the current Windows account's application-data directory.
 
 </details>
 
 <details>
-<summary><strong>macOS (.zip)</strong></summary>
+<summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Download `SonoForge-macOS-*.zip` from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Extract to Applications folder
-3. Run `SonoForge.app`
+1. Download **`SonoForge-macos-arm64.dmg`** from [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg).
+2. Open the disk image and drag `SonoForge.app` to Applications.
+3. Launch `SonoForge.app` from Applications.
 
-> **Requires:** macOS 12.0+ (Intel or Apple Silicon)
+> **Requires:** macOS 12.0+ on Apple Silicon (arm64). An Intel build is not currently published.
 
-First run will automatically create a virtual environment, install Python dependencies, and optionally download AI segmentation models.
+Application dependencies are bundled; Python and a virtual environment are not installed. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
 
 </details>
 
@@ -108,17 +108,23 @@ First run will automatically create a virtual environment, install Python depend
 <summary><strong>Portable USB Stick — SonoForge Presenter</strong></summary>
 
 A lightweight edition for demonstrations on other people's computers: a **single file**
-run directly from the USB stick — no installation, no admin rights, nothing written
-to the host machine outside the OS temp directory.
+run directly from the USB stick — no installation and no admin rights required. It is
+not a zero-footprint mode: one-file extraction uses OS temporary storage, while settings,
+secrets, cache, fonts, and application logs are stored on the stick. See
+[SECURITY.md](SECURITY.md) for the data inventory.
 
-1. Download `SonoForgePresenter.exe` (Windows) or `SonoForgePresenter-*.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
-2. Copy to the USB stick
+1. Download `SonoForgePresenter.exe` (Windows) or the versioned `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
+2. Copy the file to the USB stick
 3. Double-click to run
 
-Settings, PACS profiles, encrypted passwords, and the DICOM cache live next to the
-executable (on the stick). All measurement tools and PACS connectivity are included;
-AI (ONNX) segmentation and the Reference Constructor UI are not part of this edition.
-Details: [build/presenter/README.md](build/presenter/README.md).
+Settings, PACS profiles, encrypted password tokens, the DICOM cache, and application
+logs live next to the executable (on the stick). One-file extraction also uses the OS
+temporary directory. The cache may contain PHI and is not encrypted: new writes are
+capped at 20 GiB per running app process. It is cleared on normal exit by default and
+pruned at startup when sessions are older than 7 days. The user can retain it between
+runs in Settings. All measurement tools and PACS connectivity are included; AI (ONNX)
+segmentation and the Reference Constructor UI are not part of this edition. Details:
+[build/presenter/README.md](build/presenter/README.md).
 
 </details>
 
@@ -270,7 +276,7 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 | | Full SonoForge | SonoForge Presenter |
 |---|---|---|
-| Distribution | installer (.deb / .exe / .zip) | single portable file (.exe / .AppImage) |
+| Distribution | Linux `.deb`; Windows installer `SonoForge-Setup-<version>-x64.exe` (plus portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-macos-arm64.dmg` | single portable file (`SonoForgePresenter.exe` / versioned `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | Measurements, Doppler, auto-calibration | yes | yes |
 | Strain/STE and optical flow | yes | yes |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |
@@ -278,7 +284,9 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 | AI (ONNX) segmentation | yes | excluded from the build |
 | Reference Constructor / web handbook | yes | excluded from the build |
 | Settings and secrets | OS keychain + QSettings (registry on Windows / `~/.config` on Linux) | on the stick: INI files + Fernet-encrypted `secrets.ini` |
-| Data written outside the app bundle | home config, `~/.sonoforge` cache, logs | OS temp only (onefile unpack); settings and cache on the stick |
+| Data written outside the app bundle | per-user platform data directory for models, DICOM cache, fonts, and logs; QSettings/keychain remain OS-managed | onefile extraction in OS temp; settings, secrets, DICOM cache, fonts, and application logs on the stick |
+
+Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%LOCALAPPDATA%\SonoForge` on Windows, `$XDG_DATA_HOME/sonoforge` on Linux (default `~/.local/share/sonoforge`), or `~/Library/Application Support/SonoForge` on macOS. Older model/cache/log folders are migrated on first launch when possible. Portable mode takes priority and keeps its data beside the executable.
 
 - **Fast start** — no first-run setup, no model downloads, straight into the viewer
 - **Reduced size** — PySide6-Essentials (no QtWebEngine), no onnxruntime/PyMuPDF/openpyxl
@@ -322,7 +330,8 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 | Document | Description |
 |----------|-------------|
-| [SECURITY.md](SECURITY.md) | PHI handling, data security, model integrity, HIPAA considerations |
+| [SECURITY.md](SECURITY.md) | PHI handling, storage lifecycle, data security, model integrity |
+| [docs/security/data-inventory.md](docs/security/data-inventory.md) | Data inventory and mapping to selected security expectations |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |
@@ -374,20 +383,26 @@ module composition can be adjusted without deleting code.
 
 ## Security and Privacy
 
-> **Your data stays local.** SonoForge processes all DICOM data in memory — no PHI (Protected Health Information) is written to disk, no cloud uploads, no telemetry, no analytics.
+DICOM data handling depends on how the application is used: local-folder source files are
+not copied into the managed cache, but PACS downloads are written to a local DICOM cache
+and user-requested exports are written to the selected destination. The app does not
+silently upload studies to a vendor cloud or send analytics/telemetry. DICOM protocol
+support and clinical measurement references do not by themselves establish a regulatory
+status, security certification, or compliance for a particular deployment.
 
-### Security Features
+### Security Features and Limitations
 
 - **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
 - **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 section 6.1
 - **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
-- **Network Timeouts** — Configurable timeouts for DICOMweb/DIMSE connections
-- **PHI Sanitization** — Patient identifiers truncated in log files
-- **In-Memory Processing** — All DICOM data processed in RAM, no temp files
-- **No Cloud Dependencies** — Works fully offline after installation
-- **Portable Encrypted Secrets (Presenter)** — PACS passwords stored as Fernet tokens (AES-128-CBC + HMAC-SHA256, PBKDF2 key from a per-stick `device.key`, file mode 0600) next to the executable; no clear-text fallback
+- **Managed PACS Cache** — 20 GiB write-admission limit per running app; an over-limit download is rejected rather than evicting existing sessions (concurrent app instances are not coordinated)
+- **Cache Retention** — Cleared on normal exit by default, stale sessions older than 7 days are removed at startup, and Settings can manually clear non-active sessions
+- **Cache Protection** — No app-level DICOM encryption; POSIX files use mode `0600` where supported, while Windows inherits folder ACLs. Enable OS/volume encryption for data at rest
+- **Network Transport** — DICOMweb does not force HTTPS for remote endpoints; certificate verification defaults on for HTTPS. DIMSE TLS is optional and off by default
+- **Diagnostics** — UID truncation and PHI-aware tag filtering are used, but logs are not a complete audit trail and should be reviewed before sharing
+- **Portable Encrypted Secrets (Presenter)** — PACS password tokens are encrypted next to the executable; this does not encrypt the DICOM cache or exports
 
-See [SECURITY.md](SECURITY.md) for detailed security documentation.
+See [SECURITY.md](SECURITY.md) and the [data inventory](docs/security/data-inventory.md) for detailed data flows, the storage model, and deployment responsibilities.
 
 ---
 

@@ -264,6 +264,20 @@ class TestOnSingleStudyFailed:
         assert dialog._completed_downloads == 1
 
 
+class TestPartialInstanceFailureWarning:
+    @patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox.warning")
+    def test_partial_cache_write_failure_is_shown_after_successful_download(self, mock_warning, dialog):
+        message = "Downloaded 1/2. Errors: cache write failed: Orthanc cache quota reached"
+        dialog._on_partial_instance_failure("1.2.3.4", message)
+
+        with patch.object(dialog, "accept") as mock_accept:
+            dialog._on_done("session", "1.2.3.4")
+
+        mock_warning.assert_called_once()
+        assert message in mock_warning.call_args.args[2]
+        mock_accept.assert_called_once()
+
+
 class TestStartNextDownload:
     def test_all_fail_shows_error_not_done(self, dialog):
         """When all studies fail, _on_failed should be called (not _on_done)."""

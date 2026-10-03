@@ -89,8 +89,14 @@ _DIAG_LOGGERS = (
     "echo_personal_tool.infrastructure.dicom_metadata_mapper",
     "echo_personal_tool.presentation.orthanc_study_dialog",
 )
-from echo_personal_tool.infrastructure.profile import diag_log_dir as _resolve_diag_log_dir
+from echo_personal_tool.infrastructure.paths import (
+    logs_dir as _resolve_diag_log_dir,
+)
+from echo_personal_tool.infrastructure.paths import (
+    migrate_legacy_paths as _migrate_legacy_paths,
+)
 
+_PATH_MIGRATION_WARNINGS = _migrate_legacy_paths()
 _diag_log_dir = _resolve_diag_log_dir()
 try:
     _diag_log_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +108,8 @@ try:
         logging.getLogger(_logger_name).addHandler(_diag_handler)
 except OSError:
     pass
+for _migration_warning in _PATH_MIGRATION_WARNINGS:
+    logging.getLogger(__name__).warning("Path migration: %s", _migration_warning)
 
 # ── First-run environment check ──
 # When running outside PyInstaller and outside a venv, check if deps/models

@@ -1,68 +1,80 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for SonoForge (folder mode, Windows 10)."""
+"""PyInstaller spec for the full SonoForge Windows onedir distribution."""
 
 import os
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 block_cipher = None
 
-# Spec always runs from project root (pyinstaller cwd)
+# The release workflow invokes PyInstaller from the repository root.
 PROJECT_ROOT = Path(os.getcwd())
 SRC = PROJECT_ROOT / "src" / "echo_personal_tool"
+
+# Keep core assets explicit for directory builds, then include remaining package data.
+datas = [
+    (str(SRC / "resources" / "fonts"), "echo_personal_tool/resources/fonts"),
+    (str(SRC / "resources" / "references"), "echo_personal_tool/resources/references"),
+    (str(SRC / "resources" / "icons"), "echo_personal_tool/resources/icons"),
+    (str(SRC / "resources" / "logo.png"), "echo_personal_tool/resources"),
+    (str(SRC / "resources" / "logo_dark.png"), "echo_personal_tool/resources"),
+]
+datas += collect_data_files("echo_personal_tool")
+
+hiddenimports = [
+    # DICOM stack
+    "pydicom",
+    "pydicom.encaps",
+    "pydicom.pixel_data_handlers",
+    "pydicom.pixel_data_handlers.util",
+    "pylibjpeg",
+    "pylibjpeg_openjpeg",
+    "pylibjpeg_libjpeg",
+    "pynetdicom",
+    "pynetdicom.encoders",
+    "pynetdicom.encoders.generation",
+    "pynetdicom.sop_class",
+    "pynetdicom.storage",
+    # NumPy / SciPy
+    "numpy",
+    "scipy",
+    "scipy._lib.messagestream",
+    "scipy.special",
+    # Qt / plotting
+    "PySide6",
+    "pyqtgraph",
+    "pyqtgraph.graphicsItems.ViewBox.axisCtrlTemplate_pyqt5",
+    "pyqtgraph.imageview.ImageViewTemplate_pyqt5",
+    # CV and networking
+    "cv2",
+    "httpx",
+    "httpx._transports",
+    "httpx._transports.default",
+    "psutil",
+    "psutil._pswindows",
+    # Documents, configuration, and optional AI
+    "pymupdf",
+    "yaml",
+    "jsonschema",
+    "onnxruntime",
+    "reportlab",
+    "openpyxl",
+    "keyring",
+    "keyring.backends.Windows",
+    "echo_personal_tool",
+]
 
 a = Analysis(
     [str(SRC / "__main__.py")],
     pathex=[str(PROJECT_ROOT / "src")],
     binaries=[],
-    datas=[
-        (str(SRC / "resources" / "fonts"), "echo_personal_tool/resources/fonts"),
-        (str(SRC / "resources" / "icons"), "echo_personal_tool/resources/icons"),
-        (str(SRC / "resources" / "references"), "echo_personal_tool/resources/references"),
-    ],
-    hiddenimports=[
-        # DICOM stack
-        "pydicom",
-        "pydicom.encaps",
-        "pydicom.pixel_data_handlers",
-        "pydicom.pixel_data_handlers.util",
-        "pylibjpeg",
-        "pylibjpeg_openjpeg",
-        "pylibjpeg_libjpeg",
-        "pynetdicom",
-        "pynetdicom.encoders",
-        "pynetdicom.encoders.generation",
-        "pynetdicom.sop_class",
-        "pynetdicom.storage",
-        # NumPy / SciPy
-        "numpy",
-        "scipy",
-        "scipy._lib.messagestream",
-        "scipy.special",
-        # Qt / plotting
-        "PySide6",
-        "pyqtgraph",
-        "pyqtgraph.graphicsItems.ViewBox.axisCtrlTemplate_pyqt5",
-        "pyqtgraph.imageview.ImageViewTemplate_pyqt5",
-        # CV
-        "cv2",
-        # HTTP / network
-        "httpx",
-        "httpx._transports",
-        "httpx._transports.default",
-        # System
-        "psutil",
-        "psutil._pswindows",
-        # PDF
-        "pymupdf",
-        # ONNX (optional — phase2)
-        "onnxruntime",
-    ],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "tkinter",
-    ],
+    excludes=["tkinter"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -87,6 +99,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(SRC / "resources" / "logo.ico"),
 )
 
 coll = COLLECT(

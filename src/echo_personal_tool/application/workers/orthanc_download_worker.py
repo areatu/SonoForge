@@ -26,7 +26,7 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
 )
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
-from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+from echo_personal_tool.infrastructure.orthanc_cache import OrthancCacheQuotaExceeded, OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import (
     DownloadCancelled,
     OrthancDicomWebClient,
@@ -87,6 +87,7 @@ class OrthancDownloadSignals(QObject):
     series_done = Signal(str, str)  # series_uid, status "ok"|"failed"|"cancelled"
     done = Signal(str, str)  # session_id, study_uid
     failed = Signal(str, str)  # study_uid or series_uid, message
+    partial_failed = Signal(str, str)  # study_uid, message when some instances were saved
     cancelled = Signal(str)  # session_id
     studies_ready = Signal(list)  # list[StudyMetadata]
 
@@ -317,6 +318,7 @@ class OrthancDownloadWorker(QRunnable):
                         "orthanc.downloaded_with_errors", saved=str(saved_count), total=str(total), detail=detail
                     )
                 if saved_count > 0:
+                    self.signals.partial_failed.emit(self._study_uid, message)
                     self.signals.studies_ready.emit(self._build_studies_metadata())
                     self.signals.done.emit(self._session_id, self._study_uid)
                 else:
@@ -485,6 +487,11 @@ class OrthancDownloadWorker(QRunnable):
                 instance_uid,
                 data,
             )
+        except OrthancCacheQuotaExceeded:
+            from echo_personal_tool.infrastructure.i18n import tr
+
+            logger.warning("[DIAG] cache quota reached instance=%s", instance_uid[:16])
+            return DownloadFailure(tr("orthanc.cache_quota_exceeded"), retryable=False)
         except Exception as exc:  # noqa: BLE001
             return self._download_failed(instance_uid, "cache write", exc, retryable=False)
         return data

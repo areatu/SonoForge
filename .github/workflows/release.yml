@@ -10,6 +10,11 @@ on:
         description: "Release tag (e.g. v0.2.3)"
         required: false
         type: string
+      verify_only:
+        description: "Build and test packages without publishing a release"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -110,22 +115,103 @@ jobs:
           print('Dependencies OK')
           "
 
-      - name: Build standalone exe
+      - name: Determine package version
+        id: version
+        run: |
+          $version = (python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)").Trim()
+          if (-not $version) { throw "Could not determine SonoForge version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install Inno Setup
+        run: choco install innosetup --version=6.7.1 --yes --no-progress
+
+      - name: Build portable exe and onedir application
         run: |
           python -m pip install pyinstaller
           python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = "${{ steps.version.outputs.version }}"
+          Copy-Item dist\SonoForge.exe "dist\SonoForge-$version-portable.exe"
 
-      - name: Verify exe
+          python -m PyInstaller build/windows/build.spec --noconfirm --clean
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile Inno Setup installer
         run: |
-          $exe = Get-Item dist\SonoForge.exe
-          Write-Host "Exe: $($exe.FullName)"
-          Write-Host "Size: $([math]::Round($exe.Length / 1MB, 1)) MB"
+          $version = "${{ steps.version.outputs.version }}"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source }
+          & $iscc "/DMyAppVersion=$version" "build/windows/sonoforge.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload standalone exe
+      - name: Verify Windows packages
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $setup = "dist\SonoForge-Setup-$version-x64.exe"
+          $portable = "dist\SonoForge-$version-portable.exe"
+          $onedirExe = "dist\SonoForge\SonoForge.exe"
+          foreach ($path in @($setup, $portable, $onedirExe)) {
+            if (-not (Test-Path $path)) { throw "Missing Windows package output: $path" }
+          }
+          # Preserve the existing stable download URL while publishing the versioned portable asset.
+          Copy-Item $portable "dist\SonoForge.exe"
+          Get-Item $setup, $portable, "dist\SonoForge.exe" | ForEach-Object {
+            Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB"
+          }
+
+      - name: Smoke-test per-user install and data-preserving uninstall
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $installer = (Resolve-Path "dist\SonoForge-Setup-$version-x64.exe").Path
+          $install = Start-Process -FilePath $installer -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Per-user setup failed with exit code $($install.ExitCode)" }
+
+          $installDir = Join-Path $env:LOCALAPPDATA "Programs\SonoForge"
+          $appExe = Join-Path $installDir "SonoForge.exe"
+          $startShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "SonoForge\SonoForge.lnk"
+          $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) "SonoForge.lnk"
+          foreach ($path in @($appExe, $startShortcut, $desktopShortcut)) {
+            if (-not (Test-Path $path)) { throw "Per-user install is missing: $path" }
+          }
+          $shell = New-Object -ComObject WScript.Shell
+          $shortcut = $shell.CreateShortcut($startShortcut)
+          if ($shortcut.TargetPath -ine $appExe) {
+            throw "Start Menu shortcut does not target the installed SonoForge executable"
+          }
+          $arpKeys = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object {
+            (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -eq "SonoForge"
+          }
+          if (-not $arpKeys) { throw "SonoForge ARP entry was not created for the current user" }
+
+          $dataDir = Join-Path $env:LOCALAPPDATA "SonoForge"
+          $dataDirWasPresent = Test-Path $dataDir
+          $marker = Join-Path $dataDir ("installer-preserve-test-" + [guid]::NewGuid().ToString() + ".txt")
+          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+          Set-Content -Path $marker -Value "keep"
+          $uninstaller = Get-ChildItem $installDir -Filter "unins*.exe" | Select-Object -First 1
+          if (-not $uninstaller) { throw "Uninstaller was not installed" }
+          $remove = Start-Process -FilePath $uninstaller.FullName -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "Uninstall failed with exit code $($remove.ExitCode)" }
+          if (Test-Path $installDir) { throw "Application install directory remains after uninstall" }
+          if (-not (Test-Path $marker)) { throw "Silent uninstall unexpectedly removed user data" }
+          if ((Test-Path $startShortcut) -or (Test-Path $desktopShortcut)) { throw "Uninstall left a shortcut behind" }
+          $remainingArp = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object {
+            (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -eq "SonoForge"
+          }
+          if ($remainingArp) { throw "Uninstall left the ARP entry behind" }
+          Remove-Item $marker -Force
+          if (-not $dataDirWasPresent -and -not (Get-ChildItem $dataDir -Force | Select-Object -First 1)) {
+            Remove-Item $dataDir -Force
+          }
+
+      - name: Upload Windows installer and portable exe
         uses: actions/upload-artifact@v7
         with:
-          name: sonoforge-windows-exe
-          path: dist\SonoForge.exe
+          name: sonoforge-windows-package
+          path: |
+            dist/SonoForge-Setup-*-x64.exe
+            dist/SonoForge-*-portable.exe
+            dist/SonoForge.exe
 
   build-macos-apple-silicon:
     runs-on: macos-latest
@@ -196,6 +282,7 @@ jobs:
 
   release:
     needs: [build-source, build-linux, build-windows, build-macos-apple-silicon]
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.verify_only }}
     runs-on: ubuntu-latest
     steps:
       - name: Determine tag
@@ -220,10 +307,10 @@ jobs:
         with:
           name: sonoforge-deb
 
-      - name: Download Windows exe
+      - name: Download Windows installer and portable exe
         uses: actions/download-artifact@v8
         with:
-          name: sonoforge-windows-exe
+          name: sonoforge-windows-package
 
       - name: Download macOS Apple Silicon artifact
         uses: actions/download-artifact@v8
@@ -233,6 +320,13 @@ jobs:
       - name: List downloaded files
         run: ls -la
 
+      - name: Generate release checksums
+        run: |
+          set -euo pipefail
+          files=(sonoforge_*.deb SonoForge-Setup-*-x64.exe SonoForge-*-portable.exe SonoForge.exe SonoForge-macos-arm64.dmg sonoforge-*.tar.gz)
+          sha256sum "${files[@]}" > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -240,9 +334,12 @@ jobs:
           name: ${{ steps.tag.outputs.tag }}
           files: |
             sonoforge_*.deb
+            SonoForge-Setup-*-x64.exe
+            SonoForge-*-portable.exe
             SonoForge.exe
             SonoForge-macos-arm64.dmg
             sonoforge-*.tar.gz
+            SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: false

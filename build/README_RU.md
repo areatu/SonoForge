@@ -9,13 +9,13 @@
 | Папка | Описание |
 |-------|----------|
 | `linux/` | Сборка для Linux (.deb / portable-папка) |
-| `windows/` | Сборка для Windows (.zip / one-file) |
+| `windows/` | Windows-установщик и версионированный portable-exe, а также облегчённый ZIP |
 | `presenter/` | **SonoForge Presenter** — лёгкий портативный профиль (onefile .exe / AppImage), см. [`presenter/README.md`](presenter/README.md) |
 
 ## Linux (`linux/`)
 
 | Файл | Описание |
-|------|----------|
+|-------|----------|
 | `build.sh` | Portable-папка (PyInstaller, folder mode) |
 | `build-lite.sh` | Лёгкий .deb (~50 МБ, только код; зависимости и модели докачиваются при первом запуске) |
 | `build-deb.sh` | Полный .deb со всем содержимым (PyInstaller onedir, модели внутри) |
@@ -27,19 +27,23 @@ Desktop entry для Linux лежит в [`scripts/sonoforge.desktop`](../script
 ## Windows (`windows/`)
 
 | Файл | Описание |
-|------|----------|
-| `build.bat` | Полная сборка (PyInstaller) |
-| `build-lite.bat` | Лёгкий .zip (~50 МБ, зависимости докачиваются) |
-| `build.spec` | PyInstaller spec |
-| `sonoforge-launcher.bat` | Batch-лаунчер с автоустановкой |
+|-------|----------|
+| `build.bat` | Собирает onefile portable-приложение и onedir-папку для установщика; компилирует setup EXE при наличии Inno Setup 6 |
+| `build-lite.bat` | Облегчённая ZIP-сборка (~50 МБ, зависимости докачиваются при первом запуске) |
+| `build.spec` | PyInstaller onedir spec, используемый установщиком |
+| `sonoforge.iss` | Inno Setup: установка для текущего пользователя по умолчанию, с выбором установки для всех |
+| `sonoforge-launcher.bat` | Batch-лаунчер облегчённой сборки |
 
-Сопутствующие файлы в корне и в `scripts/`:
-[`sonoforge-standalone.spec`](../sonoforge-standalone.spec) (one-file spec, используется
-CI-воркфлоу `build.yml`/`release.yml`), [`installer_stub.py`](../installer_stub.py) и
-[`scripts/create_installer.py`](../scripts/create_installer.py) (self-extracting
-установщик), [`scripts/setup.bat`](../scripts/setup.bat) /
-[`scripts/uninstall.bat`](../scripts/uninstall.bat), [`launcher.py`](../launcher.py)
-(лаунчер лёгких сборок: ищет Python, ставит зависимости, качает модели).
+Windows-релиз публикует `SonoForge-Setup-<version>-x64.exe` и
+`SonoForge-<version>-portable.exe`. Для обратной совместимости также сохраняется
+ссылка `SonoForge.exe` на тот же portable-файл.
+
+Корневой [`sonoforge-standalone.spec`](../sonoforge-standalone.spec) собирает
+onefile portable-приложение. Старый self-extracting ZIP-stub-поток
+(`installer_stub.py` и `scripts/create_installer.py`) выведен из эксплуатации.
+Отдельные [`scripts/setup.bat`](../scripts/setup.bat) и
+[`scripts/uninstall.bat`](../scripts/uninstall.bat) остаются только для лёгкого
+ZIP-пакета; [`launcher.py`](../launcher.py) устанавливает зависимости для этой сборки.
 
 ## Сборка
 
@@ -50,7 +54,10 @@ CI-воркфлоу `build.yml`/`release.yml`), [`installer_stub.py`](../install
 # Linux: полный .deb
 ./build/linux/build-deb.sh [--clean]
 
-# Windows (из-под Windows)
+# Windows: полные пакеты (из-под Windows; для установщика нужен Inno Setup 6)
+build\windows\build.bat
+
+# Windows: облегчённый ZIP
 build\windows\build-lite.bat
 
 # SonoForge Presenter (lite portable профиль)

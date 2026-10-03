@@ -2,8 +2,8 @@
 
 > [English version](README.md)
 
-Утилиты для обучения, экспорта и бенчмарков моделей, а также служебные скрипты
-установки. Запускаются из корня репозитория.
+Утилиты для обучения, экспорта и бенчмарков моделей, а также вспомогательные
+скрипты облегчённой Windows ZIP-сборки. Запускаются из корня репозитория.
 
 ## Модели: обучение, экспорт, бенчмарки
 
@@ -24,9 +24,8 @@
 
 | Файл | Описание |
 |------|----------|
-| `create_installer.py` | Сборка self-extracting установщика Windows (использует `installer_stub.py` из корня) |
-| `setup.bat` | Установка лёгкой сборки под Windows |
-| `uninstall.bat` | Удаление под Windows |
+| `setup.bat` | Установка лёгкой Windows ZIP-сборки |
+| `uninstall.bat` | Удаление лёгкой Windows ZIP-сборки |
 | `run_constructor.py` | Быстрый запуск диалога Reference Constructor без всего приложения |
 | `run_tests.sh` | Обёртка для запуска тестов (кириллические пути, `PYTHONPATH`, offscreen Qt) |
 | `sonoforge.desktop` | Desktop entry для Linux |

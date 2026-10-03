@@ -51,8 +51,6 @@ PROFILE_PRESENTER = "presenter"
 #: Directory created next to the executable/AppImage in portable mode.
 PORTABLE_DIR_NAME = "SonoForgePresenter-data"
 
-_FALLBACK_ORTHANC_RELATIVE = Path(".sonoforge") / "orthanc"
-
 
 def _env_flag(name: str) -> bool | None:
     raw = os.environ.get(name)
@@ -176,19 +174,17 @@ def qsettings_for(org: str, app: str):
 
 
 def diag_log_dir() -> Path:
-    """Directory for diagnostic logs (host %LOCALAPPDATA% or portable)."""
-    portable = portable_path("logs")
-    if portable is not None:
-        return portable
-    return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SonoForge" / "logs"
+    """Directory for diagnostic logs (platform app data or portable)."""
+    from echo_personal_tool.infrastructure.paths import logs_dir
+
+    return logs_dir()
 
 
 def orthanc_cache_root() -> Path:
-    """Root of the Orthanc session cache (host ~/.sonoforge or portable)."""
-    portable = portable_path("cache", "orthanc")
-    if portable is not None:
-        return portable
-    return Path.home() / _FALLBACK_ORTHANC_RELATIVE
+    """Root of the Orthanc session cache (platform app data or portable)."""
+    from echo_personal_tool.infrastructure.paths import orthanc_cache_dir
+
+    return orthanc_cache_dir()
 
 
 def display_name() -> str:

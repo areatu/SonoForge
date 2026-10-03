@@ -46,13 +46,15 @@ SonoForge can:
 
 ### Starting the application
 
-For an installed build use the SonoForge shortcut or `sonoforge`. From source:
+For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
 
 ```bash
 uv run sonoforge
 # or
 python -m echo_personal_tool
 ```
+
+The Windows and macOS release builds bundle Python and application dependencies; they do not create a Python virtual environment. On first launch they may offer to download the AI segmentation models; you can skip the download and use the non-AI tools. The Linux `.deb` launcher creates a per-user virtual environment, installs Python dependencies, and offers the model download in the terminal. If you decline there, the application may also show its first-run setup dialog; skip the download there to continue without AI segmentation. Models, the managed DICOM cache, fonts, and logs use the OS application-data directory in the full profile; portable mode stores its runtime data beside the executable.
 
 `Settings → Interface → On startup` provides:
 

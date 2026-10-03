@@ -63,10 +63,15 @@ jobs:
           xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml \
             | python .github/scripts/annotate_pytest_failures.py
 
-      # macOS/Windows: run without GUI tests (no xvfb available)
+      # macOS/Windows: run without GUI tests (no xvfb available). Use the same
+      # annotation filter as Linux so failing test names are available in checks.
       - name: Run tests (macOS/Windows)
         if: runner.os != 'Linux'
-        run: pytest tests/unit/ -q --tb=line --no-header -m "not gui"
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest tests/unit/ -q --tb=line --no-header -m "not gui" \
+            | python .github/scripts/annotate_pytest_failures.py
 
       # Linux: end-to-end 720p cine playback SLOs (real AppController + ViewerWidget,
       # offscreen). Kept out of tests/unit/ on purpose: it plays two synthetic cines for

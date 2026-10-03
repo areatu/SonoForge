@@ -14,13 +14,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from echo_personal_tool import __version__
+from echo_personal_tool.infrastructure.paths import (
+    data_dir,
+    models_dir,
+    models_dirs_for_read,
+    venv_dir,
+)
 
 logger = logging.getLogger(__name__)
 
 _MODELS_RELEASE_URL = "https://github.com/areatu/sonoforge-models/releases/download/models-v1/models-v1.tar.gz"
-_DATA_DIR = Path.home() / ".local" / "share" / "sonoforge"
-_VENV_DIR = _DATA_DIR / "venv"
-_MODELS_DIR = _DATA_DIR / "models"
+_DATA_DIR = data_dir()
+_VENV_DIR = venv_dir()
+_MODELS_DIR = models_dir()
 
 _REQUIRED_PACKAGES = [
     "PySide6",
@@ -65,8 +71,9 @@ def check_deps() -> bool:
 
 
 def check_models() -> bool:
-    """Return True if model_manifest.json exists in the models dir."""
-    return (_MODELS_DIR / "model_manifest.json").is_file()
+    """Return True if the manifest exists in the canonical or legacy models dir."""
+    candidates = dict.fromkeys((_MODELS_DIR, *models_dirs_for_read()))
+    return any((candidate / "model_manifest.json").is_file() for candidate in candidates)
 
 
 def get_setup_status() -> SetupStatus:

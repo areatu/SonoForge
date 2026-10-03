@@ -99,6 +99,7 @@ from echo_personal_tool.infrastructure.onnx_engine import (
     _default_models_dir,
     _load_manifest,
 )
+from echo_personal_tool.infrastructure.paths import logs_dir
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
@@ -107,7 +108,7 @@ from echo_personal_tool.infrastructure.user_preferences import load_user_prefere
 from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 # ── Logging setup (after all imports) ────────────────────────────────
-_LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+_LOG_DIR = logs_dir()
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _LOG_PATH = _LOG_DIR / "errors.log"
 _file_handler = logging.FileHandler(str(_LOG_PATH), mode="w", encoding="utf-8")

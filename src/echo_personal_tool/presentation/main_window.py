@@ -9,8 +9,10 @@ import sys
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from echo_personal_tool.infrastructure.paths import logs_dir
+
 # Debug file logging
-_LOG_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SonoForge" / "logs"
+_LOG_DIR = logs_dir()
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _LOG_PATH = _LOG_DIR / "errors.log"
 _file_handler = logging.FileHandler(str(_LOG_PATH), mode="a", encoding="utf-8")
@@ -196,6 +198,13 @@ class MainWindow(QMainWindow):
             # only server downloads that need the cache will fail later.
             pass
         self._orthanc_cache = OrthancSessionCache(orthanc_root)
+        try:
+            stale_sessions = self._orthanc_cache.clear_stale()
+            if stale_sessions:
+                logger.info("Removed %d stale Orthanc cache session(s) at startup", stale_sessions)
+        except OSError:
+            # Cache recovery must not prevent opening the application.
+            logger.warning("Could not inspect stale Orthanc cache sessions")
         self._controller.studies_loaded.connect(self._on_studies_loaded)
         self._controller.scan_failed.connect(self._on_scan_failed)
         self._controller.frame_loaded.connect(self._on_frame_loaded)
@@ -1244,7 +1253,26 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _show_user_preferences(self) -> None:
-        show_user_preferences_dialog(self, on_apply=self._apply_user_preferences)
+        show_user_preferences_dialog(
+            self,
+            on_apply=self._apply_user_preferences,
+            orthanc_cache=self._orthanc_cache,
+            protected_cache_sessions=self._active_orthanc_cache_sessions,
+        )
+
+    def _active_orthanc_cache_sessions(self) -> set[str]:
+        """Cache sessions backing the currently loaded PACS studies."""
+        active: set[str] = set()
+        for study in self._controller.studies:
+            for series in getattr(study, "series", ()):
+                for instance in getattr(series, "instances", ()):
+                    path = getattr(instance, "path", None)
+                    if path is None:
+                        continue
+                    session_id = self._orthanc_cache.session_id_for_path(Path(path))
+                    if session_id is not None:
+                        active.add(session_id)
+        return active
 
     def _show_properties_tab(self) -> None:
         self._tool_panel.show_properties_tab()
@@ -1659,7 +1687,13 @@ class MainWindow(QMainWindow):
         pool = QThreadPool.globalInstance()
         if pool.activeThreadCount() > 0:
             pool.waitForDone(2000)
-        self._orthanc_cache.clear_all()
+        if getattr(self._user_preferences, "orthanc_cache_clear_on_exit", True):
+            try:
+                self._orthanc_cache.clear_all()
+            except OSError:
+                # Best effort only: filesystem deletion is not a secure wipe,
+                # and a cache I/O error should not block closing the viewer.
+                logger.warning("Could not clear the Orthanc cache on exit")
         super().closeEvent(event)
 
     @_prof

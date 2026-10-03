@@ -24,9 +24,8 @@ ONNX модели для автоматической сегментации.
 
 ## Использование
 
-Модели загружаются автоматически из:
-1. `~/.local/share/sonoforge/models/` (установленная версия)
-2. `models/` (из исходников)
-3. `_MEIPASS/models/` (PyInstaller)
+Модели автоматически загружаются из `_MEIPASS/models/`, если эта папка есть в сборке, затем из пользовательского каталога данных ОС или папки `models/` в исходниках.
+
+Пользовательский каталог моделей — папка `models/` внутри `%LOCALAPPDATA%\SonoForge` в Windows, `$XDG_DATA_HOME/sonoforge` в Linux (по умолчанию `~/.local/share/sonoforge`) или `~/Library/Application Support/SonoForge` в macOS. Портативный режим хранит модели рядом с исполняемым файлом. Старый путь `~/.local/share/sonoforge/models/` пока остаётся резервным для чтения на релиз миграции.
 
 См. `model_manifest.json` для конфигурации.

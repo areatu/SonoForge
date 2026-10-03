@@ -10,7 +10,7 @@ Scripts and configuration for building the application. All scripts are run
 | Folder | Description |
 |--------|-------------|
 | `linux/` | Linux build (.deb / portable folder) |
-| `windows/` | Windows build (.zip / one-file) |
+| `windows/` | Full Windows installer and versioned portable executable, plus the lightweight ZIP build |
 | `presenter/` | **SonoForge Presenter** — lightweight portable profile (onefile .exe / AppImage), see [`presenter/README.md`](presenter/README.md) |
 
 ## Linux (`linux/`)
@@ -29,18 +29,23 @@ The Linux desktop entry lives in [`scripts/sonoforge.desktop`](../scripts/sonofo
 
 | File | Description |
 |------|-------------|
-| `build.bat` | Full build (PyInstaller) |
-| `build-lite.bat` | Lightweight .zip (~50 MB, dependencies fetched on first run) |
-| `build.spec` | PyInstaller spec |
-| `sonoforge-launcher.bat` | Batch launcher with automatic installation |
+| `build.bat` | Builds the onefile portable executable and the onedir installer payload; compiles the setup EXE when Inno Setup 6 is installed |
+| `build-lite.bat` | Lightweight ZIP build (~50 MB, dependencies fetched on first run) |
+| `build.spec` | PyInstaller onedir spec used by the installer |
+| `sonoforge.iss` | Inno Setup script: per-user by default, with an all-users option |
+| `sonoforge-launcher.bat` | Batch launcher for the lightweight build |
 
-Related files at the root and in `scripts/`:
-[`sonoforge-standalone.spec`](../sonoforge-standalone.spec) (one-file spec, used by
-the CI workflows `build.yml`/`release.yml`), [`installer_stub.py`](../installer_stub.py) and
-[`scripts/create_installer.py`](../scripts/create_installer.py) (self-extracting
-installer), [`scripts/setup.bat`](../scripts/setup.bat) /
-[`scripts/uninstall.bat`](../scripts/uninstall.bat), [`launcher.py`](../launcher.py)
-(launcher for the lightweight builds: finds Python, installs dependencies, downloads models).
+The Windows release publishes `SonoForge-Setup-<version>-x64.exe` and
+`SonoForge-<version>-portable.exe`. The existing `SonoForge.exe` URL is also
+kept as a compatibility alias for the portable executable.
+
+The root [`sonoforge-standalone.spec`](../sonoforge-standalone.spec) builds the
+onefile portable application. The legacy zip-stub installer (`installer_stub.py`
+and `scripts/create_installer.py`) has been retired. The separate
+[`scripts/setup.bat`](../scripts/setup.bat) and
+[`scripts/uninstall.bat`](../scripts/uninstall.bat) remain for the lightweight
+ZIP package only; [`launcher.py`](../launcher.py) is its Python/dependency
+bootstrapper.
 
 ## Building
 
@@ -51,7 +56,10 @@ installer), [`scripts/setup.bat`](../scripts/setup.bat) /
 # Linux: full .deb
 ./build/linux/build-deb.sh [--clean]
 
-# Windows (from Windows)
+# Windows full packages (from Windows; requires Inno Setup 6 for the installer)
+build\windows\build.bat
+
+# Windows lightweight ZIP
 build\windows\build-lite.bat
 
 # SonoForge Presenter (lite portable profile)

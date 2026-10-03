@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 REM SonoForge Lightweight Windows Build
-REM Assembles dist\SonoForge-Setup\ for both .zip and .exe installer
+REM Assembles the lightweight ZIP package with its setup/uninstall helper scripts
 
 set APP_NAME=SonoForge
 for /f "tokens=*" %%v in ('python -c "import sys; sys.path.insert(0,'src'); from echo_personal_tool import __version__; print(__version__)"') do set APP_VERSION=%%v

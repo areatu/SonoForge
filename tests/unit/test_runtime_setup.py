@@ -32,8 +32,22 @@ class TestCheckModels:
     def test_models_missing(self, tmp_path):
         models_dir = tmp_path / "models"
         models_dir.mkdir()
-        with patch.object(rs_mod, "_MODELS_DIR", models_dir):
+        with (
+            patch.object(rs_mod, "_MODELS_DIR", models_dir),
+            patch.object(rs_mod, "models_dirs_for_read", return_value=(models_dir,)),
+        ):
             assert rs_mod.check_models() is False
+
+    def test_models_found_in_legacy_read_fallback(self, tmp_path):
+        models_dir = tmp_path / "new" / "models"
+        legacy_dir = tmp_path / "old" / "models"
+        legacy_dir.mkdir(parents=True)
+        (legacy_dir / "model_manifest.json").write_text("{}")
+        with (
+            patch.object(rs_mod, "_MODELS_DIR", models_dir),
+            patch.object(rs_mod, "models_dirs_for_read", return_value=(models_dir, legacy_dir)),
+        ):
+            assert rs_mod.check_models() is True
 
 
 class TestGetSetupStatus:
