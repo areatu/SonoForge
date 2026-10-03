@@ -65,8 +65,11 @@ SonoForgePresenter-data/
 
 ## Запуск с флешки
 
-- **Windows:** `SonoForgePresenter.exe` двойным кликом. Onefile распаковывается
-  в `%TEMP%` хоста при каждом запуске (USB 3.0: ~2–4 с; USB 2.0 дольше).
+- **Windows:** `SonoForgePresenter.exe` двойным кликом. В релизах файл публикуется как
+  `SonoForgePresenter-<version>.exe`, а `SonoForgePresenter.exe` — рядом как побайтовый
+  алиас (проверка аттестации идёт по дайджесту, поэтому оба имени проходят одну и ту же
+  аттестацию — см. [`docs/security/code-signing.md`](../../docs/security/code-signing.md)).
+  Onefile распаковывается в `%TEMP%` хоста при каждом запуске (USB 3.0: ~2–4 с; USB 2.0 дольше).
   Права администратора и установка не нужны. Windows 10/11 x64.
 - **Linux:** `./SonoForge-Presenter-<ver>-x86_64.AppImage` (нужен FUSE;
   на машинах без FUSE: `--appimage-extract-and-run`). Стартует быстрее

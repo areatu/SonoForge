@@ -52,7 +52,7 @@ PowerPoint slide show, but with live DICOM.
 4. **Runs from a USB stick** — one file, no installation, no admin rights, no AI models;
    Windows and Linux.
 
-Press `F10` → present. Download `SonoForgePresenter.exe` (Windows) or the versioned
+Press `F10` → present. Download `SonoForgePresenter-<version>.exe` (Windows) or
 `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from
 [Releases](https://github.com/areatu/SonoForge/releases); details in
 [build/presenter/README.md](build/presenter/README.md).
@@ -85,7 +85,7 @@ The first launch creates a per-user virtual environment and installs the Python 
 
 To uninstall, open Windows **Settings → Apps → Installed apps** (called **Apps & features** on Windows 10) and select SonoForge, or use Control Panel's **Programs and Features**. The uninstaller removes the application and shortcuts but keeps `%LOCALAPPDATA%\SonoForge` by default. Select **Also remove SonoForge user data** in the uninstaller only if you also want to delete that account's models, cache, logs, and settings.
 
-> **Requires:** Windows 10/11 (64-bit). Setup and portable builds are not Authenticode-signed; Windows SmartScreen may show a warning. If in doubt, verify the download against `SHA256SUMS` attached to the release.
+> **Requires:** Windows 10/11 (64-bit). Setup and portable builds are not Authenticode-signed, so Windows SmartScreen may show *"Windows protected your PC"* / **Unknown publisher** on first run — choose **More info → Run anyway**. Every release asset carries a signed build-provenance attestation and is listed in the attached `SHA256SUMS`; see [Verifying a download](docs/security/code-signing.md#3-verifying-a-download) for both checks.
 
 The application dependencies are bundled; Python and a virtual environment are not installed. Prefer a no-install run? Download **`SonoForge-<version>-portable.exe`** from the same release page. It creates no shortcuts; application data still uses the current Windows account's application-data directory.
 
@@ -94,11 +94,19 @@ The application dependencies are bundled; Python and a virtual environment are n
 <details>
 <summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Download **`SonoForge-macos-arm64.dmg`** from [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg).
+1. Download **`SonoForge-<version>-macos-arm64.dmg`** from [Releases](https://github.com/areatu/SonoForge/releases/latest). The fixed-name [`SonoForge-macos-arm64.dmg`](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg) is a byte-identical alias kept so the stable download URL keeps working.
 2. Open the disk image and drag `SonoForge.app` to Applications.
 3. Launch `SonoForge.app` from Applications.
 
 > **Requires:** macOS 12.0+ on Apple Silicon (arm64). An Intel build is not currently published.
+>
+> **Not signed with an Apple Developer ID and not notarized** — signing requires a paid Apple Developer Program membership. Gatekeeper will report that *"Apple cannot check it for malicious software"*. Open it via **System Settings → Privacy & Security → Open Anyway**, or clear the quarantine attribute once:
+>
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/SonoForge.app
+> ```
+>
+> The `.dmg` is attested and listed in `SHA256SUMS`; see [Verifying a download](docs/security/code-signing.md#3-verifying-a-download).
 
 Application dependencies are bundled; Python and a virtual environment are not installed. On first launch, SonoForge offers to download the AI segmentation models. You can skip the download and continue without automatic AI segmentation.
 
@@ -113,7 +121,7 @@ not a zero-footprint mode: one-file extraction uses OS temporary storage, while 
 secrets, cache, fonts, and application logs are stored on the stick. See
 [SECURITY.md](SECURITY.md) for the data inventory.
 
-1. Download `SonoForgePresenter.exe` (Windows) or the versioned `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases)
+1. Download `SonoForgePresenter-<version>.exe` (Windows) or `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) from [Releases](https://github.com/areatu/SonoForge/releases). The fixed-name `SonoForgePresenter.exe` is published alongside as a byte-identical alias
 2. Copy the file to the USB stick
 3. Double-click to run
 
@@ -276,7 +284,7 @@ fork: feature flags plus PyInstaller excludes, the main profile is untouched.
 
 | | Full SonoForge | SonoForge Presenter |
 |---|---|---|
-| Distribution | Linux `.deb`; Windows installer `SonoForge-Setup-<version>-x64.exe` (plus portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-macos-arm64.dmg` | single portable file (`SonoForgePresenter.exe` / versioned `SonoForge-Presenter-<version>-x86_64.AppImage`) |
+| Distribution | Linux `.deb`; Windows installer `SonoForge-Setup-<version>-x64.exe` (plus portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-<version>-macos-arm64.dmg` | single portable file (`SonoForgePresenter-<version>.exe` / `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | Measurements, Doppler, auto-calibration | yes | yes |
 | Strain/STE and optical flow | yes | yes |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | yes | yes |
@@ -332,6 +340,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%L
 |----------|-------------|
 | [SECURITY.md](SECURITY.md) | PHI handling, storage lifecycle, data security, model integrity |
 | [docs/security/data-inventory.md](docs/security/data-inventory.md) | Data inventory and mapping to selected security expectations |
+| [docs/security/code-signing.md](docs/security/code-signing.md) | Release verification (`SHA256SUMS`, build-provenance attestations), signing status per platform, and the code signing policy |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |

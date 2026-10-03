@@ -66,7 +66,12 @@ The portable directory location is resolved as follows:
 
 - **Windows:** double-click `SonoForgePresenter.exe`. The onefile unpacks to the host's
   `%TEMP%` on each launch (USB 3.0: ~2–4 s; USB 2.0 is slower). No admin rights or
-  installation required. Windows 10/11 x64.
+  installation required. Windows 10/11 x64. Release assets are published as
+  `SonoForgePresenter-<version>.exe`, with the fixed-name `SonoForgePresenter.exe`
+  alongside as a byte-identical alias (attestation verification is digest-based, so both
+  resolve through the same attestation — see
+  [`docs/security/code-signing.md`](../../docs/security/code-signing.md)). Rename the
+  versioned file to whatever suits the stick; the exe is self-contained.
 - **Linux:** `./SonoForge-Presenter-<ver>-x86_64.AppImage` (requires FUSE; on machines
   without FUSE: `--appimage-extract-and-run`). Starts faster than the Windows onefile —
   squashfs is mounted, not unpacked.

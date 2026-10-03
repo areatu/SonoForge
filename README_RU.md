@@ -53,8 +53,8 @@ PowerPoint, только вместо слайдов — живой DICOM.
 4. **Запускается с флешки** — один файл, без установки и прав администратора, без моделей
    AI; Windows и Linux.
 
-Нажмите `F10` → докладывайте. Скачайте `SonoForgePresenter.exe` (Windows) или
-версионированный `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) в разделе
+Нажмите `F10` → докладывайте. Скачайте `SonoForgePresenter-<version>.exe` (Windows) или
+`SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) в разделе
 [Releases](https://github.com/areatu/SonoForge/releases); подробности —
 [build/presenter/README.md](build/presenter/README.md).
 
@@ -86,7 +86,7 @@ sonoforge
 
 Чтобы удалить приложение, откройте Windows **Параметры → Приложения → Установленные приложения** (в Windows 10 — **Приложения и возможности**) и выберите SonoForge либо воспользуйтесь панелью управления **Программы и компоненты**. Удаление убирает приложение и ярлыки, но по умолчанию сохраняет `%LOCALAPPDATA%\SonoForge`. Выберите в деинсталляторе **Also remove SonoForge user data** только если нужно удалить также модели, кэш, журналы и настройки этой учётной записи.
 
-> **Требуется:** Windows 10/11 (64-бит). Установщик и portable-сборка не подписаны Authenticode; Windows SmartScreen может показать предупреждение. При сомнениях сверьте файл с `SHA256SUMS`, приложенным к релизу.
+> **Требуется:** Windows 10/11 (64-бит). Установщик и portable-сборка не подписаны Authenticode, поэтому Windows SmartScreen при первом запуске может показать *«Компьютер защищён Windows»* / **Неизвестный издатель** — выберите **Подробнее → Выполнить в любом случае**. Каждый файл релиза снабжён подписанным подтверждением происхождения сборки (build provenance attestation) и перечислен в приложенном `SHA256SUMS`; обе проверки описаны в разделе [Проверка загруженного файла](docs/security/code-signing.md#3-verifying-a-download).
 
 Зависимости приложения уже включены; устанавливать Python и виртуальное окружение не нужно. Для запуска без установки скачайте **`SonoForge-<version>-portable.exe`** с той же страницы релиза. Portable-файл не создаёт ярлыки; данные приложения по-прежнему хранятся в каталоге данных текущего пользователя Windows.
 
@@ -95,11 +95,19 @@ sonoforge
 <details>
 <summary><strong>macOS (.dmg, Apple Silicon)</strong></summary>
 
-1. Скачайте **`SonoForge-macos-arm64.dmg`** из [Releases](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg).
+1. Скачайте **`SonoForge-<version>-macos-arm64.dmg`** из [Releases](https://github.com/areatu/SonoForge/releases/latest). Файл с фиксированным именем [`SonoForge-macos-arm64.dmg`](https://github.com/areatu/SonoForge/releases/latest/download/SonoForge-macos-arm64.dmg) публикуется рядом как побайтовый алиас, чтобы стабильная ссылка на скачивание продолжала работать.
 2. Откройте образ диска и перетащите `SonoForge.app` в папку «Программы».
 3. Запустите `SonoForge.app` из папки «Программы».
 
 > **Требуется:** macOS 12.0+ на Apple Silicon (arm64). Сборка для Intel сейчас не публикуется.
+>
+> **Не подписано Apple Developer ID и не нотариально заверено (notarization)** — для этого требуется платное членство в Apple Developer Program. Gatekeeper сообщит, что *«Apple не может проверить его на наличие вредоносного ПО»*. Откройте приложение через **Системные настройки → Конфиденциальность и безопасность → Всё равно открыть** или однократно снимите атрибут карантина:
+>
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/SonoForge.app
+> ```
+>
+> Файл `.dmg` имеет подтверждение происхождения сборки и перечислен в `SHA256SUMS`; см. [Проверка загруженного файла](docs/security/code-signing.md#3-verifying-a-download).
 
 Зависимости приложения включены в сборку; устанавливать Python и виртуальное окружение не нужно. При первом запуске SonoForge предложит скачать AI-модели для сегментации. Загрузку можно пропустить; тогда автоматическая AI-сегментация будет недоступна.
 
@@ -114,7 +122,7 @@ sonoforge
 секреты, кэш, шрифты и журналы приложения хранятся на флешке. Подробности — в
 [SECURITY.md](SECURITY.md).
 
-1. Скачайте `SonoForgePresenter.exe` (Windows) или версионированный `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) из [Releases](https://github.com/areatu/SonoForge/releases)
+1. Скачайте `SonoForgePresenter-<version>.exe` (Windows) или `SonoForge-Presenter-<version>-x86_64.AppImage` (Linux) из [Releases](https://github.com/areatu/SonoForge/releases). Рядом публикуется алиас с фиксированным именем `SonoForgePresenter.exe` — побайтово идентичный
 2. Скопируйте файл на USB-флешку
 3. Дважды щёлкните для запуска
 
@@ -277,7 +285,7 @@ SonoForge использует **ONNX Runtime** для сегментации с
 
 | | Полный SonoForge | SonoForge Presenter |
 |---|---|---|
-| распространение | Linux `.deb`; Windows-установщик `SonoForge-Setup-<version>-x64.exe` (и portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-macos-arm64.dmg` | один портативный файл (`SonoForgePresenter.exe` / версионированный `SonoForge-Presenter-<version>-x86_64.AppImage`) |
+| распространение | Linux `.deb`; Windows-установщик `SonoForge-Setup-<version>-x64.exe` (и portable `SonoForge-<version>-portable.exe`); macOS Apple Silicon `SonoForge-<version>-macos-arm64.dmg` | один портативный файл (`SonoForgePresenter-<version>.exe` / `SonoForge-Presenter-<version>-x86_64.AppImage`) |
 | измерения, допплер, автокалибровка | да | да |
 | Strain/STE и оптический поток | да | да |
 | PACS: DICOMweb + DIMSE (C-FIND/C-GET/C-MOVE/C-STORE, TLS) | да | да |
@@ -337,6 +345,7 @@ SonoForge использует **ONNX Runtime** для сегментации с
 |----------|----------|
 | [SECURITY.md](SECURITY.md) | Обработка PHI, безопасность, целостность моделей |
 | [docs/security/data-inventory.md](docs/security/data-inventory.md) | Инвентарь данных и сопоставление с отдельными требованиями безопасности |
+| [docs/security/code-signing.md](docs/security/code-signing.md) | Проверка релизов (`SHA256SUMS`, подтверждения происхождения сборки), статус подписи по платформам и политика подписи кода |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Правила участия, стиль кода, тестирование |
 | [ROADMAP.md](ROADMAP.md) | Статус функций и планы развития |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Технические спецификации (DICOMweb, M-Mode и др.) |

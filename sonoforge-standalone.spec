@@ -8,8 +8,26 @@ Architecture is determined by the build environment (CI runner).
 Models are NOT bundled — they are downloaded on first launch via
 runtime_setup.show_setup_dialog(). This keeps the package at ~250-400 MB.
 """
+import os
 import sys
+
 from PyInstaller.utils.hooks import collect_data_files
+
+# Version metadata derived from __version__ in src/echo_personal_tool/__init__.py:
+# the Windows PE version resource and the macOS bundle version keys. Both used to
+# be absent or hardcoded (CFBundleShortVersionString was pinned at '0.2.4' and
+# drifted behind `__version__`). See build/pyinstaller_version.py for why a
+# generated file path is used instead of a VSVersionInfo object.
+# build/ also holds the linux/, windows/ and presenter/ subdirectories, so it is
+# removed from sys.path again right after the import: leaving it there would let
+# those names resolve as namespace packages and shadow real modules for the rest
+# of the PyInstaller run.
+_HELPERS = os.path.join(SPECPATH, 'build')  # noqa: F821
+sys.path.insert(0, _HELPERS)
+try:
+    from pyinstaller_version import bundle_version_plist, write_version_file  # noqa: E402
+finally:
+    sys.path.remove(_HELPERS)
 
 is_macos = sys.platform == 'darwin'
 
@@ -79,7 +97,8 @@ if is_macos:
         icon='src/echo_personal_tool/resources/logo.icns',
         bundle_identifier='com.echocardiography.sonoforge',
         info_plist={
-            'CFBundleShortVersionString': '0.2.4',
+            # CFBundleShortVersionString / CFBundleVersion come from __version__.
+            **bundle_version_plist(),
             'NSHighResolutionCapable': True,
             'NSRequiresAquaSystemAppearance': False,
         },
@@ -106,4 +125,14 @@ else:
         codesign_identity=None,
         entitlements_file=None,
         icon='src/echo_personal_tool/resources/logo.ico',
+        # Windows only. PyInstaller drops version information on other platforms
+        # with a warning, so passing None on Linux keeps the build log clean.
+        version=(
+            write_version_file(
+                original_filename='SonoForge.exe',
+                file_description='SonoForge - desktop echocardiography analysis',
+            )
+            if sys.platform == 'win32'
+            else None
+        ),
     )

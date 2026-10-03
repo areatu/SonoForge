@@ -2,6 +2,7 @@
 """PyInstaller spec for the full SonoForge Windows onedir distribution."""
 
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
@@ -11,6 +12,22 @@ block_cipher = None
 # The release workflow invokes PyInstaller from the repository root.
 PROJECT_ROOT = Path(os.getcwd())
 SRC = PROJECT_ROOT / "src" / "echo_personal_tool"
+
+# Windows PE version resource, generated from __version__. This spec is always
+# built on Windows, so no platform guard is needed here. See
+# build/pyinstaller_version.py for why a file path is used rather than a
+# VSVersionInfo object (the object form would import pefile/pywin32).
+# SPECPATH is the directory holding this spec, injected by PyInstaller.
+# SPECPATH is the directory holding this spec, injected by PyInstaller; its parent
+# is build/. That directory also holds linux/, windows/ and presenter/, so it is
+# removed from sys.path again right after the import to stop those names resolving
+# as namespace packages and shadowing real modules for the rest of the run.
+_HELPERS = str(Path(SPECPATH).parent)  # noqa: F821
+sys.path.insert(0, _HELPERS)
+try:
+    from pyinstaller_version import write_version_file  # noqa: E402
+finally:
+    sys.path.remove(_HELPERS)
 
 # Keep core assets explicit for directory builds, then include remaining package data.
 datas = [
@@ -100,6 +117,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(SRC / "resources" / "logo.ico"),
+    # The Inno Setup installer already carries VersionInfoProductName /
+    # VersionInfoProductVersion, but the payload exe it installs did not. Without
+    # this the installed SonoForge.exe shows an empty Details tab in Explorer and
+    # a signing provider cannot enforce its product-name/version requirements.
+    version=write_version_file(
+        original_filename="SonoForge.exe",
+        file_description="SonoForge - desktop echocardiography analysis",
+    ),
 )
 
 coll = COLLECT(
