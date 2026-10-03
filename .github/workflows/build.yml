@@ -33,11 +33,12 @@ jobs:
         run: ./build/linux/build-lite.sh
 
       - name: Upload .deb
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-linux
           path: dist/sonoforge_*.deb
-          retention-days: 30
+          retention-days: 1
 
   build-windows:
     runs-on: windows-latest
@@ -63,11 +64,12 @@ jobs:
           python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
 
       - name: Upload exe
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-windows
           path: dist/SonoForge.exe
-          retention-days: 30
+          retention-days: 1
 
   build-macos-apple-silicon:
     runs-on: macos-latest
@@ -116,8 +118,9 @@ jobs:
           fi
 
       - name: Upload DMG
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-macos-arm64
           path: dist/SonoForge-macos-arm64.dmg
-          retention-days: 30
+          retention-days: 1
