@@ -1,6 +1,6 @@
 """Tests for the Windows PE version resource and macOS bundle version metadata.
 
-These cover ``build/pyinstaller_version.py`` and the three PyInstaller specs that
+These cover ``scripts/pyinstaller_version.py`` and the three PyInstaller specs that
 consume it. The behaviour they protect is invisible in a test run and only shows
 up in a shipped binary — an empty Properties -> Details tab on Windows, a macOS
 ``.app`` that reports the wrong release, and a code signing provider that refuses
@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / "build" / "pyinstaller_version.py"
+HELPER = ROOT / "scripts" / "pyinstaller_version.py"
 VERSION_SOURCE = ROOT / "src" / "echo_personal_tool" / "__init__.py"
 
 # Specs that produce a Windows executable, and therefore must embed a version
@@ -281,6 +281,28 @@ def test_windows_specs_embed_a_version_resource(spec_path: Path) -> None:
     assert "write_version_file(" in text, f"{spec_path.name} does not generate a version file"
 
 
+def test_helper_is_not_gitignored() -> None:
+    """The helper must live somewhere git actually tracks.
+
+    It was first added under ``build/``, which ``.gitignore`` excludes wholesale
+    because that is PyInstaller's workpath. ``git add -A`` skipped it silently, so
+    every spec raised ``FileNotFoundError`` on a fresh CI checkout while
+    everything passed locally. A file that the specs import at build time must not
+    sit in an ignored directory.
+    """
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    ignored_prefixes = {
+        line.strip().rstrip("/")
+        for line in gitignore.splitlines()
+        if line.strip() and not line.strip().startswith(("#", "!"))
+    }
+    relative = HELPER.relative_to(ROOT).as_posix()
+    for part in Path(relative).parts[:-1]:
+        assert part not in ignored_prefixes, (
+            f"{relative} sits under the gitignored directory '{part}/' and would be skipped by 'git add -A'"
+        )
+
+
 @pytest.mark.parametrize("spec_path", WINDOWS_SPECS, ids=lambda p: p.name)
 def test_specs_reach_the_helper_from_their_own_directory(spec_path: Path) -> None:
     """Each spec must add build/ to sys.path relative to SPECPATH, not to cwd.
@@ -293,7 +315,7 @@ def test_specs_reach_the_helper_from_their_own_directory(spec_path: Path) -> Non
     assert "SPECPATH" in text or "PROJECT_ROOT" in text, (
         f"{spec_path.name} must derive the helper path from SPECPATH, not from cwd"
     )
-    assert (ROOT / "build" / "pyinstaller_version.py").is_file()
+    assert HELPER.is_file()
     # build/ also contains the linux/, windows/ and presenter/ directories. If it
     # stays on sys.path those names resolve as namespace packages and can shadow
     # real modules for the remainder of the PyInstaller run, so the specs must

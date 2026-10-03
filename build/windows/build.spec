@@ -18,11 +18,12 @@ SRC = PROJECT_ROOT / "src" / "echo_personal_tool"
 # build/pyinstaller_version.py for why a file path is used rather than a
 # VSVersionInfo object (the object form would import pefile/pywin32).
 # SPECPATH is the directory holding this spec, injected by PyInstaller.
-# SPECPATH is the directory holding this spec, injected by PyInstaller; its parent
-# is build/. That directory also holds linux/, windows/ and presenter/, so it is
-# removed from sys.path again right after the import to stop those names resolving
-# as namespace packages and shadowing real modules for the rest of the run.
-_HELPERS = str(Path(SPECPATH).parent)  # noqa: F821
+# SPECPATH is the directory holding this spec (build/windows/), injected by
+# PyInstaller, so parents[1] is the repository root. The helper lives in scripts/
+# rather than build/ because build/ is gitignored and a source file there can be
+# silently dropped by `git add -A`. scripts/ is popped again right after the import
+# so nothing in it can shadow a real module for the rest of the run.
+_HELPERS = str(Path(SPECPATH).parents[1] / "scripts")  # noqa: F821
 sys.path.insert(0, _HELPERS)
 try:
     from pyinstaller_version import write_version_file  # noqa: E402
