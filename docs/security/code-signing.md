@@ -141,6 +141,50 @@ useful, free additions are:
   their side. **Flathub is the highest-value free Linux channel**: it verifies the build
   against upstream sources and users get updates through their software centre.
 
+### PyPI — wired up, but the job can never run
+
+`ci.yml` has a `release` job that publishes the hatch-built distributions with
+`pypa/gh-action-pypi-publish@release/v1` under `permissions: id-token: write`, i.e. PyPI
+**Trusted Publishing** — no stored API token, which is the right design. It is guarded by
+`if: startsWith(github.ref, 'refs/tags/v')`.
+
+**That condition can never be true.** `ci.yml` triggers on `push: branches: [main]`,
+`pull_request: branches: [main]` and `workflow_dispatch` — there is no `tags:` filter. So
+`github.ref` is always `refs/heads/main` or `refs/pull/N/merge`, and the job is
+unconditionally skipped. Confirmed empirically: `https://pypi.org/pypi/sonoforge/json`
+returns `404 Not Found`; the package has never been published.
+
+This is worth knowing because the channel would be the cheapest supply-chain win available:
+
+- PyPI **generates PEP 740 attestations automatically** for uploads made from GitHub
+  Actions via Trusted Publishing with `pypa/gh-action-pypi-publish` (default since
+  v1.11.0, and `@release/v1` is newer). No extra step, no key, and the attestation binds
+  each file to the repository, workflow and commit that uploaded it.
+- The project page then shows a **Provenance** entry per file, which is a human-readable
+  check that needs no tooling at all.
+- Cryptographic verification:
+  `uvx pypi-attestations verify pypi --repository https://github.com/areatu/SonoForge pypi:sonoforge-<version>-py3-none-any.whl`
+
+Caveats, so this is not oversold:
+
+- **`pip` does not verify attestations at install time** (still true in 2026). Provenance
+  on PyPI is an audit and forensic control, not an install-time gate. `uv` has
+  `--require-attestation`; plain `pip` has no equivalent enforcement.
+- A wheel is not a Windows/macOS binary. Publishing to PyPI does **nothing** for
+  SmartScreen or Gatekeeper — it serves users who `pip install`, which for this project is
+  the source-install audience, not the clinical-workstation audience.
+- Activating it is a product decision, not a one-line fix: the name `sonoforge` must be
+  claimed on PyPI, Trusted Publishing must be configured on the PyPI side (repository,
+  workflow filename and GitHub environment must match exactly), and `tags: ["v*"]` added to
+  `ci.yml`'s `push:` trigger. It also needs a decision about the two independent
+  source-distribution builds that would then exist — `ci.yml`'s `build` job runs
+  `hatch build` (sdist + wheel) while `release.yml`'s `build-source` runs `hatch build -t
+  sdist`. Only one of them should be the published artifact of record.
+
+Left deliberately un-actioned here: enabling a publish path that has never run, against a
+package index where the name is not yet claimed, is not something a supply-chain change
+should decide as a side effect.
+
 ### Asset naming and version binding
 
 Attestation verification is **digest-keyed and file-name-agnostic** (§3.2), so an asset
@@ -355,7 +399,8 @@ Ordered by cost, and deliberately free-first:
 | 5 | GPG-sign `SHA256SUMS`, publish the fingerprint | Free (one key to protect) | 🟡 **CI ready, key missing.** Signs automatically once `GPG_PRIVATE_KEY` exists — see [Enabling GPG signing](#enabling-gpg-signing). |
 | 6 | Submit each release to the Microsoft Security Intelligence portal | Free | ⬜ Manual per release. Reduces SmartScreen/AV false-positive duration, especially for PyInstaller `onefile`. |
 | 7 | Apply to **SignPath Foundation** | Free | ⬜ Blocked on reputation — see [Honest constraint](#honest-constraint-on-the-signpath-step). Removes *Unknown publisher* on Windows. |
-| 8 | Publish to **winget** and/or **Flathub** | Free | ⬜ Signed install path through channels users already trust. Requirements in [Distribution channels](#distribution-channels-winget--flathub--microsoft-store). |
+| 8 | Publish to **winget** and/or **Flathub** | Free | ⬜ Signed install path through channels users already trust. Requirements in [Distribution channels](#distribution-channels-winget-flathub-microsoft-store). |
+| 8b | Fix or delete the unreachable **PyPI** publish job in `ci.yml` | Free | ⬜ Dead code today — its `refs/tags/v` guard can never match the workflow's triggers. Activating it would bring automatic PEP 740 attestations for `pip install` users. See [PyPI](#pypi--wired-up-but-the-job-can-never-run). |
 | 9 | Certum Open Source Code Signing | ~€49/yr | ⬜ Fallback only if step 7 is rejected. Own-name Authenticode, usable from CI via SimplySign cloud. |
 | 10 | Apple Developer Program | $99/yr | ⬜ The only fix for macOS Gatekeeper. Defer until funded or a macOS user base justifies it. |
 
