@@ -111,7 +111,8 @@ class TestContourDeletionPropagation:
             (),
             authoritative_instance_uid="clip-a",
         )
-        assert len(merged) == 2  # an empty report is ignored, nothing is lost
+        assert len(merged) == 1  # authoritative empty clears only clip-a
+        assert merged[0].sop_instance_uid == "clip-b"
 
     def test_updated_planimeter_contour_replaces_the_old_one(self) -> None:
         existing = (_area_contour("Площадь1", "clip-a"),)

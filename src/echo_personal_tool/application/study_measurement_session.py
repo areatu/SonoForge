@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 
 from echo_personal_tool.domain.models import Contour, LinearMeasurement
@@ -113,6 +116,12 @@ def merge_contours(
     must not throw an accepted ED/ES contour away.
     """
     if not incoming:
+        if authoritative_instance_uid is not None:
+            return tuple(
+                c
+                for c in existing
+                if not (c.sop_instance_uid == authoritative_instance_uid and is_planimeter_contour(c))
+            )
         return existing
     by_key = {contour_key(contour): contour for contour in existing}
     for contour in incoming:
@@ -221,6 +230,10 @@ class StudyMeasurementData:
     mmode_calibration_by_instance: tuple[tuple[str, MmodeCalibrationState], ...] = ()
     cine_segment_roi_by_instance: tuple[tuple[str, tuple[float, float, float, float]], ...] = ()
     manual_pixel_spacing: tuple[float, float] | None = None
+    manual_spacing_by_instance: tuple[tuple[str, tuple[float, float]], ...] = ()
+    mmode_time_by_instance: tuple[tuple[str, float], ...] = ()
+    height_source: str = "unset"
+    weight_source: str = "unset"
     height_cm: float | None = None
     weight_kg: float | None = None
     mmode_time_per_pixel_ms: float | None = None
@@ -247,8 +260,62 @@ class StudyMeasurementData:
 class StudyMeasurementSessionStore:
     """Accumulates raw measurement inputs per study until the app session ends."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_change: Callable[[str, StudyMeasurementData], None] | None = None) -> None:
+        self.on_change = on_change
         self._studies: dict[str, StudyMeasurementData] = {}
+
+    def snapshot(self, study_uid: str) -> StudyMeasurementData:
+        return deepcopy(self.get(study_uid))
+
+    def restore(self, study_uid: str, data: StudyMeasurementData) -> None:
+        """Hydrate without generating an autosave or mutating the supplied record."""
+        self._studies[study_uid] = deepcopy(data)
+
+    def activate_instance(self, study_uid: str, instance_uid: str) -> None:
+        """Select per-clip calibration without copying or dirtying the whole study."""
+        data = self.get(study_uid)
+        self._studies[study_uid] = replace(
+            data,
+            manual_pixel_spacing=dict(data.manual_spacing_by_instance).get(instance_uid),
+            mmode_time_per_pixel_ms=dict(data.mmode_time_by_instance).get(instance_uid),
+        )
+
+    def _set(self, study_uid: str, data: StudyMeasurementData) -> None:
+        if self._studies.get(study_uid) == data:
+            return
+        self._studies[study_uid] = data
+        if self.on_change is not None:
+            self.on_change(study_uid, data)
+
+    def set_instance_spacing(self, study_uid: str, instance_uid: str, spacing) -> None:
+        data = self.get(study_uid)
+        values = dict(data.manual_spacing_by_instance)
+        if spacing is None:
+            values.pop(instance_uid, None)
+        else:
+            values[instance_uid] = spacing
+        self._set(
+            study_uid, replace(data, manual_spacing_by_instance=tuple(values.items()), manual_pixel_spacing=spacing)
+        )
+
+    def set_instance_mmode_time(self, study_uid: str, instance_uid: str, value: float) -> None:
+        data = self.get(study_uid)
+        values = dict(data.mmode_time_by_instance)
+        values[instance_uid] = value
+        self._set(study_uid, replace(data, mmode_time_by_instance=tuple(values.items()), mmode_time_per_pixel_ms=value))
+
+    def fill_dicom_metrics(self, study_uid: str, height_cm, weight_kg) -> None:
+        data = self.get(study_uid)
+        updates = {}
+        for name, value in (("height", height_cm), ("weight", weight_kg)):
+            field = "height_cm" if name == "height" else "weight_kg"
+            if getattr(data, name + "_source") == "unset" and value is not None:
+                limit = 300 if name == "height" else 700
+                if math.isfinite(value) and 0 < value <= limit:
+                    updates[field] = float(value)
+                    updates[name + "_source"] = "dicom"
+        if updates:
+            self._set(study_uid, replace(data, **updates))
 
     def clear(self) -> None:
         self._studies.clear()
@@ -267,12 +334,15 @@ class StudyMeasurementSessionStore:
         authoritative_instance_uid: str | None = None,
     ) -> None:
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(
-            data,
-            contours=merge_contours(
-                data.contours,
-                incoming,
-                authoritative_instance_uid=authoritative_instance_uid,
+        self._set(
+            study_uid,
+            replace(
+                data,
+                contours=merge_contours(
+                    data.contours,
+                    incoming,
+                    authoritative_instance_uid=authoritative_instance_uid,
+                ),
             ),
         )
 
@@ -293,7 +363,7 @@ class StudyMeasurementSessionStore:
                 key = (contour.sop_instance_uid or "", contour.view.upper(), contour.frame_index)
                 current[key] = area
         values = tuple((*key, area) for key, area in sorted(current.items()))
-        self._studies[study_uid] = replace(data, simpson_area_by_frame=values)
+        self._set(study_uid, replace(data, simpson_area_by_frame=values))
 
     def get_simpson_area_curve(
         self,
@@ -315,9 +385,12 @@ class StudyMeasurementSessionStore:
         incoming: tuple[LinearMeasurement, ...],
     ) -> None:
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(
-            data,
-            linear_measurements=merge_linear_measurements(data.linear_measurements, incoming),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                linear_measurements=merge_linear_measurements(data.linear_measurements, incoming),
+            ),
         )
 
     def set_linear_measurements_for_instance(
@@ -328,12 +401,15 @@ class StudyMeasurementSessionStore:
     ) -> None:
         """Store the authoritative caliper set of one clip (deletions included)."""
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(
-            data,
-            linear_measurements=replace_linear_measurements_for_instance(
-                data.linear_measurements,
-                instance_uid,
-                incoming,
+        self._set(
+            study_uid,
+            replace(
+                data,
+                linear_measurements=replace_linear_measurements_for_instance(
+                    data.linear_measurements,
+                    instance_uid,
+                    incoming,
+                ),
             ),
         )
 
@@ -351,9 +427,12 @@ class StudyMeasurementSessionStore:
         current = dict(data.doppler_by_instance)
         existing = current.get(instance_uid)
         current[instance_uid] = merge_doppler_dtos(existing, dto)
-        self._studies[study_uid] = replace(
-            data,
-            doppler_by_instance=tuple(current.items()),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                doppler_by_instance=tuple(current.items()),
+            ),
         )
 
     def set_doppler_calibration(
@@ -368,9 +447,12 @@ class StudyMeasurementSessionStore:
             current.pop(instance_uid, None)
         else:
             current[instance_uid] = calibration
-        self._studies[study_uid] = replace(
-            data,
-            doppler_calibration_by_instance=tuple(current.items()),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                doppler_calibration_by_instance=tuple(current.items()),
+            ),
         )
 
     def get_doppler_calibration(
@@ -398,10 +480,13 @@ class StudyMeasurementSessionStore:
             current.pop(key, None)
         else:
             current[key] = calibration
-        self._studies[study_uid] = replace(
-            data,
-            doppler_calibration_by_instance_frame=tuple(
-                (uid, frame, stored) for (uid, frame), stored in current.items()
+        self._set(
+            study_uid,
+            replace(
+                data,
+                doppler_calibration_by_instance_frame=tuple(
+                    (uid, frame, stored) for (uid, frame), stored in current.items()
+                ),
             ),
         )
 
@@ -428,6 +513,29 @@ class StudyMeasurementSessionStore:
                 return dto
         return None
 
+    def set_doppler_for_instance_frame(self, study_uid, instance_uid, frame_index, dto) -> None:
+        """Authoritative editor update, including deletion of the last marker.
+
+        The legacy per-instance entry for this instance is dropped on purpose: the
+        frame records below are aggregated together with ``doppler_by_instance`` in
+        ``all_doppler_dto``, so keeping it would count the same markers twice (and
+        deleting the last marker would not clear this instance from the aggregate).
+        Entries of every other instance stay untouched, so their contribution to the
+        study-wide aggregate survives this update.
+        """
+        data = self.get(study_uid)
+        entries = tuple(
+            item for item in data.doppler_by_instance_frame if (item[0], item[1]) != (instance_uid, frame_index)
+        )
+        self._set(
+            study_uid,
+            replace(
+                data,
+                doppler_by_instance=tuple(item for item in data.doppler_by_instance if item[0] != instance_uid),
+                doppler_by_instance_frame=entries + ((instance_uid, frame_index, dto),),
+            ),
+        )
+
     def merge_doppler_for_instance_frame(
         self,
         study_uid: str,
@@ -439,9 +547,12 @@ class StudyMeasurementSessionStore:
         current = {(uid, frame): stored for uid, frame, stored in data.doppler_by_instance_frame}
         key = (instance_uid, frame_index)
         current[key] = merge_doppler_dtos(current.get(key), dto)
-        self._studies[study_uid] = replace(
-            data,
-            doppler_by_instance_frame=tuple((uid, frame, stored) for (uid, frame), stored in current.items()),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                doppler_by_instance_frame=tuple((uid, frame, stored) for (uid, frame), stored in current.items()),
+            ),
         )
 
     def get_doppler_for_instance_frame(
@@ -462,7 +573,7 @@ class StudyMeasurementSessionStore:
         value: float | None,
     ) -> None:
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(data, mmode_time_per_pixel_ms=value)
+        self._set(study_uid, replace(data, mmode_time_per_pixel_ms=value))
 
     def set_mmode_calibration(
         self,
@@ -476,9 +587,12 @@ class StudyMeasurementSessionStore:
             current.pop(instance_uid, None)
         else:
             current[instance_uid] = calibration
-        self._studies[study_uid] = replace(
-            data,
-            mmode_calibration_by_instance=tuple(current.items()),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                mmode_calibration_by_instance=tuple(current.items()),
+            ),
         )
 
     def get_mmode_calibration(
@@ -515,9 +629,12 @@ class StudyMeasurementSessionStore:
             current.pop(instance_uid, None)
         else:
             current[instance_uid] = roi_xyxy
-        self._studies[study_uid] = replace(
-            data,
-            cine_segment_roi_by_instance=tuple(current.items()),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                cine_segment_roi_by_instance=tuple(current.items()),
+            ),
         )
 
     def set_doppler_measurement(
@@ -528,11 +645,14 @@ class StudyMeasurementSessionStore:
         """Replace all Doppler data (legacy); prefer merge_doppler_for_instance."""
         data = self.get(study_uid)
         if dto is None:
-            self._studies[study_uid] = replace(data, doppler_by_instance=())
+            self._set(study_uid, replace(data, doppler_by_instance=()))
             return
-        self._studies[study_uid] = replace(
-            data,
-            doppler_by_instance=(("__legacy__", dto),),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                doppler_by_instance=(("__legacy__", dto),),
+            ),
         )
 
     def set_manual_pixel_spacing(
@@ -541,7 +661,7 @@ class StudyMeasurementSessionStore:
         spacing: tuple[float, float] | None,
     ) -> None:
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(data, manual_pixel_spacing=spacing)
+        self._set(study_uid, replace(data, manual_pixel_spacing=spacing))
 
     def set_patient_metrics(
         self,
@@ -549,11 +669,19 @@ class StudyMeasurementSessionStore:
         height_cm: float | None,
         weight_kg: float | None,
     ) -> None:
+        for value, limit in ((height_cm, 300), (weight_kg, 700)):
+            if value is not None and (not math.isfinite(value) or not 0 < value <= limit):
+                raise ValueError("Patient metric out of range")
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(
-            data,
-            height_cm=height_cm,
-            weight_kg=weight_kg,
+        self._set(
+            study_uid,
+            replace(
+                data,
+                height_cm=height_cm,
+                weight_kg=weight_kg,
+                height_source="manual" if height_cm is not None else "cleared",
+                weight_source="manual" if weight_kg is not None else "cleared",
+            ),
         )
 
     def set_strain(self, study_uid: str, report: StrainReport | None) -> None:
@@ -564,7 +692,7 @@ class StudyMeasurementSessionStore:
         protocol identical to what the strain window shows.
         """
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(data, strain=report)
+        self._set(study_uid, replace(data, strain=report))
 
     def merge_vessel_measurements(
         self,
@@ -572,15 +700,23 @@ class StudyMeasurementSessionStore:
         incoming: tuple[VesselMeasurement, ...],
     ) -> None:
         data = self.get(study_uid)
-        self._studies[study_uid] = replace(
-            data,
-            vessel_measurements=merge_vessel_measurements(data.vessel_measurements, incoming),
+        self._set(
+            study_uid,
+            replace(
+                data,
+                vessel_measurements=merge_vessel_measurements(data.vessel_measurements, incoming),
+            ),
         )
 
     def reset_measurements(self, study_uid: str) -> None:
         """Clear contours, linear calipers, Doppler, and manual calibration for a study."""
         data = self.get(study_uid)
-        self._studies[study_uid] = StudyMeasurementData(
-            height_cm=data.height_cm,
-            weight_kg=data.weight_kg,
+        self._set(
+            study_uid,
+            StudyMeasurementData(
+                height_cm=data.height_cm,
+                weight_kg=data.weight_kg,
+                height_source=data.height_source,
+                weight_source=data.weight_source,
+            ),
         )

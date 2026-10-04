@@ -65,6 +65,7 @@ def show_user_preferences_dialog(
     on_apply: Callable[[UserPreferences], None] | None = None,
     orthanc_cache: OrthancSessionCache | None = None,
     protected_cache_sessions: Callable[[], set[str]] | None = None,
+    measurement_storage_action: Callable[[], None] | None = None,
 ) -> bool:
     from echo_personal_tool.presentation.ui_animations import exec_animated
 
@@ -73,6 +74,7 @@ def show_user_preferences_dialog(
         on_apply=on_apply,
         orthanc_cache=orthanc_cache,
         protected_cache_sessions=protected_cache_sessions,
+        measurement_storage_action=measurement_storage_action,
     )
     return exec_animated(dialog) == QDialog.DialogCode.Accepted
 
@@ -112,6 +114,7 @@ class UserPreferencesDialog(QDialog):
         on_apply: Callable[[UserPreferences], None] | None = None,
         orthanc_cache: OrthancSessionCache | None = None,
         protected_cache_sessions: Callable[[], set[str]] | None = None,
+        measurement_storage_action: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._on_apply = on_apply
@@ -372,6 +375,24 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
 
+        persistence_form = QFormLayout()
+        self._persist_measurements = QCheckBox(tr("persistence.enable"))
+        self._persist_measurements.setChecked(current.measurement_persistence_enabled)
+        persistence_form.addRow(self._persist_measurements)
+        persistence_hint = QLabel(tr("persistence.privacy") + "\n" + tr("persistence.restart"))
+        persistence_hint.setWordWrap(True)
+        persistence_form.addRow(persistence_hint)
+        self._measurement_manage = QPushButton(tr("persistence.manage"))
+        self._measurement_manage.setEnabled(measurement_storage_action is not None)
+        if measurement_storage_action is not None:
+
+            def manage_measurements():
+                measurement_storage_action()
+                self._persist_measurements.setChecked(load_user_preferences().measurement_persistence_enabled)
+
+            self._measurement_manage.clicked.connect(manage_measurements)
+        persistence_form.addRow(self._measurement_manage)
+
         # --- Managed DICOM download cache ---
         cache_form = QFormLayout()
         self._cache_location_label = QLabel(str(self._orthanc_cache.root))
@@ -403,6 +424,7 @@ class UserPreferencesDialog(QDialog):
             (tr("preferences.block_gold"), gold_form),
             (tr("preferences.block_dicom"), dicom_form),
             (tr("preferences.block_cache"), cache_form),
+            (tr("persistence.title"), persistence_form),
         ]
         if has_reference_ui():
             other_blocks.append((tr("preferences.block_references"), refs_form))
@@ -593,6 +615,7 @@ class UserPreferencesDialog(QDialog):
             startup_mode=str(self._startup_mode.currentData()),
             last_opened_folder=stored.last_opened_folder,
             orthanc_cache_clear_on_exit=self._cache_clear_on_exit.isChecked(),
+            measurement_persistence_enabled=self._persist_measurements.isChecked(),
             theme_mode=str(self._theme_combo.currentData()),
             language=str(self._language_combo.currentData()),
             reduce_motion=self._reduce_motion.isChecked(),

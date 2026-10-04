@@ -99,7 +99,7 @@ def test_simpson_results_persist_after_instance_switch(synthetic_dicom_path: Pat
     assert snapshot_after.lvef == snapshot_before.lvef
 
 
-def test_open_folder_clears_session_store(monkeypatch, tmp_path: Path, synthetic_dicom_path) -> None:
+def test_open_folder_preserves_session_until_scan_succeeds(monkeypatch, tmp_path: Path, synthetic_dicom_path) -> None:
     controller = AppController()
     instance = _sample_instance(synthetic_dicom_path)
 
@@ -113,6 +113,8 @@ def test_open_folder_clears_session_store(monkeypatch, tmp_path: Path, synthetic
     controller.open_folder(tmp_path)
 
     study_uid = controller._resolve_study_uid(instance)
+    assert len(controller._measurement_session.get(study_uid).linear_measurements) == 1
+    controller._on_studies_scanned([])
     assert controller._measurement_session.get(study_uid).linear_measurements == ()
 
 

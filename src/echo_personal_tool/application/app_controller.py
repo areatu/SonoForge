@@ -172,6 +172,8 @@ class AppController(QObject):
     decode_progress = Signal(int, int)  # current, total
     decode_finished = Signal()
     speckle_result_ready = Signal(object)
+    persistence_status = Signal(str)
+    persistence_blocked = Signal()  # flush failed: navigation must be refused loudly, not only in the status bar
     scroll_settled = Signal()
     la_assist_contour_ready = Signal(object)
 
@@ -195,6 +197,9 @@ class AppController(QObject):
         # the controller so the protocol row and the strain window are derived
         # from one accumulation instead of two (plan §5.3 п.6).
         self._strain_studies: dict[str, StrainStudy] = {}
+        self._study_load_generation = 0
+        self._study_switching = False
+        self._cache_retained_studies: tuple[StudyMetadata, ...] = ()
         self._current_study_uid: str | None = None
         self._segmenter = segmenter or OnnxInferenceEngine()
         self._playback_config: PlaybackConfig = detect_playback_config()
@@ -216,6 +221,16 @@ class AppController(QObject):
             _adaptive_bytes = 2 * 1024 * 1024 * 1024  # fallback: 2 GB
         self._cache_ram_cap_bytes: int = _adaptive_bytes
         _prefs = load_user_preferences()
+        from echo_personal_tool.application.measurement_persistence import MeasurementPersistence
+        from echo_personal_tool.infrastructure.paths import measurements_dir
+
+        self.measurement_persistence = MeasurementPersistence(
+            measurements_dir(),
+            self._measurement_session,
+            enabled=_prefs.measurement_persistence_enabled,
+            parent=self,
+        )
+        self.measurement_persistence.status.connect(self.persistence_status.emit)
         _max_cache_bytes = min(
             _prefs.playback_max_cache_mb * 1024 * 1024,
             _adaptive_bytes,
@@ -384,6 +399,11 @@ class AppController(QObject):
         return self._studies
 
     @property
+    def retained_studies_for_cache(self) -> tuple[StudyMetadata, ...]:
+        """Sources still backing the old viewer while a new study set is restored."""
+        return self._cache_retained_studies
+
+    @property
     def state_manager(self) -> StateManager:
         return self._state_manager
 
@@ -403,8 +423,12 @@ class AppController(QObject):
         return self._scroll_active
 
     def open_folder(self, root: Path, error_log_path: Path | None = None) -> None:
+        if not self.measurement_persistence.flush():
+            self.status_message.emit(tr("persistence.blocked_navigation"))
+            self.persistence_blocked.emit()
+            return
+        self._begin_study_switch()
         self._reset_thumbnail_queue()
-        self._measurement_session.clear()
         self._current_study_uid = None
         self._scan_started_at = perf_counter()
         self._first_preview_emitted = False
@@ -412,16 +436,27 @@ class AppController(QObject):
         logger.info("scan_start root=%s", root)
         self.status_message.emit(tr("status.scanning_folder", path=str(root)))
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
-        worker.signals.finished.connect(self._on_studies_scanned, Qt.ConnectionType.QueuedConnection)
-        worker.signals.failed.connect(self._on_scan_failed, Qt.ConnectionType.QueuedConnection)
+        generation = self._study_load_generation
+        worker.signals.finished.connect(
+            lambda studies: self._on_studies_scanned(studies) if generation == self._study_load_generation else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.signals.failed.connect(
+            lambda message: self._on_scan_failed(message) if generation == self._study_load_generation else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._thread_pool.start(worker)
 
     def load_pre_scanned_studies(self, studies: list[StudyMetadata]) -> None:
         """Load studies already built by the download worker (skip ScanWorker)."""
+        if not self.measurement_persistence.flush():
+            self.status_message.emit(tr("persistence.blocked_navigation"))
+            self.persistence_blocked.emit()
+            return
+        self._begin_study_switch()
         self._reset_thumbnail_queue()
         n_inst = sum(len(s.instances) for st in studies for s in st.series)
         logger.info("[CTRL] load_pre_scanned_studies: %d studies, %d instances", len(studies), n_inst)
-        self._measurement_session.clear()
         self._current_study_uid = None
         self._first_preview_emitted = False
         self._study_metrics_auto_filled = False
@@ -429,7 +464,35 @@ class AppController(QObject):
         count = len(self._studies)
         logger.info("pre_scanned_load studies=%d", count)
         self.status_message.emit(tr("status.studies_loaded", count=str(count)))
-        self.studies_loaded.emit(self._studies)
+        self._restore_measurement_studies()
+
+    def _begin_study_switch(self) -> None:
+        self._cache_retained_studies = tuple(self._studies)
+        self._study_load_generation += 1
+        self._study_switching = True
+        self._current_instance = None
+        self._state_manager.set_playing(False)
+        self._clear_fusion_state()
+        self._strain_studies.clear()
+        if self.measurement_persistence.enabled:
+            self.persistence_status.emit("loading")
+
+    def _restore_measurement_studies(self) -> None:
+        self._measurement_session.clear()
+        generation = self._study_load_generation
+        studies = list(self._studies)
+
+        def ready():
+            if generation != self._study_load_generation:
+                return
+            # The gallery's first selection must not flush the previous viewer's
+            # annotations into the new store (or under a fallback Series UID).
+            self._state_manager.clear_instance(emit=False)
+            self._study_switching = False
+            self.studies_loaded.emit(studies)
+            self._cache_retained_studies = ()
+
+        self.measurement_persistence.load(studies, ready)
 
     def _on_studies_scanned(self, studies: object) -> None:
         self._studies = list(studies)  # type: ignore[arg-type]
@@ -443,9 +506,16 @@ class AppController(QObject):
             logger.info("scan_done studies=%d duration_ms=%.2f", count, elapsed_ms)
         self._scan_started_at = None
         self.status_message.emit(tr("status.studies_loaded", count=str(count)))
-        self.studies_loaded.emit(self._studies)
+        self._restore_measurement_studies()
 
     def _on_scan_failed(self, message: str) -> None:
+        self._cache_retained_studies = ()
+        self._study_switching = False
+        self._current_instance = self._state_manager.snapshot.instance
+        self._current_study_uid = self._resolve_study_uid()
+        if self.measurement_persistence.enabled:
+            # The scan itself failed; "source" would blame the study sources instead.
+            self.persistence_status.emit("scan")
         elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
         if elapsed_ms is None:
             logger.warning("scan_failed reason=%s", message)
@@ -456,6 +526,8 @@ class AppController(QObject):
         self.scan_failed.emit(message)
 
     def load_instance(self, instance: InstanceMetadata, frame_index: int = 0) -> None:
+        if self._study_switching:
+            return
         if instance.path is None:
             self.frame_load_failed.emit("Instance has no file path")
             return
@@ -473,11 +545,11 @@ class AppController(QObject):
             )
         self._current_instance = instance
         self._clear_fusion_state()
-        if instance.patient_height_m is not None and instance.patient_weight_kg is not None:
-            self.on_patient_metrics_changed(
-                instance.patient_height_m * 100,
-                instance.patient_weight_kg,
-            )
+        self._measurement_session.fill_dicom_metrics(
+            self._resolve_study_uid(instance),
+            instance.patient_height_m * 100 if instance.patient_height_m is not None else None,
+            instance.patient_weight_kg,
+        )
         self.status_message.emit(tr("status.loading", name=instance.path.name))
         total_frames = instance.number_of_frames
         frame_time_ms = instance.frame_time_ms or 33.3
@@ -513,13 +585,22 @@ class AppController(QObject):
             emit=False,
         )
         study_uid = self._resolve_study_uid(instance)
-        self._measurement_session.set_manual_pixel_spacing(study_uid, None)
+        session = self._measurement_session.get(study_uid)
+        spacing = dict(session.manual_spacing_by_instance).get(instance.sop_instance_uid)
+        self._measurement_session.activate_instance(study_uid, instance.sop_instance_uid)
+        if spacing is not None:
+            self._state_manager.set_manual_pixel_spacing(spacing, emit=False)
         session_contours = contours_for_instance(
             self._measurement_session.get(study_uid).contours,
             instance.sop_instance_uid,
         )
         # Load annotations from DICOM Graphic Annotation tags
-        if not session_contours and instance.path is not None and instance.media_format == "dicom":
+        if (
+            not session_contours
+            and instance.path is not None
+            and instance.media_format == "dicom"
+            and study_uid not in self.measurement_persistence.loaded
+        ):
             try:
                 import pydicom
 
@@ -534,7 +615,9 @@ class AppController(QObject):
             session_contours = tuple(
                 contour for contour in session_contours if not (contour.source == "ai" and contour.review_pending)
             )
-            self._measurement_session.set_cine_segment_roi(study_uid, instance.sop_instance_uid, None)
+            # A checked restored ROI is not disposable UI state.
+            if study_uid not in self.measurement_persistence.loaded:
+                self._measurement_session.set_cine_segment_roi(study_uid, instance.sop_instance_uid, None)
         self._state_manager.set_contours(session_contours, emit=False)
         if instance.media_format == "dicom":
             self._state_manager.set_decode_in_progress(True, emit=False)
@@ -1126,6 +1209,8 @@ class AppController(QObject):
         self._thread_pool.start(worker)
 
     def on_doppler_markers_changed(self, dto: object) -> None:
+        if self._study_switching:
+            return
         if not isinstance(dto, DopplerMeasurementDTO):
             raise TypeError("Expected DopplerMeasurementDTO")
 
@@ -1134,7 +1219,7 @@ class AppController(QObject):
         if instance is not None:
             study_uid = self._resolve_study_uid()
             frame_index = self._state_manager.snapshot.current_frame_index
-            self._measurement_session.merge_doppler_for_instance_frame(
+            self._measurement_session.set_doppler_for_instance_frame(
                 study_uid,
                 instance.sop_instance_uid,
                 frame_index,
@@ -1248,7 +1333,11 @@ class AppController(QObject):
         if not isinstance(time_per_pixel_ms, (int, float)):
             raise TypeError("Expected numeric time_per_pixel_ms")
         study_uid = self._resolve_study_uid()
-        self._measurement_session.set_mmode_time_per_pixel_ms(study_uid, float(time_per_pixel_ms))
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            self._measurement_session.set_instance_mmode_time(
+                study_uid, instance.sop_instance_uid, float(time_per_pixel_ms)
+            )
         self.status_message.emit(tr("status.mmode_time", time=float(time_per_pixel_ms)))
 
     def on_mmode_calibration_changed(self, calibration: object) -> None:
@@ -1299,6 +1388,8 @@ class AppController(QObject):
         )
 
     def on_contours_changed(self, contours: object) -> None:
+        if self._study_switching:
+            return
         if not isinstance(contours, list) or not all(isinstance(contour, Contour) for contour in contours):
             raise TypeError("Expected a list of Contour objects")
 
@@ -1307,6 +1398,8 @@ class AppController(QObject):
             return
         tagged: list[Contour] = []
         for contour in contours:
+            if contour.frame_index is None:
+                contour = dataclasses.replace(contour, frame_index=self._state_manager.snapshot.current_frame_index)
             if contour.sop_instance_uid != instance.sop_instance_uid:
                 tagged.append(dataclasses.replace(contour, sop_instance_uid=instance.sop_instance_uid))
             else:
@@ -1327,6 +1420,8 @@ class AppController(QObject):
         self._recompute_measurements()
 
     def on_linear_measurements_changed(self, measurements: object) -> None:
+        if self._study_switching:
+            return
         if not isinstance(measurements, list) or not all(
             isinstance(measurement, LinearMeasurement) for measurement in measurements
         ):
@@ -1336,6 +1431,10 @@ class AppController(QObject):
         instance_uid = instance.sop_instance_uid if instance is not None else ""
         tagged: list[LinearMeasurement] = []
         for measurement in measurements:
+            if measurement.frame_index is None:
+                measurement = dataclasses.replace(
+                    measurement, frame_index=self._state_manager.snapshot.current_frame_index
+                )
             # Calipers are stored per clip; an untagged one belongs to the clip
             # that is open, otherwise it would be invisible after a switch.
             if instance_uid and measurement.sop_instance_uid != instance_uid:
@@ -1360,6 +1459,8 @@ class AppController(QObject):
         self._recompute_measurements()
 
     def accept_vessel_measurement(self, measurement: object) -> bool:
+        if self._study_switching:
+            return False
         if not isinstance(measurement, VesselMeasurement):
             raise TypeError("Expected a VesselMeasurement")
         study_uid = self._resolve_study_uid()
@@ -1368,6 +1469,8 @@ class AppController(QObject):
         return True
 
     def on_manual_calibration(self, spacing: object) -> None:
+        if self._study_switching:
+            return
         if not isinstance(spacing, tuple) or len(spacing) != 2:
             raise TypeError("Expected manual calibration spacing as (row, column) tuple")
         row_spacing, col_spacing = float(spacing[0]), float(spacing[1])
@@ -1376,7 +1479,9 @@ class AppController(QObject):
         spacing_tuple = (row_spacing, col_spacing)
         self._state_manager.set_manual_pixel_spacing(spacing_tuple)
         study_uid = self._resolve_study_uid()
-        self._measurement_session.set_manual_pixel_spacing(study_uid, spacing_tuple)
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            self._measurement_session.set_instance_spacing(study_uid, instance.sop_instance_uid, spacing_tuple)
         self._recompute_measurements()
         self.status_message.emit(tr("status.calibration_info", row=row_spacing, col=col_spacing))
 
@@ -1409,7 +1514,29 @@ class AppController(QObject):
         weight_kg: float | None,
     ) -> None:
         study_uid = self._resolve_study_uid()
+        if self._study_switching:
+            return
         self._measurement_session.set_patient_metrics(study_uid, height_cm, weight_kg)
+        self._recompute_measurements()
+
+    def patient_metric_sources(self) -> tuple[str, str]:
+        data = self._measurement_session.get(self._resolve_study_uid())
+        return data.height_source, data.weight_source
+
+    def use_dicom_patient_metrics(self) -> None:
+        uid = self._resolve_study_uid()
+        data = self._measurement_session.get(uid)
+        self._measurement_session.restore(
+            uid, dataclasses.replace(data, height_cm=None, weight_kg=None, height_source="unset", weight_source="unset")
+        )
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance:
+            self._measurement_session.fill_dicom_metrics(
+                uid,
+                instance.patient_height_m * 100 if instance.patient_height_m is not None else None,
+                instance.patient_weight_kg,
+            )
+        self.measurement_persistence.changed(uid, self._measurement_session.get(uid))
         self._recompute_measurements()
 
     def clear_manual_calibration(self) -> None:
@@ -1423,13 +1550,19 @@ class AppController(QObject):
         if self._state_manager.snapshot.manual_pixel_spacing is None and session.manual_pixel_spacing is None:
             return
         self._state_manager.clear_manual_pixel_spacing()
-        self._measurement_session.set_manual_pixel_spacing(study_uid, None)
+        instance = self._current_instance or self._state_manager.snapshot.instance
+        if instance is not None:
+            self._measurement_session.set_instance_spacing(study_uid, instance.sop_instance_uid, None)
         self._recompute_measurements()
         self.status_message.emit(tr("status.calibration_reset"))
 
     def reset_measurements_and_calibration(self) -> None:
+        if self._study_switching:
+            return
         study_uid = self._resolve_study_uid()
+        self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
         self._measurement_session.reset_measurements(study_uid)
+        self._strain_studies.pop(study_uid, None)
         self._state_manager.reset_measurement_inputs()
         self._recompute_measurements()
         self.status_message.emit(tr("status.measurements_reset"))
@@ -1546,6 +1679,13 @@ class AppController(QObject):
         active = instance or self._current_instance or self._state_manager.snapshot.instance
         if active is None:
             return "__default__"
+        for study in self._studies:
+            for series in study.series:
+                if any(
+                    item.sop_instance_uid == active.sop_instance_uid and item.path == active.path
+                    for item in series.instances
+                ):
+                    return study.study_uid
         for study in self._studies:
             for series in study.series:
                 if series.series_uid == active.series_uid:
@@ -1698,13 +1838,50 @@ class AppController(QObject):
             state,
             session.manual_pixel_spacing,
         )
+        original_contours = contours
+
+        def calculation_contours(items):
+            uid = self._resolve_study_uid(state.instance)
+            descriptors = self.measurement_persistence.sources.get(uid, {})
+            if not descriptors:
+                return items
+            manual = dict(session.manual_spacing_by_instance)
+            output = []
+            for contour in items:
+                source_spacing = manual.get(contour.sop_instance_uid) or descriptors.get(
+                    contour.sop_instance_uid, {}
+                ).get("spacing")
+                if source_spacing is None:
+                    # Without persistence the whole list is used unscaled, so keep the
+                    # contour in its original pixel space instead of dropping it:
+                    # enabling persistence must not change the clinical result.
+                    output.append(contour)
+                    continue
+                row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
+
+                def point(p):
+                    return (p[0] * col, p[1] * row)
+
+                output.append(
+                    dataclasses.replace(
+                        contour,
+                        points=[point(p) for p in contour.points],
+                        mitral_annulus=tuple(point(p) for p in contour.mitral_annulus)
+                        if contour.mitral_annulus
+                        else None,
+                        apex_landmark=point(contour.apex_landmark) if contour.apex_landmark else None,
+                    )
+                )
+            return tuple(output)
+
+        contours = calculation_contours(contours)
         lvef = calculate(contours, pixel_spacing)
         if lvef is not None and lvef.method != "simpson_biplan":
             # Simpson Biplane combines LV 4C (one file) with LV 2C (another file).
             # Contours from the whole study let BP volumes appear on the overlay even
             # when the current instance holds only a single view.
             lv_study_contours = tuple(c for c in session.contours if c.chamber.upper() == "LV")
-            study_lvef = calculate(lv_study_contours, pixel_spacing)
+            study_lvef = calculate(calculation_contours(lv_study_contours), pixel_spacing)
             if study_lvef is not None and study_lvef.method == "simpson_biplan":
                 lvef = dataclasses.replace(
                     lvef,
@@ -3830,7 +4007,21 @@ class AppController(QObject):
             media_format=instance.media_format if instance is not None else "dicom",
             ecg_source_path=ecg_source_path,
         )
-        worker.signals.finished.connect(self._on_speckle_tracking_finished, Qt.ConnectionType.QueuedConnection)
+        generation = self._study_load_generation
+        instance_uid = instance.sop_instance_uid if instance else None
+        worker.signals.finished.connect(
+            lambda result: (
+                self._on_speckle_tracking_finished(result)
+                if (
+                    generation == self._study_load_generation
+                    and not self._study_switching
+                    and self._current_instance is not None
+                    and self._current_instance.sop_instance_uid == instance_uid
+                )
+                else None
+            ),
+            Qt.ConnectionType.QueuedConnection,
+        )
         worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 

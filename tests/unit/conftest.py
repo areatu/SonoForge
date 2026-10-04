@@ -89,6 +89,15 @@ def _isolate_orthanc_cache_root(request, tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_measurement_store(request, tmp_path, monkeypatch):
+    if request.module.__name__.endswith(("test_presenter_profile", "test_paths")):
+        return
+    from echo_personal_tool.infrastructure import paths
+
+    monkeypatch.setattr(paths, "measurements_dir", lambda: tmp_path / "measurements")
+
+
+@pytest.fixture(autouse=True)
 def _gc_per_test():
     """Freeze GC during each test; collect only between tests.
 
