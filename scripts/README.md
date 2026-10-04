@@ -30,6 +30,12 @@ for the lightweight Windows ZIP build. Run from the repository root.
 | `run_tests.sh` | Test runner wrapper (Cyrillic paths, `PYTHONPATH`, offscreen Qt) |
 | `sonoforge.desktop` | Linux desktop entry |
 
+## CI housekeeping
+
+| File | Description |
+|------|-------------|
+| `purge_actions_artifacts.py` | Delete old GitHub Actions artifacts — keeps the newest copies per name, never touches `github-pages`; called by `artifact-cleanup.yml` |
+
 ## Examples
 
 ```bash
@@ -45,4 +51,7 @@ python scripts/run_la_auto_bench.py
 
 # Reference constructor dialog
 python scripts/run_constructor.py
+
+# Repository housekeeping (dry run first)
+GH_TOKEN=<token> python scripts/purge_actions_artifacts.py --repo areatu/SonoForge --dry-run
 ```
