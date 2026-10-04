@@ -103,6 +103,36 @@ def _client(handler) -> OrthancDicomWebClient:  # noqa: ANN001 - httpx handler
     return client
 
 
+def _png_bytes(image) -> bytes:  # noqa: ANN001 - QImage
+    from PySide6.QtCore import QBuffer
+
+    buffer = QBuffer()
+    buffer.open(QBuffer.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    return bytes(buffer.data())
+
+
+def _blank_png(width: int = 24, height: int = 18) -> bytes:
+    """A frame stored at the start of a loop: pure black."""
+    from PySide6.QtGui import QColor, QImage
+
+    image = QImage(width, height, QImage.Format.Format_RGB32)
+    image.fill(QColor(0, 0, 0))
+    return _png_bytes(image)
+
+
+def _textured_png(width: int = 24, height: int = 18) -> bytes:
+    """A usable frame: dark background plus a bright sector."""
+    from PySide6.QtGui import QColor, QImage
+
+    image = QImage(width, height, QImage.Format.Format_RGB32)
+    image.fill(QColor(4, 4, 4))
+    for y in range(2, height - 2):
+        for x in range(3, width // 2):
+            image.setPixelColor(x, y, QColor(140, 140, 140))
+    return _png_bytes(image)
+
+
 class TestFetchPreview:
     def test_thumbnail_route_is_used_first(self):
         seen: list[str] = []
@@ -142,6 +172,96 @@ class TestFetchPreview:
 
         client = _client(handler)
         assert client.fetch_preview("1.2.3", "1.2.3.1", "1.2.3.4.5") == b""
+
+    def test_middle_frame_requests_the_middle_of_the_loop(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append(path)
+            if path.endswith("/instances"):
+                return httpx.Response(200, json=[{"00080018": {"vr": "UI", "Value": ["1.2.3.4.5"]}}])
+            if path.endswith("/tools/lookup"):
+                return httpx.Response(200, json=[{"Type": "Instance", "ID": "abc"}])
+            if path.endswith("/instances/abc/simplified-tags"):
+                return httpx.Response(200, json={"NumberOfFrames": "25"})
+            if path.endswith("/instances/abc/frames/12/preview"):
+                return httpx.Response(200, content=b"MIDFRAME", headers={"Content-Type": "image/png"})
+            return httpx.Response(404)
+
+        payload = _client(handler).fetch_preview("1.2.3", "1.2.3.1", middle_frame=True)
+        assert payload == b"MIDFRAME"
+        assert "/instances/abc/frames/12/preview" in seen
+
+    def test_instance_uid_is_looked_up_once_per_series(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append(path)
+            if path.endswith("/instances"):
+                return httpx.Response(200, json=[{"00080018": {"vr": "UI", "Value": ["1.2.3.4.5"]}}])
+            return httpx.Response(200, content=b"IMG", headers={"Content-Type": "image/jpeg"})
+
+        client = _client(handler)
+        client.fetch_preview("1.2.3", "1.2.3.1")
+        client.fetch_preview("1.2.3", "1.2.3.1")
+        assert sum(1 for path in seen if path.endswith("/instances")) == 1
+
+    def test_middle_frame_uses_wadors_when_orthanc_frame_fails(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append(path)
+            if path.endswith("/instances"):
+                return httpx.Response(200, json=[{"00080018": {"vr": "UI", "Value": ["1.2.3.4.5"]}}])
+            if path.endswith("/tools/lookup"):
+                return httpx.Response(200, json=[{"Type": "Instance", "ID": "abc"}])
+            if path.endswith("/simplified-tags"):
+                return httpx.Response(200, json={"NumberOfFrames": "9"})
+            if path.endswith("/instances/abc/frames/4/preview"):
+                return httpx.Response(404)
+            if path.endswith("/frames/4/rendered"):
+                return httpx.Response(200, content=b"WADORS4", headers={"Content-Type": "image/jpeg"})
+            return httpx.Response(404)
+
+        assert _client(handler).fetch_preview("1.2.3", "1.2.3.1", middle_frame=True) == b"WADORS4"
+        assert any(path.endswith("/frames/4/rendered") for path in seen)
+
+    def test_middle_frame_with_single_frame_falls_back_to_first_frame(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            seen.append(path)
+            if path.endswith("/instances"):
+                return httpx.Response(200, json=[{"00080018": {"vr": "UI", "Value": ["1.2.3.4.5"]}}])
+            if path.endswith("/tools/lookup"):
+                return httpx.Response(200, json=[{"Type": "Instance", "ID": "abc"}])
+            if path.endswith("/simplified-tags"):
+                return httpx.Response(200, json={"NumberOfFrames": "1"})
+            if path.endswith("/thumbnail"):
+                return httpx.Response(200, content=b"FIRSTFRAME", headers={"Content-Type": "image/jpeg"})
+            return httpx.Response(404)
+
+        assert _client(handler).fetch_preview("1.2.3", "1.2.3.1", middle_frame=True) == b"FIRSTFRAME"
+        assert not any("/frames/" in path for path in seen)
+
+    def test_middle_frame_without_orthanc_tags_falls_back(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if path.endswith("/instances"):
+                return httpx.Response(200, json=[{"00080018": {"vr": "UI", "Value": ["1.2.3.4.5"]}}])
+            if path.endswith("/tools/lookup"):
+                return httpx.Response(200, json=[{"Type": "Instance", "ID": "abc"}])
+            if path.endswith("/simplified-tags"):
+                return httpx.Response(404)
+            if path.endswith("/thumbnail"):
+                return httpx.Response(200, content=b"FIRSTFRAME", headers={"Content-Type": "image/jpeg"})
+            return httpx.Response(404)
+
+        assert _client(handler).fetch_preview("1.2.3", "1.2.3.1", middle_frame=True) == b"FIRSTFRAME"
 
     def test_multipart_rendered_bodies_are_unwrapped(self):
         boundary = "BOUND"
@@ -258,6 +378,27 @@ class _StubClient:
         return self.payload
 
 
+class _LoopStubClient:
+    """Client double with a blank first frame and a usable middle frame."""
+
+    def __init__(self, first: bytes, middle: bytes) -> None:
+        self._payloads = {False: first, True: middle}
+        self.calls: list[bool] = []
+
+    def fetch_preview(  # noqa: ANN001
+        self,
+        study_uid,
+        series_uid,
+        instance_uid="",
+        *,
+        width=0,
+        height=0,
+        middle_frame=False,
+    ):
+        self.calls.append(bool(middle_frame))
+        return self._payloads[bool(middle_frame)]
+
+
 @pytest.fixture()
 def qapp():
     from PySide6.QtWidgets import QApplication
@@ -300,6 +441,54 @@ class TestPreviewLoader:
         assert ("s1", "se1") in broken._failed
         broken.request("s1", "se1")
         assert broken._queue == []
+
+    def test_blank_frame_is_retried_from_the_loop_middle(self, qapp):
+        from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
+
+        client = _LoopStubClient(_blank_png(), _textured_png())
+        loader = OrthancPreviewLoader(client)
+        loader.request("s1", "se1")
+        for _ in range(200):
+            if loader.cached("s1", "se1") is not None:
+                break
+            qapp.processEvents()
+        pixmap = loader.cached("s1", "se1")
+        assert pixmap is not None
+        assert client.calls == [False, True]  # plain first, middle frame second
+        # The middle frame (bright sector) must have won over the blank one.
+        assert pixmap.toImage().pixelColor(10, 10).lightness() > 60
+
+    def test_usable_frame_is_not_retried(self, qapp):
+        from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
+
+        client = _LoopStubClient(_textured_png(), _textured_png())
+        loader = OrthancPreviewLoader(client)
+        loader.request("s1", "se1")
+        for _ in range(200):
+            if loader.cached("s1", "se1") is not None:
+                break
+            qapp.processEvents()
+        assert loader.cached("s1", "se1") is not None
+        assert client.calls == [False]
+
+    def test_informativeness_probe(self):
+        from PySide6.QtGui import QColor, QImage
+
+        from echo_personal_tool.presentation.orthanc_preview_loader import is_informative_image
+
+        assert is_informative_image(None) is False
+        blank = QImage(24, 18, QImage.Format.Format_RGB32)
+        blank.fill(QColor(0, 0, 0))
+        assert is_informative_image(blank) is False
+        flat = QImage(24, 18, QImage.Format.Format_RGB32)
+        flat.fill(QColor(128, 128, 128))  # uniform grey is not a thumbnail either
+        assert is_informative_image(flat) is False
+        textured = QImage(24, 18, QImage.Format.Format_RGB32)
+        textured.fill(QColor(4, 4, 4))
+        for y in range(2, 16):  # a bright sector, like a real echo frame
+            for x in range(3, 12):
+                textured.setPixelColor(x, y, QColor(140, 140, 140))
+        assert is_informative_image(textured) is True
 
     def test_disabled_loader_never_requests(self, qapp):
         from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader

@@ -89,11 +89,13 @@ class FakeDicomWebClient:
         *,
         width: int = 0,
         height: int = 0,
+        middle_frame: bool = False,
     ) -> bytes:
         """Synthetic rendering so the mock demos thumbnails offline.
 
         The payload is a real PNG built from the series UID, so the loader
-        exercises the same decode path as with a live server.
+        exercises the same decode path as with a live server.  Fixtures have no
+        cine loops, so ``middle_frame`` returns the same frame.
         """
         return _synthetic_preview_png(series_uid or study_uid, width=width, height=height)
 

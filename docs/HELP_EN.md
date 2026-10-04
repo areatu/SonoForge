@@ -747,7 +747,8 @@ highlighted study on the right.
    visible in the row itself (`downloading…` / `done` / `failed`).
 
 Thumbnails are requested from the server (Orthanc `/preview` or WADO-RS
-`rendered`), kept in RAM only for the lifetime of the dialog, and can be turned
+`rendered`); when the first frame of a loop is blank, a frame from the middle of
+the loop is used instead. They are kept in RAM only for the lifetime of the dialog, and can be turned
 off with the `Thumbnails` toggle — useful on slow links or when local policy
 forbids extra PHI requests.
 

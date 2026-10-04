@@ -186,6 +186,11 @@ class OrthancDicomWebClient:
         else:
             self._stow_client = None
         self._cancel_event = threading.Event()
+        #: First instance UID per (study, series): the preview path asks for it
+        #: once per series instead of once per attempt (e.g. the middle-frame
+        #: retry).  Instance UIDs of a series never change, so this is safe for
+        #: the lifetime of the client.
+        self._first_instance_uids: dict[tuple[str, str], str] = {}
 
     @classmethod
     def from_settings(cls, settings: ServerSettings, *, timeout: float | None = None) -> OrthancDicomWebClient:
@@ -330,6 +335,7 @@ class OrthancDicomWebClient:
         *,
         width: int = 0,
         height: int = 0,
+        middle_frame: bool = False,
     ) -> bytes:
         """Return a rendered JPEG/PNG preview for a series (never raises).
 
@@ -341,6 +347,11 @@ class OrthancDicomWebClient:
         4. the Orthanc REST ``/instances/{id}/preview`` route (works when the
            DICOMweb plugin has rendering disabled).
 
+        With ``middle_frame=True`` (used when the first frame came back blank)
+        the frame count of the instance is looked up once and the middle frame
+        is requested instead (``/frames/{n}/preview``, WADO-RS
+        ``/frames/{n}/rendered``), falling back to the routes above.
+
         An empty ``bytes`` means "no preview available" — the caller shows a
         placeholder instead of an error, because a missing thumbnail must never
         degrade the study list itself.
@@ -348,6 +359,14 @@ class OrthancDicomWebClient:
         viewport = f"{width},{height}" if width and height else ""
         if not instance_uid:
             instance_uid = self._first_instance_uid(study_uid, series_uid)
+        orthanc_id = ""
+        if middle_frame and instance_uid:
+            orthanc_id = self._orthanc_instance_id(instance_uid)
+            frame = self._middle_frame_number(orthanc_id)
+            if frame:
+                payload = self._fetch_middle_frame(study_uid, series_uid, instance_uid, orthanc_id, frame, viewport)
+                if payload:
+                    return payload
         if instance_uid:
             base = f"studies/{study_uid}/series/{series_uid}/instances/{instance_uid}"
             for route in ("thumbnail", "rendered"):
@@ -360,8 +379,79 @@ class OrthancDicomWebClient:
                     logger.debug("Preview %s failed for %s: %s", route, series_uid[:16], exc)
         return self._orthanc_preview_fallback(series_uid, instance_uid)
 
+    def _orthanc_instance_id(self, instance_uid: str) -> str:
+        """Orthanc's own resource id for an instance (empty when unknown)."""
+        try:
+            lookup = self._orthanc_client.post(
+                "tools/lookup",
+                content=instance_uid.encode(),
+                headers={"Content-Type": "text/plain"},
+            )
+            if lookup.status_code != 200:
+                return ""
+            results = lookup.json()
+            entries = results if isinstance(results, list) else [results]
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("Type") == "Instance":
+                    return str(entry.get("ID") or "")
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.debug("Instance lookup for middle frame failed: %s", exc)
+        return ""
+
+    def _middle_frame_number(self, orthanc_id: str) -> int:
+        """Middle frame index of a multiframe instance (0 for single frames).
+
+        ``NumberOfFrames`` comes from the instance's simplified tags: one small
+        request, and only on the rare blank-thumbnail path.
+        """
+        if not orthanc_id:
+            return 0
+        try:
+            r = self._orthanc_client.get(f"instances/{orthanc_id}/simplified-tags")
+            if r.status_code != 200:
+                return 0
+            tags = r.json()
+            frames = int(str(tags.get("NumberOfFrames") or "1"))
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.debug("NumberOfFrames lookup failed for %s: %s", orthanc_id[:8], exc)
+            return 0
+        return frames // 2 if frames > 1 else 0
+
+    def _fetch_middle_frame(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str,
+        orthanc_id: str,
+        frame: int,
+        viewport: str,
+    ) -> bytes:
+        """Image of one frame: Orthanc REST first, then WADO-RS ``rendered``."""
+        try:
+            r = self._orthanc_client.get(f"instances/{orthanc_id}/frames/{frame}/preview")
+            if r.status_code == 200 and r.content:
+                return r.content
+        except httpx.HTTPError as exc:
+            logger.debug("Orthanc frame preview failed for %s: %s", series_uid[:16], exc)
+        params = [("viewport", viewport)] if viewport else None
+        try:
+            r = self._client.get(
+                f"studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame}/rendered",
+                params=params,
+                headers={"Accept": "image/jpeg"},
+            )
+            if r.status_code == 200 and r.content:
+                return _extract_image_payload(r)
+        except httpx.HTTPError as exc:
+            logger.debug("WADO-RS frame render failed for %s: %s", series_uid[:16], exc)
+        return b""
+
     def _first_instance_uid(self, study_uid: str, series_uid: str) -> str:
         """One QIDO-RS call for a single instance UID (empty string on failure)."""
+        key = (study_uid, series_uid)
+        cached = self._first_instance_uids.get(key)
+        if cached:
+            return cached
         try:
             r = self._client.get(
                 f"studies/{study_uid}/series/{series_uid}/instances",
@@ -378,7 +468,10 @@ class OrthancDicomWebClient:
                 return ""
             payload = r.json()
             if isinstance(payload, list) and payload:
-                return str(payload[0].get("00080018", {}).get("Value", [""])[0] or "")
+                instance_uid = str(payload[0].get("00080018", {}).get("Value", [""])[0] or "")
+                if instance_uid:
+                    self._first_instance_uids[key] = instance_uid
+                return instance_uid
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
             logger.debug("Instance lookup for preview failed (%s): %s", series_uid[:16], exc)
         return ""

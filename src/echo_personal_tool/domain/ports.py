@@ -99,8 +99,14 @@ class DicomWebClient(Protocol):
         *,
         width: int = 0,
         height: int = 0,
+        middle_frame: bool = False,
     ) -> bytes:
-        """Rendered JPEG/PNG preview of a series (empty bytes when unavailable)."""
+        """Rendered JPEG/PNG preview of a series (empty bytes when unavailable).
+
+        ``middle_frame`` asks for a frame from the middle of a loop instead of
+        the first one — the caller uses it when the first attempt came back
+        blank.  Implementations may ignore the hint.
+        """
         ...
 
     def study_statistics(self, study_uid: str) -> StudyStatistics:
