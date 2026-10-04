@@ -51,6 +51,23 @@ class StateManager(QObject):
             manual_pixel_spacing=self._manual_pixel_spacing,
         )
 
+    def clear_instance(self, *, emit: bool = True) -> None:
+        """Reset the active viewer identity when committing a different study set."""
+        self._instance = None
+        self._current_frame_index = 0
+        self._total_frames = 0
+        self._frame_time_ms = None
+        self._is_playing = False
+        self._doppler_measurement = None
+        self._contours = ()
+        self._linear_measurements = ()
+        self._measurement_snapshot = None
+        self._decode_in_progress = False
+        self._manual_pixel_spacing = None
+        self._scroll_navigation = False
+        if emit:
+            self._emit_state()
+
     def set_instance(
         self,
         metadata: InstanceMetadata,
@@ -169,9 +186,10 @@ class StateManager(QObject):
         """Publish the current snapshot to UI listeners."""
         self._emit_state()
 
-    def set_manual_pixel_spacing(self, spacing: tuple[float, float] | None) -> None:
+    def set_manual_pixel_spacing(self, spacing: tuple[float, float] | None, *, emit: bool = True) -> None:
         self._manual_pixel_spacing = spacing
-        self._emit_state()
+        if emit:
+            self._emit_state()
 
     def clear_manual_pixel_spacing(self) -> None:
         self.set_manual_pixel_spacing(None)

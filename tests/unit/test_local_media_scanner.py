@@ -43,11 +43,13 @@ def test_scan_mixed_dicom_mp4_jpeg_folder(tmp_path: Path) -> None:
     write_synthetic_mp4(tmp_path / "cine.mp4", frame_count=4)
     write_synthetic_jpeg(tmp_path / "key.jpg")
 
+    from echo_personal_tool.infrastructure.media_metadata_mapper import synthetic_study_uid
+
     studies = LocalMediaDirectoryScanner().scan(tmp_path)
 
-    assert len(studies) == 1
-    assert len(studies[0].series) == 3
-    formats = {instance.media_format for series in studies[0].series for instance in series.instances}
+    assert len(studies) == 2  # untagged media must not inherit the first DICOM patient's UID
+    assert {study.study_uid for study in studies} == {study_uid, synthetic_study_uid(tmp_path)}
+    formats = {instance.media_format for study in studies for series in study.series for instance in series.instances}
     assert formats == {"dicom", "mp4", "jpeg"}
 
 

@@ -51,6 +51,8 @@ jobs:
         with:
           name: sonoforge-sdist
           path: dist/*.tar.gz
+          # Package transfer between jobs: published files live in the release.
+          retention-days: 7
 
   build-linux:
     runs-on: ubuntu-latest
@@ -144,6 +146,7 @@ jobs:
           path: |
             dist/sonoforge_*.deb
             dist/*.sbom.cdx.json
+          retention-days: 7
 
   build-windows:
     runs-on: windows-latest
@@ -304,6 +307,7 @@ jobs:
             dist/SonoForge-*-portable.exe
             dist/SonoForge.exe
             dist/*.sbom.cdx.json
+          retention-days: 7
 
   build-macos-apple-silicon:
     runs-on: macos-latest
@@ -433,6 +437,7 @@ jobs:
             dist/SonoForge-*-macos-arm64.dmg
             dist/SonoForge-macos-arm64.dmg
             dist/*.sbom.cdx.json
+          retention-days: 7
 
   release:
     needs: [build-source, build-linux, build-windows, build-macos-apple-silicon]
