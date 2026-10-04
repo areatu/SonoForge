@@ -16,12 +16,12 @@ from PyInstaller.utils.hooks import collect_data_files
 # Version metadata derived from __version__ in src/echo_personal_tool/__init__.py:
 # the Windows PE version resource and the macOS bundle version keys. Both used to
 # be absent or hardcoded (CFBundleShortVersionString was pinned at '0.2.4' and
-# drifted behind `__version__`). See build/pyinstaller_version.py for why a
-# generated file path is used instead of a VSVersionInfo object.
-# The helper lives in scripts/, not build/, because build/ is gitignored (it is
-# PyInstaller's workpath) and a source file there can be silently dropped by
-# `git add -A`. scripts/ is removed from sys.path again right after the import so
-# nothing in it can shadow a real module for the rest of the PyInstaller run.
+# drifted behind __version__). The helper lives in scripts/, not build/, because
+# build/ is gitignored (it is PyInstaller's workpath) and a source file there can
+# be silently dropped by `git add -A`. See scripts/pyinstaller_version.py for why a
+# generated file path is used instead of a VSVersionInfo object. scripts/ is
+# removed from sys.path again right after the import so nothing in it can shadow a
+# real module for the rest of the PyInstaller run.
 _HELPERS = os.path.join(SPECPATH, 'scripts')  # noqa: F821
 sys.path.insert(0, _HELPERS)
 try:

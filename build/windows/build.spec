@@ -14,15 +14,14 @@ PROJECT_ROOT = Path(os.getcwd())
 SRC = PROJECT_ROOT / "src" / "echo_personal_tool"
 
 # Windows PE version resource, generated from __version__. This spec is always
-# built on Windows, so no platform guard is needed here. See
-# build/pyinstaller_version.py for why a file path is used rather than a
-# VSVersionInfo object (the object form would import pefile/pywin32).
-# SPECPATH is the directory holding this spec, injected by PyInstaller.
-# SPECPATH is the directory holding this spec (build/windows/), injected by
-# PyInstaller, so parents[1] is the repository root. The helper lives in scripts/
-# rather than build/ because build/ is gitignored and a source file there can be
-# silently dropped by `git add -A`. scripts/ is popped again right after the import
-# so nothing in it can shadow a real module for the rest of the run.
+# built on Windows, so no platform guard is needed here. SPECPATH is the directory
+# holding this spec (build/windows/), injected by PyInstaller, so parents[1] is the
+# repository root. The helper lives in scripts/ rather than build/ because build/ is
+# gitignored (it is PyInstaller's workpath) and a source file there can be silently
+# dropped by `git add -A`. See scripts/pyinstaller_version.py for why a file path is
+# used rather than a VSVersionInfo object (the object form would import pefile and
+# pywin32, both Windows-only, and break the macOS and Linux builds). scripts/ is
+# popped again right after the import so nothing in it can shadow a real module.
 _HELPERS = str(Path(SPECPATH).parents[1] / "scripts")  # noqa: F821
 sys.path.insert(0, _HELPERS)
 try:
