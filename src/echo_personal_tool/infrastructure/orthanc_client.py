@@ -35,6 +35,7 @@ from echo_personal_tool.domain.models.orthanc import (
     SeriesInfo,
     StowResult,
     StudyInfo,
+    StudyStatistics,
 )
 from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
@@ -47,7 +48,10 @@ from echo_personal_tool.infrastructure.server_settings import (
     split_orthanc_urls,
 )
 
-_STUDY_INCLUDE_FIELDS = (
+# Minimal set that every QIDO-RS implementation must be able to answer.  Used
+# as a fallback when a server rejects the extended field list (some PACS return
+# HTTP 400 for unknown includefield values instead of ignoring them).
+_STUDY_BASE_FIELDS = (
     "0020000D",  # StudyInstanceUID
     "00100010",  # PatientName
     "00100020",  # PatientID
@@ -55,11 +59,27 @@ _STUDY_INCLUDE_FIELDS = (
     "00081030",  # StudyDescription
 )
 
+# Extended set: gives the load dialog the patient context (age/sex), the study
+# counts and the accession number without a second round trip.  Servers that do
+# not store a tag simply leave it empty in the answer.
+_STUDY_INCLUDE_FIELDS = _STUDY_BASE_FIELDS + (
+    "00080030",  # StudyTime
+    "00080050",  # AccessionNumber
+    "00080061",  # ModalitiesInStudy
+    "00080080",  # InstitutionName
+    "00100030",  # PatientBirthDate
+    "00100040",  # PatientSex
+    "00201206",  # NumberOfStudyRelatedSeries
+    "00201208",  # NumberOfStudyRelatedInstances
+)
+
 _SERIES_INCLUDE_FIELDS = (
     "0020000E",  # SeriesInstanceUID
     "00080060",  # Modality
     "0008103E",  # SeriesDescription
     "00201209",  # NumberOfSeriesRelatedInstances
+    "00200011",  # SeriesNumber
+    "00180015",  # BodyPartExamined
 )
 
 _INSTANCE_INCLUDE_FIELDS = (
@@ -69,6 +89,50 @@ _INSTANCE_INCLUDE_FIELDS = (
 
 def _include_params(tags: tuple[str, ...]) -> list[tuple[str, str]]:
     return [("includefield", tag) for tag in tags]
+
+
+def _as_int_or_none(value: object) -> int | None:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float_or_none(value: object) -> float | None:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_image_payload(response: httpx.Response) -> bytes:
+    """Return raw image bytes from a WADO-RS rendered/thumbnail response.
+
+    DICOM PS3.18 allows both a plain image body and a ``multipart/related``
+    wrapper with a single part; Orthanc uses the former for instances but other
+    servers may use the latter, so both are unwrapped here.
+    """
+    content_type = response.headers.get("Content-Type", "")
+    content = response.content
+    if not content_type.lower().startswith("multipart/related"):
+        return content
+    boundary = ""
+    for chunk in content_type.split(";"):
+        chunk = chunk.strip()
+        if chunk.lower().startswith("boundary="):
+            boundary = chunk.split("=", 1)[1].strip().strip('"')
+            break
+    if not boundary:
+        return b""
+    marker = f"--{boundary}".encode()
+    parts = content.split(marker)
+    for part in parts[1:]:
+        if part.startswith(b"--"):
+            break
+        _, _, body = part.partition(b"\r\n\r\n")
+        if body:
+            return body.rstrip(b"\r\n")
+    return b""
 
 
 class DownloadCancelled(Exception):
@@ -204,18 +268,28 @@ class OrthancDicomWebClient:
         patient_id: str | None = None,
         study_date: str | None = None,
     ) -> list[StudyInfo]:
-        params: list[tuple[str, str]] = _include_params(_STUDY_INCLUDE_FIELDS)
+        filters: list[tuple[str, str]] = []
         if patient_name:
-            params.append(("PatientName", f"*{patient_name}*"))
+            filters.append(("PatientName", f"*{patient_name}*"))
         if patient_id:
-            params.append(("PatientID", f"*{patient_id}*"))
+            filters.append(("PatientID", f"*{patient_id}*"))
         if study_date:
-            params.append(("StudyDate", study_date))
+            filters.append(("StudyDate", study_date))
+
         r = self._get_with_retry(
             "studies",
-            params=params,
+            params=_include_params(_STUDY_INCLUDE_FIELDS) + filters,
             headers={"Accept": "application/dicom+json"},
         )
+        if r.status_code == 400:
+            # Strict server: repeat the query with the mandatory fields only so
+            # the study list still loads (without the optional patient context).
+            logger.info("QIDO-RS rejected the extended study fields, retrying with the minimal set")
+            r = self._get_with_retry(
+                "studies",
+                params=_include_params(_STUDY_BASE_FIELDS) + filters,
+                headers={"Accept": "application/dicom+json"},
+            )
         r.raise_for_status()
         return parse_studies(r.json())
 
@@ -245,6 +319,132 @@ class OrthancDicomWebClient:
             r.status_code,
         )
         return instances
+
+    # ── Preview thumbnails (study/series browser) ───────────────────
+
+    def fetch_preview(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str = "",
+        *,
+        width: int = 0,
+        height: int = 0,
+    ) -> bytes:
+        """Return a rendered JPEG/PNG preview for a series (never raises).
+
+        Tries, in order:
+
+        1. WADO-RS ``thumbnail`` for a known instance (cheapest, Orthanc ≥ 1.12);
+        2. WADO-RS ``rendered`` for a known instance;
+        3. one QIDO-RS instance lookup to learn the first instance UID, then (1)/(2);
+        4. the Orthanc REST ``/instances/{id}/preview`` route (works when the
+           DICOMweb plugin has rendering disabled).
+
+        An empty ``bytes`` means "no preview available" — the caller shows a
+        placeholder instead of an error, because a missing thumbnail must never
+        degrade the study list itself.
+        """
+        viewport = f"{width},{height}" if width and height else ""
+        if not instance_uid:
+            instance_uid = self._first_instance_uid(study_uid, series_uid)
+        if instance_uid:
+            base = f"studies/{study_uid}/series/{series_uid}/instances/{instance_uid}"
+            for route in ("thumbnail", "rendered"):
+                params = [("viewport", viewport)] if viewport else None
+                try:
+                    r = self._client.get(f"{base}/{route}", params=params, headers={"Accept": "image/jpeg"})
+                    if r.status_code == 200 and r.content:
+                        return _extract_image_payload(r)
+                except httpx.HTTPError as exc:
+                    logger.debug("Preview %s failed for %s: %s", route, series_uid[:16], exc)
+        return self._orthanc_preview_fallback(series_uid, instance_uid)
+
+    def _first_instance_uid(self, study_uid: str, series_uid: str) -> str:
+        """One QIDO-RS call for a single instance UID (empty string on failure)."""
+        try:
+            r = self._client.get(
+                f"studies/{study_uid}/series/{series_uid}/instances",
+                params=[("limit", "1"), ("includefield", "00080018")],
+                headers={"Accept": "application/dicom+json"},
+            )
+            if r.status_code == 400:
+                r = self._client.get(
+                    f"studies/{study_uid}/series/{series_uid}/instances",
+                    params=[("includefield", "00080018")],
+                    headers={"Accept": "application/dicom+json"},
+                )
+            if r.status_code != 200:
+                return ""
+            payload = r.json()
+            if isinstance(payload, list) and payload:
+                return str(payload[0].get("00080018", {}).get("Value", [""])[0] or "")
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            logger.debug("Instance lookup for preview failed (%s): %s", series_uid[:16], exc)
+        return ""
+
+    def _orthanc_preview_fallback(self, series_uid: str, instance_uid: str) -> bytes:
+        """Orthanc REST ``/preview`` for a series or instance (empty on failure)."""
+        for uid in (instance_uid, series_uid):
+            if not uid:
+                continue
+            try:
+                lookup = self._orthanc_client.post(
+                    "tools/lookup",
+                    content=uid.encode(),
+                    headers={"Content-Type": "text/plain"},
+                )
+                if lookup.status_code != 200:
+                    continue
+                results = lookup.json()
+                entries = results if isinstance(results, list) else [results]
+                for entry in entries:
+                    if not isinstance(entry, dict) or entry.get("Type") != "Instance":
+                        continue
+                    r = self._orthanc_client.get(f"instances/{entry.get('ID')}/preview")
+                    if r.status_code == 200 and r.content:
+                        return r.content
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                logger.debug("Orthanc preview fallback failed for %s: %s", uid[:16], exc)
+        return b""
+
+    def study_statistics(self, study_uid: str) -> StudyStatistics:
+        """Sizes/status of a study from Orthanc (empty result on any failure)."""
+        try:
+            lookup = self._orthanc_client.post(
+                "tools/lookup",
+                content=study_uid.encode(),
+                headers={"Content-Type": "text/plain"},
+            )
+            if lookup.status_code != 200:
+                return StudyStatistics()
+            entries = lookup.json()
+            entries = entries if isinstance(entries, list) else [entries]
+            study_id = ""
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("Type") == "Study":
+                    study_id = str(entry.get("ID") or "")
+                    break
+            if not study_id:
+                return StudyStatistics()
+            stats_response = self._orthanc_client.get(f"studies/{study_id}/statistics")
+            detail_response = self._orthanc_client.get(f"studies/{study_id}")
+            stats = stats_response.json() if stats_response.status_code == 200 else {}
+            detail = detail_response.json() if detail_response.status_code == 200 else {}
+            if not isinstance(stats, dict):
+                stats = {}
+            if not isinstance(detail, dict):
+                detail = {}
+            return StudyStatistics(
+                instances=_as_int_or_none(stats.get("CountInstances")),
+                series=_as_int_or_none(stats.get("CountSeries")),
+                size_mb=_as_float_or_none(stats.get("DicomDiskSizeMB") or stats.get("DiskSizeMB")),
+                is_stable=detail.get("IsStable") if isinstance(detail.get("IsStable"), bool) else None,
+                last_update=str(detail.get("LastUpdate") or ""),
+            )
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.debug("Study statistics unavailable for %s: %s", study_uid[:16], exc)
+            return StudyStatistics()
 
     def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes:
         """Download single DICOM instance via Orthanc REST API.

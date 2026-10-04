@@ -6,6 +6,47 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
+from echo_personal_tool.presentation.orthanc_study_delegate import ROLE_CHECKED, ROLE_PARTIAL, ROLE_ROW, ROLE_UID
+
+
+def _study(
+    *,
+    uid: str = "study-uid",
+    name: str = "JOHN^DOE",
+    date: str = "20240404",
+    desc: str = "Echo",
+    birth: str = "",
+    sex: str = "",
+):
+    return StudyInfo(
+        study_uid=uid,
+        patient_name=name,
+        patient_id="12345",
+        study_date=date,
+        study_description=desc,
+        series_count=3,
+        patient_birth_date=birth,
+        patient_sex=sex,
+        modalities_in_study="US, XA",
+        instances_count=120,
+        accession_number="A-1",
+    )
+
+
+def _series(study_uid: str, count: int) -> list[SeriesInfo]:
+    return [
+        SeriesInfo(
+            study_uid=study_uid,
+            series_uid=f"s{index + 1}",
+            modality="US",
+            description=f"Series {index + 1}",
+            instance_count=10 * (index + 1),
+            series_number=index + 1,
+        )
+        for index in range(count)
+    ]
+
 pytestmark = pytest.mark.gui
 
 
@@ -74,8 +115,9 @@ class TestOrthancStudyDialogInit:
     def test_search_edit_exists(self, dialog):
         assert dialog._search_edit is not None
 
-    def test_tree_exists(self, dialog):
-        assert dialog._tree is not None
+    def test_study_list_exists(self, dialog):
+        assert dialog._studies_list is not None
+        assert dialog._series_list is not None
 
 
 class TestResultData:
@@ -99,17 +141,49 @@ class TestDownloadedStudies:
 
 class TestCollectCheckedSeries:
     def test_empty_tree(self, dialog):
-        result = dialog._collect_all_checked_series()
-        assert result == []
+        assert dialog._collect_all_checked_series() == []
 
-    def test_no_checked(self, dialog):
-        from PySide6.QtWidgets import QTreeWidgetItem
+    def test_unchecked_study_is_ignored(self, dialog):
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        assert dialog._collect_all_checked_series() == []
 
-        item = QTreeWidgetItem()
-        item.setData(0, 256, "study-uid")  # _STUDY_UID_ROLE = UserRole = 256
-        dialog._tree.addTopLevelItem(item)
+    def test_whole_study_selection_uses_all_known_series(self, dialog):
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        dialog._on_series_loaded(("study-uid", _series("study-uid", 3), None))
+        dialog._set_study_selected("study-uid", True)
         result = dialog._collect_all_checked_series()
-        assert result == []
+        assert result == [("study-uid", ["s1", "s2", "s3"])]
+
+    def test_subset_selection_keeps_only_checked_series(self, dialog):
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        dialog._on_series_loaded(("study-uid", _series("study-uid", 3), None))
+        dialog._select_study_row("study-uid")
+        dialog._set_all_series_checked(True)
+        # Untick the middle series through the public toggle path
+        item = dialog._series_list.topLevelItem(1)
+        dialog._on_series_check_toggled(item)
+        assert dialog._collect_all_checked_series() == [("study-uid", ["s1", "s3"])]
+
+    def test_hidden_study_is_not_downloaded(self, dialog):
+        dialog._on_studies_loaded([_study(uid="old", date="20200101"), _study(uid="new", date="20990101")], None)
+        for uid in ("old", "new"):
+            dialog._on_series_loaded((uid, _series(uid, 2), None))
+            dialog._set_study_selected(uid, True)
+        dialog._filter_studies_by_date(30)
+        assert dialog._collect_all_checked_series() == [("new", ["s1", "s2"])]
+
+    def test_checkbox_state_reflects_partial_selection(self, dialog):
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        dialog._on_series_loaded(("study-uid", _series("study-uid", 3), None))
+        dialog._set_study_selected("study-uid", True)
+        item = dialog._studies_list.topLevelItem(0)
+        assert item.data(0, ROLE_CHECKED) is True
+        assert item.data(0, ROLE_PARTIAL) is False
+
+        dialog._select_study_row("study-uid")
+        dialog._on_series_check_toggled(dialog._series_list.topLevelItem(0))
+        assert item.data(0, ROLE_CHECKED) is False
+        assert item.data(0, ROLE_PARTIAL) is True
 
 
 class TestShortUid:
@@ -141,44 +215,96 @@ class TestSeriesLabel:
 
 
 class TestBuildStudyTree:
-    def _study(self, name="John", date="20240101", desc="Echo", uid="uid-123"):
-        study = MagicMock()
-        study.patient_name = name
-        study.study_date = date
-        study.study_description = desc
-        study.study_uid = uid
-        return study
-
     def test_empty(self, dialog):
-        dialog._build_study_tree([])
-        assert dialog._tree.topLevelItemCount() == 0
+        dialog._build_study_rows([])
+        assert dialog._studies_list.topLevelItemCount() == 0
+        assert dialog._studies_stack.currentIndex() == 1  # empty-state page
 
     def test_with_data(self, dialog):
-        dialog._build_study_tree([self._study()])
-        assert dialog._tree.topLevelItemCount() == 1
+        dialog._build_study_rows([_study()])
+        assert dialog._studies_list.topLevelItemCount() == 1
+        row = dialog._studies_list.topLevelItem(0).data(0, ROLE_ROW)
+        assert row is not None
+        assert row.study.study_uid == "study-uid"
 
     def test_sorts_by_date_desc(self, dialog):
-        dialog._build_study_tree(
+        dialog._sort_mode = "date_desc"
+        dialog._build_study_rows(
             [
-                self._study(date="20240101", uid="a"),
-                self._study(date="20240615", uid="b"),
-                self._study(date="20240310", uid="c"),
+                _study(date="20240101", uid="a"),
+                _study(date="20240615", uid="b"),
+                _study(date="20240310", uid="c"),
             ]
         )
-        assert dialog._tree.topLevelItemCount() == 3
-        # Newest first
-        assert dialog._tree.topLevelItem(0).data(1, 258) == "20240615"  # _SORT_ROLE = UserRole+2 = 258
+        order = [
+            dialog._studies_list.topLevelItem(i).data(0, ROLE_UID)
+            for i in range(dialog._studies_list.topLevelItemCount())
+        ]
+        assert order == ["b", "c", "a"]
+
+    def test_sort_by_name(self, dialog):
+        dialog._sort_mode = "name"
+        dialog._build_study_rows(
+            [
+                _study(name="ПЕТРОВА^АННА", uid="p"),
+                _study(name="ИВАНОВ^ИВАН", uid="i"),
+            ]
+        )
+        assert dialog._studies_list.topLevelItem(0).data(0, ROLE_UID) == "i"
+
+
+class TestStudyRowContent:
+    def test_row_formats_patient_name_and_demographics(self, dialog):
+        study = _study(uid="u1", birth="19570112", sex="M", date="20240404")
+        row = dialog._make_study_row(study)
+        assert row.title == "John Doe"
+        assert "М" in row.demographics
+        assert "ID 12345" in row.demographics
+
+    def test_row_badges_from_server_tags(self, dialog):
+        study = _study(uid="u1")
+        row = dialog._make_study_row(study)
+        texts = [b.text for b in row.badges]
+        assert "US/XA" in texts
+        assert any("сер." in t for t in texts)
+        assert any("инст." in t for t in texts)
+        assert any(t.startswith("№ ") for t in texts)
+
+    def test_statistics_badge_added_after_fetch(self, dialog):
+        from echo_personal_tool.domain.models.orthanc import StudyStatistics
+
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._on_study_stats("u1", StudyStatistics(instances=412, series=5, size_mb=84.3, is_stable=True))
+        row = dialog._studies_list.topLevelItem(0).data(0, ROLE_ROW)
+        texts = [b.text for b in row.badges]
+        assert any("84" in t for t in texts)
+        assert any("завершено" in t for t in texts)
+
+
+class TestSelectionSummary:
+    def test_empty_summary(self, dialog):
+        dialog._update_selection_summary()
+        assert "Ничего не выбрано" in dialog._summary_label.text()
+
+    def test_summary_counts_studies_and_series(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._on_series_loaded(("u1", _series("u1", 2), None))
+        dialog._set_study_selected("u1", True)
+        text = dialog._summary_label.text()
+        assert "1" in text and "2" in text
 
 
 class TestOnItemChanged:
-    def test_non_series_item_ignored(self, dialog):
-        from PySide6.QtCore import Qt
+    def test_non_study_item_ignored(self, dialog):
+        """A row without a UID must not raise when toggled."""
         from PySide6.QtWidgets import QTreeWidgetItem
 
-        item = QTreeWidgetItem()
-        item.setData(0, Qt.ItemDataRole.UserRole, None)
-        dialog._on_item_changed(item, 1)  # column != 0
-        # Should not crash
+        dialog._on_study_check_toggled(QTreeWidgetItem())
+
+    def test_row_without_uid_is_ignored_by_series_toggle(self, dialog):
+        from PySide6.QtWidgets import QTreeWidgetItem
+
+        dialog._on_series_check_toggled(QTreeWidgetItem())
 
 
 class TestUpdateLoadButton:
@@ -366,7 +492,7 @@ class TestOnFailed:
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"):
             dialog._on_failed("uid", "error")
         assert dialog._session_id is None
-        assert dialog._tree.isEnabled()
+        assert dialog._studies_list.isEnabled()
 
     def test_retries_next_pending(self, dialog):
         dialog._session_id = "test"
@@ -382,7 +508,7 @@ class TestOnCancelled:
         with patch.object(dialog, "reject"):
             dialog._on_cancelled("test")
         assert dialog._session_id is None
-        assert dialog._tree.isEnabled()
+        assert dialog._studies_list.isEnabled()
 
 
 class TestResetAfterDownload:
@@ -427,7 +553,7 @@ class TestOnDiskDownloadDone:
             dialog._on_disk_download_done()
         assert dialog._downloading is False
         assert dialog._worker is None
-        assert dialog._tree.isEnabled()
+        assert dialog._studies_list.isEnabled()
         mock_accept.assert_not_called()
         mock_box.warning.assert_called_once()
 
@@ -452,137 +578,88 @@ class TestSeriesLoadingState:
         assert dialog._series_loading == set()
 
 
-class TestOnItemExpanded:
-    _STUDY_ROLE = 256  # Qt.ItemDataRole.UserRole
-
-    def _add_study_item(self, dialog, uid="study-uid"):
-        from PySide6.QtWidgets import QTreeWidgetItem
-
-        item = QTreeWidgetItem(["John", "20240101", "Echo"])
-        item.setData(0, self._STUDY_ROLE, uid)
-        dialog._tree.addTopLevelItem(item)
-        return item
-
-    def test_does_not_call_query_series_synchronously(self, dialog):
-        item = self._add_study_item(dialog)
+class TestSeriesPane:
+    def test_lazy_series_query_starts_in_background(self, dialog):
         with (
             patch.object(dialog._client, "query_series") as mock_qs,
             patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool,
         ):
-            dialog._on_item_expanded(item)
+            dialog._prefetch_series("study-uid", force=True)
             mock_qs.assert_not_called()
             mock_pool.globalInstance().start.assert_called_once()
+        assert "study-uid" in dialog._series_loading
 
-    def test_shows_loading_indicator(self, dialog):
-        item = self._add_study_item(dialog)
-        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool"):
-            dialog._on_item_expanded(item)
-            assert item.childCount() == 1
-
-    def test_tracks_in_flight_query(self, dialog):
-        item = self._add_study_item(dialog)
-        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool"):
-            dialog._on_item_expanded(item)
-            assert "study-uid" in dialog._series_loading
-
-    def test_prevents_duplicate_query(self, dialog):
-        item = self._add_study_item(dialog)
+    def test_duplicate_query_prevented(self, dialog):
         dialog._series_loading.add("study-uid")
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
-            dialog._on_item_expanded(item)
+            dialog._prefetch_series("study-uid", force=True)
             mock_pool.globalInstance().start.assert_not_called()
 
-    def test_ignores_child_items(self, dialog):
-        from PySide6.QtWidgets import QTreeWidgetItem
-
-        parent = self._add_study_item(dialog)
-        child = QTreeWidgetItem(["child", "", ""])
-        child.setData(0, self._STUDY_ROLE, "child-uid")
-        parent.addChild(child)
+    def test_already_loaded_study_is_not_refetched(self, dialog):
+        dialog._series_loaded.add("study-uid")
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
-            dialog._on_item_expanded(child)
+            dialog._prefetch_series("study-uid", force=True)
             mock_pool.globalInstance().start.assert_not_called()
 
-    def test_skips_already_has_children(self, dialog):
-        from PySide6.QtWidgets import QTreeWidgetItem
+    def test_populates_series_rows(self, dialog):
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        dialog._select_study_row("study-uid")
+        dialog._on_series_loaded(("study-uid", _series("study-uid", 2), None))
+        assert dialog._series_list.topLevelItemCount() == 2
+        first = dialog._series_list.topLevelItem(0).data(0, ROLE_ROW)
+        assert first.title.startswith("1.")
+        assert first.series.modality == "US"
+        assert dialog._series_list.topLevelItem(0).data(0, ROLE_UID) == "s1"
 
-        item = self._add_study_item(dialog)
-        item.addChild(QTreeWidgetItem(["", "", "existing"]))
-        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
-            dialog._on_item_expanded(item)
-            mock_pool.globalInstance().start.assert_not_called()
-
-
-class TestOnSeriesLoaded:
-    _STUDY_ROLE = 256
-    _SERIES_ROLE = 257
-
-    def _add_study_item(self, dialog, uid="study-uid"):
-        from PySide6.QtWidgets import QTreeWidgetItem
-
-        item = QTreeWidgetItem(["John", "20240101", "Echo"])
-        item.setData(0, self._STUDY_ROLE, uid)
-        dialog._tree.addTopLevelItem(item)
-        # Simulate loading placeholder child
-        loading = QTreeWidgetItem(["", "", "Loading..."])
-        item.addChild(loading)
-        return item
-
-    def test_populates_series_on_success(self, dialog):
-        item = self._add_study_item(dialog)
-        from echo_personal_tool.domain.models.orthanc import SeriesInfo
-
-        series_list = [
-            SeriesInfo(
-                study_uid="study-uid", series_uid="series-1", modality="US", description="Echo", instance_count=10
-            ),
-            SeriesInfo(
-                study_uid="study-uid", series_uid="series-2", modality="DC", description="Doppler", instance_count=5
-            ),
-        ]
-        dialog._on_series_loaded(("study-uid", series_list, None))
-        assert item.childCount() == 2
-        assert item.child(0).data(0, self._SERIES_ROLE) == "series-1"
-        assert item.child(1).data(0, self._SERIES_ROLE) == "series-2"
-        assert "study-uid" not in dialog._series_loading
-
-    def test_shows_error_on_failure(self, dialog):
-        item = self._add_study_item(dialog)
+    def test_series_error_is_shown_in_header(self, dialog):
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        dialog._select_study_row("study-uid")
         dialog._on_series_loaded(("study-uid", [], "Connection timeout"))
-        assert item.childCount() == 1
-        assert "study-uid" not in dialog._series_loading
+        assert "Connection timeout" in dialog._series_header.text()
+        assert dialog._series_list.topLevelItemCount() == 0
 
-    def test_missing_target_item_no_crash(self, dialog):
+    def test_unknown_study_does_not_crash(self, dialog):
         dialog._on_series_loaded(("nonexistent-uid", [], None))
         assert "nonexistent-uid" not in dialog._series_loading
 
-    def test_removes_loading_placeholder(self, dialog):
-        item = self._add_study_item(dialog)
-        assert item.childCount() == 1  # loading child
-        dialog._on_series_loaded(("study-uid", [], None))
-        assert item.childCount() == 0  # loading replaced with nothing
+    def test_selecting_study_fills_right_pane(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1"), _study(uid="u2")], None)
+        dialog._on_series_loaded(("u2", _series("u2", 3), None))
+        dialog._select_study_row("u2")
+        dialog._populate_series("u2")
+        assert dialog._series_list.topLevelItemCount() == 3
+        assert "u2" == dialog._current_study_uid
+        assert dialog._patient_label.isVisibleTo(dialog) or dialog._patient_label.text()
 
-    def test_empty_series_clears_children(self, dialog):
-        item = self._add_study_item(dialog)
-        dialog._on_series_loaded(("study-uid", [], None))
-        assert item.childCount() == 0
+    def test_series_actions_hidden_without_series(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._select_study_row("u1")
+        dialog._on_series_loaded(("u1", [], None))
+        assert not dialog._series_actions.isVisible()
 
-    def test_finds_correct_item_among_multiple(self, dialog):
-        from echo_personal_tool.domain.models.orthanc import SeriesInfo
 
-        self._add_study_item(dialog, uid="study-1")
-        target = self._add_study_item(dialog, uid="study-2")
-        self._add_study_item(dialog, uid="study-3")
+class TestDeferredLoad:
+    def test_load_waits_for_unknown_series_list(self, dialog):
+        """Selecting a study whose series are unknown must fetch them first."""
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._selected_all.add("u1")
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._on_load()
+            mock_pool.globalInstance().start.assert_called()
+        assert dialog._downloading is False
+        assert dialog._pending_action == "load"
 
-        dialog._on_series_loaded(
-            (
-                "study-2",
-                [SeriesInfo(study_uid="study-2", series_uid="s2", modality="US", description="A", instance_count=1)],
-                None,
-            )
-        )
-        assert target.childCount() == 1
-        assert target.child(0).data(0, self._SERIES_ROLE) == "s2"
+    def test_pending_action_runs_when_series_arrive(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._selected_all.add("u1")
+        dialog._pending_action = "load"
+        dialog._cache.create_session.return_value = "session-1"
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool"):
+            dialog._on_series_loaded(("u1", _series("u1", 2), None))
+        assert dialog._downloading is True
+        # The first (and only) study was already handed to the download worker.
+        assert dialog._total_studies == 1
+        assert dialog._worker is not None
 
 
 class TestReject:

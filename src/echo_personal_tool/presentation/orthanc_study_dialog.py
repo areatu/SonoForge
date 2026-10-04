@@ -1,4 +1,21 @@
-"""Dialog for browsing Orthanc studies and downloading selected series."""
+"""Dialog for browsing Orthanc studies and downloading selected series.
+
+Layout (по мотивам PACS-ворк листов: Sectra IDS7, GE Synapse, RadiAnt):
+
+    ┌ toolbar: поиск │ источник │ период │ сортировка │ миниатюры ┐
+    ├───────────────────────────┬──────────────────────────────────┤
+    │ ИССЛЕДОВАНИЯ (N)          │ пациент + исследование           │
+    │  ☑ ▣ Иванов Иван Иванович │  ☑ ▣ 2D PLAX     96 инст.        │
+    │      М · 67 лет · 28.09…  │  ☐ ▣ Doppler mitral              │
+    ├───────────────────────────┴──────────────────────────────────┤
+    │ Выбрано: 2 иссл. · 7 сер. · ≈ 84 МБ   [прогресс]  [кнопки]   │
+    └──────────────────────────────────────────────────────────────┘
+
+The left list is the study list, the right pane shows the series of the
+highlighted study; a study checkbox selects the whole study at once, and the
+series checkboxes let the user trim the selection.  See
+``docs/superpowers/specs/2026-10-04-orthanc-dialog-ux-ru.md`` for the rationale.
+"""
 
 from __future__ import annotations
 
@@ -10,9 +27,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import shiboken6
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QObject, QRunnable, QSettings, QSize, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtGui import QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -22,6 +42,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSplitter,
+    QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -30,11 +52,18 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.workers.orthanc_download_worker import OrthancDownloadWorker
 from echo_personal_tool.domain.models import StudyMetadata
-from echo_personal_tool.domain.models.orthanc import SeriesInfo
+from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo, StudyStatistics
 from echo_personal_tool.domain.ports import DicomWebClient, QuerySource
+from echo_personal_tool.domain.services.patient_display import (
+    format_patient_age,
+    format_person_name,
+    format_relative_day,
+    format_size_mb,
+)
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+from echo_personal_tool.infrastructure.profile import qsettings_for
 from echo_personal_tool.infrastructure.server_client_factory import (
     make_dicom_retrieve_service,
 )
@@ -43,22 +72,103 @@ from echo_personal_tool.infrastructure.server_settings import (
     load_server_settings,
     save_server_settings,
 )
+from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
+from echo_personal_tool.presentation.orthanc_study_delegate import (
+    ROLE_CHECKED,
+    ROLE_PARTIAL,
+    ROLE_PIXMAP,
+    ROLE_ROW,
+    ROLE_SORT_KEY,
+    ROLE_UID,
+    SERIES_ROW_HEIGHT,
+    STUDY_ROW_HEIGHT,
+    Badge,
+    OrthancRowDelegate,
+    SeriesRow,
+    StudyRow,
+    checkbox_rect,
+)
 
-_STUDY_UID_ROLE = Qt.ItemDataRole.UserRole
-_SERIES_UID_ROLE = Qt.ItemDataRole.UserRole + 1
-_SORT_ROLE = Qt.ItemDataRole.UserRole + 2
+_SORT_ROLE = ROLE_SORT_KEY
 _CANCEL_FORCE_CLOSE_MS = 30_000
 # The status line must never widen the dialog: long failure chains go to the
 # log in full, while the label and the error box get a bounded slice.
 _STATUS_TEXT_LIMIT = 240
 _DIALOG_TEXT_LIMIT = 400
-_STATUS_LABEL_MAX_WIDTH = 640
+_STATUS_LABEL_MAX_WIDTH = 720
+_SEARCH_DEBOUNCE_MS = 400
+_PREVIEW_TARGET = QSize(160, 120)
+_MAX_PREFETCHED_STUDIES = 24
+_UI_SETTINGS_APP = "loader_dialog"
+_THUMBNAILS_KEY = "show_thumbnails"
+_UNKNOWN_PATIENT_KEY = "orthanc.unknown_patient"
+_NO_DESCRIPTION_KEY = "orthanc.no_description"
+_TODAY_KEY = "orthanc.date_today"
+_YESTERDAY_KEY = "orthanc.date_yesterday"
 
 log = logging.getLogger(__name__)
 
 
+def build_loader_dialog_stylesheet(p: dict[str, str]) -> str:
+    """Dialog-scoped QSS: period chips, primary button, panel headers.
+
+    Scoped to the loader dialog on purpose — the global theme styles
+    ``QTreeWidget`` check indicators as small circular markers for the clinical
+    browsers, which is exactly the affordance the loader must not reuse.  Row
+    checkboxes there are painted by the delegate instead.
+    """
+    return f"""
+            QPushButton#periodChip {{
+                background: {p["bg_control"]};
+                border: 1px solid {p["border"]};
+                border-radius: 12px;
+                padding: 4px 12px;
+            }}
+            QPushButton#periodChip:hover {{ border-color: {p["accent"]}; }}
+            QPushButton#periodChip:checked {{
+                background: {p["accent"]};
+                color: #062026;
+                border-color: {p["accent"]};
+                font-weight: bold;
+            }}
+            QPushButton#primaryButton {{
+                background: {p["accent"]};
+                color: #062026;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 7px 18px;
+            }}
+            QPushButton#primaryButton:hover {{ background: {p["accent_bright"]}; }}
+            QPushButton#primaryButton:disabled {{
+                background: {p["bg_button"]};
+                color: {p["text_dim"]};
+            }}
+            QLabel#patientBanner {{
+                background: {p["bg_control"]};
+                border: 1px solid {p["border"]};
+                border-radius: 5px;
+                padding: 7px 10px;
+                color: {p["text"]};
+                font-weight: bold;
+            }}
+            QLabel#selectionSummary {{ color: {p["text"]}; }}
+            QLabel#emptyState {{ color: {p["text_dim"]}; }}
+            QLabel#panelHeader {{ color: {p["text_dim"]}; font-weight: bold; }}
+            QTreeWidget#studyList, QTreeWidget#seriesList {{
+                background: {p["bg_dark"]};
+                border: 1px solid {p["border"]};
+                border-radius: 5px;
+            }}
+            QTreeWidget#studyList::item, QTreeWidget#seriesList::item {{
+                border: none;
+                padding: 0px;
+            }}
+            """
+
+
 class _StudyItem(QTreeWidgetItem):
-    """Sort by the raw date/string stored in _SORT_ROLE, not display text."""
+    """Sort by the key stored in ``_SORT_ROLE``, not by the painted text."""
 
     def __lt__(self, other: QTreeWidgetItem) -> bool:
         col = self.treeWidget().sortColumn() if self.treeWidget() else 0
@@ -67,8 +177,86 @@ class _StudyItem(QTreeWidgetItem):
         return str(a or "") < str(b or "")
 
 
+class CheckableTreeWidget(QTreeWidget):
+    """Flat list with delegate-painted rows and a mouse/keyboard checkbox.
+
+    Qt draws tree indicators inside the item rect and offers no hit-test API,
+    so the checkbox is painted by the delegate and hit-tested here.  ``Space``
+    toggles the current row, matching every list UI users already know.
+    """
+
+    checkToggled = Signal(object)  # QTreeWidgetItem
+
+    def __init__(self, parent: QWidget | None = None, *, row_height: int) -> None:
+        super().__init__(parent)
+        self._row_height = row_height
+        self.setColumnCount(1)
+        self.setHeaderHidden(True)
+        self.setRootIsDecorated(False)
+        self.setIndentation(0)
+        self.setUniformRowHeights(True)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.setMouseTracking(True)
+        self.setExpandsOnDoubleClick(False)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+
+    def item_for_pos(self, pos) -> QTreeWidgetItem | None:  # noqa: ANN001 - QPoint
+        item = self.itemAt(pos)
+        if item is None:
+            return None
+        return item
+
+    def checkbox_hit(self, item: QTreeWidgetItem, pos) -> bool:  # noqa: ANN001 - QPoint
+        rect = self.visualItemRect(item)
+        return checkbox_rect(rect).contains(pos)
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001 - QMouseEvent
+        item = self.item_for_pos(event.position().toPoint())
+        if item is not None and self.checkbox_hit(item, event.position().toPoint()):
+            self.checkToggled.emit(item)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: ANN001 - QKeyEvent
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Select):
+            item = self.currentItem()
+            if item is not None:
+                self.checkToggled.emit(item)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+
 class _StudyQuerySignals(QObject):
     finished = Signal(object, object)  # (list[StudyInfo] | None, error_message | None)
+
+
+class _PingSignals(QObject):
+    finished = Signal(bool)  # server answered
+
+
+class _PingWorker(QRunnable):
+    """Check server availability off the GUI thread."""
+
+    def __init__(self, client: object, signals: _PingSignals) -> None:
+        super().__init__()
+        self._client = client
+        self._signals = signals
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        ok = False
+        try:
+            ping = getattr(self._client, "ping", None)
+            ok = bool(ping()) if callable(ping) else False
+        except Exception as exc:  # noqa: BLE001
+            log.debug("[DLG] ping failed: %s", exc)
+        try:
+            self._signals.finished.emit(ok)
+        except RuntimeError:
+            log.debug("[DLG] ping worker: signal already deleted, skipping emit")
 
 
 class _StudyQueryWorker(QRunnable):
@@ -122,7 +310,37 @@ class _SeriesQueryWorker(QRunnable):
             log.debug("[DLG] series query worker: signal already deleted, skipping emit")
 
 
+class _StudyDetailSignals(QObject):
+    finished = Signal(str, object)  # study_uid, StudyStatistics
+
+
+class _StudyDetailWorker(QRunnable):
+    """Fetch study size/status from Orthanc REST (optional, best effort)."""
+
+    def __init__(self, study_uid: str, fetch_fn: Callable[[str], StudyStatistics], signals: _StudyDetailSignals) -> None:
+        super().__init__()
+        self._study_uid = study_uid
+        self._fetch_fn = fetch_fn
+        self._signals = signals
+        self.setAutoDelete(True)
+
+    def run(self) -> None:
+        try:
+            stats = self._fetch_fn(self._study_uid)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("[DLG] study details failed for %s: %s", self._study_uid[:16], exc)
+            stats = StudyStatistics()
+        if not isinstance(stats, StudyStatistics):
+            stats = StudyStatistics()
+        try:
+            self._signals.finished.emit(self._study_uid, stats)
+        except RuntimeError:
+            log.debug("[DLG] study detail worker: signal already deleted, skipping emit")
+
+
 class OrthancStudyDialog(QDialog):
+    """Browse studies with a master–detail layout and download the selection."""
+
     def __init__(
         self,
         client: DicomWebClient,
@@ -181,91 +399,60 @@ class OrthancStudyDialog(QDialog):
         self._reject_timer.setSingleShot(True)
         self._reject_timer.timeout.connect(self.reject)
 
+        # ── model state ─────────────────────────────────────────────
+        self._studies: list[StudyInfo] = []
+        self._series_cache: dict[str, list[SeriesInfo]] = {}
+        self._series_errors: dict[str, str] = {}
+        self._series_loaded: set[str] = set()
+        self._selected_all: set[str] = set()  # study marked as "whole study"
+        self._selected_series: dict[str, set[str]] = {}
+        self._study_thumbnails: dict[str, tuple[str, str]] = {}  # study -> (study, series)
+        self._study_stats: dict[str, StudyStatistics] = {}
+        self._study_states: dict[str, tuple[str, str]] = {}
+        self._prefetch_queue: list[str] = []
+        self._prefetching: set[str] = set()
+        self._pending_action: str | None = None
+        self._current_study_uid = ""
+        self._sort_mode = "date_desc"
+
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(_SEARCH_DEBOUNCE_MS)
+        self._search_timer.timeout.connect(self._load_studies_async)
+
+        self._preview_loader = OrthancPreviewLoader(client, target_size=_PREVIEW_TARGET, parent=self)
+        self._preview_loader.preview_ready.connect(self._on_preview_ready)
+
         self.setWindowTitle(tr("dialog.orthanc.title"))
-        self.resize(800, 520)
+        self.resize(1120, 660)
+        self.setMinimumSize(760, 480)
 
-        self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText(tr("orthanc.patient_name_placeholder"))
-        self._find_btn = QPushButton(tr("orthanc.find"))
-        self._find_btn.clicked.connect(self._on_find)
+        self._build_ui()
+        self._restore_ui_preferences()
+        self._init_timer.start(0)
 
-        # Source selector (DICOMweb / DIMSE / Auto)
-        self._source_combo = QComboBox()
-        self._source_combo.addItem(tr("server_settings.query_source_dicomweb"), "dicomweb")
-        self._source_combo.addItem(tr("server_settings.query_source_dimse"), "dimse")
-        self._source_combo.addItem(tr("server_settings.query_source_auto"), "auto")
-        if self._query_service is not None:
-            source_idx = self._source_combo.findData(self._query_service.source.value)
-            self._source_combo.setCurrentIndex(max(source_idx, 0))
-        self._source_combo.currentIndexChanged.connect(self._on_source_changed)
-
-        # Date filter
-        self._date_filter_combo = QComboBox()
-        self._date_filter_combo.addItem(tr("orthanc.date_filter_all"), 0)
-        self._date_filter_combo.addItem(tr("orthanc.date_filter_1d"), 1)
-        self._date_filter_combo.addItem(tr("orthanc.date_filter_3d"), 3)
-        self._date_filter_combo.addItem(tr("orthanc.date_filter_30d"), 30)
-        self._date_filter_combo.currentIndexChanged.connect(self._on_date_filter_changed)
-
-        search_row = QHBoxLayout()
-        search_row.addWidget(self._search_edit, stretch=1)
-        search_row.addWidget(self._source_combo)
-        search_row.addWidget(self._date_filter_combo)
-        search_row.addWidget(self._find_btn)
-
-        self._tree = QTreeWidget()
-        self._tree.setHeaderLabels(
-            [tr("orthanc.table_patient"), tr("orthanc.table_date"), tr("orthanc.table_study_series")]
-        )
-        self._tree.setColumnWidth(0, 200)
-        self._tree.setColumnWidth(1, 100)
-        self._tree.setSortingEnabled(True)
-        self._tree.sortByColumn(1, Qt.SortOrder.DescendingOrder)
-        self._tree.itemExpanded.connect(self._on_item_expanded)
-        self._tree.itemChanged.connect(self._on_item_changed)
-        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self._tree.setRootIsDecorated(True)
-        self._tree.itemClicked.connect(self._on_item_clicked)
-
-        self._status_label = QLabel()
-        self._status_label.setWordWrap(True)
-        self._status_label.setMinimumWidth(0)
-        self._status_label.setMaximumWidth(_STATUS_LABEL_MAX_WIDTH)
-        self._status_label.setAlignment(Qt.AlignmentFlag.AlignLeading | Qt.AlignmentFlag.AlignTop)
-        self._progress = QProgressBar()
-        self._progress.hide()
-
-        self._load_btn = QPushButton(tr("orthanc.load"))
-        self._load_btn.setEnabled(False)
-        self._load_btn.clicked.connect(self._on_load)
-
-        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
-        self._save_disk_btn.setEnabled(False)
-        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
-
-        self._cancel_btn = QPushButton(tr("orthanc.cancel"))
-        self._cancel_btn.clicked.connect(self._on_cancel)
-
-        buttons_row = QHBoxLayout()
-        buttons_row.addStretch()
-        buttons_row.addWidget(self._load_btn)
-        buttons_row.addWidget(self._save_disk_btn)
-        buttons_row.addWidget(self._cancel_btn)
-
-        # Custom title bar for frameless dialog
+    # ── UI construction ─────────────────────────────────────────────
+    def _build_ui(self) -> None:
         from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
         p = get_theme_palette()
-        self._drag_pos: QPoint | None = None
+
+        # Title bar (frameless window)
+        self._drag_pos = None
         title_bar = QWidget()
-        title_bar.setFixedHeight(32)
+        title_bar.setFixedHeight(34)
         title_bar.setStyleSheet(f"background: {p['bg_dark']};")
         tb_layout = QHBoxLayout(title_bar)
-        tb_layout.setContentsMargins(8, 0, 4, 0)
-        tb_layout.setSpacing(0)
+        tb_layout.setContentsMargins(10, 0, 4, 0)
+        tb_layout.setSpacing(8)
         title_label = QLabel(tr("dialog.orthanc.title"))
         title_label.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
         tb_layout.addWidget(title_label)
+        self._server_pill = QLabel(tr("orthanc.checking_server"))
+        self._server_pill.setStyleSheet(
+            f"color: {p['text_dim']}; border: none; padding-left: 6px;"
+        )
+        tb_layout.addWidget(self._server_pill)
         tb_layout.addStretch(1)
         from echo_personal_tool.presentation.system_bar import _load_icon
 
@@ -276,24 +463,301 @@ class OrthancStudyDialog(QDialog):
         btn_close.clicked.connect(self.reject)
         tb_layout.addWidget(btn_close)
 
+        # Search / controls row
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText(tr("orthanc.patient_name_placeholder"))
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.returnPressed.connect(self._on_find)
+        self._search_edit.textChanged.connect(self._on_search_text_changed)
+
+        self._find_btn = QPushButton(tr("orthanc.find"))
+        self._find_btn.setDefault(True)
+        self._find_btn.clicked.connect(self._on_find)
+
+        self._source_combo = QComboBox()
+        self._source_combo.addItem(tr("server_settings.query_source_dicomweb"), "dicomweb")
+        self._source_combo.addItem(tr("server_settings.query_source_dimse"), "dimse")
+        self._source_combo.addItem(tr("server_settings.query_source_auto"), "auto")
+        if self._query_service is not None:
+            source_idx = self._source_combo.findData(self._query_service.source.value)
+            self._source_combo.setCurrentIndex(max(source_idx, 0))
+        self._source_combo.currentIndexChanged.connect(self._on_source_changed)
+        self._source_combo.setToolTip(tr("orthanc.source_tooltip"))
+
+        self._sort_combo = QComboBox()
+        for key, label_key in (
+            ("date_desc", "orthanc.sort_date_desc"),
+            ("date_asc", "orthanc.sort_date_asc"),
+            ("name", "orthanc.sort_name"),
+            ("size", "orthanc.sort_size"),
+        ):
+            self._sort_combo.addItem(tr(label_key), key)
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        self._sort_combo.setToolTip(tr("orthanc.sort_tooltip"))
+
+        self._thumbs_check = QCheckBox(tr("orthanc.thumbnails"))
+        self._thumbs_check.setChecked(True)
+        self._thumbs_check.toggled.connect(self._on_thumbnails_toggled)
+        self._thumbs_check.setToolTip(tr("orthanc.thumbnails_tooltip"))
+
+        search_row = QHBoxLayout()
+        search_row.setContentsMargins(10, 8, 10, 0)
+        search_row.setSpacing(8)
+        search_row.addWidget(self._search_edit, stretch=1)
+        search_row.addWidget(self._find_btn)
+        search_row.addSpacing(12)
+        search_row.addWidget(QLabel(tr("orthanc.source_label")))
+        search_row.addWidget(self._source_combo)
+        search_row.addWidget(QLabel(tr("orthanc.sort_label")))
+        search_row.addWidget(self._sort_combo)
+        search_row.addWidget(self._thumbs_check)
+
+        # Period filter as a segmented control (faster than a combo box)
+        self._date_filter_group = QButtonGroup(self)
+        self._date_filter_group.setExclusive(True)
+        period_row = QHBoxLayout()
+        period_row.setContentsMargins(10, 8, 10, 0)
+        period_row.setSpacing(6)
+        period_row.addWidget(QLabel(tr("orthanc.period_label")))
+        self._period_buttons: dict[int, QPushButton] = {}
+        for days, label_key in (
+            (0, "orthanc.date_filter_all"),
+            (1, "orthanc.date_filter_1d"),
+            (7, "orthanc.date_filter_7d"),
+            (30, "orthanc.date_filter_30d"),
+            (90, "orthanc.date_filter_90d"),
+        ):
+            button = QPushButton(tr(label_key))
+            button.setCheckable(True)
+            button.setObjectName("periodChip")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setChecked(days == 0)
+            self._date_filter_group.addButton(button)
+            self._period_buttons[days] = button
+            period_row.addWidget(button)
+        self._date_filter_group.buttonClicked.connect(self._on_date_filter_changed)
+        period_row.addStretch(1)
+        self._select_all_btn = QPushButton(tr("orthanc.select_all"))
+        self._select_all_btn.clicked.connect(self._on_select_all_studies)
+        self._clear_selection_btn = QPushButton(tr("orthanc.clear_selection"))
+        self._clear_selection_btn.clicked.connect(self._on_clear_selection)
+        period_row.addWidget(self._select_all_btn)
+        period_row.addWidget(self._clear_selection_btn)
+
+        # Master–detail splitter
+        self._studies_list = CheckableTreeWidget(row_height=STUDY_ROW_HEIGHT)
+        self._studies_list.setItemDelegate(OrthancRowDelegate(self._studies_list, kind="study"))
+        self._studies_list.setObjectName("studyList")
+        self._studies_list.checkToggled.connect(self._on_study_check_toggled)
+        self._studies_list.currentItemChanged.connect(self._on_study_current_changed)
+        self._studies_list.itemDoubleClicked.connect(self._on_study_double_clicked)
+        self._studies_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
+        self._studies_list.setToolTip(tr("orthanc.help_hint"))
+
+        self._studies_header = QLabel()
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(10, 8, 6, 8)
+        left_layout.setSpacing(6)
+        left_layout.addWidget(self._studies_header)
+        self._studies_stack = QStackedWidget()
+        self._studies_stack.addWidget(self._studies_list)
+        self._empty_studies, self._empty_studies_label = self._make_empty_page(tr("orthanc.empty_studies"))
+        self._studies_stack.addWidget(self._empty_studies)
+        left_layout.addWidget(self._studies_stack, stretch=1)
+
+        self._series_list = CheckableTreeWidget(row_height=SERIES_ROW_HEIGHT)
+        self._series_list.setItemDelegate(OrthancRowDelegate(self._series_list, kind="series"))
+        self._series_list.setObjectName("seriesList")
+        self._series_list.checkToggled.connect(self._on_series_check_toggled)
+        self._series_list.verticalScrollBar().valueChanged.connect(self._on_list_scrolled)
+        self._series_list.setToolTip(tr("orthanc.help_hint"))
+
+        self._patient_label = QLabel()
+        self._patient_label.setObjectName("patientBanner")
+        self._patient_label.setWordWrap(True)
+        self._series_header = QLabel()
+        self._series_actions = QWidget()
+        series_actions_row = QHBoxLayout(self._series_actions)
+        series_actions_row.setContentsMargins(0, 0, 0, 0)
+        series_actions_row.setSpacing(6)
+        self._series_all_btn = QPushButton(tr("orthanc.select_all_series"))
+        self._series_all_btn.clicked.connect(lambda: self._set_all_series_checked(True))
+        self._series_none_btn = QPushButton(tr("orthanc.clear_series"))
+        self._series_none_btn.clicked.connect(lambda: self._set_all_series_checked(False))
+        series_actions_row.addWidget(self._series_all_btn)
+        series_actions_row.addWidget(self._series_none_btn)
+        series_actions_row.addStretch(1)
+
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(6, 8, 10, 8)
+        right_layout.setSpacing(6)
+        right_layout.addWidget(self._patient_label)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(8)
+        header_row.addWidget(self._series_header)
+        header_row.addWidget(self._series_actions)
+        header_row.addStretch(1)
+        right_layout.addLayout(header_row)
+        self._series_stack = QStackedWidget()
+        self._series_stack.addWidget(self._series_list)
+        self._empty_series, self._empty_series_label = self._make_empty_page(tr("orthanc.empty_series"))
+        self._series_stack.addWidget(self._empty_series)
+        right_layout.addWidget(self._series_stack, stretch=1)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 4)
+        splitter.setChildrenCollapsible(False)
+
+        # Footer: selection summary, progress, actions
+        self._summary_label = QLabel()
+        self._summary_label.setObjectName("selectionSummary")
+        self._summary_label.setWordWrap(True)
+        self._status_label = QLabel()
+        self._status_label.setWordWrap(True)
+        self._status_label.setMinimumWidth(0)
+        self._status_label.setMaximumWidth(_STATUS_LABEL_MAX_WIDTH)
+        self._status_label.setAlignment(Qt.AlignmentFlag.AlignLeading | Qt.AlignmentFlag.AlignTop)
+        self._progress = QProgressBar()
+        self._progress.hide()
+
+        self._load_btn = QPushButton(tr("orthanc.open"))
+        self._load_btn.setObjectName("primaryButton")
+        self._load_btn.setEnabled(False)
+        self._load_btn.setToolTip(tr("orthanc.open_tooltip"))
+        self._load_btn.clicked.connect(self._on_load)
+
+        self._save_disk_btn = QPushButton(tr("orthanc.save_to_disk"))
+        self._save_disk_btn.setEnabled(False)
+        self._save_disk_btn.clicked.connect(self._on_save_to_disk)
+
+        self._cancel_btn = QPushButton(tr("orthanc.cancel"))
+        self._cancel_btn.clicked.connect(self._on_cancel)
+
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(10, 0, 10, 10)
+        actions_row.setSpacing(8)
+        actions_row.addWidget(self._summary_label, stretch=1)
+        actions_row.addWidget(self._cancel_btn)
+        actions_row.addWidget(self._save_disk_btn)
+        actions_row.addWidget(self._load_btn)
+
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(10, 0, 10, 0)
+        status_row.setSpacing(10)
+        # Explicit alignment: without it Qt centres the (width-capped) label in
+        # its cell as soon as the progress bar is hidden.
+        status_row.addWidget(
+            self._status_label,
+            0,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
+        status_row.addWidget(self._progress, stretch=1)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(6)
         layout.addWidget(title_bar)
         layout.addLayout(search_row)
-        layout.addWidget(self._tree, stretch=1)
-        layout.addWidget(self._status_label)
-        layout.addWidget(self._progress)
-        layout.addLayout(buttons_row)
+        layout.addLayout(period_row)
+        layout.addWidget(splitter, stretch=1)
+        layout.addLayout(status_row)
+        layout.addLayout(actions_row)
 
-        self._init_timer.start(0)
+        self._apply_local_style(p)
+        self._install_shortcuts()
+        self._update_selection_summary()
+        self._update_empty_states()
 
+    def _make_empty_page(self, text: str) -> tuple[QWidget, QLabel]:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(24, 24, 24, 24)
+        page_layout.addStretch(1)
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        label.setObjectName("emptyState")
+        page_layout.addWidget(label)
+        page_layout.addStretch(1)
+        return page, label
+
+    def _apply_local_style(self, p: dict[str, str]) -> None:
+        """Dialog-scoped QSS (see :func:`build_loader_dialog_stylesheet`)."""
+        self.setStyleSheet(build_loader_dialog_stylesheet(p))
+        header_font = QFont(self.font())
+        header_font.setBold(True)
+        for label in (self._studies_header, self._series_header):
+            label.setObjectName("panelHeader")
+            label.setFont(header_font)
+
+    def _install_shortcuts(self) -> None:
+        QShortcut(QKeySequence("Ctrl+F"), self, activated=self._search_edit.setFocus)
+        QShortcut(QKeySequence("F5"), self, activated=self._load_studies_async)
+        QShortcut(QKeySequence("Ctrl+R"), self, activated=self._load_studies_async)
+        QShortcut(QKeySequence("Ctrl+A"), self, activated=self._on_select_all_studies)
+
+    # ── settings ────────────────────────────────────────────────────
+    def _ui_settings(self) -> QSettings:
+        return qsettings_for("sonoforge", _UI_SETTINGS_APP)
+
+    def _restore_ui_preferences(self) -> None:
+        try:
+            store = self._ui_settings()
+            value = store.value(_THUMBNAILS_KEY, True)
+            enabled = value if isinstance(value, bool) else str(value).lower() not in {"false", "0", "no"}
+        except Exception:  # noqa: BLE001 - preferences must never block the dialog
+            enabled = True
+        self._thumbs_check.setChecked(enabled)
+        self._preview_loader.set_enabled(enabled)
+
+    def _persist_ui_preferences(self) -> None:
+        try:
+            store = self._ui_settings()
+            store.setValue(_THUMBNAILS_KEY, bool(self._thumbs_check.isChecked()))
+            store.sync()
+        except Exception:  # noqa: BLE001
+            log.debug("[DLG] cannot persist loader dialog preferences", exc_info=True)
+
+    def _on_thumbnails_toggled(self, checked: bool) -> None:
+        self._preview_loader.set_enabled(checked)
+        self._persist_ui_preferences()
+        if checked:
+            self._request_visible_previews()
+        self._studies_list.viewport().update()
+        self._series_list.viewport().update()
+
+    # ── network / queries ───────────────────────────────────────────
     def _init_network(self) -> None:
         if not self._is_alive():
             return
         log.info("[DLG] _init_network called")
         self._set_status(tr("orthanc.searching"))
+        self._ping_async()
         self._load_studies_async()
+
+    def _ping_async(self) -> None:
+        """Show whether the server answers at all (non-blocking)."""
+        signals = _PingSignals()
+        signals.finished.connect(self._on_ping_done)
+        worker = _PingWorker(self._client, signals)
+        self._active_workers.append((worker, signals))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_ping_done(self, ok: bool) -> None:
+        if not self._is_alive():
+            return
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        p = get_theme_palette()
+        color = p["success"] if ok else p["error"]
+        text = tr("orthanc.server_available") if ok else tr("orthanc.server_unavailable")
+        self._server_pill.setText(f"● {text}")
+        self._server_pill.setStyleSheet(f"color: {color}; border: none; padding-left: 6px;")
 
     def _load_studies_async(self) -> None:
         """Query studies in a background thread to avoid blocking the UI."""
@@ -302,8 +766,12 @@ class OrthancStudyDialog(QDialog):
         if not self._query_source_available():
             self._set_status(tr("orthanc.dimse_disabled"))
             return
+        if self._downloading:
+            return
         text = self._search_edit.text().strip()
         patient_name = text or None
+        self._set_status(tr("orthanc.searching"))
+        self._empty_studies_label.setText(tr("orthanc.searching"))
 
         def _query() -> list:
             if self._query_service is not None:
@@ -316,8 +784,13 @@ class OrthancStudyDialog(QDialog):
         self._active_workers.append((worker, signals))
         QThreadPool.globalInstance().start(worker)
 
+    def _on_search_text_changed(self, _text: str) -> None:
+        if self._downloading:
+            return
+        self._search_timer.start()
+
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 32:
+        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 34:
             self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
         super().mousePressEvent(event)
 
@@ -376,10 +849,18 @@ class OrthancStudyDialog(QDialog):
         self._init_timer.stop()
         self._reject_timer.stop()
         self._force_close_timer.stop()
+        self._search_timer.stop()
         self._series_loading.clear()
+        self._prefetch_queue.clear()
+        self._prefetching.clear()
+        self._preview_loader.shutdown()
         for _worker, signals in self._active_workers:
-            signals.finished.disconnect()
+            try:
+                signals.finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass
         self._active_workers.clear()
+        self._persist_ui_preferences()
         self._release_client()
 
     def _is_alive(self) -> bool:
@@ -457,118 +938,225 @@ class OrthancStudyDialog(QDialog):
         if self._server_settings is not None:
             self._server_settings = replace(self._server_settings, query_source=source_val)
 
+    # ── study list ──────────────────────────────────────────────────
     def _on_studies_loaded(self, studies: list, error: str | None = None) -> None:
         if not self._is_alive():
             return
         log.info("[DLG] _on_studies_loaded: count=%d error=%s", len(studies), error)
-        self._tree.blockSignals(True)
-        self._tree.clear()
+        self._studies = list(studies or [])
+        self._series_cache.clear()
+        self._series_errors.clear()
+        self._series_loaded.clear()
+        self._study_stats.clear()
+        self._study_thumbnails.clear()
+        self._selected_all.clear()
+        self._selected_series.clear()
+        self._study_states.clear()
+        self._prefetch_queue = [s.study_uid for s in self._studies if s.study_uid]
+        self._prefetching.clear()
+        self._current_study_uid = ""
+        self._build_study_rows(self._studies)
         if error and not studies:
             # Server unreachable / auth failure / DIMSE refused — surface the
             # reason instead of showing an empty "Ready" list.
-            error_item = QTreeWidgetItem(["", "", tr("orthanc.find_error", message=error[:200])])
-            error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
-            self._tree.addTopLevelItem(error_item)
             self._set_status(tr("orthanc.find_error", message=error[:200]))
-            self._tree.blockSignals(False)
-            self._update_load_button()
-            return
-        self._tree.blockSignals(False)
-        if studies:
-            self._build_study_tree(studies)
-            self._filter_studies_by_date(self._date_filter_combo.currentData())
-        if error:
+        elif error:
             self._set_status(tr("orthanc.find_error", message=error[:200]))
         elif not studies:
             self._set_status(tr("orthanc.ready"))
+        else:
+            self._set_status(tr("orthanc.studies_found", count=len(self._studies)))
         self._update_load_button()
+        self._update_empty_states()
+        self._update_selection_summary()
+        QTimer.singleShot(0, self._prefetch_visible_studies)
 
-    def _build_study_tree(self, studies: list) -> None:
-        studies = sorted(
-            studies,
-            key=lambda s: (s.study_date or "", s.patient_name or ""),
-            reverse=True,
+    def _build_study_rows(self, studies: list) -> None:
+        self._studies_list.blockSignals(True)
+        self._studies_list.clear()
+        for study in self._sorted_studies(studies):
+            item = _StudyItem()
+            item.setData(0, ROLE_ROW, self._make_study_row(study))
+            item.setData(0, ROLE_UID, study.study_uid)
+            item.setData(0, ROLE_CHECKED, study.study_uid in self._selected_all)
+            item.setSizeHint(0, QSize(0, STUDY_ROW_HEIGHT))
+            item.setData(0, _SORT_ROLE, self._study_sort_key(study))
+            self._studies_list.addTopLevelItem(item)
+        self._studies_list.blockSignals(False)
+        self._update_studies_header()
+
+    def _sorted_studies(self, studies: list) -> list[StudyInfo]:
+        if self._sort_mode == "date_asc":
+            return sorted(studies, key=lambda s: (s.study_date or "", s.study_time or ""))
+        if self._sort_mode == "name":
+            return sorted(studies, key=lambda s: (s.patient_name or "", s.study_date or ""))
+        if self._sort_mode == "size":
+            return sorted(studies, key=lambda s: (s.instances_count or 0, s.study_date or ""), reverse=True)
+        return sorted(studies, key=lambda s: (s.study_date or "", s.study_time or ""), reverse=True)
+
+    @staticmethod
+    def _study_sort_key(study: StudyInfo) -> str:
+        return f"{study.study_date or ''}{study.study_time or ''}"
+
+    def _make_study_row(self, study: StudyInfo) -> StudyRow:
+        badges: list[Badge] = []
+        modalities = (study.modalities_in_study or "").strip()
+        if modalities:
+            badges.append(Badge(modalities.replace(", ", "/"), "accent"))
+        if study.series_count:
+            badges.append(Badge(tr("orthanc.badge_series", count=study.series_count)))
+        if study.instances_count:
+            badges.append(Badge(tr("orthanc.badge_instances", count=study.instances_count)))
+        stats = self._study_stats.get(study.study_uid)
+        if stats is not None:
+            size = format_size_mb(stats.size_mb)
+            if size:
+                badges.append(Badge(f"≈ {size}"))
+            if stats.is_stable is True:
+                badges.append(Badge(tr("orthanc.badge_complete"), "success"))
+            elif stats.is_stable is False:
+                badges.append(Badge(tr("orthanc.badge_receiving"), "warning"))
+        accession = (study.accession_number or "").strip()
+        if accession:
+            badges.append(Badge(f"№ {accession}"))
+        state = self._study_states.get(study.study_uid)
+        return StudyRow(
+            study=study,
+            title=format_person_name(study.patient_name, fallback=tr(_UNKNOWN_PATIENT_KEY)),
+            demographics=self._demographics(study),
+            description=(study.study_description or "").strip() or tr(_NO_DESCRIPTION_KEY),
+            date_text=self._format_study_date_label(study),
+            badges=tuple(badges),
+            thumb_badge=self._study_thumb_badge(study),
+            state_text=state[0] if state else "",
+            state_kind=state[1] if state else "warning",
         )
-        self._tree.blockSignals(True)
-        self._tree.clear()
-        for study in studies:
-            patient_name = study.patient_name or ""
-            study_date_raw = study.study_date or ""
-            display_date = self._format_study_date(study_date_raw)
-            desc = study.study_description or ""
-            item = _StudyItem([patient_name, display_date, desc])
-            item.setData(0, _STUDY_UID_ROLE, study.study_uid)
-            item.setData(0, _SORT_ROLE, patient_name)
-            item.setData(1, _SORT_ROLE, study_date_raw)
-            item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
-            self._tree.addTopLevelItem(item)
-        self._tree.blockSignals(False)
-        self._set_status(tr("orthanc.ready"))
 
-    def _load_studies(self) -> None:
-        """Synchronous wrapper for _on_find button — uses async internally."""
-        self._load_studies_async()
+    def _demographics(self, study: StudyInfo) -> str:
+        parts: list[str] = []
+        sex = {"M": tr("orthanc.sex_male"), "F": tr("orthanc.sex_female"), "O": tr("orthanc.sex_other")}.get(
+            (study.patient_sex or "").strip().upper()[:1],
+            "",
+        )
+        if sex:
+            parts.append(sex)
+        age = format_patient_age(
+            study.patient_birth_date or "",
+            study.study_date or "",
+            year_forms=(
+                tr("orthanc.age_year_one"),
+                tr("orthanc.age_year_few"),
+                tr("orthanc.age_year_many"),
+            ),
+        )
+        if age:
+            parts.append(age)
+        patient_id = (study.patient_id or "").strip()
+        if patient_id:
+            parts.append(f"ID {patient_id}")
+        return " · ".join(parts)
+
+    def _format_study_date_label(self, study: StudyInfo) -> str:
+        return format_relative_day(
+            study.study_date or "",
+            today_label=tr(_TODAY_KEY),
+            yesterday_label=tr(_YESTERDAY_KEY),
+        )
+
+    def _study_thumb_badge(self, study: StudyInfo) -> str:
+        """Modality label for the study thumbnail (from the first series)."""
+        series = self._series_cache.get(study.study_uid) or []
+        for entry in series:
+            if entry.modality:
+                return entry.modality
+        modalities = (study.modalities_in_study or "").split(",")
+        return modalities[0].strip() if modalities else ""
 
     def _format_study_date(self, raw_date: str) -> str:
-        """Convert DICOM date 'YYYYMMDD' to 'DD.MM.YYYY'."""
-        if len(raw_date) == 8 and raw_date.isdigit():
-            return f"{raw_date[6:8]}.{raw_date[4:6]}.{raw_date[:4]}"
-        return raw_date
+        """Convert DICOM date 'YYYYMMDD' to 'DD.MM.YYYY' (kept for callers/tests)."""
+        from echo_personal_tool.domain.services.patient_display import format_dicom_date
 
-    def _filter_studies_by_date(self, days: int) -> None:
-        """Hide/show top-level study items based on the selected date filter."""
-        if days <= 0:
-            for i in range(self._tree.topLevelItemCount()):
-                self._tree.topLevelItem(i).setHidden(False)
-            return
-        cutoff = datetime.now() - timedelta(days=days)
-        for i in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(i)
-            raw_date = item.data(1, _SORT_ROLE) or ""
-            try:
-                item_date = datetime.strptime(raw_date, "%Y%m%d")
-            except ValueError:
-                item.setHidden(False)
+        return format_dicom_date(raw_date)
+
+    def _visible_item_uids(self, tree: QTreeWidget, role: int) -> list[str]:
+        """UIDs of the rows currently inside the viewport (plus one screen)."""
+        viewport = tree.viewport().rect()
+        padded = viewport.adjusted(0, -viewport.height(), 0, viewport.height())
+        uids: list[str] = []
+        for index in range(tree.topLevelItemCount()):
+            item = tree.topLevelItem(index)
+            if not tree.visualItemRect(item).intersects(padded):
                 continue
-            item.setHidden(item_date < cutoff)
+            uid = item.data(0, role)
+            if uid:
+                uids.append(str(uid))
+        return uids
 
-    def _on_date_filter_changed(self) -> None:
-        days = self._date_filter_combo.currentData()
-        self._filter_studies_by_date(days)
+    def _on_list_scrolled(self, _value: int) -> None:
+        self._request_visible_previews()
 
-    def _series_label(self, series: SeriesInfo) -> str:
-        parts = [series.modality, series.description]
-        if series.instance_count is not None:
-            parts.append(f"{series.instance_count} {tr('orthanc.instances_suffix')}")
-        return " — ".join(part for part in parts if part)
+    def _request_visible_previews(self) -> None:
+        if not self._is_alive() or not self._preview_loader.is_enabled():
+            return
+        for study_uid in self._visible_item_uids(self._studies_list, ROLE_UID):
+            self._request_study_preview(study_uid)
+        visible_series = self._visible_item_uids(self._series_list, ROLE_UID)
+        for series_uid in visible_series:
+            if self._current_study_uid:
+                self._request_series_preview(self._current_study_uid, series_uid)
 
-    def _on_find(self) -> None:
-        from echo_personal_tool.presentation.ui_animations import loading_button
+    def _request_study_preview(self, study_uid: str) -> None:
+        series = self._series_cache.get(study_uid)
+        if not series:
+            self._prefetch_series(study_uid)
+            return
+        entry = series[0]
+        if not entry.series_uid:
+            return
+        self._study_thumbnails[study_uid] = (study_uid, entry.series_uid)
+        if self._preview_loader.cached(study_uid, entry.series_uid) is None:
+            self._preview_loader.request(study_uid, entry.series_uid)
 
-        with loading_button(self._find_btn, tr("orthanc.searching")):
-            self._load_studies()
+    def _request_series_preview(self, study_uid: str, series_uid: str) -> None:
+        if self._preview_loader.cached(study_uid, series_uid) is None:
+            self._preview_loader.request(study_uid, series_uid)
 
-    def _on_item_expanded(self, item: QTreeWidgetItem) -> None:
+    def _on_preview_ready(self, study_uid: str, series_uid: str) -> None:
         if not self._is_alive():
             return
-        if item.parent() is not None:
+        pixmap = self._preview_loader.cached(study_uid, series_uid)
+        if pixmap is None:
             return
-        if item.childCount() > 0:
-            return
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item.data(0, ROLE_UID) != study_uid:
+                continue
+            target = self._study_thumbnails.get(study_uid)
+            if target is not None and target[1] == series_uid:
+                item.setData(0, ROLE_PIXMAP, pixmap)
+            break
+        if study_uid == self._current_study_uid:
+            for index in range(self._series_list.topLevelItemCount()):
+                item = self._series_list.topLevelItem(index)
+                if item.data(0, ROLE_UID) == series_uid:
+                    item.setData(0, ROLE_PIXMAP, pixmap)
+                    break
 
-        study_uid = item.data(0, _STUDY_UID_ROLE)
-        if not study_uid:
-            return
+    def _prefetch_visible_studies(self) -> None:
+        for study_uid in self._visible_item_uids(self._studies_list, ROLE_UID):
+            self._prefetch_series(study_uid)
 
-        study_uid = str(study_uid)
-        if study_uid in self._series_loading:
+    def _prefetch_series(self, study_uid: str, *, force: bool = False) -> None:
+        """Load the series list of a study in the background (thumbnails, check-all).
+
+        *force* is set for studies the user explicitly selected or opened: the
+        background prefetch budget must never block an explicit request.
+        """
+        if not study_uid or study_uid in self._series_loaded or study_uid in self._series_loading:
+            return
+        if not force and len(self._series_loaded) >= _MAX_PREFETCHED_STUDIES:
             return
         self._series_loading.add(study_uid)
-
-        loading_item = QTreeWidgetItem(["", "", tr("orthanc.searching")])
-        loading_item.setFlags(loading_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
-        item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
-        item.addChild(loading_item)
 
         def _query(uid: str) -> list:
             if self._query_service is not None:
@@ -592,46 +1180,273 @@ class OrthancStudyDialog(QDialog):
             error,
         )
         self._series_loading.discard(study_uid)
+        self._series_loaded.add(study_uid)
+        self._series_cache[study_uid] = list(series_list)
+        if error:
+            self._series_errors[study_uid] = str(error)
+        if study_uid in self._selected_all:
+            self._selected_series[study_uid] = {s.series_uid for s in series_list if s.series_uid}
 
-        target_item: QTreeWidgetItem | None = None
-        for i in range(self._tree.topLevelItemCount()):
-            item = self._tree.topLevelItem(i)
-            if item.data(0, _STUDY_UID_ROLE) == study_uid:
-                target_item = item
-                break
-
-        if target_item is None:
-            return
-
-        self._tree.blockSignals(True)
-        target_item.takeChildren()
-        target_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
-
-        if error and not series_list:
-            error_item = QTreeWidgetItem(["", "", tr("orthanc.series_query_error", message=error[:200])])
-            error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable & ~Qt.ItemFlag.ItemIsUserCheckable)
-            target_item.addChild(error_item)
+        self._refresh_study_row(study_uid)
+        if study_uid == self._current_study_uid:
+            self._populate_series(study_uid)
         else:
-            for series in series_list:
-                child = QTreeWidgetItem(["", "", self._series_label(series)])
-                child.setData(0, _SERIES_UID_ROLE, series.series_uid)
-                child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                child.setCheckState(0, Qt.CheckState.Unchecked)
-                target_item.addChild(child)
-        self._tree.blockSignals(False)
-
-    def _on_item_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        """Single-click expands/collapses study items (top-level only)."""
-        if item.parent() is not None:
-            return
-        if not item.data(0, _STUDY_UID_ROLE):
-            return
-        item.setExpanded(not item.isExpanded())
-
-    def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        if column != 0 or not item.data(0, _SERIES_UID_ROLE):
-            return
+            # The study thumbnail needs the first series UID.
+            self._request_study_preview(study_uid)
         self._update_load_button()
+        self._update_selection_summary()
+        self._maybe_run_pending_action()
+
+    def _refresh_study_row(self, study_uid: str) -> None:
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item.data(0, ROLE_UID) != study_uid:
+                continue
+            study = self._study_by_uid(study_uid)
+            if study is not None:
+                item.setData(0, ROLE_ROW, self._make_study_row(study))
+            self._sync_study_item_state(item)
+            return
+
+    def _study_by_uid(self, study_uid: str) -> StudyInfo | None:
+        for study in self._studies:
+            if study.study_uid == study_uid:
+                return study
+        return None
+
+    def _series_label(self, series: SeriesInfo) -> str:
+        parts = [series.modality, series.description]
+        if series.instance_count is not None:
+            parts.append(f"{series.instance_count} {tr('orthanc.instances_suffix')}")
+        return " — ".join(part for part in parts if part)
+
+    def _on_find(self) -> None:
+        from echo_personal_tool.presentation.ui_animations import loading_button
+
+        self._search_timer.stop()
+        with loading_button(self._find_btn, tr("orthanc.searching")):
+            self._load_studies_async()
+
+    # ── selection ───────────────────────────────────────────────────
+    def _on_study_current_changed(self, current: QTreeWidgetItem | None, _previous) -> None:
+        if not self._is_alive() or current is None:
+            return
+        study_uid = current.data(0, ROLE_UID)
+        if not study_uid:
+            return
+        self._current_study_uid = str(study_uid)
+        self._show_study_details(self._current_study_uid)
+        self._populate_series(self._current_study_uid)
+
+    def _on_study_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
+        """Double-click = "download and open this study" (PACS habit)."""
+        study_uid = item.data(0, ROLE_UID)
+        if not study_uid or self._downloading:
+            return
+        self._on_clear_selection()
+        self._set_study_selected(str(study_uid), True)
+        self._on_load()
+
+    def _show_study_details(self, study_uid: str) -> None:
+        study = self._study_by_uid(study_uid)
+        if study is None:
+            return
+        self._patient_label.setText(self._format_patient_header(study))
+        self._patient_label.show()
+        if study_uid not in self._study_stats:
+            self._fetch_study_stats(study_uid)
+
+    def _format_patient_header(self, study: StudyInfo) -> str:
+        from echo_personal_tool.domain.services.patient_display import format_patient_header
+
+        return format_patient_header(
+            study,
+            age_year_forms=(
+                tr("orthanc.age_year_one"),
+                tr("orthanc.age_year_few"),
+                tr("orthanc.age_year_many"),
+            ),
+        )
+
+    def _fetch_study_stats(self, study_uid: str) -> None:
+        fetch = getattr(self._client, "study_statistics", None)
+        if not callable(fetch):
+            return
+
+        def _query(uid: str) -> StudyStatistics:
+            result = fetch(uid)
+            return result if isinstance(result, StudyStatistics) else StudyStatistics()
+
+        signals = _StudyDetailSignals()
+        signals.finished.connect(self._on_study_stats)
+        worker = _StudyDetailWorker(study_uid, _query, signals)
+        self._active_workers.append((worker, signals))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_study_stats(self, study_uid: str, stats: StudyStatistics) -> None:
+        if not self._is_alive():
+            return
+        if stats.instances is None and stats.series is None and not stats.size_mb and stats.is_stable is None:
+            return
+        self._study_stats[study_uid] = stats
+        self._refresh_study_row(study_uid)
+        if study_uid == self._current_study_uid:
+            study = self._study_by_uid(study_uid)
+            if study is not None:
+                self._patient_label.setText(self._format_patient_header(study))
+        self._update_selection_summary()
+
+    def _populate_series(self, study_uid: str) -> None:
+        """Fill the right pane with the series of *study_uid*."""
+        series = self._series_cache.get(study_uid)
+        if series is None:
+            self._prefetch_series(study_uid, force=True)
+            self._series_list.clear()
+            self._series_header.setText(tr("orthanc.series_loading"))
+            self._series_actions.setVisible(False)
+            self._update_empty_states()
+            return
+        selected = self._selected_series.get(study_uid, set())
+        self._series_list.blockSignals(True)
+        self._series_list.clear()
+        for entry in series:
+            item = _StudyItem()
+            item.setData(0, ROLE_ROW, self._make_series_row(entry))
+            item.setData(0, ROLE_UID, entry.series_uid)
+            item.setData(0, ROLE_CHECKED, entry.series_uid in selected)
+            item.setSizeHint(0, QSize(0, SERIES_ROW_HEIGHT))
+            pixmap = self._preview_loader.cached(study_uid, entry.series_uid)
+            if pixmap is not None:
+                item.setData(0, ROLE_PIXMAP, pixmap)
+            self._series_list.addTopLevelItem(item)
+        self._series_list.blockSignals(False)
+        error = self._series_errors.get(study_uid)
+        if error and not series:
+            self._series_header.setText(tr("orthanc.series_query_error", message=error[:120]))
+        else:
+            self._series_header.setText(tr("orthanc.series_header", count=len(series)))
+        self._series_actions.setVisible(bool(series))
+        self._update_empty_states()
+        self._request_visible_previews()
+
+    def _make_series_row(self, series: SeriesInfo) -> SeriesRow:
+        title = (series.description or "").strip() or tr("orthanc.series_no_description")
+        if series.series_number:
+            title = f"{series.series_number}. {title}"
+        subtitle_parts = [part for part in (series.modality, series.body_part) if part]
+        if series.instance_count:
+            subtitle_parts.append(tr("orthanc.badge_instances", count=series.instance_count))
+        return SeriesRow(
+            series=series,
+            title=title,
+            subtitle=" · ".join(subtitle_parts),
+            thumb_badge=series.modality,
+        )
+
+    def _on_study_check_toggled(self, item: QTreeWidgetItem) -> None:
+        study_uid = item.data(0, ROLE_UID)
+        if not study_uid:
+            return
+        study_uid = str(study_uid)
+        currently_checked = bool(item.data(0, ROLE_CHECKED))
+        self._set_study_selected(study_uid, not currently_checked)
+
+    def _set_study_selected(self, study_uid: str, selected: bool) -> None:
+        series = self._series_cache.get(study_uid)
+        if selected:
+            self._selected_all.add(study_uid)
+            if series is not None:
+                self._selected_series[study_uid] = {s.series_uid for s in series if s.series_uid}
+            elif study_uid not in self._series_loaded:
+                self._prefetch_series(study_uid, force=True)
+        else:
+            self._selected_all.discard(study_uid)
+            self._selected_series.pop(study_uid, None)
+        self._sync_study_item_state_by_uid(study_uid)
+        if study_uid == self._current_study_uid:
+            self._sync_series_items()
+        self._update_load_button()
+        self._update_selection_summary()
+        self._update_studies_header()
+
+    def _on_series_check_toggled(self, item: QTreeWidgetItem) -> None:
+        if not self._current_study_uid:
+            return
+        series_uid = item.data(0, ROLE_UID)
+        if not series_uid:
+            return
+        selected = set(self._selected_series.get(self._current_study_uid, set()))
+        if bool(item.data(0, ROLE_CHECKED)):
+            selected.discard(str(series_uid))
+        else:
+            selected.add(str(series_uid))
+        self._selected_series[self._current_study_uid] = selected
+        known = {s.series_uid for s in self._series_cache.get(self._current_study_uid, [])}
+        if known and selected >= known:
+            self._selected_all.add(self._current_study_uid)
+        else:
+            self._selected_all.discard(self._current_study_uid)
+        item.setData(0, ROLE_CHECKED, str(series_uid) in selected)
+        self._sync_study_item_state_by_uid(self._current_study_uid)
+        self._update_load_button()
+        self._update_selection_summary()
+
+    def _set_all_series_checked(self, checked: bool) -> None:
+        if not self._current_study_uid:
+            return
+        self._set_study_selected(self._current_study_uid, checked)
+
+    def _sync_series_items(self) -> None:
+        selected = self._selected_series.get(self._current_study_uid, set())
+        self._series_list.blockSignals(True)
+        for index in range(self._series_list.topLevelItemCount()):
+            item = self._series_list.topLevelItem(index)
+            series_uid = str(item.data(0, ROLE_UID) or "")
+            item.setData(0, ROLE_CHECKED, series_uid in selected)
+        self._series_list.blockSignals(False)
+
+    def _sync_study_item_state_by_uid(self, study_uid: str) -> None:
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item.data(0, ROLE_UID) == study_uid:
+                self._sync_study_item_state(item)
+                return
+
+    def _sync_study_item_state(self, item: QTreeWidgetItem) -> None:
+        study_uid = str(item.data(0, ROLE_UID) or "")
+        checked, partial = self._study_check_state(study_uid)
+        item.setData(0, ROLE_CHECKED, checked)
+        item.setData(0, ROLE_PARTIAL, partial)
+
+    def _study_check_state(self, study_uid: str) -> tuple[bool, bool]:
+        selected = self._selected_series.get(study_uid)
+        known = {s.series_uid for s in self._series_cache.get(study_uid, [])}
+        if known:
+            selected = selected or set()
+            if selected >= known:
+                return True, False
+            if selected:
+                return False, True
+            return False, False
+        if study_uid in self._selected_all:
+            return True, False
+        return False, False
+
+    def _on_select_all_studies(self) -> None:
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            study_uid = str(item.data(0, ROLE_UID) or "")
+            if study_uid and not item.isHidden():
+                self._set_study_selected(study_uid, True)
+
+    def _on_clear_selection(self) -> None:
+        self._selected_all.clear()
+        self._selected_series.clear()
+        for index in range(self._studies_list.topLevelItemCount()):
+            self._sync_study_item_state(self._studies_list.topLevelItem(index))
+        self._sync_series_items()
+        self._update_load_button()
+        self._update_selection_summary()
 
     def _update_load_button(self) -> None:
         if self._downloading:
@@ -646,27 +1461,174 @@ class OrthancStudyDialog(QDialog):
         Studies hidden by the date filter are skipped: their checked series
         are invisible to the user and must not be silently downloaded.
         """
+        hidden = self._hidden_study_uids()
         result: list[tuple[str, list[str]]] = []
-        for index in range(self._tree.topLevelItemCount()):
-            study_item = self._tree.topLevelItem(index)
-            if study_item.isHidden():
+        ordered = list(dict.fromkeys([*self._selected_all, *self._selected_series]))
+        for study_uid in ordered:
+            if not study_uid or study_uid in hidden:
                 continue
-            study_uid = study_item.data(0, _STUDY_UID_ROLE)
-            checked: list[str] = []
-            for child_index in range(study_item.childCount()):
-                series_item = study_item.child(child_index)
-                if series_item.checkState(0) != Qt.CheckState.Checked:
-                    continue
-                series_uid = series_item.data(0, _SERIES_UID_ROLE)
-                if series_uid:
-                    checked.append(str(series_uid))
-            if checked:
-                result.append((str(study_uid), checked))
+            known = [entry.series_uid for entry in self._series_cache.get(study_uid, []) if entry.series_uid]
+            if study_uid in self._selected_all:
+                # "Whole study": every series we know about (and, while the list
+                # is still loading, whatever was already materialised).
+                uids = known or sorted(self._selected_series.get(study_uid, set()))
+            else:
+                selected = self._selected_series.get(study_uid, set())
+                uids = [uid for uid in known if uid in selected] if known else sorted(selected)
+            if uids:
+                result.append((study_uid, uids))
         return result
+
+    def _hidden_study_uids(self) -> set[str]:
+        hidden: set[str] = set()
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item.isHidden():
+                uid = str(item.data(0, ROLE_UID) or "")
+                if uid:
+                    hidden.add(uid)
+        return hidden
+
+    def _selected_study_uids(self) -> list[str]:
+        return [uid for uid, _series in self._collect_all_checked_series()]
+
+    def _update_selection_summary(self) -> None:
+        pairs = self._collect_all_checked_series()
+        studies = len(pairs)
+        series = sum(len(uids) for _uid, uids in pairs)
+        size_mb = 0.0
+        size_known = False
+        for study_uid, uids in pairs:
+            stats = self._study_stats.get(study_uid)
+            known = {s.series_uid for s in self._series_cache.get(study_uid, [])}
+            if stats is not None and stats.size_mb and known:
+                share = len(uids) / max(1, len(known))
+                size_mb += float(stats.size_mb) * share
+                size_known = True
+        if not studies:
+            self._summary_label.setText(tr("orthanc.selection_empty"))
+            return
+        parts = [
+            tr("orthanc.summary_studies", count=studies),
+            tr("orthanc.summary_series", count=series),
+        ]
+        if size_known and size_mb > 0:
+            parts.append(f"≈ {format_size_mb(size_mb)}")
+        self._summary_label.setText(tr("orthanc.selection_summary", summary=" · ".join(parts)))
+
+    def _update_studies_header(self) -> None:
+        total = self._studies_list.topLevelItemCount()
+        visible = sum(1 for i in range(total) if not self._studies_list.topLevelItem(i).isHidden())
+        if total and visible != total:
+            self._studies_header.setText(tr("orthanc.studies_header_filtered", visible=visible, total=total))
+        else:
+            self._studies_header.setText(tr("orthanc.studies_header", count=total))
+
+    def _update_empty_states(self) -> None:
+        self._studies_stack.setCurrentIndex(0 if self._studies_list.topLevelItemCount() else 1)
+        self._series_stack.setCurrentIndex(0 if self._series_list.topLevelItemCount() else 1)
+        if not self._series_list.topLevelItemCount() and self._current_study_uid:
+            self._empty_series_label.setText(tr("orthanc.series_loading"))
+        else:
+            self._empty_series_label.setText(tr("orthanc.empty_series"))
+        self._patient_label.setVisible(bool(self._current_study_uid))
+
+    # ── filters / sorting ───────────────────────────────────────────
+    def _date_filter_days(self) -> int:
+        for days, button in self._period_buttons.items():
+            if button.isChecked():
+                return days
+        return 0
+
+    def _filter_studies_by_date(self, days: int) -> None:
+        """Hide/show study rows based on the selected date filter."""
+        if days <= 0:
+            for index in range(self._studies_list.topLevelItemCount()):
+                self._studies_list.topLevelItem(index).setHidden(False)
+        else:
+            cutoff = datetime.now() - timedelta(days=days)
+            for index in range(self._studies_list.topLevelItemCount()):
+                item = self._studies_list.topLevelItem(index)
+                raw_date = item.data(0, _SORT_ROLE) or ""
+                try:
+                    item_date = datetime.strptime(str(raw_date)[:8], "%Y%m%d")
+                except ValueError:
+                    item.setHidden(False)
+                    continue
+                item.setHidden(item_date < cutoff)
+        self._update_studies_header()
+        self._update_load_button()
+        self._update_selection_summary()
+
+    def _on_date_filter_changed(self, _button) -> None:
+        self._filter_studies_by_date(self._date_filter_days())
+        self._prefetch_visible_studies()
+
+    def _on_sort_changed(self) -> None:
+        mode = self._sort_combo.currentData()
+        if not mode:
+            return
+        self._sort_mode = str(mode)
+        if not self._studies:
+            return
+        current = self._current_study_uid
+        self._build_study_rows(self._studies)
+        self._filter_studies_by_date(self._date_filter_days())
+        if current:
+            self._select_study_row(current)
+        self._request_visible_previews()
+
+    def _select_study_row(self, study_uid: str) -> None:
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item.data(0, ROLE_UID) == study_uid:
+                self._studies_list.setCurrentItem(item)
+                return
+
+    # ── download orchestration (unchanged semantics) ────────────────
+    def _ensure_selection_ready(self, action: str) -> bool:
+        """Fetch the series lists still missing for the current selection.
+
+        Returns True when the caller may proceed immediately; otherwise the
+        action is queued and resumed from ``_on_series_loaded``.
+        """
+        hidden = self._hidden_study_uids()
+        candidates = dict.fromkeys([*self._selected_all, *self._selected_series])
+        missing = [
+            study_uid
+            for study_uid in candidates
+            if study_uid
+            and study_uid not in hidden
+            and study_uid not in self._series_cache
+            and study_uid not in self._series_loading
+        ]
+        if not missing:
+            self._pending_action = None
+            return True
+        self._pending_action = action
+        self._set_status(tr("orthanc.preparing_selection"))
+        for study_uid in missing:
+            self._prefetch_series(study_uid, force=True)
+        return False
+
+    def _maybe_run_pending_action(self) -> None:
+        action = self._pending_action
+        if action is None or self._downloading or not self._is_alive():
+            return
+        pending = dict.fromkeys([*self._selected_all, *self._selected_series])
+        if any(uid in self._series_loading for uid in pending if uid not in self._series_cache):
+            return
+        self._pending_action = None
+        if action == "disk":
+            self._on_save_to_disk()
+        else:
+            self._on_load()
 
     def _on_load(self) -> None:
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
+        if not self._ensure_selection_ready("load"):
+            return
         all_series = self._collect_all_checked_series()
         log.info("[DLG] _on_load: checked_series=%d", len(all_series))
         if not all_series:
@@ -684,7 +1646,8 @@ class OrthancStudyDialog(QDialog):
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
         self._cancel_btn.setEnabled(True)
         self._find_btn.setEnabled(False)
-        self._tree.setEnabled(False)
+        self._studies_list.setEnabled(False)
+        self._series_list.setEnabled(False)
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.show()
@@ -695,12 +1658,15 @@ class OrthancStudyDialog(QDialog):
         self._completed_downloads = 0
         self._failed_downloads = 0
         self._total_studies = len(all_series)
+        self._study_states.clear()
         self._start_next_download()
 
     def _on_save_to_disk(self) -> None:
         """Download selected series to a user-chosen directory on disk."""
         from echo_personal_tool.presentation.ui_animations import set_button_loading
 
+        if not self._ensure_selection_ready("disk"):
+            return
         all_series = self._collect_all_checked_series()
         log.info("[DLG] _on_save_to_disk: checked_series=%d", len(all_series))
         if not all_series:
@@ -728,7 +1694,8 @@ class OrthancStudyDialog(QDialog):
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
         self._cancel_btn.setEnabled(True)
         self._find_btn.setEnabled(False)
-        self._tree.setEnabled(False)
+        self._studies_list.setEnabled(False)
+        self._series_list.setEnabled(False)
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.show()
@@ -739,7 +1706,23 @@ class OrthancStudyDialog(QDialog):
         self._completed_downloads = 0
         self._failed_downloads = 0
         self._total_studies = len(all_series)
+        self._study_states.clear()
         self._start_next_download_to_disk()
+
+    def _make_download_worker(self, study_uid: str, series_uids: list[str]) -> OrthancDownloadWorker:
+        return OrthancDownloadWorker(
+            self._client,
+            self._cache,
+            self._session_id,  # type: ignore[arg-type]
+            study_uid,
+            series_uids,
+            self,
+            server_settings=self._server_settings,
+            base_url=self._base_url,
+            username=self._username,
+            password=self._password,
+            retrieve_service=self._retrieve_service,
+        )
 
     def _start_next_download(self) -> None:
         log.info(
@@ -768,19 +1751,8 @@ class OrthancStudyDialog(QDialog):
         self._set_status(
             tr("orthanc.loading_progress", current=self._completed_downloads + 1, total=self._total_studies)
         )
-        worker = OrthancDownloadWorker(
-            self._client,
-            self._cache,
-            self._session_id,
-            study_uid,
-            series_uids,
-            self,
-            server_settings=self._server_settings,
-            base_url=self._base_url,
-            username=self._username,
-            password=self._password,
-            retrieve_service=self._retrieve_service,
-        )
+        self._set_study_state(study_uid, tr("orthanc.state_downloading"), "accent")
+        worker = self._make_download_worker(study_uid, series_uids)
         self._worker = worker
         worker.signals.progress.connect(self._on_progress)
         worker.signals.status.connect(self._on_status)
@@ -815,19 +1787,8 @@ class OrthancStudyDialog(QDialog):
         self._set_status(
             tr("orthanc.disk_download_progress", current=self._completed_downloads + 1, total=self._total_studies)
         )
-        worker = OrthancDownloadWorker(
-            self._client,
-            self._cache,
-            self._session_id,
-            study_uid,
-            series_uids,
-            self,
-            server_settings=self._server_settings,
-            base_url=self._base_url,
-            username=self._username,
-            password=self._password,
-            retrieve_service=self._retrieve_service,
-        )
+        self._set_study_state(study_uid, tr("orthanc.state_downloading"), "accent")
+        worker = self._make_download_worker(study_uid, series_uids)
         self._worker = worker
         worker.signals.progress.connect(self._on_progress)
         worker.signals.status.connect(self._on_status)
@@ -838,6 +1799,13 @@ class OrthancStudyDialog(QDialog):
         worker.signals.series_done.connect(self._on_series_done)
         worker.signals.studies_ready.connect(self._on_studies_ready)
         QThreadPool.globalInstance().start(worker)
+
+    def _set_study_state(self, study_uid: str, text: str, kind: str = "warning") -> None:
+        """Show a transient state chip on a study row (загрузка / готово / ошибка)."""
+        if not study_uid:
+            return
+        self._study_states[study_uid] = (text, kind)
+        self._refresh_study_row(study_uid)
 
     def _on_cancel(self) -> None:
         if self._downloading and self._worker is not None:
@@ -914,6 +1882,7 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _on_single_study_done: uid=%s", study_uid[:16])
         self._completed_downloads += 1
+        self._set_study_state(study_uid, tr("orthanc.state_done"), "success")
         self._set_status(tr("orthanc.series_done", current=self._completed_downloads, total=self._total_studies))
         self._start_next_download()
 
@@ -923,6 +1892,7 @@ class OrthancStudyDialog(QDialog):
             return
         log.info("[DLG] _on_single_study_done_to_disk: uid=%s", study_uid[:16])
         self._completed_downloads += 1
+        self._set_study_state(study_uid, tr("orthanc.state_done"), "success")
         self._set_status(
             tr("orthanc.disk_download_progress", current=self._completed_downloads, total=self._total_studies)
         )
@@ -963,8 +1933,7 @@ class OrthancStudyDialog(QDialog):
             message = tr("orthanc.download_error.body", message=self._clip(copy_error, _DIALOG_TEXT_LIMIT))
             self._set_status(message)
             self._progress.hide()
-            self._tree.setEnabled(True)
-            self._find_btn.setEnabled(True)
+            self._set_lists_enabled(True)
             self._cancel_btn.setText(tr("orthanc.cancel"))
             self._cancel_btn.setEnabled(True)
             self._update_load_button()
@@ -1005,6 +1974,11 @@ class OrthancStudyDialog(QDialog):
                 message,
             )
         self.accept()
+
+    def _set_lists_enabled(self, enabled: bool) -> None:
+        self._studies_list.setEnabled(enabled)
+        self._series_list.setEnabled(enabled)
+        self._find_btn.setEnabled(enabled)
 
     @staticmethod
     def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
@@ -1064,7 +2038,7 @@ class OrthancStudyDialog(QDialog):
 
         The full text goes to the log; the label gets at most
         ``_STATUS_TEXT_LIMIT`` characters so a long error chain cannot stretch
-        the window past its ``resize(800, 520)``.
+        the window past its ``resize(1120, 660)``.
         """
         log.debug("[DLG] status: %s", text)
         self._status_label.setText(self._clip(text, _STATUS_TEXT_LIMIT))
@@ -1085,6 +2059,7 @@ class OrthancStudyDialog(QDialog):
         log.warning("[DLG] _on_single_study_failed: uid=%s msg=%s", _uid[:16] if _uid else "?", message)
         self._completed_downloads += 1
         self._failed_downloads += 1
+        self._set_study_state(_uid, tr("orthanc.state_failed"), "error")
         self._set_status(
             tr(
                 "orthanc.series_error",
@@ -1172,8 +2147,7 @@ class OrthancStudyDialog(QDialog):
             self._session_id = None
         self._downloaded_studies = []
         self._progress.hide()
-        self._tree.setEnabled(True)
-        self._find_btn.setEnabled(True)
+        self._set_lists_enabled(True)
         self._cancel_btn.setText(tr("orthanc.cancel"))
         self._cancel_btn.setEnabled(True)
         self._update_load_button()
@@ -1189,8 +2163,7 @@ class OrthancStudyDialog(QDialog):
         self._reset_after_download()
         self._session_id = None
         self._progress.hide()
-        self._tree.setEnabled(True)
-        self._find_btn.setEnabled(True)
+        self._set_lists_enabled(True)
         self._cancel_btn.setText(tr("orthanc.cancel"))
         self._cancel_btn.setEnabled(True)
         self._update_load_button()

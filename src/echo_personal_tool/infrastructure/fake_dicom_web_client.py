@@ -10,6 +10,7 @@ from echo_personal_tool.domain.models.orthanc import (
     SeriesInfo,
     StowResult,
     StudyInfo,
+    StudyStatistics,
 )
 from echo_personal_tool.infrastructure.orthanc_dicom_json import (
     parse_instances,
@@ -77,3 +78,19 @@ class FakeDicomWebClient:
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult:
         return StowResult(success_count=len(dicom_files))
+
+    def fetch_preview(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str = "",
+        *,
+        width: int = 0,
+        height: int = 0,
+    ) -> bytes:
+        """No rendered images in mock mode — the loader shows placeholders."""
+        return b""
+
+    def study_statistics(self, study_uid: str) -> StudyStatistics:
+        """Mock mode has no statistics endpoint."""
+        return StudyStatistics()
