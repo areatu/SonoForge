@@ -95,6 +95,10 @@ _CANCEL_FORCE_CLOSE_MS = 30_000
 # log in full, while the label and the error box get a bounded slice.
 _STATUS_TEXT_LIMIT = 240
 _DIALOG_TEXT_LIMIT = 400
+#: How many prior studies of the same patient the strip shows at most.
+_HISTORY_LIMIT = 6
+#: Per-patient cache of prior studies fetched in this dialog session.
+_HISTORY_CACHE_LIMIT = 12
 _STATUS_LABEL_MAX_WIDTH = 720
 _SEARCH_DEBOUNCE_MS = 400
 _PREVIEW_TARGET = QSize(160, 120)
@@ -155,6 +159,17 @@ def build_loader_dialog_stylesheet(p: dict[str, str]) -> str:
             QLabel#selectionSummary {{ color: {p["text"]}; }}
             QLabel#emptyState {{ color: {p["text_dim"]}; }}
             QLabel#panelHeader {{ color: {p["text_dim"]}; font-weight: bold; }}
+            QPushButton#historyChip {{
+                background: {p["bg_control"]};
+                border: 1px solid {p["border"]};
+                border-radius: 11px;
+                padding: 3px 10px;
+                color: {p["text"]};
+            }}
+            QPushButton#historyChip:hover {{
+                border-color: {p["accent"]};
+                color: {p["accent"]};
+            }}
             QTreeWidget#studyList, QTreeWidget#seriesList {{
                 background: {p["bg_dark"]};
                 border: 1px solid {p["border"]};
@@ -403,6 +418,14 @@ class OrthancStudyDialog(QDialog):
 
         # ── model state ─────────────────────────────────────────────
         self._studies: list[StudyInfo] = []
+        #: Prior studies per patient id (one query per patient per dialog).
+        self._history_cache: dict[str, list[StudyInfo]] = {}
+        self._history_in_flight: set[str] = set()
+        #: Incremented per study query so a slow answer cannot replace a list
+        #: the user is already working with.
+        self._study_query_generation = 0
+        #: Patient whose history the strip currently shows.
+        self._history_patient = ""
         self._series_cache: dict[str, list[SeriesInfo]] = {}
         self._series_errors: dict[str, str] = {}
         self._series_loaded: set[str] = set()
@@ -594,6 +617,21 @@ class OrthancStudyDialog(QDialog):
         right_layout.setContentsMargins(6, 8, 10, 8)
         right_layout.setSpacing(6)
         right_layout.addWidget(self._patient_label)
+        self._history_panel = QWidget()
+        history_row = QHBoxLayout(self._history_panel)
+        history_row.setContentsMargins(0, 0, 0, 0)
+        history_row.setSpacing(6)
+        self._history_label = QLabel()
+        self._history_label.setObjectName("panelHeader")
+        history_row.addWidget(self._history_label)
+        self._history_chips = QWidget()
+        self._history_chips_layout = QHBoxLayout(self._history_chips)
+        self._history_chips_layout.setContentsMargins(0, 0, 0, 0)
+        self._history_chips_layout.setSpacing(6)
+        history_row.addWidget(self._history_chips)
+        history_row.addStretch(1)
+        self._history_panel.hide()
+        right_layout.addWidget(self._history_panel)
         header_row = QHBoxLayout()
         header_row.setSpacing(8)
         header_row.addWidget(self._series_header)
@@ -778,11 +816,22 @@ class OrthancStudyDialog(QDialog):
                 return self._query_service.query_studies(patient_name=patient_name)
             return self._client.query_studies(patient_name=patient_name)
 
+        self._study_query_generation += 1
+        generation = self._study_query_generation
         signals = _StudyQuerySignals()
-        signals.finished.connect(self._on_studies_loaded)
+        signals.finished.connect(
+            lambda studies, error, gen=generation: self._on_studies_loaded_for(gen, studies, error)
+        )
         worker = _StudyQueryWorker(_query, signals)
         self._active_workers.append((worker, signals))
         QThreadPool.globalInstance().start(worker)
+
+    def _on_studies_loaded_for(self, generation: int, studies: object, error: str | None) -> None:
+        """Drop answers of superseded searches (the user may have moved on)."""
+        if generation != self._study_query_generation:
+            log.debug("[DLG] ignoring stale study result #%d", generation)
+            return
+        self._on_studies_loaded(studies, error)
 
     def _on_search_text_changed(self, _text: str) -> None:
         if self._downloading:
@@ -955,6 +1004,8 @@ class OrthancStudyDialog(QDialog):
         self._prefetch_queue = [s.study_uid for s in self._studies if s.study_uid]
         self._prefetching.clear()
         self._current_study_uid = ""
+        self._history_patient = ""
+        self._render_patient_history("", [])
         self._build_study_rows(self._studies)
         if error and not studies:
             # Server unreachable / auth failure / DIMSE refused — surface the
@@ -1255,6 +1306,7 @@ class OrthancStudyDialog(QDialog):
         self._patient_label.show()
         if study_uid not in self._study_stats:
             self._fetch_study_stats(study_uid)
+        self._request_patient_history(study)
 
     def _format_patient_header(self, study: StudyInfo) -> str:
         from echo_personal_tool.domain.services.patient_display import format_patient_header
@@ -1521,9 +1573,23 @@ class OrthancStudyDialog(QDialog):
         total = self._studies_list.topLevelItemCount()
         visible = sum(1 for i in range(total) if not self._studies_list.topLevelItem(i).isHidden())
         if total and visible != total:
-            self._studies_header.setText(tr("orthanc.studies_header_filtered", visible=visible, total=total))
+            text = tr("orthanc.studies_header_filtered", visible=visible, total=total)
         else:
-            self._studies_header.setText(tr("orthanc.studies_header", count=total))
+            text = tr("orthanc.studies_header", count=total)
+        extra = self._studies_selected_off_list()
+        if extra:
+            # Studies ticked from the patient history are real downloads but
+            # have no row here — say so instead of showing a wrong count.
+            text = tr("orthanc.studies_header_extra", base=text, count=extra)
+        self._studies_header.setText(text)
+
+    def _studies_selected_off_list(self) -> int:
+        """How many ticked studies are outside the current result set."""
+        listed = {
+            str(self._studies_list.topLevelItem(i).data(0, ROLE_UID))
+            for i in range(self._studies_list.topLevelItemCount())
+        }
+        return sum(1 for uid in self._selected_all if uid and uid not in listed)
 
     def _update_empty_states(self) -> None:
         self._studies_stack.setCurrentIndex(0 if self._studies_list.topLevelItemCount() else 1)
@@ -1585,6 +1651,113 @@ class OrthancStudyDialog(QDialog):
             if item.data(0, ROLE_UID) == study_uid:
                 self._studies_list.setCurrentItem(item)
                 return
+
+    # ── patient history (prior studies of the same patient) ─────────
+    def _request_patient_history(self, study: StudyInfo) -> None:
+        """Fetch the other studies of this patient (one query per patient)."""
+        patient_id = (study.patient_id or "").strip()
+        self._history_patient = patient_id
+        if not patient_id:
+            self._render_patient_history("", [])
+            return
+        cached = self._history_cache.get(patient_id)
+        if cached is not None:
+            self._render_patient_history(patient_id, cached)
+            return
+        if patient_id in self._history_in_flight:
+            return
+        self._history_in_flight.add(patient_id)
+
+        def _query() -> list:
+            if self._query_service is not None:
+                return self._query_service.query_studies(patient_id=patient_id)
+            return self._client.query_studies(patient_id=patient_id)
+
+        signals = _StudyQuerySignals()
+        signals.finished.connect(
+            lambda studies, error, pid=patient_id: self._on_patient_history_loaded(pid, studies, error)
+        )
+        worker = _StudyQueryWorker(_query, signals)
+        self._active_workers.append((worker, signals))
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_patient_history_loaded(self, patient_id: str, studies: object, error: str | None) -> None:
+        self._history_in_flight.discard(patient_id)
+        if not self._is_alive():
+            return
+        if error:
+            log.debug("[DLG] patient history query failed: %s", error)
+        # A server that ignores the PatientID filter must not leak other
+        # patients into the strip.
+        others = [
+            study
+            for study in (studies or [])
+            if isinstance(study, StudyInfo) and study.study_uid and (study.patient_id or "") == patient_id
+        ]
+        others.sort(key=lambda s: (s.study_date or "", s.study_time or ""), reverse=True)
+        self._history_cache[patient_id] = others[:_HISTORY_CACHE_LIMIT]
+        if patient_id == self._history_patient:
+            self._render_patient_history(patient_id, self._history_cache[patient_id])
+
+    def _render_patient_history(self, patient_id: str, studies: list[StudyInfo]) -> None:
+        self._clear_history_chips()
+        if not patient_id:
+            self._history_panel.hide()
+            return
+        others = [s for s in studies if s.study_uid != self._current_study_uid]
+        if not others:
+            self._history_panel.hide()
+            return
+        self._history_label.setText(tr("orthanc.history_label", count=str(len(others))))
+        for study in others[:_HISTORY_LIMIT]:
+            self._history_chips_layout.addWidget(self._make_history_chip(study))
+        self._history_panel.show()
+
+    def _make_history_chip(self, study: StudyInfo) -> QPushButton:
+        from echo_personal_tool.domain.services.patient_display import format_dicom_date
+
+        date_text = format_dicom_date(study.study_date) or study.study_date or "—"
+        description = (study.study_description or "").strip()
+        label = f"{date_text} · {description[:18]}" if description else date_text
+        chip = QPushButton(label)
+        chip.setObjectName("historyChip")
+        chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        chip.setToolTip(tr("orthanc.history_chip_tooltip"))
+        chip.clicked.connect(lambda _checked=False, uid=study.study_uid: self._on_history_chip_clicked(uid))
+        return chip
+
+    def _clear_history_chips(self) -> None:
+        while self._history_chips_layout.count():
+            item = self._history_chips_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _on_history_chip_clicked(self, study_uid: str) -> None:
+        """Tick a prior study for download and reveal it when it is listed."""
+        study = next(
+            (s for s in self._history_cache.get(self._history_patient, []) if s.study_uid == study_uid),
+            None,
+        )
+        item = self._find_study_item(study_uid)
+        if study is None and item is None:
+            return  # never invent a selection out of a stale chip
+        if item is not None:
+            self._studies_list.setCurrentItem(item)
+            self._studies_list.scrollToItem(item)
+        self._set_study_selected(study_uid, True)
+        if study is not None:
+            from echo_personal_tool.domain.services.patient_display import format_dicom_date
+
+            date_text = format_dicom_date(study.study_date) or study.study_date or "—"
+            self._set_status(tr("orthanc.history_marked", date=date_text))
+
+    def _find_study_item(self, study_uid: str) -> QTreeWidgetItem | None:
+        for index in range(self._studies_list.topLevelItemCount()):
+            item = self._studies_list.topLevelItem(index)
+            if item.data(0, ROLE_UID) == study_uid:
+                return item
+        return None
 
     # ── download orchestration (unchanged semantics) ────────────────
     def _ensure_selection_ready(self, action: str) -> bool:

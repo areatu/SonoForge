@@ -686,6 +686,154 @@ class TestDeferredLoad:
         assert dialog._worker is not None
 
 
+class TestStaleStudyResults:
+    def test_superseded_result_is_ignored(self, dialog):
+        dialog._on_studies_loaded([_study(uid="new")], None)
+        dialog._study_query_generation = 5
+        dialog._on_studies_loaded_for(4, [_study(uid="old")], None)
+        assert [s.study_uid for s in dialog._studies] == ["new"]
+
+    def test_current_generation_is_applied(self, dialog):
+        dialog._study_query_generation = 5
+        dialog._on_studies_loaded_for(5, [_study(uid="fresh")], None)
+        assert [s.study_uid for s in dialog._studies] == ["fresh"]
+
+
+class TestPatientHistory:
+    """Prior studies of the same patient ("compare with the last exam")."""
+
+    def _prior(self, uid: str, date: str, *, pid: str = "12345", desc: str = "Echo") -> StudyInfo:
+        return StudyInfo(
+            study_uid=uid,
+            patient_name="JOHN^DOE",
+            patient_id=pid,
+            study_date=date,
+            study_description=desc,
+        )
+
+    def _show(self, dialog, studies: list[StudyInfo], *, pid: str = "12345") -> None:
+        """Feed a history answer the way the query worker does."""
+        dialog._history_patient = pid
+        dialog._on_patient_history_loaded(pid, studies, None)
+
+    def _chips(self, dialog) -> list[str]:
+        layout = dialog._history_chips_layout
+        return [
+            layout.itemAt(i).widget().text() for i in range(layout.count()) if layout.itemAt(i).widget() is not None
+        ]
+
+    def test_prior_studies_are_rendered_as_chips(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(
+            dialog,
+            [self._prior("u1", "20260901"), self._prior("u2", "20260614"), self._prior("u3", "20260312")],
+        )
+        assert dialog._history_label.text().endswith("(2)")
+        assert len(self._chips(dialog)) == 2
+        assert dialog._history_panel.isVisibleTo(dialog)
+        # Newest first, the currently open study is never offered as "prior".
+        assert self._chips(dialog)[0].startswith("14.06.2026")
+
+    def test_other_patients_are_filtered_out(self, dialog):
+        """A server that ignores the PatientID filter must not leak rows."""
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614"), self._prior("u9", "20260614", pid="999")])
+        assert len(self._chips(dialog)) == 1
+
+    def test_strip_is_hidden_when_the_patient_is_unknown(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614")])
+        assert dialog._history_panel.isVisibleTo(dialog)
+        dialog._request_patient_history(
+            StudyInfo(study_uid="u1", patient_name="", patient_id="", study_date="", study_description="")
+        )
+        assert not dialog._history_panel.isVisibleTo(dialog)
+        assert self._chips(dialog) == []
+
+    def test_strip_is_hidden_without_prior_studies(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u1", "20260901")])
+        assert not dialog._history_panel.isVisibleTo(dialog)
+
+    def test_strip_is_capped(self, dialog):
+        dialog._current_study_uid = "u1"
+        studies = [self._prior(f"u{i}", "20260614") for i in range(2, 20)]
+        self._show(dialog, studies)
+        assert len(self._chips(dialog)) == 6
+
+    def test_cached_history_does_not_query_again(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614")])
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._request_patient_history(
+                StudyInfo(
+                    study_uid="u1",
+                    patient_name="JOHN^DOE",
+                    patient_id="12345",
+                    study_date="20260901",
+                    study_description="Echo",
+                )
+            )
+            mock_pool.globalInstance().start.assert_not_called()
+        assert len(self._chips(dialog)) == 1
+
+    def test_new_result_set_clears_the_strip(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614")])
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        assert not dialog._history_panel.isVisibleTo(dialog)
+        assert dialog._history_patient == ""
+
+    def test_chip_click_ticks_the_study(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614")])
+        dialog._history_chips_layout.itemAt(0).widget().click()
+        assert "u2" in dialog._selected_all
+        assert "14.06.2026" in dialog._status_label.text()
+
+    def test_chip_click_selects_a_listed_study(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1"), _study(uid="u2", date="20260614")], None)
+        dialog._select_study_row("u1")
+        self._show(dialog, [self._prior("u2", "20260614")])
+        dialog._history_chips_layout.itemAt(0).widget().click()
+        assert dialog._current_study_uid == "u2"
+        assert "u2" in dialog._selected_all
+
+    def test_chip_click_ignores_unknown_uids(self, dialog):
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614")])
+        dialog._on_history_chip_clicked("nope")
+        assert "nope" not in dialog._selected_all  # a stale chip must not create a selection
+
+    def test_header_counts_studies_ticked_outside_the_list(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._current_study_uid = "u1"
+        self._show(dialog, [self._prior("u2", "20260614")])
+        dialog._history_chips_layout.itemAt(0).widget().click()
+        assert dialog._studies_selected_off_list() == 1
+        assert "вне списка" in dialog._studies_header.text()
+
+    def test_header_has_no_hint_when_every_selection_is_listed(self, dialog):
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._set_study_selected("u1", True)
+        assert dialog._studies_selected_off_list() == 0
+        assert "вне списка" not in dialog._studies_header.text()
+
+    def test_history_query_asks_the_server_by_patient_id(self, dialog):
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._request_patient_history(
+                StudyInfo(
+                    study_uid="u1",
+                    patient_name="JOHN^DOE",
+                    patient_id="12345",
+                    study_date="20260901",
+                    study_description="Echo",
+                )
+            )
+            mock_pool.globalInstance().start.assert_called()
+        assert dialog._history_patient == "12345"
+
+
 class TestReject:
     def test_reject_when_not_downloading(self, dialog):
         dialog._downloading = False

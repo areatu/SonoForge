@@ -736,14 +736,18 @@ highlighted study on the right.
    whole study. `Space` ticks the row under the cursor, `Ctrl+A` selects all,
    `All series` / `None` adjust the selection in the series pane. Unticking
    individual series turns the study checkbox into a "partial" mark.
-5. Double-clicking a study row downloads and opens it immediately (same as
+5. Under the patient banner the `PATIENT HISTORY (N)` strip lists the earlier
+   studies of that patient. Clicking a chip ticks it for download (when it is
+   not part of the current result set, the header on the left shows
+   "+1 not listed").
+6. Double-clicking a study row downloads and opens it immediately (same as
    `Download and open`).
-6. The footer shows the live selection summary: studies, series and an estimated
+7. The footer shows the live selection summary: studies, series and an estimated
    size.
-7. Choose:
+8. Choose:
    - `Download and open` to fetch into the working cache and open in SonoForge;
    - `Save to Disk` to pick a permanent directory and store the DICOM files.
-8. Watch progress and errors; the download can be cancelled. Per-study state is
+9. Watch progress and errors; the download can be cancelled. Per-study state is
    visible in the row itself (`downloading…` / `done` / `failed`).
 
 Thumbnails are requested from the server (Orthanc `/preview` or WADO-RS
