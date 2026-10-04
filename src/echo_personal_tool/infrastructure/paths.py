@@ -44,6 +44,11 @@ def data_dir() -> Path:
     return Path.home() / ".local" / "share" / "sonoforge"
 
 
+def measurements_dir() -> Path:
+    """Durable medical results; intentionally outside the disposable cache."""
+    return data_dir() / "measurements"
+
+
 def models_dir() -> Path:
     """Return the canonical directory for downloaded ONNX models."""
     return data_dir() / "models"

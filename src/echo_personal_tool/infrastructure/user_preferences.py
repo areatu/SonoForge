@@ -124,6 +124,8 @@ class UserPreferences:
     # Orthanc downloads contain raw DICOM/PHI. Preserve the existing normal-exit
     # cleanup behavior by default; the cache UI lets users opt out explicitly.
     orthanc_cache_clear_on_exit: bool = True
+    # Experimental until the full WP4 platform acceptance matrix has passed.
+    measurement_persistence_enabled: bool = False
     theme_mode: str = "vscode_dark"
     language: str = "en"
     auto_play: bool = False
@@ -336,6 +338,7 @@ def load_user_preferences() -> UserPreferences:
         ),
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
+        measurement_persistence_enabled=_read_bool(store.value("measurement_persistence_enabled"), False),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
             store.value("theme_mode"), "vscode_dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
