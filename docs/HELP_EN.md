@@ -722,16 +722,34 @@ Separate HTTP and DIMSE TLS settings exist. DIMSE has `Use TLS`, `Verify certifi
 
 ### 16.7 Search, retrieve, and Save to Disk
 
-1. Click `Load from server…`.
-2. Enter a patient/name filter if needed.
-3. Choose the query source and date filter.
-4. Click `Find`.
-5. Expand a study and series tree.
-6. Select one or more series.
+The loader is a master–detail dialog: studies on the left, series of the
+highlighted study on the right.
+
+1. Click `Load from server…`. The title bar shows the server state (green dot —
+   responding, red — unreachable).
+2. Type a patient name fragment (the search runs automatically after ~0.4 s) or
+   click `Find` / press Enter.
+3. Narrow the list: `Query` source (DICOMweb/DIMSE/Auto), `Period`
+   (All/1/7/30/90 days), `Sort` (date, name, size). The `Thumbnails` toggle
+   enables or disables series previews.
+4. Tick studies with the **large square checkbox on the left** — this selects the
+   whole study. `Space` ticks the row under the cursor, `Ctrl+A` selects all,
+   `All series` / `None` adjust the selection in the series pane. Unticking
+   individual series turns the study checkbox into a "partial" mark.
+5. Double-clicking a study row downloads and opens it immediately (same as
+   `Download and open`).
+6. The footer shows the live selection summary: studies, series and an estimated
+   size.
 7. Choose:
-   - `Load` to download to the working cache and open in SonoForge;
-   - **`Save to Disk`** to select a permanent directory and save the retrieved DICOM files.
-8. Watch progress and errors; cancel when needed.
+   - `Download and open` to fetch into the working cache and open in SonoForge;
+   - `Save to Disk` to pick a permanent directory and store the DICOM files.
+8. Watch progress and errors; the download can be cancelled. Per-study state is
+   visible in the row itself (`downloading…` / `done` / `failed`).
+
+Thumbnails are requested from the server (Orthanc `/preview` or WADO-RS
+`rendered`), kept in RAM only for the lifetime of the dialog, and can be turned
+off with the `Thumbnails` toggle — useful on slow links or when local policy
+forbids extra PHI requests.
 
 `Save to Disk` is the persistent path for server-loaded source objects. The selected directory receives a UID-oriented study/series/instance tree with safe path components. Open that folder later with `Open folder…`. `Load` alone is not an archival copy.
 
