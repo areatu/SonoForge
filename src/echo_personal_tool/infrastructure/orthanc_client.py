@@ -151,9 +151,14 @@ class OrthancDicomWebClient:
         timeout: float = 10.0,
         stow_dicom_web_url: str = "",
         tls_verify: bool = True,
+        tls_ca_path: str = "",
     ):
         self._timeout = timeout
         self._orthanc_root, self._dicom_web_root = split_orthanc_urls(base_url)
+        # A CA bundle keeps verification *on* (self-signed PACS certificates);
+        # ``tls_verify=False`` is the blunt fallback and is logged loudly.
+        ca_bundle = tls_ca_path.strip()
+        verify: bool | str = ca_bundle or tls_verify
         headers = dict(http_headers or {})
         auth: tuple[str, str] | None = None
         has_auth_header = any(k.lower() == "authorization" for k in headers)
@@ -164,15 +169,24 @@ class OrthancDicomWebClient:
             auth=auth,
             headers=headers,
             timeout=self._timeout,
-            verify=tls_verify,
+            verify=verify,
         )
         self._client = httpx.Client(
             base_url=f"{self._dicom_web_root}/",
             auth=auth,
             headers=headers,
             timeout=self._timeout,
-            verify=tls_verify,
+            verify=verify,
         )
+        if not ca_bundle and not tls_verify:
+            # Deliberate opt-out for servers with self-signed certificates, but
+            # it must never happen silently (see the CodeQL
+            # py/request-without-cert-validation alerts).
+            logger.warning(
+                "TLS certificate verification is DISABLED for %s — the connection can be intercepted; "
+                "set a CA bundle in the server settings instead",
+                self._orthanc_root,
+            )
         stow_root = stow_dicom_web_url.strip()
         if stow_root:
             _, stow_web = split_orthanc_urls(stow_root)
@@ -181,7 +195,7 @@ class OrthancDicomWebClient:
                 auth=auth,
                 headers=headers,
                 timeout=self._timeout,
-                verify=tls_verify,
+                verify=verify,
             )
         else:
             self._stow_client = None
@@ -203,6 +217,7 @@ class OrthancDicomWebClient:
             timeout=timeout if timeout is not None else settings.network_timeout,
             stow_dicom_web_url=settings.stow_dicom_web_url,
             tls_verify=settings.tls_verify,
+            tls_ca_path=settings.tls_ca_path,
         )
 
     def _build_client(self) -> httpx.Client:

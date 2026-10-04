@@ -245,3 +245,53 @@ class TestDimseEchoTask:
         task.run()
 
         assert received == [(False, "Connection refused")]
+
+
+class TestTlsVerificationWarning:
+    """Disabling certificate verification must be visible, not silent."""
+
+    @patch("echo_personal_tool.presentation.server_settings_dialog.load_server_settings")
+    def test_warning_hidden_by_default(self, mock_load):
+        mock_load.return_value = _default_settings(tls_verify=True)
+        from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
+
+        form = ServerSettingsForm()
+        assert form._tls_verify_check.isChecked()
+        assert not form._tls_verify_warning.isVisibleTo(form)
+
+    @patch("echo_personal_tool.presentation.server_settings_dialog.load_server_settings")
+    def test_warning_shown_when_verification_is_off(self, mock_load):
+        mock_load.return_value = _default_settings(tls_verify=False)
+        from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
+
+        form = ServerSettingsForm()
+        assert not form._tls_verify_check.isChecked()
+        assert form._tls_verify_warning.isVisibleTo(form)
+
+    @patch("echo_personal_tool.presentation.server_settings_dialog.load_server_settings")
+    def test_toggling_updates_the_warning(self, mock_load):
+        mock_load.return_value = _default_settings(tls_verify=True)
+        from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
+
+        form = ServerSettingsForm()
+        form._tls_verify_check.setChecked(False)
+        assert form._tls_verify_warning.isVisibleTo(form)
+        form._tls_verify_check.setChecked(True)
+        assert not form._tls_verify_warning.isVisibleTo(form)
+
+    def test_label_is_localized(self):
+        from echo_personal_tool.infrastructure.i18n import set_language
+
+        set_language("ru")
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        assert tr("server_settings.verify_certificate") != "Verify SSL certificate"
+
+    @patch("echo_personal_tool.presentation.server_settings_dialog.load_server_settings")
+    def test_ca_bundle_round_trips(self, mock_load):
+        mock_load.return_value = _default_settings(tls_ca_path="/etc/ssl/hospital.pem")
+        from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
+
+        form = ServerSettingsForm()
+        assert form._tls_ca_edit.text() == "/etc/ssl/hospital.pem"
+        assert form.settings().tls_ca_path == "/etc/ssl/hospital.pem"

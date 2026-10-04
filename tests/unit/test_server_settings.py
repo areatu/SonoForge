@@ -382,6 +382,7 @@ def test_load_server_settings_with_all_fields(isolated_settings: None) -> None:
         dimse_scp_ae_title="SCP_AE",
         network_timeout=60.0,
         tls_verify=False,
+        tls_ca_path="/http-ca.pem",
     )
     save_server_settings(s)
     loaded = load_server_settings()

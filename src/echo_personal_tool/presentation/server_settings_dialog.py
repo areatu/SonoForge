@@ -48,8 +48,19 @@ class ServerSettingsForm(QWidget):
         self._headers_edit.setPlaceholderText("Authorization: Basic cGFjczpwYcIBTU2NBRERS\nX-Custom-Header: value")
         self._headers_edit.setFixedHeight(72)
         self._mock_check = QCheckBox(tr("server_settings.mock"))
-        self._tls_verify_check = QCheckBox("Verify SSL certificate")
+        self._tls_verify_check = QCheckBox(tr("server_settings.verify_certificate"))
         self._tls_verify_check.setChecked(True)
+        self._tls_verify_warning = QLabel(tr("server_settings.tls_verify_warning"))
+        self._tls_verify_warning.setStyleSheet("color: #fb923c; font-weight: bold;")
+        self._tls_verify_warning.hide()
+        self._tls_verify_check.toggled.connect(lambda checked: self._tls_verify_warning.setVisible(not checked))
+        self._tls_ca_edit = QLineEdit()
+        self._tls_ca_edit.setPlaceholderText("/path/to/ca.pem")
+        hint = tr("server_settings.ca_bundle_hint")
+        self._tls_ca_edit.setToolTip(hint)
+        self._tls_ca_hint = QLabel(hint)
+        self._tls_ca_hint.setWordWrap(True)
+        self._tls_ca_hint.setStyleSheet("color: #94a3b8;")
 
         form = QFormLayout(self)
         form.addRow(tr("server_settings.description"), self._description_edit)
@@ -60,6 +71,9 @@ class ServerSettingsForm(QWidget):
         form.addRow(tr("server_settings.http_headers"), self._headers_edit)
         form.addRow("", self._mock_check)
         form.addRow("", self._tls_verify_check)
+        form.addRow("", self._tls_verify_warning)
+        form.addRow(tr("server_settings.ca_bundle_label"), self._tls_ca_edit)
+        form.addRow("", self._tls_ca_hint)
 
         # DIMSE section
         dimse_group = QGroupBox("DIMSE (Native DICOM)")
@@ -264,6 +278,7 @@ class ServerSettingsForm(QWidget):
             dimse_scp_ae_title=self._dimse_scp_ae_title.text().strip(),
             network_timeout=preserved.network_timeout,
             tls_verify=self._tls_verify_check.isChecked(),
+            tls_ca_path=self._tls_ca_edit.text().strip(),
         )
 
     def set_settings(self, settings: ServerSettings) -> None:
@@ -277,6 +292,7 @@ class ServerSettingsForm(QWidget):
         self._headers_edit.setPlainText(settings.http_headers)
         self._mock_check.setChecked(settings.use_mock)
         self._tls_verify_check.setChecked(settings.tls_verify)
+        self._tls_ca_edit.setText(settings.tls_ca_path)
         self._dimse_enabled.setChecked(settings.dimse_enabled)
         self._dimse_ae_edit.setText(settings.dimse_ae_title)
         self._dimse_called_ae_edit.setText(settings.dimse_called_ae)

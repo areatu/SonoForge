@@ -669,7 +669,10 @@ The form contains:
 - `Username` and `Password`;
 - multiline `HTTP headers`, one `Name: value` per line;
 - `Mock (no server)` for tests only;
-- `Verify SSL certificate`.
+- `Verify SSL certificate`;
+- `CA certificate` — path to the server's PEM file, so verification can stay **on** even with a self-signed PACS (recommended).
+
+Unchecking `Verify SSL certificate` with an empty `CA certificate` field shows a traffic-interception (MITM) warning in the form, and the app logs `TLS certificate verification is DISABLED ...`: turning verification off is a deliberate exception, never a silent setting.
 
 Passwords are stored through the system keyring rather than in clear text in QSettings. Do not commit credentials or unnecessary authorization headers.
 

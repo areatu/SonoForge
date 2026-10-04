@@ -575,6 +575,8 @@
   "server_settings.auth": "Authentication:",
   "server_settings.auth_mode_basic": "Basic (username / password)",
   "server_settings.auth_mode_none": "No authentication",
+  "server_settings.ca_bundle_hint": "Point to the server CA certificate — verification can then stay on.",
+  "server_settings.ca_bundle_label": "CA certificate (HTTPS):",
   "server_settings.ca_certificate": "CA certificate:",
   "server_settings.client_certificate": "Client certificate:",
   "server_settings.client_key": "Client key:",

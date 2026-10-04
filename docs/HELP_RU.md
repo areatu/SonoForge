@@ -764,7 +764,10 @@ src/echo_personal_tool/resources/references/references_structured.yaml
 - `Username`, `Password` — используются при Basic;
 - `HTTP headers` — по одному `Name: value` на строку, включая Authorization/custom headers при необходимости;
 - `Mock` — тестовый mock-клиент, не реальная PACS-связь;
-- `Verify SSL certificate` — проверка TLS-сертификата HTTP-клиента.
+- `Verify SSL certificate` — проверка TLS-сертификата HTTP-клиента;
+- `CA сертификат` — путь к PEM-файлу сертификата сервера: так проверку можно **не отключать** даже для самоподписанного PACS (рекомендуемый вариант).
+
+Если снять `Verify SSL certificate` при пустом поле `CA сертификат`, форма показывает предупреждение о возможном перехвате трафика (MITM), а приложение пишет строку `TLS certificate verification is DISABLED ...` в журнал: отключение проверки — осознанное исключение, а не тихая настройка.
 
 Пароль сохраняется через системный keyring, а не в открытом виде в QSettings. Не помещайте секреты в общий репозиторий или в поле заголовков без необходимости.
 

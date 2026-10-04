@@ -53,6 +53,10 @@ class ServerSettings:
     # Network
     network_timeout: float = 30.0
     tls_verify: bool = True
+    #: PEM bundle used to verify the DICOMweb server certificate.  The right
+    #: answer to a self-signed hospital PACS: keep verification on and trust
+    #: exactly one certificate instead of disabling the check.
+    tls_ca_path: str = ""
 
 
 # ── Profile management ──────────────────────────────────────────────
@@ -210,6 +214,7 @@ def load_server_settings() -> ServerSettings:
         dimse_scp_ae_title=str(store.value("dimse_scp_ae_title", "")),
         network_timeout=float(store.value("network_timeout", 30.0)),
         tls_verify=_read_bool(store.value("tls_verify"), True),
+        tls_ca_path=str(store.value("tls_ca_path", "")),
     )
 
 
@@ -247,6 +252,7 @@ def reset_server_settings() -> None:
         "dimse_scp_ae_title",
         "network_timeout",
         "tls_verify",
+        "tls_ca_path",
     ):
         store.remove(key)
     store.sync()
@@ -282,6 +288,7 @@ def save_server_settings(settings: ServerSettings) -> None:
     store.setValue("dimse_scp_ae_title", settings.dimse_scp_ae_title)
     store.setValue("network_timeout", settings.network_timeout)
     store.setValue("tls_verify", settings.tls_verify)
+    store.setValue("tls_ca_path", settings.tls_ca_path)
     store.sync()
 
 
