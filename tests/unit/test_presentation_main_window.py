@@ -583,6 +583,7 @@ class TestCloseEvent:
         event = QCloseEvent()
         main_window.closeEvent(event)
         assert not main_window._mmode_active
+        main_window._controller.measurement_persistence.close.assert_not_called()
 
     def test_cache_clears_on_exit_by_default(self, main_window):
         from PySide6.QtGui import QCloseEvent
@@ -599,6 +600,37 @@ class TestCloseEvent:
             main_window._user_preferences.orthanc_cache_clear_on_exit = False
             main_window.closeEvent(QCloseEvent())
             clear_all.assert_not_called()
+
+    def test_failed_measurement_flush_cancels_close_without_deleting_cache(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        session = main_window._orthanc_cache.create_session()
+        source = main_window._orthanc_cache.save_instance(session, "1.2.3", "1.2.3.1", "1.2.3.2", b"DICM")
+        persistence = main_window._controller.measurement_persistence
+        persistence.close.return_value = False
+        main_window._user_preferences.orthanc_cache_clear_on_exit = True
+        try:
+            with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning"):
+                event = QCloseEvent()
+                main_window.closeEvent(event)
+            assert not event.isAccepted()
+            assert source.exists()
+        finally:
+            persistence.close.return_value = True
+
+    def test_successful_measurement_flush_precedes_cache_deletion(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        order = []
+        persistence = main_window._controller.measurement_persistence
+        persistence.close.side_effect = lambda: order.append("measurements") or True
+        try:
+            with patch.object(main_window._orthanc_cache, "clear_all", side_effect=lambda: order.append("cache")):
+                main_window._user_preferences.orthanc_cache_clear_on_exit = True
+                main_window.closeEvent(QCloseEvent())
+            assert order == ["measurements", "cache"]
+        finally:
+            persistence.close.side_effect = None
 
 
 class TestOrthancCacheStartupCleanup:
@@ -780,3 +812,37 @@ class TestApplyAreaToolMode:
         ):
             main_window._apply_user_preferences(prefs)
             mock_set.assert_called_with("click")
+
+
+class TestPersistenceStatusBlocking:
+    def _widgets(self, main_window):
+        return (main_window._viewer, main_window._gallery, main_window._tool_panel)
+
+    def test_error_codes_disable_editing_widgets(self, main_window):
+        for code in ("io", "conflict", "quota", "identity", "source", "busy", "blocked", "load", "scan", "unsafe_path"):
+            main_window._on_persistence_status(code)
+            for widget in self._widgets(main_window):
+                assert not widget.isEnabled(), code
+
+    def test_ready_and_restored_reenable_editing_widgets(self, main_window):
+        main_window._on_persistence_status("io")
+        main_window._on_persistence_status("ready")
+        for widget in self._widgets(main_window):
+            assert widget.isEnabled()
+        main_window._on_persistence_status("blocked")
+        main_window._on_persistence_status("restored")
+        for widget in self._widgets(main_window):
+            assert widget.isEnabled()
+
+    def test_loading_disables_editing_widgets(self, main_window):
+        main_window._on_persistence_status("loading")
+        for widget in self._widgets(main_window):
+            assert not widget.isEnabled()
+
+    def test_persistence_blocked_signal_shows_warning(self, main_window):
+        connect = main_window._controller.persistence_blocked.connect
+        assert connect.called
+        slot = connect.call_args[0][0]
+        with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning") as warning:
+            slot()
+        warning.assert_called_once()

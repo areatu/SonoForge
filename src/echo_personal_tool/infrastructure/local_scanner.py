@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -53,10 +54,41 @@ class LocalMediaDirectoryScanner:
         for study_folder in iter_study_roots(root):
             study = self._scan_study_folder(study_folder)
             if study is not None:
-                studies.append(study)
+                studies.extend(self._split_verified_studies(study, study_folder))
 
         studies.sort(key=lambda s: s.study_datetime or datetime.min, reverse=True)
         return studies
+
+    def _split_verified_studies(self, study: StudyMetadata, folder: Path) -> list[StudyMetadata]:
+        """A folder is not a patient identity. Never assign every file the first UID."""
+        groups: dict[str, dict[str, list[InstanceMetadata]]] = defaultdict(lambda: defaultdict(list))
+        dates = {}
+        for series in study.series:
+            for instance in series.instances:
+                if instance.media_format == "dicom":
+                    uid = self._read_study_uid(instance.path)
+                    if not uid:
+                        continue
+                    dates.setdefault(uid, self._read_study_datetime(instance.path) or study.study_datetime)
+                else:
+                    uid = synthetic_study_uid(folder)
+                groups[uid][series.series_uid].append(instance)
+        output = []
+        for uid, series_map in groups.items():
+            series = tuple(
+                SeriesMetadata(
+                    series_uid=key,
+                    study_uid=uid,
+                    modality=items[0].modality,
+                    description=items[0].series_description,
+                    instances=tuple(items),
+                )
+                for key, items in series_map.items()
+            )
+            output.append(
+                replace(study, study_uid=uid, series=series, study_datetime=dates.get(uid, study.study_datetime))
+            )
+        return output
 
     def _scan_study_folder(self, study_folder: Path) -> StudyMetadata | None:
         dicom_by_series: dict[str, list[InstanceMetadata]] = defaultdict(list)

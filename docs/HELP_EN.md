@@ -1004,3 +1004,18 @@ SonoForge is supplied for research, education, and prototype analysis. Automated
 5. have a qualified clinician confirm the interpretation under the local protocol.
 
 Do not use this guide or the application as a replacement for the ultrasound system manual, PACS documentation, clinical validation, or medical advice.
+
+
+## Saved measurements and height/weight — experimental
+
+In **Settings → Other → Saved measurements**, enable persistence and restart SonoForge. It is currently off by default in both Full and Presenter. Records live under `<app-data>/measurements`, separately from the disposable DICOM cache, until explicitly deleted.
+
+- Completed edits are queued for saving after about one second. Wait for “Measurements saved”; crash recovery restores the last acknowledged snapshot, not necessarily the last action.
+- Reopen the original sources, or retrieve the same DICOM study from PACS again, to restore checked measurements. Clearing the PACS cache does not remove measurements, but a measurement file does not contain images. Non-DICOM currently requires the same location and matching content.
+- Manual height/weight and explicitly cleared values are not overwritten by another clip's DICOM tags. “Use DICOM height/weight…” removes manual overrides. Resetting measurements retains height/weight.
+- “Manage saved measurements…” provides retry, current-study export/import, selected-record deletion and delete-all. Import replaces measurements and metrics as a whole, requires matching sources and does not merge. Exported JSON is unencrypted medical data.
+- Deleting an open record keeps RAM measurements but suppresses autosave until the study is reopened. Delete-all disables autosave and retains the open RAM session. Neither operation deletes original DICOM or exported copies.
+- A failed save cancels study switching/closing. Retry or export. Explicit “Continue without saving…” disables writes for this session; unsaved changes will be lost on switching/closing. An in-flight I/O operation cannot be cancelled with this action; wait for it to finish.
+- Presenter writes only to its portable data root after opt-in; read-only media does not fall back to the host profile. Protect accounts/volumes using OS controls. Deletion is not secure erasure and does not reach backups.
+
+AI previews and the full speckle-tracking pipeline are not recovered; a saved strain summary is not a resumed analysis. Native platform acceptance and some extended WP4.1 workflows remain pending. This store is not an official medical archive.

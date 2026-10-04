@@ -41,6 +41,8 @@ jobs:
         with:
           name: sonoforge-sdist
           path: dist/*.tar.gz
+          # Package transfer between jobs: published files live in the release.
+          retention-days: 7
 
   build-linux:
     runs-on: ubuntu-latest
@@ -87,6 +89,7 @@ jobs:
         with:
           name: sonoforge-deb
           path: dist/sonoforge_*.deb
+          retention-days: 7
 
   build-windows:
     runs-on: windows-latest
@@ -212,6 +215,7 @@ jobs:
             dist/SonoForge-Setup-*-x64.exe
             dist/SonoForge-*-portable.exe
             dist/SonoForge.exe
+          retention-days: 7
 
   build-macos-apple-silicon:
     runs-on: macos-latest
@@ -279,6 +283,7 @@ jobs:
         with:
           name: sonoforge-macos-arm64
           path: dist/SonoForge-macos-arm64.dmg
+          retention-days: 7
 
   release:
     needs: [build-source, build-linux, build-windows, build-macos-apple-silicon]

@@ -197,10 +197,11 @@ Each item gets its own spec under `docs/superpowers/specs/` before implementatio
 4.1 is the recommended first candidate.
 
 **WP4.1 specification (2026-10-03):** [Measurement persistence draft (RU)](2026-10-03-wp4-1-measurement-persistence-spec-ru.md)
-now covers identity, storage/codec, autosave and recovery, deletion, portability,
-security, and acceptance tests. It is a proposal for review, not implemented behavior.
-Retention/defaults and the first-release scope remain subject to approval; WP4.2
-height/weight persistence remains separate.
+covers identity, storage/codec, autosave and recovery, deletion, portability,
+security, and acceptance tests. An experimental, default-off WP4.1–4.2 implementation
+is now in progress; see its §16 for the implemented subset and remaining acceptance
+work. [WP4.2 height/weight contract (RU)](2026-10-03-wp4-2-patient-metrics-spec-ru.md)
+uses the same atomic store. Neither workstream is marked fully accepted yet.
 
 ---
 

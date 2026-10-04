@@ -1,0 +1,72 @@
+name: Artifact cleanup
+
+# Workflow artifacts are transport between jobs and redundant copies of
+# published release assets, so they only pile up: by 2026-10-04 the repository
+# held 1023 artifacts / ~157 GB (sonoforge-windows 67 GB, sonoforge-macos-arm64
+# 65 GB, dist 10 GB) because `retention-days` was missing from some uploads and
+# lowered retention does not apply retroactively.
+#
+# This job applies scripts/purge_actions_artifacts.py on a schedule: every name
+# keeps its newest copies, the github-pages artifact is never touched, and each
+# run deletes at most `max_deletes` artifacts (biggest first) to stay inside the
+# workflow token's ~1000 requests/hour API limit — rerun to continue if the cap
+# or the rate limit is hit.
+
+on:
+  schedule:
+    # Weekly, Monday 03:37 UTC (off the full hour to avoid GitHub's cron crunch).
+    - cron: "37 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      older_than_days:
+        description: "Delete artifacts older than N days (scheduled runs use 14)"
+        required: false
+        default: "3"
+        type: string
+      keep_latest:
+        description: "Newest copies kept per artifact name"
+        required: false
+        default: "2"
+        type: string
+      max_deletes:
+        description: "Deletion cap for this run"
+        required: false
+        default: "800"
+        type: string
+      dry_run:
+        description: "Only report what would be deleted"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: artifact-cleanup
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Purge old artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          OLDER_THAN_DAYS: ${{ inputs.older_than_days || 14 }}
+          KEEP_LATEST: ${{ inputs.keep_latest || 2 }}
+          MAX_DELETES: ${{ inputs.max_deletes || 800 }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          set -euo pipefail
+          args=(--repo "$REPO" --token "$GH_TOKEN")
+          args+=(--older-than "$OLDER_THAN_DAYS" --keep-latest "$KEEP_LATEST" --max-deletes "$MAX_DELETES")
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python3 scripts/purge_actions_artifacts.py "${args[@]}"

@@ -872,13 +872,14 @@ def test_pause_clears_the_poll_flag(qapp, tmp_path) -> None:
 # ── Deferred GC: throttled, and never while the cadence is running ────────────────
 
 
-class _SyncThread:
+_RealThread = threading.Thread
+
+
+class _SyncThread(_RealThread):
     """Runs the target inline so a test never races a real background thread."""
 
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target = target
-        self._args = tuple(args)
-        self._kwargs = kwargs or {}
+    def __init__(self, *args, **kwargs):
+        _RealThread.__init__(self, *args, **kwargs)
 
     def start(self) -> None:
         self._target(*self._args, **self._kwargs)

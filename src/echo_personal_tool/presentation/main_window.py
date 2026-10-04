@@ -325,6 +325,16 @@ class MainWindow(QMainWindow):
         # Permanent "Research use only" warning in status bar
         from PySide6.QtWidgets import QLabel
 
+        self._persistence_label = QLabel(
+            tr("persistence.ready")
+            if self._user_preferences.measurement_persistence_enabled
+            else tr("persistence.disabled")
+        )
+        status.addPermanentWidget(self._persistence_label)
+        if hasattr(self._controller, "persistence_status"):
+            self._controller.persistence_status.connect(self._on_persistence_status)
+        if hasattr(self._controller, "persistence_blocked"):
+            self._controller.persistence_blocked.connect(self._on_persistence_blocked)
         self._research_warning = QLabel(tr("layout.research_use_only"))
         self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
         status.addPermanentWidget(self._research_warning)
@@ -1258,12 +1268,59 @@ class MainWindow(QMainWindow):
             on_apply=self._apply_user_preferences,
             orthanc_cache=self._orthanc_cache,
             protected_cache_sessions=self._active_orthanc_cache_sessions,
+            measurement_storage_action=self._show_measurement_storage,
         )
+
+    def _show_measurement_storage(self) -> None:
+        from echo_personal_tool.presentation.measurement_storage_dialog import MeasurementStorageDialog
+
+        dialog = MeasurementStorageDialog(self._controller, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.exec()
+
+    def _on_persistence_status(self, code: str) -> None:
+        states = {"ready", "dirty", "loading", "saving", "saved", "restored", "partial", "disabled", "saved_drafts"}
+        error_codes = {
+            "load",
+            "blocked",
+            "io",
+            "conflict",
+            "quota",
+            "identity",
+            "source",
+            "busy",
+            "unsafe_path",
+            "scan",
+        }
+        if code in states:
+            text = tr("persistence." + code)
+        else:
+            # Keep the status bar readable in Russian: translate well-known codes,
+            # fall back to the raw code for anything unmapped.
+            code_key = "persistence.code." + code
+            code_text = tr(code_key)
+            text = tr("persistence.error", code=code if code_text == code_key else code_text)
+        if hasattr(self, "_persistence_label"):
+            self._persistence_label.setText(text)
+            self._persistence_label.setToolTip(tr("persistence.privacy"))
+        if code not in {"dirty", "saving", "saved"}:
+            for widget in (self._viewer, self._gallery, self._tool_panel):
+                widget.setEnabled(code not in error_codes and code != "loading")
+        if code not in states:
+            self._show_status(text)
+
+    def _on_persistence_blocked(self) -> None:
+        QMessageBox.warning(self, tr("persistence.title"), tr("persistence.blocked_navigation"))
 
     def _active_orthanc_cache_sessions(self) -> set[str]:
         """Cache sessions backing the currently loaded PACS studies."""
         active: set[str] = set()
-        for study in self._controller.studies:
+        # During asynchronous restore the controller already knows the incoming
+        # study set, while the viewer / Multiview may still reference the old one.
+        # Protect BOTH sets until the new selection is published.
+        protected_studies = list(self._controller.studies)
+        protected_studies.extend(getattr(self._controller, "retained_studies_for_cache", ()))
+        for study in protected_studies:
             for series in getattr(study, "series", ()):
                 for instance in getattr(series, "instances", ()):
                     path = getattr(instance, "path", None)
@@ -1675,6 +1732,11 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.setFocus()
             self.activateWindow()
+            return
+        persistence = getattr(self._controller, "measurement_persistence", None)
+        if persistence is not None and not persistence.close():
+            event.ignore()
+            self._on_persistence_blocked()
             return
         if self._presenter.active:
             self._presenter.stop()
@@ -2102,7 +2164,8 @@ class MainWindow(QMainWindow):
             instance.sop_instance_uid,
             frame_index,
         )
-        self._viewer.restore_doppler_state(calibration, dto)
+        with QSignalBlocker(self._viewer):
+            self._viewer.restore_doppler_state(calibration, dto)
         self._doppler_frame_context = (instance.sop_instance_uid, frame_index)
         self._restore_vessel_for_current_frame()
 
@@ -2252,12 +2315,18 @@ class MainWindow(QMainWindow):
         indexed = measurement_snapshot.indexed if measurement_snapshot is not None else None
         height_cm = measurement_snapshot.height_cm if measurement_snapshot is not None else None
         weight_kg = measurement_snapshot.weight_kg if measurement_snapshot is not None else None
+        height_source, weight_source = (
+            self._controller.patient_metric_sources()
+            if hasattr(self._controller, "patient_metric_sources")
+            else ("unset", "unset")
+        )
         if demographics is not None:
+            # Explicit clearing wins too; a report must not resurrect DICOM values.
             # The session values win: they are the ones the user can correct in
             # the tool panel, the header is only the fallback.
-            if height_cm is None and demographics.height_m:
+            if height_cm is None and height_source == "unset" and demographics.height_m:
                 height_cm = demographics.height_m * 100.0
-            if weight_kg is None:
+            if weight_kg is None and weight_source == "unset":
                 weight_kg = demographics.weight_kg
         return PatientInfo(
             name=demographics.name if demographics else "",

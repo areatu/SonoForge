@@ -395,6 +395,7 @@ status, security certification, or compliance for a particular deployment.
 - **DICOM File Validation** — Validates file integrity before parsing (magic bytes, size limits)
 - **DICOM UID Validation** — Rejects pure-dot UIDs, strings >64 chars, and dot-prefixed/suffixed UIDs per PS3.5 section 6.1
 - **Model Integrity** — SHA256 verification for ONNX AI models at load time; corrupted models raise `ModelIntegrityError`
+- **Experimental saved measurements** — Optional local persistence for measurements and height/weight, off by default (Settings → Other; restart required). Records contain medical data, are not encrypted, and remain until explicitly deleted; DICOM-cache cleanup does not remove them. See [HELP](docs/HELP_EN.md) for recovery, export/import and limitations.
 - **Managed PACS Cache** — 20 GiB write-admission limit per running app; an over-limit download is rejected rather than evicting existing sessions (concurrent app instances are not coordinated)
 - **Cache Retention** — Cleared on normal exit by default, stale sessions older than 7 days are removed at startup, and Settings can manually clear non-active sessions
 - **Cache Protection** — No app-level DICOM encryption; POSIX files use mode `0600` where supported, while Windows inherits folder ACLs. Enable OS/volume encryption for data at rest
