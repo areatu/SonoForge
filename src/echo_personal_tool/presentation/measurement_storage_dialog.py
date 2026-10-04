@@ -106,9 +106,7 @@ class MeasurementStorageDialog(QDialog):
         if not self._alive:
             return
         if error:
-            QMessageBox.warning(
-                self, tr("persistence.title"), tr("persistence.error", code=self._code_text(error))
-            )
+            QMessageBox.warning(self, tr("persistence.title"), tr("persistence.error", code=self._code_text(error)))
         else:
             self.refresh()
 
