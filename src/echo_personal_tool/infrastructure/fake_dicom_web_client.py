@@ -142,16 +142,10 @@ def _png_from_gray(raw_rows: bytes, width: int, height: int) -> bytes:
 
     def chunk(tag: bytes, payload: bytes) -> bytes:
         return (
-            struct.pack(">I", len(payload))
-            + tag
-            + payload
-            + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+            struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
         )
 
     header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
     return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", header)
-        + chunk(b"IDAT", zlib.compress(raw_rows, 6))
-        + chunk(b"IEND", b"")
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw_rows, 6)) + chunk(b"IEND", b"")
     )

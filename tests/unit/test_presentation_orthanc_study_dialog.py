@@ -47,6 +47,7 @@ def _series(study_uid: str, count: int) -> list[SeriesInfo]:
         for index in range(count)
     ]
 
+
 pytestmark = pytest.mark.gui
 
 
@@ -171,6 +172,17 @@ class TestCollectCheckedSeries:
             dialog._set_study_selected(uid, True)
         dialog._filter_studies_by_date(30)
         assert dialog._collect_all_checked_series() == [("new", ["s1", "s2"])]
+
+    def test_study_selected_before_series_known_is_kept(self, dialog):
+        """Regression: a ticked study with no series list yet must survive.
+
+        Dropping the entry made "select → Load immediately" finish with
+        "0 studies downloaded" while still reporting success.
+        """
+        dialog._on_studies_loaded([_study(uid="study-uid")], None)
+        assert dialog._series_cache == {}
+        dialog._set_study_selected("study-uid", True)
+        assert dialog._collect_all_checked_series() == [("study-uid", [])]
 
     def test_checkbox_state_reflects_partial_selection(self, dialog):
         dialog._on_studies_loaded([_study(uid="study-uid")], None)
@@ -646,6 +658,18 @@ class TestDeferredLoad:
         with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
             dialog._on_load()
             mock_pool.globalInstance().start.assert_called()
+        assert dialog._downloading is False
+        assert dialog._pending_action == "load"
+
+    def test_load_waits_for_inflight_series_query(self, dialog):
+        """Regression: an in-flight series query is not "ready" yet."""
+        dialog._on_studies_loaded([_study(uid="u1")], None)
+        dialog._selected_all.add("u1")
+        dialog._series_loading.add("u1")
+        # The query is already in flight, so it must not be started twice.
+        with patch("echo_personal_tool.presentation.orthanc_study_dialog.QThreadPool") as mock_pool:
+            dialog._on_load()
+            mock_pool.globalInstance().start.assert_not_called()
         assert dialog._downloading is False
         assert dialog._pending_action == "load"
 

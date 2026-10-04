@@ -317,7 +317,9 @@ class _StudyDetailSignals(QObject):
 class _StudyDetailWorker(QRunnable):
     """Fetch study size/status from Orthanc REST (optional, best effort)."""
 
-    def __init__(self, study_uid: str, fetch_fn: Callable[[str], StudyStatistics], signals: _StudyDetailSignals) -> None:
+    def __init__(
+        self, study_uid: str, fetch_fn: Callable[[str], StudyStatistics], signals: _StudyDetailSignals
+    ) -> None:
         super().__init__()
         self._study_uid = study_uid
         self._fetch_fn = fetch_fn
@@ -449,9 +451,7 @@ class OrthancStudyDialog(QDialog):
         title_label.setStyleSheet(f"color: {p['text']}; font-weight: bold; border: none;")
         tb_layout.addWidget(title_label)
         self._server_pill = QLabel(tr("orthanc.checking_server"))
-        self._server_pill.setStyleSheet(
-            f"color: {p['text_dim']}; border: none; padding-left: 6px;"
-        )
+        self._server_pill.setStyleSheet(f"color: {p['text_dim']}; border: none; padding-left: 6px;")
         tb_layout.addWidget(self._server_pill)
         tb_layout.addStretch(1)
         from echo_personal_tool.presentation.system_bar import _load_icon
