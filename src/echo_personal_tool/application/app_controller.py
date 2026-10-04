@@ -173,6 +173,7 @@ class AppController(QObject):
     decode_finished = Signal()
     speckle_result_ready = Signal(object)
     persistence_status = Signal(str)
+    persistence_blocked = Signal()  # flush failed: navigation must be refused loudly, not only in the status bar
     scroll_settled = Signal()
     la_assist_contour_ready = Signal(object)
 
@@ -424,6 +425,7 @@ class AppController(QObject):
     def open_folder(self, root: Path, error_log_path: Path | None = None) -> None:
         if not self.measurement_persistence.flush():
             self.status_message.emit(tr("persistence.blocked_navigation"))
+            self.persistence_blocked.emit()
             return
         self._begin_study_switch()
         self._reset_thumbnail_queue()
@@ -449,6 +451,7 @@ class AppController(QObject):
         """Load studies already built by the download worker (skip ScanWorker)."""
         if not self.measurement_persistence.flush():
             self.status_message.emit(tr("persistence.blocked_navigation"))
+            self.persistence_blocked.emit()
             return
         self._begin_study_switch()
         self._reset_thumbnail_queue()
@@ -511,7 +514,8 @@ class AppController(QObject):
         self._current_instance = self._state_manager.snapshot.instance
         self._current_study_uid = self._resolve_study_uid()
         if self.measurement_persistence.enabled:
-            self.persistence_status.emit("source")
+            # The scan itself failed; "source" would blame the study sources instead.
+            self.persistence_status.emit("scan")
         elapsed_ms = (perf_counter() - self._scan_started_at) * 1000.0 if self._scan_started_at is not None else None
         if elapsed_ms is None:
             logger.warning("scan_failed reason=%s", message)
@@ -1848,8 +1852,10 @@ class AppController(QObject):
                     contour.sop_instance_uid, {}
                 ).get("spacing")
                 if source_spacing is None:
-                    if state.instance and contour.sop_instance_uid == state.instance.sop_instance_uid:
-                        output.append(contour)
+                    # Without persistence the whole list is used unscaled, so keep the
+                    # contour in its original pixel space instead of dropping it:
+                    # enabling persistence must not change the clinical result.
+                    output.append(contour)
                     continue
                 row, col = source_spacing[0] / pixel_spacing[0], source_spacing[1] / pixel_spacing[1]
 

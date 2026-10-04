@@ -1574,5 +1574,18 @@
   "persistence.discard": "Продолжить без сохранения…",
   "persistence.discard_confirm": "Выключить автосохранение этой сессии и отменить ожидающие запросы записи? Измерения останутся в памяти для экспорта, но будут потеряны при закрытии/смене исследования. Существующие записи на диске не удаляются.",
   "persistence.dicom_metrics": "Взять рост/вес из DICOM…",
-  "persistence.dicom_metrics_confirm": "Удалить ручные рост/вес и использовать значения текущего DICOM? Отсутствующие в DICOM значения останутся пустыми."
+  "persistence.dicom_metrics_confirm": "Удалить ручные рост/вес и использовать значения текущего DICOM? Отсутствующие в DICOM значения останутся пустыми.",
+  "persistence.file_filter": "SonoForge (*.json)",
+  "persistence.record_size": "{name}… — {size} КиБ",
+  "persistence.export_filename": "study.sonoforge-measurements.json",
+  "persistence.code.io": "ввод-вывод",
+  "persistence.code.conflict": "конфликт версий",
+  "persistence.code.quota": "нет места",
+  "persistence.code.identity": "неизвестное исследование",
+  "persistence.code.source": "источник не совпадает",
+  "persistence.code.busy": "занято",
+  "persistence.code.blocked": "заблокировано",
+  "persistence.code.load": "загрузка не удалась",
+  "persistence.code.scan": "сканирование не удалось",
+  "persistence.code.unsafe_path": "небезопасный путь"
 }

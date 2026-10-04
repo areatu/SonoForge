@@ -26,6 +26,7 @@ class MeasurementStorageDialog(QDialog):
         super().__init__(parent)
         self.controller = controller
         self.persistence = controller.measurement_persistence
+        self._alive = True
         self.setWindowTitle(tr("persistence.title"))
         self.resize(700, 430)
         layout = QVBoxLayout(self)
@@ -62,46 +63,82 @@ class MeasurementStorageDialog(QDialog):
         layout.addWidget(close)
         self.refresh()
 
-    def refresh(self):
+    def done(self, result):
+        self._alive = False
+        super().done(result)
+
+    def closeEvent(self, event):
+        self._alive = False
+        super().closeEvent(event)
+
+    @staticmethod
+    def _code_text(code):
+        """Localised label for a storage error code, falling back to the raw code."""
+        key = "persistence.code." + str(code)
+        text = tr(key)
+        return str(code) if text == key else text
+
+    def refresh(self, on_done=None):
         def read():
             repository = self.persistence.repository
             return [(path.stem, path.stat().st_size) for path in repository.entries()]
 
         def apply(rows, error):
+            if not self._alive:
+                return
+            if on_done is not None:
+                on_done()
             if error:
                 self.message(error)
                 return
             self.records.clear()
             for key, size in rows:
-                item = QListWidgetItem(f"{key[:12]}… — {size / 1024:.1f} KiB")
+                item = QListWidgetItem(tr("persistence.record_size", name=key[:12], size=f"{size / 1024:.1f}"))
                 item.setData(Qt.ItemDataRole.UserRole, key)
                 self.records.addItem(item)
             self.summary.setText(
                 tr("persistence.stats", count=str(len(rows)), size=f"{sum(row[1] for row in rows) / 1024**2:.1f}")
             )
 
-        self.persistence._submit(read, apply)
+        self.persistence.submit(read, apply)
 
     def message(self, error=None):
+        if not self._alive:
+            return
         if error:
-            QMessageBox.warning(self, tr("persistence.title"), tr("persistence.error", code=error))
+            QMessageBox.warning(
+                self, tr("persistence.title"), tr("persistence.error", code=self._code_text(error))
+            )
         else:
             self.refresh()
 
     def retry(self):
         if not self.persistence.flush():
             self.message("io")
-        self.refresh()
+        self.setEnabled(False)
+        self.refresh(on_done=lambda: self.setEnabled(True))
 
     def export_current(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, tr("persistence.export"), "study.sonoforge-measurements.json", "SonoForge (*.json)"
+            self,
+            tr("persistence.export"),
+            tr("persistence.export_filename"),
+            tr("persistence.file_filter"),
         )
-        if path:
-            self.persistence.export_study(self.controller.resolve_study_uid(), Path(path), self.message)
+        if not path:
+            return
+        self.setEnabled(False)
+
+        def exported(error):
+            if not self._alive:
+                return
+            self.setEnabled(True)
+            self.message(error)
+
+        self.persistence.export_study(self.controller.resolve_study_uid(), Path(path), exported)
 
     def import_current(self):
-        path, _ = QFileDialog.getOpenFileName(self, tr("persistence.import"), "", "SonoForge (*.json)")
+        path, _ = QFileDialog.getOpenFileName(self, tr("persistence.import"), "", tr("persistence.file_filter"))
         if not path:
             return
         if (
@@ -118,6 +155,8 @@ class MeasurementStorageDialog(QDialog):
         self.setEnabled(False)
 
         def applied(error):
+            if not self._alive:
+                return
             self.setEnabled(True)
             if not error:
                 instance = self.controller.state_manager.snapshot.instance
@@ -145,6 +184,8 @@ class MeasurementStorageDialog(QDialog):
         self.setEnabled(False)
 
         def applied(error):
+            if not self._alive:
+                return
             self.setEnabled(True)
             self.message(error)
 
@@ -193,11 +234,14 @@ class MeasurementStorageDialog(QDialog):
         self.setEnabled(False)
 
         def applied(error):
+            if not self._alive:
+                return
             self.setEnabled(True)
-            # No resurrection from RAM: delete disables autosave now AND next launch.
-            preferences = load_user_preferences()
-            preferences.measurement_persistence_enabled = False
-            save_user_preferences(preferences)
+            if error is None:
+                # No resurrection from RAM: delete disables autosave now AND next launch.
+                preferences = load_user_preferences()
+                preferences.measurement_persistence_enabled = False
+                save_user_preferences(preferences)
             self.message(error)
 
         self.persistence.delete_all(applied)

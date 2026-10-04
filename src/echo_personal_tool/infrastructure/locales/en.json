@@ -1574,5 +1574,18 @@
   "persistence.discard": "Continue without saving…",
   "persistence.discard_confirm": "Stop autosaving this session and discard pending save requests? Measurements remain in RAM for export but will be lost on closing/changing study. Existing disk records are not deleted.",
   "persistence.dicom_metrics": "Use DICOM height/weight…",
-  "persistence.dicom_metrics_confirm": "Remove manual height/weight overrides and use the current DICOM values? Missing DICOM values will remain empty."
+  "persistence.dicom_metrics_confirm": "Remove manual height/weight overrides and use the current DICOM values? Missing DICOM values will remain empty.",
+  "persistence.file_filter": "SonoForge (*.json)",
+  "persistence.record_size": "{name}… — {size} KiB",
+  "persistence.export_filename": "study.sonoforge-measurements.json",
+  "persistence.code.io": "I/O error",
+  "persistence.code.conflict": "version conflict",
+  "persistence.code.quota": "out of space",
+  "persistence.code.identity": "unknown study",
+  "persistence.code.source": "source mismatch",
+  "persistence.code.busy": "busy",
+  "persistence.code.blocked": "blocked",
+  "persistence.code.load": "load failed",
+  "persistence.code.scan": "scan failed",
+  "persistence.code.unsafe_path": "unsafe path"
 }

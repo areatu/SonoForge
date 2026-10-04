@@ -333,6 +333,8 @@ class MainWindow(QMainWindow):
         status.addPermanentWidget(self._persistence_label)
         if hasattr(self._controller, "persistence_status"):
             self._controller.persistence_status.connect(self._on_persistence_status)
+        if hasattr(self._controller, "persistence_blocked"):
+            self._controller.persistence_blocked.connect(self._on_persistence_blocked)
         self._research_warning = QLabel(tr("layout.research_use_only"))
         self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
         status.addPermanentWidget(self._research_warning)
@@ -1273,19 +1275,42 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.presentation.measurement_storage_dialog import MeasurementStorageDialog
 
         dialog = MeasurementStorageDialog(self._controller, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.exec()
 
     def _on_persistence_status(self, code: str) -> None:
         states = {"ready", "dirty", "loading", "saving", "saved", "restored", "partial", "disabled", "saved_drafts"}
-        text = tr("persistence." + code) if code in states else tr("persistence.error", code=code)
+        error_codes = {
+            "load",
+            "blocked",
+            "io",
+            "conflict",
+            "quota",
+            "identity",
+            "source",
+            "busy",
+            "unsafe_path",
+            "scan",
+        }
+        if code in states:
+            text = tr("persistence." + code)
+        else:
+            # Keep the status bar readable in Russian: translate well-known codes,
+            # fall back to the raw code for anything unmapped.
+            code_key = "persistence.code." + code
+            code_text = tr(code_key)
+            text = tr("persistence.error", code=code if code_text == code_key else code_text)
         if hasattr(self, "_persistence_label"):
             self._persistence_label.setText(text)
             self._persistence_label.setToolTip(tr("persistence.privacy"))
         if code not in {"dirty", "saving", "saved"}:
             for widget in (self._viewer, self._gallery, self._tool_panel):
-                widget.setEnabled(code != "loading")
+                widget.setEnabled(code not in error_codes and code != "loading")
         if code not in states:
             self._show_status(text)
+
+    def _on_persistence_blocked(self) -> None:
+        QMessageBox.warning(self, tr("persistence.title"), tr("persistence.blocked_navigation"))
 
     def _active_orthanc_cache_sessions(self) -> set[str]:
         """Cache sessions backing the currently loaded PACS studies."""
@@ -1711,7 +1736,7 @@ class MainWindow(QMainWindow):
         persistence = getattr(self._controller, "measurement_persistence", None)
         if persistence is not None and not persistence.close():
             event.ignore()
-            QMessageBox.warning(self, tr("persistence.title"), tr("persistence.blocked_navigation"))
+            self._on_persistence_blocked()
             return
         if self._presenter.active:
             self._presenter.stop()

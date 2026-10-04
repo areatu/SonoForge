@@ -285,7 +285,7 @@ class StudyMeasurementSessionStore:
             return
         self._studies[study_uid] = data
         if self.on_change is not None:
-            self.on_change(study_uid, deepcopy(data))
+            self.on_change(study_uid, data)
 
     def set_instance_spacing(self, study_uid: str, instance_uid: str, spacing) -> None:
         data = self.get(study_uid)
@@ -514,7 +514,15 @@ class StudyMeasurementSessionStore:
         return None
 
     def set_doppler_for_instance_frame(self, study_uid, instance_uid, frame_index, dto) -> None:
-        """Authoritative editor update, including deletion of the last marker."""
+        """Authoritative editor update, including deletion of the last marker.
+
+        The legacy per-instance entry for this instance is dropped on purpose: the
+        frame records below are aggregated together with ``doppler_by_instance`` in
+        ``all_doppler_dto``, so keeping it would count the same markers twice (and
+        deleting the last marker would not clear this instance from the aggregate).
+        Entries of every other instance stay untouched, so their contribution to the
+        study-wide aggregate survives this update.
+        """
         data = self.get(study_uid)
         entries = tuple(
             item for item in data.doppler_by_instance_frame if (item[0], item[1]) != (instance_uid, frame_index)

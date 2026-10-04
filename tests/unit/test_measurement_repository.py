@@ -281,6 +281,22 @@ def test_snapshot_is_deep_and_restore_does_not_notify():
     assert len(events) == 1
 
 
+def test_frame_update_keeps_other_instance_legacy_doppler_contribution():
+    """Instance A becomes frame-authoritative; instance B must stay in the aggregate."""
+    peak_a = DopplerMeasurementDTO((DopplerPeakMarker("peak-a", 0, -70.0),), (), ())
+    peak_b = DopplerMeasurementDTO((DopplerPeakMarker("peak-b", 1, -60.0),), (), ())
+    store = StudyMeasurementSessionStore()
+    store.restore(
+        UID,
+        replace(StudyMeasurementData(), doppler_by_instance=(("inst-a", peak_a), ("inst-b", peak_b))),
+    )
+    assert [m.label for m in store.get(UID).all_doppler_dto.peaks] == ["peak-a", "peak-b"]
+    store.set_doppler_for_instance_frame(UID, "inst-a", 0, DopplerMeasurementDTO((), (), ()))
+    aggregate = store.get(UID).all_doppler_dto
+    assert [m.label for m in aggregate.peaks] == ["peak-b"]
+    assert store.get(UID).doppler_by_instance == (("inst-b", peak_b),)
+
+
 def test_v1_schema_matches_codec():
     from importlib.resources import files
 

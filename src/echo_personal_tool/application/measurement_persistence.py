@@ -6,6 +6,7 @@ owning Qt thread. A failed save keeps the RAM snapshot available for retry/expor
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import replace
@@ -27,6 +28,8 @@ from echo_personal_tool.infrastructure.measurement_repository import Measurement
 from echo_personal_tool.infrastructure.measurement_sources import describe_study
 
 _UTC = timezone.utc  # noqa: UP017 - retain Python 3.10 compatibility
+
+logger = logging.getLogger(__name__)
 
 
 def scoped(data: StudyMeasurementData, uids: set[str]) -> StudyMeasurementData:
@@ -90,6 +93,7 @@ class MeasurementPersistence(QObject):
         self._versions = {}
         self._saving = False
         self._contexts = {}  # worker-owned {uid: (full record, active source descriptors)}
+        self._load_errors = {}  # worker-owned {uid: error code observed while restoring}
         self.loaded = set()
         self._studies = {}
         self._suppressed = set()
@@ -105,6 +109,10 @@ class MeasurementPersistence(QObject):
         # rather than making a full detached snapshot just to throw it away.
         store.on_change = self.changed if enabled else None
 
+    def submit(self, operation, callback):
+        """Public entry point; presentation code must not depend on `_submit`."""
+        return self._submit(operation, callback)
+
     def _submit(self, operation, callback):
         self._pending += 1
         future = self._executor.submit(operation)
@@ -114,8 +122,10 @@ class MeasurementPersistence(QObject):
                 value, error = task.result(), None
             except MeasurementStorageError as exc:
                 value, error = None, exc.code
-            except Exception:
-                value, error = None, "io"  # do not log a traceback containing patient paths
+            except Exception as exc:
+                # do not log a traceback containing patient paths
+                logger.warning("measurement persistence op failed: %s", type(exc).__name__)
+                value, error = None, "io"
             self.completed.emit(callback, value, error)
 
         future.add_done_callback(done)
@@ -138,18 +148,20 @@ class MeasurementPersistence(QObject):
 
     def load(self, studies, callback):
         """Called before exposing the new study set to editable UI."""
-        self._studies = {study.study_uid: deepcopy(study) for study in studies}
+        # One detached copy serves both the RAM view and the worker read: both only read it.
+        snapshot = deepcopy(studies)
+        self._studies = {study.study_uid: study for study in snapshot}
         self._suppressed.clear()
         if not self.enabled:
             callback()
             return
         self.status.emit("loading")
-        studies = deepcopy(studies)
 
         def read():
             self._contexts.clear()
+            self._load_errors.clear()
             results = {}
-            for study in studies:
+            for study in snapshot:
                 uid = study.study_uid
                 try:
                     sources = describe_study(study)
@@ -169,7 +181,10 @@ class MeasurementPersistence(QObject):
                     else:
                         results[uid] = (None, sources, "ready")
                 except (MeasurementStorageError, OSError, ValueError) as exc:
-                    results[uid] = (None, {}, exc.code if isinstance(exc, MeasurementStorageError) else "source")
+                    code = exc.code if isinstance(exc, MeasurementStorageError) else "source"
+                    # Remember why the study has no context so a later save reports the real reason.
+                    self._load_errors[uid] = code
+                    results[uid] = (None, {}, code)
             return results
 
         def apply(results, error):
@@ -211,7 +226,7 @@ class MeasurementPersistence(QObject):
             for uid, data in batch.items():
                 try:
                     if uid not in self._contexts:
-                        raise MeasurementStorageError("identity")
+                        raise MeasurementStorageError(self._load_errors.get(uid, "identity"))
                     record, sources = self._contexts[uid]
                     data = committed_data(data, record["data"] if record else None)
                     full = combine(record["data"], data, set(sources)) if record else data
@@ -250,6 +265,7 @@ class MeasurementPersistence(QObject):
                 else:
                     self._errors.discard(uid)
                     self.loaded.add(uid)
+                    self._load_errors.pop(uid, None)
             newer = any(self._versions.get(uid, 0) > batch_versions.get(uid, -1) for uid in self._dirty)
             if newer and self.enabled:
                 self.save_pending()  # coalesce edits that arrived during the single in-flight write
@@ -271,10 +287,12 @@ class MeasurementPersistence(QObject):
 
         self._submit(save, applied)
 
-    def flush(self, timeout_ms=5000):
+    def flush(self, timeout_ms=2000):
         """Keep Qt processing completion events; failed/timed-out writes block navigation."""
         if self._closed:
             return True
+        if not self.enabled and not self._pending:
+            return True  # disabled and idle is the default path: never stall the GUI
         self.save_pending()
         if self._pending:
             loop = QEventLoop()
@@ -301,6 +319,7 @@ class MeasurementPersistence(QObject):
         def remove():
             self.repository.delete_all()
             self._contexts.clear()
+            self._load_errors.clear()
 
         def applied(_, error):
             self.loaded.clear()
@@ -341,6 +360,12 @@ class MeasurementPersistence(QObject):
             for uid in list(self._contexts):
                 if study_key(uid) == key:
                     self._contexts.pop(uid)
+            for uid in list(self._load_errors):
+                try:
+                    if study_key(uid) == key:
+                        self._load_errors.pop(uid)
+                except MeasurementStorageError:
+                    continue
 
         def applied(_, error):
             for uid in uids:
@@ -417,8 +442,13 @@ class MeasurementPersistence(QObject):
             return True
         if not self.flush():
             return False
-        future = self._executor.submit(self.repository.close)
-        future.result(timeout=5)
-        self._executor.shutdown(wait=True)
+        # Mark closed before the bounded shutdown so a timeout can never leak the worker.
         self._closed = True
+        try:
+            future = self._executor.submit(self.repository.close)
+            future.result(timeout=5)
+        except Exception as exc:
+            logger.warning("measurement persistence op failed: %s", type(exc).__name__)
+        finally:
+            self._executor.shutdown(wait=False, cancel_futures=True)
         return True

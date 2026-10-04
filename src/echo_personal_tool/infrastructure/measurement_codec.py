@@ -236,13 +236,18 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
 
 
 def dumps(record: dict) -> bytes:
-    wire = {**record, "data": _encode(record["data"])}
     try:
+        wire = {**record, "data": _encode(record["data"])}
         payload = json.dumps(wire, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
-    except (ValueError, TypeError) as exc:
+        # Apply exactly the same validation to locally written and imported documents.
+        loads(payload)
+    except MeasurementStorageError:
+        raise
+    except RecursionError as exc:
+        raise MeasurementStorageError("limit") from exc
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        # Encoding/allowlist drift must not surface as a generic "io" failure.
         raise MeasurementStorageError("invalid") from exc
-    # Apply exactly the same validation to locally written and imported documents.
-    loads(payload)
     return payload
 
 

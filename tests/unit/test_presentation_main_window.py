@@ -812,3 +812,37 @@ class TestApplyAreaToolMode:
         ):
             main_window._apply_user_preferences(prefs)
             mock_set.assert_called_with("click")
+
+
+class TestPersistenceStatusBlocking:
+    def _widgets(self, main_window):
+        return (main_window._viewer, main_window._gallery, main_window._tool_panel)
+
+    def test_error_codes_disable_editing_widgets(self, main_window):
+        for code in ("io", "conflict", "quota", "identity", "source", "busy", "blocked", "load", "scan", "unsafe_path"):
+            main_window._on_persistence_status(code)
+            for widget in self._widgets(main_window):
+                assert not widget.isEnabled(), code
+
+    def test_ready_and_restored_reenable_editing_widgets(self, main_window):
+        main_window._on_persistence_status("io")
+        main_window._on_persistence_status("ready")
+        for widget in self._widgets(main_window):
+            assert widget.isEnabled()
+        main_window._on_persistence_status("blocked")
+        main_window._on_persistence_status("restored")
+        for widget in self._widgets(main_window):
+            assert widget.isEnabled()
+
+    def test_loading_disables_editing_widgets(self, main_window):
+        main_window._on_persistence_status("loading")
+        for widget in self._widgets(main_window):
+            assert not widget.isEnabled()
+
+    def test_persistence_blocked_signal_shows_warning(self, main_window):
+        connect = main_window._controller.persistence_blocked.connect
+        assert connect.called
+        slot = connect.call_args[0][0]
+        with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning") as warning:
+            slot()
+        warning.assert_called_once()
