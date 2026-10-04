@@ -583,6 +583,7 @@ class TestCloseEvent:
         event = QCloseEvent()
         main_window.closeEvent(event)
         assert not main_window._mmode_active
+        main_window._controller.measurement_persistence.close.assert_not_called()
 
     def test_cache_clears_on_exit_by_default(self, main_window):
         from PySide6.QtGui import QCloseEvent
@@ -599,6 +600,37 @@ class TestCloseEvent:
             main_window._user_preferences.orthanc_cache_clear_on_exit = False
             main_window.closeEvent(QCloseEvent())
             clear_all.assert_not_called()
+
+    def test_failed_measurement_flush_cancels_close_without_deleting_cache(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        session = main_window._orthanc_cache.create_session()
+        source = main_window._orthanc_cache.save_instance(session, "1.2.3", "1.2.3.1", "1.2.3.2", b"DICM")
+        persistence = main_window._controller.measurement_persistence
+        persistence.close.return_value = False
+        main_window._user_preferences.orthanc_cache_clear_on_exit = True
+        try:
+            with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning"):
+                event = QCloseEvent()
+                main_window.closeEvent(event)
+            assert not event.isAccepted()
+            assert source.exists()
+        finally:
+            persistence.close.return_value = True
+
+    def test_successful_measurement_flush_precedes_cache_deletion(self, main_window):
+        from PySide6.QtGui import QCloseEvent
+
+        order = []
+        persistence = main_window._controller.measurement_persistence
+        persistence.close.side_effect = lambda: order.append("measurements") or True
+        try:
+            with patch.object(main_window._orthanc_cache, "clear_all", side_effect=lambda: order.append("cache")):
+                main_window._user_preferences.orthanc_cache_clear_on_exit = True
+                main_window.closeEvent(QCloseEvent())
+            assert order == ["measurements", "cache"]
+        finally:
+            persistence.close.side_effect = None
 
 
 class TestOrthancCacheStartupCleanup:

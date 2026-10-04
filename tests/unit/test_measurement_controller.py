@@ -123,7 +123,9 @@ def test_app_controller_recomputes_measurements_from_current_state(synthetic_dic
     assert snapshot.doppler == compute(doppler)
     assert snapshot.lvef == calculate(contours, _sample_instance(synthetic_dicom_path).pixel_spacing)
     assert snapshot.teichholz == from_linear_measurements(linear_measurements)
-    assert snapshot.linear_measurements == linear_measurements
+    from dataclasses import replace
+
+    assert snapshot.linear_measurements == tuple(replace(m, frame_index=0) for m in linear_measurements)
 
 
 def test_app_controller_overlay_augments_single_view_with_study_biplane(synthetic_dicom_path) -> None:
