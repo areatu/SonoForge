@@ -30,6 +30,12 @@
 | `run_tests.sh` | Обёртка для запуска тестов (кириллические пути, `PYTHONPATH`, offscreen Qt) |
 | `sonoforge.desktop` | Desktop entry для Linux |
 
+## Обслуживание CI
+
+| Файл | Описание |
+|------|----------|
+| `purge_actions_artifacts.py` | Удаление старых артефактов GitHub Actions — свежие копии каждого имени сохраняются, `github-pages` не трогается; вызывается из `artifact-cleanup.yml` |
+
 ## Примеры
 
 ```bash
@@ -45,4 +51,7 @@ python scripts/run_la_auto_bench.py
 
 # Диалог конструктора справочника
 python scripts/run_constructor.py
+
+# Обслуживание репозитория (сначала dry-run)
+GH_TOKEN=<токен> python scripts/purge_actions_artifacts.py --repo areatu/SonoForge --dry-run
 ```
