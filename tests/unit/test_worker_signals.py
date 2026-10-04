@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -26,9 +25,9 @@ def qapp() -> QApplication:
     return app
 
 
-def test_frame_loader_delivers_signal_when_parented(qapp: QApplication, qtbot) -> None:
+def test_frame_loader_delivers_signal_when_parented(qapp: QApplication, qtbot, tmp_path: Path) -> None:
     parent = QWidget()
-    path = Path(tempfile.mkdtemp()) / "frame.dcm"
+    path = tmp_path / "frame.dcm"
     write_synthetic_dicom(path)
 
     received: list = []
@@ -36,9 +35,18 @@ def test_frame_loader_delivers_signal_when_parented(qapp: QApplication, qtbot) -
     def on_finished(pixels: object) -> None:
         received.append(pixels)
 
-    worker = FrameLoaderWorker(path, parent=parent)
-    worker.signals.finished.connect(on_finished)
-    QThreadPool.globalInstance().start(worker)
+    # A dedicated pool keeps this test off the shared global pool: leaked workers from
+    # elsewhere in the suite can otherwise starve it on a loaded CI runner, which made the
+    # signal-wait flaky. The generous timeout absorbs slow runners (the full ubuntu job
+    # runs ~50 min) without weakening the cross-thread delivery assertion.
+    pool = QThreadPool()
+    pool.setMaxThreadCount(1)
+    try:
+        worker = FrameLoaderWorker(path, parent=parent)
+        worker.signals.finished.connect(on_finished)
+        pool.start(worker)
 
-    qtbot.waitUntil(lambda: len(received) == 1, timeout=5000)
+        qtbot.waitUntil(lambda: len(received) == 1, timeout=30000)
+    finally:
+        pool.waitForDone(30000)
     assert received[0].shape == (64, 64)
