@@ -1469,14 +1469,15 @@ class OrthancStudyDialog(QDialog):
                 continue
             known = [entry.series_uid for entry in self._series_cache.get(study_uid, []) if entry.series_uid]
             if study_uid in self._selected_all:
-                # "Whole study": every series we know about (and, while the list
-                # is still loading, whatever was already materialised).
+                # "Whole study": every series we know about.  While the series
+                # list is still loading the entry carries an empty list — the
+                # selection is real, and ``_ensure_selection_ready`` fetches the
+                # list before anything is downloaded.
                 uids = known or sorted(self._selected_series.get(study_uid, set()))
             else:
                 selected = self._selected_series.get(study_uid, set())
                 uids = [uid for uid in known if uid in selected] if known else sorted(selected)
-            if uids:
-                result.append((study_uid, uids))
+            result.append((study_uid, uids))
         return result
 
     def _hidden_study_uids(self) -> set[str]:
@@ -1594,13 +1595,12 @@ class OrthancStudyDialog(QDialog):
         """
         hidden = self._hidden_study_uids()
         candidates = dict.fromkeys([*self._selected_all, *self._selected_series])
+        # A study whose series list is *in flight* is not ready either: without
+        # its UIDs the download would silently fetch nothing.
         missing = [
             study_uid
             for study_uid in candidates
-            if study_uid
-            and study_uid not in hidden
-            and study_uid not in self._series_cache
-            and study_uid not in self._series_loading
+            if study_uid and study_uid not in hidden and study_uid not in self._series_cache
         ]
         if not missing:
             self._pending_action = None

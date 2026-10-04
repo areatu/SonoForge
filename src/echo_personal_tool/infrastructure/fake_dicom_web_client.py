@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import struct
+import zlib
 from pathlib import Path
 
 from echo_personal_tool.domain.models.orthanc import (
@@ -88,9 +90,68 @@ class FakeDicomWebClient:
         width: int = 0,
         height: int = 0,
     ) -> bytes:
-        """No rendered images in mock mode — the loader shows placeholders."""
-        return b""
+        """Synthetic rendering so the mock demos thumbnails offline.
+
+        The payload is a real PNG built from the series UID, so the loader
+        exercises the same decode path as with a live server.
+        """
+        return _synthetic_preview_png(series_uid or study_uid, width=width, height=height)
 
     def study_statistics(self, study_uid: str) -> StudyStatistics:
         """Mock mode has no statistics endpoint."""
         return StudyStatistics()
+
+    def close(self) -> None:
+        """No-op: the fake holds no sockets, but satisfies the client surface."""
+
+    def cancel_inflight(self) -> None:
+        """No-op cancel hook used by the download worker."""
+
+
+def _synthetic_preview_png(seed: str, *, width: int = 160, height: int = 120) -> bytes:
+    """Build a small greyscale PNG resembling a rendered ultrasound frame.
+
+    Deliberately dependency-free (``zlib`` + ``struct`` only): the mock client
+    must keep working in minimal installations used for UI development.
+    """
+    w = max(32, min(int(width) or 160, 512))
+    h = max(24, min(int(height) or 120, 512))
+    digest = zlib.crc32(seed.encode("utf-8")) if seed else 0
+    fan = 40 + (digest % 30)  # half-angle of the sector in "degrees"
+    phase = (digest >> 8) % 100
+    rows = bytearray()
+    for y in range(h):
+        rows.append(0)  # PNG filter type 0 (None)
+        ny = (y / max(1, h - 1)) * 2.0 - 1.0
+        for x in range(w):
+            nx = (x / max(1, w - 1)) * 2.0 - 1.0
+            radius = (nx * nx * 0.35 + ny * ny) ** 0.5
+            inside = abs(nx) < (fan / 90.0) * (ny * 0.5 + 1.0) and ny > -0.9
+            speckle = ((x * 37 + y * 17 + phase) * 2654435761) % 251
+            value = 8 + speckle * 0.12
+            if inside:
+                value += 70 - radius * 55
+                if abs(ny - 0.15) < 0.02:
+                    value += 60
+            rows.append(max(0, min(255, int(value))))
+    return _png_from_gray(bytes(rows), w, h)
+
+
+def _png_from_gray(raw_rows: bytes, width: int, height: int) -> bytes:
+    """Wrap filtered greyscale rows into a PNG container."""
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + tag
+            + payload
+            + struct.pack(">I", zlib.crc32(tag + payload) & 0xFFFFFFFF)
+        )
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw_rows, 6))
+        + chunk(b"IEND", b"")
+    )

@@ -13,6 +13,7 @@ from echo_personal_tool.application.workers.orthanc_download_worker import (
 from echo_personal_tool.domain.models.orthanc import InstanceInfo
 from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
+from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
 FIXTURES = Path("tests/fixtures/orthanc")
 STUDY_UID = "1.2.410.200001.1.1185.2062614048.1.20240404.1120546412.448.1"
@@ -466,3 +467,35 @@ class TestErrorReporting:
         assert "empty data" not in message
         assert "download failed: WADO timeout" in message
         assert len(message) <= 160
+
+
+class TestMockModeClient:
+    """use_mock must also apply to downloads, not just to queries."""
+
+    def test_thread_client_is_fake_in_mock_mode(self, tmp_path: Path) -> None:
+        settings = ServerSettings(use_mock=True)
+        worker = OrthancDownloadWorker(
+            MagicMock(),
+            OrthancSessionCache(tmp_path),
+            "session",
+            STUDY_UID,
+            [SERIES_UID],
+            server_settings=settings,
+        )
+        client = worker._make_thread_client()
+        assert isinstance(client, FakeDicomWebClient)
+        assert client.ping() is True
+
+    def test_thread_client_is_http_without_mock(self, tmp_path: Path) -> None:
+        settings = ServerSettings(use_mock=False, url="http://orthanc.local:8042")
+        worker = OrthancDownloadWorker(
+            MagicMock(),
+            OrthancSessionCache(tmp_path),
+            "session",
+            STUDY_UID,
+            [SERIES_UID],
+            server_settings=settings,
+        )
+        client = worker._make_thread_client()
+        assert not isinstance(client, FakeDicomWebClient)
+        client.close()
