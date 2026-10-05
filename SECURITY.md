@@ -2,7 +2,7 @@
 
 This document describes the current SonoForge desktop application's behavior. It is an implementation inventory, not a security certification, regulatory submission, or claim that a particular clinic's deployment complies with a law or policy. SonoForge does not provide an in-app multi-user login or application-level encryption for cached DICOM or user exports.
 
-For the regulatory mapping and shared-responsibility notes, see [`docs/security/data-inventory.md`](docs/security/data-inventory.md).
+For the regulatory mapping and shared-responsibility notes, see [`docs/security/data-inventory.md`](docs/security/data-inventory.md). For release artifact authenticity — what is signed, what is attested, and how to verify a download — see [`docs/security/code-signing.md`](docs/security/code-signing.md).
 
 ## Where data is stored
 
@@ -63,6 +63,7 @@ DICOM UID logging uses truncation helpers and PHI-sensitive tag values are maske
 - Treat Presenter USB media as patient-data media when a server study is downloaded or exported to it. Password-token encryption does not encrypt saved measurements, the DICOM cache or reports; do not store PHI on removable media unless the organization's approved media protections (including encryption where required) are in place.
 - Choose a retention period compatible with the organization's policy. The built-in cache lifecycle is limited to normal-exit cleanup (enabled by default), a 7-day startup age cleanup, a 20 GiB cache ceiling, and manual clearing; it does not manage user exports or PACS retention.
 - Validate TLS support, peer certificate setup, access policy, backups, audit requirements, and recovery procedures for the particular PACS and workstation deployment.
+- Obtain the application only from [GitHub Releases](https://github.com/areatu/SonoForge/releases) and verify the download before deployment: the release `SHA256SUMS` manifest covers integrity, and the Sigstore build-provenance attestation on every asset (`gh attestation verify <file> --repo areatu/SonoForge`) establishes that the artifact was built by a workflow in this repository from a known commit. **Windows executables are not Authenticode-signed and macOS builds are neither Developer ID-signed nor notarized**; SmartScreen and Gatekeeper warnings are expected, and environments that block unsigned binaries will need an explicit allow-list entry. See [`docs/security/code-signing.md`](docs/security/code-signing.md).
 - No blanket claim of HIPAA, GDPR, 152-ФЗ, FDA, CE/MDR, or DICOM security-profile compliance is made. The data-inventory appendix maps relevant expectations to the application's current controls and gaps; the data controller/operator and clinical organization remain responsible for applicability and deployment-level controls.
 
 ### Experimental measurement-store limitations

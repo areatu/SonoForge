@@ -13,6 +13,11 @@ on:
 
 permissions:
   contents: write
+  # actions/attest: id-token mints the Sigstore (Fulcio) OIDC
+  # signing certificate, attestations persists the signed provenance statement.
+  # Free for public repositories, no keys or PKI to manage.
+  id-token: write
+  attestations: write
 
 env:
   PY_VERSION: "3.11"
@@ -89,6 +94,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r build/presenter/pinned-packages.txt pyinstaller
 
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)").Trim()
+          if (-not $version) { throw "Could not determine SonoForge version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Build onefile exe
         run: python -m PyInstaller build/presenter/sonoforge-presenter.spec --noconfirm --clean
 
@@ -99,11 +112,60 @@ jobs:
           "{0}: {1:N1} MB" -f $exe.Name, ($exe.Length / 1MB)
           if ($exe.Length -gt 250MB) { throw "exe unexpectedly large — check excludes" }
 
+      - name: Generate CycloneDX SBOM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --quiet --upgrade cyclonedx-bom
+          if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
+          $version = "${{ steps.version.outputs.version }}"
+          $out = "dist/SonoForge-Presenter-$version-windows-x64.sbom.cdx.json"
+          # Built from the pinned lite dependency set, which is exactly what the
+          # onefile bundle contains. --spec-version is pinned deliberately:
+          # actions/attest rejects CycloneDX 1.7 ("Unsupported SBOM format") as
+          # of v4.2.2, while cyclonedx-py defaults track the latest spec.
+          python -m cyclonedx_py requirements build/presenter/pinned-packages.txt --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
+          if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
+          $sbom = Get-Content $out -Raw | ConvertFrom-Json
+          Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), format $($sbom.bomFormat)"
+
+      - name: Publish versioned artifact
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          # The versioned name is the canonical asset: attestations are
+          # digest-keyed and file-name-agnostic, so the version has to live in
+          # the name for verification to be version-specific. The fixed name is
+          # kept as a byte-identical alias so the existing download URL and the
+          # README instructions keep working.
+          Copy-Item dist\SonoForgePresenter.exe "dist\SonoForgePresenter-$version.exe"
+          if ((Get-FileHash dist\SonoForgePresenter.exe).Hash -ne (Get-FileHash "dist\SonoForgePresenter-$version.exe").Hash) {
+            throw "Versioned alias is not byte-identical to the built exe"
+          }
+          Get-ChildItem dist\SonoForgePresenter*.exe | ForEach-Object { Write-Host "$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
+
+      - name: Attest artifact provenance
+        uses: actions/attest@v4
+        with:
+          # dist/SonoForgePresenter.exe is a byte-identical alias of the
+          # versioned exe, so it shares its digest and is covered by this
+          # attestation without needing one of its own.
+          subject-path: dist/SonoForgePresenter-*.exe
+
+      - name: Attest artifact SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/SonoForgePresenter-*.exe
+          sbom-path: dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-windows-x64.sbom.cdx.json
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: SonoForgePresenter-windows
-          path: dist/SonoForgePresenter.exe
+          path: |
+            dist/SonoForgePresenter-*.exe
+            dist/SonoForgePresenter.exe
+            dist/*.sbom.cdx.json
           retention-days: 30
 
   build-linux:
@@ -130,6 +192,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r build/presenter/pinned-packages.txt pyinstaller
 
+      - name: Determine package version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          if [ -z "$version" ]; then
+            echo "Could not determine SonoForge version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build AppImage
         run: ./build/presenter/build-appimage.sh
 
@@ -140,11 +213,47 @@ jobs:
           du -h "$APPIMAGE"
           file "$APPIMAGE"
 
+      - name: Generate CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade cyclonedx-bom
+          version="${{ steps.version.outputs.version }}"
+          out="dist/SonoForge-Presenter-${version}-linux-x86_64.sbom.cdx.json"
+          # Built from the pinned lite dependency set, which is exactly what the
+          # AppImage contains. --spec-version is pinned deliberately:
+          # actions/attest rejects CycloneDX 1.7 ("Unsupported SBOM format") as
+          # of v4.2.2, while cyclonedx-py defaults track the latest spec.
+          python -m cyclonedx_py requirements build/presenter/pinned-packages.txt \
+            --spec-version 1.6 \
+            --output-format JSON \
+            --output-reproducible \
+            --output-file "$out"
+          python - "$out" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}")
+          PY
+
+      - name: Attest artifact provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/SonoForge-Presenter-*-x86_64.AppImage
+
+      - name: Attest artifact SBOM
+        uses: actions/attest@v4
+        with:
+          # sbom-path takes a single file, not a glob, so it is spelled out from
+          # the version output rather than pattern-matched.
+          subject-path: dist/SonoForge-Presenter-*-x86_64.AppImage
+          sbom-path: dist/SonoForge-Presenter-${{ steps.version.outputs.version }}-linux-x86_64.sbom.cdx.json
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: SonoForgePresenter-linux
-          path: dist/SonoForge-Presenter-*-x86_64.AppImage
+          path: |
+            dist/SonoForge-Presenter-*-x86_64.AppImage
+            dist/*.sbom.cdx.json
           retention-days: 30
 
   release:
@@ -159,24 +268,79 @@ jobs:
           path: artifacts
           pattern: SonoForgePresenter-*
 
+      - name: Generate Presenter checksums
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Presenter assets are published by this workflow, not by release.yml,
+          # so the main release SHA256SUMS never lists them. They get their own
+          # manifest; digests are written against bare file names so that
+          # `sha256sum -c` works in a download directory.
+          files=(
+            artifacts/SonoForgePresenter-windows/SonoForgePresenter-*.exe
+            artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe
+            artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+          )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No Presenter binaries to checksum" >&2
+            exit 1
+          fi
+          : > SHA256SUMS-presenter.txt
+          for f in "${files[@]}"; do
+            printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")" >> SHA256SUMS-presenter.txt
+          done
+          cat SHA256SUMS-presenter.txt
+
+      - name: Attest Presenter checksum manifest provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: SHA256SUMS-presenter.txt
+
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Every expected asset class must be present: publishing a partial
+          # Presenter release silently would leave an unattestable gap.
+          # SonoForgePresenter-<version>.exe is canonical; SonoForgePresenter.exe
+          # is a byte-identical alias kept for the existing download URL and the
+          # README instructions (attestation verification is digest-based, so the
+          # alias resolves through the versioned artifact).
+          assets=()
+          missing=0
+          for pattern in \
+            'artifacts/SonoForgePresenter-windows/SonoForgePresenter-*.exe' \
+            'artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe' \
+            'artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage' \
+            'artifacts/SonoForgePresenter-*/*.sbom.cdx.json' \
+            'SHA256SUMS-presenter.txt' ; do
+            matches=( $pattern )
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "Missing expected Presenter asset: $pattern" >&2
+              missing=1
+            else
+              assets+=( "${matches[@]}" )
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            ls -laR artifacts >&2 || true
+            exit 1
+          fi
+          printf 'Publishing %s\n' "${assets[@]}"
           # Attach to an existing release (e.g. the main vX.Y.Z one) when the
           # tag is already published; otherwise create a dedicated Presenter
           # release (the presenter-vX.Y.Z flow).
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" \
               --repo "$GITHUB_REPOSITORY" --clobber \
-              artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe \
-              artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+              "${assets[@]}"
           else
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --title "SonoForge Presenter $TAG" \
-              --notes "Lite portable build: no ONNX AI segmentation, no reference UI, portable USB-stick storage. Full PACS support." \
-              artifacts/SonoForgePresenter-windows/SonoForgePresenter.exe \
-              artifacts/SonoForgePresenter-linux/SonoForge-Presenter-*.AppImage
+              --notes "Lite portable build: no ONNX AI segmentation, no reference UI, portable USB-stick storage. Full PACS support. Every artifact carries a Sigstore build-provenance attestation and an attested CycloneDX SBOM." \
+              "${assets[@]}"
           fi

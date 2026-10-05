@@ -2,6 +2,12 @@
 __pycache__/
 
 # Distribution / packaging
+# NOTE: build/ is PyInstaller's default workpath, so it is ignored wholesale --
+# but it also holds tracked packaging sources (build/linux/*.sh, build/windows/*,
+# build/presenter/*, build/README.md) that were force-added. A NEW source file
+# placed under build/ is silently skipped by `git add -A` and the build then
+# fails on a fresh checkout. Put new helpers in scripts/ instead, or use
+# `git add -f`.
 .Python
 build/
 develop-eggs/

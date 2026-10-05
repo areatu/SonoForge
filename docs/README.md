@@ -25,6 +25,15 @@ Technical documentation, specs, and implementation plans.
 | [`TECHNICAL_HELP_EN.md`](TECHNICAL_HELP_EN.md) | English technical help: formulas, source chain, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
 | [`TECHNICAL_HELP_RU.md`](TECHNICAL_HELP_RU.md) | Russian technical help: formulas, value sources, calibration, Settings effects, and DICOMweb/DIMSE/PACS protocols |
 
+## Security and release integrity
+
+| File | Description |
+|------|-------------|
+| [`security/data-inventory.md`](security/data-inventory.md) | Data inventory and mapping to selected security expectations |
+| [`security/code-signing.md`](security/code-signing.md) | Code signing and release verification: signing status per platform, `SHA256SUMS` and build-provenance attestation checks, options and costs, and the project code signing policy |
+
+See also [`../SECURITY.md`](../SECURITY.md).
+
 ## Standalone documents
 
 | File | Description |

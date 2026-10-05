@@ -18,6 +18,11 @@ on:
 
 permissions:
   contents: write
+  # actions/attest: id-token mints the Sigstore (Fulcio) OIDC
+  # signing certificate, attestations persists the signed provenance statement.
+  # Free for public repositories, no keys or PKI to manage.
+  id-token: write
+  attestations: write
 
 jobs:
   build-source:
@@ -35,6 +40,11 @@ jobs:
           python -m pip install --upgrade pip hatch
           hatch build -t sdist
           ls -la dist/
+
+      - name: Attest source tarball provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tar.gz
 
       - name: Upload source tarball
         uses: actions/upload-artifact@v7
@@ -73,6 +83,17 @@ jobs:
           print('Dependencies OK')
           "
 
+      - name: Determine package version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          if [ -z "$version" ]; then
+            echo "Could not determine SonoForge version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build .deb (lite)
         run: ./build/linux/build-lite.sh
 
@@ -84,11 +105,47 @@ jobs:
           dpkg-deb --info "$DEB"
           dpkg-deb --contents "$DEB" | head -20
 
+      - name: Generate CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade cyclonedx-bom
+          version="${{ steps.version.outputs.version }}"
+          out="dist/SonoForge-${version}-linux-amd64.sbom.cdx.json"
+          # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
+          # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
+          # while cyclonedx-py defaults track the latest spec.
+          # --output-reproducible keeps the SBOM byte-stable for a given
+          # environment, so re-running a build does not churn the asset.
+          python -m cyclonedx_py environment \
+            --pyproject pyproject.toml \
+            --spec-version 1.6 \
+            --output-format JSON \
+            --output-reproducible \
+            --output-file "$out"
+          python - "$out" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}")
+          PY
+
+      - name: Attest .deb provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/sonoforge_*.deb
+
+      - name: Attest .deb SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/sonoforge_*.deb
+          sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-linux-amd64.sbom.cdx.json
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-deb
-          path: dist/sonoforge_*.deb
+          path: |
+            dist/sonoforge_*.deb
+            dist/*.sbom.cdx.json
           retention-days: 7
 
   build-windows:
@@ -207,6 +264,40 @@ jobs:
             Remove-Item $dataDir -Force
           }
 
+      - name: Generate CycloneDX SBOM
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --quiet --upgrade cyclonedx-bom
+          if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
+          $version = "${{ steps.version.outputs.version }}"
+          $out = "dist/SonoForge-$version-windows-x64.sbom.cdx.json"
+          # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
+          # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
+          # while cyclonedx-py defaults track the latest spec.
+          python -m cyclonedx_py environment --pyproject pyproject.toml --spec-version 1.6 --output-format JSON --output-reproducible --output-file $out
+          if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
+          $sbom = Get-Content $out -Raw | ConvertFrom-Json
+          Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), format $($sbom.bomFormat)"
+
+      - name: Attest Windows package provenance
+        uses: actions/attest@v4
+        with:
+          # dist\SonoForge.exe is a byte-identical copy of the portable exe, so
+          # it shares the same digest. gh attestation verify resolves subjects by
+          # digest and ignores the file name, so the alias is covered by the
+          # portable artifact's attestation and must not be attested twice.
+          subject-path: |
+            dist/SonoForge-Setup-*-x64.exe
+            dist/SonoForge-*-portable.exe
+
+      - name: Attest Windows package SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/SonoForge-Setup-*-x64.exe
+            dist/SonoForge-*-portable.exe
+          sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-windows-x64.sbom.cdx.json
+
       - name: Upload Windows installer and portable exe
         uses: actions/upload-artifact@v7
         with:
@@ -215,6 +306,7 @@ jobs:
             dist/SonoForge-Setup-*-x64.exe
             dist/SonoForge-*-portable.exe
             dist/SonoForge.exe
+            dist/*.sbom.cdx.json
           retention-days: 7
 
   build-macos-apple-silicon:
@@ -262,27 +354,89 @@ jobs:
           python -m pip install pyinstaller
           python -m PyInstaller sonoforge-standalone.spec --noconfirm --clean
 
+      - name: Determine package version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(python -c "import sys; sys.path.insert(0, 'src'); from echo_personal_tool import __version__; print(__version__)")
+          if [ -z "$version" ]; then
+            echo "Could not determine SonoForge version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Create DMG
         run: |
-          if [ -d dist/SonoForge.app ]; then
-            hdiutil create -volname "SonoForge" -srcfolder dist/SonoForge.app -ov -format UDZO dist/SonoForge-macos-arm64.dmg
-          else
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          if [ ! -d dist/SonoForge.app ]; then
             echo "No .app bundle found in dist/"
             ls -la dist/
             exit 1
           fi
+          # The versioned name is the canonical asset: build-provenance
+          # attestations are digest-keyed and file-name-agnostic, so the version
+          # has to live in the name for verification to be version-specific.
+          hdiutil create -volname "SonoForge" -srcfolder dist/SonoForge.app -ov -format UDZO "dist/SonoForge-${version}-macos-arm64.dmg"
+          # Preserve the existing stable download URL
+          # (releases/latest/download/SonoForge-macos-arm64.dmg) as an alias.
+          cp "dist/SonoForge-${version}-macos-arm64.dmg" dist/SonoForge-macos-arm64.dmg
 
       - name: Verify DMG
         run: |
+          set -euo pipefail
           ls -la dist/
+          version="${{ steps.version.outputs.version }}"
+          versioned="dist/SonoForge-${version}-macos-arm64.dmg"
+          test -f "$versioned"
           test -f dist/SonoForge-macos-arm64.dmg
-          hdiutil verify dist/SonoForge-macos-arm64.dmg
+          hdiutil verify "$versioned"
+          # The alias must stay byte-identical so it shares the attested digest.
+          cmp "$versioned" dist/SonoForge-macos-arm64.dmg
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade cyclonedx-bom
+          version="${{ steps.version.outputs.version }}"
+          out="dist/SonoForge-${version}-macos-arm64.sbom.cdx.json"
+          # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
+          # and rejects CycloneDX 1.7 ("Unsupported SBOM format") as of v4.2.2,
+          # while cyclonedx-py defaults track the latest spec.
+          python -m cyclonedx_py environment \
+            --pyproject pyproject.toml \
+            --spec-version 1.6 \
+            --output-format JSON \
+            --output-reproducible \
+            --output-file "$out"
+          python - "$out" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}")
+          PY
+
+      - name: Attest DMG provenance
+        uses: actions/attest@v4
+        with:
+          # dist/SonoForge-macos-arm64.dmg is a byte-identical alias of the
+          # versioned DMG, so it shares its digest and is covered by this
+          # attestation without needing one of its own.
+          subject-path: dist/SonoForge-*-macos-arm64.dmg
+
+      - name: Attest DMG SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/SonoForge-*-macos-arm64.dmg
+          sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-macos-arm64.sbom.cdx.json
 
       - name: Upload macOS Apple Silicon artifact
         uses: actions/upload-artifact@v7
         with:
           name: sonoforge-macos-arm64
-          path: dist/SonoForge-macos-arm64.dmg
+          path: |
+            dist/SonoForge-*-macos-arm64.dmg
+            dist/SonoForge-macos-arm64.dmg
+            dist/*.sbom.cdx.json
           retention-days: 7
 
   release:
@@ -328,9 +482,72 @@ jobs:
       - name: Generate release checksums
         run: |
           set -euo pipefail
-          files=(sonoforge_*.deb SonoForge-Setup-*-x64.exe SonoForge-*-portable.exe SonoForge.exe SonoForge-macos-arm64.dmg sonoforge-*.tar.gz)
+          shopt -s nullglob
+          # Versioned names first: they are the canonical, attestation-verifiable
+          # assets. Fixed-name aliases are listed too so a user can check
+          # whichever they downloaded.
+          files=(
+            sonoforge_*.deb
+            sonoforge-*.tar.gz
+            SonoForge-Setup-*-x64.exe
+            SonoForge-*-portable.exe
+            SonoForge-*-macos-arm64.dmg
+            SonoForge-macos-arm64.dmg
+            SonoForge.exe
+          )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found to checksum" >&2
+            exit 1
+          fi
           sha256sum "${files[@]}" > SHA256SUMS
           cat SHA256SUMS
+
+      - name: Check GPG signing configuration
+        id: gpg
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GPG_PRIVATE_KEY is not set - publishing SHA256SUMS unsigned. Build-provenance attestations still cover authenticity; see docs/security/code-signing.md (plan step 2)."
+          fi
+
+      - name: Sign checksum manifest with GPG
+        id: sign
+        if: steps.gpg.outputs.enabled == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --yes --import
+          keyid=$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^fpr:/ {print $10; exit}')
+          if [ -z "$keyid" ]; then
+            echo "GPG_PRIVATE_KEY imported but contains no secret key" >&2
+            exit 1
+          fi
+          args=(--batch --yes --armor --detach-sign --local-user "$keyid")
+          # CI keys are usually stored unencrypted; support a passphrase anyway
+          # so the key can stay protected without a hardware token.
+          if [ -n "${GPG_PASSPHRASE:-}" ]; then
+            args+=(--pinentry-mode loopback --passphrase "$GPG_PASSPHRASE")
+          fi
+          gpg "${args[@]}" SHA256SUMS
+          gpg --verify SHA256SUMS.asc SHA256SUMS
+          fingerprint=$(gpg --batch --with-colons --list-keys "$keyid" | awk -F: '/^fpr:/ {print $10; exit}')
+          echo "Signed SHA256SUMS with $fingerprint"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Attest release checksum manifest provenance
+        uses: actions/attest@v4
+        with:
+          # The manifest is the only release asset that binds file *names*
+          # (and therefore the version) to digests; attestations themselves are
+          # digest-keyed and name-agnostic. Attesting it lets a verifier pin
+          # this manifest to this workflow run and then check every asset.
+          subject-path: SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
@@ -342,9 +559,23 @@ jobs:
             SonoForge-Setup-*-x64.exe
             SonoForge-*-portable.exe
             SonoForge.exe
+            SonoForge-*-macos-arm64.dmg
             SonoForge-macos-arm64.dmg
             sonoforge-*.tar.gz
             SHA256SUMS
+            *.sbom.cdx.json
           generate_release_notes: true
           draft: false
           prerelease: false
+
+      # Published separately rather than through the files: list above so that a
+      # missing signature (secret not configured) cannot affect the release.
+      - name: Publish GPG signature of the checksum manifest
+        if: steps.gpg.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ steps.tag.outputs.tag }}" SHA256SUMS.asc \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Published SHA256SUMS.asc (key ${{ steps.sign.outputs.fingerprint }})"
