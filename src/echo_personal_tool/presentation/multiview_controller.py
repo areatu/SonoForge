@@ -844,6 +844,7 @@ class MultiViewController(QObject):
         total = pane.total_frames
         file_name = self._pane_file_name(instance)
         frame_text = self._pane_frame_text(pane_id)
+        frame_width_text = self._pane_frame_width_text(pane_id)
         try:
             viewer.set_transport_state(
                 frame_index=pane.current_frame,
@@ -858,6 +859,7 @@ class MultiViewController(QObject):
             frame_text=frame_text,
             has_clip=instance is not None,
             error=pane.load_error,
+            frame_width_text=frame_width_text,
         )
         pane_widget.set_active(self.session.active_pane is pane_id)
         pane_widget.set_cycle_count(self.session.selected_cycle_count)
@@ -893,6 +895,17 @@ class MultiViewController(QObject):
             return "—"
         seconds = self._frame_seconds(pane_id, pane.current_frame)
         frame_part = f"{pane.current_frame + 1}/{total}"
+        if seconds is None:
+            return frame_part
+        return f"{frame_part} · {seconds:.2f} с"
+
+    def _pane_frame_width_text(self, pane_id: PaneId) -> str:
+        """Return a worst-case frame label so its width stays fixed in playback."""
+        total = self.session.pane(pane_id).total_frames
+        if total <= 0:
+            return "—"
+        frame_part = f"{total}/{total}"
+        seconds = self._frame_seconds(pane_id, total - 1)
         if seconds is None:
             return frame_part
         return f"{frame_part} · {seconds:.2f} с"

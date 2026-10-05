@@ -71,6 +71,34 @@ class TestPaneHeader:
         assert pane._file_label.toolTip() == file_name
         assert pane._file_label.text() != file_name
 
+    def test_projection_button_does_not_resize_for_different_labels(self, pane) -> None:
+        button_width = pane._view_button.width()
+        assert pane._view_button.minimumWidth() == button_width
+        assert pane._view_button.maximumWidth() == button_width
+
+        for label in VIEW_LABELS:
+            pane._set_view_label(label)
+            assert pane._view_button.width() == button_width
+
+    def test_frame_counter_reserves_width_for_the_whole_clip(self, pane) -> None:
+        width_sample = "120/120 · 3.97 с"
+        pane.set_header(
+            file_name="clip.dcm",
+            frame_text="9/120 · 0.27 с",
+            frame_width_text=width_sample,
+            has_clip=True,
+            error=None,
+        )
+        reserved_width = pane._frame_label.width()
+        pane.set_header(
+            file_name="clip.dcm",
+            frame_text="100/120 · 3.30 с",
+            frame_width_text=width_sample,
+            has_clip=True,
+            error=None,
+        )
+        assert pane._frame_label.width() == reserved_width
+
     def test_load_error_replaces_the_placeholder_text(self, pane) -> None:
         pane.set_header(file_name="a4c.dcm", frame_text="—", has_clip=False, error="Cannot read file")
         assert pane._placeholder.isVisible()

@@ -197,6 +197,16 @@ class TestSetState:
         w.set_state(state)
         assert w._timeline_slider.isEnabled() is True
 
+    def test_frame_counter_keeps_its_width_while_digit_count_changes(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_transport_state(frame_index=8, total_frames=120, frame_time_ms=33.3, is_playing=True)
+        reserved_width = w._source_label.width()
+
+        w.set_transport_state(frame_index=99, total_frames=120, frame_time_ms=33.3, is_playing=True)
+
+        assert w._source_label.width() == reserved_width
+        assert "100/120" in w._source_label.text()
+
     def test_fps_label_with_fps(self, qtbot) -> None:
         w = _make_viewer(qtbot)
         state = _make_state(fps=30.0, total=5)

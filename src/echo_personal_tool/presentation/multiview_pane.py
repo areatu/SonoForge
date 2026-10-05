@@ -131,6 +131,12 @@ class MultiViewPaneWidget(QWidget):
         self._view_button.setObjectName("multiviewPaneView")
         self._view_button.setToolTip(self._tr("multiview.view.tooltip"))
         self._view_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        # Keep the control in one place regardless of whether it shows "—",
+        # A4C, or the longest projection name.
+        widest_view_label = max(VIEW_LABELS, key=self._view_button.fontMetrics().horizontalAdvance)
+        self._view_button.setText(widest_view_label)
+        self._view_button.setFixedWidth(self._view_button.sizeHint().width())
+        self._view_button.setText("—")
         self._view_button.clicked.connect(self._show_view_menu)
         header_layout.addWidget(self._view_button)
 
@@ -244,9 +250,31 @@ class MultiViewPaneWidget(QWidget):
     def is_active(self) -> bool:
         return self._active
 
-    def set_header(self, *, file_name: str, frame_text: str, has_clip: bool, error: str | None) -> None:
+    def set_header(
+        self,
+        *,
+        file_name: str,
+        frame_text: str,
+        has_clip: bool,
+        error: str | None,
+        frame_width_text: str | None = None,
+    ) -> None:
         self._file_label.set_elided_text(file_name)
         self._file_label.setToolTip(error or file_name)
+        width_sample = frame_width_text or frame_text
+        margins = self._frame_label.contentsMargins()
+        frame_width = (
+            self._frame_label.fontMetrics().horizontalAdvance(width_sample)
+            + margins.left()
+            + margins.right()
+            + 2 * self._frame_label.margin()
+            + 2
+        )
+        if (
+            self._frame_label.minimumWidth() != frame_width
+            or self._frame_label.maximumWidth() != frame_width
+        ):
+            self._frame_label.setFixedWidth(frame_width)
         self._frame_label.setText(frame_text)
         self._replace_button.setEnabled(True)
         # A failed read keeps its message: the pane must not show the previous
