@@ -604,7 +604,7 @@ Q-05 («Последнее»/автодокачка PACS) остаётся вн�
 | ID | Тема | Суть и почему важно |
 |---|---|---|
 | N-01 | Политика данных пациента (PHI) целиком | ФИО во вкладках, недавних, логах, скриншотах, измерениях, кэше PACS; режим «скрыть ФИО»; Presenter (флешка). Сейчас политика размазана по отдельным решениям |
-| N-02 | Несколько измерений одного параметра и усреднение (ФП, 3–5 циклов) | Повторное измерение той же метки заменяет прежнее (`merge_doppler_peaks`), усреднить нельзя. Критично для PGmax и калькуляторов. Нужно решить: хранить список измерений параметра, какое идёт в отчёт, как усреднять |
+| N-02 | Несколько измерений одного параметра и усреднение (ФП, 3–5 циклов) | Повторное измерение той же метки заменяет прежнее (`merge_doppler_peaks`), усреднить нельзя. Критично для PGmax и калькуляторов. РЕШЕНО 2026-10-05 (D-23): хранить список измерений параметра, в отчёт — среднее последних трёх |
 | N-03 | Запуск из Проводника | Путь в аргументе (`main()` понимает только `--version` и `-V`), «Открыть с помощью», перетаскивание папки в окно, один экземпляр (второй запуск открывает вкладку в первом), Jump List, `AppUserModelID` |
 | N-04 | Установка и старт | One-file exe 370 МБ распаковывается при каждом запуске (медленный старт, антивирусы); без подписи — SmartScreen. Варианты: onedir + установщик, подпись кода. Проверка обновлений (opt-in) и «что нового» — в связке с обещанием «без телеметрии» |
 | N-05 | Реестр горячих клавиш | Единый реестр (шпаргалка, подсказки), конфликты (Tab, Ctrl+клик, новые Ctrl+T, Ctrl+W, Ctrl+Tab), возможность переназначения |
@@ -628,10 +628,10 @@ Q-05 («Последнее»/автодокачка PACS) остаётся вн�
 | Q-04 | Автовосстановление измерений без вопроса? | да, со строкой «Сбросить» |
 | Q-05 | PACS и «Последнее»: докачивать заново или оставлять кэш до следующей загрузки? | докачка по умолчанию, кэш — галочкой |
 | Q-06 | Масштаб через `QT_SCALE_FACTOR` с перезапуском устраивает? Какой масштаб Windows сейчас (100, 125, 150%) и диагональ монитора? | да |
-| Q-07 | Подписи: PGmax и PGmean латиницей (как на аппаратах) или «РГмакс» и «РГср»? Нужен ли PG для E и A? | латиницей; нет |
+| Q-07 | Подписи: PGmax и PGmean латиницей (как на аппаратах) или «РГмакс» и «РГср»? Нужен ли PG для E и A? | РЕШЕНО 2026-10-05 (D-22): латиницей; для E и A PG не считать |
 | Q-08 | Вкладки: «Открыть папку» открывает новую вкладку (если текущая пустая — в неё)? Лимит вкладок? ФИО в заголовках PACS-вкладок? Приветственная страница при каждом запуске или только когда нет «Последнего»? | да; 10; да, с галочкой «скрывать»; при каждом запуске, отключаемо |
 | Q-09 | PACS: какой сервер (Orthanc или другой), DICOMweb или DIMSE, сколько исследований в списке за обычный период? | — (определит пагинацию и фильтры) |
-| Q-10 | Калькуляторы: с чего начать — непрерывность (AVA, LVOT, УО) или PISA? Нужен ли автономный режим? | непрерывность; да |
+| Q-10 | Калькуляторы: с чего начать — непрерывность (AVA, LVOT, УО) или PISA? Нужен ли автономный режим? | РЕШЕНО 2026-10-05 (D-25): непрерывность; автономный да |
 | Q-11 | Рабочий стол: содержит ли путь `OneDrive`? Есть ли `errors.log` и `diag.log` в `%LOCALAPPDATA%\SonoForge\logs`? | — (нужны данные) |
 | Q-12 | Правки README, Info.plist и CI-проверка «тег = версия» без смены имён ассетов — подтверждаете? | да |
 | Q-13 | Кнопка «Сообщить о проблеме» с предзаполненным GitHub issue? | да, как опция |
@@ -679,6 +679,15 @@ Q-05 («Последнее»/автодокачка PACS) остаётся вн�
 | Сессия и измерения | `application/app_controller.py` (одна сессия, `_build_measurement_snapshot`, `compute_overlay_snapshot`, `compute_study_snapshot`), `application/study_measurement_session.py` |
 | Сканер и галерея | `infrastructure/local_scanner.py`, `application/workers/scan_worker.py`, `infrastructure/media_metadata_mapper.py` (синтетические UID), `infrastructure/instance_sort.py`, `infrastructure/media_formats.py`, `presentation/thumbnail_gallery.py`, `application/workers/thumbnail_loader_worker.py`, `presentation/local_browser.py` (неиспользуемый) |
 | Допплер | `domain/calculations/{bernoulli,doppler_metrics,diastology_grade,body_surface}.py`, `domain/models/{doppler,measurements,metadata}.py`, `presentation/{doppler_overlay,doppler_widget,measures_menu,measurement_panel,measurement_worksheet,viewer_widget}.py`, `domain/services/{measurement_results_formatter,measurement_report_formatter,report_builder}.py`, `infrastructure/properties_extractor.py` (тип допплера из DICOM) |
+| Логи | `infrastructure/log_sanitizer.py`, `main.py` (basicConfig, `diag.log`), `application/app_controller.py` и `presentation/main_window.py` (`errors.log` при импорте) |
+| Локализация | `infrastructure/i18n.py`, `infrastructure/locales/en.json`, `infrastructure/locales/ru.json`, `tests/unit/test_i18n.py` |
+| Релизы и сборка | `.github/workflows/{release,build,ci}.yml`, `sonoforge-standalone.spec`, `build/linux/build-deb.sh`, `build/windows/*`, `site/app.js`, `README.md`, `README_RU.md` |
+| Multiview (другая ветка) | `docs/superpowers/specs/2026-10-01-multiview-two-clips-spec-ru.md`, `domain/models/multiview.py`, `domain/services/multiview_sync.py`, `presentation/multiview_{controller,pane,transport,marker_strip}.py` |
+
+---
+
+**История документа:** 2026-10-02 — создан по итогам трёх раундов обсуждения (решения D-01…D-20, темы П.1–П.13, нерешённое N-01…N-10, вопросы Q-01…Q-13).
+ Допплер | `domain/calculations/{bernoulli,doppler_metrics,diastology_grade,body_surface}.py`, `domain/models/{doppler,measurements,metadata}.py`, `presentation/{doppler_overlay,doppler_widget,measures_menu,measurement_panel,measurement_worksheet,viewer_widget}.py`, `domain/services/{measurement_results_formatter,measurement_report_formatter,report_builder}.py`, `infrastructure/properties_extractor.py` (тип допплера из DICOM) |
 | Логи | `infrastructure/log_sanitizer.py`, `main.py` (basicConfig, `diag.log`), `application/app_controller.py` и `presentation/main_window.py` (`errors.log` при импорте) |
 | Локализация | `infrastructure/i18n.py`, `infrastructure/locales/en.json`, `infrastructure/locales/ru.json`, `tests/unit/test_i18n.py` |
 | Релизы и сборка | `.github/workflows/{release,build,ci}.yml`, `sonoforge-standalone.spec`, `build/linux/build-deb.sh`, `build/windows/*`, `site/app.js`, `README.md`, `README_RU.md` |
