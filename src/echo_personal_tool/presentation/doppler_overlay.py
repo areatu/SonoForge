@@ -14,6 +14,19 @@ from echo_personal_tool.domain.calculations.vessel_metrics import (
     VesselMetrics,
     compute_vessel_metrics,
 )
+from echo_personal_tool.domain.doppler_catalog import (
+    INTERVAL_LABELS as _INTERVAL_LABELS,
+)
+from echo_personal_tool.domain.doppler_catalog import (
+    PEAK_LABELS as _PEAK_LABELS,
+)
+from echo_personal_tool.domain.doppler_catalog import (
+    TRACE_LABELS as _TRACE_LABELS,
+)
+from echo_personal_tool.domain.doppler_catalog import (
+    canonical_interval_label,
+    canonical_peak_label,
+)
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
@@ -37,7 +50,7 @@ _TRACE_MIN_SAMPLE_PX = 4.0
 
 
 class _PeakScatterItem(pg.ScatterPlotItem):
-    """Scatter item that owns Vpeak drag events instead of the ViewBox."""
+    """Scatter item that owns Vmax drag events instead of the ViewBox."""
 
     def __init__(self, owner) -> None:
         super().__init__(
@@ -81,21 +94,10 @@ class _PeakScatterItem(pg.ScatterPlotItem):
         ev.ignore()
 
 
-_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "s_lat", "Vmax", "TR Vmax", "s_prime_rv")
-_INTERVAL_LABELS = ("DT", "IVRT", "AT")
 _MITRAL_INFLOW_WORKFLOW: tuple[tuple[str, str], ...] = (
     ("peak", "E"),
     ("interval", "DT"),
     ("peak", "A"),
-)
-_TRACE_LABELS = (
-    "VTI",
-    "VTI MV",
-    "VTI MR",
-    "VTI AV",
-    "VTI AR",
-    "VTI TR",
-    "VTI PR",
 )
 
 
@@ -289,11 +291,11 @@ class DopplerOverlayTools(QWidget):
         return had_active_state
 
     def set_peak_label(self, label: str, *, single_shot: bool = True) -> None:
-        self._peak_label_index = self._resolve_label_index(label, _PEAK_LABELS)
+        self._peak_label_index = self._resolve_label_index(canonical_peak_label(label), _PEAK_LABELS)
         self._single_shot_peak = single_shot
 
     def set_interval_label(self, label: str, *, single_shot: bool = True) -> None:
-        self._interval_label_index = self._resolve_label_index(label, _INTERVAL_LABELS)
+        self._interval_label_index = self._resolve_label_index(canonical_interval_label(label), _INTERVAL_LABELS)
         self._single_shot_interval = single_shot
 
     def prefill_interval_start(self, time_ms: float) -> None:
@@ -383,8 +385,12 @@ class DopplerOverlayTools(QWidget):
 
     def load_measurement_dto(self, dto: DopplerMeasurementDTO) -> None:
         self.clear_measurements(keep_calibration_graphics=True)
-        self._peak_markers = list(dto.peaks)
-        self._interval_markers = list(dto.intervals)
+        # Collapse append-only data produced by older versions.  Dict values
+        # retain the newest marker for each canonical (alias-aware) label.
+        peaks_by_label = {canonical_peak_label(marker.label): marker for marker in dto.peaks}
+        intervals_by_label = {canonical_interval_label(marker.label): marker for marker in dto.intervals}
+        self._peak_markers = list(peaks_by_label.values())
+        self._interval_markers = list(intervals_by_label.values())
         self._traces = list(dto.traces)
         self._refresh_peak_scatter()
         self._redraw_intervals()
@@ -1141,11 +1147,20 @@ class DopplerOverlayTools(QWidget):
             self._trace_items.append(item)
 
     def _add_peak_marker(self, time_ms: float, velocity_cm_s: float) -> None:
+        label = self._current_peak_label()
         marker = DopplerPeakMarker(
-            label=self._current_peak_label(),
+            label=label,
             time_ms=float(time_ms),
             velocity_cm_s=float(velocity_cm_s),
         )
+        # A measurement label identifies one current value on a frame.  The old
+        # append-only behavior left stale AV/TR/etc. values visible and the
+        # calculator then read the first one.  Replace aliases as well so a
+        # legacy ``TRpeak`` is superseded by a new ``TR Vmax`` marker.
+        canonical = canonical_peak_label(label)
+        self._peak_markers = [
+            existing for existing in self._peak_markers if canonical_peak_label(existing.label) != canonical
+        ]
         self._peak_markers.append(marker)
         self._refresh_peak_scatter()
         self._advance_peak_label()
@@ -1159,13 +1174,18 @@ class DopplerOverlayTools(QWidget):
         start_time_ms = (
             float(self._active_interval_start) if self._active_interval_start is not None else float(end_time_ms)
         )
+        label = self._current_interval_label()
         marker = DopplerIntervalMarker(
-            label=self._current_interval_label(),
+            label=label,
             start_time_ms=start_time_ms,
             end_time_ms=float(end_time_ms),
         )
+        canonical = canonical_interval_label(label)
+        self._interval_markers = [
+            existing for existing in self._interval_markers if canonical_interval_label(existing.label) != canonical
+        ]
         self._interval_markers.append(marker)
-        self._add_interval_item(marker)
+        self._redraw_intervals()
         self._active_interval_start = None
         self._clear_interval_preview()
         self._advance_interval_label()

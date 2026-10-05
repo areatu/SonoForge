@@ -777,7 +777,7 @@ class MainWindow(QMainWindow):
         if self._multiview_transport is None:
             transport = MultiViewTransportBar()
             transport.mode_changed.connect(self._multiview.set_mode)
-            transport.play_pause_clicked.connect(self._multiview.toggle_play)
+            transport.play_pause_clicked.connect(self._multiview.toggle_global_play)
             transport.stop_clicked.connect(self._multiview.stop)
             transport.rate_changed.connect(self._multiview.set_rate)
             transport.cycle_count_changed.connect(self._multiview.set_cycle_count)
@@ -1047,12 +1047,16 @@ class MainWindow(QMainWindow):
                 self._content_splitter.addWidget(self._pane_left)
                 self._content_splitter.addWidget(self._pane_right)
                 self._content_splitter.setHandleWidth(2)
+                self._content_splitter.setChildrenCollapsible(False)
+                self._content_splitter.setStretchFactor(0, 1)
+                self._content_splitter.setStretchFactor(1, 1)
                 self._content_splitter.blockSignals(True)
                 self._content_splitter.setSizes([800, 800])
                 self._content_splitter.blockSignals(False)
                 self._ensure_multiview_transport()
                 center: QWidget = self._content_splitter
             elif use_splitter:
+                self._content_splitter.setChildrenCollapsible(True)
                 # M-mode: wrap viewer + MModeWidget in vertical splitter
                 if self._mmode_active and self._mmode_widget is not None:
                     if self._mmode_vertical_splitter is None:
@@ -1122,6 +1126,20 @@ class MainWindow(QMainWindow):
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
+        if cfg.multiview:
+            # Rebalance only after the splitter has a real on-screen width.
+            # Calling setSizes while it is still hidden can preserve the old
+            # viewer/tool-panel ratio on Windows (especially at high DPI).
+            QTimer.singleShot(0, self._balance_multiview_splitter)
+
+    def _balance_multiview_splitter(self) -> None:
+        if not self._multiview_enabled() or self._content_splitter.count() != 2:
+            return
+        self._content_layout.activate()
+        width = self._content_splitter.contentsRect().width()
+        if width <= 0:
+            return
+        self._content_splitter.setSizes([width, width])
 
     def _clear_content_layout(self) -> None:
         """Backward-compatible alias for tests."""
@@ -1675,14 +1693,20 @@ class MainWindow(QMainWindow):
             pass
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
+        disk_path = dialog.completed_disk_download_path()
         logger.info(
-            "[MW] dialog closed: result=%s downloaded_count=%d total_instances=%d",
+            "[MW] dialog closed: result=%s disk_path=%s downloaded_count=%d total_instances=%d",
             result,
+            disk_path,
             len(downloaded),
             sum(len(s.instances) for st in downloaded for s in st.series),
         )
-        if result:
-            downloaded = dialog.downloaded_studies()
+        if disk_path is not None:
+            # Re-scan the exported short paths so the active StudyMetadata also
+            # points at files that persist after the Orthanc cache is cleaned.
+            # True Study/Series/SOP UIDs are reconstructed from DICOM headers.
+            self._controller.open_folder(disk_path, error_log_path=disk_path / "scan_errors.log")
+        elif result:
             if downloaded:
                 self._controller.load_pre_scanned_studies(downloaded)
             else:
@@ -1858,18 +1882,25 @@ class MainWindow(QMainWindow):
             return self._route_multiview_start(selected, ctrl)
         armed = self._multiview_pending_pane
         self._multiview_pending_pane = None
-        if ctrl:
-            target = PaneId.RIGHT
-        elif armed is not None:
+        session = self._multiview.session
+        # An explicit «Replace clip» choice always wins, even if Ctrl happens
+        # to be held.  Otherwise the first ordinary gallery click fills an
+        # empty B pane when A already has the current clip, so entering
+        # Multiview does not silently replace A again.
+        if armed is not None:
             target = armed
+        elif ctrl:
+            target = PaneId.RIGHT
+        elif session.pane(PaneId.LEFT).has_clip and not session.pane(PaneId.RIGHT).has_clip:
+            target = PaneId.RIGHT
         else:
-            target = self._multiview.session.active_pane or PaneId.LEFT
-        if target is PaneId.LEFT and not ctrl:
+            target = session.active_pane or PaneId.LEFT
+        if target is PaneId.LEFT:
             self._multiview.activate(PaneId.LEFT)
             return False
-        if not self._multiview_load_into_pane(PaneId.RIGHT, selected):
+        if not self._multiview_load_into_pane(target, selected):
             return True
-        self._multiview.activate(PaneId.RIGHT)
+        self._multiview.activate(target)
         self._active_viewer = self._viewer2
         return True
 

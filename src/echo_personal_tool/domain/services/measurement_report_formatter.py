@@ -12,6 +12,7 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
+from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 
 
@@ -90,13 +91,27 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         _optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
         _optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
         _optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
-        _optional_line("Vpeak", doppler.vpeak_cm_s, " cm/s"),
-        _optional_line("PGpeak", doppler.pgpeak_mmhg, " mmHg"),
-        _optional_line("TR Vmax", doppler.tr_vmax_cm_s, " cm/s"),
-        _optional_line("VTI", doppler.vti_cm, " cm"),
-        _optional_line("Vmean", doppler.vmean_cm_s, " cm/s"),
-        _optional_line("PGmean", doppler.pgmean_mmhg, " mmHg"),
     ]
+    for flow in _flow_results_for_display(doppler):
+        field_lines.extend(
+            (
+                _optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s"),
+                _optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
+                _optional_line(f"{flow.site} VTI", flow.vti_cm, " cm"),
+                _optional_line(f"{flow.site} Vmean", flow.vmean_cm_s, " cm/s"),
+                _optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
+            )
+        )
+    for label, value in (
+        ("MV PHT", doppler.mv_pht_ms),
+        ("TV PHT", doppler.tv_pht_ms),
+        ("AR PHT", doppler.ar_pht_ms),
+        ("PR PHT", doppler.pr_pht_ms),
+        ("AV AT", doppler.av_at_ms),
+        ("AV ET", doppler.av_et_ms),
+        ("RVOT AT", doppler.rvot_at_ms),
+    ):
+        field_lines.append(_optional_line(label, value, " ms"))
     lines = [line for line in field_lines if line is not None]
     if not lines:
         return []

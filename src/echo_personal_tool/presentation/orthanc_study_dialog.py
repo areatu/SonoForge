@@ -409,6 +409,10 @@ class OrthancStudyDialog(QDialog):
         self._closed = False
         self._active_workers: list[tuple[QRunnable, QObject]] = []
         self._save_to_disk_path: str = ""
+        # Set only after files were successfully exported.  MainWindow uses
+        # this hand-off to scan/open the short physical paths instead of the
+        # now-discarded UID-based cache tree.
+        self._completed_disk_download_path: Path | None = None
         self._init_timer = QTimer(self)
         self._init_timer.setSingleShot(True)
         self._init_timer.timeout.connect(self._init_network)
@@ -859,6 +863,10 @@ class OrthancStudyDialog(QDialog):
     def downloaded_studies(self) -> list[StudyMetadata]:
         """Return pre-scanned StudyMetadata from download worker (P4)."""
         return self._downloaded_studies
+
+    def completed_disk_download_path(self) -> Path | None:
+        """Return the exported folder to open after a successful disk download."""
+        return self._completed_disk_download_path
 
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         log.info("[DLG] closeEvent: downloading=%s", self._downloading)
@@ -1863,6 +1871,7 @@ class OrthancStudyDialog(QDialog):
         self._downloaded_studies = []
         self._result = None
         self._save_to_disk_path = directory
+        self._completed_disk_download_path = None
         set_button_loading(self._save_disk_btn, True, "…")
         self._cancel_btn.setText(tr("orthanc.cancel_download"))
         self._cancel_btn.setEnabled(True)
@@ -2092,6 +2101,8 @@ class OrthancStudyDialog(QDialog):
                 target_dir = Path(self._save_to_disk_path)
                 try:
                     copied_count = self._copy_session_files(session_dir, target_dir)
+                    if copied_count > 0:
+                        self._completed_disk_download_path = target_dir
                     log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
                 except OSError as exc:
                     # The reset below must run even here: skipping it leaves
@@ -2155,29 +2166,54 @@ class OrthancStudyDialog(QDialog):
 
     @staticmethod
     def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
-        """Export a download session, preserving <study>/<series>/<file>.dcm."""
+        """Export with short physical names: ``Instance/<study #>/<file>``.
+
+        UIDs are identifiers inside the DICOM dataset, not filesystem names.
+        The bytes are copied unchanged, so opening the short paths reconstructs
+        the true Study/Series/SOP UIDs and later server upload uses those header
+        values.  A numeric study directory and a five-character SOP suffix keep
+        Windows 10 paths comfortably below MAX_PATH; deterministic ``-N``
+        suffixes make coincident short names collision-safe.
+        """
+
+        import re
+
+        export_root = target_dir if target_dir.name.casefold() == "instance" else target_dir / "Instance"
+        export_root.mkdir(parents=True, exist_ok=True)
         copied_count = 0
-        for study_dir in session_dir.iterdir():
-            if not study_dir.is_dir():
+        study_dirs = sorted(path for path in session_dir.iterdir() if path.is_dir())
+        for study_index, study_dir in enumerate(study_dirs, start=1):
+            study_target = export_root / str(study_index)
+            files = sorted(path for path in study_dir.rglob("*") if path.is_file() and path.suffix.lower() == ".dcm")
+            if not files:
                 continue
-            study_target = target_dir / study_dir.name
             study_target.mkdir(parents=True, exist_ok=True)
-            for entry in sorted(study_dir.iterdir()):
-                if entry.is_dir():
-                    # Legacy layout: <study>/<series>/<sop>.dcm
-                    files = [(f, entry.name) for f in sorted(entry.glob("*.dcm"))]
-                elif entry.suffix.lower() == ".dcm":
-                    # Current layout: <study>/<sop>.dcm
-                    files = [(entry, None)]
-                else:
-                    continue
-                for dcm_file, legacy_series in files:
-                    series_name = OrthancStudyDialog._series_name_for(dcm_file, legacy_series)
-                    series_target = study_target / series_name if series_name else study_target
-                    series_target.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(dcm_file, series_target / dcm_file.name)
-                    copied_count += 1
+            used_names: set[str] = set()
+            for dcm_file in files:
+                sop_uid = OrthancStudyDialog._sop_uid_for(dcm_file) or dcm_file.stem
+                short_stem = re.sub(r"[^A-Za-z0-9._-]", "_", sop_uid[-5:]).strip(" .") or "image"
+                candidate = f"{short_stem}.dcm"
+                ordinal = 2
+                while candidate.casefold() in used_names or (study_target / candidate).exists():
+                    candidate = f"{short_stem}-{ordinal}.dcm"
+                    ordinal += 1
+                used_names.add(candidate.casefold())
+                shutil.copy2(dcm_file, study_target / candidate)
+                copied_count += 1
         return copied_count
+
+    @staticmethod
+    def _sop_uid_for(dcm_file: Path) -> str:
+        """Read the authoritative SOP UID used to derive a short display name."""
+
+        try:
+            import pydicom
+
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True, force=True)
+            return str(getattr(ds, "SOPInstanceUID", "") or "").strip()
+        except Exception:  # noqa: BLE001
+            log.warning("[DLG] cannot read SOPInstanceUID from %s", dcm_file, exc_info=True)
+            return ""
 
     @staticmethod
     def _series_name_for(dcm_file: Path, legacy_series_name: str | None) -> str:

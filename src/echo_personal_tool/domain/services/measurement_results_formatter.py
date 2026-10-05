@@ -9,7 +9,7 @@ from echo_personal_tool.domain.calculations.chamber_simpson import (
     es_volume_from_view,
 )
 from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY, PERCENT_LABELS
-from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults, MeasurementSnapshot
 from echo_personal_tool.domain.services.indexed_results_formatter import (
     append_indexed_for_overlay,
 )
@@ -22,6 +22,37 @@ _COLOR_ABNORMAL = "#ff6b6b"  # light red for out-of-range values on dark backgro
 _COLOR_NORMAL = "#e8eef4"  # default text color (light on dark)
 _COLOR_LABEL = "#94a3b8"  # dimmed label color
 _COLOR_UNIT = "#94a3b8"  # dimmed unit color
+
+
+def _flow_results_for_display(doppler: DopplerResults) -> tuple[DopplerFlowResult, ...]:
+    """Use specific results, with a compatibility projection for old snapshots."""
+
+    if doppler.flow_results:
+        return doppler.flow_results
+    fallback: list[DopplerFlowResult] = []
+    if any(
+        value is not None
+        for value in (
+            doppler.vpeak_cm_s,
+            doppler.pgpeak_mmhg,
+            doppler.vti_cm,
+            doppler.vmean_cm_s,
+            doppler.pgmean_mmhg,
+        )
+    ):
+        fallback.append(
+            DopplerFlowResult(
+                site="AV",
+                vmax_cm_s=doppler.vpeak_cm_s,
+                pgmax_mmhg=doppler.pgpeak_mmhg,
+                vti_cm=doppler.vti_cm,
+                vmean_cm_s=doppler.vmean_cm_s,
+                pgmean_mmhg=doppler.pgmean_mmhg,
+            )
+        )
+    if doppler.tr_vmax_cm_s is not None:
+        fallback.append(DopplerFlowResult(site="TR", vmax_cm_s=doppler.tr_vmax_cm_s))
+    return tuple(fallback)
 
 
 @_prof
@@ -60,13 +91,24 @@ def format_results_overlay(
         _append(lines, tr("result.s_prime_sept"), ddop.s_prime_sept_cm_s, "cm/s")
         _append(lines, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s")
         _append(lines, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s")
-        _append(lines, tr("result.vpeak"), ddop.vpeak_cm_s, "cm/s")
-        _append(lines, tr("result.pgpeak"), ddop.pgpeak_mmhg, "mmHg")
-        _append(lines, tr("result.tr_vmax"), ddop.tr_vmax_cm_s, "cm/s")
+        for flow in _flow_results_for_display(ddop):
+            _append(lines, f"{flow.site} Vmax", flow.vmax_cm_s, "cm/s")
+            _append(lines, f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg")
+            if time_calibrated:
+                _append(lines, f"{flow.site} VTI", flow.vti_cm, "cm")
+                _append(lines, f"{flow.site} Vmean", flow.vmean_cm_s, "cm/s")
+                _append(lines, f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg")
         if time_calibrated:
-            _append(lines, tr("result.vti"), ddop.vti_cm, "cm")
-            _append(lines, tr("result.vmean"), ddop.vmean_cm_s, "cm/s")
-            _append(lines, tr("result.pgmean"), ddop.pgmean_mmhg, "mmHg")
+            for label, value in (
+                ("MV PHT", ddop.mv_pht_ms),
+                ("TV PHT", ddop.tv_pht_ms),
+                ("AR PHT", ddop.ar_pht_ms),
+                ("PR PHT", ddop.pr_pht_ms),
+                ("AV AT", ddop.av_at_ms),
+                ("AV ET", ddop.av_et_ms),
+                ("RVOT AT", ddop.rvot_at_ms),
+            ):
+                _append(lines, label, value, "ms")
 
     volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
 
@@ -345,13 +387,32 @@ def format_results_overlay_html(
         _html_append(
             parts, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s", param_id="s_prime_rv", sex_male=sex_male
         )
-        _html_append(parts, tr("result.vpeak"), ddop.vpeak_cm_s, "cm/s", sex_male=sex_male)
-        _html_append(parts, tr("result.pgpeak"), ddop.pgpeak_mmhg, "mmHg", sex_male=sex_male)
-        _html_append(parts, tr("result.tr_vmax"), ddop.tr_vmax_cm_s, "cm/s", param_id="tr_vmax", sex_male=sex_male)
+        for flow in _flow_results_for_display(ddop):
+            param_id = "tr_vmax" if flow.site == "TR" else ""
+            _html_append(
+                parts,
+                f"{flow.site} Vmax",
+                flow.vmax_cm_s,
+                "cm/s",
+                param_id=param_id,
+                sex_male=sex_male,
+            )
+            _html_append(parts, f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg", sex_male=sex_male)
+            if time_calibrated:
+                _html_append(parts, f"{flow.site} VTI", flow.vti_cm, "cm", sex_male=sex_male)
+                _html_append(parts, f"{flow.site} Vmean", flow.vmean_cm_s, "cm/s", sex_male=sex_male)
+                _html_append(parts, f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg", sex_male=sex_male)
         if time_calibrated:
-            _html_append(parts, tr("result.vti"), ddop.vti_cm, "cm", sex_male=sex_male)
-            _html_append(parts, tr("result.vmean"), ddop.vmean_cm_s, "cm/s", sex_male=sex_male)
-            _html_append(parts, tr("result.pgmean"), ddop.pgmean_mmhg, "mmHg", sex_male=sex_male)
+            for label, value in (
+                ("MV PHT", ddop.mv_pht_ms),
+                ("TV PHT", ddop.tv_pht_ms),
+                ("AR PHT", ddop.ar_pht_ms),
+                ("PR PHT", ddop.pr_pht_ms),
+                ("AV AT", ddop.av_at_ms),
+                ("AV ET", ddop.av_et_ms),
+                ("RVOT AT", ddop.rvot_at_ms),
+            ):
+                _html_append(parts, label, value, "ms", sex_male=sex_male)
 
     volume_unit = "mL" if snapshot.spacing_calibrated else "px³"
 

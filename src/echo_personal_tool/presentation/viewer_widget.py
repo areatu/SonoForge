@@ -1320,20 +1320,9 @@ class ViewerWidget(QWidget):
         self._timeline_slider.setToolTip(tr("viewer.timeline"))
         if self._current_state is not None:
             self._play_button.setText(tr("viewer.pause") if self._current_state.is_playing else tr("viewer.play"))
-            if self._current_state.total_frames > 0:
-                current = min(
-                    self._current_state.current_frame_index + 1,
-                    self._current_state.total_frames,
-                )
-                self._source_label.setText(
-                    tr(
-                        "viewer.frame_counter",
-                        current=str(current),
-                        total=str(self._current_state.total_frames),
-                    )
-                )
-            else:
-                self._source_label.setText(tr("viewer.frame_none"))
+            total = self._current_state.total_frames
+            current = self._current_state.current_frame_index + 1 if total > 0 else 0
+            self._set_frame_counter_label(current=current, total=total)
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -1958,6 +1947,30 @@ class ViewerWidget(QWidget):
         self._clear_persistent_linear_calipers()
         self._clear_ghost_overlay()
 
+    def _set_frame_counter_label(self, *, current: int, total: int) -> None:
+        """Update the counter while reserving enough width for its largest value."""
+        if total > 0:
+            total = int(total)
+            current = min(max(1, int(current)), total)
+            source_text = tr("viewer.frame_counter", current=str(current), total=str(total))
+            width_text = tr("viewer.frame_counter", current=str(total), total=str(total))
+        else:
+            source_text = tr("viewer.frame_none")
+            width_text = source_text
+
+        margins = self._source_label.contentsMargins()
+        width = (
+            self._source_label.fontMetrics().horizontalAdvance(width_text)
+            + margins.left()
+            + margins.right()
+            + 2 * self._source_label.margin()
+            + 2
+        )
+        if self._source_label.minimumWidth() != width or self._source_label.maximumWidth() != width:
+            self._source_label.setFixedWidth(width)
+        if self._source_label.text() != source_text:
+            self._source_label.setText(source_text)
+
     def set_transport_state(
         self,
         *,
@@ -1991,13 +2004,7 @@ class ViewerWidget(QWidget):
             fps_text = f"FPS: {1000.0 / frame_time_ms:.1f}" if frame_time_ms and frame_time_ms > 0 else "FPS: —"
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)
-            if total > 0:
-                current = min(target + 1, total)
-                source_text = tr("viewer.frame_counter", current=str(current), total=str(total))
-            else:
-                source_text = tr("viewer.frame_none")
-            if self._source_label.text() != source_text:
-                self._source_label.setText(source_text)
+            self._set_frame_counter_label(current=target + 1, total=total)
         except RuntimeError:
             # Widget already destroyed during window teardown.
             return
@@ -2094,17 +2101,8 @@ class ViewerWidget(QWidget):
             fps_text = f"FPS: {viewer_state.fps:.1f}" if viewer_state.fps > 0 else "FPS: —"
             if self._fps_label.text() != fps_text:
                 self._fps_label.setText(fps_text)
-            if viewer_state.total_frames > 0:
-                current = min(viewer_state.current_frame_index + 1, viewer_state.total_frames)
-                source_text = tr(
-                    "viewer.frame_counter",
-                    current=str(current),
-                    total=str(viewer_state.total_frames),
-                )
-            else:
-                source_text = tr("viewer.frame_none")
-            if self._source_label.text() != source_text:
-                self._source_label.setText(source_text)
+            current = viewer_state.current_frame_index + 1 if viewer_state.total_frames > 0 else 0
+            self._set_frame_counter_label(current=current, total=viewer_state.total_frames)
             self._update_timeline_indicator(viewer_state)
             contours_updated = tuple(self._stored_contours) != viewer_state.contours
             if contours_updated:
@@ -2859,16 +2857,7 @@ class ViewerWidget(QWidget):
             self._measurement_label.show()
             return False
         metrics = self._last_committed_doppler_metrics()
-        parts = [f"{trace_label}: {metrics.vti_cm:.1f} cm"]
-        if metrics.vpeak_cm_s is not None:
-            parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
-        if metrics.vmean_cm_s is not None:
-            parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
-        if metrics.pgpeak_mmhg is not None:
-            parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
-        if metrics.pgmean_mmhg is not None:
-            parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
-        self._measurement_label.setText(" | ".join(parts))
+        self._measurement_label.setText(self._doppler_trace_summary(metrics, trace_label))
         self._measurement_label.show()
         return True
 
@@ -2906,16 +2895,7 @@ class ViewerWidget(QWidget):
             self._measurement_label.show()
             return False
         metrics = self._last_committed_doppler_metrics()
-        parts = [f"{trace_label}: {metrics.vti_cm:.1f} cm"]
-        if metrics.vpeak_cm_s is not None:
-            parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
-        if metrics.vmean_cm_s is not None:
-            parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
-        if metrics.pgpeak_mmhg is not None:
-            parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
-        if metrics.pgmean_mmhg is not None:
-            parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
-        self._measurement_label.setText(" | ".join(parts))
+        self._measurement_label.setText(self._doppler_trace_summary(metrics, trace_label))
         self._measurement_label.show()
         return True
 
@@ -3520,19 +3500,33 @@ class ViewerWidget(QWidget):
         if finished:
             label = self._doppler.last_committed_trace_label()
             metrics = self._last_committed_doppler_metrics()
-            parts = [f"{label}: {metrics.vti_cm:.1f} cm"]
-            if metrics.vpeak_cm_s is not None:
-                parts.append(f"Vpeak: {metrics.vpeak_cm_s:.0f} cm/s")
-            if metrics.vmean_cm_s is not None:
-                parts.append(f"Vmean: {metrics.vmean_cm_s:.0f} cm/s")
-            if metrics.pgpeak_mmhg is not None:
-                parts.append(f"PGpeak: {metrics.pgpeak_mmhg:.0f} mmHg")
-            if metrics.pgmean_mmhg is not None:
-                parts.append(f"PGmean: {metrics.pgmean_mmhg:.0f} mmHg")
-            self._measurement_label.setText(" | ".join(parts))
+            self._measurement_label.setText(self._doppler_trace_summary(metrics, label))
         else:
             self._measurement_label.setText(tr("viewer.doppler_trace_finish"))
         return finished
+
+    @staticmethod
+    def _doppler_trace_summary(metrics, trace_label: str) -> str:
+        """Format the transient result overlay with a specific flow label."""
+
+        from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
+
+        site = flow_site_from_trace_label(trace_label) or "AV"
+        flow = metrics.flow(site)
+        if flow is None:
+            return trace_label
+        parts: list[str] = []
+        if flow.vti_cm is not None:
+            parts.append(f"{site} VTI: {flow.vti_cm:.1f} cm")
+        if flow.vmax_cm_s is not None:
+            parts.append(f"{site} Vmax: {flow.vmax_cm_s:.0f} cm/s")
+        if flow.vmean_cm_s is not None:
+            parts.append(f"{site} Vmean: {flow.vmean_cm_s:.0f} cm/s")
+        if flow.pgmax_mmhg is not None:
+            parts.append(f"{site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
+        if flow.pgmean_mmhg is not None:
+            parts.append(f"{site} PGmean: {flow.pgmean_mmhg:.0f} mmHg")
+        return " | ".join(parts) or trace_label
 
     def _last_committed_doppler_metrics(self):
         from echo_personal_tool.domain.calculations.doppler_metrics import compute

@@ -53,22 +53,27 @@ def test_clear_all_removes_all_sessions(tmp_path: Path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
-def test_instance_stored_directly_under_study_dir(tmp_path: Path) -> None:
-    """No series directory level: session/<study>/<sop>."""
+def test_instance_uses_short_hashed_physical_path(tmp_path: Path) -> None:
+    """Full UIDs remain logical identifiers and never lengthen cache paths."""
     cache = OrthancSessionCache(tmp_path)
     session = cache.create_session()
     path = cache.save_instance(session, STUDY_UID, SERIES_UID, SOP_UID, b"DICM")
     assert path.parent == cache.study_path(session, STUDY_UID)
-    assert path.name == f"{SOP_UID}.dcm"
+    assert path.parent.name.startswith("s-")
+    assert path.name.startswith("i-")
+    assert path.name.endswith(".dcm")
+    assert STUDY_UID not in str(path)
+    assert SOP_UID not in str(path)
 
 
 def test_instance_path_fits_windows_max_path(tmp_path: Path) -> None:
-    """Regression: the 4-level UID layout exceeded MAX_PATH (260) -> [Errno 2]."""
+    """Regression: UID directory/file names exceeded MAX_PATH on Windows 10."""
     cache = OrthancSessionCache(tmp_path)
     session = cache.create_session()
-    path = cache.save_instance(session, STUDY_UID, SERIES_UID, SOP_UID, b"DICM")
+    maximal_uid = "1." + "2" * 62
+    path = cache.save_instance(session, maximal_uid, SERIES_UID, maximal_uid, b"DICM")
     reported = Path(_REPORTED_CACHE_ROOT) / path.relative_to(tmp_path)
-    assert len(str(reported)) < 260, f"path too long for Windows: {reported}"
+    assert len(str(reported)) < 180, f"path unexpectedly long: {reported}"
     assert path.exists()
 
 

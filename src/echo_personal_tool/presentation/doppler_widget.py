@@ -14,6 +14,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.domain.doppler_catalog import (
+    INTERVAL_LABELS as _INTERVAL_LABELS,
+)
+from echo_personal_tool.domain.doppler_catalog import (
+    PEAK_LABELS as _PEAK_LABELS,
+)
+from echo_personal_tool.domain.doppler_catalog import (
+    canonical_interval_label,
+    canonical_peak_label,
+)
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
     DopplerMeasurementDTO,
@@ -23,9 +33,6 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.ecg import EcgWaveform
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
-
-_PEAK_LABELS = ("E", "A", "e_sept", "e_lat", "a_sept", "s_sept", "Vmax", "TR Vmax")
-_INTERVAL_LABELS = ("DT", "IVRT", "AT")
 
 
 class DopplerWidget(QWidget):
@@ -188,13 +195,13 @@ class DopplerWidget(QWidget):
     def set_peak_label(self, label: str) -> None:
         """Set the next peak marker label."""
 
-        self._peak_label_index = self._resolve_label_index(label, _PEAK_LABELS)
+        self._peak_label_index = self._resolve_label_index(canonical_peak_label(label), _PEAK_LABELS)
         self._status_label.setText(self._format_tool_status(self._tool_mode))
 
     def set_interval_label(self, label: str) -> None:
         """Set the next interval marker label."""
 
-        self._interval_label_index = self._resolve_label_index(label, _INTERVAL_LABELS)
+        self._interval_label_index = self._resolve_label_index(canonical_interval_label(label), _INTERVAL_LABELS)
         self._status_label.setText(self._format_tool_status(self._tool_mode))
 
     def finish_trace(self) -> bool:
@@ -328,11 +335,16 @@ class DopplerWidget(QWidget):
         self._interval_items.append(interval_item)
 
     def _add_peak_marker(self, time_ms: float, velocity_cm_s: float) -> None:
+        label = self._current_peak_label()
         marker = DopplerPeakMarker(
-            label=self._current_peak_label(),
+            label=label,
             time_ms=float(time_ms),
             velocity_cm_s=float(velocity_cm_s),
         )
+        canonical = canonical_peak_label(label)
+        self._peak_markers = [
+            existing for existing in self._peak_markers if canonical_peak_label(existing.label) != canonical
+        ]
         self._peak_markers.append(marker)
         self._refresh_peak_scatter()
         self._advance_peak_label()
@@ -343,13 +355,22 @@ class DopplerWidget(QWidget):
             start_time_ms = float(self._active_interval_start)
         else:
             start_time_ms = float(end_time_ms)
+        label = self._current_interval_label()
         marker = DopplerIntervalMarker(
-            label=self._current_interval_label(),
+            label=label,
             start_time_ms=float(start_time_ms),
             end_time_ms=float(end_time_ms),
         )
+        canonical = canonical_interval_label(label)
+        self._interval_markers = [
+            existing for existing in self._interval_markers if canonical_interval_label(existing.label) != canonical
+        ]
         self._interval_markers.append(marker)
-        self._add_interval_item(marker)
+        for item in self._interval_items:
+            self._plot.removeItem(item)
+        self._interval_items.clear()
+        for existing in self._interval_markers:
+            self._add_interval_item(existing)
         self._active_interval_start = None
         self._advance_interval_label()
         self._emit_markers_changed()

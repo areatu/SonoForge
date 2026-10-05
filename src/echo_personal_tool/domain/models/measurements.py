@@ -9,8 +9,26 @@ from echo_personal_tool.domain.models.vessel_measurement import VesselMeasuremen
 
 
 @dataclass(frozen=True)
+class DopplerFlowResult:
+    """Computed spectral-Doppler values for one valve or flow region."""
+
+    site: str
+    vmax_cm_s: float | None = None
+    pgmax_mmhg: float | None = None
+    vti_cm: float | None = None
+    vmean_cm_s: float | None = None
+    pgmean_mmhg: float | None = None
+
+
+@dataclass(frozen=True)
 class DopplerResults:
-    """Computed Doppler indices; fields are set only when computable."""
+    """Computed Doppler indices; fields are set only when computable.
+
+    ``flow_results`` is the authoritative valve/flow-specific representation.
+    The historical generic fields remain populated for compatibility with old
+    persisted data and integrations, but new UI code must label them Vmax and
+    PGmax (never Vpeak/PGpeak).
+    """
 
     e_cm_s: float | None = None
     a_cm_s: float | None = None
@@ -37,6 +55,21 @@ class DopplerResults:
     vmean_cm_s: float | None = None
     pgpeak_mmhg: float | None = None
     pgmean_mmhg: float | None = None
+    # Valve/flow-specific values used by current overlays, worksheets/reports.
+    flow_results: tuple[DopplerFlowResult, ...] = ()
+    mv_pht_ms: float | None = None
+    tv_pht_ms: float | None = None
+    ar_pht_ms: float | None = None
+    pr_pht_ms: float | None = None
+    av_at_ms: float | None = None
+    av_et_ms: float | None = None
+    rvot_at_ms: float | None = None
+
+    def flow(self, site: str) -> DopplerFlowResult | None:
+        """Return one site result using case-insensitive lookup."""
+
+        wanted = site.strip().upper()
+        return next((item for item in self.flow_results if item.site.upper() == wanted), None)
 
 
 @dataclass(frozen=True)

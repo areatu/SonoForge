@@ -164,8 +164,12 @@ class TestTwoClipPlayback:
         assert multiview._multiview.session.clips_are_comparable()
 
     def test_headers_show_both_clips(self, multiview, qtbot) -> None:
-        assert multiview._pane_left._file_label.text() == "a4c.dcm"
-        assert multiview._pane_right._file_label.text() == "a2c.dcm"
+        for pane, expected_name in (
+            (multiview._pane_left, "a4c.dcm"),
+            (multiview._pane_right, "a2c.dcm"),
+        ):
+            assert pane._file_label.toolTip() == expected_name
+            assert pane._file_label.text() == expected_name or pane._file_label.text().endswith("…")
         assert "30" in multiview._pane_left._frame_label.text()
         assert "40" in multiview._pane_right._frame_label.text()
 

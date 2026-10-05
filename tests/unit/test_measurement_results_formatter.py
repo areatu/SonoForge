@@ -9,6 +9,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
 )
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
+    DopplerFlowResult,
     DopplerResults,
     LvefResult,
     MeasurementSnapshot,
@@ -101,6 +102,25 @@ def test_overlay_falls_back_to_study_wide_when_display_doppler_none() -> None:
     assert "e' септ: 10.0" in text
     assert "7.5" not in text  # wrong value
     assert "9.0" in text
+
+
+def test_overlay_uses_flow_specific_vmax_and_pgmax_labels() -> None:
+    snapshot = MeasurementSnapshot(
+        doppler=DopplerResults(
+            flow_results=(
+                DopplerFlowResult(site="AR", vmax_cm_s=420.0, pgmax_mmhg=70.6),
+                DopplerFlowResult(site="LVOT", vmax_cm_s=95.0, vti_cm=21.0),
+            )
+        )
+    )
+
+    text = format_results_overlay(snapshot, time_calibrated=True)
+
+    assert "AR Vmax: 420.0 cm/s" in text
+    assert "AR PGmax: 70.6 mmHg" in text
+    assert "LVOT VTI: 21.0 cm" in text
+    assert "Vpeak" not in text
+    assert "PGpeak" not in text
 
 
 def test_overlay_includes_biplane_volumes() -> None:

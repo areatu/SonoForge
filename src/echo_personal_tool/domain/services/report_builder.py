@@ -22,6 +22,7 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
     is_outside_norm,
     linear_norm_for_label,
 )
+from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 
 logger = logging.getLogger(__name__)
@@ -290,7 +291,9 @@ def group_for_label(label: str) -> str:
 
     if tokens & {"tr", "tv", "ts"} or "трикусп" in text or "tricuspid" in text:
         return GROUP_TRICUSPID_VALVE
-    if tokens & {"av", "ava", "annulus", "lvot", "lvotd", "vti", "vpeak", "pgpeak", "vmean", "pgmean"}:
+    if tokens & {"pv", "pr", "rvot", "paat"}:
+        return GROUP_RIGHT_VENTRICLE
+    if tokens & {"av", "ar", "ava", "annulus", "lvot", "lvotd", "vti", "vmax", "pgmax", "vmean", "pgmean"}:
         return GROUP_AORTIC_VALVE
     if text.startswith(("ao ", "ao_")) or "аорт" in text or "aort" in text:
         return GROUP_AORTIC_VALVE
@@ -555,7 +558,7 @@ def build_report_groups(
 
     doppler = snapshot.doppler
     if doppler is not None:
-        doppler_values = (
+        doppler_values = [
             ("E", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             ("A", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             ("E/A", doppler.e_a_ratio, "", GROUP_MITRAL_VALVE),
@@ -570,12 +573,40 @@ def build_report_groups(
             ("E/e' sept", doppler.e_over_e_prime_sept, "", GROUP_MITRAL_VALVE),
             ("E/e' lat", doppler.e_over_e_prime_lat, "", GROUP_MITRAL_VALVE),
             ("e'/a'", doppler.e_prime_over_a_prime, "", GROUP_MITRAL_VALVE),
-            ("Vpeak", doppler.vpeak_cm_s, "cm/s", GROUP_AORTIC_VALVE),
-            ("PGpeak", doppler.pgpeak_mmhg, "mmHg", GROUP_AORTIC_VALVE),
-            ("Vmean", doppler.vmean_cm_s, "cm/s", GROUP_AORTIC_VALVE),
-            ("PGmean", doppler.pgmean_mmhg, "mmHg", GROUP_AORTIC_VALVE),
-            ("VTI", doppler.vti_cm, "cm", GROUP_AORTIC_VALVE),
-            ("TR Vmax", doppler.tr_vmax_cm_s, "cm/s", GROUP_TRICUSPID_VALVE),
+        ]
+        flow_groups = {
+            "MV": GROUP_MITRAL_VALVE,
+            "MR": GROUP_MITRAL_VALVE,
+            "AV": GROUP_AORTIC_VALVE,
+            "LVOT": GROUP_AORTIC_VALVE,
+            "AR": GROUP_AORTIC_VALVE,
+            "TV": GROUP_TRICUSPID_VALVE,
+            "TR": GROUP_TRICUSPID_VALVE,
+            "PV": GROUP_RIGHT_VENTRICLE,
+            "RVOT": GROUP_RIGHT_VENTRICLE,
+            "PR": GROUP_RIGHT_VENTRICLE,
+        }
+        for flow in _flow_results_for_display(doppler):
+            group = flow_groups.get(flow.site, GROUP_OTHER)
+            doppler_values.extend(
+                (
+                    (f"{flow.site} Vmax", flow.vmax_cm_s, "cm/s", group),
+                    (f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg", group),
+                    (f"{flow.site} Vmean", flow.vmean_cm_s, "cm/s", group),
+                    (f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg", group),
+                    (f"{flow.site} VTI", flow.vti_cm, "cm", group),
+                )
+            )
+        doppler_values.extend(
+            (
+                ("MV PHT", doppler.mv_pht_ms, "ms", GROUP_MITRAL_VALVE),
+                ("TV PHT", doppler.tv_pht_ms, "ms", GROUP_TRICUSPID_VALVE),
+                ("AR PHT", doppler.ar_pht_ms, "ms", GROUP_AORTIC_VALVE),
+                ("PR PHT", doppler.pr_pht_ms, "ms", GROUP_RIGHT_VENTRICLE),
+                ("AV AT", doppler.av_at_ms, "ms", GROUP_AORTIC_VALVE),
+                ("AV ET", doppler.av_et_ms, "ms", GROUP_AORTIC_VALVE),
+                ("RVOT AT", doppler.rvot_at_ms, "ms", GROUP_RIGHT_VENTRICLE),
+            )
         )
         for label, value, unit, group in doppler_values:
             decimals = 2 if unit == "" else 1
