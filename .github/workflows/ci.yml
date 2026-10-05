@@ -76,8 +76,28 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          xvfb-run -a pytest tests/unit/ -q --tb=line --no-header \
+          xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
             | python .github/scripts/annotate_pytest_failures.py
+
+      # Linux CI is the single coverage producer/uploader; no separate coverage workflow.
+      - name: Upload coverage report artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          retention-days: 7
+
+      - name: Upload coverage to Coveralls
+        if: runner.os == 'Linux'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.xml
+          format: cobertura
+          flag-name: unittests
 
       # macOS/Windows: run without GUI tests (no xvfb available). Use the same
       # annotation filter as Linux so failing test names are available in checks.
