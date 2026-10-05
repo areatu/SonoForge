@@ -145,9 +145,7 @@ def _integral_velocity_sq_ms(times: list[float], velocities: list[float], start_
     return total
 
 
-def _find_mean_pressure_gradient_from_trace(
-    dto: DopplerMeasurementDTO, site: str | None = None
-) -> float | None:
+def _find_mean_pressure_gradient_from_trace(dto: DopplerMeasurementDTO, site: str | None = None) -> float | None:
     """ASE/EACVI PGmean = (1/T)·∫4·v(t)²dt, averaged over the VTI traces.
 
     The instantaneous Bernoulli gradient is 4·(v/100)² with v in cm/s; this
@@ -193,14 +191,10 @@ def _compute_flow_results(dto: DopplerMeasurementDTO) -> tuple[DopplerFlowResult
     """Compute independent values for every measured valve/flow region."""
 
     measured_sites = {
-        site
-        for site in (flow_site_from_peak_label(peak.label) for peak in dto.peaks)
-        if site is not None
+        site for site in (flow_site_from_peak_label(peak.label) for peak in dto.peaks) if site is not None
     }
     measured_sites.update(
-        site
-        for site in (flow_site_from_trace_label(trace.label) for trace in dto.traces)
-        if site is not None
+        site for site in (flow_site_from_trace_label(trace.label) for trace in dto.traces) if site is not None
     )
 
     results: list[DopplerFlowResult] = []

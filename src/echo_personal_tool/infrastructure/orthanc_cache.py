@@ -116,6 +116,11 @@ class OrthancSessionCache:
         safe_study = safe_uid_path_component(study_uid)
         return self._root / f"session-{session_id}" / self._study_dir_name(safe_study)
 
+    def legacy_study_path(self, session_id: str, study_uid: str) -> Path:
+        """Return the pre-hashing study directory for migration/read compatibility."""
+        safe_study = safe_uid_path_component(study_uid)
+        return self.session_path(session_id) / safe_study
+
     def session_path(self, session_id: str) -> Path:
         return self._root / f"session-{session_id}"
 

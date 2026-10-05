@@ -2184,11 +2184,7 @@ class OrthancStudyDialog(QDialog):
         study_dirs = sorted(path for path in session_dir.iterdir() if path.is_dir())
         for study_index, study_dir in enumerate(study_dirs, start=1):
             study_target = export_root / str(study_index)
-            files = sorted(
-                path
-                for path in study_dir.rglob("*")
-                if path.is_file() and path.suffix.lower() == ".dcm"
-            )
+            files = sorted(path for path in study_dir.rglob("*") if path.is_file() and path.suffix.lower() == ".dcm")
             if not files:
                 continue
             study_target.mkdir(parents=True, exist_ok=True)

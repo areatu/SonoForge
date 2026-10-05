@@ -270,10 +270,7 @@ class MultiViewPaneWidget(QWidget):
             + 2 * self._frame_label.margin()
             + 2
         )
-        if (
-            self._frame_label.minimumWidth() != frame_width
-            or self._frame_label.maximumWidth() != frame_width
-        ):
+        if self._frame_label.minimumWidth() != frame_width or self._frame_label.maximumWidth() != frame_width:
             self._frame_label.setFixedWidth(frame_width)
         self._frame_label.setText(frame_text)
         self._replace_button.setEnabled(True)

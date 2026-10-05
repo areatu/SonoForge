@@ -93,8 +93,5 @@ def test_copy_session_files_resolves_short_name_collisions(tmp_path: Path) -> No
     assert copied == 2
     exported = target / "Instance" / "1"
     assert sorted(path.name for path in exported.glob("*.dcm")) == ["595.3-2.dcm", "595.3.dcm"]
-    uids = {
-        str(pydicom.dcmread(path, stop_before_pixels=True).SOPInstanceUID)
-        for path in exported.glob("*.dcm")
-    }
+    uids = {str(pydicom.dcmread(path, stop_before_pixels=True).SOPInstanceUID) for path in exported.glob("*.dcm")}
     assert uids == {SOP_UID, other_sop_uid}

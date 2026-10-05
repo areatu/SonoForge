@@ -388,9 +388,7 @@ class DopplerOverlayTools(QWidget):
         # Collapse append-only data produced by older versions.  Dict values
         # retain the newest marker for each canonical (alias-aware) label.
         peaks_by_label = {canonical_peak_label(marker.label): marker for marker in dto.peaks}
-        intervals_by_label = {
-            canonical_interval_label(marker.label): marker for marker in dto.intervals
-        }
+        intervals_by_label = {canonical_interval_label(marker.label): marker for marker in dto.intervals}
         self._peak_markers = list(peaks_by_label.values())
         self._interval_markers = list(intervals_by_label.values())
         self._traces = list(dto.traces)
@@ -1161,9 +1159,7 @@ class DopplerOverlayTools(QWidget):
         # legacy ``TRpeak`` is superseded by a new ``TR Vmax`` marker.
         canonical = canonical_peak_label(label)
         self._peak_markers = [
-            existing
-            for existing in self._peak_markers
-            if canonical_peak_label(existing.label) != canonical
+            existing for existing in self._peak_markers if canonical_peak_label(existing.label) != canonical
         ]
         self._peak_markers.append(marker)
         self._refresh_peak_scatter()
@@ -1186,9 +1182,7 @@ class DopplerOverlayTools(QWidget):
         )
         canonical = canonical_interval_label(label)
         self._interval_markers = [
-            existing
-            for existing in self._interval_markers
-            if canonical_interval_label(existing.label) != canonical
+            existing for existing in self._interval_markers if canonical_interval_label(existing.label) != canonical
         ]
         self._interval_markers.append(marker)
         self._redraw_intervals()

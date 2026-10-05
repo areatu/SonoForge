@@ -343,9 +343,7 @@ class DopplerWidget(QWidget):
         )
         canonical = canonical_peak_label(label)
         self._peak_markers = [
-            existing
-            for existing in self._peak_markers
-            if canonical_peak_label(existing.label) != canonical
+            existing for existing in self._peak_markers if canonical_peak_label(existing.label) != canonical
         ]
         self._peak_markers.append(marker)
         self._refresh_peak_scatter()
@@ -365,9 +363,7 @@ class DopplerWidget(QWidget):
         )
         canonical = canonical_interval_label(label)
         self._interval_markers = [
-            existing
-            for existing in self._interval_markers
-            if canonical_interval_label(existing.label) != canonical
+            existing for existing in self._interval_markers if canonical_interval_label(existing.label) != canonical
         ]
         self._interval_markers.append(marker)
         for item in self._interval_items:
