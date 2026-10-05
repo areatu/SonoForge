@@ -944,7 +944,7 @@ class TestDopplerOperations:
             trace_label="VTI MV",
         )
         assert w.finish_doppler_trace() is True
-        assert "VTI MV" in w._measurement_label.text()
+        assert "MV VTI" in w._measurement_label.text()
         assert "10.0 cm" in w._measurement_label.text()
         assert "—" not in w._measurement_label.text()
 

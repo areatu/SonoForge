@@ -374,6 +374,55 @@ class MultiViewController(QObject):
         else:
             self.play()
 
+    def toggle_global_play(self) -> None:
+        """Toggle both panes from the common transport.
+
+        Pane-local buttons remain independent, but the bar below both panes is
+        deliberately global.  In independent mode it starts every loaded cine
+        and, crucially, pauses both the AppController-owned left cine and the
+        locally-clocked right cine regardless of which pane is active.
+        """
+
+        if self.session.playback_mode is not PlaybackMode.INDEPENDENT:
+            self.toggle_play()
+            return
+        if self.any_playback_active():
+            try:
+                self._controller.set_playing(False)
+            except Exception:  # noqa: BLE001 - tolerate small test doubles
+                if self._left_native_playing():
+                    self._controller.toggle_playback()
+            right = self.session.pane(PaneId.RIGHT)
+            right.playing = False
+            self._indep_timer.stop()
+            self.session.is_playing = False
+            self._refresh_ui()
+            return
+
+        left = self.session.pane(PaneId.LEFT)
+        if left.has_clip:
+            try:
+                self._controller.set_playing(True)
+            except Exception:  # noqa: BLE001
+                self._controller.toggle_playback()
+        right = self.session.pane(PaneId.RIGHT)
+        if right.has_clip:
+            self._start_independent_right()
+        self.session.is_playing = left.has_clip or right.playing
+        self._refresh_ui()
+
+    def _start_independent_right(self) -> bool:
+        pane = self.session.pane(PaneId.RIGHT)
+        instance = pane.instance
+        frame_time_ms = instance.frame_time_ms if instance is not None else None
+        if instance is None or not frame_time_ms or frame_time_ms <= 0 or pane.total_frames <= 1:
+            return False
+        pane.playing = True
+        self._indep_origin_ms = self._now_ms()
+        self._indep_start_frame = pane.current_frame
+        self._indep_timer.start()
+        return True
+
     def _toggle_independent_pane(self) -> None:
         """Start/stop the right pane's own playback clock (spec §8.1)."""
         pane = self.session.pane(PaneId.RIGHT)
@@ -384,15 +433,9 @@ class MultiViewController(QObject):
             self.session.is_playing = False
             self._indep_timer.stop()
         else:
-            instance = pane.instance
-            frame_time_ms = instance.frame_time_ms if instance is not None else None
-            if not frame_time_ms or frame_time_ms <= 0 or pane.total_frames <= 1:
+            if not self._start_independent_right():
                 return
-            pane.playing = True
             self.session.is_playing = True
-            self._indep_origin_ms = self._now_ms()
-            self._indep_start_frame = pane.current_frame
-            self._indep_timer.start()
         self._refresh_ui()
 
     def _on_indep_tick(self) -> None:

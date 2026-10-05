@@ -9,8 +9,10 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
+from echo_personal_tool.domain.doppler_catalog import FLOW_SITES
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
+from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 
@@ -30,6 +32,18 @@ class WorksheetRow:
     view: str | None = None
     phase: str | None = None
     children: tuple[WorksheetRow, ...] = ()
+
+
+_DOPPLER_FLOW_ROWS: tuple[WorksheetRow, ...] = tuple(
+    row
+    for site in FLOW_SITES
+    for row in (
+        WorksheetRow(None, f"{site} Vmax", f"dop_{site.lower()}_vmax"),
+        WorksheetRow(None, f"{site} PGmax", f"dop_{site.lower()}_pgmax"),
+        WorksheetRow(None, f"{site} VTI", f"dop_{site.lower()}_vti"),
+        WorksheetRow(None, f"{site} PGmean", f"dop_{site.lower()}_pgmean"),
+    )
+)
 
 
 _WORKSHEET_TREE: tuple[WorksheetRow, ...] = (
@@ -113,13 +127,17 @@ _WORKSHEET_TREE: tuple[WorksheetRow, ...] = (
     ),
     WorksheetRow(
         None,
-        "Doppler — CW / Regurg",
+        "Doppler — valves / flow regions",
         children=(
             WorksheetRow(MeasurementAction.DOPPLER_TRACE, "VTI trace", "dop_vti"),
-            WorksheetRow(None, "Vmax / TR Vmax", "dop_vmax"),
-            WorksheetRow(None, "VTI", "dop_vti_val"),
-            WorksheetRow(None, "PGpeak", "dop_pgpeak"),
-            WorksheetRow(None, "PGmean", "dop_pgmean"),
+            *_DOPPLER_FLOW_ROWS,
+            WorksheetRow(None, "MV PHT", "dop_mv_pht"),
+            WorksheetRow(None, "TV PHT", "dop_tv_pht"),
+            WorksheetRow(None, "AR PHT", "dop_ar_pht"),
+            WorksheetRow(None, "PR PHT", "dop_pr_pht"),
+            WorksheetRow(None, "AV AT", "dop_av_at"),
+            WorksheetRow(None, "AV ET", "dop_av_et"),
+            WorksheetRow(None, "RVOT AT / PAAT", "dop_rvot_at"),
         ),
     ),
     WorksheetRow(
@@ -230,10 +248,22 @@ class MeasurementWorksheet(QWidget):
             self._set_value("rv_s_prime", ddop.s_prime_rv_cm_s, "cm/s")
             self._set_value("dop_dt", ddop.dt_ms, "ms")
             self._set_value("dop_ivrt", ddop.ivrt_ms, "ms")
-            self._set_value("dop_vmax", ddop.tr_vmax_cm_s or ddop.vpeak_cm_s, "cm/s")
-            self._set_value("dop_vti_val", ddop.vti_cm, "cm")
-            self._set_value("dop_pgpeak", ddop.pgpeak_mmhg, "mmHg")
-            self._set_value("dop_pgmean", ddop.pgmean_mmhg, "mmHg")
+            for flow in _flow_results_for_display(ddop):
+                prefix = f"dop_{flow.site.lower()}"
+                self._set_value(f"{prefix}_vmax", flow.vmax_cm_s, "cm/s")
+                self._set_value(f"{prefix}_pgmax", flow.pgmax_mmhg, "mmHg")
+                self._set_value(f"{prefix}_vti", flow.vti_cm, "cm")
+                self._set_value(f"{prefix}_pgmean", flow.pgmean_mmhg, "mmHg")
+            for key, value in (
+                ("dop_mv_pht", ddop.mv_pht_ms),
+                ("dop_tv_pht", ddop.tv_pht_ms),
+                ("dop_ar_pht", ddop.ar_pht_ms),
+                ("dop_pr_pht", ddop.pr_pht_ms),
+                ("dop_av_at", ddop.av_at_ms),
+                ("dop_av_et", ddop.av_et_ms),
+                ("dop_rvot_at", ddop.rvot_at_ms),
+            ):
+                self._set_value(key, value, "ms")
 
         if snapshot.lvef and snapshot.lvef.lvef_percent is not None:
             self._mark_done("lvef_bi")

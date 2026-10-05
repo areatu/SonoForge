@@ -199,6 +199,22 @@ class TestGalleryGuards:
         assert handled is False
         assert window._layout_config.multiview is True
 
+    def test_plain_click_fills_empty_right_pane_when_left_has_current_clip(self, window) -> None:
+        _enable(window)
+        left = window._multiview.session.pane(PaneId.LEFT)
+        left.instance = _instance("left")
+        left.study_uid = "study.1"
+        window._multiview.activate(PaneId.LEFT)
+        with (
+            patch.object(window, "_multiview_study_uid", return_value="study.1"),
+            patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)),
+        ):
+            handled = window._multiview_route_gallery_click(_instance("second"))
+
+        assert handled is True
+        assert window._multiview.session.pane(PaneId.LEFT).instance_uid == "left"
+        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
+
     def test_armed_pane_receives_the_next_click(self, window) -> None:
         _enable(window)
         window._on_multiview_replace_requested(PaneId.RIGHT)

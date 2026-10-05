@@ -7,6 +7,7 @@ the host OS / volume is responsible for at-rest protection.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import threading
@@ -55,16 +56,17 @@ class OrthancSessionCache:
         sop_uid: str,
         data: bytes,
     ) -> Path:
-        # Validate UIDs to prevent path traversal
+        # Validate UIDs to prevent path traversal, but do not put full UIDs in
+        # physical paths.  Their authoritative values remain in the unchanged
+        # DICOM payload and are read back into InstanceMetadata.
         safe_study = safe_uid_path_component(study_uid)
         safe_uid_path_component(series_uid)
         safe_sop = safe_uid_path_component(sop_uid)
-        # Layout: session-<id>/<study UID>/<sop UID>.dcm
-        # The series directory level is intentionally omitted: four levels of
-        # full DICOM UIDs exceed the Windows MAX_PATH limit (260), which made
-        # every write fail with [Errno 2] during real server downloads.
+        # Layout: session-<id>/s-<96-bit digest>/i-<128-bit digest>.dcm.
+        # Collision-resistant digests keep the whole path short even under a
+        # long Windows profile/cache root; series identity stays in the header.
         session_dir = self._root / f"session-{session_id}"
-        path = session_dir / safe_study / f"{safe_sop}.dcm"
+        path = session_dir / self._study_dir_name(safe_study) / self._instance_file_name(safe_sop)
         with self._lock:
             if path.is_symlink():
                 raise OSError("Refusing to write through a symlink in the DICOM cache")
@@ -98,8 +100,21 @@ class OrthancSessionCache:
                 pass
         return path
 
+    @staticmethod
+    def _uid_digest(uid: str, hex_chars: int) -> str:
+        return hashlib.sha256(uid.encode("ascii")).hexdigest()[:hex_chars]
+
+    @classmethod
+    def _study_dir_name(cls, study_uid: str) -> str:
+        return f"s-{cls._uid_digest(study_uid, 24)}"
+
+    @classmethod
+    def _instance_file_name(cls, sop_uid: str) -> str:
+        return f"i-{cls._uid_digest(sop_uid, 32)}.dcm"
+
     def study_path(self, session_id: str, study_uid: str) -> Path:
-        return self._root / f"session-{session_id}" / study_uid
+        safe_study = safe_uid_path_component(study_uid)
+        return self._root / f"session-{session_id}" / self._study_dir_name(safe_study)
 
     def session_path(self, session_id: str) -> Path:
         return self._root / f"session-{session_id}"

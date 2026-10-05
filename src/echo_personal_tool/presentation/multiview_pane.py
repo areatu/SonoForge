@@ -158,7 +158,8 @@ class MultiViewPaneWidget(QWidget):
         self._placeholder.setObjectName("multiviewPlaceholder")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setWordWrap(True)
-        self._placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._placeholder.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._placeholder.setToolTip(self._tr("multiview.pane.replace_tooltip"))
         self._placeholder.hide()
 
         self.set_active(False)
@@ -166,6 +167,7 @@ class MultiViewPaneWidget(QWidget):
         for child in self._viewer_widgets_to_watch():
             child.installEventFilter(self)
         self._viewer._timeline_slider.installEventFilter(self)
+        self._placeholder.installEventFilter(self)
         # a click on the header activates the pane too (spec 10.1)
         header.installEventFilter(self)
 
@@ -306,7 +308,11 @@ class MultiViewPaneWidget(QWidget):
             return
         if not self._in_same_window(slider):
             return
-        offset = slider.mapTo(self, QPoint(0, 0))
+        # ``self`` is not necessarily an ancestor of the slider (the left pane
+        # can wrap the application's pre-existing viewer).  mapTo(self, ...)
+        # therefore triggers QWidget::mapTo() warnings and may return a wrong
+        # offset.  Global coordinates are valid for any widgets in one window.
+        offset = self.mapFromGlobal(slider.mapToGlobal(QPoint(0, 0)))
         left = max(0, offset.x())
         right = max(0, self.width() - left - slider.width())
         if self._marker_left_spacer is not None:
@@ -348,6 +354,9 @@ class MultiViewPaneWidget(QWidget):
             self._sync_marker_alignment()
             self._reposition_placeholder()
         if event.type() == QEvent.Type.MouseButtonPress:
+            if watched is self._placeholder:
+                self.replace_requested.emit(self.pane_id)
+                return True
             if watched is self._viewer or watched in self._viewer_widgets_to_watch() or watched is self._header:
                 self.activated.emit(self.pane_id)
         return super().eventFilter(watched, event)

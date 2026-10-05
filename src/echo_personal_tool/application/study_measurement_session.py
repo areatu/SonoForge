@@ -7,6 +7,11 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, replace
 
+from echo_personal_tool.domain.doppler_catalog import (
+    canonical_interval_label,
+    canonical_peak_label,
+    canonical_trace_label,
+)
 from echo_personal_tool.domain.models import Contour, LinearMeasurement
 from echo_personal_tool.domain.models.doppler import (
     DopplerIntervalMarker,
@@ -25,9 +30,9 @@ def merge_doppler_peaks(
     existing: tuple[DopplerPeakMarker, ...],
     incoming: tuple[DopplerPeakMarker, ...],
 ) -> tuple[DopplerPeakMarker, ...]:
-    by_label = {marker.label: marker for marker in existing}
+    by_label = {canonical_peak_label(marker.label): marker for marker in existing}
     for marker in incoming:
-        by_label[marker.label] = marker
+        by_label[canonical_peak_label(marker.label)] = marker
     return tuple(by_label.values())
 
 
@@ -35,9 +40,9 @@ def merge_doppler_intervals(
     existing: tuple[DopplerIntervalMarker, ...],
     incoming: tuple[DopplerIntervalMarker, ...],
 ) -> tuple[DopplerIntervalMarker, ...]:
-    by_label = {marker.label: marker for marker in existing}
+    by_label = {canonical_interval_label(marker.label): marker for marker in existing}
     for marker in incoming:
-        by_label[marker.label] = marker
+        by_label[canonical_interval_label(marker.label)] = marker
     return tuple(by_label.values())
 
 
@@ -45,9 +50,9 @@ def merge_doppler_traces(
     existing: tuple[DopplerTrace, ...],
     incoming: tuple[DopplerTrace, ...],
 ) -> tuple[DopplerTrace, ...]:
-    by_label = {trace.label: trace for trace in existing}
+    by_label = {canonical_trace_label(trace.label): trace for trace in existing}
     for trace in incoming:
-        by_label[trace.label] = trace
+        by_label[canonical_trace_label(trace.label)] = trace
     return tuple(by_label.values())
 
 

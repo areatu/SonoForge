@@ -129,6 +129,24 @@ class TestPaneSignals:
         pane._replace_button.click()
         assert seen == [PaneId.LEFT]
 
+    def test_clicking_empty_placeholder_arms_that_pane(self, pane) -> None:
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtWidgets import QApplication
+
+        pane.set_header(file_name="—", frame_text="—", has_clip=False, error=None)
+        seen: list[PaneId] = []
+        pane.replace_requested.connect(seen.append)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(4, 4),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(pane._placeholder, event)
+        assert seen == [PaneId.LEFT]
+
     def test_marker_button_emits_its_ordinal(self, pane) -> None:
         seen: list[int] = []
         pane.marker_place_requested.connect(lambda _pane, ordinal: seen.append(ordinal))

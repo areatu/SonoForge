@@ -777,7 +777,7 @@ class MainWindow(QMainWindow):
         if self._multiview_transport is None:
             transport = MultiViewTransportBar()
             transport.mode_changed.connect(self._multiview.set_mode)
-            transport.play_pause_clicked.connect(self._multiview.toggle_play)
+            transport.play_pause_clicked.connect(self._multiview.toggle_global_play)
             transport.stop_clicked.connect(self._multiview.stop)
             transport.rate_changed.connect(self._multiview.set_rate)
             transport.cycle_count_changed.connect(self._multiview.set_cycle_count)
@@ -1675,14 +1675,20 @@ class MainWindow(QMainWindow):
             pass
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
+        disk_path = dialog.completed_disk_download_path()
         logger.info(
-            "[MW] dialog closed: result=%s downloaded_count=%d total_instances=%d",
+            "[MW] dialog closed: result=%s disk_path=%s downloaded_count=%d total_instances=%d",
             result,
+            disk_path,
             len(downloaded),
             sum(len(s.instances) for st in downloaded for s in st.series),
         )
-        if result:
-            downloaded = dialog.downloaded_studies()
+        if disk_path is not None:
+            # Re-scan the exported short paths so the active StudyMetadata also
+            # points at files that persist after the Orthanc cache is cleaned.
+            # True Study/Series/SOP UIDs are reconstructed from DICOM headers.
+            self._controller.open_folder(disk_path, error_log_path=disk_path / "scan_errors.log")
+        elif result:
             if downloaded:
                 self._controller.load_pre_scanned_studies(downloaded)
             else:
@@ -1858,18 +1864,25 @@ class MainWindow(QMainWindow):
             return self._route_multiview_start(selected, ctrl)
         armed = self._multiview_pending_pane
         self._multiview_pending_pane = None
-        if ctrl:
-            target = PaneId.RIGHT
-        elif armed is not None:
+        session = self._multiview.session
+        # An explicit «Replace clip» choice always wins, even if Ctrl happens
+        # to be held.  Otherwise the first ordinary gallery click fills an
+        # empty B pane when A already has the current clip, so entering
+        # Multiview does not silently replace A again.
+        if armed is not None:
             target = armed
+        elif ctrl:
+            target = PaneId.RIGHT
+        elif session.pane(PaneId.LEFT).has_clip and not session.pane(PaneId.RIGHT).has_clip:
+            target = PaneId.RIGHT
         else:
-            target = self._multiview.session.active_pane or PaneId.LEFT
-        if target is PaneId.LEFT and not ctrl:
+            target = session.active_pane or PaneId.LEFT
+        if target is PaneId.LEFT:
             self._multiview.activate(PaneId.LEFT)
             return False
-        if not self._multiview_load_into_pane(PaneId.RIGHT, selected):
+        if not self._multiview_load_into_pane(target, selected):
             return True
-        self._multiview.activate(PaneId.RIGHT)
+        self._multiview.activate(target)
         self._active_viewer = self._viewer2
         return True
 

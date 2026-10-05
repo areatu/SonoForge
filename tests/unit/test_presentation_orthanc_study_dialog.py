@@ -133,6 +133,7 @@ class TestResultData:
 class TestDownloadedStudies:
     def test_empty_initially(self, dialog):
         assert dialog.downloaded_studies() == []
+        assert dialog.completed_disk_download_path() is None
 
     def test_returns_studies(self, dialog):
         study = MagicMock()
@@ -553,6 +554,7 @@ class TestOnDiskDownloadDone:
         assert dialog._downloading is False
         assert dialog._worker is None
         assert dialog._session_id is None
+        assert dialog.completed_disk_download_path() == tmp_path
         mock_accept.assert_called_once()
 
     def test_copy_error_still_resets(self, dialog, tmp_path):
