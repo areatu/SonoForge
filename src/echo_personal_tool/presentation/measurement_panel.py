@@ -20,6 +20,7 @@ from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.models.viewer_state import ViewerState
+from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 
 
@@ -208,13 +209,27 @@ class MeasurementPanel(QWidget):
             self._optional_line("E/e' sept", doppler.e_over_e_prime_sept, decimals=2),
             self._optional_line("E/e' lat", doppler.e_over_e_prime_lat, decimals=2),
             self._optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
-            self._optional_line("TR Vmax", ddop.tr_vmax_cm_s, " cm/s"),
-            self._optional_line("VTI", ddop.vti_cm, " cm"),
-            self._optional_line("Vpeak", ddop.vpeak_cm_s, " cm/s"),
-            self._optional_line("Vmean", ddop.vmean_cm_s, " cm/s"),
-            self._optional_line(tr("panel.pgpeak"), ddop.pgpeak_mmhg, " mmHg"),
-            self._optional_line(tr("panel.pgmean"), ddop.pgmean_mmhg, " mmHg"),
         ]
+        for flow in _flow_results_for_display(ddop):
+            field_lines.extend(
+                (
+                    self._optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s"),
+                    self._optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
+                    self._optional_line(f"{flow.site} VTI", flow.vti_cm, " cm"),
+                    self._optional_line(f"{flow.site} Vmean", flow.vmean_cm_s, " cm/s"),
+                    self._optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
+                )
+            )
+        for label, value in (
+            ("MV PHT", ddop.mv_pht_ms),
+            ("TV PHT", ddop.tv_pht_ms),
+            ("AR PHT", ddop.ar_pht_ms),
+            ("PR PHT", ddop.pr_pht_ms),
+            ("AV AT", ddop.av_at_ms),
+            ("AV ET", ddop.av_et_ms),
+            ("RVOT AT", ddop.rvot_at_ms),
+        ):
+            field_lines.append(self._optional_line(label, value, " ms"))
         lines = [line for line in field_lines if line is not None]
         if not lines:
             return []

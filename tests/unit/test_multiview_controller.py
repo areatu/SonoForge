@@ -248,6 +248,22 @@ class TestIndependentMode:
         rig.mv.toggle_play(None)
         assert rig.mv.session.pane(PaneId.RIGHT).playing is True
 
+    def test_global_transport_starts_and_pauses_both_independent_panes(self, rig) -> None:
+        _load_both(rig)
+
+        rig.mv.toggle_global_play()
+
+        rig.controller.set_playing.assert_called_with(True)
+        assert rig.mv.session.pane(PaneId.RIGHT).playing is True
+        assert rig.mv._indep_timer.isActive() is True
+
+        rig.mv.toggle_global_play()
+
+        rig.controller.set_playing.assert_called_with(False)
+        assert rig.mv.session.pane(PaneId.RIGHT).playing is False
+        assert rig.mv._indep_timer.isActive() is False
+        assert rig.mv.session.is_playing is False
+
     def test_seek_reanchors_the_independent_playback(self, rig) -> None:
         _load_both(rig)
         rig.mv.toggle_play(PaneId.RIGHT)

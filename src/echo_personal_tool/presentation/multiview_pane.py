@@ -8,7 +8,8 @@ through signals, which keeps the two panes symmetric and the state in one place.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -22,6 +23,39 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.models.multiview import EventMarker, PaneId
 from echo_personal_tool.presentation.multiview_marker_strip import MarkerStrip
+
+
+class _ElidingFileLabel(QLabel):
+    """Show long DICOM names without forcing a Multiview pane wider."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = "—"
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.set_elided_text(self._full_text)
+
+    def set_elided_text(self, text: str) -> None:
+        self._full_text = text
+        self._apply_elision()
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt naming)
+        return QSize(0, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        self._apply_elision()
+
+    def _apply_elision(self) -> None:
+        width = max(0, self.contentsRect().width())
+        text = self.fontMetrics().elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideRight,
+            width,
+        )
+        super().setText(text)
+
 
 _PANE_TITLES = {PaneId.LEFT: "A", PaneId.RIGHT: "B"}
 
@@ -69,6 +103,10 @@ class MultiViewPaneWidget(QWidget):
         self._marker_right_spacer: QSpacerItem | None = None
 
         self.setObjectName(f"multiviewPane_{pane_id.value}")
+        # A loaded frame or a long DICOM UID must not become this pane's
+        # minimum width; QSplitter is responsible for allocating both panes.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(0)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
@@ -85,15 +123,20 @@ class MultiViewPaneWidget(QWidget):
         self._letter_label.setObjectName("multiviewPaneLetter")
         header_layout.addWidget(self._letter_label)
 
-        self._file_label = QLabel("—")
+        self._file_label = _ElidingFileLabel()
         self._file_label.setObjectName("multiviewPaneFile")
-        self._file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(self._file_label, 1)
 
         self._view_button = QPushButton("—")
         self._view_button.setObjectName("multiviewPaneView")
         self._view_button.setToolTip(self._tr("multiview.view.tooltip"))
         self._view_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        # Keep the control in one place regardless of whether it shows "—",
+        # A4C, or the longest projection name.
+        widest_view_label = max(VIEW_LABELS, key=self._view_button.fontMetrics().horizontalAdvance)
+        self._view_button.setText(widest_view_label)
+        self._view_button.setFixedWidth(self._view_button.sizeHint().width())
+        self._view_button.setText("—")
         self._view_button.clicked.connect(self._show_view_menu)
         header_layout.addWidget(self._view_button)
 
@@ -158,7 +201,8 @@ class MultiViewPaneWidget(QWidget):
         self._placeholder.setObjectName("multiviewPlaceholder")
         self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder.setWordWrap(True)
-        self._placeholder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._placeholder.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._placeholder.setToolTip(self._tr("multiview.pane.replace_tooltip"))
         self._placeholder.hide()
 
         self.set_active(False)
@@ -166,6 +210,7 @@ class MultiViewPaneWidget(QWidget):
         for child in self._viewer_widgets_to_watch():
             child.installEventFilter(self)
         self._viewer._timeline_slider.installEventFilter(self)
+        self._placeholder.installEventFilter(self)
         # a click on the header activates the pane too (spec 10.1)
         header.installEventFilter(self)
 
@@ -205,9 +250,28 @@ class MultiViewPaneWidget(QWidget):
     def is_active(self) -> bool:
         return self._active
 
-    def set_header(self, *, file_name: str, frame_text: str, has_clip: bool, error: str | None) -> None:
-        self._file_label.setText(file_name)
+    def set_header(
+        self,
+        *,
+        file_name: str,
+        frame_text: str,
+        has_clip: bool,
+        error: str | None,
+        frame_width_text: str | None = None,
+    ) -> None:
+        self._file_label.set_elided_text(file_name)
         self._file_label.setToolTip(error or file_name)
+        width_sample = frame_width_text or frame_text
+        margins = self._frame_label.contentsMargins()
+        frame_width = (
+            self._frame_label.fontMetrics().horizontalAdvance(width_sample)
+            + margins.left()
+            + margins.right()
+            + 2 * self._frame_label.margin()
+            + 2
+        )
+        if self._frame_label.minimumWidth() != frame_width or self._frame_label.maximumWidth() != frame_width:
+            self._frame_label.setFixedWidth(frame_width)
         self._frame_label.setText(frame_text)
         self._replace_button.setEnabled(True)
         # A failed read keeps its message: the pane must not show the previous
@@ -306,7 +370,11 @@ class MultiViewPaneWidget(QWidget):
             return
         if not self._in_same_window(slider):
             return
-        offset = slider.mapTo(self, QPoint(0, 0))
+        # ``self`` is not necessarily an ancestor of the slider (the left pane
+        # can wrap the application's pre-existing viewer).  mapTo(self, ...)
+        # therefore triggers QWidget::mapTo() warnings and may return a wrong
+        # offset.  Global coordinates are valid for any widgets in one window.
+        offset = self.mapFromGlobal(slider.mapToGlobal(QPoint(0, 0)))
         left = max(0, offset.x())
         right = max(0, self.width() - left - slider.width())
         if self._marker_left_spacer is not None:
@@ -348,6 +416,9 @@ class MultiViewPaneWidget(QWidget):
             self._sync_marker_alignment()
             self._reposition_placeholder()
         if event.type() == QEvent.Type.MouseButtonPress:
+            if watched is self._placeholder:
+                self.replace_requested.emit(self.pane_id)
+                return True
             if watched is self._viewer or watched in self._viewer_widgets_to_watch() or watched is self._header:
                 self.activated.emit(self.pane_id)
         return super().eventFilter(watched, event)

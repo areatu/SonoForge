@@ -338,7 +338,7 @@ class AppController(QObject):
         self._study_metrics_auto_filled = False
         self._state_manager.state_changed.connect(self._on_state_changed)
 
-    def _retain_worker(self, worker: FrameLoaderWorker) -> None:
+    def _retain_worker(self, worker: object) -> None:
         """Prevent GC of a QRunnable until its QueuedConnection signals are delivered."""
         # Safety: if too many workers are retained, force-release the oldest
         # to prevent unbounded memory growth (each holds decoded numpy arrays).
@@ -353,7 +353,7 @@ class AppController(QObject):
                 self._live_workers.discard(w)
         self._live_workers.add(worker)
 
-    def _release_worker(self, worker: FrameLoaderWorker, *_args: object) -> None:
+    def _release_worker(self, worker: object, *_args: object) -> None:
         """Release a retained worker after its signals have been processed."""
         self._live_workers.discard(worker)
         if len(self._live_workers) == 0:
@@ -436,6 +436,12 @@ class AppController(QObject):
         logger.info("scan_start root=%s", root)
         self.status_message.emit(tr("status.scanning_folder", path=str(root)))
         worker = ScanWorker(root, error_log_path=error_log_path, parent=self)
+        # The completion handlers below are lambdas delivered through queued
+        # connections.  If QThreadPool auto-deletes the QRunnable immediately
+        # after run(), ``worker.signals`` can die before the main event loop
+        # handles those calls, leaving the UI permanently on “Scanning…”.
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
         generation = self._study_load_generation
         worker.signals.finished.connect(
             lambda studies: self._on_studies_scanned(studies) if generation == self._study_load_generation else None,
@@ -445,6 +451,8 @@ class AppController(QObject):
             lambda message: self._on_scan_failed(message) if generation == self._study_load_generation else None,
             Qt.ConnectionType.QueuedConnection,
         )
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def load_pre_scanned_studies(self, studies: list[StudyMetadata]) -> None:
@@ -4007,6 +4015,11 @@ class AppController(QObject):
             media_format=instance.media_format if instance is not None else "dicom",
             ecg_source_path=ecg_source_path,
         )
+        # As with ScanWorker, the result is delivered by a queued lambda.  Keep
+        # both the QRunnable and its signals QObject alive until the callback is
+        # consumed; otherwise a fast worker may silently lose the GLS result.
+        worker.setAutoDelete(False)
+        self._retain_worker(worker)
         generation = self._study_load_generation
         instance_uid = instance.sop_instance_uid if instance else None
         worker.signals.finished.connect(
@@ -4023,6 +4036,8 @@ class AppController(QObject):
             Qt.ConnectionType.QueuedConnection,
         )
         worker.signals.error.connect(self._on_speckle_tracking_error, Qt.ConnectionType.QueuedConnection)
+        worker.signals.finished.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
+        worker.signals.error.connect(partial(self._release_worker, worker), Qt.ConnectionType.QueuedConnection)
         self._thread_pool.start(worker)
 
     def _on_speckle_tracking_finished(self, result: object) -> None:

@@ -6,6 +6,8 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
+from PySide6.QtWidgets import QSizePolicy
+
 from echo_personal_tool.domain.models.multiview import EventMarker, PaneId, PlaybackMode
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation import multiview_pane
@@ -56,6 +58,46 @@ class TestPaneHeader:
         assert not pane._placeholder.isVisible()
         assert pane._file_label.text() == "a4c.dcm"
         assert pane._frame_label.text() == "3/30"
+
+    def test_long_file_name_elides_without_imposing_a_wide_minimum(self, pane, qtbot) -> None:
+        file_name = "1.2.410.200001.1.1185.2062614048.3.20261001.1195502216.563.8.dcm"
+        pane.set_header(file_name=file_name, frame_text="1/30", has_clip=True, error=None)
+        pane.resize(360, 500)
+        qtbot.wait(10)
+
+        assert pane.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+        assert pane._file_label.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+        assert pane._file_label.minimumSizeHint().width() == 0
+        assert pane._file_label.toolTip() == file_name
+        assert pane._file_label.text() != file_name
+
+    def test_projection_button_does_not_resize_for_different_labels(self, pane) -> None:
+        button_width = pane._view_button.width()
+        assert pane._view_button.minimumWidth() == button_width
+        assert pane._view_button.maximumWidth() == button_width
+
+        for label in VIEW_LABELS:
+            pane._set_view_label(label)
+            assert pane._view_button.width() == button_width
+
+    def test_frame_counter_reserves_width_for_the_whole_clip(self, pane) -> None:
+        width_sample = "120/120 · 3.97 с"
+        pane.set_header(
+            file_name="clip.dcm",
+            frame_text="9/120 · 0.27 с",
+            frame_width_text=width_sample,
+            has_clip=True,
+            error=None,
+        )
+        reserved_width = pane._frame_label.width()
+        pane.set_header(
+            file_name="clip.dcm",
+            frame_text="100/120 · 3.30 с",
+            frame_width_text=width_sample,
+            has_clip=True,
+            error=None,
+        )
+        assert pane._frame_label.width() == reserved_width
 
     def test_load_error_replaces_the_placeholder_text(self, pane) -> None:
         pane.set_header(file_name="a4c.dcm", frame_text="—", has_clip=False, error="Cannot read file")
@@ -127,6 +169,24 @@ class TestPaneSignals:
         seen: list[PaneId] = []
         pane.replace_requested.connect(seen.append)
         pane._replace_button.click()
+        assert seen == [PaneId.LEFT]
+
+    def test_clicking_empty_placeholder_arms_that_pane(self, pane) -> None:
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QMouseEvent
+        from PySide6.QtWidgets import QApplication
+
+        pane.set_header(file_name="—", frame_text="—", has_clip=False, error=None)
+        seen: list[PaneId] = []
+        pane.replace_requested.connect(seen.append)
+        event = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(4, 4),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(pane._placeholder, event)
         assert seen == [PaneId.LEFT]
 
     def test_marker_button_emits_its_ordinal(self, pane) -> None:

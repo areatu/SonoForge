@@ -17,6 +17,7 @@ from echo_personal_tool.domain.models.linear_measurement import (
 )
 from echo_personal_tool.domain.models.measurements import (
     ChamberSimpsonResult,
+    DopplerFlowResult,
     DopplerResults,
     IndexedMeasurements,
     LaVolumeResult,
@@ -57,6 +58,7 @@ __all__ = [
     "DopplerIntervalMarker",
     "DopplerMeasurementDTO",
     "DopplerPeakMarker",
+    "DopplerFlowResult",
     "DopplerResults",
     "DopplerTrace",
     "EcEDFrameMapping",

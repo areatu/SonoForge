@@ -509,42 +509,54 @@ class OrthancDownloadWorker(QRunnable):
         """Parse DICOM headers from saved files to build StudyMetadata."""
         import pydicom
 
-        study_dir = self._cache.study_path(self._session_id, self._study_uid)
-        if not study_dir.is_dir():
+        study_dirs = tuple(
+            path
+            for path in (
+                self._cache.study_path(self._session_id, self._study_uid),
+                self._cache.legacy_study_path(self._session_id, self._study_uid),
+            )
+            if path.is_dir()
+        )
+        if not study_dirs:
             return []
 
         instances_by_series: dict[str, list[InstanceMetadata]] = defaultdict(list)
+        seen_instance_uids: set[str] = set()
         study_datetime: datetime | None = None
 
-        for entry in sorted(study_dir.iterdir()):
-            if entry.is_dir():
-                # Legacy layout: session/<study>/<series>/<sop>.dcm
-                candidates = sorted(entry.glob("*.dcm"))
-            elif entry.suffix.lower() == ".dcm":
-                # Current layout: session/<study>/<sop>.dcm
-                candidates = [entry]
-            else:
-                continue
-            for dcm_path in candidates:
-                try:
-                    validate_dicom_header(dcm_path)
-                    ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
-                    instance = map_instance_metadata(ds, path=dcm_path)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Skipping instance file %s: %s", dcm_path, exc)
+        for study_dir in study_dirs:
+            for entry in sorted(study_dir.iterdir()):
+                if entry.is_dir():
+                    # Legacy layout: session/<study>/<series>/<sop>.dcm
+                    candidates = sorted(entry.glob("*.dcm"))
+                elif entry.suffix.lower() == ".dcm":
+                    # Current layout: session/<hashed-study>/<hashed-sop>.dcm
+                    candidates = [entry]
+                else:
                     continue
-                instances_by_series[instance.series_uid].append(instance)
-                if study_datetime is None:
+                for dcm_path in candidates:
                     try:
-                        study_datetime = parse_study_datetime(ds)
-                    except Exception:
-                        pass
+                        validate_dicom_header(dcm_path)
+                        ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True, force=True)
+                        instance = map_instance_metadata(ds, path=dcm_path)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Skipping instance file %s: %s", dcm_path, exc)
+                        continue
+                    if instance.sop_instance_uid in seen_instance_uids:
+                        continue
+                    seen_instance_uids.add(instance.sop_instance_uid)
+                    instances_by_series[instance.series_uid].append(instance)
+                    if study_datetime is None:
+                        try:
+                            study_datetime = parse_study_datetime(ds)
+                        except Exception:
+                            pass
 
         if not instances_by_series:
             return []
 
         if study_datetime is None:
-            study_datetime = datetime.fromtimestamp(study_dir.stat().st_mtime)
+            study_datetime = datetime.fromtimestamp(study_dirs[0].stat().st_mtime)
 
         series_list: list[SeriesMetadata] = []
         for series_uid, instances in instances_by_series.items():

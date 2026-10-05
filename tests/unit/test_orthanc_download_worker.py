@@ -85,8 +85,11 @@ def test_download_saves_instances_and_emits_done(tmp_path: Path) -> None:
     capture.connect(worker)
     worker.run()
 
-    expected_path = tmp_path / f"session-{session_id}" / STUDY_UID / f"{INSTANCE_UID}.dcm"
-    assert expected_path.exists()
+    saved_paths = list(cache.study_path(session_id, STUDY_UID).glob("*.dcm"))
+    assert len(saved_paths) == 1
+    expected_path = saved_paths[0]
+    assert STUDY_UID not in str(expected_path)
+    assert INSTANCE_UID not in expected_path.name
     assert expected_path.read_bytes()[128:132] == b"DICM"
     assert capture.progress
     assert capture.progress[-1][0] == capture.progress[-1][1]  # current == total

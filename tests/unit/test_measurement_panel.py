@@ -68,7 +68,7 @@ def test_measurement_panel_displays_computed_snapshot(qtbot) -> None:
     assert "Допплер" in text
     assert "E: 85.0 cm/s" in text
     assert "E/A: 1.40" in text
-    assert "РГпик: 25.0 mmHg" in text
+    assert "AV PGmax: 25.0 mmHg" in text
     assert "Объёмы ЛЖ (Simpson)" in text
     assert "КДО ЛЖ 4C" in text
     assert "КСО ЛЖ 4C" in text

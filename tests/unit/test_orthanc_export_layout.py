@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import pydicom
 from pydicom.dataset import Dataset
 
 from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDialog
@@ -56,7 +57,13 @@ def test_copy_session_files_flat_layout(tmp_path: Path) -> None:
     copied = OrthancStudyDialog._copy_session_files(session_dir, target)
 
     assert copied == 1
-    assert (target / STUDY_UID / SERIES_UID / f"{SOP_UID}.dcm").is_file()
+    exported = target / "Instance" / "1" / "595.3.dcm"
+    assert exported.is_file()
+    ds = pydicom.dcmread(exported, stop_before_pixels=True)
+    assert str(ds.StudyInstanceUID) == STUDY_UID
+    assert str(ds.SeriesInstanceUID) == SERIES_UID
+    assert str(ds.SOPInstanceUID) == SOP_UID
+    assert len(str(exported)) < len(str(study_dir / f"{SOP_UID}.dcm"))
 
 
 def test_copy_session_files_legacy_layout(tmp_path: Path) -> None:
@@ -69,4 +76,22 @@ def test_copy_session_files_legacy_layout(tmp_path: Path) -> None:
     copied = OrthancStudyDialog._copy_session_files(session_dir, target)
 
     assert copied == 1
-    assert (target / STUDY_UID / SERIES_UID / f"{SOP_UID}.dcm").is_file()
+    assert (target / "Instance" / "1" / "595.3.dcm").is_file()
+
+
+def test_copy_session_files_resolves_short_name_collisions(tmp_path: Path) -> None:
+    session_dir = tmp_path / "session"
+    study_dir = session_dir / "short-study"
+    study_dir.mkdir(parents=True)
+    other_sop_uid = "1.2.3.595.3"
+    (study_dir / "first.dcm").write_bytes(_dicom_bytes(STUDY_UID, SERIES_UID, SOP_UID))
+    (study_dir / "second.dcm").write_bytes(_dicom_bytes(STUDY_UID, SERIES_UID, other_sop_uid))
+
+    target = tmp_path / "export"
+    copied = OrthancStudyDialog._copy_session_files(session_dir, target)
+
+    assert copied == 2
+    exported = target / "Instance" / "1"
+    assert sorted(path.name for path in exported.glob("*.dcm")) == ["595.3-2.dcm", "595.3.dcm"]
+    uids = {str(pydicom.dcmread(path, stop_before_pixels=True).SOPInstanceUID) for path in exported.glob("*.dcm")}
+    assert uids == {SOP_UID, other_sop_uid}

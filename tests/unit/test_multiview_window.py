@@ -65,6 +65,15 @@ class TestEntryPoints:
         assert window._pane_right is not None
         assert window._viewer2 is not None
 
+    def test_entry_balances_both_panes_after_the_splitter_is_shown(self, window, qtbot) -> None:
+        _enable(window)
+        qtbot.wait(10)
+
+        sizes = window._content_splitter.sizes()
+        assert window._content_splitter.childrenCollapsible() is False
+        assert len(sizes) == 2
+        assert abs(sizes[0] - sizes[1]) <= 2
+
     def test_layout_menu_checkbox_stays_in_sync(self, window) -> None:
         window._on_layout_toggle("multiview", True)
         assert window._system_bar._btn_multiview.isChecked() is True
@@ -198,6 +207,22 @@ class TestGalleryGuards:
             handled = window._multiview_route_gallery_click(_instance("plain"))
         assert handled is False
         assert window._layout_config.multiview is True
+
+    def test_plain_click_fills_empty_right_pane_when_left_has_current_clip(self, window) -> None:
+        _enable(window)
+        left = window._multiview.session.pane(PaneId.LEFT)
+        left.instance = _instance("left")
+        left.study_uid = "study.1"
+        window._multiview.activate(PaneId.LEFT)
+        with (
+            patch.object(window, "_multiview_study_uid", return_value="study.1"),
+            patch("PySide6.QtWidgets.QApplication.keyboardModifiers", return_value=MagicMock(__and__=lambda *a: False)),
+        ):
+            handled = window._multiview_route_gallery_click(_instance("second"))
+
+        assert handled is True
+        assert window._multiview.session.pane(PaneId.LEFT).instance_uid == "left"
+        assert window._multiview.session.pane(PaneId.RIGHT).instance_uid == "second"
 
     def test_armed_pane_receives_the_next_click(self, window) -> None:
         _enable(window)
