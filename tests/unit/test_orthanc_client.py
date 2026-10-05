@@ -267,3 +267,61 @@ class TestErrorHandling:
                 client.query_studies()
         finally:
             client.close()
+
+
+class TestTlsWarning:
+    """py/request-without-cert-validation: the opt-out must be loud."""
+
+    def test_disabling_verification_is_logged(self, caplog):
+        import logging
+
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with caplog.at_level(logging.WARNING, logger="echo_personal_tool.infrastructure.orthanc_client"):
+            OrthancDicomWebClient("http://orthanc:8042", tls_verify=False)
+        assert any("verification is DISABLED" in record.message for record in caplog.records)
+
+    def test_verification_on_logs_nothing(self, caplog):
+        import logging
+
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with caplog.at_level(logging.WARNING, logger="echo_personal_tool.infrastructure.orthanc_client"):
+            OrthancDicomWebClient("http://orthanc:8042")
+        assert not any("DISABLED" in record.message for record in caplog.records)
+
+    def test_ca_bundle_keeps_verification_on(self, caplog):
+        """A CA bundle is the alternative to disabling verification."""
+        import logging
+
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with (
+            caplog.at_level(logging.WARNING, logger="echo_personal_tool.infrastructure.orthanc_client"),
+            patch("httpx.Client") as mock_client,
+        ):
+            OrthancDicomWebClient(
+                "http://orthanc:8042",
+                tls_verify=False,
+                tls_ca_path="/etc/ssl/certs/hospital.pem",
+            )
+        assert not any("DISABLED" in record.message for record in caplog.records)
+        # Verification stays on, pinned to the hospital CA bundle.
+        assert mock_client.call_args_list[0].kwargs["verify"] == "/etc/ssl/certs/hospital.pem"
+
+    def test_ca_bundle_from_settings_reaches_the_client(self):
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+        from echo_personal_tool.infrastructure.server_settings import ServerSettings
+
+        with patch("httpx.Client") as mock_client:
+            OrthancDicomWebClient.from_settings(
+                ServerSettings(url="https://pacs.local:8042", tls_verify=False, tls_ca_path="/ca.pem")
+            )
+        assert mock_client.call_args_list[0].kwargs["verify"] == "/ca.pem"
+
+    def test_disabled_verification_without_bundle_stays_false(self):
+        from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
+
+        with patch("httpx.Client") as mock_client:
+            OrthancDicomWebClient("http://orthanc:8042", tls_verify=False)
+        assert mock_client.call_args_list[0].kwargs["verify"] is False

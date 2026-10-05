@@ -15,6 +15,7 @@ from echo_personal_tool.domain.models.orthanc import (
     SeriesInfo,
     StowResult,
     StudyInfo,
+    StudyStatistics,
 )
 
 
@@ -87,6 +88,30 @@ class DicomWebClient(Protocol):
     def download_instance(self, study_uid: str, series_uid: str, instance_uid: str) -> bytes: ...
 
     def stow_instances(self, dicom_files: list[bytes]) -> StowResult: ...
+
+    # ── Optional enrichment (implementations may raise NotImplementedError
+    # or return an empty value; the loader degrades gracefully) ─────────
+    def fetch_preview(
+        self,
+        study_uid: str,
+        series_uid: str,
+        instance_uid: str = "",
+        *,
+        width: int = 0,
+        height: int = 0,
+        middle_frame: bool = False,
+    ) -> bytes:
+        """Rendered JPEG/PNG preview of a series (empty bytes when unavailable).
+
+        ``middle_frame`` asks for a frame from the middle of a loop instead of
+        the first one — the caller uses it when the first attempt came back
+        blank.  Implementations may ignore the hint.
+        """
+        ...
+
+    def study_statistics(self, study_uid: str) -> StudyStatistics:
+        """Sizes/status of a study (empty StudyStatistics when unavailable)."""
+        ...
 
 
 class CMoveResult:

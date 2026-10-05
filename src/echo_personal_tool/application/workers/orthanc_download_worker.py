@@ -25,6 +25,7 @@ from echo_personal_tool.infrastructure.dicom_metadata_mapper import (
     parse_study_datetime,
 )
 from echo_personal_tool.infrastructure.dicom_validator import validate_dicom_header
+from echo_personal_tool.infrastructure.fake_dicom_web_client import FakeDicomWebClient
 from echo_personal_tool.infrastructure.instance_sort import sort_instances, sort_series_list
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancCacheQuotaExceeded, OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import (
@@ -344,8 +345,12 @@ class OrthancDownloadWorker(QRunnable):
                 except Exception:  # noqa: BLE001
                     pass
 
-    def _make_thread_client(self) -> OrthancDicomWebClient:
+    def _make_thread_client(self) -> DicomWebClient:
         if self._server_settings is not None:
+            if self._server_settings.use_mock:
+                # Demo/mock mode: the download must talk to the in-process
+                # fake client too, otherwise "load" silently hits the network.
+                return FakeDicomWebClient()
             download_timeout = max(self._server_settings.network_timeout * 2, 60.0)
             return OrthancDicomWebClient.from_settings(self._server_settings, timeout=download_timeout)
         return OrthancDicomWebClient(
@@ -355,7 +360,7 @@ class OrthancDownloadWorker(QRunnable):
             timeout=60.0,
         )
 
-    def _get_or_create_download_client(self) -> OrthancDicomWebClient:
+    def _get_or_create_download_client(self) -> DicomWebClient:
         """Get or create a thread-local client for WADO-RS downloads.
 
         Each ThreadPoolExecutor thread gets its own client with a persistent
