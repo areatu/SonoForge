@@ -51,6 +51,7 @@ Exit: ``F10`` anywhere, or the Presenter button in the system bar.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -74,6 +75,8 @@ from echo_personal_tool.presentation.viewer_widget import ViewerWidget
 
 #: Distance from the top edge (px) that reveals the system bar — used by
 #: the fullscreen kiosk mode in MainWindow; kept here for a single home.
+logger = logging.getLogger(__name__)
+
 TOP_EDGE_REVEAL_PX = 8
 
 #: Tick for the laser-pointer overlay (ms).
@@ -520,12 +523,12 @@ class PresenterWindow(QWidget):
         ):
             try:
                 self._viewer._view.removeItem(item)
-            except (RuntimeError, Exception):  # noqa: BLE001 — teardown-safe
-                pass
+            except Exception:  # noqa: BLE001 — teardown-safe
+                logger.debug("Could not remove a presenter overlay during teardown", exc_info=True)
         try:
             self._viewer.disconnect_display_controls()
         except Exception:
-            pass
+            logger.debug("Could not disconnect presenter display controls", exc_info=True)
         self.close()
 
     # ── laser pointer mapping ───────────────────────────────────────
@@ -876,18 +879,18 @@ class PresenterMode(QObject):
         try:
             viewer._controller_ref = self._host._controller
         except AttributeError:
-            pass
+            logger.debug("Presenter viewer has no controller reference hook")
         try:
             viewer.set_scroll_debounce_ms(self._host._controller.playback_config.scroll_debounce_ms)
         except Exception:
-            pass
+            logger.debug("Could not set presenter viewer scroll debounce", exc_info=True)
         # The same W/L/DR sliders drive both viewers — live tone
         # adjustments reach the audience immediately.
         try:
             controls = self._host._tool_panel.controls
             viewer.bind_display_controls(controls.window_slider, controls.level_slider, controls.dr_slider)
         except Exception:
-            pass
+            logger.debug("Could not bind presenter display controls", exc_info=True)
         self._window = window
         window.start()
 
@@ -1381,7 +1384,7 @@ class PresenterMode(QObject):
         try:
             self._host._presenter_active_changed(self.active)
         except Exception:
-            pass
+            logger.debug("Could not notify the main window of Presenter state", exc_info=True)
 
     def _on_window_destroyed(self, *args) -> None:  # noqa: ANN002
         # Window destroyed externally (WM close during shutdown, etc.).
@@ -1518,10 +1521,10 @@ class PresenterMode(QObject):
 
             save_user_preferences(preferences)
         except Exception:
-            pass
+            logger.warning("Could not save Presenter preferences", exc_info=True)
 
     def _show_status(self, message: str) -> None:
         try:
             self._host._show_status(message)
         except Exception:
-            pass
+            logger.debug("Could not forward Presenter status during teardown", exc_info=True)

@@ -7,6 +7,7 @@ so ``k_constant = 5.0`` (Hz per pixel). This script loads "PW <N> Hz.dcm" and
 ``samsung_tick_calibration.json``.
 """
 
+# ruff: noqa: T201 -- this training utility prints its command-line report.
 from __future__ import annotations
 
 import re

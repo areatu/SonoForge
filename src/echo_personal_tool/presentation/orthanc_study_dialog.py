@@ -60,7 +60,7 @@ from echo_personal_tool.domain.services.patient_display import (
     format_relative_day,
     format_size_mb,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.orthanc_client import OrthancDicomWebClient
 from echo_personal_tool.infrastructure.profile import qsettings_for
@@ -894,7 +894,7 @@ class OrthancStudyDialog(QDialog):
         try:
             self._release_client()
         except Exception:  # noqa: BLE001
-            pass
+            log.debug("Could not release the DICOMweb client when accepting the dialog", exc_info=True)
         self._shutdown()
         hide_dialog_animated(self, on_done=super().accept)
 
@@ -1570,8 +1570,8 @@ class OrthancStudyDialog(QDialog):
             self._summary_label.setText(tr("orthanc.selection_empty"))
             return
         parts = [
-            tr("orthanc.summary_studies", count=studies),
-            tr("orthanc.summary_series", count=series),
+            tr_plural("orthanc.summary_studies", studies),
+            tr_plural("orthanc.summary_series", series),
         ]
         if size_known and size_mb > 0:
             parts.append(f"≈ {format_size_mb(size_mb)}")

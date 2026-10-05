@@ -150,7 +150,7 @@ def _probe_gl_renderer() -> str | None:
             if surface is not None:
                 surface.destroy()
         except Exception:  # noqa: BLE001
-            pass
+            _LOG.debug("OpenGL probe resources could not be released", exc_info=True)
 
 
 def classify_renderer(renderer: str | None) -> tuple[bool, str]:

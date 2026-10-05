@@ -7,15 +7,20 @@ import os
 import sys
 from pathlib import Path
 
-# Windows timer resolution: request 1ms granularity for PreciseTimer.
-# Cleaned up on app exit to allow OS idle states.
-if sys.platform == "win32":
+_LOG = logging.getLogger(__name__)
+
+
+def _begin_winmm() -> None:
+    """Request 1ms timer resolution for Qt PreciseTimer on Windows."""
+    if sys.platform != "win32":
+        return
     try:
         import ctypes
 
         ctypes.windll.winmm.timeBeginPeriod(1)
-    except Exception:
-        pass
+    except (AttributeError, OSError) as exc:
+        _LOG.debug("Could not request Windows 1ms timer resolution (%s)", type(exc).__name__)
+
 
 # Memory diagnostics: log top allocations every 10s when ECHO_FREEZE_DIAG=1
 if os.environ.get("ECHO_FREEZE_DIAG") == "1":
@@ -67,50 +72,6 @@ os.environ.setdefault(
     "kf.sonnet*=false;kf.sonnet.clients.hspell=false;kf.service.sycoca=false",
 )
 
-logging.basicConfig(
-    level=logging.WARNING,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-for _logger_name in ("pylibjpeg", "pylibjpeg.utils", "pydicom"):
-    logging.getLogger(_logger_name).setLevel(logging.ERROR)
-if os.environ.get("ECHO_DEBUG"):
-    logging.getLogger("echo_personal_tool").setLevel(logging.DEBUG)
-
-# ── Diagnostic file logging for the server download pipeline ──
-# Writes DEBUG-level logs from download/query modules to diag.log so partial
-# study loads (e.g. "15 of 85 instances") can be diagnosed without console capture.
-_DIAG_LOGGERS = (
-    "echo_personal_tool.application.workers.orthanc_download_worker",
-    "echo_personal_tool.application.services.dicom_retrieve_service",
-    "echo_personal_tool.application.dicom_query_service",
-    "echo_personal_tool.infrastructure.orthanc_client",
-    "echo_personal_tool.infrastructure.dimse_client",
-    "echo_personal_tool.infrastructure.embedded_storage_scp",
-    "echo_personal_tool.infrastructure.dicom_metadata_mapper",
-    "echo_personal_tool.presentation.orthanc_study_dialog",
-)
-from echo_personal_tool.infrastructure.paths import (
-    logs_dir as _resolve_diag_log_dir,
-)
-from echo_personal_tool.infrastructure.paths import (
-    migrate_legacy_paths as _migrate_legacy_paths,
-)
-
-_PATH_MIGRATION_WARNINGS = _migrate_legacy_paths()
-_diag_log_dir = _resolve_diag_log_dir()
-try:
-    _diag_log_dir.mkdir(parents=True, exist_ok=True)
-    _diag_handler = logging.FileHandler(str(_diag_log_dir / "diag.log"), mode="w", encoding="utf-8")
-    _diag_handler.setLevel(logging.DEBUG)
-    _diag_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-    for _logger_name in _DIAG_LOGGERS:
-        logging.getLogger(_logger_name).setLevel(logging.DEBUG)
-        logging.getLogger(_logger_name).addHandler(_diag_handler)
-except OSError:
-    pass
-for _migration_warning in _PATH_MIGRATION_WARNINGS:
-    logging.getLogger(__name__).warning("Path migration: %s", _migration_warning)
-
 # ── First-run environment check ──
 # When running outside PyInstaller and outside a venv, check if deps/models
 # are available.  The bash launcher (sonoforge) handles this for normal installs;
@@ -126,7 +87,7 @@ if not _is_frozen and not _is_presenter():
         )
 
         if not check_deps():
-            print(
+            print(  # noqa: T201 - CLI dependency error is written to stderr
                 "SonoForge: missing Python dependencies.\n"
                 "Run the launcher: /opt/sonoforge/sonoforge\n"
                 "Or install: pip install -e .",
@@ -154,7 +115,7 @@ def _cleanup_winmm() -> None:
 
             ctypes.windll.winmm.timeEndPeriod(1)
         except Exception:
-            pass
+            _LOG.debug("Could not restore Windows timer resolution", exc_info=True)
 
 
 def _schedule_reference_preload(window: MainWindow) -> None:
@@ -190,18 +151,28 @@ def main() -> int:
     if "--version" in sys.argv or "-V" in sys.argv:
         from echo_personal_tool import __version__
 
-        print(f"{display_name()} {__version__}")
+        print(f"{display_name()} {__version__}")  # noqa: T201 - CLI output
         return 0
 
-    patch_pyqtgraph_export_dialog()
     # QtWebEngine (web reference viewer) and the pyqtgraph QOpenGLWidget must
-    # share OpenGL contexts. Without this, on Windows the web view's context
-    # (ANGLE/D3D) and the viewer's desktop-GL context fight over the default
-    # framebuffer and the viewer ends up showing a live, horizontally-mirrored,
-    # color-inverted copy of the main window. Must be set before QApplication.
+    # share OpenGL contexts. This attribute has to be set before QApplication.
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName(display_name())
+
+    from echo_personal_tool.infrastructure.logging_setup import configure_logging
+
+    configure_logging(app)
+    _begin_winmm()
+    try:
+        return _run_application(app, has_ai_segmentation, has_reference_ui)
+    finally:
+        _cleanup_winmm()
+
+
+def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui) -> int:  # noqa: ANN001
+    """Configure optional features and enter Qt's event loop."""
+    patch_pyqtgraph_export_dialog()
 
     # OpenGL for the pyqtgraph viewport - only when a real GPU backs it. On software GL
     # (llvmpipe in a VM, WARP over RDP, GDI Generic without a driver) the GL viewport is
@@ -218,7 +189,7 @@ def main() -> int:
         use_opengl, _reason = detect_opengl_capability()
         pg.setConfigOptions(useOpenGL=use_opengl)
     except Exception:
-        pass
+        _LOG.warning("OpenGL capability probe failed; Qt's default renderer will be used", exc_info=True)
 
     # Set application icon (window icon + taskbar)
     from PySide6.QtGui import QIcon
@@ -240,7 +211,7 @@ def main() -> int:
             if not check_models():
                 show_setup_dialog()
         except Exception:
-            pass
+            _LOG.exception("Could not check or prepare optional AI models; continuing without setup")
     ensure_bundled_fonts_loaded()
     preferences = load_user_preferences()
     from echo_personal_tool.infrastructure.i18n import set_language
@@ -257,7 +228,6 @@ def main() -> int:
     if has_reference_ui():
         _schedule_reference_preload(window)
     result = app.exec()
-    _cleanup_winmm()
     if is_enabled():
         print_summary()
     return result

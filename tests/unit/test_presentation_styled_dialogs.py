@@ -44,6 +44,33 @@ def _make_mockFileDialog(*, accepted=False):
 
 
 class TestStyleDialog:
+    def test_button_box_is_localized_and_reloads_with_language(self):
+        from PySide6.QtWidgets import QApplication, QDialogButtonBox
+
+        from echo_personal_tool.infrastructure.i18n import get_language, set_language
+        from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box
+
+        previous_language = get_language()
+        box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Close
+        )
+        try:
+            localize_dialog_button_box(box)
+            set_language("ru")
+            assert box.button(QDialogButtonBox.StandardButton.Ok).text() == "ОК"
+            assert box.button(QDialogButtonBox.StandardButton.Cancel).text() == "Отмена"
+            assert box.button(QDialogButtonBox.StandardButton.Close).text() == "Закрыть"
+            set_language("en")
+            assert box.button(QDialogButtonBox.StandardButton.Cancel).text() == "Cancel"
+        finally:
+            set_language(previous_language)
+            box.deleteLater()
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+
     @patch("echo_personal_tool.presentation.styled_dialogs.get_theme_palette")
     def test_style_dialog_applies_palette(self, mock_palette):
         from PySide6.QtWidgets import QFileDialog

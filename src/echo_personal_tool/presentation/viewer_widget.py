@@ -116,7 +116,7 @@ from echo_personal_tool.infrastructure.dicom_frame_panels import (
     try_parse_from_path as try_parse_panels_from_path,
 )
 from echo_personal_tool.infrastructure.dicom_tag_inspector import read_interesting_dicom_tag_rows
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.pixel_utils import (
     apply_window_level_rgb,
     compute_display_levels,
@@ -4513,7 +4513,7 @@ class ViewerWidget(QWidget):
         if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             # Not enough distinct points: keep the drawing so the operator can
             # add the missing point instead of losing the whole contour.
-            self._measurement_label.setText(tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE)))
+            self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
             return False
 
         if self._magnetic_snap_enabled:
@@ -6644,7 +6644,7 @@ class ViewerWidget(QWidget):
         if chamber not in {GENERIC_AREA_CHAMBER, GENERIC_VOLUME_CHAMBER}:
             return
         if len(self._active_arc_points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
-            self._measurement_label.setText(tr("viewer.area_points_needed", count=str(_CONTOUR_MIN_POINTS_TO_CLOSE)))
+            self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
             return
         spacing, calibrated = self._effective_pixel_spacing()
         probe = Contour(

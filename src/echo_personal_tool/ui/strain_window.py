@@ -70,7 +70,7 @@ class StrainWindow(QMainWindow):
             if geo is not None:
                 self.restoreGeometry(geo)
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Could not restore the strain window geometry", exc_info=True)
 
         # Central widget
         central = QWidget()
@@ -248,7 +248,7 @@ class StrainWindow(QMainWindow):
                 if ps is not None and len(ps) == 2:
                     self._pixel_spacing_mm = (float(ps[0]), float(ps[1]))
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not read pixel spacing from the strain result", exc_info=True)
 
         # Record this view in the study; the newest run of a view wins.
         analysis = StrainAnalysis.from_result(result)
@@ -1089,6 +1089,6 @@ class StrainWindow(QMainWindow):
             settings = QSettings("SonoForge", "StrainWindow")
             settings.setValue("geometry", self.saveGeometry())
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Could not persist the strain window geometry", exc_info=True)
         self.closed.emit()
         super().closeEvent(event)

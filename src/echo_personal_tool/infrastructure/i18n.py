@@ -45,7 +45,7 @@ def set_language(lang: str) -> None:
         logger.warning("Unknown language '%s', falling back to 'en'", lang)
         lang = "en"
     _current_language = lang
-    for cb in _reload_callbacks:
+    for cb in tuple(_reload_callbacks):
         try:
             cb()
         except Exception:
@@ -70,22 +70,67 @@ def unregister_ui_reload(callback: Callable[[], None]) -> None:
         pass
 
 
-def tr(key: str, **kwargs: str) -> str:
+def tr(key: str, **kwargs: object) -> str:
     """Translate a key to the current language.
 
-    Supports simple variable substitution: tr("loading", name="file.dcm")
-    Falls back to English, then to the key itself.
+    Supports simple variable substitution and falls back to English, then to
+    the key itself. Use :func:`tr_plural` for count-sensitive text.
     """
-    lang_dict = _translations.get(_current_language, {})
-    text = lang_dict.get(key)
-    if text is None:
-        en_dict = _translations.get("en", {})
-        text = en_dict.get(key)
+    text = _lookup(key)
     if text is None:
         return key
     if kwargs:
         try:
             return text.format(**kwargs)
-        except KeyError:
+        except (KeyError, ValueError):
+            logger.warning("Could not format translation key %s", key, exc_info=True)
             return text
+    return text
+
+
+def tr_plural(key: str, count: int | float, **kwargs: object) -> str:
+    """Translate *key* using the current locale's plural form.
+
+    Locale catalogs use ``<key>.one``, ``.few``, ``.many``, and ``.other``.
+    English selects ``one`` only for 1; Russian follows the traditional
+    one/few/many integer rules and uses ``other`` for fractional values.
+    Missing forms fall back to ``.other``, then to the unsuffixed key.
+    """
+    category = plural_category(count, _current_language)
+    template = _lookup(f"{key}.{category}") or _lookup(f"{key}.other") or _lookup(key)
+    if template is None:
+        return key
+    values = {**kwargs, "count": count}
+    try:
+        return template.format(**values)
+    except (KeyError, ValueError):
+        logger.warning("Could not format plural translation key %s", key, exc_info=True)
+        return template
+
+
+def plural_category(count: int | float, language: str | None = None) -> str:
+    """Return the CLDR-style plural category used by SonoForge's locales."""
+    try:
+        number = float(count)
+    except (TypeError, ValueError):
+        return "other"
+    if not number.is_integer():
+        return "other"
+    value = abs(int(number))
+    lang = language or _current_language
+    if lang == "ru":
+        mod10 = value % 10
+        mod100 = value % 100
+        if mod10 == 1 and mod100 != 11:
+            return "one"
+        if 2 <= mod10 <= 4 and not 12 <= mod100 <= 14:
+            return "few"
+        return "many"
+    return "one" if value == 1 else "other"
+
+
+def _lookup(key: str) -> str | None:
+    text = _translations.get(_current_language, {}).get(key)
+    if text is None:
+        text = _translations.get("en", {}).get(key)
     return text

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, fields
 from typing import Any
 
 from PySide6.QtCore import QSettings
+
+logger = logging.getLogger(__name__)
 
 _SETTINGS_ORG = "sonoforge"
 _SETTINGS_APP = "server"
@@ -483,8 +486,8 @@ def _load_password_keyring(username: str) -> str:
         pwd = keyring.get_password(_SERVICE_NAME, username)
         if pwd:
             return pwd
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("OS keyring password lookup failed (%s)", type(exc).__name__)
     return ""
 
 

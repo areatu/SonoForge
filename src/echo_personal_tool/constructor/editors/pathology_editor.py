@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.constructor.editors.base_editor import BaseEditor
 from echo_personal_tool.constructor.models import PathologyModel
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -160,9 +160,9 @@ class PathologyEditor(BaseEditor):
         reply = QMessageBox.question(
             self,
             tr("constructor.pathology.delete_title"),
-            tr(
+            tr_plural(
                 "constructor.pathology.delete_confirm",
-                count=str(len(names)),
+                len(names),
                 names=", ".join(names[:5]) + ("..." if len(names) > 5 else ""),
             ),
         )
