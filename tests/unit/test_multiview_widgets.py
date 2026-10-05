@@ -6,6 +6,8 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
+from PySide6.QtWidgets import QSizePolicy
+
 from echo_personal_tool.domain.models.multiview import EventMarker, PaneId, PlaybackMode
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation import multiview_pane
@@ -56,6 +58,18 @@ class TestPaneHeader:
         assert not pane._placeholder.isVisible()
         assert pane._file_label.text() == "a4c.dcm"
         assert pane._frame_label.text() == "3/30"
+
+    def test_long_file_name_elides_without_imposing_a_wide_minimum(self, pane, qtbot) -> None:
+        file_name = "1.2.410.200001.1.1185.2062614048.3.20261001.1195502216.563.8.dcm"
+        pane.set_header(file_name=file_name, frame_text="1/30", has_clip=True, error=None)
+        pane.resize(360, 500)
+        qtbot.wait(10)
+
+        assert pane.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+        assert pane._file_label.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+        assert pane._file_label.minimumSizeHint().width() == 0
+        assert pane._file_label.toolTip() == file_name
+        assert pane._file_label.text() != file_name
 
     def test_load_error_replaces_the_placeholder_text(self, pane) -> None:
         pane.set_header(file_name="a4c.dcm", frame_text="—", has_clip=False, error="Cannot read file")

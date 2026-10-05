@@ -8,7 +8,8 @@ through signals, which keeps the two panes symmetric and the state in one place.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -22,6 +23,39 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.domain.models.multiview import EventMarker, PaneId
 from echo_personal_tool.presentation.multiview_marker_strip import MarkerStrip
+
+
+class _ElidingFileLabel(QLabel):
+    """Show long DICOM names without forcing a Multiview pane wider."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = "—"
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.set_elided_text(self._full_text)
+
+    def set_elided_text(self, text: str) -> None:
+        self._full_text = text
+        self._apply_elision()
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt naming)
+        return QSize(0, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        self._apply_elision()
+
+    def _apply_elision(self) -> None:
+        width = max(0, self.contentsRect().width())
+        text = self.fontMetrics().elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideRight,
+            width,
+        )
+        super().setText(text)
+
 
 _PANE_TITLES = {PaneId.LEFT: "A", PaneId.RIGHT: "B"}
 
@@ -69,6 +103,10 @@ class MultiViewPaneWidget(QWidget):
         self._marker_right_spacer: QSpacerItem | None = None
 
         self.setObjectName(f"multiviewPane_{pane_id.value}")
+        # A loaded frame or a long DICOM UID must not become this pane's
+        # minimum width; QSplitter is responsible for allocating both panes.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.setMinimumWidth(0)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
@@ -85,9 +123,8 @@ class MultiViewPaneWidget(QWidget):
         self._letter_label.setObjectName("multiviewPaneLetter")
         header_layout.addWidget(self._letter_label)
 
-        self._file_label = QLabel("—")
+        self._file_label = _ElidingFileLabel()
         self._file_label.setObjectName("multiviewPaneFile")
-        self._file_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         header_layout.addWidget(self._file_label, 1)
 
         self._view_button = QPushButton("—")
@@ -208,7 +245,7 @@ class MultiViewPaneWidget(QWidget):
         return self._active
 
     def set_header(self, *, file_name: str, frame_text: str, has_clip: bool, error: str | None) -> None:
-        self._file_label.setText(file_name)
+        self._file_label.set_elided_text(file_name)
         self._file_label.setToolTip(error or file_name)
         self._frame_label.setText(frame_text)
         self._replace_button.setEnabled(True)

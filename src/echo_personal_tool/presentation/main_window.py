@@ -1047,12 +1047,16 @@ class MainWindow(QMainWindow):
                 self._content_splitter.addWidget(self._pane_left)
                 self._content_splitter.addWidget(self._pane_right)
                 self._content_splitter.setHandleWidth(2)
+                self._content_splitter.setChildrenCollapsible(False)
+                self._content_splitter.setStretchFactor(0, 1)
+                self._content_splitter.setStretchFactor(1, 1)
                 self._content_splitter.blockSignals(True)
                 self._content_splitter.setSizes([800, 800])
                 self._content_splitter.blockSignals(False)
                 self._ensure_multiview_transport()
                 center: QWidget = self._content_splitter
             elif use_splitter:
+                self._content_splitter.setChildrenCollapsible(True)
                 # M-mode: wrap viewer + MModeWidget in vertical splitter
                 if self._mmode_active and self._mmode_widget is not None:
                     if self._mmode_vertical_splitter is None:
@@ -1122,6 +1126,20 @@ class MainWindow(QMainWindow):
             self._save_layout_state()
         finally:
             self._content_widget.setUpdatesEnabled(True)
+        if cfg.multiview:
+            # Rebalance only after the splitter has a real on-screen width.
+            # Calling setSizes while it is still hidden can preserve the old
+            # viewer/tool-panel ratio on Windows (especially at high DPI).
+            QTimer.singleShot(0, self._balance_multiview_splitter)
+
+    def _balance_multiview_splitter(self) -> None:
+        if not self._multiview_enabled() or self._content_splitter.count() != 2:
+            return
+        self._content_layout.activate()
+        width = self._content_splitter.contentsRect().width()
+        if width <= 0:
+            return
+        self._content_splitter.setSizes([width, width])
 
     def _clear_content_layout(self) -> None:
         """Backward-compatible alias for tests."""

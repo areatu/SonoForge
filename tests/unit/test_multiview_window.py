@@ -65,6 +65,15 @@ class TestEntryPoints:
         assert window._pane_right is not None
         assert window._viewer2 is not None
 
+    def test_entry_balances_both_panes_after_the_splitter_is_shown(self, window, qtbot) -> None:
+        _enable(window)
+        qtbot.wait(10)
+
+        sizes = window._content_splitter.sizes()
+        assert window._content_splitter.childrenCollapsible() is False
+        assert len(sizes) == 2
+        assert abs(sizes[0] - sizes[1]) <= 2
+
     def test_layout_menu_checkbox_stays_in_sync(self, window) -> None:
         window._on_layout_toggle("multiview", True)
         assert window._system_bar._btn_multiview.isChecked() is True
