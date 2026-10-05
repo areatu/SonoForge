@@ -184,7 +184,6 @@ def configure_logging(
     for name in _DIAGNOSTIC_LOGGERS:
         logger = logging.getLogger(name)
         previous_logger_levels[name] = logger.level
-        logger.setLevel(logging.DEBUG)
     for name in ("pylibjpeg", "pylibjpeg.utils", "pydicom"):
         logger = logging.getLogger(name)
         previous_logger_levels.setdefault(name, logger.level)
@@ -232,6 +231,11 @@ def configure_logging(
     for warning in migration_warnings:
         _LOG.warning("Legacy application data migration: %s", warning)
     session.log_environment(app)
+    # Some platform-specific imports above may configure Python loggers; apply
+    # the targeted DEBUG overrides last so DICOM diagnostics remain available.
+    for name in _DIAGNOSTIC_LOGGERS:
+        logging.getLogger(name).setLevel(logging.DEBUG)
+
     # Keep the handler alive through later-registered session/resource atexit
     # cleanup callbacks so their best-effort failures remain in the log.
     atexit.register(shutdown_logging)
