@@ -76,7 +76,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml \
+          xvfb-run -a pytest tests/unit/ -q --tb=line --no-header \
             | python .github/scripts/annotate_pytest_failures.py
 
       # macOS/Windows: run without GUI tests (no xvfb available). Use the same
@@ -96,17 +96,6 @@ jobs:
       - name: Run 720p cine playback bench (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a pytest tests/bench/test_cine_playback_e2e_ci.py -q --tb=short --no-header
-
-      # Linux: upload coverage to Coveralls
-      # GITHUB_TOKEN works on Dependabot PRs where COVERALLS_REPO_TOKEN is unavailable
-      - name: Upload coverage to Coveralls
-        if: runner.os == 'Linux'
-        uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: coverage.xml
-          format: cobertura
-          flag-name: unittests
 
   build:
     needs: [lint, test]

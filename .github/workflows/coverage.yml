@@ -46,6 +46,7 @@ jobs:
             -q --tb=line --no-header \
             | python .github/scripts/annotate_pytest_failures.py
 
+      # Sole Coveralls upload: CI runs the cross-platform test matrix without coverage.
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
         with:
@@ -53,7 +54,6 @@ jobs:
           file: coverage.xml
           format: cobertura
           flag-name: unittests
-          parallel: true
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
