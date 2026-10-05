@@ -160,7 +160,10 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(display_name())
 
-    from echo_personal_tool.infrastructure.logging_setup import configure_logging
+    from echo_personal_tool.infrastructure.logging_setup import (
+        configure_logging,
+        shutdown_logging,
+    )
 
     configure_logging(app)
     _begin_winmm()
@@ -168,6 +171,11 @@ def main() -> int:
         return _run_application(app, has_ai_segmentation, has_reference_ui)
     finally:
         _cleanup_winmm()
+        # Deterministic teardown: flush/close the rotating session log and
+        # restore root/logger levels. Relying on atexit alone leaves the active
+        # logging session behind when main() returns in-process (e.g. in tests),
+        # which corrupts logger levels for any code that runs afterwards.
+        shutdown_logging()
 
 
 def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui) -> int:  # noqa: ANN001
