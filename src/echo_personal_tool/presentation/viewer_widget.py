@@ -15,8 +15,8 @@ from typing import Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor, QMouseEvent
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsView,
@@ -228,6 +228,24 @@ _GENERIC_DIST_LABEL_PREFIX = "Dist"
 def _is_generic_dist_label(label: str) -> bool:
     """True for the generic caliper (DistN), which adapts to the Doppler ROI."""
     return label.startswith(_GENERIC_DIST_LABEL_PREFIX)
+
+
+_JPEG_SUFFIXES = frozenset({".jpg", ".jpeg", ".jpe", ".jfif"})
+
+
+def _force_png_suffix(path: str) -> str:
+    """Normalise a frame-export path to a single ``.png`` suffix.
+
+    The save dialog only offers PNG, but the typed name may still carry an
+    image extension from habit (``frame.jpg``); appending would produce
+    ``frame.jpg.png``.
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix in _JPEG_SUFFIXES:
+        return f"{path[: -len(suffix)]}.png"
+    if suffix == ".png":
+        return path
+    return f"{path}.png"
 
 
 class ContourViewBox(pg.ViewBox):
@@ -1647,10 +1665,11 @@ class ViewerWidget(QWidget):
             self,
             tr("viewer.context_save_frame"),
             "",
-            "PNG (*.png);JPEG (*.jpg)",
+            "PNG (*.png)",
         )
         if not path:
             return
+        path = _force_png_suffix(path)
         full = self.grab()
         if full.isNull():
             QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.grab"))
@@ -1662,10 +1681,40 @@ class ViewerWidget(QWidget):
                 self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
             )
             return
+        self._composite_frame_export(cropped, geo)
         if not cropped.save(path):
             QMessageBox.warning(
                 self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
             )
+
+    def _composite_frame_export(self, capture: QPixmap, geo: QRect) -> None:
+        """Paint the pyqtgraph scene and the Qt overlay labels into *capture*.
+
+        ``QWidget.grab()`` cannot read back a QOpenGLWidget viewport: the GL
+        scene is drawn into its own framebuffer and is never part of the
+        ancestor's paint, so on GPU-backed machines (``useOpenGL=True``) the raw
+        capture is a blank sheet showing only the Qt-drawn overlay labels.
+        ``QGraphicsView.render()`` draws the scene with a plain QPainter, which
+        works for both the GL and the raster viewport; the overlay labels are
+        re-drawn on top of it afterwards.
+        """
+        painter = QPainter(capture)
+        try:
+            viewport = self._graphics.viewport()
+            source = viewport.rect() if viewport is not None else self._graphics.rect()
+            self._graphics.render(painter, QRect(QPoint(0, 0), capture.size()), source)
+            for child in self.children():
+                if not isinstance(child, QWidget) or child is self._graphics:
+                    continue
+                child_geo = child.geometry()
+                if not child.isVisible() or not child_geo.intersects(geo):
+                    continue
+                painter.save()
+                painter.translate(child_geo.x() - geo.x(), child_geo.y() - geo.y())
+                child.render(painter, QPoint(0, 0))
+                painter.restore()
+        finally:
+            painter.end()
 
     def _resolve_display_mode(
         self,

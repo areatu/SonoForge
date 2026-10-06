@@ -522,6 +522,50 @@ class TestSaveViewerImage:
             viewer._save_viewer_image()
         mock_save.assert_not_called()
 
+    def test_offers_png_only_and_rewrites_jpg_name(self, viewer, tmp_path):
+        from unittest.mock import patch
+
+        viewer._current_frame = np.zeros((100, 100), dtype=np.uint8)
+        typed = tmp_path / "frame.jpg"
+        with patch(
+            "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+            return_value=(str(typed), "PNG (*.png)"),
+        ) as mock_dialog:
+            viewer._save_viewer_image()
+        assert mock_dialog.call_args[0][3] == "PNG (*.png)"
+        assert (tmp_path / "frame.png").exists()
+        assert not typed.exists()
+
+    def test_renders_scene_when_grab_is_blank(self, viewer, tmp_path):
+        """GL viewport: an ancestor grab() is blank, the scene must still be painted."""
+        from unittest.mock import patch
+
+        import cv2
+        from PySide6.QtCore import QRectF, Qt
+        from PySide6.QtGui import QPixmap
+
+        viewer._current_frame = np.zeros((16, 32), dtype=np.uint8)
+        gradient = np.tile(np.linspace(0, 255, 32, dtype=np.uint8), (16, 1))
+        viewer._image_item.setImage(gradient, autoLevels=False)
+        viewer._view.setRange(QRectF(0, 0, 32, 16), padding=0)
+
+        geo = viewer._graphics.geometry()
+        blank = QPixmap(geo.width(), geo.height())
+        blank.fill(Qt.GlobalColor.black)
+        out = tmp_path / "frame.png"
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(out), "PNG (*.png)"),
+            ),
+            patch.object(viewer, "grab", return_value=blank),
+        ):
+            viewer._save_viewer_image()
+
+        img = cv2.imread(str(out), cv2.IMREAD_GRAYSCALE)
+        assert img is not None
+        assert img.std() > 10
+
     def test_shows_error_when_pixmap_save_fails(self, viewer, tmp_path):
         from unittest.mock import patch
 
@@ -535,6 +579,7 @@ class TestSaveViewerImage:
                 "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
                 return_value=(str(out), "PNG (*.png)"),
             ),
+            patch.object(viewer, "_composite_frame_export"),
             patch.object(
                 viewer,
                 "grab",
