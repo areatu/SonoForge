@@ -499,6 +499,8 @@
   "preferences.cache_size": "Размер:",
   "preferences.cache_quota": "Лимит:",
   "preferences.tab_server": "Сервер",
+  "preferences.tab_tools": "Инструменты",
+  "preferences.tools_hint": "Отметьте инструменты, чтобы показывать их на панели. Перетащите инструмент в другую секцию, чтобы переместить его.",
   "preferences.tags_overlay": "Теги в оверлее:",
   "preferences.tags_tooltip": "Список тегов через запятую (имя или (0010,0010)). Показываются внизу слева на просмотрщике для DICOM-файлов.",
   "preferences.theme_dark": "Тёмная",

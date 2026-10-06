@@ -147,6 +147,9 @@ class UserPreferences:
     show_strain: bool = False
     show_la_auto: bool = False
     despeckle_enabled: bool = False
+    # JSON layout of the tool panel: section order, per-section tool order and
+    # per-tool visibility. Empty string = built-in default layout.
+    tool_panel_layout_json: str = ""
     # Presenter mode (second-display window for the audience)
     presenter_screen: str = ""
     presenter_visual_preset: bool = True
@@ -363,6 +366,7 @@ def load_user_preferences() -> UserPreferences:
         show_strain=_read_bool(store.value("show_strain"), False),
         show_la_auto=_read_bool(store.value("show_la_auto"), False),
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
+        tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
         presenter_screen=str(store.value("presenter_screen", "")),
         presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),

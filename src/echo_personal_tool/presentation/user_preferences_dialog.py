@@ -63,6 +63,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
 )
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
+from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
 
 
@@ -339,6 +340,9 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
+
+        self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
+        tabs.addTab(self._tool_panel_settings, tr("preferences.tab_tools"))
 
         # --- Gold annotation ---
         gold_form = QFormLayout()
@@ -646,6 +650,7 @@ class UserPreferencesDialog(QDialog):
             show_strain=self._show_strain.isChecked(),
             show_la_auto=self._show_la_auto.isChecked(),
             despeckle_enabled=stored.despeckle_enabled,
+            tool_panel_layout_json=self._tool_panel_settings.encoded_layout(),
             auto_play=stored.auto_play,
             playback_max_cache_mb=stored.playback_max_cache_mb,
             layout_state_json=stored.layout_state_json,
