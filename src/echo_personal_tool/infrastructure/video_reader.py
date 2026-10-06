@@ -15,6 +15,7 @@ from __future__ import annotations
 import atexit
 import bisect
 import functools
+import logging
 import threading
 from collections import deque
 from collections.abc import Callable
@@ -23,6 +24,8 @@ from typing import Any, TypeVar, cast
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 RING_BUFFER_SIZE = 50
 _KEYFRAME_SCAN_MAX_STEP = 120
@@ -58,7 +61,7 @@ def _cleanup_all_readers() -> None:
         try:
             reader.release()
         except Exception:
-            pass
+            logger.debug("Could not release a video reader during process cleanup", exc_info=True)
 
 
 def _track_reader(reader: VideoReader) -> list[VideoReader]:
@@ -85,7 +88,7 @@ def _drop_pruned(pruned: list[VideoReader]) -> None:
         try:
             old.release()
         except Exception:
-            pass
+            logger.debug("Could not release an evicted video reader", exc_info=True)
 
 
 def get_video_reader(path: Path | str) -> VideoReader:

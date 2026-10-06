@@ -750,7 +750,7 @@ class AseReferenceDialog(QDialog):
             try:
                 self._pdf_docs[path].close()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not close a PDF reference tab", exc_info=True)
             del self._pdf_docs[path]
 
         # Find and remove the tab widget
@@ -1079,7 +1079,7 @@ class AseReferenceDialog(QDialog):
             try:
                 doc.close()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not close a PDF reference during dialog teardown", exc_info=True)
         self._pdf_docs.clear()
         super().closeEvent(event)
 
@@ -1114,8 +1114,12 @@ class ReferenceFontSettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self._recolor_buttonbox_icons(buttons)
-        from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
+        from echo_personal_tool.presentation.styled_dialogs import (
+            localize_dialog_button_box,
+            theme_button_box_icons,
+        )
 
+        localize_dialog_button_box(buttons)
         theme_button_box_icons(buttons)
 
         layout = QVBoxLayout(self)

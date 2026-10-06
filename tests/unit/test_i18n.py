@@ -17,6 +17,7 @@ from echo_personal_tool.infrastructure.i18n import (
     register_ui_reload,
     set_language,
     tr,
+    tr_plural,
     unregister_ui_reload,
 )
 
@@ -40,6 +41,23 @@ def test_tr_substitution() -> None:
     set_language("en")
     text = tr("status.loading", name="study.dcm")
     assert "study.dcm" in text
+
+
+def test_plural_forms_for_english_and_russian() -> None:
+    set_language("en")
+    assert tr_plural("status.studies_loaded", 1) == "Loaded 1 study"
+    assert tr_plural("status.studies_loaded", 2) == "Loaded 2 studies"
+
+    set_language("ru")
+    assert tr_plural("status.studies_loaded", 1) == "Загружено 1 исследование"
+    assert tr_plural("status.studies_loaded", 2) == "Загружено 2 исследования"
+    assert tr_plural("status.studies_loaded", 5) == "Загружено 5 исследований"
+    assert tr_plural("status.studies_loaded", 21) == "Загружено 21 исследование"
+
+
+def test_plural_falls_back_for_unknown_category() -> None:
+    set_language("en")
+    assert tr_plural("status.studies_loaded", 1.5) == "Loaded 1.5 studies"
 
 
 def test_set_language_switches_linear_measurement_label() -> None:

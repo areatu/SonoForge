@@ -93,28 +93,18 @@ from echo_personal_tool.domain.services.segmentation_service import (
     papillary_mask_cleanup,
     smooth_contour,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.onnx_engine import (
     OnnxInferenceEngine,
     _default_models_dir,
     _load_manifest,
 )
-from echo_personal_tool.infrastructure.paths import logs_dir
 from echo_personal_tool.infrastructure.system_profiler import (
     PlaybackConfig,
     detect_playback_config,
 )
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.infrastructure.video_reader import VideoReader
-
-# ── Logging setup (after all imports) ────────────────────────────────
-_LOG_DIR = logs_dir()
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
-_LOG_PATH = _LOG_DIR / "errors.log"
-_file_handler = logging.FileHandler(str(_LOG_PATH), mode="w", encoding="utf-8")
-_file_handler.setLevel(logging.WARNING)
-_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-logging.getLogger("echo_personal_tool.application.app_controller").addHandler(_file_handler)
 
 # Warn about the frame cache when a bulk load takes it this far past its budget.
 _CACHE_WARN_BUDGET_FACTOR = 1.5
@@ -471,7 +461,7 @@ class AppController(QObject):
         self._studies = studies
         count = len(self._studies)
         logger.info("pre_scanned_load studies=%d", count)
-        self.status_message.emit(tr("status.studies_loaded", count=str(count)))
+        self.status_message.emit(tr_plural("status.studies_loaded", count))
         self._restore_measurement_studies()
 
     def _begin_study_switch(self) -> None:
@@ -513,7 +503,7 @@ class AppController(QObject):
         else:
             logger.info("scan_done studies=%d duration_ms=%.2f", count, elapsed_ms)
         self._scan_started_at = None
-        self.status_message.emit(tr("status.studies_loaded", count=str(count)))
+        self.status_message.emit(tr_plural("status.studies_loaded", count))
         self._restore_measurement_studies()
 
     def _on_scan_failed(self, message: str) -> None:
@@ -3191,14 +3181,14 @@ class AppController(QObject):
         frame_index: int,
         _message: str,
     ) -> None:
-        print(f"[LA-APP] _on_auto_segment_failed: {_message}", flush=True)
+        logger.warning("[LA-APP] auto-segmentation failed: %s", _message)
         self._segment_in_progress = False
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
         self.status_message.emit(tr("app.segmentation_unavailable"))
 
     def _on_auto_segment_timed_out(self, instance_path: Path | None, frame_index: int) -> None:
-        print("[LA-APP] _on_auto_segment_timed_out", flush=True)
+        logger.warning("[LA-APP] auto-segmentation timed out")
         self._segment_in_progress = False
         if not self._auto_segment_context_matches(instance_path, frame_index):
             return
@@ -3208,7 +3198,7 @@ class AppController(QObject):
 
     def request_la_auto_segment(self) -> None:
         """Request LA auto-segmentation on the current A4C ES frame."""
-        print("[LA-APP] request_la_auto_segment called", flush=True)
+        logger.debug("[LA-APP] request_la_auto_segment called")
 
         if self._segment_in_progress:
             self.status_message.emit(tr("status.segmentation_in_progress"))
@@ -3251,7 +3241,7 @@ class AppController(QObject):
             frame = np.stack([gray, gray, gray], axis=-1)
 
         self._segment_in_progress = True
-        print("[LA-APP] OnnxWorker starting with manifest_section=la_inference", flush=True)
+        logger.debug("[LA-APP] starting ONNX worker with manifest_section=la_inference")
         worker = OnnxWorker(
             frame,
             roi_xyxy=roi_xyxy,
@@ -3313,19 +3303,13 @@ class AppController(QObject):
         mask: object,
     ) -> None:
         """Post-inference: LA mask → contour → refine → reject gate → review."""
-        print(
-            f"[LA-APP] _on_la_auto_segment_finished called: phase={phase}, chamber={chamber}, "
-            f"mask_type={type(mask).__name__}, frame={frame_index}",
-            flush=True,
+        logger.debug(
+            "[LA-APP] segmentation finished: phase=%s chamber=%s mask_type=%s frame=%d",
+            phase,
+            chamber,
+            type(mask).__name__,
+            frame_index,
         )
-        try:
-            with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-                _dbg.write(
-                    f"_on_la_auto_segment_finished: phase={phase}, chamber={chamber}, "
-                    f"mask_type={type(mask).__name__}, frame={frame_index}\n"
-                )
-        except Exception:
-            pass
         from echo_personal_tool.domain.services.la_segmentation_service import (
             explain_la_auto_reject_reason,
             la_mask_boundary_to_open_arc,
@@ -3556,7 +3540,7 @@ class AppController(QObject):
                     frame_index=frame_index,
                     review_pending=False,
                 )
-                print(f"[LA-ASSIST] boundary extraction OK: {len(boundary_pts)} pts", flush=True)
+                logger.debug("[LA-ASSIST] boundary extraction succeeded with %d points", len(boundary_pts))
             else:
                 # Fallback: geometric contour from landmarks
                 contour = fit_contour_from_landmarks(
@@ -3573,7 +3557,7 @@ class AppController(QObject):
                     frame_index=frame_index,
                     review_pending=False,
                 )
-                print("[LA-ASSIST] boundary FAILED → superellipse fallback", flush=True)
+                logger.debug("[LA-ASSIST] boundary extraction failed; using superellipse fallback")
 
             # Emit for viewer to pick up
             self.la_assist_contour_ready.emit(contour)
@@ -3624,7 +3608,7 @@ class AppController(QObject):
         self._fusion_processed = {frame_index}  # anchor already done
         self._fusion_result = None
 
-        self.status_message.emit(tr("status.temporal_fusion_started", count=len(neighbors)))
+        self.status_message.emit(tr_plural("status.temporal_fusion_started", len(neighbors)))
 
         for neighbor_idx in neighbors:
             self._queue_neighbor_segment(neighbor_idx, phase, view, chamber, instance_path)

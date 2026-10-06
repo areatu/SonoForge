@@ -26,7 +26,7 @@ from echo_personal_tool.infrastructure.server_settings import (
     load_server_settings,
     save_server_settings,
 )
-from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
+from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 
 
 class ServerSettingsForm(QWidget):
@@ -331,6 +331,7 @@ class ServerSettingsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
+        localize_dialog_button_box(buttons)
         theme_button_box_icons(buttons)
 
         layout = QVBoxLayout(self)

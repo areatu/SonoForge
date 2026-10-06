@@ -56,7 +56,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     save_user_preferences,
 )
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
-from echo_personal_tool.presentation.styled_dialogs import theme_button_box_icons
+from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
 
 
 def show_user_preferences_dialog(
@@ -455,6 +455,7 @@ class UserPreferencesDialog(QDialog):
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         self._recolor_buttonbox_icons(buttons)
+        localize_dialog_button_box(buttons)
         theme_button_box_icons(buttons)
 
         reset_row = QHBoxLayout()

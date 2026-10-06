@@ -154,7 +154,7 @@ class OrthancDownloadWorker(QRunnable):
             try:
                 c.cancel_inflight()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not cancel an in-flight download client", exc_info=True)
 
     @Slot()
     def run(self) -> None:
@@ -233,9 +233,9 @@ class OrthancDownloadWorker(QRunnable):
             )
 
             self.signals.progress.emit(0, total, self._series_uids[0])
-            from echo_personal_tool.infrastructure.i18n import tr
+            from echo_personal_tool.infrastructure.i18n import tr_plural
 
-            self.signals.status.emit(tr("orthanc.downloading_count", count=total))
+            self.signals.status.emit(tr_plural("orthanc.downloading_count", total))
 
             saved_count = 0
             failed_count = 0
@@ -343,7 +343,7 @@ class OrthancDownloadWorker(QRunnable):
                 try:
                     c.close()
                 except Exception:  # noqa: BLE001
-                    pass
+                    logger.debug("Could not close a per-thread DICOMweb client", exc_info=True)
 
     def _make_thread_client(self) -> DicomWebClient:
         if self._server_settings is not None:
@@ -550,7 +550,7 @@ class OrthancDownloadWorker(QRunnable):
                         try:
                             study_datetime = parse_study_datetime(ds)
                         except Exception:
-                            pass
+                            logger.debug("Could not parse DICOM study datetime", exc_info=True)
 
         if not instances_by_series:
             return []

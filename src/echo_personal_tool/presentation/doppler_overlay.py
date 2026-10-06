@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import statistics
 
 import numpy as np
@@ -44,6 +45,8 @@ from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
 )
+
+logger = logging.getLogger(__name__)
 
 _BASELINE_CLICK_TOLERANCE_PX = 8.0
 _TRACE_MIN_SAMPLE_PX = 4.0
@@ -554,13 +557,13 @@ class DopplerOverlayTools(QWidget):
             try:
                 self._plot.removeItem(self._auto_envelope_item)
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
             self._auto_envelope_item = None
         if self._auto_peak_guide_item is not None:
             try:
                 self._plot.removeItem(self._auto_peak_guide_item)
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
             self._auto_peak_guide_item = None
 
     def _show_auto_peak_guide(self, envelope: tuple[tuple[float, float], ...]) -> None:
@@ -842,13 +845,13 @@ class DopplerOverlayTools(QWidget):
             try:
                 self._plot.removeItem(self._vessel_cycle_band)
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
             self._vessel_cycle_band = None
         if self._vessel_cycle_text is not None:
             try:
                 self._plot.removeItem(self._vessel_cycle_text)
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
             self._vessel_cycle_text = None
 
     def _reset_vessel_cycle_selection(self) -> None:
@@ -1330,7 +1333,7 @@ class DopplerOverlayTools(QWidget):
             try:
                 self._plot.removeItem(self._autovti_region_item)
             except Exception:
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
         x_plot = float(x_px)
         y_min = self._axis_mapping.plot_origin_y
         y_max = y_min + self._axis_mapping.plot_height
@@ -1348,7 +1351,7 @@ class DopplerOverlayTools(QWidget):
             try:
                 self._plot.removeItem(self._autovti_band_item)
             except Exception:
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
         x_start = self._axis_mapping.x_from_time_ms(start_ms)
         x_end = self._axis_mapping.x_from_time_ms(end_ms)
         y_min = self._axis_mapping.plot_origin_y
@@ -1368,13 +1371,13 @@ class DopplerOverlayTools(QWidget):
             try:
                 self._plot.removeItem(self._autovti_region_item)
             except Exception:
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
             self._autovti_region_item = None
         if self._autovti_band_item is not None:
             try:
                 self._plot.removeItem(self._autovti_band_item)
             except Exception:
-                pass
+                logger.debug("Could not remove a stale Doppler plot item", exc_info=True)
             self._autovti_band_item = None
         self._autovti_start_ms = None
         self._autovti_direction = None

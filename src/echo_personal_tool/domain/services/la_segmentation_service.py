@@ -421,26 +421,12 @@ def la_mask_to_contour(
     septal, lateral, apex = _la_landmarks_from_mask(component)
 
     # Try mask boundary extraction first (follows actual LA shape)
-    logger.warning(
-        "[LA-mask2contour] calling boundary extraction, mask dtype=%s, shape=%s, pixels=%d",
+    logger.debug(
+        "[LA-mask2contour] boundary extraction: dtype=%s shape=%s pixels=%d",
         component.dtype,
         component.shape,
         int(component.sum()),
     )
-    print(
-        f"[LA-DEBUG] la_mask_to_contour called: mask_pixels={int(component.sum())}, "
-        f"septal={septal}, lateral={lateral}, apex={apex}",
-        flush=True,
-    )
-    # Write to /tmp for debugging even if stdout is hidden
-    try:
-        with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-            _dbg.write(
-                f"la_mask_to_contour called: pixels={int(component.sum())}, "
-                f"septal={septal}, lateral={lateral}, apex={apex}\n"
-            )
-    except Exception:
-        pass
     boundary_result = la_mask_boundary_to_open_arc(
         component,
         septal,
@@ -449,21 +435,9 @@ def la_mask_to_contour(
         num_nodes=num_nodes,
     )
     if boundary_result is not None:
-        logger.warning("[LA-mask2contour] boundary extraction SUCCEEDED, %d pts", len(boundary_result))
-        print(f"[LA-DEBUG] boundary extraction SUCCEEDED: {len(boundary_result)} pts", flush=True)
-        try:
-            with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-                _dbg.write(f"boundary extraction SUCCEEDED: {len(boundary_result)} pts\n")
-        except Exception:
-            pass
+        logger.debug("[LA-mask2contour] boundary extraction succeeded with %d points", len(boundary_result))
         return boundary_result, (septal, lateral), apex
-    logger.warning("[LA-mask2contour] boundary extraction FAILED → superellipse fallback")
-    print("[LA-DEBUG] boundary extraction FAILED → superellipse fallback", flush=True)
-    try:
-        with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-            _dbg.write("boundary extraction FAILED → superellipse fallback\n")
-    except Exception:
-        pass
+    logger.debug("[LA-mask2contour] boundary extraction failed; using superellipse fallback")
 
     # Fallback: superellipse template (geometric approximation)
     template = _warp_superellipse_open_arc(
