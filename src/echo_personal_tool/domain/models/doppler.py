@@ -14,12 +14,19 @@ class DopplerPeakMarker:
     document (decision D-23) while an edit of an existing marker updates it in
     place.  Legacy records written before D-23 have an empty id and keep the
     old replace-by-label behavior.
+
+    ``mode`` captures the acquisition mode the marker was measured in
+    (``CW`` | ``PW`` | ``TDI``, empty when unknown): the viewer resolves it
+    from the DICOM ``RegionDataType`` with an explicit manual override winning
+    (Э2).  Storage stays in cm/s; the mode only selects display units
+    (CW → m/s, PW/TDI → cm/s, unknown → by magnitude).
     """
 
     label: str
     time_ms: float
     velocity_cm_s: float
     measurement_id: str = ""
+    mode: str = ""
 
 
 @dataclass(frozen=True)
@@ -32,9 +39,17 @@ class DopplerIntervalMarker:
 
 @dataclass(frozen=True)
 class DopplerTrace:
+    """One traced VTI envelope.
+
+    ``mode`` is the acquisition mode captured at trace time (see
+    :class:`DopplerPeakMarker`); it feeds the display units of the
+    trace-derived Vmax fallback.
+    """
+
     label: str
     points: tuple[tuple[float, float], ...]
     measurement_id: str = ""
+    mode: str = ""
 
 
 @dataclass(frozen=True)

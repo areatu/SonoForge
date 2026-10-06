@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import (
     LvViewMetrics,
@@ -218,10 +219,10 @@ class MeasurementPanel(QWidget):
         for flow in _flow_results_for_display(ddop):
             field_lines.extend(
                 (
-                    self._optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s"),
+                    self._optional_velocity(f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode),
                     self._optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
                     self._optional_line(f"{flow.site} VTI", flow.vti_cm, " cm"),
-                    self._optional_line(f"{flow.site} Vmean", flow.vmean_cm_s, " cm/s"),
+                    self._optional_velocity(f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode),
                     self._optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
                 )
             )
@@ -458,6 +459,18 @@ class MeasurementPanel(QWidget):
         if value is None:
             return None
         return self._line(label, value, suffix, decimals=decimals)
+
+    def _optional_velocity(
+        self,
+        label: str,
+        velocity_cm_s: float | None,
+        mode: str,
+    ) -> str | None:
+        """Spectral-Doppler velocity in mode-appropriate units (Э2)."""
+        if velocity_cm_s is None:
+            return None
+        scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+        return self._line(label, scaled, f" {unit}", decimals=decimals)
 
     def _line(
         self,

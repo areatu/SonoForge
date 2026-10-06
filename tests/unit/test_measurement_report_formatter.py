@@ -51,10 +51,11 @@ def test_report_marks_repeated_measurements() -> None:
 
     text = format_measurement_report(snapshot)
 
-    assert "TR Vmax: 313.3 cm/s (n=4)" in text
+    # Unknown mode reads fast jets in m/s (magnitude fallback, Э2).
+    assert "TR Vmax: 3.13 m/s (n=4)" in text
     assert "TR PGmax: 39.3 mmHg" in text
     # A single measurement is not annotated.
-    assert "AV Vmax: 100.0 cm/s\n" in text
+    assert "AV Vmax: 1.00 m/s\n" in text
 
 
 def test_report_marks_repeated_vti_traces() -> None:

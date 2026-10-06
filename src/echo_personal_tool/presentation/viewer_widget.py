@@ -792,6 +792,11 @@ class ViewerWidget(QWidget):
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._doppler_cal_step: Literal["baseline"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
+        # Acquisition mode for Doppler display units (Э2): DICOM-derived per
+        # clip, with an explicit manual override (MP4/JPEG) winning. The
+        # resolved mode is stamped on markers at measurement time.
+        self._dicom_doppler_mode: str = ""
+        self._doppler_mode_override: str = ""
         self._last_view_cursor_xy: tuple[float, float] | None = None
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
@@ -3561,7 +3566,10 @@ class ViewerWidget(QWidget):
     def _doppler_trace_summary(metrics, trace_label: str) -> str:
         """Format the transient result overlay with a specific flow label."""
 
-        from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
+        from echo_personal_tool.domain.doppler_catalog import (
+            flow_site_from_trace_label,
+            scale_velocity_for_display,
+        )
 
         site = flow_site_from_trace_label(trace_label) or "AV"
         flow = metrics.flow(site)
@@ -3570,10 +3578,10 @@ class ViewerWidget(QWidget):
         parts: list[str] = []
         if flow.vti_cm is not None:
             parts.append(f"{site} VTI: {flow.vti_cm:.1f} cm")
-        if flow.vmax_cm_s is not None:
-            parts.append(f"{site} Vmax: {flow.vmax_cm_s:.0f} cm/s")
-        if flow.vmean_cm_s is not None:
-            parts.append(f"{site} Vmean: {flow.vmean_cm_s:.0f} cm/s")
+        for name, velocity_cm_s in (("Vmax", flow.vmax_cm_s), ("Vmean", flow.vmean_cm_s)):
+            if velocity_cm_s is not None:
+                scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, flow.mode)
+                parts.append(f"{site} {name}: {scaled:.{decimals}f} {unit}")
         if flow.pgmax_mmhg is not None:
             parts.append(f"{site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
         if flow.pgmean_mmhg is not None:
@@ -3587,6 +3595,40 @@ class ViewerWidget(QWidget):
 
     def get_doppler_dto(self):
         return self._doppler.get_measurement_dto()
+
+    def set_dicom_doppler_mode(self, mode: str | None) -> None:
+        """Record the current clip's DICOM-derived acquisition mode (Э2)."""
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        normalized = normalize_doppler_mode(mode)
+        if normalized == self._dicom_doppler_mode:
+            return
+        self._dicom_doppler_mode = normalized
+        self._doppler.set_doppler_mode(self._resolved_doppler_mode())
+
+    def set_doppler_mode_override(self, mode: str | None) -> None:
+        """Set the explicit acquisition-mode override ("" = Auto, Э2).
+
+        The override wins over the DICOM-derived mode and stays until the
+        user changes it or a new study is opened; only markers placed while
+        it is active capture it.
+        """
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        normalized = normalize_doppler_mode(mode)
+        if normalized == self._doppler_mode_override:
+            return
+        self._doppler_mode_override = normalized
+        self._doppler.set_doppler_mode(self._resolved_doppler_mode())
+
+    def reset_doppler_mode_override(self) -> None:
+        self.set_doppler_mode_override("")
+
+    def doppler_mode_override(self) -> str:
+        return self._doppler_mode_override
+
+    def _resolved_doppler_mode(self) -> str:
+        return self._doppler_mode_override or self._dicom_doppler_mode
 
     def _try_auto_detect_doppler_calibration(self) -> bool:
         if not self._doppler_auto_calibration_enabled:
@@ -7556,6 +7598,7 @@ class ViewerWidget(QWidget):
             time_ms=time_ms,
             velocity_cm_s=velocity_cm_s,
             doppler=True,
+            doppler_mode=self._resolved_doppler_mode(),
         )
 
     def _linear_measurement_from_endpoints(

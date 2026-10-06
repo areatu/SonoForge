@@ -8,6 +8,7 @@ from echo_personal_tool.domain.calculations.chamber_simpson import (
     biplane_es_volume_ml,
     es_volume_from_view,
 )
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.linear_measurement import _LABEL_I18N_KEY, PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import DopplerFlowResult, DopplerResults, MeasurementSnapshot
 from echo_personal_tool.domain.services.indexed_results_formatter import (
@@ -92,11 +93,11 @@ def format_results_overlay(
         _append(lines, tr("result.s_prime_lat"), ddop.s_prime_lat_cm_s, "cm/s")
         _append(lines, tr("result.s_prime_rv"), ddop.s_prime_rv_cm_s, "cm/s")
         for flow in _flow_results_for_display(ddop):
-            _append(lines, f"{flow.site} Vmax", flow.vmax_cm_s, "cm/s")
+            _append_velocity(lines, f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode)
             _append(lines, f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg")
             if time_calibrated:
                 _append(lines, f"{flow.site} VTI", flow.vti_cm, "cm")
-                _append(lines, f"{flow.site} Vmean", flow.vmean_cm_s, "cm/s")
+                _append_velocity(lines, f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode)
                 _append(lines, f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg")
         if time_calibrated:
             for label, value in (
@@ -292,8 +293,14 @@ def _html_append(
     decimals: int = 1,
     param_id: str | None = None,
     sex_male: bool = True,
+    norm_value: float | None = None,
 ) -> None:
-    """Append one HTML line: <a>label</a>: <span>value</span> unit."""
+    """Append one HTML line: <a>label</a>: <span>value</span> unit.
+
+    ``norm_value`` overrides the compared value when the displayed unit
+    differs from the reference unit (TR Vmax reads in m/s or cm/s while
+    the norm is stored in m/s).
+    """
     if value is None:
         return
     unit = f" {suffix}" if suffix else ""
@@ -307,7 +314,7 @@ def _html_append(
 
     # Check norm
     norm = _norm_for_param(param_id, sex_male) if param_id else None
-    if _is_outside(norm, value):
+    if _is_outside(norm, norm_value if norm_value is not None else value):
         val_html = f'<span style="color:{_COLOR_ABNORMAL};">{val_str}</span>'
     else:
         val_html = f'<span style="color:{_COLOR_NORMAL};">{val_str}</span>'
@@ -389,18 +396,26 @@ def format_results_overlay_html(
         )
         for flow in _flow_results_for_display(ddop):
             param_id = "tr_vmax" if flow.site == "TR" else ""
-            _html_append(
-                parts,
-                f"{flow.site} Vmax",
-                flow.vmax_cm_s,
-                "cm/s",
-                param_id=param_id,
-                sex_male=sex_male,
-            )
+            if flow.vmax_cm_s is not None:
+                scaled, unit, decimals = scale_velocity_for_display(flow.vmax_cm_s, flow.mode)
+                _html_append(
+                    parts,
+                    f"{flow.site} Vmax",
+                    scaled,
+                    unit,
+                    decimals=decimals,
+                    param_id=param_id,
+                    sex_male=sex_male,
+                    # The tr_vmax norm is stored in m/s; compare in m/s even
+                    # when the value reads in cm/s (PW override on a TR clip).
+                    norm_value=flow.vmax_cm_s / 100.0 if flow.site == "TR" else None,
+                )
             _html_append(parts, f"{flow.site} PGmax", flow.pgmax_mmhg, "mmHg", sex_male=sex_male)
             if time_calibrated:
                 _html_append(parts, f"{flow.site} VTI", flow.vti_cm, "cm", sex_male=sex_male)
-                _html_append(parts, f"{flow.site} Vmean", flow.vmean_cm_s, "cm/s", sex_male=sex_male)
+                if flow.vmean_cm_s is not None:
+                    scaled, unit, decimals = scale_velocity_for_display(flow.vmean_cm_s, flow.mode)
+                    _html_append(parts, f"{flow.site} Vmean", scaled, unit, decimals=decimals, sex_male=sex_male)
                 _html_append(parts, f"{flow.site} PGmean", flow.pgmean_mmhg, "mmHg", sex_male=sex_male)
         if time_calibrated:
             for label, value in (
@@ -674,3 +689,16 @@ def _append(
         return
     unit = f" {suffix}" if suffix else ""
     lines.append(f"{label}: {value:.{decimals}f}{unit}")
+
+
+def _append_velocity(
+    lines: list[str],
+    label: str,
+    velocity_cm_s: float | None,
+    mode: str,
+) -> None:
+    """Append a spectral-Doppler velocity in mode-appropriate units (Э2)."""
+    if velocity_cm_s is None:
+        return
+    scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+    _append(lines, label, scaled, unit, decimals=decimals)

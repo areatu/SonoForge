@@ -1653,7 +1653,17 @@ class MainWindow(QMainWindow):
             migrate_legacy_scan_errors(directory)
         except OSError:
             logger.warning("Could not relocate a legacy scan log from the selected folder", exc_info=True)
+        self._reset_doppler_mode_override()
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
+
+    def _reset_doppler_mode_override(self) -> None:
+        """Drop the explicit Doppler mode back to Auto on study open (Э2).
+
+        The override is a per-study assumption (typically for MP4/JPEG clips
+        without DICOM metadata); a new study starts from the DICOM mode.
+        """
+        self._tool_panel.reset_doppler_mode()
+        self._viewer.reset_doppler_mode_override()
 
     @_prof
     def _open_folder(self) -> None:
@@ -1771,6 +1781,7 @@ class MainWindow(QMainWindow):
             self.open_folder_path(disk_path)
         elif result:
             if downloaded:
+                self._reset_doppler_mode_override()
                 self._controller.load_pre_scanned_studies(downloaded)
             else:
                 session_id, _study_uid = result
@@ -2194,10 +2205,12 @@ class MainWindow(QMainWindow):
         panel = self._tool_panel.properties_panel
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
+            self._viewer.set_dicom_doppler_mode(None)
             return
 
         from echo_personal_tool.infrastructure.properties_extractor import (
             extract_properties_snapshot,
+            spectral_doppler_mode,
         )
 
         mmode = self._viewer.get_mmode_calibration_state()
@@ -2219,6 +2232,9 @@ class MainWindow(QMainWindow):
                 doppler_partial=doppler is not None and not doppler.is_complete(),
             )
             panel.update_from_snapshot(snap)
+            # DICOM acquisition mode for Doppler display units (Э2); the
+            # manual override in the Measures menu wins over it.
+            self._viewer.set_dicom_doppler_mode(spectral_doppler_mode(snap))
         except (FileNotFoundError, PermissionError, OSError):
             panel.update_instance_info(
                 modality=state.instance.modality,
@@ -2227,6 +2243,7 @@ class MainWindow(QMainWindow):
                 number_of_frames=state.instance.number_of_frames,
                 media_format=state.instance.media_format,
             )
+            self._viewer.set_dicom_doppler_mode(None)
 
         # Latest measurement
         if state.linear_measurements:
@@ -2492,6 +2509,7 @@ class MainWindow(QMainWindow):
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
+        self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)

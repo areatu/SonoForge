@@ -124,11 +124,13 @@ class MeasureTab(QWidget):
     patient_metrics_changed = Signal(object, object)
     auto_play_changed = Signal(bool)
     results_requested = Signal()
+    doppler_mode_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._menu = MeasuresMenuWidget()
         self._menu.action_requested.connect(self.action_requested.emit)
+        self._menu.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
         self._patient_metrics = _PatientMetricsRow()
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
@@ -230,6 +232,9 @@ class MeasureTab(QWidget):
     def clear_action_highlight(self) -> None:
         self._menu.clear_highlight()
 
+    def reset_doppler_mode(self) -> None:
+        self._menu.reset_doppler_mode()
+
 
 class ToolPanel(QWidget):
     """Clinical-style right tool menu."""
@@ -240,6 +245,7 @@ class ToolPanel(QWidget):
     results_requested = Signal()
     magnetic_snap_changed = Signal(bool)
     despeckle_changed = Signal(bool)
+    doppler_mode_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -262,6 +268,7 @@ class ToolPanel(QWidget):
         self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
         self.measure.auto_play_changed.connect(self.auto_play_changed.emit)
         self.measure.results_requested.connect(self.results_requested.emit)
+        self.measure.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
         self.controls.despeckle_changed.connect(self.despeckle_changed.emit)
 
@@ -386,6 +393,9 @@ class ToolPanel(QWidget):
 
     def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
         self.measure.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
+
+    def reset_doppler_mode(self) -> None:
+        self.measure.reset_doppler_mode()
 
     def update_font_metrics(self) -> None:
         """Keep the panel wide enough for its tab captions (Э4)."""

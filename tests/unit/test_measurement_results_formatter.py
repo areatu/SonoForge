@@ -116,8 +116,10 @@ def test_overlay_uses_flow_specific_vmax_and_pgmax_labels() -> None:
 
     text = format_results_overlay(snapshot, time_calibrated=True)
 
-    assert "AR Vmax: 420.0 cm/s" in text
+    # Unknown mode: a 420 cm/s jet reads in m/s, a 95 cm/s flow in cm/s (Э2).
+    assert "AR Vmax: 4.20 m/s" in text
     assert "AR PGmax: 70.6 mmHg" in text
+    assert "LVOT Vmax: 95.0 cm/s" in text
     assert "LVOT VTI: 21.0 cm" in text
     assert "Vpeak" not in text
     assert "PGpeak" not in text

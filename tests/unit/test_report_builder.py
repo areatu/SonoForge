@@ -193,12 +193,31 @@ class TestBuildReportGroups:
         assert "E" in _values(groups, GROUP_MITRAL_VALVE)
         assert "TR Vmax" in _values(groups, GROUP_TRICUSPID_VALVE)
 
-    def test_tr_vmax_norm_is_reported_in_app_units(self) -> None:
+    def test_tr_vmax_norm_follows_the_display_unit(self) -> None:
+        # 310 cm/s without a mode reads in m/s (magnitude fallback, Э2), so
+        # both the value and the norm show in reference units.
         snapshot = _snapshot(doppler=DopplerResults(tr_vmax_cm_s=310.0))
         groups = build_report_groups(snapshot, sex="M")
         tr_row = next(value for group in groups for value in group.values if value.label == "TR Vmax")
-        assert tr_row.norm == "≤280"
+        assert tr_row.value == "3.10"
+        assert tr_row.unit == "m/s"
+        assert tr_row.norm == "≤2.80"
         assert tr_row.pathological is True
+
+    def test_tr_vmax_norm_in_cm_s_under_pw(self) -> None:
+        from echo_personal_tool.domain.models.measurements import DopplerFlowResult
+
+        snapshot = _snapshot(
+            doppler=DopplerResults(
+                flow_results=(DopplerFlowResult(site="TR", vmax_cm_s=250.0, mode="PW"),),
+            )
+        )
+        groups = build_report_groups(snapshot, sex="M")
+        tr_row = next(value for group in groups for value in group.values if value.label == "TR Vmax")
+        assert tr_row.value == "250.0"
+        assert tr_row.unit == "cm/s"
+        assert tr_row.norm == "≤280"
+        assert tr_row.pathological is False
 
     def test_indexed_values_use_the_indexed_norm(self) -> None:
         snapshot = _snapshot(indexed=IndexedMeasurements(bsa_m2=1.9, lvmi_g_m2=126.0, lav_bi_index_ml_m2=40.0))

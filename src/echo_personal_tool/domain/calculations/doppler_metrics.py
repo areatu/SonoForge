@@ -22,8 +22,13 @@ def _normalize_label(label: str) -> str:
 
 
 def _matching_peaks(dto: DopplerMeasurementDTO, labels: set[str]) -> list[float]:
-    """Velocities of every measurement whose normalized label is in *labels*."""
-    return [peak.velocity_cm_s for peak in dto.peaks if _normalize_label(peak.label) in labels]
+    """Magnitudes of every measurement whose normalized label is in *labels*.
+
+    Storage keeps the signed calibration truth (below-baseline jets are
+    negative); every clinical read — ratios, criteria, norms — uses the
+    magnitude, so the sign is normalized here, at the compute boundary (Э2).
+    """
+    return [abs(peak.velocity_cm_s) for peak in dto.peaks if _normalize_label(peak.label) in labels]
 
 
 def _find_peak_velocity(dto: DopplerMeasurementDTO, *labels: str) -> float | None:
@@ -194,6 +199,22 @@ def _find_mean_pressure_gradient_from_trace(dto: DopplerMeasurementDTO, site: st
     return sum(values) / len(values)
 
 
+def _site_mode(dto: DopplerMeasurementDTO, site: str) -> str:
+    """Acquisition mode of the newest measurement of a site (display hint).
+
+    Peaks win over traces because Vmax display follows the peak markers;
+    the trace mode only matters for the trace-derived Vmax fallback.  Empty
+    when no contributing measurement captured a mode (legacy records).
+    """
+    for peak in reversed(dto.peaks):
+        if flow_site_from_peak_label(peak.label) == site and peak.mode:
+            return peak.mode
+    for trace in reversed(dto.traces):
+        if flow_site_from_trace_label(trace.label) == site and trace.mode:
+            return trace.mode
+    return ""
+
+
 def _compute_flow_results(dto: DopplerMeasurementDTO) -> tuple[DopplerFlowResult, ...]:
     """Compute independent values for every measured valve/flow region."""
 
@@ -232,6 +253,7 @@ def _compute_flow_results(dto: DopplerMeasurementDTO) -> tuple[DopplerFlowResult
                 pgmean_mmhg=_find_mean_pressure_gradient_from_trace(dto, site),
                 vmax_repeats=len(site_peaks),
                 vti_repeats=_find_vti_repeats(dto, site),
+                mode=_site_mode(dto, site),
             )
         )
     return tuple(results)

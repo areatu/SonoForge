@@ -32,6 +32,19 @@ _DOPPLER_DATA_TYPE_MAP = {
 }
 
 
+def spectral_doppler_mode(snapshot: PropertiesSnapshot) -> str | None:
+    """Acquisition mode of the spectral-Doppler region, if the clip has one.
+
+    ``RegionDataType`` 3/4/0x10/0x11 reads as PW/CW/TDI/TDI_PW; B-mode and
+    M-mode regions carry no Doppler mode. Used for Doppler display units
+    (Э2: CW → m/s, PW/TDI → cm/s).
+    """
+    for region in snapshot.regions:
+        if region.spatial_format == "Spectral" and region.data_type:
+            return region.data_type
+    return None
+
+
 def _safe_float(value) -> float | None:
     if value is None:
         return None
