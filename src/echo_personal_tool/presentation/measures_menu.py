@@ -425,6 +425,7 @@ class MeasuresMenuWidget(QWidget):
     """Grouped measurement actions for the Measures tab."""
 
     action_requested = Signal(object, str, str, str)
+    doppler_mode_changed = Signal(str)
 
     _BLINK_STYLE = "background-color: #fff59d; color: #1a2430; font-weight: bold;"
     _NORMAL_STYLE = ""
@@ -432,6 +433,10 @@ class MeasuresMenuWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._preferences = None
+        # Explicit Doppler acquisition-mode override ("" = Auto from DICOM).
+        # Kept across menu rebuilds so the control never disagrees with the
+        # viewer it drives.
+        self._doppler_mode_override: str = ""
         self._blink_target: QPushButton | None = None
         self._blink_on = False
         self._blink_timer = QTimer(self)
@@ -496,6 +501,30 @@ class MeasuresMenuWidget(QWidget):
         preset_layout.addWidget(self._vessel_preset_combo, stretch=1)
         preset_row.hide()
         layout.addWidget(preset_row)
+
+        # Doppler acquisition mode (Э2): Auto reads the DICOM RegionDataType
+        # of the current clip; an explicit CW/PW/TDI wins and is captured by
+        # newly placed markers (MP4/JPEG have no DICOM mode to read).
+        mode_row = QWidget()
+        mode_layout = QHBoxLayout(mode_row)
+        mode_layout.setContentsMargins(8, 0, 8, 0)
+        mode_layout.setSpacing(6)
+        mode_label = QLabel(tr("menu.doppler_mode"))
+        mode_label.setStyleSheet("font-size: 11px;")
+        self._doppler_mode_combo = QComboBox()
+        self._doppler_mode_combo.addItem(tr("menu.doppler_mode_auto"), "")
+        self._doppler_mode_combo.addItem("CW", "CW")
+        self._doppler_mode_combo.addItem("PW", "PW")
+        self._doppler_mode_combo.addItem("TDI", "TDI")
+        self._doppler_mode_combo.setToolTip(tr("menu.doppler_mode_tip"))
+        index = self._doppler_mode_combo.findData(self._doppler_mode_override)
+        self._doppler_mode_combo.blockSignals(True)
+        self._doppler_mode_combo.setCurrentIndex(index if index >= 0 else 0)
+        self._doppler_mode_combo.blockSignals(False)
+        self._doppler_mode_combo.currentIndexChanged.connect(self._on_doppler_mode_index_changed)
+        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(self._doppler_mode_combo, stretch=1)
+        layout.addWidget(mode_row)
         scroll.setWidget(inner)
 
         # Clear old layout content if exists, otherwise create new layout
@@ -541,6 +570,20 @@ class MeasuresMenuWidget(QWidget):
 
     def vessel_preset(self) -> str:
         return str(self._vessel_preset_combo.currentData() or "normal")
+
+    def _on_doppler_mode_index_changed(self, index: int) -> None:
+        mode = str(self._doppler_mode_combo.itemData(index) or "")
+        self._doppler_mode_override = mode
+        self.doppler_mode_changed.emit(mode)
+
+    def doppler_mode_override(self) -> str:
+        return self._doppler_mode_override
+
+    def reset_doppler_mode(self) -> None:
+        """Back to Auto (emits, so the viewer follows)."""
+        if self._doppler_mode_override == "":
+            return
+        self._doppler_mode_combo.setCurrentIndex(0)
 
     def reload_text(self) -> None:
         for section in self._sections:

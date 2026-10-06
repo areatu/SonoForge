@@ -8,6 +8,7 @@ from echo_personal_tool.domain.calculations.chamber_simpson import (
     biplane_es_volume_ml,
     es_volume_from_view,
 )
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
@@ -96,10 +97,10 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         vmax_repeats = _repeat_suffix(flow.vmax_repeats)
         field_lines.extend(
             (
-                _optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s" + vmax_repeats),
+                _optional_velocity(f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode, vmax_repeats),
                 _optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
                 _optional_line(f"{flow.site} VTI", flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
-                _optional_line(f"{flow.site} Vmean", flow.vmean_cm_s, " cm/s"),
+                _optional_velocity(f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode, ""),
                 _optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
             )
         )
@@ -403,6 +404,19 @@ def _optional_line(
     if value is None:
         return None
     return _line(label, value, suffix, decimals=decimals)
+
+
+def _optional_velocity(
+    label: str,
+    velocity_cm_s: float | None,
+    mode: str,
+    extra_suffix: str = "",
+) -> str | None:
+    """Spectral-Doppler velocity in mode-appropriate units (Э2)."""
+    if velocity_cm_s is None:
+        return None
+    scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+    return _line(label, scaled, f" {unit}" + extra_suffix, decimals=decimals)
 
 
 def _line(

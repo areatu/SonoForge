@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
+from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
 from echo_personal_tool.domain.calculations.vessel_metrics import (
     VesselMetrics,
     compute_vessel_metrics,
@@ -28,6 +29,8 @@ from echo_personal_tool.domain.doppler_catalog import (
     canonical_interval_label,
     canonical_peak_label,
     canonical_trace_label,
+    flow_site_from_peak_label,
+    scale_velocity_for_display,
 )
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
@@ -57,6 +60,21 @@ _BASELINE_CLICK_TOLERANCE_PX = 8.0
 _TRACE_MIN_SAMPLE_PX = 4.0
 #: Reach of the delete gesture around a marker, interval or trace.
 _DELETE_HIT_TOLERANCE_PX = 12.0
+
+
+def peak_marker_caption(marker: DopplerPeakMarker) -> str:
+    """On-spectrum caption of one peak marker (Э2).
+
+    ``TR Vmax 3.12 m/s · PGmax 39 mmHg``: the velocity reads in the units of
+    the mode captured at measurement time, and flow sites (never E/A/e'/s',
+    D-22) append the peak gradient. Magnitudes everywhere, like the protocol.
+    """
+    magnitude = abs(marker.velocity_cm_s)
+    scaled, unit, decimals = scale_velocity_for_display(magnitude, marker.mode)
+    text = f"{marker.label} {scaled:.{decimals}f} {unit}"
+    if flow_site_from_peak_label(marker.label) is not None:
+        text += f" · PGmax {pressure_gradient_mmhg(magnitude):.0f} mmHg"
+    return text
 
 
 class _PeakScatterItem(pg.ScatterPlotItem):
@@ -138,6 +156,9 @@ class DopplerOverlayTools(QWidget):
         self._peak_scatter = _PeakScatterItem(self)
         self._peak_scatter.setZValue(20)
         self._plot.addItem(self._peak_scatter)
+        # On-spectrum value captions, one per peak marker (Э2), rebuilt with
+        # the scatter points.
+        self._peak_label_items: list[pg.TextItem] = []
 
         self._interval_items: list[pg.PlotDataItem] = []
         self._interval_preview_item: pg.PlotDataItem | None = None
@@ -189,6 +210,24 @@ class DopplerOverlayTools(QWidget):
         self._autovti_direction: str | None = None
         self._autovti_region_item: pg.PlotCurveItem | None = None
         self._autovti_band_item: pg.PlotDataItem | None = None
+
+        # Acquisition mode new markers are stamped with (Э2): "CW" | "PW" |
+        # "TDI" resolved by the viewer (DICOM RegionDataType, explicit manual
+        # override wins), "" when unknown. Fixed at measurement time.
+        self._doppler_mode: str = ""
+
+    def set_doppler_mode(self, mode: str) -> None:
+        """Set the acquisition mode stamped on newly committed markers.
+
+        Only affects markers placed after the call; already committed and
+        restored markers keep the mode they captured (Э2).
+        """
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        self._doppler_mode = normalize_doppler_mode(mode)
+
+    def doppler_mode(self) -> str:
+        return self._doppler_mode
 
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
@@ -353,6 +392,13 @@ class DopplerOverlayTools(QWidget):
         """Append a committed trace and draw its filled envelope."""
         if not trace.measurement_id:
             trace = DopplerTrace(label=trace.label, points=trace.points, measurement_id=new_measurement_id())
+        if not trace.mode:
+            trace = DopplerTrace(
+                label=trace.label,
+                points=trace.points,
+                measurement_id=trace.measurement_id,
+                mode=self._doppler_mode,
+            )
         self._traces.append(trace)
         self._traces = list(
             keep_newest_per_label(self._traces, label_of=lambda item: canonical_trace_label(item.label))
@@ -421,6 +467,9 @@ class DopplerOverlayTools(QWidget):
         self._interval_markers.clear()
         self._traces.clear()
         self._peak_scatter.setData([], [])
+        for item in self._peak_label_items:
+            self._plot.removeItem(item)
+        self._peak_label_items.clear()
 
         for item in self._interval_items:
             self._plot.removeItem(item)
@@ -481,11 +530,13 @@ class DopplerOverlayTools(QWidget):
         if self._peak_drag_index is None:
             return False
         index = self._peak_drag_index
+        dragged = self._peak_markers[index]
         self._peak_markers[index] = DopplerPeakMarker(
-            label=self._peak_markers[index].label,
+            label=dragged.label,
             time_ms=self._axis_mapping.time_ms_from_x(float(x_px)),
             velocity_cm_s=self._axis_mapping.velocity_cm_s_from_y(float(y_px)),
-            measurement_id=self._peak_markers[index].measurement_id,
+            measurement_id=dragged.measurement_id,
+            mode=dragged.mode,
         )
         self._refresh_peak_scatter()
         self._emit_markers_changed()
@@ -1119,6 +1170,29 @@ class DopplerOverlayTools(QWidget):
             for marker in self._peak_markers
         ]
         self._peak_scatter.setData(spots)
+        self._refresh_peak_captions()
+
+    def _refresh_peak_captions(self) -> None:
+        """Rebuild the on-spectrum value caption of every peak marker."""
+        for item in self._peak_label_items:
+            self._plot.removeItem(item)
+        self._peak_label_items = []
+        for marker in self._peak_markers:
+            item = pg.TextItem(
+                peak_marker_caption(marker),
+                color="#e8eef4",
+                fill=(0, 0, 0, 180),
+                anchor=(0.0, 1.0),
+            )
+            item.setZValue(21)
+            # Captions must never steal the clicks/drags of the markers below.
+            item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            item.setPos(
+                self._axis_mapping.x_from_time_ms(marker.time_ms),
+                self._axis_mapping.y_from_velocity_cm_s(marker.velocity_cm_s),
+            )
+            self._plot.addItem(item)
+            self._peak_label_items.append(item)
 
     def _baseline_y_for_interval(self) -> float:
         baseline = self._axis_mapping.baseline_plot_y()
@@ -1226,6 +1300,7 @@ class DopplerOverlayTools(QWidget):
             time_ms=float(time_ms),
             velocity_cm_s=float(velocity_cm_s),
             measurement_id=new_measurement_id(),
+            mode=self._doppler_mode,
         )
         # D-23: measuring the same parameter again stores another measurement
         # (several beats, atrial fibrillation) instead of replacing the first.

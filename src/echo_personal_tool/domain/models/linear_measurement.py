@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import cos, radians, sin, sqrt
 
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 
 _LABEL_I18N_KEY: dict[str, str] = {
@@ -52,14 +53,29 @@ class LinearMeasurement:
     time_ms: float | None = None
     velocity_cm_s: float | None = None
     doppler: bool = False
+    #: Acquisition mode captured at measurement time (``CW`` | ``PW`` | ``TDI``,
+    #: empty when unknown). Only meaningful for Doppler-zone calipers; selects
+    #: m/s vs cm/s for the velocity part (Э2), storage stays in cm/s.
+    doppler_mode: str = ""
 
     def doppler_value_parts(self) -> list[str]:
-        """Formatted Δt / velocity parts of a Doppler caliper (may be empty)."""
+        """Formatted Δt / velocity / PGmax parts of a Doppler caliper.
+
+        A velocity result reads with its peak gradient (Э2: scanners show
+        PGmax next to every Vmax); a pure time result carries no PG.
+        """
+        # Local import: calculations/__init__ re-exports doppler_metrics, which
+        # depends on this module — a top-level import would be circular.
+        from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
+
         parts: list[str] = []
         if self.time_ms is not None:
             parts.append(f"{self.time_ms:.1f} ms")
         if self.velocity_cm_s is not None:
-            parts.append(format_velocity_cm_s(self.velocity_cm_s))
+            magnitude = abs(self.velocity_cm_s)
+            scaled, unit, decimals = scale_velocity_for_display(magnitude, self.doppler_mode)
+            parts.append(f"{scaled:.{decimals}f} {unit}")
+            parts.append(f"PGmax {pressure_gradient_mmhg(magnitude):.0f} mmHg")
         return parts
 
     def display_text(self, *, length_unit: str = "mm") -> str:

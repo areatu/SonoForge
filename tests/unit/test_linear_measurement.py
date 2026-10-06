@@ -128,7 +128,9 @@ class TestDopplerCaliperMeasurement:
         text = m.display_text()
         assert "105.0 ms" in text
         assert "87.3 cm/s" in text
-        assert "mm" not in text
+        assert "PGmax 3 mmHg" in text
+        # No B-mode millimeter length ("mmHg" of the gradient does not count).
+        assert " mm" not in text.replace("mmHg", "")
         # Doppler Δt must not render the M-mode HR line.
         assert "ЧСС" not in text and "HR" not in text
 
@@ -142,6 +144,7 @@ class TestDopplerCaliperMeasurement:
             doppler=True,
         )
         assert "3.50 m/s" in m.display_text()
+        assert "PGmax 49 mmHg" in m.display_text()
 
     def test_display_text_time_only(self) -> None:
         m = LinearMeasurement(
@@ -163,7 +166,33 @@ class TestDopplerCaliperMeasurement:
             velocity_cm_s=-45.0,
             doppler=True,
         )
-        assert "-45.0 cm/s" in m.display_text()
+        # E2 sign normalization: magnitudes everywhere, like the protocol.
+        assert "45.0 cm/s" in m.display_text()
+        assert "-45.0" not in m.display_text()
+        assert "PGmax 1 mmHg" in m.display_text()
+
+    def test_display_text_velocity_follows_captured_mode(self) -> None:
+        m = LinearMeasurement(
+            label="Dist1",
+            pixel_length=0.0,
+            millimeter_length=None,
+            time_ms=90.0,
+            velocity_cm_s=95.0,
+            doppler=True,
+            doppler_mode="CW",
+        )
+        assert "0.95 m/s" in m.display_text()
+        assert "PGmax 4 mmHg" in m.display_text()
+
+    def test_display_text_time_only_has_no_pg(self) -> None:
+        m = LinearMeasurement(
+            label="Dist1",
+            pixel_length=0.0,
+            millimeter_length=None,
+            time_ms=150.0,
+            doppler=True,
+        )
+        assert "PGmax" not in m.display_text()
 
     def test_inline_text(self) -> None:
         m = LinearMeasurement(
@@ -175,7 +204,7 @@ class TestDopplerCaliperMeasurement:
             doppler=True,
         )
         text = inline_caliper_text(m)
-        assert text == "Dist1 105.0 ms 87.3 cm/s"
+        assert text == "Dist1 105.0 ms 87.3 cm/s PGmax 3 mmHg"
 
     def test_format_velocity_units(self) -> None:
         assert format_velocity_cm_s(99.9) == "99.9 cm/s"

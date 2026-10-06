@@ -28,6 +28,10 @@ class DopplerFlowResult:
     vmax_repeats: int = 0
     #: Number of stored VTI traces of this site that were averaged.
     vti_repeats: int = 0
+    #: Acquisition mode of the newest measurement of this site
+    #: (``CW`` | ``PW`` | ``TDI``, empty when unknown).  Display-only: it
+    #: selects m/s vs cm/s for the velocities, storage stays in cm/s.
+    mode: str = ""
 
 
 @dataclass(frozen=True)
