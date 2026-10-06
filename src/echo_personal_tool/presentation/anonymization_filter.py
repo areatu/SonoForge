@@ -14,7 +14,9 @@ import numpy as np
 
 from echo_personal_tool.domain.services.phi_mask import (
     MaskPlan,
+    MaskRect,
     apply_mask,
+    fill_values,
     resolve_mask_plan,
 )
 from echo_personal_tool.infrastructure.phi_mask_profiles import (
@@ -23,6 +25,11 @@ from echo_personal_tool.infrastructure.phi_mask_profiles import (
     phi_mask_context,
     resolve_mask_spec,
 )
+
+# The background of a scanner header does not change from frame to frame, so the
+# fill colour is measured once and then reused.  It is refreshed periodically
+# anyway: a clip can fade in, switch layout, or start on a black frame.
+BACKGROUND_REFRESH_EVERY = 60
 
 
 class AnonymizationFilter:
@@ -42,6 +49,9 @@ class AnonymizationFilter:
     def __init__(self, enabled: bool = True) -> None:
         self._enabled = bool(enabled)
         self._last_plan: MaskPlan = MaskPlan(reason="disabled")
+        self._fills: tuple[np.ndarray | int, ...] = ()
+        self._fills_key: tuple[str, tuple[MaskRect, ...], tuple[int, ...]] | None = None
+        self._fills_age = 0
 
     @property
     def enabled(self) -> bool:
@@ -93,7 +103,23 @@ class AnonymizationFilter:
         self._last_plan = plan
         if plan.is_empty:
             return pixels
-        return apply_mask(frame, plan)
+        return apply_mask(frame, plan, fills=self._fills_for(frame, plan, source_path))
+
+    def _fills_for(
+        self,
+        frame: np.ndarray,
+        plan: MaskPlan,
+        source_path: Path | str | None,
+    ) -> tuple[np.ndarray | int, ...]:
+        """Cached fill colours for this file and geometry."""
+        key = (str(source_path) if source_path is not None else "", plan.rects, frame.shape[:2])
+        if self._fills_key == key and self._fills and self._fills_age < BACKGROUND_REFRESH_EVERY:
+            self._fills_age += 1
+            return self._fills
+        self._fills = fill_values(frame, plan)
+        self._fills_key = key
+        self._fills_age = 0
+        return self._fills
 
     def context_for(self, source_path: Path | str | None) -> PhiMaskContext:
         return phi_mask_context(source_path)

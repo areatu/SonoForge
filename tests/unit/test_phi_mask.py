@@ -27,7 +27,10 @@ from echo_personal_tool.infrastructure.phi_mask_profiles import (
     resolve_mask_spec,
 )
 from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor
-from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
+from echo_personal_tool.presentation.anonymization_filter import (
+    BACKGROUND_REFRESH_EVERY,
+    AnonymizationFilter,
+)
 
 # ── Geometry ────────────────────────────────────────────────────────────
 
@@ -283,6 +286,41 @@ def test_disabled_filter_returns_the_same_object(tmp_path) -> None:
     assert filter_.apply(frame, path) is not frame
     filter_.set_enabled(False)
     assert filter_.apply(frame, path) is frame
+
+
+def test_fill_colour_is_measured_once_per_clip(tmp_path) -> None:
+    """The background is a property of the clip, not of the frame.
+
+    Measuring it on every frame costs more than the fill itself (2.2 ms versus
+    0.6 ms on a 720p RGB frame), so the colour is cached and reused.
+    """
+    path = _write_dicom(tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES")
+    first = np.full((884, 1180), 30, dtype=np.uint8)
+    first[0:100, 100:600] = 250
+    second = np.full((884, 1180), 60, dtype=np.uint8)
+    second[0:100, 100:600] = 250
+
+    filter_ = AnonymizationFilter(enabled=True)
+    first_masked = filter_.apply(first, path)
+    second_masked = filter_.apply(second, path)
+
+    assert first_masked[0, 0] == 30
+    assert second_masked[0, 0] == 30  # reused, not re-measured
+    assert second_masked[200, 0] == 60  # the rest of the frame is untouched
+
+
+def test_fill_colour_is_refreshed_periodically(tmp_path) -> None:
+    """A cached colour must not survive a clip that changes its background."""
+    path = _write_dicom(tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES")
+    dark = np.full((884, 1180), 30, dtype=np.uint8)
+    light = np.full((884, 1180), 90, dtype=np.uint8)
+
+    filter_ = AnonymizationFilter(enabled=True)
+    for _ in range(BACKGROUND_REFRESH_EVERY + 1):
+        filter_.apply(dark, path)
+    refreshed = filter_.apply(light, path)
+
+    assert refreshed[0, 0] == 90
 
 
 def test_unknown_file_uses_the_conservative_default(tmp_path) -> None:
