@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from echo_personal_tool.domain.calculations.lvef_simpson import calculate
 from echo_personal_tool.domain.models.contour import Contour
 from echo_personal_tool.domain.services.bench_metrics import lvef_delta
+
+logger = logging.getLogger(__name__)
 
 
 def _gold_frame_to_contour(gold_frame: dict[str, Any]) -> Contour:
@@ -51,7 +54,7 @@ def _resolve_pixel_spacing(
             if meta.pixel_spacing is not None:
                 return meta.pixel_spacing
         except Exception:
-            pass
+            logger.debug("Could not read pixel spacing from the DICOM header", exc_info=True)
 
     return None
 

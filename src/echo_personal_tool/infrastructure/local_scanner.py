@@ -37,6 +37,9 @@ from echo_personal_tool.infrastructure.media_metadata_mapper import (
 )
 
 logger = logging.getLogger(__name__)
+_SAFE_SCAN_EXTENSIONS = frozenset(
+    {".dcm", ".dicom", ".mp4", ".avi", ".mov", ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+)
 
 
 class LocalMediaDirectoryScanner:
@@ -275,15 +278,21 @@ class LocalMediaDirectoryScanner:
             return None
 
     def _log_scan_error(self, path: Path, exc: Exception) -> None:
-        message = f"{path}: {exc}"
-        logger.warning("Scan skip: %s", message)
+        # Do not persist patient folder names, media filenames, UIDs, or parser
+        # exception text. The format and exception class are enough to diagnose
+        # unsupported/corrupt inputs without recording PHI.
+        extension = path.suffix.lower()
+        safe_format = extension if extension in _SAFE_SCAN_EXTENSIONS else "unknown"
+        message = f"format={safe_format} error={type(exc).__name__}"
+        logger.warning("Scan skipped media (%s)", message)
         if self._error_log_path is None:
             return
         try:
+            self._error_log_path.parent.mkdir(parents=True, exist_ok=True)
             with self._error_log_path.open("a", encoding="utf-8") as fh:
                 fh.write(message + "\n")
         except OSError:
-            logger.exception("Failed to write scan error log")
+            logger.exception("Failed to write central scan error log")
 
 
 LocalDicomDirectoryScanner = LocalMediaDirectoryScanner

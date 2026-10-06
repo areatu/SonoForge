@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -67,7 +68,9 @@ class TestConstructorWorkflow:
             try:
                 show_constructor_dialog()
             except Exception:
-                pass  # Dialog may close immediately in test env
+                logging.getLogger(__name__).debug(
+                    "Constructor dialog failed to open in the test environment", exc_info=True
+                )
 
     def test_reference_model_from_dict(self) -> None:
         """ReferenceModel can be created from a dictionary."""

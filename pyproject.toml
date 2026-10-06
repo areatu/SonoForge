@@ -103,5 +103,9 @@ target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["E", "F", "I", "UP", "S110", "T201"]
 ignore = ["F821", "E402", "F841", "E501", "UP042", "E741"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and intentionally user-facing CLI scripts use print for their output.
+"tests/**/*.py" = ["T201"]

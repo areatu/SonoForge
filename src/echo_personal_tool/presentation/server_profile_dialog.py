@@ -62,6 +62,9 @@ class ServerProfileDialog(QDialog):
         btn_row.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box
+
+        localize_dialog_button_box(buttons)
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)

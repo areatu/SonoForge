@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Sequence
 from dataclasses import replace
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.services.active_contour_refine import (
@@ -326,19 +329,13 @@ def refine_open_arc_contour(
     original_points = list(contour.points)
     chamber = contour.chamber.upper() if contour.chamber else "LV"
 
-    print(
-        f"[LA-REFINE] chamber={chamber}, source={contour.source}, "
-        f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}",
-        flush=True,
+    logger.debug(
+        "[LA-REFINE] chamber=%s source=%s points=%d mask_prior=%s",
+        chamber,
+        contour.source,
+        len(original_points),
+        bool(mask_prior),
     )
-    try:
-        with open("/tmp/la_boundary_debug.log", "a") as _dbg:
-            _dbg.write(
-                f"refine: chamber={chamber}, source={contour.source}, "
-                f"points={len(original_points)}, mask_prior={'yes' if mask_prior else 'no'}\n"
-            )
-    except Exception:
-        pass
 
     # ── PATH A: LA/RA from AI → active contour with mask prior ──
     if frame is not None and frame.size > 0 and contour.source == "ai" and chamber in {"LA", "RA"}:
@@ -354,7 +351,7 @@ def refine_open_arc_contour(
             )
             if _refined_is_sane(original_points, refined_points, septal, lateral, source=contour.source):
                 new_apex = apex if contour.apex_landmark is None else contour.apex_landmark
-                print("[LA-REFINE] active contour SANE → gradient", flush=True)
+                logger.debug("[LA-REFINE] active contour accepted; using gradient refinement")
                 contour = replace(
                     contour,
                     points=resample_open_arc_landmarks(
@@ -369,10 +366,9 @@ def refine_open_arc_contour(
                 )
                 return contour, "gradient"
         except (ValueError, FloatingPointError):
-            print("[LA-REFINE] active contour EXCEPTION", flush=True)
-            pass
+            logger.debug("[LA-REFINE] active contour failed; falling back to stepped refinement", exc_info=True)
         # Fallback: stepped refine with bidirectional search
-        print("[LA-REFINE] active contour failed → stepped fallback", flush=True)
+        logger.debug("[LA-REFINE] using stepped refinement fallback")
         next_step = next_refine_step(contour.refine_step, source=contour.source)
         locked = frozenset(contour.refine_locked_indices)
         result = run_stepped_refine_pass(
@@ -394,7 +390,7 @@ def refine_open_arc_contour(
         )
         if _refined_is_sane(original_points, result.points, septal, lateral, source=contour.source):
             new_apex = apex if contour.apex_landmark is None else contour.apex_landmark
-            print(f"[LA-REFINE] stepped refine SANE → status={status}", flush=True)
+            logger.debug("[LA-REFINE] stepped refinement accepted: %s", status)
             contour = replace(
                 contour,
                 points=result.points,
@@ -404,7 +400,7 @@ def refine_open_arc_contour(
                 apex_landmark=new_apex,
             )
             return contour, status
-        print(f"[LA-REFINE] stepped refine REJECTED → {status}", flush=True)
+        logger.debug("[LA-REFINE] stepped refinement rejected: %s", status)
         return contour, f"{status} (rejected)"
 
     # ── PATH B: LV ai / manual → stepped border refine ──
@@ -481,9 +477,9 @@ def refine_open_arc_contour(
                 )
                 return contour, "gradient"
     except (ValueError, FloatingPointError):
-        pass
+        logger.debug("[LA-REFINE] active contour failed; using geometry smoothing", exc_info=True)
 
-    print("[LA-REFINE] no path matched → geometry smooth", flush=True)
+    logger.debug("[LA-REFINE] no refinement path matched; using geometry smoothing")
     return _smooth_contour_points(contour), "geometry"
 
 

@@ -189,7 +189,7 @@ def _report(
         try:
             callback(message, progress)
         except Exception:
-            pass
+            logger.debug("Runtime setup progress callback failed", exc_info=True)
 
 
 # ── Qt Dialog ──

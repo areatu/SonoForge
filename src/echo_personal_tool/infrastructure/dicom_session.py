@@ -82,7 +82,7 @@ def _cleanup_all_sessions() -> None:
         try:
             session._force_release_heavy()
         except Exception:
-            pass
+            logger.debug("Could not release a DICOM session during process cleanup", exc_info=True)
 
 
 _UNCOMPRESSED_SYNTAXES = frozenset(
@@ -145,7 +145,7 @@ def _drop_pruned(pruned: list[DicomSession]) -> None:
         try:
             old.release()
         except Exception:
-            pass
+            logger.debug("Could not release an evicted DICOM session", exc_info=True)
 
 
 def get_dicom_session(path: Path | str) -> DicomSession:
@@ -207,7 +207,7 @@ def release_stale_sessions(exclude: DicomSession | None = None) -> None:
         try:
             session.release_heavy()
         except Exception:
-            pass
+            logger.debug("Could not release DICOM session buffers", exc_info=True)
 
 
 def _scan_pixel_data_span(raw: bytes) -> tuple[int, int] | None:

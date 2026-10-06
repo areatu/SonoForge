@@ -101,6 +101,9 @@ class ReportDialog(QDialog):
         export_button.clicked.connect(self._export_pdf)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box
+
+        localize_dialog_button_box(buttons)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
 

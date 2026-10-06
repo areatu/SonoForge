@@ -8,17 +8,6 @@ import os
 import sys
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-
-from echo_personal_tool.infrastructure.paths import logs_dir
-
-# Debug file logging
-_LOG_DIR = logs_dir()
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
-_LOG_PATH = _LOG_DIR / "errors.log"
-_file_handler = logging.FileHandler(str(_LOG_PATH), mode="a", encoding="utf-8")
-_file_handler.setLevel(logging.WARNING)
-_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-logging.getLogger("echo_personal_tool.presentation.main_window").addHandler(_file_handler)
 from time import perf_counter
 from typing import Literal
 
@@ -602,13 +591,13 @@ class MainWindow(QMainWindow):
             try:
                 self._viewer.start_mmode_line()
             except Exception:
-                pass
+                logger.debug("Could not start the M-mode scan line", exc_info=True)
             self._show_status(tr("status.mmode_activated"))
         else:
             try:
                 self._viewer.cancel_mmode_line()
             except Exception:
-                pass
+                logger.debug("Could not cancel the M-mode scan line", exc_info=True)
             self._deactivate_mmode()
             self.setFocus()
             self.activateWindow()
@@ -1595,9 +1584,46 @@ class MainWindow(QMainWindow):
         path = instance.path if instance is not None else None
         self._tool_panel.load_dicom_inspector(path)
 
+    def _save_diagnostics(self) -> None:
+        from datetime import datetime
+
+        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = f"SonoForge-diagnostics-{datetime.now().astimezone():%Y%m%d-%H%M%S}.zip"
+        destination, _ = styled_save_file(
+            self,
+            tr("diagnostics.save_dialog_title"),
+            str(Path.home() / default_name),
+            tr("diagnostics.file_filter"),
+        )
+        if not destination:
+            return
+        try:
+            saved_path = create_diagnostic_bundle(Path(destination), app=QApplication.instance())
+        except Exception as exc:  # noqa: BLE001 - report a failed support export to the user
+            logger.exception("Could not create privacy-filtered diagnostic archive")
+            QMessageBox.warning(
+                self,
+                tr("diagnostics.save_dialog_title"),
+                tr("diagnostics.error", error=str(exc)),
+            )
+            return
+        QMessageBox.information(
+            self,
+            tr("diagnostics.save_dialog_title"),
+            tr("diagnostics.saved", path=str(saved_path)) + "\n\n" + tr("diagnostics.privacy"),
+        )
+
     def open_folder_path(self, directory: Path) -> None:
-        log_path = directory / "scan_errors.log"
-        self._controller.open_folder(directory, error_log_path=log_path)
+        from echo_personal_tool.infrastructure.diagnostics import migrate_legacy_scan_errors
+        from echo_personal_tool.infrastructure.paths import logs_dir
+
+        try:
+            migrate_legacy_scan_errors(directory)
+        except OSError:
+            logger.warning("Could not relocate a legacy scan log from the selected folder", exc_info=True)
+        self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
 
     @_prof
     def _open_folder(self) -> None:
@@ -1690,7 +1716,7 @@ class MainWindow(QMainWindow):
         try:
             client.close()
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Could not close the Orthanc dialog client", exc_info=True)
         result = dialog.result_data()
         downloaded = dialog.downloaded_studies()
         disk_path = dialog.completed_disk_download_path()
@@ -1705,16 +1731,15 @@ class MainWindow(QMainWindow):
             # Re-scan the exported short paths so the active StudyMetadata also
             # points at files that persist after the Orthanc cache is cleaned.
             # True Study/Series/SOP UIDs are reconstructed from DICOM headers.
-            self._controller.open_folder(disk_path, error_log_path=disk_path / "scan_errors.log")
+            self.open_folder_path(disk_path)
         elif result:
             if downloaded:
                 self._controller.load_pre_scanned_studies(downloaded)
             else:
                 session_id, _study_uid = result
                 path = self._orthanc_cache.session_path(session_id)
-                log_path = path / "scan_errors.log"
-                logger.info("[MW] scan fallback: session=%s path=%s exists=%s", session_id[:8], path, path.exists())
-                self._controller.open_folder(path, error_log_path=log_path)
+                logger.info("[MW] scan fallback: session=%s directory_exists=%s", session_id[:8], path.exists())
+                self.open_folder_path(path)
         else:
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
 
@@ -1746,7 +1771,7 @@ class MainWindow(QMainWindow):
                         if uid:
                             annotations.setdefault(uid, []).append(m)
         except Exception:
-            pass  # Upload without annotations if viewer access fails
+            logger.warning("Could not collect annotations; uploading without them", exc_info=True)
         run_dicom_upload_dialog(self, studies, load_server_settings(), annotations=annotations)
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -2421,6 +2446,7 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
+        self._system_bar.diagnostics_requested.connect(self._save_diagnostics)
         self._system_bar.minimize_requested.connect(self.showMinimized)
         self._system_bar.maximize_requested.connect(self._toggle_maximize)
         self._system_bar.close_requested.connect(self.close)
@@ -2965,7 +2991,7 @@ class MainWindow(QMainWindow):
         try:
             self._viewer._ste_sensitivity.hide()
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Could not hide the strain sensitivity control during teardown", exc_info=True)
 
     def _on_speckle_result_ready(self, result: object) -> None:
         from echo_personal_tool.domain.models.speckle import StrainResult

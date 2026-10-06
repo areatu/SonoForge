@@ -249,18 +249,18 @@ def _main() -> int:
     args = parser.parse_args()
 
     if args.print_data_dir:
-        print(data_dir())
+        print(data_dir())  # noqa: T201 - this module is the path CLI
     elif args.print_models_dir:
-        print(models_dir())
+        print(models_dir())  # noqa: T201 - this module is the path CLI
     elif args.print_models_read_dir:
         readable = next(
             (candidate for candidate in models_dirs_for_read() if (candidate / "model_manifest.json").is_file()),
             models_dir(),
         )
-        print(readable)
+        print(readable)  # noqa: T201 - this module is the path CLI
     else:
         for warning in migrate_legacy_paths():
-            print(f"SonoForge path migration: {warning}", file=sys.stderr)
+            print(f"SonoForge path migration: {warning}", file=sys.stderr)  # noqa: T201 - this module is the path CLI
     return 0
 
 

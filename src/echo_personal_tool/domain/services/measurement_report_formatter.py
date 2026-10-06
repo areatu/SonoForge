@@ -13,7 +13,7 @@ from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
 
 def dedupe_linear_measurements_latest(
@@ -343,7 +343,7 @@ def _format_strain_section(snapshot: MeasurementSnapshot) -> list[str]:
         # A draft contour is not a gold contour; the report must not hide it.
         lines.append(tr("domain.report.strain_contour_draft"))
     if strain.segments_missing:
-        lines.append(tr("domain.report.strain_segments_missing", count=str(strain.segments_missing)))
+        lines.append(tr_plural("domain.report.strain_segments_missing", strain.segments_missing))
     return lines
 
 

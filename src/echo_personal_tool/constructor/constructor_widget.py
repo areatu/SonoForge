@@ -27,7 +27,7 @@ from echo_personal_tool.constructor.storage import (
     SchemaValidator,
     YamlStorage,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +198,7 @@ class ConstructorWidget(QWidget):
             QMessageBox.warning(
                 self,
                 tr("constructor.validation_errors"),
-                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+                tr_plural("constructor.validation_error_count", len(errors), msg=msg),
             )
             return
         self._yaml_storage.save(data)
@@ -213,7 +213,7 @@ class ConstructorWidget(QWidget):
             QMessageBox.warning(
                 self,
                 tr("constructor.validation_errors"),
-                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+                tr_plural("constructor.validation_error_count", len(errors), msg=msg),
             )
             return
         storage = YamlStorage(path)
@@ -321,7 +321,7 @@ class ConstructorWidget(QWidget):
             QMessageBox.warning(
                 self,
                 tr("constructor.validation_errors"),
-                tr("constructor.validation_error_count", count=str(len(errors)), msg=msg),
+                tr_plural("constructor.validation_error_count", len(errors), msg=msg),
             )
         else:
             QMessageBox.information(self, tr("constructor.validation_title"), tr("constructor.validation_no_errors"))

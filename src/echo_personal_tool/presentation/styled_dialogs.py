@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import weakref
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt
@@ -228,6 +229,52 @@ def _style_dialog(dialog: QFileDialog) -> None:
             selection-background-color: {p["accent_tab"]};
         }}
     """)
+
+
+def localize_dialog_button_box(
+    box: QDialogButtonBox,
+    *,
+    overrides: dict[QDialogButtonBox.StandardButton, str] | None = None,
+) -> None:
+    """Translate standard buttons and keep them current after a language switch."""
+    from echo_personal_tool.infrastructure.i18n import register_ui_reload, unregister_ui_reload
+
+    standard = QDialogButtonBox.StandardButton
+    translations = (
+        (standard.Ok, "button.ok"),
+        (standard.Cancel, "button.cancel"),
+        (standard.Close, "button.close"),
+        (standard.Yes, "button.yes"),
+        (standard.No, "button.no"),
+        (standard.Apply, "button.apply"),
+        (standard.Save, "button.save"),
+        (standard.Discard, "button.discard"),
+        (standard.RestoreDefaults, "button.restore_defaults"),
+        (standard.Reset, "button.reset"),
+        (standard.Help, "button.help"),
+        (standard.Open, "button.open"),
+        (standard.Retry, "button.retry"),
+        (standard.Ignore, "button.ignore"),
+        (standard.Abort, "button.abort"),
+        (standard.YesToAll, "button.yes_to_all"),
+        (standard.NoToAll, "button.no_to_all"),
+        (standard.SaveAll, "button.save_all"),
+    )
+    box_ref = weakref.ref(box)
+
+    def _refresh() -> None:
+        target = box_ref()
+        if target is None:
+            unregister_ui_reload(_refresh)
+            return
+        for button_id, key in translations:
+            button = target.button(button_id)
+            if button is not None:
+                button.setText(tr((overrides or {}).get(button_id, key)))
+
+    register_ui_reload(_refresh)
+    box.destroyed.connect(lambda *_args: unregister_ui_reload(_refresh))
+    _refresh()
 
 
 def theme_button_box_icons(box: QDialogButtonBox, *, refresh: bool = False) -> None:
