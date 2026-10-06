@@ -368,3 +368,47 @@ def test_compute_trace_label_valve_prefix_ignored_for_vpeak() -> None:
         dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=(trace,))
         result = compute(dto)
         assert result.vpeak_cm_s == 160.0, f"Failed for {label}"
+
+
+def test_compute_bernoulli_reference_values() -> None:
+    """Reference pairs from the Э2 acceptance list: PGmax = 4·v² (v in m/s)."""
+    for velocity_cm_s, expected_mmhg in ((280.0, 31.36), (400.0, 64.0)):
+        dto = DopplerMeasurementDTO(
+            peaks=(DopplerPeakMarker(label="AV Vmax", time_ms=10.0, velocity_cm_s=velocity_cm_s),),
+            intervals=(),
+            traces=(),
+        )
+        result = compute(dto)
+        assert result.flow("AV").vmax_cm_s == velocity_cm_s
+        assert result.flow("AV").pgmax_mmhg == pytest.approx(expected_mmhg)
+        assert round(result.flow("AV").pgmax_mmhg) == (31 if velocity_cm_s == 280.0 else 64)
+
+
+def test_compute_interval_repeats_average_last_three() -> None:
+    """DT repeats (three cycles of atrial fibrillation) average like peaks."""
+    intervals = tuple(
+        DopplerIntervalMarker(label="DT", start_time_ms=0.0, end_time_ms=float(duration), measurement_id=f"i{index}")
+        for index, duration in enumerate((200.0, 240.0, 280.0, 320.0))
+    )
+    dto = DopplerMeasurementDTO(peaks=(), intervals=intervals, traces=())
+
+    result = compute(dto)
+
+    assert result.dt_ms == pytest.approx((240.0 + 280.0 + 320.0) / 3.0)
+
+
+def test_compute_peak_velocity_from_repeat_traces_averages_trace_peaks() -> None:
+    traces = tuple(
+        DopplerTrace(
+            label="TR VTI",
+            points=((offset, 0.0), (offset + 100.0, peak), (offset + 200.0, 0.0)),
+            measurement_id=f"t{offset}",
+        )
+        for offset, peak in ((0.0, 200.0), (300.0, 260.0), (600.0, 300.0))
+    )
+    dto = DopplerMeasurementDTO(peaks=(), intervals=(), traces=traces)
+
+    result = compute(dto)
+
+    assert result.flow("TR").vmax_cm_s == pytest.approx((200.0 + 260.0 + 300.0) / 3.0)
+    assert result.flow("TR").vmax_repeats == 0  # the value came from traces, not markers

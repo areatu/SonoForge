@@ -1250,6 +1250,7 @@
   "domain.cine_diag.contour_collapsed": "контур схлопнут в линию (глубина дуги {depth:.1f} px)",
   "domain.cine_diag.mask_narrow": "маска узкая ({width:.0f}px при ROI {roi:.0f}px) — проверьте sector trim",
   "domain.report.no_measurements": "Нет измерений.",
+  "domain.report.repeat_suffix": " (n={count})",
   "domain.report.title": "Результаты измерений",
   "domain.report.doppler": "Допплер",
   "domain.report.lv_simpson": "Объёмы ЛЖ (Симпсон)",

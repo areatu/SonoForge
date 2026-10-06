@@ -10,7 +10,12 @@ from echo_personal_tool.domain.models.vessel_measurement import VesselMeasuremen
 
 @dataclass(frozen=True)
 class DopplerFlowResult:
-    """Computed spectral-Doppler values for one valve or flow region."""
+    """Computed spectral-Doppler values for one valve or flow region.
+
+    When a parameter was measured more than once (D-23), the reported value is
+    the mean of the most recent measurements (``doppler_repeats.REPORT_WINDOW``)
+    and the ``*_repeats`` counters tell how many measurements exist in total.
+    """
 
     site: str
     vmax_cm_s: float | None = None
@@ -18,6 +23,11 @@ class DopplerFlowResult:
     vti_cm: float | None = None
     vmean_cm_s: float | None = None
     pgmean_mmhg: float | None = None
+    #: Number of stored Vmax measurements of this site (``0`` when the value
+    #: came from a trace fallback).
+    vmax_repeats: int = 0
+    #: Number of stored VTI traces of this site that were averaged.
+    vti_repeats: int = 0
 
 
 @dataclass(frozen=True)

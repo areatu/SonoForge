@@ -773,6 +773,7 @@ class ViewerWidget(QWidget):
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._doppler_cal_step: Literal["baseline"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
+        self._last_view_cursor_xy: tuple[float, float] | None = None
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
         self._doppler_pending_baseline_y: float | None = None
@@ -3476,6 +3477,7 @@ class ViewerWidget(QWidget):
             self._crosshair_v_item.setData([], [])
 
     def _update_measurement_crosshair(self, x: float, y: float) -> None:
+        self._last_view_cursor_xy = (float(x), float(y))
         if not self._show_crosshair:
             self._clear_crosshair()
             return
@@ -7835,6 +7837,9 @@ class ViewerWidget(QWidget):
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Delete:
+            if self._remove_doppler_measurement_at_cursor():
+                event.accept()
+                return
             if self._delete_selected_caliper():
                 event.accept()
                 return
@@ -7881,6 +7886,19 @@ class ViewerWidget(QWidget):
                     event.accept()
                     return
         super().keyPressEvent(event)
+
+    def _remove_doppler_measurement_at_cursor(self) -> bool:
+        """Delete the Doppler measurement under the last cursor position (D-23).
+
+        Repeated measurements of one parameter accumulate, so a misplaced peak
+        (or interval, or trace) must be removable.  Delete removes the nearest
+        measurement when the cursor is on it and otherwise falls through to the
+        regular caliper deletion.
+        """
+        cursor = self._last_view_cursor_xy
+        if cursor is None:
+            return False
+        return self._doppler.remove_measurement_near(cursor[0], cursor[1])
 
     def _set_caliper_label(self, label: str) -> None:
         if label not in self._caliper_labels:

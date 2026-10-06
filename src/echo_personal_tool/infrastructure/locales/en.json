@@ -1250,6 +1250,7 @@
   "domain.cine_diag.contour_collapsed": "contour collapsed to line (arc depth {depth:.1f} px)",
   "domain.cine_diag.mask_narrow": "mask too narrow ({width:.0f}px vs ROI {roi:.0f}px) — check sector trim",
   "domain.report.no_measurements": "No measurements.",
+  "domain.report.repeat_suffix": " (n={count})",
   "domain.report.title": "Measurement Results",
   "domain.report.doppler": "Doppler",
   "domain.report.lv_simpson": "LV volumes (Simpson)",

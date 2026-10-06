@@ -377,6 +377,8 @@ Examples:
 
 Check the baseline, direction, and velocity span. A reflected or reversed spectrum can make an otherwise accurate click clinically wrong.
 
+Measuring the same parameter again (for example `TR Vmax` on consecutive cycles in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report shows the **mean of the last three**, annotated with their count (`(n=3)`). To remove a measurement placed by mistake, move the cursor onto the marker, interval, or trace and press `Delete`; with the cursor on nothing, `Delete` keeps its previous caliper behavior.
+
 ### 9.3 Trace and VTI
 
 For a Doppler trace:
@@ -386,7 +388,7 @@ For a Doppler trace:
 3. finish with `Enter` or a double click;
 4. verify the cycle, baseline side, and direction.
 
-`V` starts a VTI workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vpeak, Vmean, PGpeak, PGmean, and related indices, but a completed trace is not a quality guarantee.
+`V` starts a VTI workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three measurements and their count, but a completed trace is not a quality guarantee.
 
 ### 9.4 Vessel measurements
 
