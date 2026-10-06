@@ -6,7 +6,7 @@ import dataclasses
 import logging
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
@@ -259,6 +259,7 @@ class AppController(QObject):
         self._pending_decode_id = 0
         self._pending_emit_after_decode = False
         self._thumbnail_max_in_flight = thumbnail_max_in_flight
+        self._thumbnail_preview_size_provider: Callable[[], int] | None = None
         self._playback_speed_multiplier = 1.0
         self._thumbnail_scheduler = (
             thumbnail_scheduler
@@ -686,6 +687,19 @@ class AppController(QObject):
         else:
             self._on_thumbnail_loaded(uid, result)
 
+    def set_thumbnail_preview_size_provider(self, provider: Callable[[], int] | None) -> None:
+        """Let the gallery decide the decode box (logical thumb × screen DPR, Э4)."""
+        self._thumbnail_preview_size_provider = provider
+
+    def _thumbnail_preview_box(self) -> int:
+        provider = self._thumbnail_preview_size_provider
+        if provider is None:
+            return 96
+        try:
+            return max(96, int(provider()))
+        except Exception:  # noqa: BLE001 - a bad probe must not break thumbnails
+            return 96
+
     def request_thumbnail_preview(
         self,
         instance: InstanceMetadata,
@@ -736,6 +750,7 @@ class AppController(QObject):
                     task.sop_instance_uid,
                     number_of_frames=instance.number_of_frames,
                     media_format=instance.media_format,
+                    preview_size=self._thumbnail_preview_box(),
                     parent=self,
                 )
                 generation = self._thumbnail_generation

@@ -44,6 +44,14 @@ SonoForge can:
 - expose AI segmentation and experimental strain/LA features when the required settings, dependencies, and data are available;
 - open the built-in structured reference data and user reference documents.
 
+### Large-screen interface scale
+
+When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Interface → Interface scale`; `Auto` keeps the operating-system scale.
+
+The multiplier applies to the whole interface at once (buttons, panels, fonts, measurement markers) and takes effect **after a restart** — the app offers to restart immediately. Fractional values such as 150 % are rendered exactly by Qt, so widgets do not drift apart. On a 4K screen at 100 % OS scale the app offers 150 % once.
+
+Line widths and the results-overlay font are separate settings multiplied by the same factor: if calipers or labels still look small, raise `Results overlay font size` (10–40 px) and `Caliper line width`.
+
 ### Starting the application
 
 For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
@@ -608,7 +616,8 @@ These documents are reading material. They do not modify structured YAML norms o
 
 - color theme: Dark, Light, VS Code Dark/Light, System;
 - language: Russian or English;
-- UI font size;
+- interface scale: `Auto (OS scale)` or 100–250 % in 25 % steps;
+- UI font size (in pixels, like the rest of the interface sizes);
 - results-overlay font size and opacity;
 - caliper line width;
 - cine playback speed multiplier;

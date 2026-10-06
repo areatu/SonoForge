@@ -36,12 +36,15 @@ class _FakeThumbnailWorker:
         sop_instance_uid: str,
         number_of_frames: int,
         media_format: str,
+        preview_size: int = 96,
         parent=None,
     ) -> None:
         self.path = Path(path)
         self.sop_instance_uid = sop_instance_uid
         self.number_of_frames = number_of_frames
         self.media_format = media_format
+        # Э4: the gallery decides the decode box (logical thumb × screen DPR).
+        self.preview_size = preview_size
         self.parent = parent
         self.signals = SimpleNamespace(
             finished=_FakeSignal(),
@@ -383,3 +386,32 @@ def test_production_preview_pool_is_separate_and_bounded(qapp):
     controller = AppController()
     assert controller._thumbnail_pool is not controller._thread_pool
     assert controller._thumbnail_pool.maxThreadCount() == 2
+
+
+def test_thumbnail_preview_box_follows_the_gallery_provider(qapp, monkeypatch, tmp_path):
+    """Э4: the decode box is logical thumb size × DPR, not a fixed 96 px."""
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.ThumbnailLoaderWorker",
+        _FakeThumbnailWorker,
+    )
+    thread_pool = _RecordingThreadPool()
+    controller = AppController(thread_pool=thread_pool, thumbnail_max_in_flight=1)
+
+    # Without a provider the historical 96 px box stays.
+    assert controller._thumbnail_preview_box() == 96
+
+    controller.set_thumbnail_preview_size_provider(lambda: 264)  # 176 × 1.5
+    controller.request_thumbnail_preview(_thumbnail_instance("dpr-uid", tmp_path))
+
+    assert thread_pool.started
+    assert thread_pool.started[0].preview_size == 264
+
+    # A broken provider must never break thumbnails.
+    controller.set_thumbnail_preview_size_provider(lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert controller._thumbnail_preview_box() == 96
+
+
+def test_thumbnail_preview_box_never_shrinks_below_the_legacy_size(qapp):
+    controller = AppController(thumbnail_max_in_flight=1)
+    controller.set_thumbnail_preview_size_provider(lambda: 48)
+    assert controller._thumbnail_preview_box() == 96

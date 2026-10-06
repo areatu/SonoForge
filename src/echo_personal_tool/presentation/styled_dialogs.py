@@ -277,6 +277,17 @@ def localize_dialog_button_box(
     _refresh()
 
 
+def _icon_device_pixel_ratio() -> float:
+    """Device pixel ratio of the screen the dialog will appear on (Э4)."""
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    screen = app.primaryScreen() if app is not None else None
+    if screen is None:
+        return 1.0
+    return max(1.0, float(screen.devicePixelRatio()))
+
+
 def theme_button_box_icons(box: QDialogButtonBox, *, refresh: bool = False) -> None:
     """Add theme-contrast icons to standard OK / Cancel buttons.
 
@@ -308,8 +319,13 @@ def theme_button_box_icons(box: QDialogButtonBox, *, refresh: bool = False) -> N
             return QIcon()
         svg_text = svg_file.read_text(encoding="utf-8").replace("currentColor", icon_color)
         renderer = QSvgRenderer(svg_text.encode("utf-8"))
-        pixmap = QPixmap(16, 16)
+        # Rasterize at the screen's device pixel ratio: a 16 px pixmap on a
+        # 150–200 % screen was drawn blurred (Э4, «иконки — сразу size × dpr»).
+        dpr = _icon_device_pixel_ratio()
+        side = int(round(16 * dpr))
+        pixmap = QPixmap(side, side)
         pixmap.fill(Qt.GlobalColor.transparent)
+        pixmap.setDevicePixelRatio(dpr)
         painter = QPainter(pixmap)
         renderer.render(painter)
         painter.end()

@@ -508,6 +508,9 @@
   "preferences.theme_vscode_light": "VS Code Light",
   "preferences.title": "Settings",
   "preferences.ui_font_size": "UI font size:",
+  "preferences.ui_scale": "Interface scale:",
+  "preferences.ui_scale_auto": "Auto (OS scale)",
+  "preferences.ui_scale_tip": "Multiplier for the whole interface. Applied after a restart; on a large screen at 100% OS scale try 150%.",
   "preferences.unit_cm": "cm",
   "preferences.unit_mm": "mm",
   "preferences.wl_contrast": "Contrast",
@@ -1740,5 +1743,13 @@
   "orthanc.summary_studies.few": "{count} studies",
   "orthanc.summary_studies.many": "{count} studies",
   "orthanc.summary_series.few": "{count} series",
-  "orthanc.summary_series.many": "{count} series"
+  "orthanc.summary_series.many": "{count} series",
+  "ui_scale.hint_title": "Large screen at 100% scale",
+  "ui_scale.hint_text": "This screen is {width} px wide, but Windows is not scaling the interface, so captions and buttons may be small. Consider Interface scale 150% (applies after a restart).",
+  "ui_scale.hint_open_settings": "Open settings",
+  "ui_scale.hint_later": "Not now",
+  "ui_scale.restart_title": "Restart required",
+  "ui_scale.restart_text": "The interface scale changes after the application restarts. Restart now?",
+  "ui_scale.restart_now": "Restart now",
+  "ui_scale.restart_later": "Later"
 }

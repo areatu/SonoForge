@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.presentation.ui_metrics import font_pixel_size, icon_button_size, text_width
+
 
 class SteSensitivityOverlay(QWidget):
     """Compact floating panel with a smoothing slider that triggers re-computation."""
@@ -43,13 +45,13 @@ class SteSensitivityOverlay(QWidget):
 
         self._value_label = QLabel("1.0")
         self._value_label.setObjectName("steOverlayValue")
-        self._value_label.setFixedWidth(30)
+        self._value_label.setMinimumWidth(text_width(self._value_label, "1.00", padding=6, minimum=30))
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 200)
         self._slider.setValue(100)
         self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
-        self._slider.setMinimumWidth(140)
+        self._slider.setMinimumWidth(text_width(self, "0" * 8, padding=40, minimum=140))
         self._slider.setToolTip(
             "Повторное сглаживание кривых деформации. Влево — ближе к данным (меньше сглаживания), вправо — плавнее."
         )
@@ -57,14 +59,14 @@ class SteSensitivityOverlay(QWidget):
 
         self._reset_btn = QLabel("↺")
         self._reset_btn.setObjectName("steOverlayReset")
-        self._reset_btn.setFixedSize(20, 20)
+        self._reset_btn.setFixedSize(*icon_button_size(self._reset_btn, "↺", minimum=20))
         self._reset_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._reset_btn.setToolTip("Сбросить сглаживание к значению 1.0")
         self._reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         from PySide6.QtGui import QFont
 
         font = QFont()
-        font.setPointSize(11)
+        font.setPixelSize(font_pixel_size(self._reset_btn, 1.0, minimum=10))
         self._reset_btn.setFont(font)
 
         row.addWidget(self._slider)

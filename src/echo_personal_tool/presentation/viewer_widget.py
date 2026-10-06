@@ -141,6 +141,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 logger = logging.getLogger(__name__)
@@ -970,16 +971,16 @@ class ViewerWidget(QWidget):
         self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
 
         self._step_back_button = QPushButton("|<")
-        self._step_back_button.setFixedWidth(36)
+        self._step_back_button.setMinimumWidth(text_width(self, "|<", padding=18, minimum=24))
         self._step_back_button.setToolTip("Step back (Previous frame)")
         self._step_back_button.clicked.connect(self._step_back)
 
         self._play_button = QPushButton(tr("viewer.play"))
-        self._play_button.setFixedWidth(self._play_button.sizeHint().width() + 12)
+        self._play_button.setMinimumWidth(self._play_button.sizeHint().width() + 12)
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
         self._step_forward_button = QPushButton(">|")
-        self._step_forward_button.setFixedWidth(36)
+        self._step_forward_button.setMinimumWidth(text_width(self, ">|", padding=18, minimum=24))
         self._step_forward_button.setToolTip("Step forward (Next frame)")
         self._step_forward_button.clicked.connect(self._step_forward)
 

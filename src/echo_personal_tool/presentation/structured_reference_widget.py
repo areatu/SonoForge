@@ -170,6 +170,9 @@ def _parse_norm_range_str(text: str) -> dict | None:
         return None
 
 
+from echo_personal_tool.presentation.ui_metrics import control_height, icon_button_size, text_width
+
+
 class _PathologyPanel(QWidget):
     """Two-column pathology list: items flow left→right, max 4 rows per column."""
 
@@ -630,7 +633,7 @@ class StructuredReferenceWidget(QWidget):
         age_label.setStyleSheet(f"font-size: 12px; color: {p['text']};")
         self._age_input = QLineEdit()
         self._age_input.setPlaceholderText(tr("ref_table.age_placeholder"))
-        self._age_input.setMaximumWidth(50)
+        self._age_input.setMaximumWidth(text_width(self._age_input, "000", padding=24, minimum=40))
         self._age_input.setStyleSheet("font-size: 12px; padding: 2px;")
         self._age_input.textChanged.connect(self._on_age_changed)
 
@@ -639,7 +642,7 @@ class StructuredReferenceWidget(QWidget):
         age_layout.addStretch(1)
         left_layout.addWidget(age_widget)
 
-        left_panel.setFixedWidth(180)
+        left_panel.setMinimumWidth(text_width(left_panel, tr("ref_table.age_label"), padding=48, minimum=160))
         main_layout.addWidget(left_panel)
 
         # Right: pathology list + table/image split
@@ -650,7 +653,7 @@ class StructuredReferenceWidget(QWidget):
 
         # Pathology panel (two-column grid)
         self._pathology_panel = _PathologyPanel()
-        self._pathology_panel.setFixedHeight(80)
+        self._pathology_panel.setMinimumHeight(4 * control_height(self, padding=8, minimum=22))
         self._pathology_panel.setStyleSheet(
             f"_PathologyPanel {{ border: 1px solid {p['border']}; background: {p['bg_panel']}; }}"
         )
@@ -696,14 +699,14 @@ class StructuredReferenceWidget(QWidget):
         nav_layout.setContentsMargins(4, 2, 4, 2)
         nav_layout.setSpacing(4)
         self._btn_img_prev = QPushButton("\u25c0")
-        self._btn_img_prev.setFixedSize(28, 22)
+        self._btn_img_prev.setFixedSize(*icon_button_size(self._btn_img_prev, "\u25c0", minimum=22))
         self._btn_img_prev.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_img_prev.clicked.connect(self._prev_image)
         self._btn_img_prev.setEnabled(False)
         self._image_counter_label = QLabel("0 / 0")
         self._image_counter_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._btn_img_next = QPushButton("\u25b6")
-        self._btn_img_next.setFixedSize(28, 22)
+        self._btn_img_next.setFixedSize(*icon_button_size(self._btn_img_next, "\u25b6", minimum=22))
         self._btn_img_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_img_next.clicked.connect(self._next_image)
         self._btn_img_next.setEnabled(False)

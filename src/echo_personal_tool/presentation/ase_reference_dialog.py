@@ -128,6 +128,7 @@ def preload_reference_dialog(parent: QWidget | None = None) -> None:
 
 
 # ── Document tab widget ───────────────────────────────────────────
+from echo_personal_tool.presentation.ui_metrics import control_height, icon_button_size, text_width
 
 
 class _DocTab(QWidget):
@@ -136,7 +137,7 @@ class _DocTab(QWidget):
     def __init__(self, label: str, path: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.doc_path = path
-        self.setFixedHeight(26)
+        self.setFixedHeight(control_height(self, padding=6, minimum=24))
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 2, 0)
@@ -149,7 +150,7 @@ class _DocTab(QWidget):
         layout.addWidget(self._btn_label)
 
         self._btn_close = QPushButton()
-        self._btn_close.setFixedSize(16, 16)
+        self._btn_close.setFixedSize(*icon_button_size(self._btn_close, "×", minimum=16))
         self._btn_close.setIconSize(self._btn_close.sizeHint())
         self._btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_close.clicked.connect(self._on_close_clicked)
@@ -320,7 +321,7 @@ class AseReferenceDialog(QDialog):
 
         self._tabs_layout.addStretch(1)
         self._btn_add_tab = QPushButton("+")
-        self._btn_add_tab.setFixedSize(32, 24)
+        self._btn_add_tab.setFixedSize(*icon_button_size(self._btn_add_tab, "+", minimum=24))
         self._btn_add_tab.setToolTip(tr("ase_refs.add_document"))
         self._btn_add_tab.setCursor(Qt.CursorShape.PointingHandCursor)
         self._apply_add_button_style()
@@ -365,17 +366,17 @@ class AseReferenceDialog(QDialog):
         pdf_toolbar_layout.setSpacing(4)
 
         self._btn_pdf_zoom_out = QPushButton("\u2212")  # −
-        self._btn_pdf_zoom_out.setFixedSize(28, 24)
+        self._btn_pdf_zoom_out.setFixedSize(*icon_button_size(self._btn_pdf_zoom_out, "−", minimum=24))
         self._btn_pdf_zoom_out.setToolTip(tr("ase_refs.pdf_zoom_out"))
         self._btn_pdf_zoom_out.clicked.connect(self._pdf_zoom_out)
 
         self._btn_pdf_zoom_in = QPushButton("+")
-        self._btn_pdf_zoom_in.setFixedSize(28, 24)
+        self._btn_pdf_zoom_in.setFixedSize(*icon_button_size(self._btn_pdf_zoom_in, "+", minimum=24))
         self._btn_pdf_zoom_in.setToolTip(tr("ase_refs.pdf_zoom_in"))
         self._btn_pdf_zoom_in.clicked.connect(self._pdf_zoom_in)
 
         self._pdf_zoom_label = QLabel("100%")
-        self._pdf_zoom_label.setFixedWidth(48)
+        self._pdf_zoom_label.setMinimumWidth(text_width(self._pdf_zoom_label, "1000 %", padding=8, minimum=48))
         self._pdf_zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._combo_pdf_view = QComboBox()
@@ -389,13 +390,13 @@ class AseReferenceDialog(QDialog):
         self._combo_pdf_view.currentIndexChanged.connect(self._pdf_view_mode_changed)
 
         self._btn_pdf_prev = QPushButton("\u25c0")
-        self._btn_pdf_prev.setFixedSize(28, 24)
+        self._btn_pdf_prev.setFixedSize(*icon_button_size(self._btn_pdf_prev, "\u25c0", minimum=24))
         self._btn_pdf_prev.clicked.connect(self._pdf_prev_page)
         self._btn_pdf_page = QLabel("1 / 1")
         self._btn_pdf_page.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._btn_pdf_page.setFixedWidth(80)
+        self._btn_pdf_page.setMinimumWidth(text_width(self._btn_pdf_page, "000 / 000", padding=12, minimum=70))
         self._btn_pdf_next = QPushButton("\u25b6")
-        self._btn_pdf_next.setFixedSize(28, 24)
+        self._btn_pdf_next.setFixedSize(*icon_button_size(self._btn_pdf_next, "\u25b6", minimum=24))
         self._btn_pdf_next.clicked.connect(self._pdf_next_page)
 
         pdf_toolbar_layout.addStretch(1)
@@ -459,7 +460,7 @@ class AseReferenceDialog(QDialog):
 
         p = get_theme_palette()
         bar = QWidget()
-        bar.setFixedHeight(32)
+        bar.setFixedHeight(control_height(self, padding=8, minimum=28))
         bar.setStyleSheet(f"background: {p['bg_panel']};")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(8, 0, 0, 0)

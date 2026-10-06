@@ -6,15 +6,21 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QSettings
 
+from echo_personal_tool.infrastructure.ui_scale import UI_SCALE_AUTO, normalize_ui_scale
+
 _SETTINGS_ORG = "sonoforge"
 _SETTINGS_APP = "preferences"
 
-MIN_UI_FONT_SIZE = 9
-MAX_UI_FONT_SIZE = 18
-DEFAULT_UI_FONT_SIZE = 12
+# One logical unit for UI fonts: pixels, both in the QSS stylesheet and in the
+# application font (Э4).  ``pt`` stays for PDF/print only.
+MIN_UI_FONT_SIZE = 10
+MAX_UI_FONT_SIZE = 24
+DEFAULT_UI_FONT_SIZE = 13
 
+# The results overlay has its own scale: it is sized against the frame, not
+# against dialog text, so it goes further up for 4K screens.
 MIN_OVERLAY_FONT_SIZE = 10
-MAX_OVERLAY_FONT_SIZE = 28
+MAX_OVERLAY_FONT_SIZE = 40
 DEFAULT_RESULTS_OVERLAY_FONT_SIZE = 20
 
 MIN_OVERLAY_OPACITY = 0.1
@@ -84,6 +90,9 @@ PRESENTATION_PRESET_OVERRIDES: dict[str, object] = {
 
 @dataclass
 class UserPreferences:
+    #: Global multiplier applied through QT_SCALE_FACTOR before QApplication;
+    #: 0 = Auto (follow the operating system).  Меняется только перезапуском.
+    ui_scale_percent: int = UI_SCALE_AUTO
     ui_font_size: int = DEFAULT_UI_FONT_SIZE
     results_overlay_x_ratio: float = DEFAULT_RESULTS_OVERLAY_X_RATIO
     results_overlay_y_ratio: float = DEFAULT_RESULTS_OVERLAY_Y_RATIO
@@ -216,6 +225,7 @@ def load_user_preferences() -> UserPreferences:
     if overlay_custom and overlay_x_ratio < 0.15:
         overlay_custom = False
     return UserPreferences(
+        ui_scale_percent=normalize_ui_scale(store.value("ui_scale_percent")),
         ui_font_size=_clamp_int(
             store.value("ui_font_size"),
             DEFAULT_UI_FONT_SIZE,

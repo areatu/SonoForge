@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_metrics import control_height, text_width
 
 _MENU_BUTTON_HEIGHT_PX = 24
 _ACCORDION_ANIM_MS = 180
@@ -289,7 +290,7 @@ def _filter_menu(
 
 
 def style_menu_button(button: QPushButton) -> None:
-    button.setFixedHeight(_MENU_BUTTON_HEIGHT_PX)
+    button.setMinimumHeight(max(_MENU_BUTTON_HEIGHT_PX, control_height(button, padding=10)))
     button.setCursor(Qt.CursorShape.PointingHandCursor)
 
 
@@ -320,7 +321,7 @@ class MeasuresAccordionSection(QWidget):
 
         self._chevron = QLabel("▶")
         self._chevron.setObjectName("measuresChevron")
-        self._chevron.setFixedWidth(12)
+        self._chevron.setMinimumWidth(text_width(self._chevron, "\u25b6", padding=6, minimum=10))
         self._chevron.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(self._chevron)
 

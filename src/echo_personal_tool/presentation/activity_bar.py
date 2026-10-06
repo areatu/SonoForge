@@ -13,7 +13,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_metrics import (
+    font_pixel_size,
+    two_line_height,
+    widest_text_width,
+)
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
@@ -66,10 +72,12 @@ class _TextButton(QPushButton):
         layout.addWidget(self._label)
 
     def _update_label(self) -> None:
+        big_px = font_pixel_size(self, 1.15, minimum=10)
+        small_px = font_pixel_size(self, 0.92, minimum=8)
         self._label.setText(
             f"<center>"
-            f"<span style='font-size:15px;font-weight:bold;'>{self._big}</span><br/>"
-            f"<span style='font-size:12px;'>{self._small}</span>"
+            f"<span style='font-size:{big_px}px;font-weight:bold;'>{self._big}</span><br/>"
+            f"<span style='font-size:{small_px}px;'>{self._small}</span>"
             f"</center>"
         )
 
@@ -89,7 +97,7 @@ class ActivityBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("activityBar")
-        self.setFixedWidth(96)
+        self.setMinimumWidth(self._bar_width())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -131,6 +139,7 @@ class ActivityBar(QWidget):
         ]:
             big, small = _labels.get(name, (name, ""))
             btn = _TextButton(big, small)
+            btn.setMinimumHeight(two_line_height(btn))
             btn.clicked.connect(lambda _, n=name: self.action_requested.emit(n))
             HoverButtonMixin.install(btn)
             self._action_buttons[name] = btn
@@ -146,6 +155,15 @@ class ActivityBar(QWidget):
         layout.addStretch(1)
 
         self._playing = False
+
+    def _bar_width(self) -> int:
+        """Widest two-line caption + padding, never narrower than 96 px."""
+        labels: list[str] = []
+        for name in ("caliper", "play", "hr", "lv2d", "esv", "edv", "es", "pause"):
+            big = tr(f"activity.{name}_big")
+            small = tr(f"activity.{name}_small")
+            labels.extend((big, small))
+        return widest_text_width(self, labels, padding=16, minimum=96)
 
     def set_playing(self, playing: bool) -> None:
         """Swap the play/pause button glyph to match the playback state."""

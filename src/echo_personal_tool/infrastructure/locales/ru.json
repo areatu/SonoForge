@@ -508,6 +508,9 @@
   "preferences.theme_vscode_light": "VS Code Light",
   "preferences.title": "Настройки",
   "preferences.ui_font_size": "Размер шрифта UI:",
+  "preferences.ui_scale": "Масштаб интерфейса:",
+  "preferences.ui_scale_auto": "Авто (масштаб ОС)",
+  "preferences.ui_scale_tip": "Множитель всего интерфейса. Применяется после перезапуска; на крупном экране при масштабе ОС 100% попробуйте 150%.",
   "preferences.unit_cm": "см",
   "preferences.unit_mm": "мм",
   "preferences.wl_contrast": "Контрастный",
@@ -1740,5 +1743,13 @@
   "orthanc.summary_series.one": "{count} серия",
   "orthanc.summary_series.few": "{count} серии",
   "orthanc.summary_series.many": "{count} серий",
-  "orthanc.summary_series.other": "{count} серии"
+  "orthanc.summary_series.other": "{count} серии",
+  "ui_scale.hint_title": "Крупный экран, а масштаб 100%",
+  "ui_scale.hint_text": "Экран {width} px по ширине, но Windows не масштабирует интерфейс: кнопки и подписи могут быть мелкими. Рекомендуем «Масштаб интерфейса» 150% (применяется после перезапуска).",
+  "ui_scale.hint_open_settings": "Открыть настройки",
+  "ui_scale.hint_later": "Не сейчас",
+  "ui_scale.restart_title": "Нужен перезапуск",
+  "ui_scale.restart_text": "Масштаб интерфейса изменится после перезапуска приложения. Перезапустить сейчас?",
+  "ui_scale.restart_now": "Перезапустить сейчас",
+  "ui_scale.restart_later": "Позже"
 }

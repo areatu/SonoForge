@@ -100,7 +100,17 @@ if not _is_frozen and not _is_presenter():
 from PySide6.QtCore import QCoreApplication, Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.profiler import is_enabled, print_summary
+from echo_personal_tool.infrastructure.ui_scale import (
+    UI_SCALE_AUTO,
+    apply_ui_scale_environment,
+    configure_high_dpi_rounding,
+    mark_ui_scale_hint_shown,
+    physical_screen_width,
+    should_suggest_scale,
+    ui_scale_hint_shown,
+)
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
 from echo_personal_tool.presentation.main_window import MainWindow, apply_maximized_to_work_area
 from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_export_dialog
@@ -141,6 +151,40 @@ def _schedule_reference_preload(window: MainWindow) -> None:
     QTimer.singleShot(1500, _preload_when_idle)
 
 
+def _schedule_ui_scale_hint(window: MainWindow) -> None:
+    """Offer the multiplier once on a 4K-class screen that the OS leaves at 100 %."""
+    QTimer.singleShot(2500, lambda: _maybe_show_ui_scale_hint(window))
+
+
+def _maybe_show_ui_scale_hint(window: MainWindow) -> None:
+    try:
+        if ui_scale_hint_shown():
+            return
+        app = QApplication.instance()
+        screen = window.screen() if window is not None else None
+        if screen is None and app is not None:
+            screen = app.primaryScreen()
+        percent = getattr(getattr(window, "_user_preferences", None), "ui_scale_percent", UI_SCALE_AUTO)
+        if not should_suggest_scale(screen, percent):
+            return
+        mark_ui_scale_hint_shown()
+        physical_width = physical_screen_width(screen)
+        _LOG.info("UI scale hint: physical screen width %s px at 100%%", physical_width)
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox(window)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(tr("ui_scale.hint_title"))
+        box.setText(tr("ui_scale.hint_text", width=physical_width))
+        open_button = box.addButton(tr("ui_scale.hint_open_settings"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("ui_scale.hint_later"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_button:
+            window._show_user_preferences()
+    except Exception:  # noqa: BLE001 - a hint must never break startup
+        _LOG.debug("UI scale hint failed", exc_info=True)
+
+
 def main() -> int:
     from echo_personal_tool.infrastructure.profile import (
         display_name,
@@ -153,6 +197,13 @@ def main() -> int:
 
         print(f"{display_name()} {__version__}")  # noqa: T201 - CLI output
         return 0
+
+    # Read preferences before QApplication: the UI scale multiplier is an
+    # environment variable that only has an effect before the first window
+    # system call (Э4/D-26), and the DPI rounding policy is a static property.
+    preferences = load_user_preferences()
+    apply_ui_scale_environment(getattr(preferences, "ui_scale_percent", UI_SCALE_AUTO))
+    configure_high_dpi_rounding()
 
     # QtWebEngine (web reference viewer) and the pyqtgraph QOpenGLWidget must
     # share OpenGL contexts. This attribute has to be set before QApplication.
@@ -168,7 +219,7 @@ def main() -> int:
     configure_logging(app)
     _begin_winmm()
     try:
-        return _run_application(app, has_ai_segmentation, has_reference_ui)
+        return _run_application(app, has_ai_segmentation, has_reference_ui, preferences)
     finally:
         _cleanup_winmm()
         # Deterministic teardown: flush/close the rotating session log and
@@ -178,7 +229,7 @@ def main() -> int:
         shutdown_logging()
 
 
-def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui) -> int:  # noqa: ANN001
+def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, preferences) -> int:  # noqa: ANN001
     """Configure optional features and enter Qt's event loop."""
     patch_pyqtgraph_export_dialog()
 
@@ -221,11 +272,10 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui) -
         except Exception:
             _LOG.exception("Could not check or prepare optional AI models; continuing without setup")
     ensure_bundled_fonts_loaded()
-    preferences = load_user_preferences()
     from echo_personal_tool.infrastructure.i18n import set_language
 
     set_language(preferences.language)
-    app.setFont(ui_font(point_size=preferences.ui_font_size))
+    app.setFont(ui_font(pixel_size=preferences.ui_font_size))
     window = MainWindow(user_preferences=preferences)
     if preferences.startup_mode == "last_folder" and preferences.last_opened_folder:
         last_folder = Path(preferences.last_opened_folder)
@@ -233,6 +283,7 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui) -
             QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
+    _schedule_ui_scale_hint(window)
     if has_reference_ui():
         _schedule_reference_preload(window)
     result = app.exec()
