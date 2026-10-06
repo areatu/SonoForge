@@ -578,6 +578,7 @@ class UserPreferencesDialog(QDialog):
             self,
             tr("preferences.gold_browse_title"),
             self._gold_path.text() or str(Path.home()),
+            remember=False,  # a dataset folder is not one of the "recent patient folders"
         )
         if path:
             self._gold_path.setText(path)
@@ -589,6 +590,7 @@ class UserPreferencesDialog(QDialog):
             self,
             tr("references_dir_browse_title"),
             self._refs_dir.text() or str(Path.home()),
+            remember=False,
         )
         if path:
             self._refs_dir.setText(path)

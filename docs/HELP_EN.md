@@ -191,9 +191,22 @@ DICOM is grouped from its UIDs. MP4/JPEG/PNG without DICOM metadata receive synt
 3. If a file is missing or rejected, inspect `<selected folder>/scan_errors.log`.
 4. Check that the root contains supported media or a valid extensionless DICOM header.
 
-The scanner skips service directories such as `.git`, `.idea`, `__pycache__`, `node_modules`, `.venv`, and `.svn`. A bad file should not prevent the remaining files from being scanned.
+The scanner skips service directories such as `.git`, `.idea`, `__pycache__`, `node_modules`, `.venv`, and `.svn`. A bad file should not prevent the remaining files from being scanned. Each DICOM header is parsed **once per scan**: the study UID, series UID, and study date are reused from the header already read, so a large folder — including one on a network or cloud drive — opens noticeably faster and does not touch the same file twice.
 
-### 3.4 Local sources and server cache
+### 3.4 Recent folders, pins, and places
+
+The `Open folder…` dialog remembers where you opened studies:
+
+- **start folder** — the last folder you opened (if it still exists) instead of an arbitrary directory; on first launch it is `Documents`, otherwise the home folder;
+- **Recent folders** — the list of recent folders at the bottom of the dialog, also shown in the sidebar. Up to 15 folders are kept;
+- **pin** (`Pin` / `Unpin`) — pinned folders always stay on top and are never pushed out by new ones (unpinned folders are dropped as the list grows);
+- **remove** — drops the selected folder from the list only; nothing is deleted on disk;
+- **clear** — removes every unpinned folder at once;
+- **Places** — shortcuts to the OS known folders: Desktop, Documents, Downloads, Home, and OneDrive when the environment variable is set (including redirected / cloud-moved folders). The existing sidebar entries (drives included) are preserved.
+
+A folder that no longer exists (an unplugged drive or USB stick) stays in the list but is greyed out and cannot be selected. The list is stored separately from the startup option `On startup → Last folder`. Folder pickers in Settings (gold annotations, reference folder) never enter the recent list.
+
+### 3.5 Local sources and server cache
 
 A local DICOM is opened from its source path. Objects downloaded from a server are placed in SonoForge's temporary cache and then scanned as a local study. Use **`Save to Disk`** in the server dialog when the retrieved files must remain in a permanent user-selected directory; `Load` alone is a working-cache operation.
 

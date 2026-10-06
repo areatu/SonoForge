@@ -1655,12 +1655,19 @@ class MainWindow(QMainWindow):
     @_prof
     def _open_folder(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
 
-        directory = styled_select_directory(self, tr("dialog.select_folder"))
+        # Э3: start where the user was last time instead of an arbitrary place.
+        store = RecentStore()
+        start = store.last_folder() or self._user_preferences.last_opened_folder or ""
+        directory = styled_select_directory(self, tr("dialog.select_folder"), start)
         if not directory:
             return
         folder = Path(directory)
+        # The recent list drives the dialog; `last_opened_folder` feeds the
+        # "open last folder at startup" mode and stays in sync with it.
+        store.record(folder)
         self._user_preferences.last_opened_folder = str(folder)
         save_user_preferences(self._user_preferences)
         self.open_folder_path(folder)
