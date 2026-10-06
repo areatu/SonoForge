@@ -2247,3 +2247,31 @@ class TestStructuredReferenceWidgetHelpers:
         qtbot.addWidget(widget)
         params = widget._get_current_parameters()
         assert isinstance(params, list)
+
+
+class TestActivityBarFontMetrics:
+    """Э4: the rail is as wide as its captions, not frozen at 96 px."""
+
+    def test_width_is_a_font_metric_but_unchanged_at_the_default_font(self, qtbot) -> None:
+        from echo_personal_tool.presentation.activity_bar import ActivityBar
+
+        bar = ActivityBar()
+        qtbot.addWidget(bar)
+        # The default 13 px UI font still yields the familiar 96 px rail, and the
+        # width is fixed (min == max), so the rail cannot be squeezed by a layout.
+        assert bar.width() == 96
+        assert bar.minimumWidth() == 96
+        assert bar.maximumWidth() == 96
+
+    def test_update_font_metrics_widens_the_rail_for_a_large_font(self, qtbot) -> None:
+        from echo_personal_tool.presentation.activity_bar import ActivityBar
+
+        bar = ActivityBar()
+        qtbot.addWidget(bar)
+        font = bar.font()
+        font.setPixelSize(40)  # big enough that any font family needs more than 96 px
+        bar.setFont(font)
+        bar.update_font_metrics()
+
+        assert bar.width() > 96
+        assert bar.minimumWidth() == bar.maximumWidth() == bar.width()

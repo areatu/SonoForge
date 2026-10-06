@@ -220,6 +220,7 @@ report = {
     "panel_min_w": int(panel.minimumWidth()),
     "panel_hint_w": int(panel.sizeHint().width()),
     "activity_min_w": int(activity.minimumWidth()),
+    "activity_metric_w": int(activity._bar_width()),
     "results_min_w": int(results.minimumWidth()),
     "results_min_h": int(results.minimumHeight()),
     "grab_w": int(pixmap.width()),
@@ -265,9 +266,14 @@ def test_chrome_grows_with_the_ui_font() -> None:
     small = _probe(scale="1", font_px=10)
     large = _probe(scale="1", font_px=24)
 
-    assert large["activity_min_w"] > small["activity_min_w"]
     assert large["results_min_h"] > small["results_min_h"]
     assert large["dialog_min_w"] > small["dialog_min_w"]
+    # The rail is measured from its captions, never a frozen 96 px: it equals the
+    # metric for both fonts and never drops below the 96 px floor.  (Whether the
+    # metric exceeds the floor depends on the language and the glyph metrics, so
+    # growth itself is asserted in test_presentation_extended with a 40 px font.)
+    assert small["activity_min_w"] == small["activity_metric_w"] >= 96
+    assert large["activity_min_w"] == large["activity_metric_w"] >= 96
 
 
 def test_preferences_carry_no_hardcoded_px_suffix_for_ui_fonts() -> None:

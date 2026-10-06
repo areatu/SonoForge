@@ -1389,6 +1389,9 @@ class MainWindow(QMainWindow):
         )
         # Chrome sizes are font-derived (Э4): re-measure after a font change.
         self._tool_panel.update_font_metrics()
+        activity_bar = getattr(self, "_activity_bar", None)  # built later, may be off
+        if activity_bar is not None:
+            activity_bar.update_font_metrics()
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
 

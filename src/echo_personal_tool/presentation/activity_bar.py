@@ -23,6 +23,18 @@ from echo_personal_tool.presentation.ui_metrics import (
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
+#: Action buttons of the rail, in visual order.  Single source of truth for the
+#: captions: the rail width is measured from the very strings it renders, so a
+#: label can never be added to one place and forgotten in the other (a missing
+#: key used to measure as the raw key text and inflate the rail).
+_ACTION_NAMES = ("caliper", "play", "hr", "lv2d", "esv", "edv", "es")
+
+
+def _action_labels() -> dict[str, tuple[str, str]]:
+    from echo_personal_tool.infrastructure.i18n import tr
+
+    return {name: (tr(f"activity.{name}_big"), tr(f"activity.{name}_small")) for name in _ACTION_NAMES}
+
 
 def _icon_dir() -> Path:
     import sys
@@ -97,7 +109,9 @@ class ActivityBar(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("activityBar")
-        self.setMinimumWidth(self._bar_width())
+        # A fixed rail width — but computed from the current font, not frozen at
+        # 96 px (Э4): a long RU caption or a 24 px font used to be clipped.
+        self.setFixedWidth(self._bar_width())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -117,26 +131,9 @@ class ActivityBar(QWidget):
         layout.addSpacing(8)
 
         self._action_buttons: dict[str, QPushButton] = {}
-        from echo_personal_tool.infrastructure.i18n import tr
 
-        _labels = {
-            "caliper": (tr("activity.caliper_big"), tr("activity.caliper_small")),
-            "play": (tr("activity.play_big"), tr("activity.play_small")),
-            "hr": (tr("activity.hr_big"), tr("activity.hr_small")),
-            "lv2d": (tr("activity.lv2d_big"), tr("activity.lv2d_small")),
-            "esv": (tr("activity.esv_big"), tr("activity.esv_small")),
-            "edv": (tr("activity.edv_big"), tr("activity.edv_small")),
-            "es": (tr("activity.es_big"), tr("activity.es_small")),
-        }
-        for name in [
-            "caliper",
-            "play",
-            "hr",
-            "lv2d",
-            "esv",
-            "edv",
-            "es",
-        ]:
+        _labels = _action_labels()
+        for name in _ACTION_NAMES:
             big, small = _labels.get(name, (name, ""))
             btn = _TextButton(big, small)
             btn.setMinimumHeight(two_line_height(btn))
@@ -156,13 +153,25 @@ class ActivityBar(QWidget):
 
         self._playing = False
 
+    def update_font_metrics(self) -> None:
+        """Re-measure width and captions after the UI font changed (Э4)."""
+        self.setFixedWidth(self._bar_width())
+        for button in self._action_buttons.values():
+            if isinstance(button, _TextButton):
+                button._update_label()
+
     def _bar_width(self) -> int:
-        """Widest two-line caption + padding, never narrower than 96 px."""
+        """Widest rendered caption + padding, never narrower than 96 px.
+
+        Only strings that are actually painted are measured: the play button
+        swaps its caption to the pause glyph during playback, so that glyph is
+        included too.  Measuring a key that has no translation would compare a
+        layout decision against the raw key text.
+        """
         labels: list[str] = []
-        for name in ("caliper", "play", "hr", "lv2d", "esv", "edv", "es", "pause"):
-            big = tr(f"activity.{name}_big")
-            small = tr(f"activity.{name}_small")
+        for big, small in _action_labels().values():
             labels.extend((big, small))
+        labels.append(tr("activity.pause_big"))
         return widest_text_width(self, labels, padding=16, minimum=96)
 
     def set_playing(self, playing: bool) -> None:
