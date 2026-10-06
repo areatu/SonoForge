@@ -12,7 +12,7 @@ from echo_personal_tool.infrastructure.paths import fonts_cache_dir
 
 FONT_FAMILY_UI = "Inter"
 FONT_FAMILY_MONO = "JetBrains Mono"
-DEFAULT_UI_POINT_SIZE = 13
+DEFAULT_UI_PIXEL_SIZE = 13
 
 _FONT_FILES = (
     "Inter-Regular.ttf",
@@ -40,16 +40,24 @@ def ensure_bundled_fonts_loaded() -> None:
     _loaded = True
 
 
-def ui_font(*, point_size: int = DEFAULT_UI_POINT_SIZE, bold: bool = False) -> QFont:
+def ui_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> QFont:
+    """Application font in logical pixels.
+
+    One unit for the whole UI: the same pixel size goes into the QSS
+    stylesheet and into the application font (Э4).  ``pt`` remains only in
+    PDF/print output.
+    """
     ensure_bundled_fonts_loaded()
-    font = QFont(FONT_FAMILY_UI, point_size)
+    font = QFont(FONT_FAMILY_UI)
+    font.setPixelSize(pixel_size)
     font.setBold(bold)
     return font
 
 
-def mono_font(*, point_size: int = DEFAULT_UI_POINT_SIZE, bold: bool = False) -> QFont:
+def mono_font(*, pixel_size: int = DEFAULT_UI_PIXEL_SIZE, bold: bool = False) -> QFont:
     ensure_bundled_fonts_loaded()
-    font = QFont(FONT_FAMILY_MONO, point_size)
+    font = QFont(FONT_FAMILY_MONO)
+    font.setPixelSize(pixel_size)
     font.setBold(bold)
     return font
 

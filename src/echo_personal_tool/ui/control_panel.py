@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.ui.strain_helpers import PALETTES
 
 
@@ -35,7 +36,7 @@ class ControlPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedWidth(180)
+        self.setMinimumWidth(text_width(self, tr("strain.view_mode"), padding=48, minimum=180))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)

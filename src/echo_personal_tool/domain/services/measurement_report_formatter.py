@@ -93,11 +93,12 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         _optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
     ]
     for flow in _flow_results_for_display(doppler):
+        vmax_repeats = _repeat_suffix(flow.vmax_repeats)
         field_lines.extend(
             (
-                _optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s"),
+                _optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s" + vmax_repeats),
                 _optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
-                _optional_line(f"{flow.site} VTI", flow.vti_cm, " cm"),
+                _optional_line(f"{flow.site} VTI", flow.vti_cm, " cm" + _repeat_suffix(flow.vti_repeats)),
                 _optional_line(f"{flow.site} Vmean", flow.vmean_cm_s, " cm/s"),
                 _optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
             )
@@ -383,6 +384,13 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
             lines.append(line)
 
     return lines if len(lines) > 1 else []
+
+
+def _repeat_suffix(repeats: int) -> str:
+    """Show how many measurements entered the value (D-23), when more than one."""
+    if repeats <= 1:
+        return ""
+    return tr("domain.report.repeat_suffix", count=repeats)
 
 
 def _optional_line(

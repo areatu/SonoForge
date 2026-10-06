@@ -11,6 +11,7 @@ from pathlib import Path
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
     MAX_DOCUMENT_BYTES,
+    SEMANTICS_VERSION,
     VERSION,
     MeasurementStorageError,
     dumps,
@@ -92,6 +93,7 @@ class MeasurementRepository:
         record = dict(
             format=FORMAT,
             schema_version=VERSION,
+            measurement_semantics_version=SEMANTICS_VERSION,
             study_uid=uid,
             revision=revision + 1,
             saved_at=datetime.now(_UTC).isoformat(),

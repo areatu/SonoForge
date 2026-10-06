@@ -24,36 +24,51 @@ from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.contour_geometry import polygon_area_mm2
+from echo_personal_tool.domain.services.doppler_repeats import merge_newest_wins
 
 
 def merge_doppler_peaks(
     existing: tuple[DopplerPeakMarker, ...],
     incoming: tuple[DopplerPeakMarker, ...],
 ) -> tuple[DopplerPeakMarker, ...]:
-    by_label = {canonical_peak_label(marker.label): marker for marker in existing}
-    for marker in incoming:
-        by_label[canonical_peak_label(marker.label)] = marker
-    return tuple(by_label.values())
+    """Merge peak measurements, keeping repeated measurements of one parameter.
+
+    A marker with an identity (``measurement_id``) is replaced in place when
+    the same identity arrives again, and appended otherwise — this is how
+    several beats of the same parameter coexist (D-23) while an edited marker
+    stays one measurement.  Legacy markers without an identity keep the old
+    replace-by-label behavior.
+    """
+    return merge_newest_wins(
+        existing,
+        incoming,
+        identity_of=lambda marker: (canonical_peak_label(marker.label), marker.measurement_id),
+        label_of=lambda marker: canonical_peak_label(marker.label),
+    )
 
 
 def merge_doppler_intervals(
     existing: tuple[DopplerIntervalMarker, ...],
     incoming: tuple[DopplerIntervalMarker, ...],
 ) -> tuple[DopplerIntervalMarker, ...]:
-    by_label = {canonical_interval_label(marker.label): marker for marker in existing}
-    for marker in incoming:
-        by_label[canonical_interval_label(marker.label)] = marker
-    return tuple(by_label.values())
+    return merge_newest_wins(
+        existing,
+        incoming,
+        identity_of=lambda marker: (canonical_interval_label(marker.label), marker.measurement_id),
+        label_of=lambda marker: canonical_interval_label(marker.label),
+    )
 
 
 def merge_doppler_traces(
     existing: tuple[DopplerTrace, ...],
     incoming: tuple[DopplerTrace, ...],
 ) -> tuple[DopplerTrace, ...]:
-    by_label = {canonical_trace_label(trace.label): trace for trace in existing}
-    for trace in incoming:
-        by_label[canonical_trace_label(trace.label)] = trace
-    return tuple(by_label.values())
+    return merge_newest_wins(
+        existing,
+        incoming,
+        identity_of=lambda trace: (canonical_trace_label(trace.label), trace.measurement_id),
+        label_of=lambda trace: canonical_trace_label(trace.label),
+    )
 
 
 def merge_doppler_dtos(

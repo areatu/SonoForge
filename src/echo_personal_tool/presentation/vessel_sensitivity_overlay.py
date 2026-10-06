@@ -5,6 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
+from echo_personal_tool.presentation.ui_metrics import text_width
+
 
 class VesselSensitivityOverlay(QWidget):
     """Compact vertical strip with three preset buttons for vessel auto-trace."""
@@ -31,7 +33,7 @@ class VesselSensitivityOverlay(QWidget):
         for key, label in self._PRESETS:
             btn = QPushButton(label)
             btn.setCheckable(True)
-            btn.setFixedWidth(52)
+            btn.setMinimumWidth(text_width(btn, label, padding=16, minimum=52))
             btn.setObjectName("vesselOverlayBtn")
             btn.setProperty("preset", key)
             btn.clicked.connect(lambda checked, k=key: self._on_preset_clicked(k))

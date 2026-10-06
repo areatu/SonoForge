@@ -148,16 +148,34 @@ class TestHandleClick:
         assert len(overlay._interval_markers) == 1
         assert not overlay.has_pending_interval_start()
 
-    def test_repeated_same_peak_replaces_previous_overlay_value(self, overlay):
+    def test_repeated_same_peak_is_stored_as_another_measurement(self, overlay):
+        """D-23: several beats of one parameter coexist instead of replacing."""
         overlay.set_peak_label("TRpeak")  # legacy alias is accepted
         overlay._add_peak_marker(100.0, 280.0)
         overlay.set_peak_label("TR Vmax")
         overlay._add_peak_marker(200.0, 320.0)
 
         dto = overlay.get_measurement_dto()
+        assert [marker.label for marker in dto.peaks] == ["TR Vmax", "TR Vmax"]
+        assert [marker.velocity_cm_s for marker in dto.peaks] == [280.0, 320.0]
+        assert len({marker.measurement_id for marker in dto.peaks}) == 2
+        assert all(marker.measurement_id for marker in dto.peaks)
+
+    def test_repeated_peak_removed_under_cursor(self, overlay):
+        """Delete must be able to remove a misplaced repeat measurement (D-23)."""
+        overlay.set_axis_mapping(DopplerAxisMapping.from_frame_size(1000.0, 200.0, time_span_ms=1000.0))
+        overlay.set_peak_label("TR Vmax")
+        overlay._add_peak_marker(100.0, 280.0)
+        overlay._add_peak_marker(200.0, 320.0)
+
+        second = overlay.get_measurement_dto().peaks[1]
+        x = overlay._axis_mapping.x_from_time_ms(second.time_ms)
+        y = overlay._axis_mapping.y_from_velocity_cm_s(second.velocity_cm_s)
+        assert overlay.remove_measurement_near(x, y) is True
+        dto = overlay.get_measurement_dto()
         assert len(dto.peaks) == 1
-        assert dto.peaks[0].label == "TR Vmax"
-        assert dto.peaks[0].velocity_cm_s == 320.0
+        assert dto.peaks[0].velocity_cm_s == 280.0
+        assert overlay.remove_measurement_near(x + 200.0, y + 100.0) is False
 
     def test_peak_marker_can_be_dragged_and_emits_updated_measurement(self, overlay):
         overlay.set_axis_mapping(DopplerAxisMapping.from_frame_size(1000.0, 200.0, time_span_ms=1000.0))
@@ -267,18 +285,18 @@ class TestLoadMeasurementDto:
         assert len(overlay._peak_markers) == 1
         assert len(overlay._interval_markers) == 1
 
-    def test_load_collapses_legacy_duplicate_peak_aliases(self, overlay):
+    def test_load_keeps_repeated_peak_measurements(self, overlay):
+        """Legacy duplicates are collapsed by the storage migration, not by the overlay."""
         dto = DopplerMeasurementDTO(
             peaks=(
-                DopplerPeakMarker(label="AVpeak", time_ms=100.0, velocity_cm_s=300.0),
-                DopplerPeakMarker(label="AV Vmax", time_ms=200.0, velocity_cm_s=410.0),
+                DopplerPeakMarker(label="AV Vmax", time_ms=100.0, velocity_cm_s=300.0, measurement_id="a"),
+                DopplerPeakMarker(label="AV Vmax", time_ms=200.0, velocity_cm_s=410.0, measurement_id="b"),
             ),
             intervals=(),
             traces=(),
         )
         overlay.load_measurement_dto(dto)
-        assert len(overlay._peak_markers) == 1
-        assert overlay._peak_markers[0].velocity_cm_s == 410.0
+        assert [marker.velocity_cm_s for marker in overlay._peak_markers] == [300.0, 410.0]
 
 
 class TestClearMeasurements:

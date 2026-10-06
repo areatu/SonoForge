@@ -314,3 +314,29 @@ class TestThumbnailGalleryWidget:
         item.setData(0, "not an instance")  # _ITEM_ROLE = 0
         w._on_item_clicked(item)
         w.close()
+
+
+class TestThumbnailPreviewSize:
+    """Э4: decode box = logical thumbnail × device pixel ratio."""
+
+    def test_medium_scale_at_100_percent(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.apply_scale("medium")
+        assert gallery.thumbnail_preview_size() == 96
+
+    def test_large_scale_is_bigger(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.apply_scale("large")
+        assert gallery.thumbnail_preview_size() == 176
+
+    def test_device_pixel_ratio_multiplies_the_box(self, monkeypatch):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.apply_scale("medium")
+        monkeypatch.setattr(gallery, "devicePixelRatioF", lambda: 2.0, raising=False)
+        assert gallery.thumbnail_preview_size() == 192

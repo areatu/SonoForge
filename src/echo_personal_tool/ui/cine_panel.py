@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.segment_labels import short_segment_label
 from echo_personal_tool.presentation.speckle_overlay import segment_label_anchors
+from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.ui.strain_helpers import _smooth_contour
 
 
@@ -90,7 +91,7 @@ class CinePanel(QWidget):
         # Bottom row: play + HR + frame counter
         footer = QHBoxLayout()
         self._play_btn = QPushButton(tr("strain.play"))
-        self._play_btn.setFixedWidth(100)
+        self._play_btn.setMinimumWidth(text_width(self._play_btn, tr("strain.play"), padding=28, minimum=72))
         self._play_btn.setEnabled(False)
         self._play_btn.clicked.connect(self._toggle_play)
         footer.addWidget(self._play_btn)

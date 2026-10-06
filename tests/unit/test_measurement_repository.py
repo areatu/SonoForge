@@ -20,10 +20,12 @@ from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.infrastructure.measurement_codec import (
     FORMAT,
+    SEMANTICS_VERSION,
     VERSION,
     MeasurementStorageError,
     dumps,
     loads,
+    migrate,
     study_key,
 )
 from echo_personal_tool.infrastructure.measurement_repository import MeasurementRepository
@@ -39,6 +41,7 @@ def record(data=None):
     return dict(
         format=FORMAT,
         schema_version=VERSION,
+        measurement_semantics_version=SEMANTICS_VERSION,
         study_uid=UID,
         revision=1,
         saved_at=datetime.now(_UTC).isoformat(),
@@ -297,13 +300,150 @@ def test_frame_update_keeps_other_instance_legacy_doppler_contribution():
     assert store.get(UID).doppler_by_instance == (("inst-b", peak_b),)
 
 
-def test_v1_schema_matches_codec():
+def _schema(name):
     from importlib.resources import files
 
+    return json.loads(files("echo_personal_tool.resources").joinpath(name).read_text())
+
+
+def test_v2_schema_matches_codec():
     import jsonschema
 
-    schema = json.loads(
-        files("echo_personal_tool.resources").joinpath("measurement-storage-v1.schema.json").read_text()
-    )
+    schema = _schema("measurement-storage-v2.schema.json")
     jsonschema.Draft202012Validator.check_schema(schema)
     jsonschema.validate(json.loads(dumps(record(complete_data()))), schema)
+
+
+def _v1_document(data_wire: dict, *, schema_version: int = 1) -> bytes:
+    """Build a version-1 document by hand: no semantics key, no identities."""
+    return json.dumps(
+        {
+            "format": FORMAT,
+            "schema_version": schema_version,
+            "study_uid": UID,
+            "revision": 1,
+            "saved_at": datetime.now(_UTC).isoformat(),
+            "sources": SOURCES,
+            "data": data_wire,
+        }
+    ).encode()
+
+
+V1_DOPPLER = {
+    "peaks": [
+        {"label": "TR Vmax", "time_ms": 10.0, "velocity_cm_s": 280.0},
+        {"label": "TR Vmax", "time_ms": 20.0, "velocity_cm_s": 330.0},  # stale v1 append
+    ],
+    "intervals": [],
+    "traces": [
+        {"label": "AV VTI", "points": [[0.0, 0.0], [100.0, 100.0], [200.0, 0.0]]},
+        {"label": "AV VTI", "points": [[300.0, 0.0], [400.0, 100.0], [500.0, 0.0]]},
+    ],
+}
+
+
+def test_v1_dump_matches_v1_schema():
+    """The v1 schema still describes exactly what a version-1 build wrote."""
+    import jsonschema
+
+    wire = json.loads(dumps(record(complete_data())))
+    wire.pop("measurement_semantics_version")
+    wire["schema_version"] = 1
+
+    def strip(node) -> None:
+        if isinstance(node, dict):
+            node.pop("measurement_id", None)
+            for value in node.values():
+                strip(value)
+        elif isinstance(node, list):
+            for value in node:
+                strip(value)
+
+    strip(wire)
+    jsonschema.validate(wire, _schema("measurement-storage-v1.schema.json"))
+    # ... and such a document loads and migrates to the current version.
+    loaded = loads(json.dumps(wire).encode())
+    assert loaded["schema_version"] == VERSION
+    assert loaded["measurement_semantics_version"] == SEMANTICS_VERSION
+
+
+def test_v1_document_with_stale_duplicates_migrates():
+    """Defensive path: collapse the duplicates a version-1 reader kept hiding."""
+    payload = _v1_document({"doppler_by_instance": [[SOP, V1_DOPPLER]]})
+
+    loaded = loads(payload)
+
+    assert loaded["schema_version"] == VERSION
+    assert loaded["measurement_semantics_version"] == SEMANTICS_VERSION
+    migrated_dto = loaded["data"].doppler_by_instance[0][1]
+    # Version 1 displayed and merged only the newest marker of a label.
+    assert [(marker.label, marker.velocity_cm_s) for marker in migrated_dto.peaks] == [("TR Vmax", 330.0)]
+    # Multi-beat traces stay repeats and become explicit version-2 measurements.
+    assert [trace.label for trace in migrated_dto.traces] == ["AV VTI", "AV VTI"]
+    assert len({trace.measurement_id for trace in migrated_dto.traces}) == 2
+    assert all(trace.measurement_id for trace in migrated_dto.traces)
+
+
+def test_repeated_measurements_round_trip_and_ambiguous_duplicates_rejected():
+    peak = DopplerPeakMarker("TR Vmax", 10.0, 280.0, measurement_id="a")
+    second = DopplerPeakMarker("TR Vmax", 20.0, 330.0, measurement_id="b")
+    data = replace(
+        complete_data(),
+        doppler_by_instance=((SOP, DopplerMeasurementDTO(peaks=(peak, second), intervals=(), traces=())),),
+        doppler_by_instance_frame=(),
+    )
+
+    loaded = loads(dumps(record(data)))
+
+    assert loaded["data"].doppler_by_instance[0][1].peaks == (peak, second)
+    # A legacy marker without an identity may coexist with one new measurement
+    # of the same parameter: they are two measurements, not an ambiguity.
+    with_legacy = replace(
+        data,
+        doppler_by_instance=(
+            (SOP, DopplerMeasurementDTO(peaks=(replace(peak, measurement_id=""), second), intervals=(), traces=())),
+        ),
+    )
+    assert loads(dumps(record(with_legacy)))["data"].doppler_by_instance[0][1].peaks == (
+        replace(peak, measurement_id=""),
+        second,
+    )
+    # Two identity-less markers of one label are an ambiguity the merge cannot
+    # resolve, so the codec refuses them instead of guessing.
+    without_ids = replace(
+        data,
+        doppler_by_instance=(
+            (
+                SOP,
+                DopplerMeasurementDTO(
+                    peaks=(replace(peak, measurement_id=""), replace(second, measurement_id="")),
+                    intervals=(),
+                    traces=(),
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(MeasurementStorageError, match="invalid"):
+        dumps(record(without_ids))
+    # A duplicated identity is the same measurement arriving twice: also refused.
+    with pytest.raises(MeasurementStorageError, match="invalid"):
+        dumps(
+            record(
+                replace(
+                    data,
+                    doppler_by_instance=((SOP, DopplerMeasurementDTO(peaks=(peak, peak), intervals=(), traces=())),),
+                )
+            )
+        )
+
+
+def test_future_semantics_version_is_read_blocked():
+    wire = json.loads(dumps(record()))
+    wire["measurement_semantics_version"] = SEMANTICS_VERSION + 1
+    with pytest.raises(MeasurementStorageError, match="version"):
+        loads(json.dumps(wire).encode())
+
+
+def test_migrate_is_idempotent_for_current_documents():
+    current = loads(dumps(record(complete_data())))
+    assert migrate(current) is current

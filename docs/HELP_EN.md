@@ -44,6 +44,14 @@ SonoForge can:
 - expose AI segmentation and experimental strain/LA features when the required settings, dependencies, and data are available;
 - open the built-in structured reference data and user reference documents.
 
+### Large-screen interface scale
+
+When the OS reports 100 % scale, a 4K monitor can make the interface physically small: nothing is scaled and buttons stay tiny. Choose 100–250 % in 25 % steps in `Settings → Interface → Interface scale`; `Auto` keeps the operating-system scale.
+
+The multiplier applies to the whole interface at once (buttons, panels, fonts, measurement markers) and takes effect **after a restart** — the app offers to restart immediately. Fractional values such as 150 % are rendered exactly by Qt, so widgets do not drift apart. On a 4K screen at 100 % OS scale the app offers 150 % once.
+
+Line widths and the results-overlay font are separate settings multiplied by the same factor: if calipers or labels still look small, raise `Results overlay font size` (10–40 px) and `Caliper line width`.
+
 ### Starting the application
 
 For release downloads and install steps, see [the project README](../README.md). Install the Linux package `sonoforge_<version>_amd64.deb` and launch it with `sonoforge`; on Windows run `SonoForge-Setup-<version>-x64.exe` (per-user by default, or choose all users) and launch from the Start Menu, or use `SonoForge-<version>-portable.exe` for a no-install run; on Apple Silicon open `SonoForge.app` from `SonoForge-macos-arm64.dmg`. Uninstalling Windows SonoForge preserves `%LOCALAPPDATA%\SonoForge` unless you explicitly select **Also remove SonoForge user data**. From source:
@@ -183,9 +191,22 @@ DICOM is grouped from its UIDs. MP4/JPEG/PNG without DICOM metadata receive synt
 3. If a file is missing or rejected, inspect `<selected folder>/scan_errors.log`.
 4. Check that the root contains supported media or a valid extensionless DICOM header.
 
-The scanner skips service directories such as `.git`, `.idea`, `__pycache__`, `node_modules`, `.venv`, and `.svn`. A bad file should not prevent the remaining files from being scanned.
+The scanner skips service directories such as `.git`, `.idea`, `__pycache__`, `node_modules`, `.venv`, and `.svn`. A bad file should not prevent the remaining files from being scanned. Each DICOM header is parsed **once per scan**: the study UID, series UID, and study date are reused from the header already read, so a large folder — including one on a network or cloud drive — opens noticeably faster and does not touch the same file twice.
 
-### 3.4 Local sources and server cache
+### 3.4 Recent folders, pins, and places
+
+The `Open folder…` dialog remembers where you opened studies:
+
+- **start folder** — the last folder you opened (if it still exists) instead of an arbitrary directory; on first launch it is `Documents`, otherwise the home folder;
+- **Recent folders** — the list of recent folders at the bottom of the dialog, also shown in the sidebar. Up to 15 folders are kept;
+- **pin** (`Pin` / `Unpin`) — pinned folders always stay on top and are never pushed out by new ones (unpinned folders are dropped as the list grows);
+- **remove** — drops the selected folder from the list only; nothing is deleted on disk;
+- **clear** — removes every unpinned folder at once;
+- **Places** — shortcuts to the OS known folders: Desktop, Documents, Downloads, Home, and OneDrive when the environment variable is set (including redirected / cloud-moved folders). The existing sidebar entries (drives included) are preserved.
+
+A folder that no longer exists (an unplugged drive or USB stick) stays in the list but is greyed out and cannot be selected. The list is stored separately from the startup option `On startup → Last folder`. Folder pickers in Settings (gold annotations, reference folder) never enter the recent list.
+
+### 3.5 Local sources and server cache
 
 A local DICOM is opened from its source path. Objects downloaded from a server are placed in SonoForge's temporary cache and then scanned as a local study. Use **`Save to Disk`** in the server dialog when the retrieved files must remain in a permanent user-selected directory; `Load` alone is a working-cache operation.
 
@@ -377,6 +398,8 @@ Examples:
 
 Check the baseline, direction, and velocity span. A reflected or reversed spectrum can make an otherwise accurate click clinically wrong.
 
+Measuring the same parameter again (for example `TR Vmax` on consecutive cycles in atrial fibrillation) no longer replaces the previous value: every measurement is stored and the report shows the **mean of the last three**, annotated with their count (`(n=3)`). To remove a measurement placed by mistake, move the cursor onto the marker, interval, or trace and press `Delete`; with the cursor on nothing, `Delete` keeps its previous caliper behavior.
+
 ### 9.3 Trace and VTI
 
 For a Doppler trace:
@@ -386,7 +409,7 @@ For a Doppler trace:
 3. finish with `Enter` or a double click;
 4. verify the cycle, baseline side, and direction.
 
-`V` starts a VTI workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vpeak, Vmean, PGpeak, PGmean, and related indices, but a completed trace is not a quality guarantee.
+`V` starts a VTI workflow when time calibration is ready. `Auto VTI` is an automated estimate and requires visual review. The report may include VTI, Vmax, Vmean, PGmax, PGmean, and related indices; a repeated parameter reports the mean of the last three measurements and their count, but a completed trace is not a quality guarantee.
 
 ### 9.4 Vessel measurements
 
@@ -606,7 +629,8 @@ These documents are reading material. They do not modify structured YAML norms o
 
 - color theme: Dark, Light, VS Code Dark/Light, System;
 - language: Russian or English;
-- UI font size;
+- interface scale: `Auto (OS scale)` or 100–250 % in 25 % steps;
+- UI font size (in pixels, like the rest of the interface sizes);
 - results-overlay font size and opacity;
 - caliper line width;
 - cine playback speed multiplier;

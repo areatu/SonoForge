@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -31,6 +32,11 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.orthanc_cache import OrthancSessionCache
 from echo_personal_tool.infrastructure.server_settings import save_server_settings
+from echo_personal_tool.infrastructure.ui_scale import (
+    UI_SCALE_AUTO,
+    UI_SCALE_CHOICES,
+    normalize_ui_scale,
+)
 from echo_personal_tool.infrastructure.user_preferences import (
     MAX_LINE_WIDTH,
     MAX_MAGNETIC_RADIUS,
@@ -57,6 +63,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
 )
 from echo_personal_tool.presentation.server_settings_dialog import ServerSettingsForm
 from echo_personal_tool.presentation.styled_dialogs import localize_dialog_button_box, theme_button_box_icons
+from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
 
 
 def show_user_preferences_dialog(
@@ -145,7 +152,7 @@ class UserPreferencesDialog(QDialog):
         # Custom title bar
         title_bar = QWidget()
         title_bar.setObjectName("preferencesTitleBar")
-        title_bar.setFixedHeight(34)
+        title_bar.setFixedHeight(title_bar_height(self))
         title_bar_layout = QHBoxLayout(title_bar)
         title_bar_layout.setContentsMargins(6, 0, 0, 0)
         title_bar_layout.setSpacing(8)
@@ -159,7 +166,7 @@ class UserPreferencesDialog(QDialog):
 
         btn_close.setIcon(_load_icon("close"))
         btn_close.setObjectName("closeButton")
-        btn_close.setFixedSize(28, 23)
+        btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
         btn_close.clicked.connect(self.reject)
         title_bar_layout.addWidget(btn_close)
 
@@ -182,11 +189,11 @@ class UserPreferencesDialog(QDialog):
         self._language_combo.setCurrentIndex(max(lang_index, 0))
         self._font_spin = QSpinBox()
         self._font_spin.setRange(MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE)
-        self._font_spin.setSuffix(" pt")
+        self._font_spin.setSuffix(" px")
         self._font_spin.setValue(current.ui_font_size)
         self._overlay_font_spin = QSpinBox()
         self._overlay_font_spin.setRange(MIN_OVERLAY_FONT_SIZE, MAX_OVERLAY_FONT_SIZE)
-        self._overlay_font_spin.setSuffix(" pt")
+        self._overlay_font_spin.setSuffix(" px")
         self._overlay_font_spin.setValue(current.results_overlay_font_size)
         self._overlay_opacity_spin = QDoubleSpinBox()
         self._overlay_opacity_spin.setRange(MIN_OVERLAY_OPACITY, MAX_OVERLAY_OPACITY)
@@ -199,7 +206,17 @@ class UserPreferencesDialog(QDialog):
         self._caliper_spin.setDecimals(1)
         self._caliper_spin.setSuffix(" px")
         self._caliper_spin.setValue(current.caliper_line_width)
+        self._ui_scale = QComboBox()
+        for percent in UI_SCALE_CHOICES:
+            if percent == UI_SCALE_AUTO:
+                self._ui_scale.addItem(tr("preferences.ui_scale_auto"), UI_SCALE_AUTO)
+            else:
+                self._ui_scale.addItem(f"{percent} %", percent)
+        scale_index = self._ui_scale.findData(normalize_ui_scale(current.ui_scale_percent))
+        self._ui_scale.setCurrentIndex(max(scale_index, 0))
+        self._ui_scale.setToolTip(tr("preferences.ui_scale_tip"))
         interface_form.addRow(tr("preferences.color_theme"), self._theme_combo)
+        interface_form.addRow(tr("preferences.ui_scale"), self._ui_scale)
         interface_form.addRow(tr("preferences.language"), self._language_combo)
         interface_form.addRow(tr("preferences.ui_font_size"), self._font_spin)
         interface_form.addRow(tr("preferences.results_overlay_font_size"), self._overlay_font_spin)
@@ -561,6 +578,7 @@ class UserPreferencesDialog(QDialog):
             self,
             tr("preferences.gold_browse_title"),
             self._gold_path.text() or str(Path.home()),
+            remember=False,  # a dataset folder is not one of the "recent patient folders"
         )
         if path:
             self._gold_path.setText(path)
@@ -572,6 +590,7 @@ class UserPreferencesDialog(QDialog):
             self,
             tr("references_dir_browse_title"),
             self._refs_dir.text() or str(Path.home()),
+            remember=False,
         )
         if path:
             self._refs_dir.setText(path)
@@ -579,6 +598,7 @@ class UserPreferencesDialog(QDialog):
     def _on_accept(self) -> None:
         stored = load_user_preferences()
         preferences = UserPreferences(
+            ui_scale_percent=normalize_ui_scale(self._ui_scale.currentData()),
             ui_font_size=self._font_spin.value(),
             results_overlay_x_ratio=stored.results_overlay_x_ratio,
             results_overlay_y_ratio=stored.results_overlay_y_ratio,
@@ -633,11 +653,34 @@ class UserPreferencesDialog(QDialog):
             presenter_visual_preset=stored.presenter_visual_preset,
             presenter_pointer=stored.presenter_pointer,
         )
+        scale_changed = normalize_ui_scale(stored.ui_scale_percent) != preferences.ui_scale_percent
         save_user_preferences(preferences)
         save_server_settings(self._server_form.settings())
         if self._on_apply is not None:
             self._on_apply(preferences)
         self.accept()
+        if scale_changed:
+            # Show the prompt after the dialog is gone, and only once the nested
+            # event loop of exec() has unwound.
+            QTimer.singleShot(0, self._prompt_ui_scale_restart)
+
+    def _prompt_ui_scale_restart(self) -> None:
+        """The multiplier is read before QApplication, so it needs a restart."""
+        from echo_personal_tool.infrastructure.ui_scale import restart_application
+
+        box = QMessageBox(self.parentWidget())
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(tr("ui_scale.restart_title"))
+        box.setText(tr("ui_scale.restart_text"))
+        restart_button = box.addButton(tr("ui_scale.restart_now"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("ui_scale.restart_later"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not restart_button:
+            return
+        if restart_application():
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:

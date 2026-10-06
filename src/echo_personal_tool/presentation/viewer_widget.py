@@ -141,6 +141,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 logger = logging.getLogger(__name__)
@@ -773,6 +774,7 @@ class ViewerWidget(QWidget):
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._doppler_cal_step: Literal["baseline"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
+        self._last_view_cursor_xy: tuple[float, float] | None = None
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
         self._doppler_pending_baseline_y: float | None = None
@@ -969,16 +971,16 @@ class ViewerWidget(QWidget):
         self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
 
         self._step_back_button = QPushButton("|<")
-        self._step_back_button.setFixedWidth(36)
+        self._step_back_button.setMinimumWidth(text_width(self, "|<", padding=18, minimum=24))
         self._step_back_button.setToolTip("Step back (Previous frame)")
         self._step_back_button.clicked.connect(self._step_back)
 
         self._play_button = QPushButton(tr("viewer.play"))
-        self._play_button.setFixedWidth(self._play_button.sizeHint().width() + 12)
+        self._play_button.setMinimumWidth(self._play_button.sizeHint().width() + 12)
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
         self._step_forward_button = QPushButton(">|")
-        self._step_forward_button.setFixedWidth(36)
+        self._step_forward_button.setMinimumWidth(text_width(self, ">|", padding=18, minimum=24))
         self._step_forward_button.setToolTip("Step forward (Next frame)")
         self._step_forward_button.clicked.connect(self._step_forward)
 
@@ -3476,6 +3478,7 @@ class ViewerWidget(QWidget):
             self._crosshair_v_item.setData([], [])
 
     def _update_measurement_crosshair(self, x: float, y: float) -> None:
+        self._last_view_cursor_xy = (float(x), float(y))
         if not self._show_crosshair:
             self._clear_crosshair()
             return
@@ -7835,6 +7838,9 @@ class ViewerWidget(QWidget):
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Delete:
+            if self._remove_doppler_measurement_at_cursor():
+                event.accept()
+                return
             if self._delete_selected_caliper():
                 event.accept()
                 return
@@ -7881,6 +7887,19 @@ class ViewerWidget(QWidget):
                     event.accept()
                     return
         super().keyPressEvent(event)
+
+    def _remove_doppler_measurement_at_cursor(self) -> bool:
+        """Delete the Doppler measurement under the last cursor position (D-23).
+
+        Repeated measurements of one parameter accumulate, so a misplaced peak
+        (or interval, or trace) must be removable.  Delete removes the nearest
+        measurement when the cursor is on it and otherwise falls through to the
+        regular caliper deletion.
+        """
+        cursor = self._last_view_cursor_xy
+        if cursor is None:
+            return False
+        return self._doppler.remove_measurement_near(cursor[0], cursor[1])
 
     def _set_caliper_label(self, label: str) -> None:
         if label not in self._caliper_labels:

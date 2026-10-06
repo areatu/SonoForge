@@ -218,6 +218,10 @@ class TestConstants:
     def test_font_size_bounds(self):
         assert up_mod.MIN_UI_FONT_SIZE <= up_mod.DEFAULT_UI_FONT_SIZE <= up_mod.MAX_UI_FONT_SIZE
         assert up_mod.MIN_OVERLAY_FONT_SIZE <= up_mod.DEFAULT_RESULTS_OVERLAY_FONT_SIZE <= up_mod.MAX_OVERLAY_FONT_SIZE
+        # Э4: UI fonts are logical pixels in both the stylesheet and the app font;
+        # pt survives only in the PDF/print settings.
+        assert up_mod.MAX_UI_FONT_SIZE >= 20
+        assert up_mod.MAX_OVERLAY_FONT_SIZE >= 32
 
     def test_speed_bounds(self):
         assert up_mod.MIN_PLAYBACK_SPEED <= up_mod.DEFAULT_PLAYBACK_SPEED <= up_mod.MAX_PLAYBACK_SPEED
@@ -231,7 +235,8 @@ class TestConstants:
 class TestUserPreferencesDataclass:
     def test_all_fields_have_defaults(self):
         prefs = UserPreferences()
-        assert prefs.ui_font_size == 12
+        assert prefs.ui_font_size == up_mod.DEFAULT_UI_FONT_SIZE
+        assert prefs.ui_scale_percent == 0  # 0 = Auto: follow the OS scale
         assert prefs.results_overlay_opacity == 0.70
         assert prefs.caliper_line_width == 2.0
         assert prefs.show_crosshair is True

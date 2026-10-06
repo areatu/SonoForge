@@ -22,6 +22,7 @@ from echo_personal_tool.domain.models.measurements import (
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.ui_metrics import text_width
 
 
 class MeasurementPanel(QWidget):
@@ -76,9 +77,13 @@ class MeasurementPanel(QWidget):
         layout.addLayout(patient_row)
         layout.addWidget(summary_scroll, stretch=1)
 
-        self.setMinimumWidth(280)
+        self.update_font_metrics()
 
         self._refresh_text()
+
+    def update_font_metrics(self) -> None:
+        """Wide enough for the summary captions in the current font (Э4)."""
+        self.setMinimumWidth(text_width(self, tr("tool_panel.measures"), padding=48, minimum=280))
 
     def set_measurement_snapshot(self, snapshot: MeasurementSnapshot | None) -> None:
         self._measurement_snapshot = snapshot
