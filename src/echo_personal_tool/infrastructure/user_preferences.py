@@ -115,6 +115,10 @@ class UserPreferences:
     show_caliper_labels_on_frame: bool = True
     show_caliper_inline_labels: bool = False
     show_doppler_calibration_roi: bool = False
+    # Mask burned-in patient data (name/ID/date) on displayed frames.  Kept
+    # switchable at runtime: the band geometry is empirical and can be wrong on
+    # a scanner we have never measured.
+    anonymize_frames: bool = True
     thumbnail_scale: str = "medium"
     magnetic_snap_weight_threshold: float = DEFAULT_MAGNETIC_WEIGHT
     magnetic_snap_release_strength: float = DEFAULT_MAGNETIC_RELEASE
@@ -300,6 +304,7 @@ def load_user_preferences() -> UserPreferences:
         show_caliper_labels_on_frame=_read_bool(store.value("show_caliper_labels_on_frame"), True),
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),
         show_doppler_calibration_roi=_read_bool(store.value("show_doppler_calibration_roi"), False),
+        anonymize_frames=_read_bool(store.value("anonymize_frames"), True),
         thumbnail_scale=_read_choice(
             store.value("thumbnail_scale"),
             "medium",

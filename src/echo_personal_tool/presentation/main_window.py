@@ -1485,7 +1485,7 @@ class MainWindow(QMainWindow):
                 self._controller.get_cached_frames() if hasattr(self._controller, "get_cached_frames") else []
             )
             if cached_frames:
-                self._mmode_widget.recalculate_from_frames(cached_frames, start, end)
+                self._mmode_widget.recalculate_from_frames(cached_frames, start, end, mask=self._viewer.mask_phi)
             # Apply calibration to M-mode depth axis
             # Priority: M-mode specific calibration > B-mode pixel spacing > fallback
             depth_mm = 0.0
