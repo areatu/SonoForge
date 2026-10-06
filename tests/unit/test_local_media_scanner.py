@@ -127,3 +127,96 @@ def test_local_scanner_builds_dicom_study_tree(tmp_path: Path) -> None:
     assert len(studies) == 1
     assert len(studies[0].series) == 2
     assert sum(len(s.instances) for s in studies[0].series) == 2
+
+
+def test_each_dicom_is_parsed_once_per_scan(tmp_path: Path, monkeypatch) -> None:
+    """Э3/П.4: one header parse per file.
+
+    The scanner used to read every DICOM two or three times (instance, study
+    UID, study datetime), which is what made opening a folder slow and made
+    cloud-backed files appear to hang.
+    """
+    import pydicom
+
+    from echo_personal_tool.infrastructure import local_scanner as scanner_module
+
+    study_uid = generate_uid()
+    for name in ("a.dcm", "b.dcm", "c.dcm"):
+        write_synthetic_dicom(tmp_path / name, study_uid=study_uid, series_uid=generate_uid())
+
+    calls: list[str] = []
+    real_dcmread = pydicom.dcmread
+
+    def counting_dcmread(path, *args, **kwargs):
+        calls.append(str(path))
+        return real_dcmread(path, *args, **kwargs)
+
+    monkeypatch.setattr(scanner_module.pydicom, "dcmread", counting_dcmread)
+
+    scanner = LocalMediaDirectoryScanner()
+    studies = scanner.scan(tmp_path)
+
+    assert len(studies) == 1
+    instances = [instance for series in studies[0].series for instance in series.instances]
+    assert len(instances) == 3
+    assert len(calls) == 3  # one read per file, not two or three
+
+    # Repeated scans must not serve a stale header cache.
+    scanner.scan(tmp_path)
+    assert len(calls) == 6
+
+
+def test_study_split_reuses_the_cached_header(tmp_path: Path, monkeypatch) -> None:
+    """Two studies inside one folder are still split, with a single read each."""
+    import pydicom
+
+    from echo_personal_tool.infrastructure import local_scanner as scanner_module
+
+    uid_a, uid_b = generate_uid(), generate_uid()
+    write_synthetic_dicom(tmp_path / "a1.dcm", study_uid=uid_a, series_uid=generate_uid())
+    write_synthetic_dicom(tmp_path / "a2.dcm", study_uid=uid_a, series_uid=generate_uid())
+    write_synthetic_dicom(tmp_path / "b1.dcm", study_uid=uid_b, series_uid=generate_uid())
+
+    reads: list[str] = []
+    real_dcmread = pydicom.dcmread
+
+    def counting_dcmread(path, *args, **kwargs):
+        reads.append(str(path))
+        return real_dcmread(path, *args, **kwargs)
+
+    monkeypatch.setattr(scanner_module.pydicom, "dcmread", counting_dcmread)
+    studies = LocalMediaDirectoryScanner().scan(tmp_path)
+
+    assert {study.study_uid for study in studies} == {uid_a, uid_b}
+    assert len(reads) == 3
+
+
+def test_rejected_file_is_read_and_logged_once(tmp_path: Path, monkeypatch) -> None:
+    """A broken DICOM is reported once, not once per reading code path."""
+    from echo_personal_tool.infrastructure import local_scanner as scanner_module
+
+    bad = tmp_path / "broken.dcm"
+    bad.write_bytes(b"not a dicom file")
+    write_synthetic_dicom(tmp_path / "good.dcm", study_uid=generate_uid(), series_uid=generate_uid())
+
+    errors: list[tuple] = []
+    scanner = LocalMediaDirectoryScanner()
+    monkeypatch.setattr(scanner, "_log_scan_error", lambda path, exc: errors.append((path, exc)))
+
+    reads: list[str] = []
+    import pydicom
+
+    real_dcmread = pydicom.dcmread
+
+    def counting_dcmread(path, *args, **kwargs):
+        reads.append(str(path))
+        return real_dcmread(path, *args, **kwargs)
+
+    monkeypatch.setattr(scanner_module.pydicom, "dcmread", counting_dcmread)
+    scanner.scan(tmp_path)
+
+    assert [path.name for path, _exc in errors].count("broken.dcm") == 1
+    # The header scan rejects it before pydicom parses anything: the failure is
+    # recorded once instead of once per reading code path.
+    assert reads.count(str(bad)) == 0
+    assert reads.count(str(tmp_path / "good.dcm")) == 1

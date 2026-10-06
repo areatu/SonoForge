@@ -122,7 +122,8 @@ class TestDopplerZoneCaliper:
         text = measurement.display_text()
         assert "100.0 ms" in text
         assert "40.0 cm/s" in text
-        assert "mm" not in text
+        # No B-mode millimeter length ("mmHg" of the gradient does not count).
+        assert " mm" not in text.replace("mmHg", "")
 
     def test_high_velocity_displays_m_per_s(self, qtbot) -> None:
         w = _make_viewer(qtbot)
@@ -147,6 +148,21 @@ class TestDopplerZoneCaliper:
         assert measurement.velocity_cm_s == pytest.approx(120.0)
         assert "1.20 m/s" in measurement.display_text()
         assert "cm/s" not in measurement.display_text()
+
+    def test_caliper_captures_resolved_mode_and_shows_pgmax(self, qtbot) -> None:
+        w = _make_doppler_viewer(qtbot)
+        w.set_doppler_mode_override("CW")
+        emitted: list[list] = []
+        w.linear_measurements_changed.connect(emitted.append)
+
+        w.activate_generic_dist_caliper()
+        _place_caliper(w, (60.0, _BASELINE_Y), (70.0, 70.0))
+
+        measurement = emitted[-1][0]
+        assert measurement.doppler_mode == "CW"
+        text = measurement.display_text()
+        assert "0.40 m/s" in text
+        assert "PGmax 1 mmHg" in text
 
     def test_outside_roi_measures_distance(self, qtbot) -> None:
         w = _make_doppler_viewer(qtbot)

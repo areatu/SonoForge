@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.segment_quality_panel import SegmentQualityPanel
 from echo_personal_tool.presentation.strain_curve_widget import StrainCurveWidget
+from echo_personal_tool.presentation.ui_metrics import control_height, line_height, text_width
 
 
 class SteResultsDialog(QDialog):
@@ -17,7 +18,13 @@ class SteResultsDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("dialog.ste_results.title"))
-        self.setFixedSize(950, 520)
+        # Fixed geometry was clipping the quality table at large fonts (Э4):
+        # keep a comfortable default but let the dialog grow with its content.
+        self.setMinimumSize(
+            text_width(self, tr("dialog.ste_results.title") * 18, padding=80, minimum=720),
+            control_height(self, padding=0, minimum=0) + 8 * line_height(self) + 220,
+        )
+        self.resize(950, 520)
         self.setWindowFlags(Qt.WindowType.Window)
 
         main_layout = QVBoxLayout(self)

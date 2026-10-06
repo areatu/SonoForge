@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -14,6 +16,15 @@ from echo_personal_tool.domain.models import (
 from echo_personal_tool.presentation.doppler_widget import DopplerWidget
 
 pytestmark = pytest.mark.gui
+
+
+def _without_measurement_ids(dto: DopplerMeasurementDTO) -> DopplerMeasurementDTO:
+    """Compare marker values while ignoring the per-measurement identity (D-23)."""
+    return DopplerMeasurementDTO(
+        peaks=tuple(replace(marker, measurement_id="") for marker in dto.peaks),
+        intervals=tuple(replace(marker, measurement_id="") for marker in dto.intervals),
+        traces=tuple(replace(trace, measurement_id="") for trace in dto.traces),
+    )
 
 
 def test_tool_mode_round_trip(qtbot) -> None:
@@ -77,8 +88,11 @@ def test_peak_marker_click_emits_updated_measurement(qtbot) -> None:
         intervals=(),
         traces=(),
     )
-    assert widget.get_measurement_dto() == expected
-    assert blocker.args == [expected]
+    dto = widget.get_measurement_dto()
+    assert _without_measurement_ids(dto) == expected
+    assert _without_measurement_ids(blocker.args[0]) == expected
+    # Every new measurement carries an identity so repeats can coexist (D-23).
+    assert dto.peaks[0].measurement_id
     assert widget._status_label.text() == "Tool: Peak marker (M) | Click peak (label: A)"
 
 
@@ -105,8 +119,10 @@ def test_interval_marker_two_click_flow_emits_updated_measurement(qtbot) -> None
         ),
         traces=(),
     )
-    assert widget.get_measurement_dto() == expected
-    assert blocker.args == [expected]
+    dto = widget.get_measurement_dto()
+    assert _without_measurement_ids(dto) == expected
+    assert _without_measurement_ids(blocker.args[0]) == expected
+    assert dto.intervals[0].measurement_id
     assert len(widget._interval_items) == 1
     assert widget._status_label.text() == ("Tool: Interval marker (T) | Click interval start (label: IVRT)")
 
@@ -174,8 +190,10 @@ def test_trace_clicks_and_finish_trace_emit_updated_measurement(qtbot) -> None:
             ),
         ),
     )
-    assert widget.get_measurement_dto() == expected
-    assert blocker.args == [expected]
+    dto = widget.get_measurement_dto()
+    assert _without_measurement_ids(dto) == expected
+    assert _without_measurement_ids(blocker.args[0]) == expected
+    assert dto.traces[0].measurement_id
     assert widget._active_partial_points == []
     assert len(widget._trace_items) == 1
     assert widget._status_label.text() == ("Tool: VTI trace (V) | Click points, double-click to finish")

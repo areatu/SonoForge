@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_metrics import control_height, text_width
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
@@ -126,8 +127,8 @@ class SystemBar(QWidget):
         self._status_label = _ElidingStatusLabel()
 
         self._progress_bar = QProgressBar()
-        self._progress_bar.setMaximumWidth(160)
-        self._progress_bar.setMaximumHeight(16)
+        self._progress_bar.setMaximumWidth(text_width(self, "100 %", padding=48, minimum=120))
+        self._progress_bar.setMaximumHeight(control_height(self, padding=6, minimum=14))
         self._progress_bar.setTextVisible(True)
         self._progress_bar.hide()
 
@@ -285,8 +286,9 @@ class SystemBar(QWidget):
         if _logo.exists():
             self._logo_label = QLabel()
             _pixmap = QPixmap(str(_logo))
-            self._logo_label.setPixmap(_pixmap.scaledToHeight(28, Qt.SmoothTransformation))
-            self._logo_label.setFixedWidth(28)
+            logo_height = control_height(self, padding=8, minimum=24)
+            self._logo_label.setPixmap(_pixmap.scaledToHeight(logo_height, Qt.SmoothTransformation))
+            self._logo_label.setMinimumWidth(logo_height)
             left_layout.addWidget(self._logo_label, 0)
         else:
             self._logo_label = None

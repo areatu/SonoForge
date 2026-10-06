@@ -846,3 +846,82 @@ class TestPersistenceStatusBlocking:
         with patch("echo_personal_tool.presentation.main_window.QMessageBox.warning") as warning:
             slot()
         warning.assert_called_once()
+
+
+class TestOpenFolderRemembersRecents:
+    """Э3: the folder dialog starts where the user was and remembers the choice."""
+
+    def test_dialog_starts_at_the_last_recent_folder(self, main_window, tmp_path, monkeypatch):
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
+
+        folder = tmp_path / "study"
+        folder.mkdir()
+        RecentStore().record(folder)
+
+        seen: dict[str, str] = {}
+
+        def fake_dialog(parent=None, title="", directory="", **kwargs):
+            seen["directory"] = directory
+            return ""
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            fake_dialog,
+        )
+        main_window._open_folder()
+
+        assert seen["directory"] == str(folder)
+
+    def test_missing_recent_folder_falls_back_to_the_startup_preference(self, main_window, tmp_path, monkeypatch):
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
+
+        RecentStore().record(tmp_path / "gone")  # does not exist
+        seen: dict[str, str] = {}
+
+        def fake_dialog(parent=None, title="", directory="", **kwargs):
+            seen["directory"] = directory
+            return ""
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            fake_dialog,
+        )
+        main_window._user_preferences.last_opened_folder = str(tmp_path / "fallback")
+
+        main_window._open_folder()
+
+        assert seen["directory"] == str(tmp_path / "fallback")
+
+    def test_chosen_folder_is_recorded_for_next_time(self, main_window, tmp_path, monkeypatch):
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
+
+        chosen = tmp_path / "study"
+        chosen.mkdir()
+        opened: list[Path] = []
+
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            lambda *args, **kwargs: str(chosen),
+        )
+        monkeypatch.setattr(main_window, "open_folder_path", lambda path: opened.append(path))
+
+        main_window._open_folder()
+
+        assert opened == [chosen]
+        assert RecentStore().paths() == [str(chosen)]
+        assert main_window._user_preferences.last_opened_folder == str(chosen)
+
+    def test_cancelled_dialog_records_nothing(self, main_window, tmp_path, monkeypatch):
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
+
+        called: list = []
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            lambda *args, **kwargs: "",
+        )
+        monkeypatch.setattr(main_window, "open_folder_path", lambda path: called.append(path))
+
+        main_window._open_folder()
+
+        assert called == []
+        assert RecentStore().paths() == []

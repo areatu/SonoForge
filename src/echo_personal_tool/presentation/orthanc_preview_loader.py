@@ -13,14 +13,25 @@ keeps the dialog responsive:
   actually looks blank, so the extra request is the exception, not the rule;
 * previews are never written to disk — they live only while the dialog is open,
   so no extra PHI store appears on the workstation.
+
+Results cross the thread boundary through :class:`_PreviewInbox`, not through a
+queued Qt signal to a Python callable.  A queued signal leaves a meta-call event
+in the GUI thread queue; if the loader is torn down before that event is
+delivered, PySide6 walks the connection of a freed receiver and the process dies
+with SIGSEGV (this is what made the preview-loader tests flaky, and it is not
+specific to the tests — closing the dialog while thumbnails were still loading
+did the same).  A locked container has no lifetime coupling to Qt; the loader
+drains it on its own timer, and the timer dies with the loader, so no event can
+ever outlive its receiver.
 """
 
 from __future__ import annotations
 
 import logging
-from collections import OrderedDict
+import threading
+from collections import OrderedDict, deque
 
-from PySide6.QtCore import QObject, QRunnable, QSize, Qt, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QSize, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
 
 log = logging.getLogger(__name__)
@@ -75,8 +86,29 @@ def is_informative_image(image: QImage) -> bool:
     return mean >= _BLANK_MEAN and (high - low) >= _FLAT_RANGE
 
 
-class _PreviewSignals(QObject):
-    finished = Signal(str, str, object)  # study_uid, series_uid, QImage | None
+class _PreviewInbox:
+    """Thread-safe hand-off of finished previews to the GUI thread.
+
+    Deliberately a plain Python object: both the worker task and the loader hold
+    a reference, so the container outlives whichever of them disappears first,
+    and nothing here can leave a dangling Qt connection behind (see the module
+    docstring).  ``deque`` + ``list()`` under a lock is all the ordering the
+    loader needs — FIFO, and draining never blocks the GUI thread for long.
+    """
+
+    def __init__(self) -> None:
+        self._items: deque[tuple[str, str, object]] = deque()
+        self._lock = threading.Lock()
+
+    def add(self, study_uid: str, series_uid: str, image: object) -> None:
+        with self._lock:
+            self._items.append((study_uid, series_uid, image))
+
+    def drain(self) -> list[tuple[str, str, object]]:
+        with self._lock:
+            items = list(self._items)
+            self._items.clear()
+        return items
 
 
 class _PreviewTask(QRunnable):
@@ -88,14 +120,14 @@ class _PreviewTask(QRunnable):
         study_uid: str,
         series_uid: str,
         target: QSize,
-        signals: _PreviewSignals,
+        inbox: _PreviewInbox,
     ) -> None:
         super().__init__()
         self._client = client
         self._study_uid = study_uid
         self._series_uid = series_uid
         self._target = target
-        self._signals = signals
+        self._inbox = inbox
         self.setAutoDelete(True)
 
     def run(self) -> None:
@@ -110,10 +142,9 @@ class _PreviewTask(QRunnable):
                     image = retry
         except Exception as exc:  # noqa: BLE001 - a preview must never break the list
             log.debug("[PREVIEW] %s failed: %s", self._series_uid[:16], exc)
-        try:
-            self._signals.finished.emit(self._study_uid, self._series_uid, image)
-        except RuntimeError:
-            log.debug("[PREVIEW] loader deleted, dropping result")
+        # Never raises, whatever the loader did in the meantime: the inbox is
+        # owned by this task too, and nothing is delivered to a dead receiver.
+        self._inbox.add(self._study_uid, self._series_uid, image)
 
     def _fetch(self, *, middle_frame: bool) -> QImage | None:
         """One preview request, decoded (``None`` when unavailable)."""
@@ -162,8 +193,13 @@ class OrthancPreviewLoader(QObject):
         self._enabled = True
         self._closed = False
         self._pool = QThreadPool.globalInstance()
-        self._signals = _PreviewSignals()
-        self._signals.finished.connect(self._on_finished, Qt.ConnectionType.QueuedConnection)
+        self._inbox = _PreviewInbox()
+        # 0 ms: results are picked up on the next event-loop pass, so the dialog
+        # never waits for a poll interval.  The timer runs only while requests
+        # are in flight and is stopped as soon as the last one is drained.
+        self._drain_timer = QTimer(self)
+        self._drain_timer.setInterval(0)
+        self._drain_timer.timeout.connect(self._drain)
 
     # ── public API ──────────────────────────────────────────────────
 
@@ -204,10 +240,7 @@ class OrthancPreviewLoader(QObject):
         """Stop delivering results; in-flight requests finish and are dropped."""
         self._closed = True
         self._queue.clear()
-        try:
-            self._signals.finished.disconnect()
-        except (RuntimeError, TypeError):
-            pass
+        self._drain_timer.stop()
 
     # ── internals ───────────────────────────────────────────────────
 
@@ -216,14 +249,24 @@ class OrthancPreviewLoader(QObject):
             study_uid, series_uid = self._queue.pop(0)
             key = (study_uid, series_uid)
             self._in_flight.add(key)
-            task = _PreviewTask(self._client, study_uid, series_uid, self._target, self._signals)
+            task = _PreviewTask(self._client, study_uid, series_uid, self._target, self._inbox)
             self._pool.start(task)
+        if self._in_flight and not self._closed and not self._drain_timer.isActive():
+            self._drain_timer.start()
 
-    def _on_finished(self, study_uid: str, series_uid: str, image: object) -> None:
+    def _drain(self) -> None:
+        """Deliver everything the workers finished (GUI thread)."""
+        for study_uid, series_uid, image in self._inbox.drain():
+            self._in_flight.discard((study_uid, series_uid))
+            if not self._closed:
+                self._deliver(study_uid, series_uid, image)
+        if not self._in_flight or self._closed:
+            self._drain_timer.stop()
+        else:
+            self._pump()
+
+    def _deliver(self, study_uid: str, series_uid: str, image: object) -> None:
         key = (study_uid, series_uid)
-        self._in_flight.discard(key)
-        if self._closed:
-            return
         if isinstance(image, QImage) and not image.isNull():
             pixmap = QPixmap.fromImage(image)
             if not pixmap.isNull():
@@ -233,4 +276,3 @@ class OrthancPreviewLoader(QObject):
                 self.preview_ready.emit(study_uid, series_uid)
         else:
             self._failed.add(key)
-        self._pump()

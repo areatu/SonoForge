@@ -88,6 +88,7 @@ from echo_personal_tool.presentation.orthanc_study_delegate import (
     StudyRow,
     checkbox_rect,
 )
+from echo_personal_tool.presentation.ui_metrics import icon_button_size, title_bar_height
 
 _SORT_ROLE = ROLE_SORT_KEY
 _CANCEL_FORCE_CLOSE_MS = 30_000
@@ -469,7 +470,7 @@ class OrthancStudyDialog(QDialog):
         # Title bar (frameless window)
         self._drag_pos = None
         title_bar = QWidget()
-        title_bar.setFixedHeight(34)
+        title_bar.setFixedHeight(title_bar_height(self))
         title_bar.setStyleSheet(f"background: {p['bg_dark']};")
         tb_layout = QHBoxLayout(title_bar)
         tb_layout.setContentsMargins(10, 0, 4, 0)
@@ -486,7 +487,7 @@ class OrthancStudyDialog(QDialog):
         btn_close = QPushButton()
         btn_close.setIcon(_load_icon("close"))
         btn_close.setObjectName("closeButton")
-        btn_close.setFixedSize(28, 23)
+        btn_close.setFixedSize(*icon_button_size(btn_close, "×"))
         btn_close.clicked.connect(self.reject)
         tb_layout.addWidget(btn_close)
 

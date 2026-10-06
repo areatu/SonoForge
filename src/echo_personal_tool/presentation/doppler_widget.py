@@ -32,6 +32,7 @@ from echo_personal_tool.domain.models import (
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
 from echo_personal_tool.domain.models.ecg import EcgWaveform
+from echo_personal_tool.domain.services.doppler_repeats import keep_newest_per_label, new_measurement_id
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 
 
@@ -211,7 +212,7 @@ class DopplerWidget(QWidget):
             return False
 
         points = tuple((float(x), float(y)) for x, y in self._active_partial_points)
-        trace = DopplerTrace(label="VTI", points=points)
+        trace = DopplerTrace(label="VTI", points=points, measurement_id=new_measurement_id())
         self._traces.append(trace)
 
         completed_item = pg.PlotDataItem(pen=pg.mkPen("#1565c0", width=2))
@@ -340,12 +341,14 @@ class DopplerWidget(QWidget):
             label=label,
             time_ms=float(time_ms),
             velocity_cm_s=float(velocity_cm_s),
+            measurement_id=new_measurement_id(),
         )
-        canonical = canonical_peak_label(label)
-        self._peak_markers = [
-            existing for existing in self._peak_markers if canonical_peak_label(existing.label) != canonical
-        ]
+        # D-23: a repeated measurement of one parameter is a new measurement
+        # (several beats), not a correction of the previous one.
         self._peak_markers.append(marker)
+        self._peak_markers = list(
+            keep_newest_per_label(self._peak_markers, label_of=lambda item: canonical_peak_label(item.label))
+        )
         self._refresh_peak_scatter()
         self._advance_peak_label()
         self._emit_markers_changed()
@@ -360,12 +363,12 @@ class DopplerWidget(QWidget):
             label=label,
             start_time_ms=float(start_time_ms),
             end_time_ms=float(end_time_ms),
+            measurement_id=new_measurement_id(),
         )
-        canonical = canonical_interval_label(label)
-        self._interval_markers = [
-            existing for existing in self._interval_markers if canonical_interval_label(existing.label) != canonical
-        ]
         self._interval_markers.append(marker)
+        self._interval_markers = list(
+            keep_newest_per_label(self._interval_markers, label_of=lambda item: canonical_interval_label(item.label))
+        )
         for item in self._interval_items:
             self._plot.removeItem(item)
         self._interval_items.clear()

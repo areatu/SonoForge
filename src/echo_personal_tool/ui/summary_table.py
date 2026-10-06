@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.ui_metrics import font_pixel_size, text_width
 
 
 class SummaryTable(QWidget):
@@ -20,7 +21,7 @@ class SummaryTable(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(text_width(self, tr("strain.summary_table"), padding=48, minimum=180))
         self._view_status: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
@@ -51,11 +52,13 @@ class SummaryTable(QWidget):
         for key, label_text, unit in row_defs:
             row = QHBoxLayout()
             lbl = QLabel(label_text)
-            lbl.setStyleSheet("color: #bdbdbd; font-size: 11px;")
+            lbl.setStyleSheet(f"color: #bdbdbd; font-size: {font_pixel_size(lbl, 0.85, minimum=9)}px;")
             val = QLabel("--")
-            val.setStyleSheet("color: #ffd54f; font-weight: bold; font-size: 11px;")
+            val.setStyleSheet(
+                f"color: #ffd54f; font-weight: bold; font-size: {font_pixel_size(val, 0.85, minimum=9)}px;"
+            )
             val.setAlignment(Qt.AlignmentFlag.AlignRight)
-            val.setMinimumWidth(60)
+            val.setMinimumWidth(text_width(val, "0.00", padding=16, minimum=44))
             row.addWidget(lbl)
             row.addStretch()
             row.addWidget(val)

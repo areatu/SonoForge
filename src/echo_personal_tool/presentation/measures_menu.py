@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_metrics import control_height, text_width
 
 _MENU_BUTTON_HEIGHT_PX = 24
 _ACCORDION_ANIM_MS = 180
@@ -42,6 +44,26 @@ class _MenuButton:
     @property
     def label(self) -> str:
         return tr(self.label_key)
+
+    @property
+    def tool_id(self) -> str:
+        """Stable identity of the button, independent of its section.
+
+        The same ``label_key`` can appear in several sections (e.g. the manual
+        and automatic Simpson ED entries), so the id is derived from the action
+        payload that actually distinguishes the emitted measurement.
+        """
+        return "|".join(
+            (
+                str(self.action),
+                self.view,
+                self.phase,
+                self.caliper_label,
+                self.doppler_peak,
+                self.doppler_interval,
+                self.doppler_trace,
+            )
+        )
 
 
 def _btn(
@@ -250,30 +272,34 @@ _AI_ONNX_ACTIONS = frozenset(
 )
 
 
-def _filter_menu(
+def _filter_profile(
+    menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Drop actions that the current build cannot run (ONNX/AI)."""
+    from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+
+    if has_ai_segmentation():
+        return menu
+    menu = tuple(
+        (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
+        for group_key, buttons in menu
+    )
+    return tuple((group_key, buttons) for group_key, buttons in menu if buttons)
+
+
+def _filter_experimental(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
     preferences: UserPreferences | None = None,
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
-    """Filter menu based on build profile and user preferences for experimental features."""
-    from echo_personal_tool.infrastructure.profile import has_ai_segmentation
-
-    if not has_ai_segmentation():
-        menu = tuple(
-            (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
-            for group_key, buttons in menu
-        )
-        menu = tuple((group_key, buttons) for group_key, buttons in menu if buttons)
-
+    """Hide experimental groups/buttons unless their preference is enabled."""
     if preferences is None:
         return menu
 
     filtered: list[tuple[str, tuple[_MenuButton, ...]]] = []
     for group_key, buttons in menu:
         pref_key = _EXPERIMENTAL_GROUPS.get(group_key)
-        if pref_key is not None:
-            show = getattr(preferences, pref_key, False)
-            if not show:
-                continue
+        if pref_key is not None and not getattr(preferences, pref_key, False):
+            continue
 
         visible_buttons = []
         for btn in buttons:
@@ -288,8 +314,129 @@ def _filter_menu(
     return tuple(filtered)
 
 
+def _filter_menu(
+    menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    preferences: UserPreferences | None = None,
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Filter menu based on build profile and user preferences for experimental features."""
+    return _filter_experimental(_filter_profile(menu), preferences)
+
+
+def tool_menu_catalog() -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """All tools the build offers, in their default section and order.
+
+    Experimental features are included regardless of their preference so the
+    customization dialog stays stable across toggles; they are still gated at
+    render time by :func:`_filter_experimental`.
+    """
+    return _filter_profile(_MENU)
+
+
+def default_tool_layout() -> list[dict[str, object]]:
+    """Default section/tool layout (every tool enabled)."""
+    return [
+        {
+            "key": group_key,
+            "items": [{"id": spec.tool_id, "enabled": True} for spec in buttons],
+        }
+        for group_key, buttons in tool_menu_catalog()
+    ]
+
+
+def decode_tool_layout(raw: object) -> list[dict[str, object]]:
+    """Parse a persisted layout string, tolerating anything malformed."""
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+
+    layout: list[dict[str, object]] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        key = entry.get("key")
+        items = entry.get("items")
+        if not isinstance(key, str) or not isinstance(items, list):
+            continue
+        clean_items: list[dict[str, object]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            tool_id = item.get("id")
+            if not isinstance(tool_id, str) or not tool_id:
+                continue
+            clean_items.append({"id": tool_id, "enabled": bool(item.get("enabled", True))})
+        layout.append({"key": key, "items": clean_items})
+    return layout
+
+
+def encode_tool_layout(layout: list[dict[str, object]]) -> str:
+    return json.dumps(layout, ensure_ascii=False)
+
+
+def apply_tool_layout(
+    catalog: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    layout: list[dict[str, object]],
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Regroup/reorder/hide tools according to a saved layout.
+
+    Sections keep their catalog order; only the assignment of tools to
+    sections and their per-tool visibility come from the layout.  Tools added
+    to the catalog after the layout was saved fall back to their default
+    section so an upgrade never silently drops them.
+    """
+    if not layout:
+        return catalog
+
+    spec_by_id = {spec.tool_id: spec for _key, buttons in catalog for spec in buttons}
+    assigned: set[str] = set()
+    stored: dict[str, list[dict[str, object]]] = {}
+    for entry in layout:
+        key = entry.get("key")
+        if not isinstance(key, str):
+            continue
+        items = entry.get("items", [])
+        stored.setdefault(key, items)
+        for item in items:
+            tool_id = item.get("id")
+            if isinstance(tool_id, str):
+                assigned.add(tool_id)
+
+    seen: set[str] = set()
+    result: list[tuple[str, tuple[_MenuButton, ...]]] = []
+    for group_key, buttons in catalog:
+        specs: list[_MenuButton] = []
+        for item in stored.get(group_key, []):
+            spec = spec_by_id.get(str(item.get("id")))
+            if spec is None or spec.tool_id in seen:
+                continue
+            seen.add(spec.tool_id)
+            if item.get("enabled", True):
+                specs.append(spec)
+        for spec in buttons:
+            if spec.tool_id not in assigned and spec.tool_id not in seen:
+                seen.add(spec.tool_id)
+                specs.append(spec)
+        if specs:
+            result.append((group_key, tuple(specs)))
+    return tuple(result)
+
+
+def build_measure_menu(
+    preferences: UserPreferences | None = None,
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Final toolbar menu: catalog + saved layout + experimental gating."""
+    raw = getattr(preferences, "tool_panel_layout_json", "") if preferences is not None else ""
+    menu = apply_tool_layout(tool_menu_catalog(), decode_tool_layout(raw))
+    return _filter_experimental(menu, preferences)
+
+
 def style_menu_button(button: QPushButton) -> None:
-    button.setFixedHeight(_MENU_BUTTON_HEIGHT_PX)
+    button.setMinimumHeight(max(_MENU_BUTTON_HEIGHT_PX, control_height(button, padding=10)))
     button.setCursor(Qt.CursorShape.PointingHandCursor)
 
 
@@ -320,7 +467,7 @@ class MeasuresAccordionSection(QWidget):
 
         self._chevron = QLabel("▶")
         self._chevron.setObjectName("measuresChevron")
-        self._chevron.setFixedWidth(12)
+        self._chevron.setMinimumWidth(text_width(self._chevron, "\u25b6", padding=6, minimum=10))
         self._chevron.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(self._chevron)
 
@@ -424,6 +571,7 @@ class MeasuresMenuWidget(QWidget):
     """Grouped measurement actions for the Measures tab."""
 
     action_requested = Signal(object, str, str, str)
+    doppler_mode_changed = Signal(str)
 
     _BLINK_STYLE = "background-color: #fff59d; color: #1a2430; font-weight: bold;"
     _NORMAL_STYLE = ""
@@ -431,6 +579,10 @@ class MeasuresMenuWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._preferences = None
+        # Explicit Doppler acquisition-mode override ("" = Auto from DICOM).
+        # Kept across menu rebuilds so the control never disagrees with the
+        # viewer it drives.
+        self._doppler_mode_override: str = ""
         self._blink_target: QPushButton | None = None
         self._blink_on = False
         self._blink_timer = QTimer(self)
@@ -459,7 +611,7 @@ class MeasuresMenuWidget(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
 
-        filtered_menu = _filter_menu(_MENU, self._preferences)
+        filtered_menu = build_measure_menu(self._preferences)
 
         for group_title, buttons in filtered_menu:
             section = MeasuresAccordionSection(
@@ -495,6 +647,30 @@ class MeasuresMenuWidget(QWidget):
         preset_layout.addWidget(self._vessel_preset_combo, stretch=1)
         preset_row.hide()
         layout.addWidget(preset_row)
+
+        # Doppler acquisition mode (Э2): Auto reads the DICOM RegionDataType
+        # of the current clip; an explicit CW/PW/TDI wins and is captured by
+        # newly placed markers (MP4/JPEG have no DICOM mode to read).
+        mode_row = QWidget()
+        mode_layout = QHBoxLayout(mode_row)
+        mode_layout.setContentsMargins(8, 0, 8, 0)
+        mode_layout.setSpacing(6)
+        mode_label = QLabel(tr("menu.doppler_mode"))
+        mode_label.setStyleSheet("font-size: 11px;")
+        self._doppler_mode_combo = QComboBox()
+        self._doppler_mode_combo.addItem(tr("menu.doppler_mode_auto"), "")
+        self._doppler_mode_combo.addItem("CW", "CW")
+        self._doppler_mode_combo.addItem("PW", "PW")
+        self._doppler_mode_combo.addItem("TDI", "TDI")
+        self._doppler_mode_combo.setToolTip(tr("menu.doppler_mode_tip"))
+        index = self._doppler_mode_combo.findData(self._doppler_mode_override)
+        self._doppler_mode_combo.blockSignals(True)
+        self._doppler_mode_combo.setCurrentIndex(index if index >= 0 else 0)
+        self._doppler_mode_combo.blockSignals(False)
+        self._doppler_mode_combo.currentIndexChanged.connect(self._on_doppler_mode_index_changed)
+        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(self._doppler_mode_combo, stretch=1)
+        layout.addWidget(mode_row)
         scroll.setWidget(inner)
 
         # Clear old layout content if exists, otherwise create new layout
@@ -540,6 +716,20 @@ class MeasuresMenuWidget(QWidget):
 
     def vessel_preset(self) -> str:
         return str(self._vessel_preset_combo.currentData() or "normal")
+
+    def _on_doppler_mode_index_changed(self, index: int) -> None:
+        mode = str(self._doppler_mode_combo.itemData(index) or "")
+        self._doppler_mode_override = mode
+        self.doppler_mode_changed.emit(mode)
+
+    def doppler_mode_override(self) -> str:
+        return self._doppler_mode_override
+
+    def reset_doppler_mode(self) -> None:
+        """Back to Auto (emits, so the viewer follows)."""
+        if self._doppler_mode_override == "":
+            return
+        self._doppler_mode_combo.setCurrentIndex(0)
 
     def reload_text(self) -> None:
         for section in self._sections:

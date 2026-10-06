@@ -624,3 +624,65 @@ class TestPreviewStylesheetScope:
         assert "QCheckBox::indicator" not in qss
         assert "#periodChip" in qss
         assert "#primaryButton" in qss
+
+
+class TestPreviewLoaderLifetime:
+    """The dialog may close while thumbnails are still being fetched."""
+
+    def test_loader_destroyed_while_a_request_is_in_flight_is_safe(self, qapp):
+        """No queued call may reach a receiver that is already gone.
+
+        Regression: the loader used to hand the decoded frame to the GUI thread
+        through a queued signal connected to a bound Python method.  Closing the
+        dialog (or dropping the loader in a test) while a worker was still
+        inside ``fetch_preview`` left a meta-call event in the queue pointing at
+        a freed receiver; delivering it could crash the process with SIGSEGV —
+        a race, not a fixed order: 1 crash in ~10 local runs of this file, 3 in
+        30 runs of the same file on ``main``, and one red ``test
+        (ubuntu-latest)`` CI job.  The test drives exactly that path (worker
+        held inside ``fetch_preview``, loader gone) and then checks that a fresh
+        loader still works.
+        """
+        import threading
+        import time
+
+        from echo_personal_tool.presentation.orthanc_preview_loader import OrthancPreviewLoader
+
+        in_fetch = threading.Event()
+        release = threading.Event()
+
+        class _SlowClient:
+            def fetch_preview(  # noqa: ANN001
+                self, study_uid, series_uid, instance_uid="", *, width=0, height=0, middle_frame=False
+            ):
+                in_fetch.set()
+                release.wait(10)  # hold the worker until the loader is destroyed
+                return _textured_png()
+
+        loader = OrthancPreviewLoader(_SlowClient())
+        loader.request("s1", "se1")
+        for _ in range(200):
+            if in_fetch.is_set():
+                break
+            qapp.processEvents()
+        assert in_fetch.is_set(), "the worker never reached fetch_preview"
+
+        loader.shutdown()  # the dialog is closing…
+        del loader  # …and the loader is gone before the worker returns
+        release.set()
+
+        # Spin the loop long enough for the worker to finish and for any queued
+        # delivery to be attempted; on the old implementation this segfaulted.
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            qapp.processEvents()
+
+        # The next loader must still work: nothing global was damaged.
+        quiet = OrthancPreviewLoader(_StubClient(payload=_textured_png()))
+        quiet.request("s2", "se2")
+        for _ in range(200):
+            if quiet.cached("s2", "se2") is not None:
+                break
+            qapp.processEvents()
+        assert quiet.cached("s2", "se2") is not None
+        quiet.shutdown()

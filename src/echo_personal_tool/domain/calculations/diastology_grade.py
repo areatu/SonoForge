@@ -21,22 +21,26 @@ def grade_diastolic_function(
     - TR Vmax > 280 cm/s (2.8 m/s)
 
     Returns Normal / Indeterminate / Abnormal / Insufficient data / None.
+
+    Velocity inputs are compared by magnitude: storage keeps the signed
+    calibration truth (below-baseline jets read negative), so a TR jet of
+    -312 cm/s still meets the > 280 cm/s criterion (Э2 sign normalization).
     """
     criteria = []
 
     if e_over_e_prime is not None:
-        criteria.append(e_over_e_prime > 14.0)
+        criteria.append(abs(e_over_e_prime) > 14.0)
 
     if e_prime_sept_cm_s is not None:
-        criteria.append(e_prime_sept_cm_s < 7.0)
+        criteria.append(abs(e_prime_sept_cm_s) < 7.0)
     elif e_prime_lat_cm_s is not None:
-        criteria.append(e_prime_lat_cm_s < 10.0)
+        criteria.append(abs(e_prime_lat_cm_s) < 10.0)
 
     if lav_index_ml_m2 is not None:
         criteria.append(lav_index_ml_m2 > 34.0)
 
     if tr_vmax_cm_s is not None:
-        criteria.append(tr_vmax_cm_s > 280.0)
+        criteria.append(abs(tr_vmax_cm_s) > 280.0)
 
     if not criteria:
         return None

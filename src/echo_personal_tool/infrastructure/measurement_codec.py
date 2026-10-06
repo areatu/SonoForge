@@ -2,6 +2,26 @@
 
 The type registry and StudyMeasurementData field allowlist are deliberate: adding
 an application field must not implicitly add patient data to the disk format.
+
+Versioning (WP4.1 §6.4): ``schema_version`` describes the document structure,
+``measurement_semantics_version`` the meaning of labels/units.
+
+* version 1 — one marker per Doppler label; a repeated measurement replaced the
+  previous one, so several beats of one parameter could not be stored;
+* version 2 (D-23, 2026-10-05) — repeated measurements of one parameter are
+  stored side by side (bounded by
+  :data:`~echo_personal_tool.domain.services.doppler_repeats.MAX_REPEATS_PER_PARAMETER`)
+  and each marker carries a ``measurement_id``; the report uses the mean of the
+  last three (
+  :data:`~echo_personal_tool.domain.services.doppler_repeats.REPORT_WINDOW`).
+  Version 2 also captures the acquisition mode (``CW`` | ``PW`` | ``TDI``)
+  on peaks and traces (Э2); it is display-only metadata, storage stays in
+  cm/s, and older version-2 documents without it keep loading.
+
+Version 1 documents are migrated on read: duplicate peak/interval labels are
+collapsed to the newest one, which is exactly what version 1 itself displayed
+and merged.  The migration changes no visible value, so no quarantine backup is
+made; the original file is kept by the atomic replace until the next save.
 """
 
 from __future__ import annotations
@@ -32,10 +52,17 @@ from echo_personal_tool.domain.models.frame_panels import MmodeCalibrationState
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import StrainReport
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+from echo_personal_tool.domain.services.doppler_repeats import MAX_REPEATS_PER_PARAMETER
 
 MAX_DOCUMENT_BYTES = 32 * 1024 * 1024
 FORMAT = "sonoforge.study-measurements"
-VERSION = 1
+#: Document structure written by this build.
+VERSION = 2
+#: Meaning of Doppler labels/units written by this build (D-23).
+SEMANTICS_VERSION = 2
+#: Oldest document structure/semantics that can be migrated on read.
+MIN_SUPPORTED_VERSION = 1
+MIN_SUPPORTED_SEMANTICS = 1
 FIELDS = frozenset(
     """contours linear_measurements doppler_by_instance doppler_by_instance_frame
  doppler_calibration_by_instance doppler_calibration_by_instance_frame mmode_calibration_by_instance
@@ -113,8 +140,19 @@ def _decode(value, hint):
             items = [_decode(v, h) for v, h in zip(value, args)]
         return tuple(items) if origin is tuple else items
     if hint in TYPES:
-        fields = FIELDS if hint is StudyMeasurementData else {f.name for f in dataclasses.fields(hint)}
-        if not isinstance(value, dict) or set(value) != fields:
+        declared = dataclasses.fields(hint)
+        fields = FIELDS if hint is StudyMeasurementData else {field.name for field in declared}
+        if not isinstance(value, dict):
+            raise MeasurementStorageError("invalid")
+        # Fields added after a document was written keep their default value;
+        # this is what makes additive model fields (measurement_id in v2)
+        # readable from older documents instead of turning them into corruption.
+        optional = {
+            field.name
+            for field in declared
+            if field.default is not dataclasses.MISSING or field.default_factory is not dataclasses.MISSING
+        }
+        if not set(value) >= fields - optional or not set(value) <= fields:
             raise MeasurementStorageError("invalid")
         hints = get_type_hints(hint)
         return hint(**{key: _decode(v, hints[key]) for key, v in value.items()})
@@ -217,12 +255,36 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     for item in data.linear_measurements:
         if len(item.label) > 256 or item.pixel_length < 0:
             raise MeasurementStorageError("invalid")
+        if item.doppler_mode not in ("", "CW", "PW", "TDI"):
+            raise MeasurementStorageError("invalid")
+    seen_ids: set[tuple[str, str]] = set()
+    per_label: dict[str, int] = {}
+
+    def check_repeats(label: str, measurement_id: str, mode: str = "") -> None:
+        if len(label) > 256 or len(measurement_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if mode not in ("", "CW", "PW", "TDI"):
+            raise MeasurementStorageError("invalid")
+        # An empty id keeps the historical identity: at most one marker per
+        # label may omit it, so old documents stay unambiguous.
+        key = (label, measurement_id)
+        if key in seen_ids:
+            raise MeasurementStorageError("invalid")
+        seen_ids.add(key)
+        count = per_label.get(label, 0) + 1
+        if count > MAX_REPEATS_PER_PARAMETER:
+            raise MeasurementStorageError("limit")
+        per_label[label] = count
+
     for field in ("doppler_by_instance", "doppler_by_instance_frame"):
         for entry in getattr(data, field):
             dto = entry[-1]
             for values in (dto.peaks, dto.intervals, dto.traces):
-                if len({item.label for item in values}) != len(values) or any(len(item.label) > 256 for item in values):
-                    raise MeasurementStorageError("invalid")
+                seen_ids.clear()
+                per_label.clear()
+                for item in values:
+                    # Intervals carry no acquisition mode (ms need no units).
+                    check_repeats(item.label, item.measurement_id, getattr(item, "mode", ""))
     for uid, _, frame, area in data.simpson_area_by_frame:
         check(uid, frame)
         if area < 0:
@@ -251,6 +313,77 @@ def dumps(record: dict) -> bytes:
     return payload
 
 
+_V1_KEYS = {"format", "schema_version", "study_uid", "revision", "saved_at", "sources", "data"}
+_V2_KEYS = _V1_KEYS | {"measurement_semantics_version"}
+
+
+def _collapse_legacy_label(items: tuple, *, identity_of) -> tuple:
+    """Collapse version-1 duplicates, keeping the newest marker of each label.
+
+    Version 1 stored one measurement per label; a second measurement replaced
+    the first everywhere the value was shown or merged.  Documents written with
+    the old append-only overlay therefore contain stale markers that version 1
+    never displayed.  Collapsing them keeps the visible result identical and
+    makes the document unambiguous for the version-2 repeat rules.
+    """
+    newest_index: dict[tuple[str, str], int] = {}
+    for index, item in enumerate(items):
+        newest_index[identity_of(item)] = index
+    kept = set(newest_index.values())
+    return tuple(item for index, item in enumerate(items) if index in kept)
+
+
+def _stamp_trace_ids(traces: tuple[DopplerTrace, ...]) -> tuple[DopplerTrace, ...]:
+    """Give id-less traces a deterministic identity.
+
+    Version 1 could only store one trace per label, yet the multi-beat
+    auto-trace already produced several.  They stay repeats (D-23) instead of
+    turning the document into an ambiguity the validator must reject.  The
+    position inside the document makes the identity stable across reads.
+    """
+    return tuple(
+        trace if trace.measurement_id else dataclasses.replace(trace, measurement_id=f"legacy:{index}")
+        for index, trace in enumerate(traces)
+    )
+
+
+def migrate(record: dict) -> dict:
+    """Upgrade a supported older document to the current version (pure)."""
+    if record.get("schema_version") == VERSION:
+        return record
+    data: StudyMeasurementData = record["data"]
+    doppler_fields = ("doppler_by_instance", "doppler_by_instance_frame")
+    migrated = data
+    for field in doppler_fields:
+        entries = getattr(data, field)
+        if not entries:
+            continue
+        rebuilt = []
+        for entry in entries:
+            dto = entry[-1]
+            peaks = (
+                _collapse_legacy_label(dto.peaks, identity_of=lambda marker: (marker.label, marker.measurement_id))
+                if any(not marker.measurement_id for marker in dto.peaks)
+                else dto.peaks
+            )
+            intervals = (
+                _collapse_legacy_label(dto.intervals, identity_of=lambda marker: (marker.label, marker.measurement_id))
+                if any(not marker.measurement_id for marker in dto.intervals)
+                else dto.intervals
+            )
+            rebuilt.append(
+                entry[:-1]
+                + (DopplerMeasurementDTO(peaks=peaks, intervals=intervals, traces=_stamp_trace_ids(dto.traces)),)
+            )
+        migrated = dataclasses.replace(migrated, **{field: tuple(rebuilt)})
+    return {
+        **record,
+        "schema_version": VERSION,
+        "measurement_semantics_version": SEMANTICS_VERSION,
+        "data": migrated,
+    }
+
+
 def loads(payload: bytes) -> dict:
     if len(payload) > MAX_DOCUMENT_BYTES:
         raise MeasurementStorageError("limit")
@@ -259,10 +392,15 @@ def loads(payload: bytes) -> dict:
         _limits(record)
         if not isinstance(record, dict) or record.get("format") != FORMAT:
             raise MeasurementStorageError("invalid")
-        if type(record.get("schema_version")) is not int or record["schema_version"] != VERSION:
+        version = record.get("schema_version")
+        if type(version) is not int or version not in range(MIN_SUPPORTED_VERSION, VERSION + 1):
             raise MeasurementStorageError("version")
-        if set(record) != {"format", "schema_version", "study_uid", "revision", "saved_at", "sources", "data"}:
+        if set(record) != (_V1_KEYS if version == 1 else _V2_KEYS):
             raise MeasurementStorageError("invalid")
+        if version >= 2:
+            semantics = record.get("measurement_semantics_version")
+            if type(semantics) is not int or semantics not in range(MIN_SUPPORTED_SEMANTICS, SEMANTICS_VERSION + 1):
+                raise MeasurementStorageError("version")
         study_key(record["study_uid"])
         if type(record["revision"]) is not int or record["revision"] < 1:
             raise MeasurementStorageError("invalid")
@@ -290,6 +428,8 @@ def loads(payload: bytes) -> dict:
             ):
                 raise MeasurementStorageError("source")
         record["data"] = _decode(record["data"], StudyMeasurementData)
+        if version < VERSION:
+            record = migrate(record)
         validate_data(record["data"], sources)
         return record
     except MeasurementStorageError:

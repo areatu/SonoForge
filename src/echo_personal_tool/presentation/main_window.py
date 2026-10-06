@@ -164,6 +164,7 @@ class MainWindow(QMainWindow):
         self._active_viewer: ViewerWidget | None = None
         self._activity_bar = None
         self._user_maximized = False
+        self._screen_change_connected = False
         self._slider_navigating = False
         self._mmode_widget: MModeWidget | None = None
         self._mmode_active = False
@@ -235,6 +236,7 @@ class MainWindow(QMainWindow):
 
         self._gallery = ThumbnailGalleryWidget()
         self._gallery.set_thumbnail_loader(self._controller.load_thumbnail)
+        self._controller.set_thumbnail_preview_size_provider(self._gallery.thumbnail_preview_size)
         self._controller.thumbnail_loaded.connect(self._gallery.set_thumbnail)
         self._gallery.instance_selected.connect(self._on_instance_selected)
         self._gallery.export_mp4_requested.connect(self._on_export_mp4_requested)
@@ -682,15 +684,38 @@ class MainWindow(QMainWindow):
             apply_maximized_to_work_area(self)
         self._system_bar.update_maximize_button(self.isMaximized())
 
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        # Recompute the work area when the window lands on another monitor
+        # (mixed-DPI setup) instead of caching the screen captured at startup.
+        handle = self.windowHandle()
+        if handle is not None and not self._screen_change_connected:
+            handle.screenChanged.connect(self._on_screen_changed)
+            self._screen_change_connected = True
+
+    def _on_screen_changed(self, screen) -> None:  # noqa: ANN001 - QScreen | None
+        """Win32 ``WM_DPICHANGED`` analogue: re-apply the maximize geometry."""
+        self._reapply_maximized_geometry(screen)
+
+    def _reapply_maximized_geometry(self, screen=None) -> None:  # noqa: ANN001
+        if not self._user_maximized:
+            return
+        screen = screen or self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        geo = screen.availableGeometry()
+        if self.geometry() != geo:
+            self.setGeometry(geo)
+
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.WindowStateChange:
             self._system_bar.update_maximize_button(self.isMaximized())
             if self.isMaximized() and self._user_maximized:
-                screen = self.screen() or QApplication.primaryScreen()
-                if screen is not None:
-                    geo = screen.availableGeometry()
-                    if self.geometry() != geo:
-                        self.setGeometry(geo)
+                self._reapply_maximized_geometry()
+        # Qt 6 informs widgets about a DPR change; a maximized frameless window
+        # must re-fit the (now different) work area.
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            self._reapply_maximized_geometry()
         super().changeEvent(event)
 
     def _load_layout_state(self) -> LayoutConfig:
@@ -1357,11 +1382,16 @@ class MainWindow(QMainWindow):
         self._reload_ui_language()
         app = QApplication.instance()
         if app is not None:
-            app.setFont(ui_font(point_size=preferences.ui_font_size))
+            app.setFont(ui_font(pixel_size=preferences.ui_font_size))
         apply_clinical_theme(
             font_size=preferences.ui_font_size,
             theme=preferences.theme_mode,
         )
+        # Chrome sizes are font-derived (Э4): re-measure after a font change.
+        self._tool_panel.update_font_metrics()
+        activity_bar = getattr(self, "_activity_bar", None)  # built later, may be off
+        if activity_bar is not None:
+            activity_bar.update_font_metrics()
         # Update window icon to match theme
         from PySide6.QtGui import QIcon
 
@@ -1623,17 +1653,34 @@ class MainWindow(QMainWindow):
             migrate_legacy_scan_errors(directory)
         except OSError:
             logger.warning("Could not relocate a legacy scan log from the selected folder", exc_info=True)
+        self._reset_doppler_mode_override()
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
+
+    def _reset_doppler_mode_override(self) -> None:
+        """Drop the explicit Doppler mode back to Auto on study open (Э2).
+
+        The override is a per-study assumption (typically for MP4/JPEG clips
+        without DICOM metadata); a new study starts from the DICOM mode.
+        """
+        self._tool_panel.reset_doppler_mode()
+        self._viewer.reset_doppler_mode_override()
 
     @_prof
     def _open_folder(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
 
-        directory = styled_select_directory(self, tr("dialog.select_folder"))
+        # Э3: start where the user was last time instead of an arbitrary place.
+        store = RecentStore()
+        start = store.last_folder() or self._user_preferences.last_opened_folder or ""
+        directory = styled_select_directory(self, tr("dialog.select_folder"), start)
         if not directory:
             return
         folder = Path(directory)
+        # The recent list drives the dialog; `last_opened_folder` feeds the
+        # "open last folder at startup" mode and stays in sync with it.
+        store.record(folder)
         self._user_preferences.last_opened_folder = str(folder)
         save_user_preferences(self._user_preferences)
         self.open_folder_path(folder)
@@ -1734,6 +1781,7 @@ class MainWindow(QMainWindow):
             self.open_folder_path(disk_path)
         elif result:
             if downloaded:
+                self._reset_doppler_mode_override()
                 self._controller.load_pre_scanned_studies(downloaded)
             else:
                 session_id, _study_uid = result
@@ -2157,10 +2205,12 @@ class MainWindow(QMainWindow):
         panel = self._tool_panel.properties_panel
         if state.instance is None or state.instance.path is None:
             panel.clear_all()
+            self._viewer.set_dicom_doppler_mode(None)
             return
 
         from echo_personal_tool.infrastructure.properties_extractor import (
             extract_properties_snapshot,
+            spectral_doppler_mode,
         )
 
         mmode = self._viewer.get_mmode_calibration_state()
@@ -2182,6 +2232,9 @@ class MainWindow(QMainWindow):
                 doppler_partial=doppler is not None and not doppler.is_complete(),
             )
             panel.update_from_snapshot(snap)
+            # DICOM acquisition mode for Doppler display units (Э2); the
+            # manual override in the Measures menu wins over it.
+            self._viewer.set_dicom_doppler_mode(spectral_doppler_mode(snap))
         except (FileNotFoundError, PermissionError, OSError):
             panel.update_instance_info(
                 modality=state.instance.modality,
@@ -2190,6 +2243,7 @@ class MainWindow(QMainWindow):
                 number_of_frames=state.instance.number_of_frames,
                 media_format=state.instance.media_format,
             )
+            self._viewer.set_dicom_doppler_mode(None)
 
         # Latest measurement
         if state.linear_measurements:
@@ -2455,6 +2509,7 @@ class MainWindow(QMainWindow):
             self._system_bar.presenter_toggle_requested.connect(self._presenter.toggle)
             self._install_presenter_menu()
         self._tool_panel.action_requested.connect(self._on_measure_action)
+        self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)

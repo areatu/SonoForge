@@ -15,8 +15,8 @@ from typing import Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QCursor, QMouseEvent
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsView,
@@ -142,6 +142,7 @@ from echo_personal_tool.presentation.caliper_label_item import (
 from echo_personal_tool.presentation.doppler_overlay import DopplerOverlayTools
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 from echo_personal_tool.presentation.mmode_scan_line import MModeScanLineItem
+from echo_personal_tool.presentation.ui_metrics import text_width
 from echo_personal_tool.resources.bundled_fonts import FONT_FAMILY_MONO
 
 logger = logging.getLogger(__name__)
@@ -228,6 +229,24 @@ _GENERIC_DIST_LABEL_PREFIX = "Dist"
 def _is_generic_dist_label(label: str) -> bool:
     """True for the generic caliper (DistN), which adapts to the Doppler ROI."""
     return label.startswith(_GENERIC_DIST_LABEL_PREFIX)
+
+
+_JPEG_SUFFIXES = frozenset({".jpg", ".jpeg", ".jpe", ".jfif"})
+
+
+def _force_png_suffix(path: str) -> str:
+    """Normalise a frame-export path to a single ``.png`` suffix.
+
+    The save dialog only offers PNG, but the typed name may still carry an
+    image extension from habit (``frame.jpg``); appending would produce
+    ``frame.jpg.png``.
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix in _JPEG_SUFFIXES:
+        return f"{path[: -len(suffix)]}.png"
+    if suffix == ".png":
+        return path
+    return f"{path}.png"
 
 
 class ContourViewBox(pg.ViewBox):
@@ -774,6 +793,12 @@ class ViewerWidget(QWidget):
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._doppler_cal_step: Literal["baseline"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
+        # Acquisition mode for Doppler display units (Э2): DICOM-derived per
+        # clip, with an explicit manual override (MP4/JPEG) winning. The
+        # resolved mode is stamped on markers at measurement time.
+        self._dicom_doppler_mode: str = ""
+        self._doppler_mode_override: str = ""
+        self._last_view_cursor_xy: tuple[float, float] | None = None
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
         self._doppler_pending_baseline_y: float | None = None
@@ -973,16 +998,16 @@ class ViewerWidget(QWidget):
         self._scroll_debounce_timer.timeout.connect(self._emit_pending_scroll)
 
         self._step_back_button = QPushButton("|<")
-        self._step_back_button.setFixedWidth(36)
+        self._step_back_button.setMinimumWidth(text_width(self, "|<", padding=18, minimum=24))
         self._step_back_button.setToolTip("Step back (Previous frame)")
         self._step_back_button.clicked.connect(self._step_back)
 
         self._play_button = QPushButton(tr("viewer.play"))
-        self._play_button.setFixedWidth(self._play_button.sizeHint().width() + 12)
+        self._play_button.setMinimumWidth(self._play_button.sizeHint().width() + 12)
         self._play_button.clicked.connect(self.play_pause_requested.emit)
 
         self._step_forward_button = QPushButton(">|")
-        self._step_forward_button.setFixedWidth(36)
+        self._step_forward_button.setMinimumWidth(text_width(self, ">|", padding=18, minimum=24))
         self._step_forward_button.setToolTip("Step forward (Next frame)")
         self._step_forward_button.clicked.connect(self._step_forward)
 
@@ -1650,10 +1675,11 @@ class ViewerWidget(QWidget):
             self,
             tr("viewer.context_save_frame"),
             "",
-            "PNG (*.png);JPEG (*.jpg)",
+            "PNG (*.png)",
         )
         if not path:
             return
+        path = _force_png_suffix(path)
         full = self.grab()
         if full.isNull():
             QMessageBox.warning(self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.grab"))
@@ -1665,10 +1691,40 @@ class ViewerWidget(QWidget):
                 self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
             )
             return
+        self._composite_frame_export(cropped, geo)
         if not cropped.save(path):
             QMessageBox.warning(
                 self, tr("viewer.save_frame_failed.title"), tr("viewer.save_frame_failed.body", path=path)
             )
+
+    def _composite_frame_export(self, capture: QPixmap, geo: QRect) -> None:
+        """Paint the pyqtgraph scene and the Qt overlay labels into *capture*.
+
+        ``QWidget.grab()`` cannot read back a QOpenGLWidget viewport: the GL
+        scene is drawn into its own framebuffer and is never part of the
+        ancestor's paint, so on GPU-backed machines (``useOpenGL=True``) the raw
+        capture is a blank sheet showing only the Qt-drawn overlay labels.
+        ``QGraphicsView.render()`` draws the scene with a plain QPainter, which
+        works for both the GL and the raster viewport; the overlay labels are
+        re-drawn on top of it afterwards.
+        """
+        painter = QPainter(capture)
+        try:
+            viewport = self._graphics.viewport()
+            source = viewport.rect() if viewport is not None else self._graphics.rect()
+            self._graphics.render(painter, QRect(QPoint(0, 0), capture.size()), source)
+            for child in self.children():
+                if not isinstance(child, QWidget) or child is self._graphics:
+                    continue
+                child_geo = child.geometry()
+                if not child.isVisible() or not child_geo.intersects(geo):
+                    continue
+                painter.save()
+                painter.translate(child_geo.x() - geo.x(), child_geo.y() - geo.y())
+                child.render(painter, QPoint(0, 0))
+                painter.restore()
+        finally:
+            painter.end()
 
     def _resolve_display_mode(
         self,
@@ -3498,6 +3554,7 @@ class ViewerWidget(QWidget):
             self._crosshair_v_item.setData([], [])
 
     def _update_measurement_crosshair(self, x: float, y: float) -> None:
+        self._last_view_cursor_xy = (float(x), float(y))
         if not self._show_crosshair:
             self._clear_crosshair()
             return
@@ -3531,7 +3588,10 @@ class ViewerWidget(QWidget):
     def _doppler_trace_summary(metrics, trace_label: str) -> str:
         """Format the transient result overlay with a specific flow label."""
 
-        from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
+        from echo_personal_tool.domain.doppler_catalog import (
+            flow_site_from_trace_label,
+            scale_velocity_for_display,
+        )
 
         site = flow_site_from_trace_label(trace_label) or "AV"
         flow = metrics.flow(site)
@@ -3540,10 +3600,10 @@ class ViewerWidget(QWidget):
         parts: list[str] = []
         if flow.vti_cm is not None:
             parts.append(f"{site} VTI: {flow.vti_cm:.1f} cm")
-        if flow.vmax_cm_s is not None:
-            parts.append(f"{site} Vmax: {flow.vmax_cm_s:.0f} cm/s")
-        if flow.vmean_cm_s is not None:
-            parts.append(f"{site} Vmean: {flow.vmean_cm_s:.0f} cm/s")
+        for name, velocity_cm_s in (("Vmax", flow.vmax_cm_s), ("Vmean", flow.vmean_cm_s)):
+            if velocity_cm_s is not None:
+                scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, flow.mode)
+                parts.append(f"{site} {name}: {scaled:.{decimals}f} {unit}")
         if flow.pgmax_mmhg is not None:
             parts.append(f"{site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
         if flow.pgmean_mmhg is not None:
@@ -3557,6 +3617,40 @@ class ViewerWidget(QWidget):
 
     def get_doppler_dto(self):
         return self._doppler.get_measurement_dto()
+
+    def set_dicom_doppler_mode(self, mode: str | None) -> None:
+        """Record the current clip's DICOM-derived acquisition mode (Э2)."""
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        normalized = normalize_doppler_mode(mode)
+        if normalized == self._dicom_doppler_mode:
+            return
+        self._dicom_doppler_mode = normalized
+        self._doppler.set_doppler_mode(self._resolved_doppler_mode())
+
+    def set_doppler_mode_override(self, mode: str | None) -> None:
+        """Set the explicit acquisition-mode override ("" = Auto, Э2).
+
+        The override wins over the DICOM-derived mode and stays until the
+        user changes it or a new study is opened; only markers placed while
+        it is active capture it.
+        """
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        normalized = normalize_doppler_mode(mode)
+        if normalized == self._doppler_mode_override:
+            return
+        self._doppler_mode_override = normalized
+        self._doppler.set_doppler_mode(self._resolved_doppler_mode())
+
+    def reset_doppler_mode_override(self) -> None:
+        self.set_doppler_mode_override("")
+
+    def doppler_mode_override(self) -> str:
+        return self._doppler_mode_override
+
+    def _resolved_doppler_mode(self) -> str:
+        return self._doppler_mode_override or self._dicom_doppler_mode
 
     def _try_auto_detect_doppler_calibration(self) -> bool:
         if not self._doppler_auto_calibration_enabled:
@@ -7526,6 +7620,7 @@ class ViewerWidget(QWidget):
             time_ms=time_ms,
             velocity_cm_s=velocity_cm_s,
             doppler=True,
+            doppler_mode=self._resolved_doppler_mode(),
         )
 
     def _linear_measurement_from_endpoints(
@@ -7857,6 +7952,9 @@ class ViewerWidget(QWidget):
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Delete:
+            if self._remove_doppler_measurement_at_cursor():
+                event.accept()
+                return
             if self._delete_selected_caliper():
                 event.accept()
                 return
@@ -7903,6 +8001,19 @@ class ViewerWidget(QWidget):
                     event.accept()
                     return
         super().keyPressEvent(event)
+
+    def _remove_doppler_measurement_at_cursor(self) -> bool:
+        """Delete the Doppler measurement under the last cursor position (D-23).
+
+        Repeated measurements of one parameter accumulate, so a misplaced peak
+        (or interval, or trace) must be removable.  Delete removes the nearest
+        measurement when the cursor is on it and otherwise falls through to the
+        regular caliper deletion.
+        """
+        cursor = self._last_view_cursor_xy
+        if cursor is None:
+            return False
+        return self._doppler.remove_measurement_near(cursor[0], cursor[1])
 
     def _set_caliper_label(self, label: str) -> None:
         if label not in self._caliper_labels:

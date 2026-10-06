@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from echo_personal_tool.domain.calculations.doppler_metrics import compute
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
 from echo_personal_tool.domain.models.measurements import (
     LvViewMetrics,
@@ -22,6 +23,7 @@ from echo_personal_tool.domain.models.measurements import (
 from echo_personal_tool.domain.models.viewer_state import ViewerState
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.ui_metrics import text_width
 
 
 class MeasurementPanel(QWidget):
@@ -76,9 +78,13 @@ class MeasurementPanel(QWidget):
         layout.addLayout(patient_row)
         layout.addWidget(summary_scroll, stretch=1)
 
-        self.setMinimumWidth(280)
+        self.update_font_metrics()
 
         self._refresh_text()
+
+    def update_font_metrics(self) -> None:
+        """Wide enough for the summary captions in the current font (Э4)."""
+        self.setMinimumWidth(text_width(self, tr("tool_panel.measures"), padding=48, minimum=280))
 
     def set_measurement_snapshot(self, snapshot: MeasurementSnapshot | None) -> None:
         self._measurement_snapshot = snapshot
@@ -213,10 +219,10 @@ class MeasurementPanel(QWidget):
         for flow in _flow_results_for_display(ddop):
             field_lines.extend(
                 (
-                    self._optional_line(f"{flow.site} Vmax", flow.vmax_cm_s, " cm/s"),
+                    self._optional_velocity(f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode),
                     self._optional_line(f"{flow.site} PGmax", flow.pgmax_mmhg, " mmHg"),
                     self._optional_line(f"{flow.site} VTI", flow.vti_cm, " cm"),
-                    self._optional_line(f"{flow.site} Vmean", flow.vmean_cm_s, " cm/s"),
+                    self._optional_velocity(f"{flow.site} Vmean", flow.vmean_cm_s, flow.mode),
                     self._optional_line(f"{flow.site} PGmean", flow.pgmean_mmhg, " mmHg"),
                 )
             )
@@ -453,6 +459,18 @@ class MeasurementPanel(QWidget):
         if value is None:
             return None
         return self._line(label, value, suffix, decimals=decimals)
+
+    def _optional_velocity(
+        self,
+        label: str,
+        velocity_cm_s: float | None,
+        mode: str,
+    ) -> str | None:
+        """Spectral-Doppler velocity in mode-appropriate units (Э2)."""
+        if velocity_cm_s is None:
+            return None
+        scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+        return self._line(label, scaled, f" {unit}", decimals=decimals)
 
     def _line(
         self,

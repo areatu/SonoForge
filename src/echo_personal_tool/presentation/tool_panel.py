@@ -22,6 +22,7 @@ from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
 from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_metrics import icon_button_size, widest_text_width
 
 
 class _PatientMetricsRow(QWidget):
@@ -123,11 +124,13 @@ class MeasureTab(QWidget):
     patient_metrics_changed = Signal(object, object)
     auto_play_changed = Signal(bool)
     results_requested = Signal()
+    doppler_mode_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._menu = MeasuresMenuWidget()
         self._menu.action_requested.connect(self.action_requested.emit)
+        self._menu.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
         self._patient_metrics = _PatientMetricsRow()
         self._patient_metrics.metrics_changed.connect(self.patient_metrics_changed.emit)
 
@@ -229,6 +232,9 @@ class MeasureTab(QWidget):
     def clear_action_highlight(self) -> None:
         self._menu.clear_highlight()
 
+    def reset_doppler_mode(self) -> None:
+        self._menu.reset_doppler_mode()
+
 
 class ToolPanel(QWidget):
     """Clinical-style right tool menu."""
@@ -239,13 +245,14 @@ class ToolPanel(QWidget):
     results_requested = Signal()
     magnetic_snap_changed = Signal(bool)
     despeckle_changed = Signal(bool)
+    doppler_mode_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("toolPanel")
         self._collapsed = False
         self._saved_width = 280
-        self.setFixedWidth(280)
+        self.setMinimumWidth(280)  # widened to the tab captions by update_font_metrics()
 
         self._tabs = QTabWidget()
         self.measure = MeasureTab()
@@ -261,6 +268,7 @@ class ToolPanel(QWidget):
         self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
         self.measure.auto_play_changed.connect(self.auto_play_changed.emit)
         self.measure.results_requested.connect(self.results_requested.emit)
+        self.measure.doppler_mode_changed.connect(self.doppler_mode_changed.emit)
         self.controls.magnetic_snap_changed.connect(self.magnetic_snap_changed.emit)
         self.controls.despeckle_changed.connect(self.despeckle_changed.emit)
 
@@ -386,9 +394,17 @@ class ToolPanel(QWidget):
     def set_doppler_tool_availability(self, *, time_ok: bool, vessel_ok: bool = False) -> None:
         self.measure.set_doppler_tool_availability(time_ok=time_ok, vessel_ok=vessel_ok)
 
+    def reset_doppler_mode(self) -> None:
+        self.measure.reset_doppler_mode()
+
+    def update_font_metrics(self) -> None:
+        """Keep the panel wide enough for its tab captions (Э4)."""
+        labels = [self._tabs.tabText(index) for index in range(self._tabs.count())]
+        self.setMinimumWidth(widest_text_width(self, labels, padding=48, minimum=280))
+
     def toggle_collapse(self) -> None:
         if self._collapsed:
-            self.setFixedWidth(self._saved_width)
+            self.setMinimumWidth(self._saved_width)
             self._collapsed = False
             self.show()
         else:
@@ -411,19 +427,19 @@ class ToolPanel(QWidget):
             return
 
         tab_bar = self._tabs.tabBar()
-        btn_size = 22
+        btn_w, btn_h = icon_button_size(self, "\u25c0")
 
         self._arrow_left = QToolButton(self._tabs)
         self._arrow_left.setText("\u25c0")  # ◀
         self._arrow_left.setObjectName("tabScrollArrow")
-        self._arrow_left.setFixedSize(btn_size, btn_size)
+        self._arrow_left.setFixedSize(btn_w, btn_h)
         self._arrow_left.setCursor(Qt.CursorShape.PointingHandCursor)
         self._arrow_left.clicked.connect(self._scroll_tab_left)
 
         self._arrow_right = QToolButton(self._tabs)
         self._arrow_right.setText("\u25b6")  # ▶
         self._arrow_right.setObjectName("tabScrollArrow")
-        self._arrow_right.setFixedSize(btn_size, btn_size)
+        self._arrow_right.setFixedSize(btn_w, btn_h)
         self._arrow_right.setCursor(Qt.CursorShape.PointingHandCursor)
         self._arrow_right.clicked.connect(self._scroll_tab_right)
 

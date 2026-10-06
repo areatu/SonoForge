@@ -15,6 +15,7 @@ from echo_personal_tool.domain.services.mmode_smoothing import (
 )
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.mmode_measurement import MModeMeasurementTool
+from echo_personal_tool.presentation.ui_metrics import control_height, icon_button_size
 
 _SWEEP_SPEEDS: dict[str, int] = {
     "25 mm/s": 128,
@@ -82,7 +83,7 @@ class MModeWidget(QWidget):
         toolbar.setSpacing(2)
         for label in _SWEEP_SPEEDS:
             btn = QPushButton(label)
-            btn.setFixedHeight(22)
+            btn.setMinimumHeight(control_height(btn, padding=8))
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, l=label: self.set_sweep_speed(l))
             self._speed_buttons[label] = btn
@@ -97,7 +98,7 @@ class MModeWidget(QWidget):
             (tr("mmode.arbitrary"), self._start_arbitrary_measurement),
         ]:
             btn = QPushButton(label)
-            btn.setFixedHeight(22)
+            btn.setMinimumHeight(control_height(btn, padding=8))
             btn.setCheckable(True)
             btn.clicked.connect(slot)
             self._measure_btns[label] = btn
@@ -105,31 +106,31 @@ class MModeWidget(QWidget):
 
         # Teichholz buttons
         self._teichholz_ed_btn = QPushButton(tr("mmode.teichholz_ed"))
-        self._teichholz_ed_btn.setFixedHeight(22)
+        self._teichholz_ed_btn.setMinimumHeight(control_height(self._teichholz_ed_btn, padding=8))
         self._teichholz_ed_btn.setCheckable(True)
         self._teichholz_ed_btn.clicked.connect(self._start_teichholz_ed)
         toolbar.addWidget(self._teichholz_ed_btn)
 
         self._teichholz_es_btn = QPushButton(tr("mmode.teichholz_es"))
-        self._teichholz_es_btn.setFixedHeight(22)
+        self._teichholz_es_btn.setMinimumHeight(control_height(self._teichholz_es_btn, padding=8))
         self._teichholz_es_btn.setCheckable(True)
         self._teichholz_es_btn.setEnabled(False)
         self._teichholz_es_btn.clicked.connect(self._start_teichholz_es)
         toolbar.addWidget(self._teichholz_es_btn)
 
         self._teichholz_status = QLabel("")
-        self._teichholz_status.setFixedHeight(22)
+        self._teichholz_status.setMinimumHeight(control_height(self._teichholz_status, padding=8))
         self._teichholz_status.setStyleSheet("color: #ffb300; font-weight: bold;")
         toolbar.addWidget(self._teichholz_status)
 
         self._clear_meas_btn = QPushButton(tr("mmode.clear"))
-        self._clear_meas_btn.setFixedHeight(22)
+        self._clear_meas_btn.setMinimumHeight(control_height(self._clear_meas_btn, padding=8))
         self._clear_meas_btn.clicked.connect(self._clear_measurements)
         toolbar.addWidget(self._clear_meas_btn)
 
         self._close_btn = QPushButton("×")
-        self._close_btn.setFixedWidth(24)
-        self._close_btn.setFixedHeight(22)
+        close_w, close_h = icon_button_size(self._close_btn, "×")
+        self._close_btn.setMinimumSize(close_w, close_h)
         self._close_btn.clicked.connect(self.deactivate_requested.emit)
         toolbar.addWidget(self._close_btn)
 

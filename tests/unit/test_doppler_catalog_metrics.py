@@ -22,21 +22,24 @@ def test_legacy_peak_aliases_are_canonicalized_to_vmax() -> None:
     assert canonical_peak_label("AR peak") == "AR Vmax"
 
 
-def test_latest_duplicate_peak_wins_for_legacy_data() -> None:
-    dto = DopplerMeasurementDTO(
-        peaks=(
-            DopplerPeakMarker(label="TR Vmax", time_ms=10.0, velocity_cm_s=280.0),
-            DopplerPeakMarker(label="TR Vmax", time_ms=20.0, velocity_cm_s=330.0),
-        ),
-        intervals=(),
-        traces=(),
-    )
+def test_repeated_same_peak_is_averaged_over_last_three() -> None:
+    """D-23: repeated beats of one parameter average instead of replacing."""
+    markers = [
+        DopplerPeakMarker(label="TR Vmax", time_ms=10.0, velocity_cm_s=280.0, measurement_id="a"),
+        DopplerPeakMarker(label="TR Vmax", time_ms=20.0, velocity_cm_s=330.0, measurement_id="b"),
+        DopplerPeakMarker(label="TR Vmax", time_ms=30.0, velocity_cm_s=320.0, measurement_id="c"),
+        DopplerPeakMarker(label="TR Vmax", time_ms=40.0, velocity_cm_s=310.0, measurement_id="d"),
+    ]
+    dto = DopplerMeasurementDTO(peaks=tuple(markers), intervals=(), traces=())
 
     result = compute(dto)
 
-    assert result.tr_vmax_cm_s == 330.0
-    assert result.flow("TR").vmax_cm_s == 330.0
-    assert result.flow("TR").pgmax_mmhg == pytest.approx(4.0 * 3.3**2)
+    # Only the last three of the four measurements enter the mean.
+    expected = (330.0 + 320.0 + 310.0) / 3.0
+    assert result.tr_vmax_cm_s == pytest.approx(expected)
+    assert result.flow("TR").vmax_cm_s == pytest.approx(expected)
+    assert result.flow("TR").vmax_repeats == 4
+    assert result.flow("TR").pgmax_mmhg == pytest.approx(4.0 * (expected / 100.0) ** 2)
 
 
 def test_merge_replaces_legacy_alias_with_new_canonical_measurement() -> None:

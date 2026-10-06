@@ -7,7 +7,7 @@ import shutil
 from collections import OrderedDict
 from collections.abc import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QLabel,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QWidget,
 )
 
 from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
@@ -74,15 +75,19 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             pixmap = list_widget.thumbnail_pixmap(instance.sop_instance_uid)
 
         if pixmap is not None and not pixmap.isNull():
+            # Scale in device pixels and draw with an explicit DPR: the painter
+            # then maps the pixmap onto logical coordinates without upscaling.
+            dpr = max(1.0, float(list_widget.devicePixelRatioF())) if isinstance(list_widget, QWidget) else 1.0
             scaled = pixmap.scaled(
-                thumb_rect.width(),
-                thumb_rect.height(),
+                int(round(thumb_rect.width() * dpr)),
+                int(round(thumb_rect.height() * dpr)),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            x = thumb_rect.x() + (thumb_rect.width() - scaled.width()) // 2
-            y = thumb_rect.y() + (thumb_rect.height() - scaled.height()) // 2
-            painter.drawPixmap(x, y, scaled)
+            scaled.setDevicePixelRatio(dpr)
+            x = thumb_rect.x() + (thumb_rect.width() - scaled.width() / dpr) / 2
+            y = thumb_rect.y() + (thumb_rect.height() - scaled.height() / dpr) / 2
+            painter.drawPixmap(QPointF(x, y), scaled)
         else:
             painter.setPen(QColor_from("#4a5564"))
             painter.drawRect(thumb_rect)
@@ -242,6 +247,16 @@ class ThumbnailGalleryWidget(QListWidget):
 
     def cell_height(self) -> int:
         return self._cell_h
+
+    def thumbnail_preview_size(self) -> int:
+        """Physical pixel box for the preview decode (Э4).
+
+        The delegate paints at ``thumb × devicePixelRatio`` device pixels, so a
+        96 px source on a 150–200 % screen was upscaled and looked soft.  The
+        decode box follows the current scale and the screen's DPR.
+        """
+        dpr = max(1.0, float(self.devicePixelRatioF()))
+        return int(round(max(self._thumb_w, self._thumb_h) * dpr))
 
     def apply_scale(self, scale: str) -> None:
         spec = _THUMBNAIL_SCALES.get(scale, _THUMBNAIL_SCALES["medium"])

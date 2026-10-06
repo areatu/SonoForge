@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -37,6 +37,21 @@ from echo_personal_tool.infrastructure.media_metadata_mapper import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _HeaderInfo:
+    """The few header fields the scanner needs after the first parse (Э3).
+
+    Caching the whole ``Dataset`` would keep every header of a large folder in
+    memory; these three fields are enough for the study split and the datetime.
+    """
+
+    study_uid: str
+    series_uid: str
+    study_datetime: datetime | None
+
+
 _SAFE_SCAN_EXTENSIONS = frozenset(
     {".dcm", ".dicom", ".mp4", ".avi", ".mov", ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 )
@@ -47,11 +62,16 @@ class LocalMediaDirectoryScanner:
 
     def __init__(self, error_log_path: Path | None = None) -> None:
         self._error_log_path = error_log_path
+        #: path → parsed header fields (or ``None`` when the file was rejected).
+        #: Filled during ``scan()`` so every DICOM is read once per scan (П.4).
+        self._header_info: dict[Path, _HeaderInfo | None] = {}
 
     def scan(self, root: Path) -> list[StudyMetadata]:
         root = root.resolve()
         if not root.is_dir():
             raise NotADirectoryError(f"Not a directory: {root}")
+        # Never reuse headers across scans: files may have been replaced.
+        self._header_info.clear()
 
         studies: list[StudyMetadata] = []
         for study_folder in iter_study_roots(root):
@@ -195,18 +215,45 @@ class LocalMediaDirectoryScanner:
             series=tuple(series_list),
         )
 
-    def _read_dicom_instance(self, path: Path) -> InstanceMetadata | None:
+    def _parse_header(self, path: Path) -> tuple[object | None, _HeaderInfo | None]:
+        """Read and validate a DICOM header once per file per scan.
+
+        Returns ``(dataset, info)``; the dataset is not retained (a folder with
+        thousands of clips would otherwise keep every header alive), only the
+        three fields other code paths need.  ``(None, None)`` means the file was
+        rejected and the error was already logged.
+        """
+        if path in self._header_info:
+            return None, self._header_info[path]
         try:
             validate_dicom_header(path)
             dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         except Exception as exc:  # noqa: BLE001
             self._log_scan_error(path, exc)
-            return None
+            self._header_info[path] = None
+            return None, None
+        study_datetime: datetime | None
+        try:
+            study_datetime = parse_study_datetime(dataset)
+        except Exception:  # noqa: BLE001 - a malformed date must not drop the file
+            study_datetime = None
+        info = _HeaderInfo(
+            study_uid=str(dataset.get("StudyInstanceUID", "") or ""),
+            series_uid=str(dataset.get("SeriesInstanceUID", "") or ""),
+            study_datetime=study_datetime,
+        )
+        self._header_info[path] = info
+        return dataset, info
 
-        study_uid = str(dataset.get("StudyInstanceUID", "") or "")
-        series_uid = str(dataset.get("SeriesInstanceUID", "") or "")
+    def _read_dicom_instance(self, path: Path) -> InstanceMetadata | None:
+        dataset, info = self._parse_header(path)
+        if dataset is None or info is None:
+            return None
+        study_uid = info.study_uid
+        series_uid = info.series_uid
         if not study_uid or not series_uid:
             self._log_scan_error(path, ValueError("Missing Study/Series UID"))
+            self._header_info[path] = None
             return None
 
         pixel_data = None
@@ -224,22 +271,14 @@ class LocalMediaDirectoryScanner:
         return map_instance_metadata(dataset, path=path, pixel_data=pixel_data)
 
     def _read_study_uid(self, path: Path) -> str | None:
-        try:
-            dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
-        except Exception:
+        _, info = self._parse_header(path)
+        if info is None:
             return None
-        value = str(dataset.get("StudyInstanceUID", "") or "")
-        return value or None
+        return info.study_uid or None
 
     def _read_study_datetime(self, path: Path) -> datetime | None:
-        try:
-            dataset = pydicom.dcmread(path, stop_before_pixels=True, force=True)
-        except Exception:
-            return None
-        try:
-            return parse_study_datetime(dataset)
-        except Exception:
-            return None
+        _, info = self._parse_header(path)
+        return info.study_datetime if info is not None else None
 
     def _read_mp4_instance(
         self,

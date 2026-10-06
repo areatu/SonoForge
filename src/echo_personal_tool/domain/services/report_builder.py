@@ -15,6 +15,8 @@ import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from echo_personal_tool.domain.calculations.bernoulli import pressure_gradient_mmhg
+from echo_personal_tool.domain.doppler_catalog import scale_velocity_for_display
 from echo_personal_tool.domain.models.linear_measurement import PERCENT_LABELS
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.ase_reference_norms import (
@@ -238,16 +240,23 @@ def is_pathological(
     sex: str = "",
     *,
     norm_label: str | None = None,
+    scale: float | None = None,
 ) -> tuple[bool, str]:
-    """Return ``(outside_norm, norm_text)`` for a measured value."""
+    """Return ``(outside_norm, norm_text)`` for a measured value.
+
+    ``scale`` converts the passed value into reference units; it defaults
+    to the label lookup (TR Vmax reads in cm/s against an m/s norm) and is
+    overridden when the caller already displays reference units (TR Vmax
+    in m/s under a CW mode passes ``scale=1.0``).
+    """
     if value is None:
         return False, ""
     key = norm_label or label
     norm = norm_range_for(key, sex)
     if norm is None:
         return False, ""
-    scale = _scale_for(key)
-    return is_outside_norm(value * scale, norm), format_norm(norm, scale=scale)
+    resolved_scale = _scale_for(key) if scale is None else scale
+    return is_outside_norm(value * resolved_scale, norm), format_norm(norm, scale=resolved_scale)
 
 
 def is_female(sex: str) -> bool:
@@ -359,6 +368,7 @@ def _value(
     group: str | None = None,
     default_group: str | None = None,
     norm_label: str | None = None,
+    scale: float | None = None,
 ) -> ReportValue | None:
     """One report row; ``norm_label`` names the reference parameter to compare with.
 
@@ -367,10 +377,13 @@ def _value(
 
     ``default_group`` is where the row goes when the label names no anatomy:
     a planimeter contour of a thrombus is still a planimetry measurement.
+
+    ``scale`` overrides the app→reference unit conversion when the displayed
+    value is already in reference units (CW velocities read in m/s).
     """
     if value is None:
         return None
-    pathological, norm_text = is_pathological(label, value, sex, norm_label=norm_label)
+    pathological, norm_text = is_pathological(label, value, sex, norm_label=norm_label, scale=scale)
     resolved = group or group_for_label(label)
     if resolved == GROUP_OTHER and default_group is not None:
         resolved = default_group
@@ -558,6 +571,9 @@ def build_report_groups(
 
     doppler = snapshot.doppler
     if doppler is not None:
+        # Acquisition mode per flow-velocity row (Э2); velocities read in
+        # m/s under CW and in cm/s under PW/TDI.
+        flow_mode_by_label: dict[str, str] = {}
         doppler_values = [
             ("E", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             ("A", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
@@ -597,6 +613,8 @@ def build_report_groups(
                     (f"{flow.site} VTI", flow.vti_cm, "cm", group),
                 )
             )
+            flow_mode_by_label[f"{flow.site} Vmax"] = flow.mode
+            flow_mode_by_label[f"{flow.site} Vmean"] = flow.mode
         doppler_values.extend(
             (
                 ("MV PHT", doppler.mv_pht_ms, "ms", GROUP_MITRAL_VALVE),
@@ -610,7 +628,13 @@ def build_report_groups(
         )
         for label, value, unit, group in doppler_values:
             decimals = 2 if unit == "" else 1
-            item = _value(label, value, unit, sex=sex, decimals=decimals, group=group)
+            scale: float | None = None
+            if label in flow_mode_by_label and value is not None:
+                value, unit, decimals = scale_velocity_for_display(value, flow_mode_by_label[label])
+                if unit == "m/s":
+                    # Already in reference units (TR norm is stored in m/s).
+                    scale = 1.0
+            item = _value(label, value, unit, sex=sex, decimals=decimals, group=group, scale=scale)
             if item:
                 values.append(item)
 
@@ -696,8 +720,9 @@ def build_report_groups(
                 values.append(entry)
             continue
         if measurement.doppler:
-            # Doppler-zone caliper: report Δt (ms) and velocity amplitude (cm/s)
-            # instead of a B-mode length (which does not exist here).
+            # Doppler-zone caliper: report Δt (ms) and the velocity amplitude
+            # in mode units (Э2) with its peak gradient, instead of a B-mode
+            # length (which does not exist here).
             if measurement.time_ms is not None:
                 entry = _value(
                     f"{measurement.label} Δt",
@@ -710,16 +735,28 @@ def build_report_groups(
                 if entry:
                     values.append(entry)
             if measurement.velocity_cm_s is not None:
+                magnitude = abs(measurement.velocity_cm_s)
+                scaled, unit, decimals = scale_velocity_for_display(magnitude, measurement.doppler_mode)
                 entry = _value(
                     f"{measurement.label} ΔV",
-                    measurement.velocity_cm_s,
-                    "cm/s",
+                    scaled,
+                    unit,
                     sex=sex,
-                    decimals=1,
+                    decimals=decimals,
                     group=GROUP_OTHER,
                 )
                 if entry:
                     values.append(entry)
+                pg_entry = _value(
+                    f"{measurement.label} PGmax",
+                    pressure_gradient_mmhg(magnitude),
+                    "mmHg",
+                    sex=sex,
+                    decimals=0,
+                    group=GROUP_OTHER,
+                )
+                if pg_entry:
+                    values.append(pg_entry)
             continue
         if calibrated:
             value = measurement.millimeter_length
