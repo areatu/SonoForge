@@ -502,6 +502,8 @@
   "preferences.cache_size": "Size:",
   "preferences.cache_quota": "Limit:",
   "preferences.tab_server": "Server",
+  "preferences.tab_tools": "Tools",
+  "preferences.tools_hint": "Enable tools to show them in the toolbar. Drag a tool onto another section to move it there.",
   "preferences.tags_overlay": "Overlay tags:",
   "preferences.tags_tooltip": "Comma-separated tag list (name or (0010,0010)). Shown at bottom-left on viewer for DICOM files.",
   "preferences.theme_dark": "Dark",

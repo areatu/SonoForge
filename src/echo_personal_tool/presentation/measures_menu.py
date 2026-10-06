@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -43,6 +44,26 @@ class _MenuButton:
     @property
     def label(self) -> str:
         return tr(self.label_key)
+
+    @property
+    def tool_id(self) -> str:
+        """Stable identity of the button, independent of its section.
+
+        The same ``label_key`` can appear in several sections (e.g. the manual
+        and automatic Simpson ED entries), so the id is derived from the action
+        payload that actually distinguishes the emitted measurement.
+        """
+        return "|".join(
+            (
+                str(self.action),
+                self.view,
+                self.phase,
+                self.caliper_label,
+                self.doppler_peak,
+                self.doppler_interval,
+                self.doppler_trace,
+            )
+        )
 
 
 def _btn(
@@ -251,30 +272,34 @@ _AI_ONNX_ACTIONS = frozenset(
 )
 
 
-def _filter_menu(
+def _filter_profile(
+    menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Drop actions that the current build cannot run (ONNX/AI)."""
+    from echo_personal_tool.infrastructure.profile import has_ai_segmentation
+
+    if has_ai_segmentation():
+        return menu
+    menu = tuple(
+        (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
+        for group_key, buttons in menu
+    )
+    return tuple((group_key, buttons) for group_key, buttons in menu if buttons)
+
+
+def _filter_experimental(
     menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
     preferences: UserPreferences | None = None,
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
-    """Filter menu based on build profile and user preferences for experimental features."""
-    from echo_personal_tool.infrastructure.profile import has_ai_segmentation
-
-    if not has_ai_segmentation():
-        menu = tuple(
-            (group_key, tuple(btn for btn in buttons if str(btn.action) not in _AI_ONNX_ACTIONS))
-            for group_key, buttons in menu
-        )
-        menu = tuple((group_key, buttons) for group_key, buttons in menu if buttons)
-
+    """Hide experimental groups/buttons unless their preference is enabled."""
     if preferences is None:
         return menu
 
     filtered: list[tuple[str, tuple[_MenuButton, ...]]] = []
     for group_key, buttons in menu:
         pref_key = _EXPERIMENTAL_GROUPS.get(group_key)
-        if pref_key is not None:
-            show = getattr(preferences, pref_key, False)
-            if not show:
-                continue
+        if pref_key is not None and not getattr(preferences, pref_key, False):
+            continue
 
         visible_buttons = []
         for btn in buttons:
@@ -287,6 +312,127 @@ def _filter_menu(
         if visible_buttons:
             filtered.append((group_key, tuple(visible_buttons)))
     return tuple(filtered)
+
+
+def _filter_menu(
+    menu: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    preferences: UserPreferences | None = None,
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Filter menu based on build profile and user preferences for experimental features."""
+    return _filter_experimental(_filter_profile(menu), preferences)
+
+
+def tool_menu_catalog() -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """All tools the build offers, in their default section and order.
+
+    Experimental features are included regardless of their preference so the
+    customization dialog stays stable across toggles; they are still gated at
+    render time by :func:`_filter_experimental`.
+    """
+    return _filter_profile(_MENU)
+
+
+def default_tool_layout() -> list[dict[str, object]]:
+    """Default section/tool layout (every tool enabled)."""
+    return [
+        {
+            "key": group_key,
+            "items": [{"id": spec.tool_id, "enabled": True} for spec in buttons],
+        }
+        for group_key, buttons in tool_menu_catalog()
+    ]
+
+
+def decode_tool_layout(raw: object) -> list[dict[str, object]]:
+    """Parse a persisted layout string, tolerating anything malformed."""
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+
+    layout: list[dict[str, object]] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        key = entry.get("key")
+        items = entry.get("items")
+        if not isinstance(key, str) or not isinstance(items, list):
+            continue
+        clean_items: list[dict[str, object]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            tool_id = item.get("id")
+            if not isinstance(tool_id, str) or not tool_id:
+                continue
+            clean_items.append({"id": tool_id, "enabled": bool(item.get("enabled", True))})
+        layout.append({"key": key, "items": clean_items})
+    return layout
+
+
+def encode_tool_layout(layout: list[dict[str, object]]) -> str:
+    return json.dumps(layout, ensure_ascii=False)
+
+
+def apply_tool_layout(
+    catalog: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    layout: list[dict[str, object]],
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Regroup/reorder/hide tools according to a saved layout.
+
+    Sections keep their catalog order; only the assignment of tools to
+    sections and their per-tool visibility come from the layout.  Tools added
+    to the catalog after the layout was saved fall back to their default
+    section so an upgrade never silently drops them.
+    """
+    if not layout:
+        return catalog
+
+    spec_by_id = {spec.tool_id: spec for _key, buttons in catalog for spec in buttons}
+    assigned: set[str] = set()
+    stored: dict[str, list[dict[str, object]]] = {}
+    for entry in layout:
+        key = entry.get("key")
+        if not isinstance(key, str):
+            continue
+        items = entry.get("items", [])
+        stored.setdefault(key, items)
+        for item in items:
+            tool_id = item.get("id")
+            if isinstance(tool_id, str):
+                assigned.add(tool_id)
+
+    seen: set[str] = set()
+    result: list[tuple[str, tuple[_MenuButton, ...]]] = []
+    for group_key, buttons in catalog:
+        specs: list[_MenuButton] = []
+        for item in stored.get(group_key, []):
+            spec = spec_by_id.get(str(item.get("id")))
+            if spec is None or spec.tool_id in seen:
+                continue
+            seen.add(spec.tool_id)
+            if item.get("enabled", True):
+                specs.append(spec)
+        for spec in buttons:
+            if spec.tool_id not in assigned and spec.tool_id not in seen:
+                seen.add(spec.tool_id)
+                specs.append(spec)
+        if specs:
+            result.append((group_key, tuple(specs)))
+    return tuple(result)
+
+
+def build_measure_menu(
+    preferences: UserPreferences | None = None,
+) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
+    """Final toolbar menu: catalog + saved layout + experimental gating."""
+    raw = getattr(preferences, "tool_panel_layout_json", "") if preferences is not None else ""
+    menu = apply_tool_layout(tool_menu_catalog(), decode_tool_layout(raw))
+    return _filter_experimental(menu, preferences)
 
 
 def style_menu_button(button: QPushButton) -> None:
@@ -465,7 +611,7 @@ class MeasuresMenuWidget(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
 
-        filtered_menu = _filter_menu(_MENU, self._preferences)
+        filtered_menu = build_measure_menu(self._preferences)
 
         for group_title, buttons in filtered_menu:
             section = MeasuresAccordionSection(
