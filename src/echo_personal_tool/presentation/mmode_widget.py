@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
@@ -301,12 +303,21 @@ class MModeWidget(QWidget):
         frames: list[np.ndarray],
         start: tuple[float, float],
         end: tuple[float, float],
+        mask: Callable[[np.ndarray], np.ndarray] | None = None,
     ) -> None:
+        """Rebuild the whole sweep from cached frames.
+
+        ``mask`` applies the PHI mask to each frame before the column is cut.
+        The cached frames are the raw ones (calibration must keep running on
+        them), but the sweep itself is a display surface: without the mask a
+        static burned-in name reappears in it as a constant bright band.
+        """
         self.clear_buffer()
         self._scan_start = start
         self._scan_end = end
         for frame in frames:
-            col = extract_mmode_column(frame, start, end, self._num_samples)
+            source = frame if mask is None else mask(frame)
+            col = extract_mmode_column(source, start, end, self._num_samples)
             self.on_new_column(col)
 
     def set_time_calibration_ms_per_pixel(self, ms_per_pixel: float) -> None:

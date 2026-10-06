@@ -428,6 +428,8 @@
   "panel.s_la": "S LA",
   "panel.s_ra": "S RA",
   "panel.weight": "Weight",
+  "preferences.anonymize_frames": "Hide patient data burned into the frame",
+  "preferences.anonymize_frames_hint": "Fills the scanner's text header (name, ID, date) with the background. The band height is measured per scanner model and frame size; switch this off if the band ever covers part of the image on your machine.",
   "preferences.auto_depth_cal": "Auto depth calibration",
   "preferences.area_tool_mode": "Area tool mode",
   "preferences.area_mode_click": "Polygon (clicks)",

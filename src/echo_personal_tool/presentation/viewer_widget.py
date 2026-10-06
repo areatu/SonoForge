@@ -134,6 +134,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     UserPreferences,
     resolve_wl_values,
 )
+from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
@@ -922,6 +923,9 @@ class ViewerWidget(QWidget):
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
         self._despeckle_enabled = False
+        # Burned-in PHI (name/ID/date) is masked before anything else sees the
+        # frame, so calibration, M-mode and export all work on masked pixels.
+        self._phi_filter = AnonymizationFilter(enabled=True)
         self._results_overlay_custom_position = False
         self._results_overlay_cleared = False
         self._results_overlay_position_just_restored = False
@@ -1286,6 +1290,7 @@ class ViewerWidget(QWidget):
                 preferences.results_overlay_opacity,
             )
         )
+        self._phi_filter.set_enabled(preferences.anonymize_frames)
         self._show_crosshair = preferences.show_crosshair
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
@@ -1682,11 +1687,27 @@ class ViewerWidget(QWidget):
             return color, not color
         return False, True
 
+    def mask_phi(self, pixels: np.ndarray) -> np.ndarray:
+        """Mask burned-in PHI on a frame outside the render path.
+
+        Used where frames are consumed directly rather than drawn — the M-mode
+        sweep rebuilt from cached frames, and later the export seams.  Keeps one
+        owner of the profile and of the on/off switch.
+        """
+        return self._phi_filter.apply(pixels, self._phi_mask_source_path())
+
+    def _phi_mask_source_path(self) -> Path | None:
+        """Path of the file currently displayed, used to pick a PHI profile."""
+        if self._current_state is None or self._current_state.instance is None:
+            return None
+        return self._current_state.instance.path
+
     @_prof
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
         self._vessel_sensitivity.hide()
         frame = np.asarray(pixels)
+        frame = self._phi_filter.apply(frame, self._phi_mask_source_path())
         media_format = (
             self._current_state.instance.media_format
             if self._current_state is not None and self._current_state.instance is not None
@@ -1829,6 +1850,7 @@ class ViewerWidget(QWidget):
     def show_frame_fast(self, pixels: np.ndarray) -> None:
         """Fast render for playback: skip layout/doppler/panel detection."""
         frame = np.asarray(pixels)
+        frame = self._phi_filter.apply(frame, self._phi_mask_source_path())
         media_format = (
             self._current_state.instance.media_format
             if self._current_state is not None and self._current_state.instance is not None
