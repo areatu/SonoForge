@@ -107,9 +107,7 @@ def test_disabled_and_degenerate_frames_yield_empty_plans() -> None:
         (Vendor.GE, 708, 1016, 0.0),
     ],
 )
-def test_measured_profiles(
-    vendor: Vendor, height: int, width: int, expected_top: float
-) -> None:
+def test_measured_profiles(vendor: Vendor, height: int, width: int, expected_top: float) -> None:
     assert resolve_mask_spec(vendor, height, width).top == expected_top
 
 
@@ -229,9 +227,7 @@ def _clear_cache() -> None:
 
 
 def test_context_is_read_from_the_dicom_header(tmp_path) -> None:
-    path = _write_dicom(
-        tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES"
-    )
+    path = _write_dicom(tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES")
     context = phi_mask_context(path)
     assert context.vendor is Vendor.SAMSUNG
     assert context.panel_top == 100
@@ -251,9 +247,7 @@ def test_broken_dicom_does_not_raise(tmp_path) -> None:
 
 
 def test_burned_in_annotation_no_disables_the_mask(tmp_path) -> None:
-    path = _write_dicom(
-        tmp_path / "clean.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="NO"
-    )
+    path = _write_dicom(tmp_path / "clean.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="NO")
     frame = np.full((884, 1180), 30, dtype=np.uint8)
     frame[0:100, :] = 200
 
@@ -267,9 +261,7 @@ def test_burned_in_annotation_no_disables_the_mask(tmp_path) -> None:
 
 
 def test_filter_masks_a_samsung_frame_when_enabled(tmp_path) -> None:
-    path = _write_dicom(
-        tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES"
-    )
+    path = _write_dicom(tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES")
     frame = np.full((884, 1180), 30, dtype=np.uint8)
     frame[0:100, 100:600] = 250
 
@@ -282,9 +274,7 @@ def test_filter_masks_a_samsung_frame_when_enabled(tmp_path) -> None:
 
 
 def test_disabled_filter_returns_the_same_object(tmp_path) -> None:
-    path = _write_dicom(
-        tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES"
-    )
+    path = _write_dicom(tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES")
     frame = np.full((884, 1180), 30, dtype=np.uint8)
     filter_ = AnonymizationFilter(enabled=False)
     assert filter_.apply(frame, path) is frame
