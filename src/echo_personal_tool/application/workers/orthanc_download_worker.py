@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections import defaultdict
 from collections.abc import Sequence
@@ -34,7 +35,26 @@ from echo_personal_tool.infrastructure.orthanc_client import (
 )
 from echo_personal_tool.infrastructure.server_settings import ServerSettings
 
-_MAX_CONCURRENT_DOWNLOADS = 4
+_DEFAULT_CONCURRENT_DOWNLOADS = 8
+_MIN_CONCURRENT_DOWNLOADS = 1
+_MAX_CONCURRENT_LIMIT = 16
+
+
+def _resolve_concurrency() -> int:
+    """Parallel instance downloads.
+
+    ``SONOFORGE_ORTHANC_CONCURRENCY`` overrides the default (clamped to 1–16)
+    so a slow or a busy PACS can be tuned without a rebuild.
+    """
+    raw = os.environ.get("SONOFORGE_ORTHANC_CONCURRENCY", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_CONCURRENT_DOWNLOADS
+    return max(_MIN_CONCURRENT_DOWNLOADS, min(_MAX_CONCURRENT_LIMIT, value))
+
+
+_MAX_CONCURRENT_DOWNLOADS = _resolve_concurrency()
 _MAX_UNIQUE_ERRORS = 3
 _MAX_ERROR_REASON = 80
 _MAX_ERROR_TEXT = 160
@@ -240,6 +260,8 @@ class OrthancDownloadWorker(QRunnable):
             saved_count = 0
             failed_count = 0
             errors: list[str] = []
+            total_payload_bytes = 0
+            max_payload_bytes = 0
 
             pool = ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_DOWNLOADS)
             try:
@@ -263,8 +285,11 @@ class OrthancDownloadWorker(QRunnable):
                     try:
                         result = future.result()
                         if isinstance(result, bytes):
+                            payload_size = len(result)
                             with self._lock:
                                 saved_count += 1
+                                total_payload_bytes += payload_size
+                                max_payload_bytes = max(max_payload_bytes, payload_size)
                         else:
                             reason = result.reason if isinstance(result, DownloadFailure) else "unknown failure"
                             logger.warning(
@@ -299,12 +324,17 @@ class OrthancDownloadWorker(QRunnable):
                 return
 
             elapsed_total = time.monotonic() - t_start
+            avg_payload_kb = total_payload_bytes / saved_count / 1024.0 if saved_count else 0.0
             logger.info(
-                "[DIAG] worker finished study=%s saved=%d failed=%d elapsed_s=%.1f",
+                "[DIAG] worker finished study=%s saved=%d failed=%d elapsed_s=%.1f "
+                "avg_kb=%.0f max_kb=%.0f mbit_s=%.1f",
                 self._study_uid[:16],
                 saved_count,
                 failed_count,
                 elapsed_total,
+                avg_payload_kb,
+                max_payload_bytes / 1024.0,
+                (total_payload_bytes * 8 / 1e6) / elapsed_total if elapsed_total > 0 else 0.0,
             )
 
             if failed_count == 0:

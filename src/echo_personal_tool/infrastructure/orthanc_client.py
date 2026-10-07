@@ -30,6 +30,16 @@ def _interruptible_sleep(seconds: float, cancel_event: threading.Event) -> None:
 _QUERY_RETRIES = 3
 _QUERY_RETRY_DELAY = 0.5  # linear backoff: 0.5s, 1.0s
 
+#: Connection pool shape for every Orthanc httpx client.  Downloads run from a
+#: small pool of worker threads, each holding its own client, so each pool only
+#: needs a handful of sockets.  A generous keepalive_expiry keeps a client
+#: reusing its socket across the short idle gaps between two instances.
+_HTTP_LIMITS = httpx.Limits(
+    max_connections=16,
+    max_keepalive_connections=16,
+    keepalive_expiry=30.0,
+)
+
 from echo_personal_tool.domain.models.orthanc import (
     InstanceInfo,
     SeriesInfo,
@@ -170,6 +180,7 @@ class OrthancDicomWebClient:
             headers=headers,
             timeout=self._timeout,
             verify=verify,
+            limits=_HTTP_LIMITS,
         )
         self._client = httpx.Client(
             base_url=f"{self._dicom_web_root}/",
@@ -177,6 +188,7 @@ class OrthancDicomWebClient:
             headers=headers,
             timeout=self._timeout,
             verify=verify,
+            limits=_HTTP_LIMITS,
         )
         if not ca_bundle and not tls_verify:
             # Deliberate opt-out for servers with self-signed certificates, but
@@ -196,6 +208,7 @@ class OrthancDicomWebClient:
                 headers=headers,
                 timeout=self._timeout,
                 verify=verify,
+                limits=_HTTP_LIMITS,
             )
         else:
             self._stow_client = None
