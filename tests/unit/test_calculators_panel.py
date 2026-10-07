@@ -210,14 +210,26 @@ def test_language_switch_retranslates() -> None:
 
 def test_inputs_are_grouped_by_section() -> None:
     panel = CalculatorsPanel()
-    for section, key in (
-        ("continuity", "calc.section.continuity"),
-        ("mr", "calc.section.mr"),
-        ("ar", "calc.section.ar"),
-        ("patient", "calc.section.patient"),
-    ):
-        heading = panel.findChild(QLabel, f"calcSection_{section}")
-        assert heading is not None and heading.text() == tr(key)
+    for section in ("continuity", "mr", "ar", "ms", "right", "lv", "orifice", "patient"):
+        heading = panel.findChild(QToolButton, f"calcSection_{section}")
+        assert heading is not None, section
+        assert heading.text().startswith(tr(f"calc.section.{section}"))
+    # The heading counts the inputs with a value: none without a study.
+    assert panel.findChild(QToolButton, "calcSection_ms").text().endswith("(0/5)")
+
+
+def test_sections_collapse_and_count_filled_inputs() -> None:
+    panel = CalculatorsPanel()
+    panel.set_mode(MODE_STANDALONE)
+    heading = panel.findChild(QToolButton, "calcSection_lv")
+    _type(panel, "lvedd", "5")
+    assert heading.text().endswith("(1/2)")
+    assert panel.is_section_expanded("lv")
+    heading.click()
+    assert not panel.is_section_expanded("lv")
+    assert panel.findChild(QWidget, "calcSectionBody_lv").isHidden()
+    panel.set_section_expanded("lv", True)
+    assert panel.is_section_expanded("lv")
 
 
 def test_pisa_card_in_standalone_mode() -> None:

@@ -137,3 +137,19 @@ class TestBlockSignals:
         editor._block_signals(False)
         assert not editor._sex_male.signalsBlocked()
         assert not editor._source_edit.signalsBlocked()
+
+
+class TestNote:
+    def test_set_parameter_note(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1", note="0.3 cm2 may be severe")
+        editor.set_parameter(param)
+        assert editor._note_edit.text() == "0.3 cm2 may be severe"
+
+    def test_on_changed_updates_note(self, editor) -> None:
+        param = ParameterModel(id="p1", name="P1")
+        editor.set_parameter(param)
+        editor._block_signals(False)
+        editor._note_edit.setText("New note")
+        assert param.note == "New note"
+        editor._note_edit.setText("")
+        assert param.note is None

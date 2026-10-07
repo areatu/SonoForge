@@ -34,10 +34,21 @@ from echo_personal_tool.domain.services.doppler_repeats import mean_of_last
 
 #: Caliper labels that measure the LVOT diameter (menu: ``LVOTd``).
 LVOT_DIAMETER_LABELS = frozenset({"lvotd", "lvot d", "lvot"})
-#: Caliper labels of the PISA radius on a colour-flow frame (Э11б).
+#: Caliper labels of the PISA radius on a colour-flow frame (Э11б/в).
 PISA_RADIUS_LABELS: dict[str, frozenset[str]] = {
     "pisa_r_mr": frozenset({"pisa mr", "pisa r mr", "pisa_mr"}),
     "pisa_r_ar": frozenset({"pisa ar", "pisa r ar", "pisa_ar"}),
+    "pisa_r_ms": frozenset({"pisa ms", "pisa r ms", "pisa_ms"}),
+}
+#: Other caliper inputs (Э11в), mean of the newest measurements in cm.
+#: ``RVOTd`` is the diameter at the RVOT PW sample site (menu: valves group);
+#: the RV-size caliper ``RVOT`` is a different level and is not used.
+#: ``LVEDD``/``LVESD`` come from the 2D LV calipers and the M-mode Teichholz.
+CALIPER_INPUT_LABELS: dict[str, frozenset[str]] = {
+    **PISA_RADIUS_LABELS,
+    "rvot_d": frozenset({"rvotd", "rvot d", "rvot_d"}),
+    "lvedd": frozenset({"lvedd", "lvidd", "lv_edd"}),
+    "lvesd": frozenset({"lvesd", "lvids", "lv_esd"}),
 }
 #: Spectral inputs read from the study-wide Doppler results:
 #: input id → (flow site, field, divisor to the input unit).
@@ -50,6 +61,14 @@ _DOPPLER_INPUTS: dict[str, tuple[str, str, float]] = {
     "mr_vmax": ("MR", "vmax", 100.0),
     "ar_vti": ("AR", "vti", 1.0),
     "ar_vmax": ("AR", "vmax", 100.0),
+    "mv_vmax": ("MV", "vmax", 100.0),
+    "tr_vmax": ("TR", "vmax", 100.0),
+    "rvot_vti": ("RVOT", "vti", 1.0),
+}
+#: Doppler time intervals: input id → ``DopplerResults`` field (ms).
+_INTERVAL_INPUTS: dict[str, str] = {
+    "mv_pht": "mv_pht_ms",
+    "rvot_at": "rvot_at_ms",
 }
 
 
@@ -82,6 +101,9 @@ def _doppler_input(input_id: str, doppler: DopplerResults | None) -> InputValue:
     site, field_name, divisor = _DOPPLER_INPUTS[input_id]
     flow = doppler.flow(site) if doppler is not None else None
     if flow is None:
+        if input_id == "tr_vmax" and doppler is not None and doppler.tr_vmax_cm_s is not None:
+            # Legacy records keep TR Vmax only in the generic field.
+            return _measured(input_id, abs(doppler.tr_vmax_cm_s) / divisor, source=SOURCE_MEASURED)
         return InputValue(input_id, None)
     if field_name == "vti":
         value = abs(flow.vti_cm) if flow.vti_cm is not None else None
@@ -144,9 +166,12 @@ def resolve_study_inputs(
     }
     for input_id in _DOPPLER_INPUTS:
         auto[input_id] = _doppler_input(input_id, doppler)
-    for input_id, labels in PISA_RADIUS_LABELS.items():
-        radius, radius_n = caliper_mean_cm(measurements, labels)
-        auto[input_id] = _measured(input_id, radius, source=SOURCE_MEASURED, repeats=radius_n)
+    for input_id, field_name in _INTERVAL_INPUTS.items():
+        interval = getattr(doppler, field_name, None) if doppler is not None else None
+        auto[input_id] = _measured(input_id, abs(interval) if interval is not None else None, source=SOURCE_MEASURED)
+    for input_id, labels in CALIPER_INPUT_LABELS.items():
+        mean_cm, count = caliper_mean_cm(measurements, labels)
+        auto[input_id] = _measured(input_id, mean_cm, source=SOURCE_MEASURED, repeats=count)
     for input_id in all_input_ids():
         spec = input_spec(input_id)
         if spec is not None and spec.manual_only:

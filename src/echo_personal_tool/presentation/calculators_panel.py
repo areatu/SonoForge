@@ -89,6 +89,7 @@ class _InputRow:
         self.edit.setMinimumWidth(text_width(self.edit, "0000.00", padding=18))
         self.edit.editingFinished.connect(lambda: panel._on_edit(input_id))
         self.unit = QLabel(self.spec.unit)
+        self.unit.setMinimumWidth(text_width(self.unit, "mmHg", padding=4))
         self.source = QLabel()
         self.source.setObjectName(f"calcSource_{input_id}")
         self.source.setWordWrap(True)
@@ -183,7 +184,10 @@ class _CalculatorCard:
                 seen.add(reference_id)
                 hint = reference_hint(reference_id, get_language())
                 if hint is not None:
-                    hints.append(html.escape(hint.text()))
+                    line = html.escape(hint.text())
+                    if hint.note:
+                        line += f"<br><i>* {html.escape(hint.note)}</i>"
+                    hints.append(line)
         if hints:
             title = html.escape(tr("calc.reference_title"))
             self.hints.setText(f"<span style='font-size: {small}px;'><b>{title}</b><br>{'<br>'.join(hints)}</span>")
@@ -266,28 +270,46 @@ class CalculatorsPanel(QWidget):
 
         self._inputs_box = QGroupBox()
         self._inputs_box.setObjectName("calcInputsBox")
-        grid = QGridLayout(self._inputs_box)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(1)
-        grid.setColumnStretch(0, 1)
+        inputs_layout = QVBoxLayout(self._inputs_box)
+        inputs_layout.setContentsMargins(4, 4, 4, 4)
+        inputs_layout.setSpacing(2)
         self._rows: dict[str, _InputRow] = {}
-        #: Section headings of the inputs grid (continuity, PISA MR/AR, patient).
-        self._section_labels: dict[str, QLabel] = {}
-        grid_row = 0
+        #: Collapsible section headings (continuity, PISA MR/AR, MS, right heart,
+        #: LV, orifice, patient) and the input ids of each section.
+        self._section_labels: dict[str, QToolButton] = {}
+        self._section_bodies: dict[str, QWidget] = {}
+        self._section_inputs: dict[str, list[str]] = {}
+        grids: dict[str, QGridLayout] = {}
         for input_id in all_input_ids():
             spec = input_spec(input_id)
             section = spec.section if spec is not None else ""
-            if section and section not in self._section_labels:
-                heading = QLabel()
+            if section not in self._section_labels:
+                heading = QToolButton()
                 heading.setObjectName(f"calcSection_{section}")
+                heading.setCheckable(True)
+                heading.setChecked(True)
+                heading.setAutoRaise(True)
+                heading.setArrowType(Qt.ArrowType.DownArrow)
+                heading.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
                 font = heading.font()
                 font.setBold(True)
                 heading.setFont(font)
-                grid.addWidget(heading, grid_row, 0, 1, 4)
+                body = QWidget()
+                body.setObjectName(f"calcSectionBody_{section}")
+                grid = QGridLayout(body)
+                grid.setContentsMargins(12, 0, 0, 4)
+                grid.setHorizontalSpacing(6)
+                grid.setVerticalSpacing(1)
+                grid.setColumnStretch(0, 1)
+                grids[section] = grid
+                heading.toggled.connect(lambda expanded, key=section: self._on_section_toggled(key, expanded))
+                inputs_layout.addWidget(heading)
+                inputs_layout.addWidget(body)
                 self._section_labels[section] = heading
-                grid_row += 1
-            self._rows[input_id] = _InputRow(self, input_id, grid, grid_row)
-            grid_row += 2
+                self._section_bodies[section] = body
+                self._section_inputs[section] = []
+            self._rows[input_id] = _InputRow(self, input_id, grids[section], 2 * len(self._section_inputs[section]))
+            self._section_inputs[section].append(input_id)
         content_layout.addWidget(self._inputs_box)
 
         self._cards = [_CalculatorCard(spec, content_layout) for spec in CALCULATORS]
@@ -307,6 +329,15 @@ class CalculatorsPanel(QWidget):
     @property
     def mode(self) -> str:
         return self._mode
+
+    def set_section_expanded(self, section: str, expanded: bool) -> None:
+        heading = self._section_labels.get(section)
+        if heading is not None:
+            heading.setChecked(expanded)
+
+    def is_section_expanded(self, section: str) -> bool:
+        body = self._section_bodies.get(section)
+        return body is not None and not body.isHidden()
 
     def set_mode(self, mode: str) -> None:
         index = self._mode_combo.findData(mode)
@@ -375,8 +406,6 @@ class CalculatorsPanel(QWidget):
         self._clear_button.setText(tr("calc.clear"))
         self._clear_button.setToolTip(tr("calc.clear_tooltip"))
         self._inputs_box.setTitle(tr("calc.inputs_title"))
-        for section, heading in self._section_labels.items():
-            heading.setText(tr(f"calc.section.{section}"))
         self._ruo.setText(tr("calc.ruo"))
         for row in self._rows.values():
             row.reload_text()
@@ -385,6 +414,17 @@ class CalculatorsPanel(QWidget):
         self._refresh()
 
     # ── internals ────────────────────────────────────────────────────────
+    def _on_section_toggled(self, section: str, expanded: bool) -> None:
+        self._section_bodies[section].setVisible(expanded)
+        self._section_labels[section].setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+
+    def _update_section_headings(self, inputs: dict[str, InputValue]) -> None:
+        """Heading text with the number of inputs that have a value (useful when collapsed)."""
+        for section, heading in self._section_labels.items():
+            ids = self._section_inputs[section]
+            filled = sum(1 for input_id in ids if (item := inputs.get(input_id)) is not None and item.available)
+            heading.setText(f"{tr(f'calc.section.{section}')}  ({filled}/{len(ids)})")
+
     def _on_mode_combo(self, _index: int) -> None:
         self._mode = self._mode_combo.currentData() or MODE_STUDY
         self._refresh(force_text=True)
@@ -423,6 +463,7 @@ class CalculatorsPanel(QWidget):
                 row.reset.setVisible(editable and item.overridden)
             out_of_range = item.available and is_out_of_range(input_id, item.value)
             row.edit.setStyleSheet(f"border: 1px solid {_WARNING_COLOR};" if out_of_range else "")
+        self._update_section_headings(inputs)
         calculations = self.current_calculations()
         for card in self._cards:
             card.update(calculations)

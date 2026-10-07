@@ -336,6 +336,18 @@ function renderParams(data, animateStagger) {
                 descTr.appendChild(descTd);
                 fragment.appendChild(descTr);
             }
+
+            // Free-text caveat under the gradations (e.g. secondary MR thresholds)
+            if (param.note) {
+                var noteTr = document.createElement("tr");
+                noteTr.className = "desc-row";
+                var noteTd = document.createElement("td");
+                noteTd.className = "patho-desc param-note";
+                noteTd.colSpan = colCount;
+                noteTd.textContent = "* " + param.note;
+                noteTr.appendChild(noteTd);
+                fragment.appendChild(noteTr);
+            }
         });
     }
 

@@ -83,6 +83,8 @@ def warning_text(warning: CalcWarning) -> str:
         return tr("calc.warning.dvi_above_one")
     if warning.code == "rf_above_100":
         return tr("calc.warning.rf_above_100", percent=f"{warning.value or 0.0:.0f}")
+    if warning.code == "lvesd_not_below_lvedd":
+        return tr("calc.warning.lvesd_not_below_lvedd")
     if warning.code == "ava_methods_diverge":
         percent = f"{(warning.value or 0.0) * 100:.0f}"
         return tr("calc.warning.ava_methods_diverge", percent=percent)

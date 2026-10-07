@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -62,7 +63,8 @@ def test_every_registry_text_key_exists_in_both_locales() -> None:
 def test_every_calculator_cites_literature() -> None:
     for calculator in CALCULATORS:
         assert calculator.references
-        assert all("J Am Soc Echocardiogr" in ref for ref in calculator.references)
+        # Every reference is a full citation: journal year;volume:pages.
+        assert all(re.search(r"(19|20)\d{2};\d+", ref) for ref in calculator.references), calculator.id
 
 
 def test_input_closure_follows_output_chain() -> None:
@@ -166,7 +168,8 @@ def test_input_specs_have_sane_editor_bounds() -> None:
     for item in INPUTS:
         low, high = item.plausible
         editor_low, editor_high = item.editor_range
-        assert editor_low < low < high < editor_high, item.id
+        # Physical limits may coincide with the plausible range (RAP 0 mmHg, angle 180°).
+        assert editor_low <= low < high <= editor_high, item.id
         assert input_spec(item.id) is item
 
 

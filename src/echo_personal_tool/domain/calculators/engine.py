@@ -80,6 +80,12 @@ def _evaluate_calculator(spec: CalculatorSpec, inputs: Mapping[str, InputValue])
             # AR: RVol larger than the whole LVOT stroke volume — the PISA
             # radius/Va, the jet VTI or the LVOT inputs are inconsistent.
             warnings.append(CalcWarning("rf_above_100", input_id=rf_id, value=rf))
+    if spec.id == "teichholz":
+        lvedd, lvesd = values.get("lvedd"), values.get("lvesd")
+        if lvedd is not None and lvesd is not None and lvesd >= lvedd:
+            # Systolic diameter not smaller than the diastolic one: labels or
+            # phases swapped — EF/FS/SV are left empty rather than negative.
+            warnings.append(CalcWarning("lvesd_not_below_lvedd", input_id="lvesd", value=lvesd))
     return CalculatorResult(calculator_id=spec.id, outputs=tuple(outputs), warnings=tuple(warnings))
 
 

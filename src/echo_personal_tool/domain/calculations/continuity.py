@@ -1,4 +1,4 @@
-"""Continuity-equation hemodynamics (Э11а): LVOT area, SV, CO, AVA, DVI.
+"""Continuity-equation hemodynamics (Э11а/в): orifice area, SV, CO, AVA, DVI, Qp:Qs.
 
 Pure functions, no Qt.  Every function returns ``None`` when an input is
 missing or not physically meaningful (zero/negative) — a calculation never
@@ -13,6 +13,7 @@ Units are explicit in every parameter name.  Formulas follow:
   aortic valve stenosis: a focused update from the EACVI and the ASE.
   J Am Soc Echocardiogr 2017;30:372–392 — continuity AVA (VTI and Vmax forms),
   velocity ratio (DVI), AVA indexed to BSA, SVi.
+* Qp:Qs — RVOT stroke volume over LVOT stroke volume (Quiñones 2002).
 """
 
 from __future__ import annotations
@@ -24,12 +25,17 @@ def _positive(*values: float | None) -> bool:
     return all(value is not None and math.isfinite(value) and value > 0.0 for value in values)
 
 
+def circle_area_cm2(diameter_cm: float | None) -> float | None:
+    """Cross-sectional area of a circular orifice, cm²: ``π · (D/2)²``."""
+    if not _positive(diameter_cm):
+        return None
+    radius = diameter_cm / 2.0
+    return math.pi * radius * radius
+
+
 def lvot_area_cm2(lvot_diameter_cm: float | None) -> float | None:
     """LVOT cross-sectional area, cm²: ``π · (D/2)²`` (circular LVOT assumed)."""
-    if not _positive(lvot_diameter_cm):
-        return None
-    radius = lvot_diameter_cm / 2.0
-    return math.pi * radius * radius
+    return circle_area_cm2(lvot_diameter_cm)
 
 
 def stroke_volume_ml(lvot_area: float | None, lvot_vti_cm: float | None) -> float | None:
@@ -78,3 +84,10 @@ def dimensionless_index(lvot_flow: float | None, av_flow: float | None) -> float
     if not _positive(lvot_flow, av_flow):
         return None
     return lvot_flow / av_flow
+
+
+def qp_qs_ratio(qp_ml: float | None, qs_ml: float | None) -> float | None:
+    """Pulmonary-to-systemic flow ratio: ``SV_RVOT / SV_LVOT`` (same beat rate assumed)."""
+    if not _positive(qp_ml, qs_ml):
+        return None
+    return qp_ml / qs_ml

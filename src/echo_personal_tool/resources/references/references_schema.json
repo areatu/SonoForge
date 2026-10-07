@@ -74,6 +74,9 @@
         "norm_male": { "$ref": "#/$defs/NormRange" },
         "norm_female": { "$ref": "#/$defs/NormRange" },
         "pathology_desc": { "type": "string" },
+        "note": {
+          "type": "string"
+        },
         "source": { "type": "string" },
         "gradations": {
           "type": "array",

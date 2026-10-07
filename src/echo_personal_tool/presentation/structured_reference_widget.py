@@ -334,6 +334,15 @@ class _ParameterCard(QWidget):
             patho_table = self._make_pathology_table(patho_rows, p)
             layout.addWidget(patho_table)
 
+        # Free-text caveat (e.g. lower secondary-MR thresholds for an elliptical orifice)
+        note = getattr(param, "note", None) or ""
+        if note:
+            note_label = QLabel(f"* {note}")
+            note_label.setObjectName("refParamNote")
+            note_label.setWordWrap(True)
+            note_label.setStyleSheet(f"font-size: 12px; color: {p['text_dim']}; font-style: italic; border: none;")
+            layout.addWidget(note_label)
+
     def _make_table(
         self,
         headers: list[str],

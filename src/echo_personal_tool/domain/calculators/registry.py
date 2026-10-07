@@ -9,7 +9,9 @@ a :class:`CalculatorSpec` here plus the pure formula in
 
 Stage 11а (decision D-25) ships the continuity family: LVOT area, SV, SVi,
 CO, CI, AVA (VTI and Vmax), AVAi and DVI.  Stage 11б adds PISA for MR and AR
-(flow rate, EROA, RVol, RF).  MVA/PASP/Qp:Qs (11в) follow the same pattern.
+(flow rate, EROA, RVol, RF).  Stage 11в adds MVA (PHT and PISA), pulmonary
+pressures and resistance (PASP, mPAP, PVR), Qp:Qs, Teichholz volumes/EF and a
+plain orifice-area card (LVOT, RVOT, any diameter).
 """
 
 from __future__ import annotations
@@ -20,11 +22,14 @@ from dataclasses import dataclass
 from echo_personal_tool.domain.calculations.continuity import (
     ava_continuity_cm2,
     cardiac_output_l_min,
+    circle_area_cm2,
     dimensionless_index,
     indexed_to_bsa,
     lvot_area_cm2,
+    qp_qs_ratio,
     stroke_volume_ml,
 )
+from echo_personal_tool.domain.calculations.mitral_stenosis import mva_pht_cm2, mva_pisa_cm2
 from echo_personal_tool.domain.calculations.pisa import (
     eroa_cm2,
     pisa_flow_rate_ml_s,
@@ -32,12 +37,28 @@ from echo_personal_tool.domain.calculations.pisa import (
     regurgitant_fraction_mr_percent,
     regurgitant_volume_ml,
 )
+from echo_personal_tool.domain.calculations.pulmonary_hemodynamics import (
+    mpap_chemla_mmhg,
+    mpap_mahan_mmhg,
+    pasp_mmhg,
+    pvr_abbas_wu,
+    tr_gradient_mmhg,
+)
+from echo_personal_tool.domain.calculations.teichholz import (
+    ejection_fraction_percent,
+    fractional_shortening_percent,
+    volume_from_cm_ml,
+)
 
 Values = Mapping[str, float]
 
 SECTION_CONTINUITY = "continuity"
 SECTION_MR = "mr"
 SECTION_AR = "ar"
+SECTION_MS = "ms"
+SECTION_RIGHT = "right"
+SECTION_LV = "lv"
+SECTION_ORIFICE = "orifice"
 SECTION_PATIENT = "patient"
 
 
@@ -139,6 +160,25 @@ INPUTS: tuple[InputSpec, ...] = (
     InputSpec("va_ar", "Va AR", "calc.input.va_ar", "cm/s", 0, (15.0, 70.0), (1.0, 150.0), SECTION_AR, True),
     InputSpec("ar_vmax", "AR Vmax", "calc.input.ar_vmax", "m/s", 2, (2.5, 6.5), (0.1, 10.0), SECTION_AR),
     InputSpec("ar_vti", "AR VTI", "calc.input.ar_vti", "cm", 1, (50.0, 300.0), (1.0, 600.0), SECTION_AR),
+    # Mitral stenosis (Э11в): PHT interval, PISA radius ("PISA MS" caliper),
+    # aliasing velocity and funnel angle typed by the user, CW peak velocity.
+    InputSpec("mv_pht", "MV PHT", "calc.input.mv_pht", "ms", 0, (30.0, 500.0), (5.0, 1500.0), SECTION_MS),
+    InputSpec("pisa_r_ms", "PISA r MS", "calc.input.pisa_r_ms", "cm", 2, (0.3, 2.0), (0.05, 3.0), SECTION_MS),
+    InputSpec("va_ms", "Va MS", "calc.input.va_ms", "cm/s", 0, (15.0, 70.0), (1.0, 150.0), SECTION_MS, True),
+    InputSpec("mv_vmax", "MV Vmax", "calc.input.mv_vmax", "m/s", 2, (1.0, 3.5), (0.1, 10.0), SECTION_MS),
+    InputSpec("ms_angle", "α MS", "calc.input.ms_angle", "°", 0, (60.0, 180.0), (10.0, 180.0), SECTION_MS, True),
+    # Right heart and pulmonary haemodynamics (Э11в).  RVOTd is the diameter at
+    # the PW sample site of RVOT VTI (caliper "RVOTd"), not the RV-size "RVOT".
+    InputSpec("rvot_d", "RVOTd", "calc.input.rvot_d", "cm", 2, (1.5, 3.5), (0.3, 6.0), SECTION_RIGHT),
+    InputSpec("rvot_vti", "RVOT VTI", "calc.input.rvot_vti", "cm", 1, (5.0, 40.0), (0.5, 200.0), SECTION_RIGHT),
+    InputSpec("tr_vmax", "TR Vmax", "calc.input.tr_vmax", "m/s", 2, (1.5, 6.0), (0.1, 10.0), SECTION_RIGHT),
+    InputSpec("rap", "RAP", "calc.input.rap", "mmHg", 0, (0.0, 20.0), (0.0, 40.0), SECTION_RIGHT, True),
+    InputSpec("rvot_at", "RVOT AT", "calc.input.rvot_at", "ms", 0, (50.0, 170.0), (5.0, 500.0), SECTION_RIGHT),
+    # LV linear dimensions (2D or M-mode calipers LVEDD / LVESD).
+    InputSpec("lvedd", "LVEDD", "calc.input.lvedd", "cm", 2, (3.0, 7.0), (0.5, 12.0), SECTION_LV),
+    InputSpec("lvesd", "LVESD", "calc.input.lvesd", "cm", 2, (2.0, 5.5), (0.3, 10.0), SECTION_LV),
+    # Any other circular orifice (pulmonary annulus, conduit…): typed only.
+    InputSpec("orifice_d", "D", "calc.input.orifice_d", "cm", 2, (0.5, 4.0), (0.05, 10.0), SECTION_ORIFICE, True),
     InputSpec("hr", "HR", "calc.input.hr", "bpm", 0, (30.0, 200.0), (10.0, 300.0), SECTION_PATIENT),
     InputSpec("height", "Height", "calc.input.height", "cm", 0, (50.0, 230.0), (20.0, 260.0), SECTION_PATIENT),
     InputSpec("weight", "Weight", "calc.input.weight", "kg", 1, (3.0, 250.0), (0.5, 400.0), SECTION_PATIENT),
@@ -159,6 +199,38 @@ _REF_QUINONES_2002 = (
 _REF_ZOGHBI_2017 = (
     "Zoghbi WA et al. Recommendations for noninvasive evaluation of native valvular regurgitation: "
     "a report from the ASE developed in collaboration with the SCMR. J Am Soc Echocardiogr 2017;30:303–371"
+)
+_REF_BAUMGARTNER_2009 = (
+    "Baumgartner H et al. Echocardiographic assessment of valve stenosis: EAE/ASE recommendations "
+    "for clinical practice. J Am Soc Echocardiogr 2009;22:1–23"
+)
+_REF_RUDSKI_2010 = (
+    "Rudski LG et al. Guidelines for the echocardiographic assessment of the right heart in adults. "
+    "J Am Soc Echocardiogr 2010;23:685–713"
+)
+_REF_CHEMLA_2004 = (
+    "Chemla D et al. New formula for predicting mean pulmonary artery pressure using systolic "
+    "pulmonary artery pressure. Chest 2004;126:1313–1317"
+)
+_REF_MAHAN_1983 = (
+    "Mahan G et al. Estimation of pulmonary artery pressure by pulsed Doppler echocardiography. "
+    "Circulation 1983;68(Suppl III):III-367"
+)
+_REF_ABBAS_2003 = (
+    "Abbas AE et al. A simple method for noninvasive estimation of pulmonary vascular resistance. "
+    "J Am Coll Cardiol 2003;41:1021–1027"
+)
+_REF_HUMBERT_2022 = (
+    "Humbert M et al. 2022 ESC/ERS Guidelines for the diagnosis and treatment of pulmonary "
+    "hypertension. Eur Heart J 2022;43:3618–3731"
+)
+_REF_TEICHHOLZ_1976 = (
+    "Teichholz LE et al. Problems in echocardiographic volume determinations: echocardiographic-"
+    "angiographic correlations in the presence or absence of asynergy. Am J Cardiol 1976;37:7–11"
+)
+_REF_LANG_2015 = (
+    "Lang RM et al. Recommendations for cardiac chamber quantification by echocardiography in adults: "
+    "an update from the ASE and the EACVI. J Am Soc Echocardiogr 2015;28:1–39"
 )
 _REF_BAUMGARTNER_2017 = (
     "Baumgartner H et al. Recommendations on the echocardiographic assessment of aortic valve "
@@ -389,7 +461,257 @@ def _pisa_calculator(valve: str) -> CalculatorSpec:
 PISA_MR = _pisa_calculator("MR")
 PISA_AR = _pisa_calculator("AR")
 
-CALCULATORS: tuple[CalculatorSpec, ...] = (STROKE_VOLUME, AORTIC_VALVE_AREA, PISA_MR, PISA_AR)
+
+MITRAL_VALVE_AREA = CalculatorSpec(
+    id="mitral_valve_area",
+    title_key="calc.title.mitral_valve_area",
+    outputs=(
+        OutputSpec(
+            "mva_pht",
+            "MVA (PHT)",
+            "calc.output.mva_pht",
+            "cm²",
+            2,
+            "220 / MV PHT",
+            ("mv_pht",),
+            lambda v: mva_pht_cm2(v.get("mv_pht")),
+            reference_ids=("ms_area", "ms_pht"),
+        ),
+        OutputSpec(
+            "mva_pisa",
+            "MVA (PISA)",
+            "calc.output.mva_pisa",
+            "cm²",
+            2,
+            "2π × (PISA r MS)² × α MS / 180 × Va MS / MV Vmax",
+            ("pisa_r_ms", "va_ms", "mv_vmax", "ms_angle"),
+            lambda v: mva_pisa_cm2(v.get("pisa_r_ms"), v.get("va_ms"), _cm_s("mv_vmax")(v), v.get("ms_angle")),
+            reference_ids=("ms_area",),
+        ),
+    ),
+    assumptions_key="calc.assumptions.mitral_valve_area",
+    references=(_REF_BAUMGARTNER_2009,),
+)
+
+
+PULMONARY_PRESSURE = CalculatorSpec(
+    id="pulmonary_pressure",
+    title_key="calc.title.pulmonary_pressure",
+    outputs=(
+        OutputSpec(
+            "tr_pg",
+            "TR PGmax",
+            "calc.output.tr_pg",
+            "mmHg",
+            0,
+            "4 × TR Vmax²",
+            ("tr_vmax",),
+            lambda v: tr_gradient_mmhg(v.get("tr_vmax")),
+            reference_ids=("tr_vmax_ph",),
+        ),
+        OutputSpec(
+            "pasp",
+            "PASP",
+            "calc.output.pasp",
+            "mmHg",
+            0,
+            "TR PGmax + RAP",
+            ("tr_pg", "rap"),
+            lambda v: pasp_mmhg(v.get("tr_pg"), v.get("rap")),
+            reference_ids=("spap",),
+        ),
+        OutputSpec(
+            "mpap_pasp",
+            "mPAP (PASP)",
+            "calc.output.mpap_pasp",
+            "mmHg",
+            0,
+            "0.61 × PASP + 2",
+            ("pasp",),
+            lambda v: mpap_chemla_mmhg(v.get("pasp")),
+            reference_ids=("mpap",),
+        ),
+        OutputSpec(
+            "mpap_at",
+            "mPAP (AT)",
+            "calc.output.mpap_at",
+            "mmHg",
+            0,
+            "79 − 0.45 × RVOT AT",
+            ("rvot_at",),
+            lambda v: mpap_mahan_mmhg(v.get("rvot_at")),
+            reference_ids=("mpap",),
+        ),
+        OutputSpec(
+            "pvr",
+            "PVR",
+            "calc.output.pvr",
+            "WU",
+            2,
+            "10 × TR Vmax / RVOT VTI + 0.16",
+            ("tr_vmax", "rvot_vti"),
+            lambda v: pvr_abbas_wu(v.get("tr_vmax"), v.get("rvot_vti")),
+            reference_ids=("pvr",),
+        ),
+    ),
+    assumptions_key="calc.assumptions.pulmonary_pressure",
+    references=(_REF_RUDSKI_2010, _REF_CHEMLA_2004, _REF_MAHAN_1983, _REF_ABBAS_2003, _REF_HUMBERT_2022),
+)
+
+
+_RVOT_AREA = OutputSpec(
+    "rvot_area",
+    "RVOT area",
+    "calc.output.rvot_area",
+    "cm²",
+    2,
+    "π × (RVOTd / 2)²",
+    ("rvot_d",),
+    lambda v: circle_area_cm2(v.get("rvot_d")),
+)
+
+QP_QS = CalculatorSpec(
+    id="qp_qs",
+    title_key="calc.title.qp_qs",
+    outputs=(
+        _RVOT_AREA,
+        OutputSpec(
+            "qp",
+            "Qp (SV RVOT)",
+            "calc.output.qp",
+            "mL",
+            1,
+            "RVOT area × RVOT VTI",
+            ("rvot_area", "rvot_vti"),
+            lambda v: stroke_volume_ml(v.get("rvot_area"), v.get("rvot_vti")),
+        ),
+        _LVOT_AREA,
+        OutputSpec(
+            "qs",
+            "Qs (SV LVOT)",
+            "calc.output.qs",
+            "mL",
+            1,
+            "LVOT area × LVOT VTI",
+            ("lvot_area", "lvot_vti"),
+            lambda v: stroke_volume_ml(v.get("lvot_area"), v.get("lvot_vti")),
+        ),
+        OutputSpec(
+            "qp_qs",
+            "Qp:Qs",
+            "calc.output.qp_qs",
+            "",
+            2,
+            "Qp / Qs",
+            ("qp", "qs"),
+            lambda v: qp_qs_ratio(v.get("qp"), v.get("qs")),
+            reference_ids=("qp_qs",),
+        ),
+    ),
+    assumptions_key="calc.assumptions.qp_qs",
+    references=(_REF_QUINONES_2002,),
+)
+
+
+def _teichholz_sv(values: Values) -> float | None:
+    edv, esv = values.get("edv_teich"), values.get("esv_teich")
+    if edv is None or esv is None or esv >= edv:
+        return None
+    return edv - esv
+
+
+TEICHHOLZ = CalculatorSpec(
+    id="teichholz",
+    title_key="calc.title.teichholz",
+    outputs=(
+        OutputSpec(
+            "edv_teich",
+            "EDV (Teichholz)",
+            "calc.output.edv_teich",
+            "mL",
+            0,
+            "7 / (2.4 + LVEDD) × LVEDD³",
+            ("lvedd",),
+            lambda v: volume_from_cm_ml(v.get("lvedd")),
+        ),
+        OutputSpec(
+            "esv_teich",
+            "ESV (Teichholz)",
+            "calc.output.esv_teich",
+            "mL",
+            0,
+            "7 / (2.4 + LVESD) × LVESD³",
+            ("lvesd",),
+            lambda v: volume_from_cm_ml(v.get("lvesd")),
+        ),
+        OutputSpec(
+            "sv_teich",
+            "SV (Teichholz)",
+            "calc.output.sv_teich",
+            "mL",
+            0,
+            "EDV − ESV",
+            ("edv_teich", "esv_teich"),
+            _teichholz_sv,
+        ),
+        OutputSpec(
+            "ef_teich",
+            "EF (Teichholz)",
+            "calc.output.ef_teich",
+            "%",
+            0,
+            "(EDV − ESV) / EDV × 100",
+            ("edv_teich", "esv_teich"),
+            lambda v: ejection_fraction_percent(v.get("edv_teich"), v.get("esv_teich")),
+        ),
+        OutputSpec(
+            "fs",
+            "FS",
+            "calc.output.fs",
+            "%",
+            0,
+            "(LVEDD − LVESD) / LVEDD × 100",
+            ("lvedd", "lvesd"),
+            lambda v: fractional_shortening_percent(v.get("lvedd"), v.get("lvesd")),
+        ),
+    ),
+    assumptions_key="calc.assumptions.teichholz",
+    references=(_REF_TEICHHOLZ_1976, _REF_LANG_2015),
+)
+
+
+ORIFICE_AREA = CalculatorSpec(
+    id="orifice_area",
+    title_key="calc.title.orifice_area",
+    outputs=(
+        _LVOT_AREA,
+        _RVOT_AREA,
+        OutputSpec(
+            "area_d",
+            "Area (D)",
+            "calc.output.area_d",
+            "cm²",
+            2,
+            "π × (D / 2)²",
+            ("orifice_d",),
+            lambda v: circle_area_cm2(v.get("orifice_d")),
+        ),
+    ),
+    assumptions_key="calc.assumptions.orifice_area",
+    references=(_REF_QUINONES_2002,),
+)
+
+CALCULATORS: tuple[CalculatorSpec, ...] = (
+    STROKE_VOLUME,
+    AORTIC_VALVE_AREA,
+    PISA_MR,
+    PISA_AR,
+    MITRAL_VALVE_AREA,
+    PULMONARY_PRESSURE,
+    QP_QS,
+    TEICHHOLZ,
+    ORIFICE_AREA,
+)
 
 _CALCULATOR_BY_ID = {item.id: item for item in CALCULATORS}
 

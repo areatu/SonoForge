@@ -35,6 +35,9 @@ class ParameterRef:
     norm_female: NormRange | None = None
     pathology_desc: str | None = None
     source: str | None = None
+    #: Free-text caveat shown under the gradations (e.g. the lower secondary-MR
+    #: thresholds for an elliptical orifice).  Not parsed.
+    note: str | None = None
     gradations: list[ParameterGradationRef] = field(default_factory=list)
 
     @property
@@ -101,6 +104,7 @@ def _parse_parameters(raw: list[dict]) -> list[ParameterRef]:
             norm_female=_parse_norm_range(p.get("norm_female")),
             pathology_desc=p.get("pathology_desc"),
             source=p.get("source"),
+            note=p.get("note"),
             gradations=_parse_parameter_gradations(p.get("gradations")),
         )
         for p in raw
@@ -176,6 +180,8 @@ def _param_to_dict(param: ParameterRef) -> dict:
         d["pathology_desc"] = param.pathology_desc
     if param.source:
         d["source"] = param.source
+    if param.note:
+        d["note"] = param.note
     if param.gradations:
         d["gradations"] = []
         for g in param.gradations:

@@ -32,6 +32,8 @@ class ReferenceHint:
     #: Pathology the thresholds belong to (``Primary Mitral Regurgitation``):
     #: tells apart several hints for the same output.
     context: str = ""
+    #: Free-text caveat of the reference parameter (shown under the line).
+    note: str = ""
 
     def text(self) -> str:
         parts = " · ".join(f"{item.name} {item.range_text}" for item in self.gradations)
@@ -87,7 +89,8 @@ def reference_hint(reference_id: str | None, language: str = "en") -> ReferenceH
         if not gradations:
             return None
         context = getattr(pathology, "name", "") or ""
-        return ReferenceHint(param.name, param.unit, tuple(gradations), param.source or "", context)
+        note = getattr(param, "note", None) or ""
+        return ReferenceHint(param.name, param.unit, tuple(gradations), param.source or "", context, note)
     return None
 
 

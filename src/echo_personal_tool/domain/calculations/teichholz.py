@@ -14,6 +14,30 @@ def volume_ml(dimension_mm: float) -> float:
     return (7.0 / (2.4 + l_cm)) * (l_cm**3)
 
 
+def volume_from_cm_ml(dimension_cm: float | None) -> float | None:
+    """Teichholz volume, mL, for a diameter in cm; ``None`` for a missing/non-positive one."""
+    if dimension_cm is None or not dimension_cm > 0:
+        return None
+    return volume_ml(dimension_cm * 10.0)
+
+
+def fractional_shortening_percent(lvedd_cm: float | None, lvesd_cm: float | None) -> float | None:
+    """Fractional shortening, %: ``(LVEDD − LVESD) / LVEDD × 100``.
+
+    ``None`` when LVESD is not smaller than LVEDD (labels swapped / wrong phase).
+    """
+    if lvedd_cm is None or lvesd_cm is None or not lvedd_cm > 0 or not lvesd_cm > 0 or lvesd_cm >= lvedd_cm:
+        return None
+    return (lvedd_cm - lvesd_cm) / lvedd_cm * 100.0
+
+
+def ejection_fraction_percent(edv_ml: float | None, esv_ml: float | None) -> float | None:
+    """EF, %: ``(EDV − ESV) / EDV × 100``; ``None`` when ESV is not smaller than EDV."""
+    if edv_ml is None or esv_ml is None or not edv_ml > 0 or not esv_ml > 0 or esv_ml >= edv_ml:
+        return None
+    return (edv_ml - esv_ml) / edv_ml * 100.0
+
+
 def from_linear_measurements(
     measurements: tuple[LinearMeasurement, ...],
 ) -> TeichholzResult | None:

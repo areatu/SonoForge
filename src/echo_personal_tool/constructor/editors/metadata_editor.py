@@ -118,6 +118,22 @@ class MetadataEditor(BaseEditor):
 
         layout.addLayout(row2)
 
+        # Row 3: Note (free-text caveat shown under the gradations)
+        row3 = QHBoxLayout()
+        row3.setSpacing(12)
+        note_label = QLabel(tr("constructor.meta.note_label"))
+        note_label.setStyleSheet(f"color: {p['text']};")
+        row3.addWidget(note_label)
+        self._note_edit = QLineEdit()
+        self._note_edit.setObjectName("constructorNoteEdit")
+        self._note_edit.setPlaceholderText(tr("constructor.meta.note_placeholder"))
+        self._note_edit.setStyleSheet(
+            f"QLineEdit {{ color: {p['text']}; background: {p['bg_panel']}; border: 1px solid {p['border']}; padding: 2px 6px; }}"  # noqa: E501
+        )
+        self._note_edit.textChanged.connect(self._on_changed)
+        row3.addWidget(self._note_edit, 1)
+        layout.addLayout(row3)
+
     # ── Public API ──
 
     def set_parameter(self, param: ParameterModel) -> None:
@@ -136,6 +152,7 @@ class MetadataEditor(BaseEditor):
 
         self._source_edit.setText(param.source or "")
         self._desc_edit.setText(param.pathology_desc or "")
+        self._note_edit.setText(param.note or "")
 
         self._block_signals(False)
 
@@ -146,6 +163,7 @@ class MetadataEditor(BaseEditor):
         self._age_spin.blockSignals(block)
         self._source_edit.blockSignals(block)
         self._desc_edit.blockSignals(block)
+        self._note_edit.blockSignals(block)
 
     def _on_changed(self, _: Any = None) -> None:
         if self._parameter is None:
@@ -153,5 +171,6 @@ class MetadataEditor(BaseEditor):
 
         self._parameter.source = self._source_edit.text() or None
         self._parameter.pathology_desc = self._desc_edit.text() or None
+        self._parameter.note = self._note_edit.text() or None
 
         self.metadata_changed.emit()

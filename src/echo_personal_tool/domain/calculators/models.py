@@ -72,7 +72,9 @@ class CalcWarning:
     ``code`` values: ``out_of_range`` (input outside its plausible range;
     ``input_id`` set), ``dvi_above_one`` (LVOT flow above AV flow — labels or
     modes are probably swapped), ``ava_methods_diverge`` (VTI and Vmax AVA
-    differ by more than 25 %).
+    differ by more than 25 %), ``rf_above_100`` (regurgitant fraction above
+    100 %), ``lvesd_not_below_lvedd`` (Teichholz: systolic diameter not smaller
+    than the diastolic one).
     """
 
     code: str

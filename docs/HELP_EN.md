@@ -430,9 +430,9 @@ The `Low noise`, `Normal`, and `High noise` presets change trace sensitivity. Th
 
 Select and drag supported peaks, interval endpoints, and trace points. The derived metrics are recalculated. If a value is wrong because the velocity or time scale is wrong, correct calibration first rather than moving the trace to match an expected number.
 
-### 9.6 Calculations: continuity equation
+### 9.6 Calculations (calculators)
 
-The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation, and MR and AR regurgitation with the PISA method. All values are for research use only (RUO). Verify every number.
+The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation, MR and AR regurgitation with the PISA method, mitral valve area, pulmonary pressures and resistance, Qp:Qs, LV volumes and EF by Teichholz and orifice area from a diameter. All values are for research use only (RUO). Verify every number.
 
 **What is computed**
 
@@ -472,6 +472,33 @@ The “Mitral regurgitation (PISA)” and “Aortic regurgitation (PISA)” card
 - **Jet Vmax and VTI** come from the `MR Vmax`/`MR VTI` and `AR Vmax`/`AR VTI` Doppler measurements (magnitude, mean of the last three).
 - **RF** needs the LVOT stroke volume from the continuity equation. For MR it assumes no significant aortic regurgitation. An AR RF above 100 % is flagged with a warning.
 - **Reference gradations** are shown for EROA, RVol and RF. MR gets two lines, primary and secondary regurgitation, because their thresholds differ. No grade is assigned automatically.
+
+**Mitral stenosis, pulmonary haemodynamics, Qp:Qs, Teichholz, orifice area**
+
+| Card | Output | Formula | Needs |
+|---|---|---|---|
+| Mitral stenosis | MVA (PHT), cm² | 220 / `MV PHT` | `MV PHT` |
+| | MVA (PISA), cm² | 2π·r²·α/180·Va / `MV Vmax` | `PISA MS`, Va, angle α, `MV Vmax` (CW, m/s) |
+| Pulmonary haemodynamics | TR PGmax, mmHg | 4·`TR Vmax`² | `TR Vmax` (CW, m/s) |
+| | PASP | TR PGmax + RAP | + RAP |
+| | mPAP (PASP) | 0.61·PASP + 2 (Chemla) | PASP |
+| | mPAP (AT) | 79 − 0.45·`RVOT AT` (Mahan) | `RVOT AT`, ms |
+| | PVR, WU | 10·`TR Vmax` / `RVOT VTI` + 0.16 (Abbas) | `TR Vmax`, `RVOT VTI` |
+| Shunt | Qp, Qs, mL | RVOT area × `RVOT VTI`; LVOT area × `LVOT VTI` | `RVOTd`, `RVOT VTI`, `LVOTd`, `LVOT VTI` |
+| | Qp:Qs | Qp / Qs | |
+| LV by Teichholz | EDV, ESV, mL | 7 / (2.4 + D) × D³ | `LVEDD`, `LVESD` (cm) |
+| | SV, EF, FS | EDV − ESV; (EDV − ESV)/EDV; (LVEDD − LVESD)/LVEDD | |
+| Orifice area | LVOT area, RVOT area, Area (D) | π·(D/2)² | `LVOTd`, `RVOTd`, any diameter D |
+
+- **New calipers** in the valve group of the `Measures` tab: `PISA MS` is the PISA radius in mitral stenosis (colour frame, atrial side); `RVOTd` is the RVOT diameter at the `RVOT VTI` PW sample site, below the pulmonary valve. The RV-group `RVOT` caliper measures RV size at another level and is not used for Qp.
+- **`LVEDD` and `LVESD`** come from the 2D LV calipers (`IVSd-LVIDd-LVPWd (2D)`, `LVIDs (2D)`) and from the M-mode Teichholz (`IVSd-LVIDd-LVPWd`, `LVIDs`), mean of the newest three.
+- **`MV PHT`, `RVOT AT`** are Doppler intervals; **`MV Vmax`, `TR Vmax`, `RVOT VTI`** are the study Doppler measurements.
+- **Typed only:** Va and the angle α in mitral stenosis (not in DICOM), RAP (3, 8 or 15 mmHg from IVC size and collapse — see the “Right Atrial Pressure” reference) and the free diameter D. Until RAP is entered PASP is not computed, but the TR gradient is shown.
+- **Teichholz:** ASE/EACVI 2015 do not recommend linear methods for EF and the EF gradations in the reference refer to Simpson, so the card shows none. If `LVESD` is not smaller than `LVEDD`, EF, FS and SV are not computed and the card warns about swapped labels or phases.
+- **Reference gradations:** MVA (`ms_area`, `ms_pht`), TR Vmax (PH probability), PASP, mPAP, PVR (≤2 WU, ESC/ERS 2022), Qp:Qs (≥1.5 haemodynamically significant shunt, AHA/ACC 2018). PVR and Qp:Qs were added to the reference in this version.
+- **Secondary MR:** severe is EROA ≥0.4 cm² and RVol ≥60 mL; a note under the gradations says that with an elliptical orifice or low flow severe may start at EROA ≥0.3 cm² and RVol ≥45 mL.
+
+**Collapsible sections.** Inputs are grouped into sections; click a heading to collapse it. The heading shows how many fields of the section have a value, e.g. `Mitral stenosis (2/5)`.
 
 **Checks.** A value outside the plausible range is outlined in orange and listed in the warnings. You also get a warning when DVI > 1 (labels or modes are probably swapped: LVOT is PW, AV is CW) and when AVA by VTI and by Vmax differ by more than 25 %. The reference gradations (AVA, AVAi, DSI) are shown under the results. No severity grade is assigned **automatically**.
 
