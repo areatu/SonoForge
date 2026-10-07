@@ -393,7 +393,10 @@ class OrthancStudyDialog(QDialog):
         self._owns_client = query_service is None and retrieve_service is None
         self._result: tuple[str, str] | None = None
         self._downloading = False
-        self._worker: OrthancDownloadWorker | None = None
+        # Typed loosely on purpose: during the download phase this is an
+        # ``OrthancDownloadWorker``, and while the export writes files it is a
+        # ``DicomDeidentifyWorker``.  Both expose ``cancel()``.
+        self._worker: object | None = None
         self._session_id: str | None = None
         self._client_closed = False
         self._close_pending = False
@@ -414,6 +417,8 @@ class OrthancStudyDialog(QDialog):
         # this hand-off to scan/open the short physical paths instead of the
         # now-discarded UID-based cache tree.
         self._completed_disk_download_path: Path | None = None
+        #: Whether the download that is being exported to disk was partial.
+        self._partial_export: bool = False
         self._init_timer = QTimer(self)
         self._init_timer.setSingleShot(True)
         self._init_timer.timeout.connect(self._init_network)
@@ -1992,9 +1997,11 @@ class OrthancStudyDialog(QDialog):
 
     def _on_cancel(self) -> None:
         if self._downloading and self._worker is not None:
+            # Works for both phases: the download worker stops fetching, the
+            # export worker stops after the file it is writing right now.
             self._set_status(tr("orthanc.download_cancelled"))
             self._cancel_btn.setEnabled(False)
-            self._worker.cancel()
+            self._worker.cancel()  # type: ignore[attr-defined]
             self._force_close_timer.start(_CANCEL_FORCE_CLOSE_MS)
             return
         if self._downloading:
@@ -2082,7 +2089,14 @@ class OrthancStudyDialog(QDialog):
         self._start_next_download_to_disk()
 
     def _on_disk_download_done(self, *, partial: bool = False) -> None:
-        """Handle completion of all downloads to disk — copy files from cache to target."""
+        """Handle completion of all downloads to disk — ask, then de-identify.
+
+        Downloading into the cache was the first half; the second is the export
+        itself, and that is where the identifiers have to go (§5 of the design
+        doc).  The user confirms the variant on a real frame of the study
+        (``DicomExportDialog``), the worker rewrites the files, and a failed
+        export never leaves the dialog stuck in the busy state.
+        """
         if not self._is_alive():
             return
         log.info(
@@ -2092,45 +2106,142 @@ class OrthancStudyDialog(QDialog):
         )
         # Worker already finished: no cancel handshake is pending anymore.
         self._worker = None
+        self._partial_export = partial
 
-        # Copy files from cache to user-selected directory (whatever succeeded)
-        copied_count = 0
-        copy_error: str | None = None
-        if self._session_id is not None:
-            session_dir = self._cache.session_path(self._session_id)
-            if session_dir.is_dir():
-                target_dir = Path(self._save_to_disk_path)
-                try:
-                    copied_count = self._copy_session_files(session_dir, target_dir)
-                    if copied_count > 0:
-                        self._completed_disk_download_path = target_dir
-                    log.info("[DLG] Copied %d files to %s", copied_count, self._save_to_disk_path)
-                except OSError as exc:
-                    # The reset below must run even here: skipping it leaves
-                    # ``_downloading`` stuck and locks the dialog forever.
-                    copy_error = str(exc)
-                    log.warning("[DLG] copy to %s failed: %s", self._save_to_disk_path, exc)
+        if self._session_id is None:
+            self._on_failed("", tr("orthanc.partial_failed"))
+            return
+        session_dir = self._cache.session_path(self._session_id)
+        target_dir = Path(self._save_to_disk_path)
+        try:
+            plan = self._session_export_plan(session_dir, target_dir) if session_dir.is_dir() else []
+        except OSError as exc:
+            # The reset below must run even here: skipping it leaves
+            # ``_downloading`` stuck and locks the dialog forever.
+            self._fail_disk_export(str(exc))
+            return
 
-        self._reset_after_download()
-        self._session_id = None
-        self._progress.setValue(self._progress.maximum())
-        if copy_error is not None:
-            message = tr("orthanc.download_error.body", message=self._clip(copy_error, _DIALOG_TEXT_LIMIT))
-            self._set_status(message)
+        if not plan:
+            self._fail_disk_export(tr("orthanc.disk_export_nothing"))
+            return
+
+        from echo_personal_tool.presentation.dicom_export_dialog import (
+            DicomExportDialog,
+            ExportSample,
+            load_preview_frame,
+        )
+        from echo_personal_tool.presentation.ui_animations import exec_animated
+
+        sample_path = plan[0][0]
+        sample_frame = load_preview_frame(sample_path)
+        frame_size = (int(sample_frame.shape[0]), int(sample_frame.shape[1])) if sample_frame is not None else None
+        dialog = DicomExportDialog(
+            self,
+            files=len(plan),
+            target_dir=target_dir,
+            sample=ExportSample(path=sample_path, label=sample_path.name),
+            sample_frame=sample_frame,
+            frame_size=frame_size,
+            text_detector=self._text_detector_enabled(),
+        )
+        # §9 of the design doc: one geometry-only line per export decision, the
+        # raw material for deciding whether the detector earns its place.  A
+        # cancelled export is recorded too — "the user turned the mask off here"
+        # is exactly the divergence the evaluation is looking for.
+        accepted = exec_animated(dialog) == QDialog.DialogCode.Accepted
+        self._log_deidentification_decision(dialog, accepted=accepted)
+
+        if not accepted:
+            log.info("[DLG] de-identified export cancelled by the user")
+            self._reset_after_download()
+            self._session_id = None
             self._progress.hide()
             self._set_lists_enabled(True)
             self._cancel_btn.setText(tr("orthanc.cancel"))
             self._cancel_btn.setEnabled(True)
             self._update_load_button()
-            QMessageBox.warning(
-                self,
-                tr("orthanc.download_error.title"),
-                message,
-            )
+            self._set_status(tr("orthanc.disk_export_cancelled"))
             return
+
+        self._start_export_worker(plan, dialog.chosen_options())
+
+    def _text_detector_enabled(self) -> bool:
+        from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+
+        try:
+            return bool(load_user_preferences().phi_text_detector)
+        except Exception:  # noqa: BLE001 - a preference must never block an export
+            log.debug("[DLG] cannot read user preferences for the PHI detector", exc_info=True)
+            return False
+
+    @staticmethod
+    def _log_deidentification_decision(dialog: object, *, accepted: bool) -> None:
+        """Write the §9 evaluation line (geometry only, never PHI).
+
+        The record is advisory instrumentation: a dialog that cannot build it
+        must not fail the export, so any error is demoted to ``debug``.
+        """
+        try:
+            log.info("[DEID] %s", dialog.evaluation_record(accepted=accepted))  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - instrumentation must never block the export
+            log.debug("[DLG] cannot build the de-identification evaluation record", exc_info=True)
+
+    def _start_export_worker(self, plan: list[tuple[Path, Path]], options: object) -> None:
+        from echo_personal_tool.application.workers.dicom_deidentify_worker import (
+            DicomDeidentifyWorker,
+        )
+
+        worker = DicomDeidentifyWorker(plan, options)  # type: ignore[arg-type]
+        self._worker = worker
+        self._progress.setRange(0, len(plan))
+        self._progress.setValue(0)
+        self._progress.show()
+        self._set_status(tr("orthanc.disk_export_writing", total=len(plan)))
+        worker.signals.progress.connect(self._on_export_progress)
+        worker.signals.finished.connect(self._on_export_finished, Qt.ConnectionType.QueuedConnection)
+        worker.signals.failed.connect(self._on_export_failed, Qt.ConnectionType.QueuedConnection)
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_export_progress(self, current: int, total: int) -> None:
+        if not self._is_alive():
+            return
+        self._progress.setRange(0, total)
+        self._progress.setValue(current)
+        self._set_status(tr("orthanc.disk_export_progress", current=current, total=total))
+
+    def _on_export_finished(self, summary: object) -> None:
+        """Report the de-identified export and close the dialog."""
+        if not self._is_alive():
+            return
+        self._worker = None
+        exported = int(getattr(summary, "exported", 0))
+        failed = int(getattr(summary, "failed", 0))
+        unverified = int(getattr(summary, "unverified", 0))
+        lines = tuple(getattr(summary, "lines", ()))
+        if exported:
+            self._completed_disk_download_path = Path(self._save_to_disk_path)
+        log.info("[DLG] de-identified export: exported=%d failed=%d unverified=%d", exported, failed, unverified)
+
+        self._reset_after_download()
+        self._session_id = None
+        self._progress.setValue(self._progress.maximum())
+        if bool(getattr(summary, "cancelled", False)):
+            self._set_status(tr("orthanc.disk_export_cancelled"))
+            self._progress.hide()
+            self._set_lists_enabled(True)
+            self._cancel_btn.setText(tr("orthanc.cancel"))
+            self._cancel_btn.setEnabled(True)
+            self._update_load_button()
+            self.accept()
+            return
+        partial = bool(getattr(self, "_partial_export", False))
         partial_warning = self._partial_instance_warning_text()
-        if partial or partial_warning:
+        if failed or unverified or partial or partial_warning:
             messages: list[str] = []
+            if failed:
+                messages.append(tr("orthanc.disk_export_failures", failed=str(failed), exported=str(exported)))
+            if unverified:
+                messages.append(tr("orthanc.disk_export_unverified", count=str(unverified)))
             if partial:
                 saved = self._completed_downloads - self._failed_downloads
                 messages.append(
@@ -2145,20 +2256,34 @@ class OrthancStudyDialog(QDialog):
                 messages.append(partial_warning)
             message = self._clip("\n".join(messages), _DIALOG_TEXT_LIMIT)
             self._set_status(message)
-            QMessageBox.warning(
-                self,
-                tr("orthanc.download_error.title"),
-                message,
-            )
+            QMessageBox.warning(self, tr("orthanc.download_error.title"), message)
         else:
-            message = tr("orthanc.disk_download_complete", path=self._save_to_disk_path)
+            detail = self._clip("\n".join(lines[-3:]), _DIALOG_TEXT_LIMIT)
+            message = tr("orthanc.disk_export_complete", path=self._save_to_disk_path, exported=str(exported))
+            if detail:
+                message = f"{message}\n\n{detail}"
             self._set_status(message)
-            QMessageBox.information(
-                self,
-                tr("orthanc.download_complete"),
-                message,
-            )
+            QMessageBox.information(self, tr("orthanc.download_complete"), message)
         self.accept()
+
+    def _on_export_failed(self, error: str) -> None:
+        if not self._is_alive():
+            return
+        log.warning("[DLG] de-identified export failed: %s", error)
+        self._fail_disk_export(error)
+
+    def _fail_disk_export(self, error: str) -> None:
+        self._worker = None
+        self._reset_after_download()
+        self._session_id = None
+        message = tr("orthanc.download_error.body", message=self._clip(error, _DIALOG_TEXT_LIMIT))
+        self._set_status(message)
+        self._progress.hide()
+        self._set_lists_enabled(True)
+        self._cancel_btn.setText(tr("orthanc.cancel"))
+        self._cancel_btn.setEnabled(True)
+        self._update_load_button()
+        QMessageBox.warning(self, tr("orthanc.download_error.title"), message)
 
     def _set_lists_enabled(self, enabled: bool) -> None:
         self._studies_list.setEnabled(enabled)
@@ -2166,22 +2291,22 @@ class OrthancStudyDialog(QDialog):
         self._find_btn.setEnabled(enabled)
 
     @staticmethod
-    def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
-        """Export with short physical names: ``Instance/<study #>/<file>``.
+    def _session_export_plan(session_dir: Path, target_dir: Path) -> list[tuple[Path, Path]]:
+        """Map every cached instance to its export path: ``Instance/<study #>/<file>``.
 
-        UIDs are identifiers inside the DICOM dataset, not filesystem names.
-        The bytes are copied unchanged, so opening the short paths reconstructs
-        the true Study/Series/SOP UIDs and later server upload uses those header
-        values.  A numeric study directory and a five-character SOP suffix keep
-        Windows 10 paths comfortably below MAX_PATH; deterministic ``-N``
-        suffixes make coincident short names collision-safe.
+        UIDs are identifiers inside the DICOM dataset, not filesystem names, so
+        the export uses short physical names.  A numeric study directory and a
+        five-character SOP suffix keep Windows 10 paths comfortably below
+        MAX_PATH; deterministic ``-N`` suffixes make coincident short names
+        collision-safe.  The directories are created here, so both callers (the
+        plain copy and the de-identifying export) produce the same layout.
         """
 
         import re
 
         export_root = target_dir if target_dir.name.casefold() == "instance" else target_dir / "Instance"
         export_root.mkdir(parents=True, exist_ok=True)
-        copied_count = 0
+        plan: list[tuple[Path, Path]] = []
         study_dirs = sorted(path for path in session_dir.iterdir() if path.is_dir())
         for study_index, study_dir in enumerate(study_dirs, start=1):
             study_target = export_root / str(study_index)
@@ -2199,9 +2324,16 @@ class OrthancStudyDialog(QDialog):
                     candidate = f"{short_stem}-{ordinal}.dcm"
                     ordinal += 1
                 used_names.add(candidate.casefold())
-                shutil.copy2(dcm_file, study_target / candidate)
-                copied_count += 1
-        return copied_count
+                plan.append((dcm_file, study_target / candidate))
+        return plan
+
+    @staticmethod
+    def _copy_session_files(session_dir: Path, target_dir: Path) -> int:
+        """Copy a cached session to disk without touching the datasets."""
+        plan = OrthancStudyDialog._session_export_plan(session_dir, target_dir)
+        for source, destination in plan:
+            shutil.copy2(source, destination)
+        return len(plan)
 
     @staticmethod
     def _sop_uid_for(dcm_file: Path) -> str:

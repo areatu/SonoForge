@@ -216,10 +216,26 @@ def apply_mask(
         out = np.empty_like(frame)
     np.copyto(out, frame)
 
-    values = fills if fills is not None else fill_values(frame, plan)
-    for rect, value in zip(plan.rects, values, strict=False):
+    fill_plan_inplace(out, plan, fills if fills is not None else fill_values(frame, plan))
+    return out
+
+
+def fill_plan_inplace(
+    frame: np.ndarray,
+    plan: MaskPlan,
+    fills: tuple[np.ndarray | int, ...],
+) -> None:
+    """Write ``fills`` into ``frame`` for every rectangle of ``plan``.
+
+    The mutating counterpart of :func:`apply_mask`, for callers that own their
+    buffer: the DICOM export rewrites decoded frames in place instead of
+    copying a whole cine (a 120-frame 720p clip is 200 MB per copy).  ``fills``
+    must have been computed by :func:`fill_values` for the same geometry.
+    """
+    if plan.is_empty or frame.size == 0:
+        return
+    for rect, value in zip(plan.rects, fills, strict=False):
         band = rect.clamped(frame.shape[1], frame.shape[0])
         if band.is_empty:
             continue
-        out[band.y0 : band.y1, band.x0 : band.x1] = value
-    return out
+        frame[band.y0 : band.y1, band.x0 : band.x1] = value

@@ -1759,6 +1759,16 @@ class ViewerWidget(QWidget):
         """
         return self._phi_filter.apply(pixels, self._phi_mask_source_path())
 
+    @property
+    def phi_masking_enabled(self) -> bool:
+        """Whether frames are anonymized on display — one switch for all paths.
+
+        Export asks the viewer instead of reading preferences again, so a file
+        exported right after the checkbox was toggled behaves like the frame on
+        screen.
+        """
+        return self._phi_filter.enabled
+
     def _phi_mask_source_path(self) -> Path | None:
         """Path of the file currently displayed, used to pick a PHI profile."""
         if self._current_state is None or self._current_state.instance is None:

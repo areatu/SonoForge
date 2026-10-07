@@ -50,6 +50,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     load_user_preferences,
     save_user_preferences,
 )
+from echo_personal_tool.presentation.anonymization_filter import frame_masker
 from echo_personal_tool.presentation.dark_theme import apply_clinical_theme
 from echo_personal_tool.presentation.dicom_upload_dialog import run_dicom_upload_dialog
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
@@ -1706,7 +1707,11 @@ class MainWindow(QMainWindow):
         )
         if not dest:
             return
-        if instance.media_format == "mp4":
+        # The mask resolves the profile from the exported file's own header, not
+        # from whatever the viewer happens to show, so exporting a clip from the
+        # gallery anonymizes it like the preview of that clip does.
+        mask = frame_masker(instance.path, enabled=self._viewer.phi_masking_enabled)
+        if instance.media_format == "mp4" and mask is None:
             import shutil as _shutil
 
             _shutil.copy2(str(instance.path), dest)
@@ -1722,6 +1727,7 @@ class MainWindow(QMainWindow):
             dest_path=dest,
             media_format=instance.media_format,
             frame_time_ms=instance.frame_time_ms,
+            mask=mask,
             parent=self,
         )
         worker.signals.progress.connect(self._on_mp4_export_progress, Qt.ConnectionType.QueuedConnection)
