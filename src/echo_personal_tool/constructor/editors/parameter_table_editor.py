@@ -28,7 +28,7 @@ from echo_personal_tool.constructor.models import (
     ParameterModel,
     PathologyModel,
 )
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
 
 
@@ -383,7 +383,7 @@ class ParameterTableEditor(BaseEditor):
         reply = QMessageBox.question(
             self,
             tr("constructor.param.delete_params_title"),
-            tr("constructor.param.delete_params_confirm", count=str(len(rows))),
+            tr_plural("constructor.param.delete_selected_confirm", len(rows)),
         )
         if reply == QMessageBox.StandardButton.Yes:
             for row in rows:

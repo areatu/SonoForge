@@ -60,6 +60,27 @@ def test_plural_falls_back_for_unknown_category() -> None:
     assert tr_plural("status.studies_loaded", 1.5) == "Loaded 1.5 studies"
 
 
+def test_plural_forms_for_count_sensitive_strings() -> None:
+    """The strings a user sees with small counts must not read "1 записей"."""
+    set_language("ru")
+    assert tr_plural("persistence.stats", 1, size="0.1").startswith("1 запись ·")
+    assert tr_plural("persistence.stats", 2, size="0.2").startswith("2 записи ·")
+    assert tr_plural("persistence.stats", 5, size="0.5").startswith("5 записей ·")
+    assert tr_plural("constructor.param.delete_selected_confirm", 1) == "Удалить 1 параметр?"
+    assert tr_plural("constructor.param.delete_selected_confirm", 3) == "Удалить 3 параметра?"
+    assert tr_plural("constructor.param.delete_selected_confirm", 7) == "Удалить 7 параметров?"
+    assert tr_plural("constructor.pathology.delete_confirm", 1, names="A").startswith("Удалить 1 патологию?")
+    assert tr_plural("constructor.pathology.delete_confirm", 2, names="A, B").startswith("Удалить 2 патологии?")
+    assert tr_plural("viewer.vessel_average_done", 1, psv=1.0, edv=0.5).endswith("(среднее по 1 циклу)")
+    assert tr_plural("viewer.vessel_average_done", 4, psv=1.0, edv=0.5).endswith("(среднее по 4 циклам)")
+
+    set_language("en")
+    assert tr_plural("persistence.stats", 1, size="0.1").startswith("1 record ·")
+    assert tr_plural("persistence.stats", 2, size="0.2").startswith("2 records ·")
+    assert tr_plural("constructor.param.delete_selected_confirm", 1) == "Delete 1 parameter?"
+    assert tr_plural("viewer.vessel_average_done", 1, psv=1.0, edv=0.5).endswith("(avg 1 cycle)")
+
+
 def test_set_language_switches_linear_measurement_label() -> None:
     measurement = LinearMeasurement("IVSd", 10.0, 5.0)
     set_language("ru")

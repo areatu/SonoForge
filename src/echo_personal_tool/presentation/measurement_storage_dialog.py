@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 from echo_personal_tool.infrastructure.user_preferences import load_user_preferences, save_user_preferences
 
 
@@ -97,7 +97,11 @@ class MeasurementStorageDialog(QDialog):
                 item.setData(Qt.ItemDataRole.UserRole, key)
                 self.records.addItem(item)
             self.summary.setText(
-                tr("persistence.stats", count=str(len(rows)), size=f"{sum(row[1] for row in rows) / 1024**2:.1f}")
+                tr_plural(
+                    "persistence.stats",
+                    len(rows),
+                    size=f"{sum(row[1] for row in rows) / 1024**2:.1f}",
+                )
             )
 
         self.persistence.submit(read, apply)

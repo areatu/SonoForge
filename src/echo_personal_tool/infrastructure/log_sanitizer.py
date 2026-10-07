@@ -22,6 +22,11 @@ _DICOM_TAG_FIELD = re.compile(
     re.MULTILINE,
 )
 _DICOM_UID = re.compile(r"(?<![0-9A-Za-z])\d+(?:\.\d+){2,}(?![0-9A-Za-z])")
+#: Below this length a dotted number is almost certainly a version (0.3.1,
+#: 3.11.9, 6.11.1) or a date, not a DICOM UID: real UIDs start at ~13 chars
+#: (1.2.840.10008.1.2) and are usually 30+.  Masking versions turned the
+#: session header of every support bundle into "version: <dicom-uid>".
+_MIN_UID_LIKE_LEN = 12
 _WINDOWS_PATH = re.compile(r"""(?i)(?<![A-Za-z0-9])(?:[A-Z]:\\|\\\\)[^\r\n"'<>|,;:)}\]]+""")
 _POSIX_PATH = re.compile(r"""(?<![\w])/[^\r\n"'<>|,;)}\]]+""")
 _URL = re.compile(r"(?i)\b(?:https?|dicomweb)://[^\s\"'<>]+")
@@ -58,6 +63,9 @@ def sanitize_log_text(text: str) -> str:
     clean = _EMAIL.sub("<email>", clean)
     clean = _WINDOWS_PATH.sub("<path>", clean)
     clean = _POSIX_PATH.sub("<path>", clean)
-    clean = _DICOM_UID.sub("<dicom-uid>", clean)
+    clean = _DICOM_UID.sub(
+        lambda match: "<dicom-uid>" if len(match.group(0)) >= _MIN_UID_LIKE_LEN else match.group(0),
+        clean,
+    )
     clean = _MEDIA_FILENAME.sub("<media-file>", clean)
     return clean

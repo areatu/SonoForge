@@ -313,6 +313,19 @@ class TestDeleteSelected:
         mock_msgbox.question.assert_not_called()
 
     @patch("echo_personal_tool.constructor.editors.parameter_table_editor.QMessageBox")
+    def test_delete_confirm_uses_plural_forms_and_a_real_key(self, mock_msgbox, editor) -> None:
+        mock_msgbox.question.return_value = mock_msgbox.StandardButton.No
+        params = [ParameterModel(id=f"p{i}", name=f"P{i}") for i in range(3)]
+        editor.set_parameters(params)
+        editor._table.selectRow(0)
+        editor.delete_selected()
+
+        title, text = mock_msgbox.question.call_args[0][1:3]
+        assert "constructor." not in text  # the key itself must never reach the user
+        assert text == "Удалить 1 параметр?"
+        assert title
+
+    @patch("echo_personal_tool.constructor.editors.parameter_table_editor.QMessageBox")
     def test_delete_confirmed(self, mock_msgbox, editor) -> None:
         mock_msgbox.question.return_value = mock_msgbox.StandardButton.Yes
         params = [ParameterModel(id="p1", name="P1"), ParameterModel(id="p2", name="P2")]

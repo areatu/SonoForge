@@ -33,6 +33,15 @@ _LOG = logging.getLogger(__name__)
 
 # These modules emit detailed transfer progress that is useful in a support
 # bundle, but is too noisy at DEBUG for the rest of the application.
+#: Third-party loggers whose DEBUG output drowns the session log and the
+#: support bundle; INFO keeps one summary line per HTTP request.
+_CHATTY_THIRD_PARTY_LOGGERS = (
+    "httpcore",
+    "httpcore.connection",
+    "httpcore.http11",
+    "httpx",
+    "urllib3",
+)
 _DIAGNOSTIC_LOGGERS = (
     "echo_personal_tool.infrastructure.dicom_session",
     "echo_personal_tool.application.workers.orthanc_download_worker",
@@ -184,6 +193,13 @@ def configure_logging(
     for name in _DIAGNOSTIC_LOGGERS:
         logger = logging.getLogger(name)
         previous_logger_levels[name] = logger.level
+    # HTTP client chatter is DEBUG-only noise in support bundles: a real
+    # Windows session produced a 474 KB archive that was ~98% httpcore
+    # header dumps.  Keep INFO (one line per request) unless ECHO_DEBUG=1.
+    for name in _CHATTY_THIRD_PARTY_LOGGERS:
+        logger = logging.getLogger(name)
+        previous_logger_levels.setdefault(name, logger.level)
+        logger.setLevel(logging.DEBUG if os.environ.get("ECHO_DEBUG") else logging.INFO)
     for name in ("pylibjpeg", "pylibjpeg.utils", "pydicom"):
         logger = logging.getLogger(name)
         previous_logger_levels.setdefault(name, logger.level)

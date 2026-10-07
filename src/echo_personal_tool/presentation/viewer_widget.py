@@ -3013,7 +3013,7 @@ class ViewerWidget(QWidget):
             return False
         psv, edv = result
         count = self._doppler.vessel_averaged_cycles()
-        self._measurement_label.setText(tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count))
+        self._measurement_label.setText(tr_plural("viewer.vessel_average_done", count, psv=psv, edv=edv))
         self._measurement_label.show()
         if self._doppler.vessel_cycle_selection_active():
             self._update_vessel_cycle_selection_label()
@@ -3037,7 +3037,7 @@ class ViewerWidget(QWidget):
             return
         psv, edv = values
         count = self._doppler.vessel_averaged_cycles()
-        self._measurement_label.setText(tr("viewer.vessel_average_done", psv=psv, edv=edv, count=count))
+        self._measurement_label.setText(tr_plural("viewer.vessel_average_done", count, psv=psv, edv=edv))
         self._measurement_label.show()
 
     def accept_vessel_measurement(self) -> bool:
