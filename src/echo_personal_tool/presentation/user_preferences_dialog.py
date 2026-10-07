@@ -42,6 +42,8 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MAX_MAGNETIC_RADIUS,
     MAX_MAGNETIC_RELEASE,
     MAX_MAGNETIC_WEIGHT,
+    MAX_MAGNIFIER_RADIUS_PX,
+    MAX_MAGNIFIER_ZOOM,
     MAX_OVERLAY_FONT_SIZE,
     MAX_OVERLAY_OPACITY,
     MAX_PDF_FONT_SIZE,
@@ -51,6 +53,8 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MIN_MAGNETIC_RADIUS,
     MIN_MAGNETIC_RELEASE,
     MIN_MAGNETIC_WEIGHT,
+    MIN_MAGNIFIER_RADIUS_PX,
+    MIN_MAGNIFIER_ZOOM,
     MIN_OVERLAY_FONT_SIZE,
     MIN_OVERLAY_OPACITY,
     MIN_PDF_FONT_SIZE,
@@ -266,6 +270,20 @@ class UserPreferencesDialog(QDialog):
         self._phi_text_detector.setToolTip(tr("preferences.phi_text_detector_hint"))
         self._reduce_motion = QCheckBox(tr("preferences.reduce_motion"))
         self._reduce_motion.setChecked(current.reduce_motion)
+        self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
+        self._magnifier_check.setChecked(current.magnifier_enabled)
+        self._magnifier_check.setToolTip(tr("preferences.magnifier_hint"))
+        self._magnifier_zoom_spin = QDoubleSpinBox()
+        self._magnifier_zoom_spin.setRange(MIN_MAGNIFIER_ZOOM, MAX_MAGNIFIER_ZOOM)
+        self._magnifier_zoom_spin.setSingleStep(0.5)
+        self._magnifier_zoom_spin.setDecimals(1)
+        self._magnifier_zoom_spin.setSuffix(" x")
+        self._magnifier_zoom_spin.setValue(current.magnifier_zoom)
+        self._magnifier_radius_spin = QSpinBox()
+        self._magnifier_radius_spin.setRange(MIN_MAGNIFIER_RADIUS_PX, MAX_MAGNIFIER_RADIUS_PX)
+        self._magnifier_radius_spin.setSingleStep(5)
+        self._magnifier_radius_spin.setSuffix(" px")
+        self._magnifier_radius_spin.setValue(current.magnifier_radius_px)
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
         display_form.addRow(tr("tool_panel.wl_preset"), self._wl_preset)
         display_form.addRow(tr("tool_panel.thumbnail_size"), self._thumbnail_scale)
@@ -277,6 +295,9 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(self._show_doppler_cal_roi)
         display_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
         display_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
+        display_form.addRow(self._magnifier_check)
+        display_form.addRow(tr("preferences.magnifier_zoom"), self._magnifier_zoom_spin)
+        display_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
         tabs.addTab(
@@ -646,6 +667,9 @@ class UserPreferencesDialog(QDialog):
             wl_level=stored.wl_level,
             wl_dr=stored.wl_dr,
             show_crosshair=self._show_crosshair.isChecked(),
+            magnifier_enabled=self._magnifier_check.isChecked(),
+            magnifier_zoom=float(self._magnifier_zoom_spin.value()),
+            magnifier_radius_px=int(self._magnifier_radius_spin.value()),
             show_panel_frames=self._show_panel_frames.isChecked(),
             show_caliper_labels_on_frame=self._show_caliper_labels.isChecked(),
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),

@@ -943,6 +943,12 @@ class ViewerWidget(QWidget):
         self._magnetic_snap_release_strength = _MAGNETIC_RELEASE_STRENGTH
         self._magnetic_snap_release_max_radial_px = _MAGNETIC_RELEASE_MAX_RADIAL_PX
         self._show_crosshair = True
+        self._magnifier_enabled = True
+        self._magnifier_zoom = 3.0
+        self._magnifier_radius_px = 70
+        self._magnifier_held = False
+        self._magnifier_lens = None
+        self._reduce_motion = False
         self._show_panel_frames = False
         self._show_caliper_labels_on_frame = True
         self._show_caliper_inline_labels = False
@@ -1080,6 +1086,7 @@ class ViewerWidget(QWidget):
         mapped = self._view.mapSceneToView(scene_pos)
         if mapped is not None:
             self._update_measurement_crosshair(float(mapped.x()), float(mapped.y()))
+        self._update_magnifier_loupe(scene_pos)
         if (
             mapped is not None
             and self._doppler.get_tool_mode() == "interval"
@@ -1186,7 +1193,61 @@ class ViewerWidget(QWidget):
             if event.type() == QEvent.Type.KeyPress:
                 self.keyPressEvent(event)
                 return event.isAccepted()
+            if event.type() == QEvent.Type.KeyRelease:
+                self.keyReleaseEvent(event)
+                return event.isAccepted()
         return super().eventFilter(watched, event)
+
+    # -- Magnifier loupe (variant B: offset, hold-Z) -------------------------
+    def _ensure_magnifier_lens(self):  # type: ignore[no-untyped-def]
+        from echo_personal_tool.presentation.magnifier_lens import MagnifierLens
+
+        if self._magnifier_lens is None:
+            self._magnifier_lens = MagnifierLens(self)
+            self._magnifier_lens.configure(self._magnifier_zoom, self._reduce_motion)
+        return self._magnifier_lens
+
+    def _update_magnifier_loupe(self, scene_pos) -> None:  # type: ignore[no-untyped-def]
+        if not self._magnifier_enabled or not self._magnifier_held:
+            if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+                self._magnifier_lens.hide_animated(instant=True)
+            return
+        try:
+            display = self._image_item.image
+        except AttributeError:
+            display = None
+        if display is None:
+            return
+        mapped = self._view.mapSceneToView(scene_pos)
+        if mapped is None:
+            return
+        lens = self._ensure_magnifier_lens()
+        lens.set_lens_diameter(int(self._magnifier_radius_px) * 2)
+        lens.set_crop(np.asarray(display), float(mapped.x()), float(mapped.y()))
+        # Offset loupe left-above: cursor point stays visible, lens floats aside.
+        try:
+            cursor_global = QCursor.pos()
+            local = self.mapFromGlobal(cursor_global)
+        except RuntimeError:
+            return
+        offset = QPoint(-lens.width() + 12, -lens.height() + 16)
+        pos = local + offset
+        pos.setX(max(0, min(pos.x(), max(0, self.width() - lens.width()))))
+        pos.setY(max(0, min(pos.y(), max(0, self.height() - lens.height()))))
+        lens.move(pos)
+        center = QPoint(pos.x() + lens.width() // 2, pos.y() + lens.height() // 2)
+        lens.set_anchor_delta(local - center)
+        if not lens.isVisible():
+            lens.show_animated()
+        else:
+            lens.update()
+
+    def _hide_magnifier_on_point(self) -> None:
+        # Point placed (click): drop the hold so the loupe closes; user can
+        # hold Z again for the next point.
+        self._magnifier_held = False
+        if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+            self._magnifier_lens.hide_animated()
 
     @_prof
     def wheelEvent(self, event) -> None:  # type: ignore[override]
@@ -1321,6 +1382,14 @@ class ViewerWidget(QWidget):
         )
         self._phi_filter.set_enabled(preferences.anonymize_frames)
         self._show_crosshair = preferences.show_crosshair
+        self._magnifier_enabled = preferences.magnifier_enabled
+        self._magnifier_zoom = preferences.magnifier_zoom
+        self._magnifier_radius_px = preferences.magnifier_radius_px
+        self._reduce_motion = preferences.reduce_motion
+        if self._magnifier_lens is not None:
+            self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
+            if not self._magnifier_enabled:
+                self._magnifier_lens.hide_animated(instant=True)
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
         self._show_caliper_inline_labels = preferences.show_caliper_inline_labels
@@ -6695,6 +6764,7 @@ class ViewerWidget(QWidget):
         if ev.button() != Qt.MouseButton.LeftButton:
             return False
 
+        self._hide_magnifier_on_point()
         ev.accept()
         qt_double = bool(ev.double())
         screen_point = self._event_screen_point(ev)
@@ -7170,6 +7240,7 @@ class ViewerWidget(QWidget):
             return False
         if self._calibration_active:
             return False
+        self._hide_magnifier_on_point()
 
         click: tuple[float, float] | None = None
         if hasattr(ev, "scenePos"):
@@ -8039,6 +8110,11 @@ class ViewerWidget(QWidget):
 
     @_prof
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key.Key_Z and not event.isAutoRepeat():
+            if self._magnifier_enabled and not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                self._magnifier_held = True
+                event.accept()
+                return
         if event.key() == Qt.Key.Key_Escape:
             if self._caliper_drag_active:
                 self._finish_caliper_node_drag(cancel=True)
@@ -8122,6 +8198,15 @@ class ViewerWidget(QWidget):
                     event.accept()
                     return
         super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key.Key_Z and not event.isAutoRepeat():
+            self._magnifier_held = False
+            if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+                self._magnifier_lens.hide_animated()
+            event.accept()
+            return
+        super().keyReleaseEvent(event)
 
     def _remove_doppler_measurement_at_cursor(self) -> bool:
         """Delete the Doppler measurement under the last cursor position (D-23).
