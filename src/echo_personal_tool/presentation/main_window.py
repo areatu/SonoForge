@@ -1405,6 +1405,7 @@ class MainWindow(QMainWindow):
         self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.set_lv_contour_input(preferences.lv_contour_input)
+        self._viewer.set_atrial_contour_input(preferences.atrial_contour_input)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
         self._gallery.set_sort_mode(preferences.thumbnail_sort_mode)
@@ -3240,11 +3241,20 @@ class MainWindow(QMainWindow):
         view: str,
         *,
         model: bool = False,
+        force_landmarks: bool = False,
         overlay: str,
         status: str,
     ) -> bool:
-        starter = self._viewer.start_model_contour if model else self._viewer.start_contour
-        if not starter(chamber=chamber, phase=phase, view=view):
+        if model:
+            started = self._viewer.start_model_contour(chamber=chamber, phase=phase, view=view)
+        else:
+            started = self._viewer.start_contour(
+                chamber=chamber,
+                phase=phase,
+                view=view,
+                force_landmarks=force_landmarks,
+            )
+        if not started:
             return False
         self._viewer.clear_frame_overlay()
         self._viewer.append_frame_overlay(overlay)
@@ -3282,6 +3292,7 @@ class MainWindow(QMainWindow):
             "LA",
             "ES",
             "A4C",
+            force_landmarks=True,
             overlay=tr("status.lav4c_ai_plus_overlay"),
             status=tr("status.lav4c_ai_plus_status"),
         )

@@ -338,6 +338,11 @@ class UserPreferencesDialog(QDialog):
         self._lv_contour_input_combo.addItem(tr("preferences.lv_input_trace"), "trace")
         lv_input_index = self._lv_contour_input_combo.findData(current.lv_contour_input)
         self._lv_contour_input_combo.setCurrentIndex(max(lv_input_index, 0))
+        self._atrial_contour_input_combo = QComboBox()
+        self._atrial_contour_input_combo.addItem(tr("preferences.atrial_input_landmarks"), "landmarks")
+        self._atrial_contour_input_combo.addItem(tr("preferences.atrial_input_trace"), "trace")
+        atrial_input_index = self._atrial_contour_input_combo.findData(current.atrial_contour_input)
+        self._atrial_contour_input_combo.setCurrentIndex(max(atrial_input_index, 0))
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -351,6 +356,7 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
         measure_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
+        measure_form.addRow(tr("preferences.atrial_contour_input"), self._atrial_contour_input_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
         self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
@@ -647,6 +653,7 @@ class UserPreferencesDialog(QDialog):
             length_display_unit=str(self._length_unit.currentData()),
             area_tool_mode=str(self._area_tool_mode_combo.currentData()),
             lv_contour_input=str(self._lv_contour_input_combo.currentData()),
+            atrial_contour_input=str(self._atrial_contour_input_combo.currentData()),
             show_dicom_tag_inspector=self._show_dicom_inspector.isChecked(),
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),

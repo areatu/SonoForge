@@ -871,6 +871,7 @@ class ViewerWidget(QWidget):
         self._freehand_open_arc = False
         self._area_tool_mode: str = "click"
         self._lv_contour_input: str = "landmarks"
+        self._atrial_contour_input: str = "landmarks"
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_ma_chord_item: pg.PlotDataItem | None = None
         self._active_contour_phase: str | None = None
@@ -4121,14 +4122,23 @@ class ViewerWidget(QWidget):
         self._clear_linear_caliper_graphics()
         self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=label))
 
+    def _trace_enabled_for(self, chamber: str) -> bool:
+        key = chamber.upper()
+        if key == "LV":
+            return self._lv_contour_input == "trace"
+        if key in {"LA", "RA"}:
+            return self._atrial_contour_input == "trace"
+        return False
+
     def start_contour(
         self,
         *,
         phase: str | None = None,
         view: str = "A4C",
         chamber: str = "LV",
+        force_landmarks: bool = False,
     ) -> bool:
-        if self._lv_contour_input == "trace":
+        if not force_landmarks and self._trace_enabled_for(chamber):
             return self._start_trace_contour(phase=phase, view=view, chamber=chamber)
         return self._start_contour_drawing(
             mode_kind="manual",
@@ -4174,7 +4184,8 @@ class ViewerWidget(QWidget):
         self._view.addItem(self._active_contour_item)
         self._clear_contour_hover()
         self._set_contour_nodes_pickable(False)
-        self._measurement_label.setText(tr("viewer.lv_trace_prompt"))
+        prompt_key = "viewer.lv_trace_prompt" if chamber.upper() == "LV" else "viewer.atrial_trace_prompt"
+        self._measurement_label.setText(tr(prompt_key))
         return True
 
     def start_model_contour(
@@ -8340,6 +8351,13 @@ class ViewerWidget(QWidget):
 
     def lv_contour_input(self) -> str:
         return self._lv_contour_input
+
+    def set_atrial_contour_input(self, mode: str) -> None:
+        if mode in ("landmarks", "trace"):
+            self._atrial_contour_input = mode
+
+    def atrial_contour_input(self) -> str:
+        return self._atrial_contour_input
 
     def set_despeckle_enabled(self, enabled: bool) -> None:
         self._despeckle_enabled = bool(enabled)
