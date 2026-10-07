@@ -1050,8 +1050,10 @@ topics:
       gradations:
       - name: Mild
         range_male: {high: 30.0}
-      - {name: Moderate}
-      - {name: Severe}
+      - name: Moderate
+        range_male: {low: 30.0, high: 59.0}
+      - name: Severe
+        range_male: {low: 60.0}
     - id: mr_vc_primary
       name: VC
       unit: mm

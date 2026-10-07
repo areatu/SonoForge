@@ -34,6 +34,23 @@ from echo_personal_tool.domain.services.doppler_repeats import mean_of_last
 
 #: Caliper labels that measure the LVOT diameter (menu: ``LVOTd``).
 LVOT_DIAMETER_LABELS = frozenset({"lvotd", "lvot d", "lvot"})
+#: Caliper labels of the PISA radius on a colour-flow frame (Э11б).
+PISA_RADIUS_LABELS: dict[str, frozenset[str]] = {
+    "pisa_r_mr": frozenset({"pisa mr", "pisa r mr", "pisa_mr"}),
+    "pisa_r_ar": frozenset({"pisa ar", "pisa r ar", "pisa_ar"}),
+}
+#: Spectral inputs read from the study-wide Doppler results:
+#: input id → (flow site, field, divisor to the input unit).
+_DOPPLER_INPUTS: dict[str, tuple[str, str, float]] = {
+    "lvot_vti": ("LVOT", "vti", 1.0),
+    "av_vti": ("AV", "vti", 1.0),
+    "lvot_vmax": ("LVOT", "vmax", 1.0),
+    "av_vmax": ("AV", "vmax", 100.0),
+    "mr_vti": ("MR", "vti", 1.0),
+    "mr_vmax": ("MR", "vmax", 100.0),
+    "ar_vti": ("AR", "vti", 1.0),
+    "ar_vmax": ("AR", "vmax", 100.0),
+}
 
 
 @dataclass(frozen=True)
@@ -43,17 +60,40 @@ class HeartRateCandidate:
     detail: str = ""
 
 
-def lvot_diameter_cm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, int]:
-    """Mean of the most recent LVOTd calipers (D-23 window), in cm, and their count."""
+def caliper_mean_cm(measurements: Iterable[LinearMeasurement], labels: frozenset[str]) -> tuple[float | None, int]:
+    """Mean of the most recent calibrated calipers with one of *labels* (D-23 window), in cm, and their count."""
     values = [
         item.millimeter_length / 10.0
         for item in measurements
         if not item.doppler
         and item.millimeter_length is not None
         and item.millimeter_length > 0
-        and item.label.casefold().strip() in LVOT_DIAMETER_LABELS
+        and item.label.casefold().strip() in labels
     ]
     return mean_of_last(values), len(values)
+
+
+def lvot_diameter_cm(measurements: Iterable[LinearMeasurement]) -> tuple[float | None, int]:
+    """Mean of the most recent LVOTd calipers (D-23 window), in cm, and their count."""
+    return caliper_mean_cm(measurements, LVOT_DIAMETER_LABELS)
+
+
+def _doppler_input(input_id: str, doppler: DopplerResults | None) -> InputValue:
+    site, field_name, divisor = _DOPPLER_INPUTS[input_id]
+    flow = doppler.flow(site) if doppler is not None else None
+    if flow is None:
+        return InputValue(input_id, None)
+    if field_name == "vti":
+        value = abs(flow.vti_cm) if flow.vti_cm is not None else None
+        return _measured(input_id, value, source=SOURCE_MEASURED, repeats=flow.vti_repeats)
+    value = abs(flow.vmax_cm_s) / divisor if flow.vmax_cm_s is not None else None
+    return _measured(
+        input_id,
+        value,
+        source=SOURCE_MEASURED,
+        repeats=flow.vmax_repeats,
+        detail="trace" if flow.vmax_repeats == 0 else "",
+    )
 
 
 def _measured(input_id: str, value: float | None, *, source: str, repeats: int = 0, detail: str = "") -> InputValue:
@@ -97,46 +137,31 @@ def resolve_study_inputs(
 ) -> dict[str, InputValue]:
     """Inputs for every calculator from study-wide measurements."""
     manual = manual or {}
-    lvot = doppler.flow("LVOT") if doppler is not None else None
-    av = doppler.flow("AV") if doppler is not None else None
-
-    diameter, diameter_n = lvot_diameter_cm(linear_measurements)
+    measurements = tuple(linear_measurements)
+    diameter, diameter_n = lvot_diameter_cm(measurements)
     auto: dict[str, InputValue] = {
         "lvot_d": _measured("lvot_d", diameter, source=SOURCE_MEASURED, repeats=diameter_n),
-        "lvot_vti": _measured(
-            "lvot_vti",
-            abs(lvot.vti_cm) if lvot and lvot.vti_cm is not None else None,
-            source=SOURCE_MEASURED,
-            repeats=lvot.vti_repeats if lvot else 0,
-        ),
-        "av_vti": _measured(
-            "av_vti",
-            abs(av.vti_cm) if av and av.vti_cm is not None else None,
-            source=SOURCE_MEASURED,
-            repeats=av.vti_repeats if av else 0,
-        ),
-        "lvot_vmax": _measured(
-            "lvot_vmax",
-            abs(lvot.vmax_cm_s) if lvot and lvot.vmax_cm_s is not None else None,
-            source=SOURCE_MEASURED,
-            repeats=lvot.vmax_repeats if lvot else 0,
-            detail="trace" if lvot and lvot.vmax_repeats == 0 else "",
-        ),
-        "av_vmax": _measured(
-            "av_vmax",
-            abs(av.vmax_cm_s) / 100.0 if av and av.vmax_cm_s is not None else None,
-            source=SOURCE_MEASURED,
-            repeats=av.vmax_repeats if av else 0,
-            detail="trace" if av and av.vmax_repeats == 0 else "",
-        ),
-        "hr": (
-            _measured("hr", heart_rate.bpm, source=heart_rate.source, detail=heart_rate.detail)
-            if heart_rate is not None
-            else InputValue("hr", None)
-        ),
-        "height": _measured("height", height_cm, source=SOURCE_PATIENT, detail=height_source),
-        "weight": _measured("weight", weight_kg, source=SOURCE_PATIENT, detail=weight_source),
     }
+    for input_id in _DOPPLER_INPUTS:
+        auto[input_id] = _doppler_input(input_id, doppler)
+    for input_id, labels in PISA_RADIUS_LABELS.items():
+        radius, radius_n = caliper_mean_cm(measurements, labels)
+        auto[input_id] = _measured(input_id, radius, source=SOURCE_MEASURED, repeats=radius_n)
+    for input_id in all_input_ids():
+        spec = input_spec(input_id)
+        if spec is not None and spec.manual_only:
+            auto[input_id] = InputValue(input_id, None)
+    auto.update(
+        {
+            "hr": (
+                _measured("hr", heart_rate.bpm, source=heart_rate.source, detail=heart_rate.detail)
+                if heart_rate is not None
+                else InputValue("hr", None)
+            ),
+            "height": _measured("height", height_cm, source=SOURCE_PATIENT, detail=height_source),
+            "weight": _measured("weight", weight_kg, source=SOURCE_PATIENT, detail=weight_source),
+        }
+    )
     resolved = {input_id: _apply_manual(value, manual) for input_id, value in auto.items()}
     resolved["bsa"] = _apply_manual(_bsa(resolved["height"], resolved["weight"]), manual)
     return resolved

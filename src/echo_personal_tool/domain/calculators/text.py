@@ -60,6 +60,9 @@ def source_text(item: InputValue) -> str:
         return tr("calc.source.derived_bsa")
     if source == SOURCE_MANUAL:
         return tr("calc.source.manual")
+    spec = input_spec(item.id)
+    if spec is not None and spec.manual_only:
+        return tr(f"calc.source.manual_only.{item.id}")
     return tr("calc.source.missing")
 
 
@@ -78,6 +81,8 @@ def warning_text(warning: CalcWarning) -> str:
         )
     if warning.code == "dvi_above_one":
         return tr("calc.warning.dvi_above_one")
+    if warning.code == "rf_above_100":
+        return tr("calc.warning.rf_above_100", percent=f"{warning.value or 0.0:.0f}")
     if warning.code == "ava_methods_diverge":
         percent = f"{(warning.value or 0.0) * 100:.0f}"
         return tr("calc.warning.ava_methods_diverge", percent=percent)

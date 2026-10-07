@@ -74,6 +74,12 @@ def _evaluate_calculator(spec: CalculatorSpec, inputs: Mapping[str, InputValue])
         gap = abs(ava_vti - ava_vmax) / max(ava_vti, ava_vmax)
         if gap > AVA_DIVERGENCE_THRESHOLD:
             warnings.append(CalcWarning("ava_methods_diverge", value=gap))
+    for rf_id in ("rf_mr", "rf_ar"):
+        rf = values.get(rf_id)
+        if rf is not None and rf > 100.0:
+            # AR: RVol larger than the whole LVOT stroke volume — the PISA
+            # radius/Va, the jet VTI or the LVOT inputs are inconsistent.
+            warnings.append(CalcWarning("rf_above_100", input_id=rf_id, value=rf))
     return CalculatorResult(calculator_id=spec.id, outputs=tuple(outputs), warnings=tuple(warnings))
 
 

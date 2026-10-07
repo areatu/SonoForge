@@ -1050,8 +1050,10 @@ topics:
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
-      - {name: Умеренная}
-      - {name: Тяжёлая}
+      - name: Умеренная
+        range_male: {low: 30.0, high: 59.0}
+      - name: Тяжёлая
+        range_male: {low: 60.0}
     - id: mr_vc_primary
       name: VC
       unit: мм

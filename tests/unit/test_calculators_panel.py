@@ -206,3 +206,35 @@ def test_language_switch_retranslates() -> None:
     card = panel.findChild(QGroupBox, "calcCard_stroke_volume")
     assert card.title() == tr("calc.title.stroke_volume")
     assert panel.findChild(QLabel, "calcRuo").text().startswith("Расчёты")
+
+
+def test_inputs_are_grouped_by_section() -> None:
+    panel = CalculatorsPanel()
+    for section, key in (
+        ("continuity", "calc.section.continuity"),
+        ("mr", "calc.section.mr"),
+        ("ar", "calc.section.ar"),
+        ("patient", "calc.section.patient"),
+    ):
+        heading = panel.findChild(QLabel, f"calcSection_{section}")
+        assert heading is not None and heading.text() == tr(key)
+
+
+def test_pisa_card_in_standalone_mode() -> None:
+    panel = CalculatorsPanel()
+    panel.set_mode(MODE_STANDALONE)
+    assert panel.findChild(QGroupBox, "calcCard_pisa_mr") is not None
+    for key, text in (("pisa_r_mr", "1,0"), ("va_mr", "40"), ("mr_vmax", "5"), ("mr_vti", "150")):
+        _type(panel, key, text)
+    assert _output(panel, "pisa_mr", "eroa_mr") == "0.50"
+    assert _output(panel, "pisa_mr", "rvol_mr") == "75"
+    assert _output(panel, "pisa_mr", "rf_mr") == "—"
+    assert "LVOTd" in panel.findChild(QLabel, "calcMissing_pisa_mr").text()
+    hints = panel.findChild(QLabel, "calcHints_pisa_mr").text()
+    assert "Primary Mitral Regurgitation" in hints and "Secondary Mitral Regurgitation" in hints
+
+
+def test_aliasing_velocity_asks_for_manual_entry_in_study_mode() -> None:
+    panel = CalculatorsPanel()
+    panel.set_study_calculations(_study(), has_study=True)
+    assert panel.findChild(QLabel, "calcSource_va_mr").text() == tr("calc.source.manual_only.va_mr")

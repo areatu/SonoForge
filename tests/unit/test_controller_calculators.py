@@ -121,3 +121,25 @@ def test_no_inputs_no_calculations(synthetic_dicom_path: Path) -> None:
     controller = AppController()
     _open_clip(controller, _instance(synthetic_dicom_path, "empty"))
     assert _calculations(controller) is None
+
+
+def test_pisa_mr_combines_color_caliper_cw_doppler_and_typed_va(synthetic_dicom_path: Path) -> None:
+    controller = AppController()
+    _build_study(controller, synthetic_dicom_path)
+    color = _instance(synthetic_dicom_path, "a4c-color")
+    _open_clip(controller, color)
+    controller.on_linear_measurements_changed(
+        [LinearMeasurement(label="PISA MR", pixel_length=20.0, millimeter_length=10.0)]
+    )
+    cw = _instance(synthetic_dicom_path, "a4c-cw")
+    _open_clip(controller, cw)
+    controller.save_current_instance_doppler(_doppler(_vti_trace("MR VTI", 150.0, "m1")))
+    mr = _calculations(controller).result("pisa_mr")
+    # Without Va nothing is computed — no typical aliasing velocity is assumed.
+    assert not mr.has_values
+    controller.set_calculator_input("va_mr", 40.0)
+    mr = _calculations(controller).result("pisa_mr")
+    # Vmax falls back to the trace peak (VTI 150 cm over 300 ms → 1000 cm/s).
+    assert mr.output("pisa_flow_mr").value == pytest.approx(251.3, abs=0.2)
+    assert mr.output("rvol_mr").computed
+    assert mr.output("rf_mr").computed

@@ -29,11 +29,15 @@ class ReferenceHint:
     unit: str
     gradations: tuple[GradationHint, ...]
     source: str = ""
+    #: Pathology the thresholds belong to (``Primary Mitral Regurgitation``):
+    #: tells apart several hints for the same output.
+    context: str = ""
 
     def text(self) -> str:
         parts = " · ".join(f"{item.name} {item.range_text}" for item in self.gradations)
         unit = f" {self.unit}" if self.unit else ""
-        return f"{self.parameter}: {parts}{unit}"
+        prefix = f"{self.context} — " if self.context else ""
+        return f"{prefix}{self.parameter}: {parts}{unit}"
 
 
 def _number(value: float) -> str:
@@ -69,7 +73,7 @@ def reference_hint(reference_id: str | None, language: str = "en") -> ReferenceH
     store = _store("ru" if language == "ru" else "en")
     if store is None:
         return None
-    for _topic, _pathology, _gradation, param in store.search(reference_id):
+    for _topic, pathology, _gradation, param in store.search(reference_id):
         if param.id != reference_id:
             continue
         gradations: list[GradationHint] = []
@@ -82,7 +86,8 @@ def reference_hint(reference_id: str | None, language: str = "en") -> ReferenceH
                 gradations.append(GradationHint(gradation.name, text))
         if not gradations:
             return None
-        return ReferenceHint(param.name, param.unit, tuple(gradations), param.source or "")
+        context = getattr(pathology, "name", "") or ""
+        return ReferenceHint(param.name, param.unit, tuple(gradations), param.source or "", context)
     return None
 
 

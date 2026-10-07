@@ -432,7 +432,7 @@ Select and drag supported peaks, interval endpoints, and trace points. The deriv
 
 ### 9.6 Calculations: continuity equation
 
-The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation. All values are for research use only (RUO). Verify every number.
+The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation, and MR and AR regurgitation with the PISA method. All values are for research use only (RUO). Verify every number.
 
 **What is computed**
 
@@ -455,13 +455,31 @@ The `Calculators` tab of the side panel (next to `Measures`) computes stroke vol
 
 Every field shows its source underneath. You can type a value to override the measurement for the session; the measured value stays visible in the caption. `↺` restores the measured value. An empty field means the output is not computed: typical values are **never substituted**, and the card lists what is missing.
 
+**PISA: mitral and aortic regurgitation**
+
+The “Mitral regurgitation (PISA)” and “Aortic regurgitation (PISA)” cards compute:
+
+| Output | Formula | Needs |
+|---|---|---|
+| Flow rate, mL/s | 2π·r²·Va | PISA radius, Va |
+| EROA, cm² | flow rate / jet Vmax | + `MR Vmax` / `AR Vmax` (CW, m/s) |
+| RVol, mL | EROA × jet VTI | + `MR VTI` / `AR VTI` (CW) |
+| MR RF, % | RVol / (RVol + LVOT SV) | + `LVOTd`, `LVOT VTI` |
+| AR RF, % | RVol / LVOT SV | + `LVOTd`, `LVOT VTI` |
+
+- **PISA radius**: the `PISA MR` or `PISA AR` caliper, found in the valve group of the `Measures` tab. Place it on a colour frame from the aliasing line to the orifice; the mean of the last three is used, in cm.
+- **Aliasing velocity Va** is not stored in DICOM, so **type it in** from the scanner colour scale (baseline shifted towards the jet). Until Va is entered, PISA is not computed: the `EROA ≈ r²/2` shortcut, which assumes Va = 40 cm/s and Vmax = 5 m/s, is not used.
+- **Jet Vmax and VTI** come from the `MR Vmax`/`MR VTI` and `AR Vmax`/`AR VTI` Doppler measurements (magnitude, mean of the last three).
+- **RF** needs the LVOT stroke volume from the continuity equation. For MR it assumes no significant aortic regurgitation. An AR RF above 100 % is flagged with a warning.
+- **Reference gradations** are shown for EROA, RVol and RF. MR gets two lines, primary and secondary regurgitation, because their thresholds differ. No grade is assigned automatically.
+
 **Checks.** A value outside the plausible range is outlined in orange and listed in the warnings. You also get a warning when DVI > 1 (labels or modes are probably swapped: LVOT is PW, AV is CW) and when AVA by VTI and by Vmax differ by more than 25 %. The reference gradations (AVA, AVAi, DSI) are shown under the results. No severity grade is assigned **automatically**.
 
 **Standalone mode.** Switch the selector at the top of the tab to `Standalone (manual entry)` to type values by hand without an open study (dot or comma decimals). Study measurements are left untouched, and standalone results never reach the report. `Clear` resets the typed values. `Copy` (in both modes) puts the results on the clipboard with formulas, inputs and the RUO note.
 
 **Report.** In “From study” mode the computed values appear in the `Calculations` group of the report: the window, the PDF and the text. The inputs with their sources, the method assumptions, the warnings and the RUO note are printed under the table.
 
-Current limitations: manual values are not saved between sessions; results are not shown on the overlay yet.
+Calculation results are not drawn on the overlay: they stay in the `Calculators` tab and go into the report and its PDF. Manual values are not saved between sessions.
 
 ---
 

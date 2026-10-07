@@ -177,12 +177,13 @@ class _CalculatorCard:
         hints: list[str] = []
         seen: set[str] = set()
         for output in self.spec.outputs:
-            if not output.reference_id or output.reference_id in seen:
-                continue
-            seen.add(output.reference_id)
-            hint = reference_hint(output.reference_id, get_language())
-            if hint is not None:
-                hints.append(html.escape(hint.text()))
+            for reference_id in output.reference_ids:
+                if reference_id in seen:
+                    continue
+                seen.add(reference_id)
+                hint = reference_hint(reference_id, get_language())
+                if hint is not None:
+                    hints.append(html.escape(hint.text()))
         if hints:
             title = html.escape(tr("calc.reference_title"))
             self.hints.setText(f"<span style='font-size: {small}px;'><b>{title}</b><br>{'<br>'.join(hints)}</span>")
@@ -270,8 +271,23 @@ class CalculatorsPanel(QWidget):
         grid.setVerticalSpacing(1)
         grid.setColumnStretch(0, 1)
         self._rows: dict[str, _InputRow] = {}
-        for index, input_id in enumerate(all_input_ids()):
-            self._rows[input_id] = _InputRow(self, input_id, grid, index * 2)
+        #: Section headings of the inputs grid (continuity, PISA MR/AR, patient).
+        self._section_labels: dict[str, QLabel] = {}
+        grid_row = 0
+        for input_id in all_input_ids():
+            spec = input_spec(input_id)
+            section = spec.section if spec is not None else ""
+            if section and section not in self._section_labels:
+                heading = QLabel()
+                heading.setObjectName(f"calcSection_{section}")
+                font = heading.font()
+                font.setBold(True)
+                heading.setFont(font)
+                grid.addWidget(heading, grid_row, 0, 1, 4)
+                self._section_labels[section] = heading
+                grid_row += 1
+            self._rows[input_id] = _InputRow(self, input_id, grid, grid_row)
+            grid_row += 2
         content_layout.addWidget(self._inputs_box)
 
         self._cards = [_CalculatorCard(spec, content_layout) for spec in CALCULATORS]
@@ -359,6 +375,8 @@ class CalculatorsPanel(QWidget):
         self._clear_button.setText(tr("calc.clear"))
         self._clear_button.setToolTip(tr("calc.clear_tooltip"))
         self._inputs_box.setTitle(tr("calc.inputs_title"))
+        for section, heading in self._section_labels.items():
+            heading.setText(tr(f"calc.section.{section}"))
         self._ruo.setText(tr("calc.ruo"))
         for row in self._rows.values():
             row.reload_text()
