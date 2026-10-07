@@ -98,14 +98,21 @@ def _isolate_measurement_store(request, tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_user_settings(isolated_qsettings):
+def _isolate_user_settings(request):
     """Run every unit test against a throwaway QSettings store.
 
     The app loads real user preferences from QSettings; without this a
     developer's saved preferences (for example a changed contour input mode)
     would leak into tests and make them environment-dependent.
+
+    Portable-store tests exercise the real settings files and are left
+    untouched, matching the other isolation fixtures in this file.
     """
-    yield isolated_qsettings
+    if request.module.__name__.endswith(("test_presenter_profile", "test_paths")):
+        yield
+        return
+    store = request.getfixturevalue("isolated_qsettings")
+    yield store
 
 
 @pytest.fixture(autouse=True)
