@@ -187,3 +187,91 @@ class TestStyledSelectDirectory:
         with patch("echo_personal_tool.presentation.styled_dialogs.QFileDialog", mock_cls):
             result = styled_select_directory()
         assert result == ""
+
+
+class _StubScreen:
+    """Minimal ``QScreen`` duck type: physical size, work area, DPR."""
+
+    def __init__(self, width: int, height: int, dpr: float = 1.0, available: tuple[int, int] | None = None):
+        from PySide6.QtCore import QRect
+
+        self._geometry = QRect(0, 0, width, height)
+        av_w, av_h = available if available is not None else (width, height)
+        self._available = QRect(0, 0, av_w, av_h)
+        self._dpr = dpr
+
+    def geometry(self):
+        return self._geometry
+
+    def availableGeometry(self):
+        return self._available
+
+    def devicePixelRatio(self) -> float:
+        return self._dpr
+
+
+class TestOpenFolderGeometry:
+    def test_reference_screen(self):
+        from echo_personal_tool.presentation.styled_dialogs import open_folder_geometry
+
+        assert open_folder_geometry(_StubScreen(1920, 1200)) == (750, 600, 200)
+
+    def test_scale_factor_keeps_the_physical_layout(self):
+        """125 % on 1920x1200 → logical 1536x960, DPR 1.25 → same layout."""
+        from echo_personal_tool.presentation.styled_dialogs import open_folder_geometry
+
+        assert open_folder_geometry(_StubScreen(1536, 960, dpr=1.25)) == (750, 600, 200)
+
+    def test_wider_screen_scales_up(self):
+        from echo_personal_tool.presentation.styled_dialogs import open_folder_geometry
+
+        assert open_folder_geometry(_StubScreen(2560, 1440)) == (900, 720, 240)
+
+    def test_small_screen_clamps_the_scale_and_the_divider(self):
+        from echo_personal_tool.presentation.styled_dialogs import open_folder_geometry
+
+        width, height, divider = open_folder_geometry(_StubScreen(1366, 768))
+        assert (width, height) == (525, 420)  # scale clamped to 0.7
+        assert divider == 160  # never narrower than the places column needs
+
+    def test_never_exceeds_the_work_area(self):
+        from echo_personal_tool.presentation.styled_dialogs import open_folder_geometry
+
+        width, height, _divider = open_folder_geometry(_StubScreen(1920, 1200, available=(700, 500)))
+        assert (width, height) == (668, 468)
+
+    def test_no_screen_falls_back_to_the_reference_layout(self):
+        from echo_personal_tool.presentation.styled_dialogs import open_folder_geometry
+
+        assert open_folder_geometry(None) == (750, 600, 200)
+
+
+class TestApplyOpenFolderGeometry:
+    def test_sizes_dialog_and_places_the_divider(self):
+        from PySide6.QtWidgets import QFileDialog, QSplitter
+
+        from echo_personal_tool.presentation.styled_dialogs import _apply_open_folder_geometry
+
+        dialog = QFileDialog()
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        try:
+            _apply_open_folder_geometry(dialog, screen=_StubScreen(1920, 1200))
+            assert (dialog.width(), dialog.height()) == (750, 600)
+
+            splitter = dialog.findChild(QSplitter, "splitter")
+            assert splitter is not None
+            handle = splitter.handle(1)
+            assert handle is not None
+            # Centre of the section divider, measured from the dialog edge.
+            divider_x = splitter.geometry().x() + handle.geometry().x() + splitter.handleWidth() // 2
+            assert divider_x == 200
+        finally:
+            dialog.close()
+
+    def test_never_raises_on_a_dialog_without_a_splitter(self):
+        from echo_personal_tool.presentation.styled_dialogs import _apply_open_folder_geometry
+
+        # No layout, no splitter, no screen: geometry must not break the dialog.
+        dialog = MagicMock()
+        _apply_open_folder_geometry(dialog, screen=_StubScreen(1920, 1200))
+        dialog.resize.assert_called_once_with(750, 600)

@@ -6,12 +6,16 @@ import re
 import sys
 import weakref
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QDialogButtonBox, QFileDialog, QWidget
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QFileDialog, QSplitter, QWidget
 
 from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QScreen
 
 
 def styled_open_file(
@@ -226,6 +230,113 @@ def _recents_bar(dialog: QFileDialog, store) -> QWidget:
     return bar
 
 
+# --- Open Folder geometry ---------------------------------------------------
+#
+# Reference layout, pinned to a 1920x1200 screen: a 750x600 dialog whose
+# section divider (the splitter handle between "places" and the file list)
+# sits 200 px from the left edge.  Everything else is that layout scaled to
+# the actual screen, so the dialog keeps the same share of the display.
+
+_OPEN_FOLDER_REF_SCREEN = (1920, 1200)
+_OPEN_FOLDER_REF_WIDTH = 750
+_OPEN_FOLDER_REF_HEIGHT = 600
+_OPEN_FOLDER_REF_DIVIDER = 200
+_OPEN_FOLDER_MIN_SCALE = 0.7
+_OPEN_FOLDER_MAX_SCALE = 1.5
+#: The places column never shrinks below this, and never eats more than 45 %
+#: of the dialog, so the file list stays usable on small screens.
+_OPEN_FOLDER_MIN_DIVIDER = 160
+_OPEN_FOLDER_MAX_DIVIDER = 320
+#: Keep this much of the work area free around the dialog (per side).
+_OPEN_FOLDER_WORK_AREA_MARGIN = 16
+
+
+def open_folder_geometry(screen: QScreen | None = None) -> tuple[int, int, int]:
+    """``(width, height, divider_x)`` for the Open Folder dialog, logical px.
+
+    The scale is derived from the *physical* size of *screen*
+    (``geometry() * devicePixelRatio()``), not from the logical one, so a
+    desktop scale factor (100 / 125 / 150 % …, applied by Qt through
+    ``QT_SCALE_FACTOR``) grows the dialog together with the fonts instead of
+    squeezing the same content into fewer logical pixels.
+
+    On the reference 1920x1200 screen at any scale factor this returns the
+    reference layout: ``(750, 600, 200)``.
+    """
+    ref_width, ref_height = _OPEN_FOLDER_REF_SCREEN
+    if screen is None:
+        return (_OPEN_FOLDER_REF_WIDTH, _OPEN_FOLDER_REF_HEIGHT, _OPEN_FOLDER_REF_DIVIDER)
+
+    available = screen.availableGeometry().size()
+    try:
+        ratio = float(screen.devicePixelRatio() or 1.0)
+    except (AttributeError, TypeError):
+        ratio = 1.0
+
+    # Work area first: with no screen information there is nothing to adapt to.
+    if available.width() <= 0 or available.height() <= 0:
+        return (_OPEN_FOLDER_REF_WIDTH, _OPEN_FOLDER_REF_HEIGHT, _OPEN_FOLDER_REF_DIVIDER)
+
+    physical = (screen.geometry().width() * ratio, screen.geometry().height() * ratio)
+    scale = min(physical[0] / ref_width, physical[1] / ref_height)
+    scale = max(_OPEN_FOLDER_MIN_SCALE, min(_OPEN_FOLDER_MAX_SCALE, scale))
+
+    width = min(round(_OPEN_FOLDER_REF_WIDTH * scale), available.width() - 2 * _OPEN_FOLDER_WORK_AREA_MARGIN)
+    height = min(round(_OPEN_FOLDER_REF_HEIGHT * scale), available.height() - 2 * _OPEN_FOLDER_WORK_AREA_MARGIN)
+    width = max(width, 320)
+    height = max(height, 240)
+
+    divider = round(_OPEN_FOLDER_REF_DIVIDER * scale)
+    max_divider = min(_OPEN_FOLDER_MAX_DIVIDER, round(width * 0.45), width - 120)
+    divider = max(_OPEN_FOLDER_MIN_DIVIDER, min(divider, max_divider))
+    return (width, height, divider)
+
+
+def _dialog_screen(dialog: QFileDialog) -> QScreen | None:
+    """The screen the dialog belongs to: its parent's, then the primary one."""
+    parent = dialog.parentWidget()
+    if parent is not None:
+        screen = parent.screen()
+        if screen is not None:
+            return screen
+    screen = dialog.screen()
+    if screen is not None:
+        return screen
+    return QApplication.primaryScreen()
+
+
+def _apply_open_folder_geometry(dialog: QFileDialog, screen: QScreen | None = None) -> None:
+    """Resize *dialog* and pin its section divider for the current screen.
+
+    Everything is defensive: a missing layout or splitter must leave the
+    dialog usable (default Qt sizes) rather than make it fail to open.
+    """
+    try:
+        if screen is None:
+            screen = _dialog_screen(dialog)
+        width, height, divider = open_folder_geometry(screen)
+        dialog.resize(width, height)
+
+        layout = dialog.layout()
+        if layout is None:
+            return
+        # Lay out now: the splitter's position is only known once the grid
+        # has been activated, and the divider is measured from the dialog edge.
+        layout.activate()
+        splitter = dialog.findChild(QSplitter, "splitter")
+        if splitter is None or splitter.count() < 2:
+            return
+        handle_width = splitter.handleWidth()
+        sidebar_width = divider - splitter.x() - handle_width // 2
+        sidebar_width = max(48, sidebar_width)
+        rest = max(64, splitter.width() - sidebar_width - handle_width)
+        splitter.setSizes([sidebar_width, rest])
+    except Exception:  # noqa: BLE001 - geometry must never block folder picking
+        import logging
+
+        logging.getLogger(__name__).debug("Could not apply the Open Folder geometry", exc_info=True)
+
+
 def styled_select_directory(
     parent: QWidget | None = None,
     title: str = tr("styled_dialogs.select_folder"),
@@ -249,6 +360,7 @@ def styled_select_directory(
     dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
     _add_sidebar_urls(dialog, store)
     _attach_recents_bar(dialog, store)
+    _apply_open_folder_geometry(dialog)
     _style_dialog(dialog)
     if dialog.exec() != QFileDialog.DialogCode.Accepted:
         return ""
