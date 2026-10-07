@@ -93,6 +93,7 @@ from echo_personal_tool.domain.services.doppler_grid_detector import (
 from echo_personal_tool.domain.services.frame_panel_parser import detect_panels_heuristic
 from echo_personal_tool.domain.services.mbs_lite_service import (
     fit_contour_from_landmarks,
+    infer_apex_from_open_arc,
     refine_open_arc_contour,
 )
 from echo_personal_tool.domain.services.mmode_calibration import (
@@ -343,11 +344,12 @@ class ContourViewBox(pg.ViewBox):
         if (
             self._viewer_widget is not None
             and self._viewer_widget._freehand_recording
+            and not self._viewer_widget._freehand_open_arc
             and self._viewer_widget._contour_mode_active
             and ev.button() == Qt.MouseButton.LeftButton
             and len(self._viewer_widget._freehand_points) >= 3
         ):
-            self._viewer_widget._finish_freehand_contour()
+            self._viewer_widget._finish_active_freehand_contour()
             super().mouseReleaseEvent(ev)
             return
         if self._viewer_widget is not None and self._viewer_widget._handle_caliper_drag_release(ev):
@@ -857,14 +859,18 @@ class ViewerWidget(QWidget):
         self._first_contour_point_screen: tuple[float, float] | None = None
         self._contour_mode_kind: Literal["manual", "model", "closed"] | None = None
         self._active_contour_chamber: str = "LV"
-        self._contour_stage: Literal["ma_septal", "ma_lateral", "arc", "apex", "polygon"] | None = None
+        self._contour_stage: Literal["ma_septal", "ma_lateral", "arc", "apex", "polygon", "trace"] | None = None
         self._active_mitral_septal: tuple[float, float] | None = None
         self._active_mitral_annulus: tuple[tuple[float, float], tuple[float, float]] | None = None
         self._active_apex_landmark: tuple[float, float] | None = None
         self._active_arc_points: list[tuple[float, float]] = []
         self._freehand_recording = False
         self._freehand_points: list[tuple[float, float]] = []
+        #: True while the freehand stroke belongs to an open LV arc (trace mode)
+        #: rather than the closed area tool; release then pauses instead of finishing.
+        self._freehand_open_arc = False
         self._area_tool_mode: str = "click"
+        self._lv_contour_input: str = "landmarks"
         self._active_contour_item: pg.PlotDataItem | None = None
         self._active_ma_chord_item: pg.PlotDataItem | None = None
         self._active_contour_phase: str | None = None
@@ -4122,6 +4128,8 @@ class ViewerWidget(QWidget):
         view: str = "A4C",
         chamber: str = "LV",
     ) -> bool:
+        if self._lv_contour_input == "trace":
+            return self._start_trace_contour(phase=phase, view=view, chamber=chamber)
         return self._start_contour_drawing(
             mode_kind="manual",
             pen=self._contour_pen_manual,
@@ -4129,6 +4137,45 @@ class ViewerWidget(QWidget):
             view=view,
             chamber=chamber,
         )
+
+    def _start_trace_contour(
+        self,
+        *,
+        phase: str | None = None,
+        view: str = "A4C",
+        chamber: str = "LV",
+    ) -> bool:
+        """Freehand manual contour: line-only stroke, release pauses, Enter finishes."""
+        if self._current_frame is None:
+            return False
+        if self._active_contour_item is not None:
+            return False
+
+        self.cancel_active_tool()
+        self._active_contour_view = view
+        self._active_contour_phase = phase or self._resolve_contour_phase()
+        self._active_contour_chamber = chamber
+        self._contour_mode_active = True
+        self._reset_contour_click_tracking()
+        self._contour_mode_kind = "manual"
+        self._contour_stage = "trace"
+        self._active_mitral_septal = None
+        self._active_mitral_annulus = None
+        self._active_apex_landmark = None
+        self._active_arc_points = []
+        self._freehand_points = []
+        self._freehand_recording = True
+        self._freehand_open_arc = True
+        pen = self._contour_pen_manual
+        # No per-sample marker: a continuous stroke reads as one line while
+        # tracing; only the finished, decimated nodes become draggable handles.
+        self._active_contour_item = pg.PlotDataItem(pen=pen)
+        self._active_contour_item.setZValue(20)
+        self._view.addItem(self._active_contour_item)
+        self._clear_contour_hover()
+        self._set_contour_nodes_pickable(False)
+        self._measurement_label.setText(tr("viewer.lv_trace_prompt"))
+        return True
 
     def start_model_contour(
         self,
@@ -4212,6 +4259,7 @@ class ViewerWidget(QWidget):
         self._contour_mode_active = True
         self._reset_contour_click_tracking()
         self._contour_mode_kind = mode_kind
+        self._freehand_open_arc = False
         self._contour_stage = "polygon" if mode_kind == "closed" else "ma_septal"
         self._active_mitral_septal = None
         self._active_mitral_annulus = None
@@ -4512,6 +4560,8 @@ class ViewerWidget(QWidget):
     def finish_contour(self) -> bool:
         if not self._contour_mode_active or self._active_contour_item is None:
             return False
+        if self._contour_stage == "trace":
+            return self._finish_freehand_open_arc()
         if self._contour_stage == "polygon":
             return self._finish_closed_contour()
         if self._contour_stage != "arc" or self._active_mitral_annulus is None or len(self._active_arc_points) < 1:
@@ -4652,6 +4702,52 @@ class ViewerWidget(QWidget):
         self._freehand_points = []
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
+        self.contour_completed.emit(contour)
+        return True
+
+    def _finish_active_freehand_contour(self) -> bool:
+        """Finish the running freehand stroke for whichever contour kind is active."""
+        if self._freehand_open_arc:
+            return self._finish_freehand_open_arc()
+        return self._finish_freehand_contour()
+
+    def _finish_freehand_open_arc(self) -> bool:
+        """Build an open-arc contour from a freehand trace (Variant B).
+
+        The trace is the endocardium; the mitral annulus chord is the automatic
+        closing line between the first (septal) and last (lateral) points.
+        Simpson volume is independent of which end is septal, so only the strain
+        numbering needs the trace to start at the septum (the prompt says so).
+        """
+        from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
+
+        points = self._dedupe_closed_polygon(list(self._freehand_points))
+        if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
+            self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
+            return False
+
+        reduced = reduce_polygon_points(points, epsilon=3.0, closed=False)
+        if len(reduced) < 3:
+            reduced = points
+        septal = reduced[0]
+        lateral = reduced[-1]
+        apex = infer_apex_from_open_arc(reduced, septal, lateral)
+
+        resampled = resample_open_arc(reduced, num_nodes=DEFAULT_NODE_COUNT)
+        contour = Contour(
+            phase=self._active_contour_phase or "ED",
+            view=self._active_contour_view,
+            chamber=self._active_contour_chamber,
+            source="manual",
+            mitral_annulus=(septal, lateral),
+            apex_landmark=apex,
+            points=resampled,
+            num_nodes=DEFAULT_NODE_COUNT,
+            frame_index=self._contour_frame_index(),
+        )
+        self._clear_active_contour_drawing()
+        self.set_contour_from_domain(contour)
+        self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -5506,6 +5602,7 @@ class ViewerWidget(QWidget):
         self._active_apex_landmark = None
         self._active_arc_points = []
         self._freehand_recording = False
+        self._freehand_open_arc = False
         self._freehand_points = []
         self._active_contour_phase = None
         self._contour_stage = None
@@ -6525,12 +6622,22 @@ class ViewerWidget(QWidget):
         screen_point = self._event_screen_point(ev)
         repeat_click = self._is_repeat_click(screen_point, qt_double=qt_double)
 
-        if self._area_tool_mode == "freehand" and self._freehand_recording:
-            # Freehand places no single points; a click is either the finish
-            # gesture or the start of the trace bookkeeping.
+        if self._freehand_recording and (self._area_tool_mode == "freehand" or self._freehand_open_arc):
+            # A repeat click in place is the finish gesture. Otherwise an
+            # open-arc trace also lets a plain click drop a single node.
             self._remember_contour_click(screen_point)
             if repeat_click and len(self._freehand_points) >= _CONTOUR_MIN_POINTS_TO_CLOSE:
-                self._finish_freehand_contour()
+                self._finish_active_freehand_contour()
+                return True
+            if self._freehand_open_arc:
+                point = self._view.mapSceneToView(ev.scenePos())
+                view_point = (float(point.x()), float(point.y()))
+                if (
+                    not self._freehand_points
+                    or self._distance(self._freehand_points[-1], view_point) > _CONTOUR_MIN_POINT_SPACING_PX
+                ):
+                    self._freehand_points.append(view_point)
+                    self._update_freehand_preview()
             return True
 
         point = self._view.mapSceneToView(ev.scenePos())
@@ -7873,7 +7980,7 @@ class ViewerWidget(QWidget):
                 event.accept()
                 return
             if self._freehand_recording and self._contour_mode_active:
-                if self._finish_freehand_contour():
+                if self._finish_active_freehand_contour():
                     event.accept()
                     return
         if event.key() == Qt.Key.Key_Escape:
@@ -8226,6 +8333,13 @@ class ViewerWidget(QWidget):
 
     def area_tool_mode(self) -> str:
         return self._area_tool_mode
+
+    def set_lv_contour_input(self, mode: str) -> None:
+        if mode in ("landmarks", "trace"):
+            self._lv_contour_input = mode
+
+    def lv_contour_input(self) -> str:
+        return self._lv_contour_input
 
     def set_despeckle_enabled(self, enabled: bool) -> None:
         self._despeckle_enabled = bool(enabled)

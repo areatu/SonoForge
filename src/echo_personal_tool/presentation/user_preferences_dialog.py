@@ -333,6 +333,11 @@ class UserPreferencesDialog(QDialog):
         self._area_tool_mode_combo.addItem(tr("preferences.area_mode_freehand"), "freehand")
         area_mode_index = self._area_tool_mode_combo.findData(current.area_tool_mode)
         self._area_tool_mode_combo.setCurrentIndex(max(area_mode_index, 0))
+        self._lv_contour_input_combo = QComboBox()
+        self._lv_contour_input_combo.addItem(tr("preferences.lv_input_landmarks"), "landmarks")
+        self._lv_contour_input_combo.addItem(tr("preferences.lv_input_trace"), "trace")
+        lv_input_index = self._lv_contour_input_combo.findData(current.lv_contour_input)
+        self._lv_contour_input_combo.setCurrentIndex(max(lv_input_index, 0))
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -345,6 +350,7 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(self._auto_depth_cal)
         measure_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
+        measure_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
         self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
@@ -640,6 +646,7 @@ class UserPreferencesDialog(QDialog):
             auto_depth_calibration_enabled=self._auto_depth_cal.isChecked(),
             length_display_unit=str(self._length_unit.currentData()),
             area_tool_mode=str(self._area_tool_mode_combo.currentData()),
+            lv_contour_input=str(self._lv_contour_input_combo.currentData()),
             show_dicom_tag_inspector=self._show_dicom_inspector.isChecked(),
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),

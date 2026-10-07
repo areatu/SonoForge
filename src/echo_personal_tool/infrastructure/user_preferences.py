@@ -126,6 +126,8 @@ class UserPreferences:
     auto_depth_calibration_enabled: bool = True
     length_display_unit: str = "mm"
     area_tool_mode: str = "click"
+    #: Manual LV contour input: "landmarks" (septal/lateral/apex) or "trace" (freehand).
+    lv_contour_input: str = "landmarks"
     show_dicom_tag_inspector: bool = False
     interesting_dicom_tags: str = DEFAULT_INTERESTING_DICOM_TAGS
     confirm_reset: bool = True
@@ -375,6 +377,7 @@ def load_user_preferences() -> UserPreferences:
         despeckle_enabled=_read_bool(store.value("despeckle_enabled"), False),
         tool_panel_layout_json=str(store.value("tool_panel_layout_json", "")),
         area_tool_mode=_read_choice(store.value("area_tool_mode"), "click", {"click", "freehand"}),
+        lv_contour_input=_read_choice(store.value("lv_contour_input"), "landmarks", {"landmarks", "trace"}),
         presenter_screen=str(store.value("presenter_screen", "")),
         presenter_visual_preset=_read_bool(store.value("presenter_visual_preset"), True),
         presenter_pointer=_read_bool(store.value("presenter_pointer"), True),
