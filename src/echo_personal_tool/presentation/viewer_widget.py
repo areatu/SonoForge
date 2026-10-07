@@ -2195,6 +2195,11 @@ class ViewerWidget(QWidget):
             self._clear_calibration_caliper()
             self._clear_persistent_linear_calipers()
             self._clear_contours()
+            # Speckle kernels belong to the previous clip: drop them here, at
+            # the swap (state for the new instance arrives with its first
+            # frame), so nothing leaks onto the new cine and the old frame
+            # keeps its graphics until the swap instead of popping early.
+            self.clear_speckle_overlay()
             self._stored_linear_measurements = {}
             self._dist_serial = 1
             if self._doppler_cal_step is not None:
