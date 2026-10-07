@@ -738,7 +738,12 @@ class MainWindow(QMainWindow):
         self._rebuild_layout()
 
     def _save_layout_state(self) -> None:
-        self._user_preferences.layout_state_json = json.dumps(asdict(self._layout_config))
+        state = asdict(self._layout_config)
+        # Multiview is a session-only mode (spec 4): a relaunch always starts
+        # single-view, so a close (or a kill) from the mode must not leave it
+        # behind in storage.
+        state["multiview"] = False
+        self._user_preferences.layout_state_json = json.dumps(state)
         save_user_preferences(self._user_preferences)
 
     def _show_layout_menu(self) -> None:
@@ -1842,6 +1847,11 @@ class MainWindow(QMainWindow):
             self._presenter.stop()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
+        if self._layout_config.multiview:
+            # Closing from Multiview: hand the interface back to the initial
+            # single-view layout first (the window may stay visible for up to
+            # 2 s while pending workers drain below).
+            self._on_multiview_button()
         self._multiview.shutdown()
         self._viewer.disconnect_display_controls()
         # Wait briefly for pending workers to finish so signals don't fire

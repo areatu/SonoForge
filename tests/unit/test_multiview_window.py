@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -340,6 +341,26 @@ class TestPlaybackRouting:
         window._multiview.play()
         window._multiview.shutdown()
         assert window._multiview._panes == {}
+
+
+class TestCloseResetsToInitialLayout:
+    def test_close_from_multiview_restores_single_view(self, window) -> None:
+        _enable(window)
+        transport = window._multiview_transport
+        window.close()
+        assert window._layout_config.multiview is False
+        assert window._system_bar._btn_multiview.isChecked() is False
+        assert transport is not None
+        assert window._root_layout.indexOf(transport) < 0
+        assert window._content_splitter.indexOf(window._pane_left) < 0
+
+    def test_saved_layout_state_never_keeps_multiview(self, window) -> None:
+        _enable(window)
+        saved = json.loads(window._user_preferences.layout_state_json)
+        assert saved["multiview"] is False
+        window.close()
+        saved_after_close = json.loads(window._user_preferences.layout_state_json)
+        assert saved_after_close["multiview"] is False
 
 
 def _key_event(key: str):
