@@ -226,14 +226,36 @@ class CalculatorsPanel(QWidget):
     #: ``(input_id, value | None)`` — study-mode override; ``None`` clears it.
     study_input_changed = Signal(str, object)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, lazy: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName("calculatorsPanel")
         self._mode = MODE_STUDY
         self._has_study = False
         self._study_calculations: CalculationsSnapshot | None = None
         self._standalone_values: dict[str, float] = {}
+        # ~350 child widgets: inside the tool panel they are built on first show.
+        # Every main window carries this hidden tab, and an app-wide stylesheet
+        # change repolishes all live widgets, so building them up front made
+        # window creation and theme changes noticeably slower.
+        self._built = False
+        if not lazy:
+            self._ensure_built()
 
+    @property
+    def is_built(self) -> bool:
+        return self._built
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        self._ensure_built()
+        super().showEvent(event)
+
+    def _ensure_built(self) -> None:
+        if self._built:
+            return
+        self._built = True
+        self._build()
+
+    def _build(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
@@ -243,6 +265,7 @@ class CalculatorsPanel(QWidget):
         self._mode_combo.setObjectName("calcModeCombo")
         self._mode_combo.addItem("", MODE_STUDY)
         self._mode_combo.addItem("", MODE_STANDALONE)
+        self._mode_combo.setCurrentIndex(max(0, self._mode_combo.findData(self._mode)))
         self._mode_combo.currentIndexChanged.connect(self._on_mode_combo)
         top.addWidget(self._mode_combo, 1)
         self._copy_button = QPushButton()
@@ -323,7 +346,7 @@ class CalculatorsPanel(QWidget):
         root.addWidget(scroll, 1)
 
         self.reload_text()
-        self._refresh()
+        self._refresh(force_text=True)
 
     # ── public API ───────────────────────────────────────────────────────
     @property
@@ -331,15 +354,22 @@ class CalculatorsPanel(QWidget):
         return self._mode
 
     def set_section_expanded(self, section: str, expanded: bool) -> None:
+        self._ensure_built()
         heading = self._section_labels.get(section)
         if heading is not None:
             heading.setChecked(expanded)
 
     def is_section_expanded(self, section: str) -> bool:
+        self._ensure_built()
         body = self._section_bodies.get(section)
         return body is not None and not body.isHidden()
 
     def set_mode(self, mode: str) -> None:
+        if mode not in (MODE_STUDY, MODE_STANDALONE):
+            return
+        if not self._built:
+            self._mode = mode
+            return
         index = self._mode_combo.findData(mode)
         if index >= 0:
             self._mode_combo.setCurrentIndex(index)
@@ -399,6 +429,8 @@ class CalculatorsPanel(QWidget):
             QGuiApplication.clipboard().setText(text)
 
     def reload_text(self) -> None:
+        if not self._built:
+            return  # _build() applies the current language
         self._mode_combo.setItemText(0, tr("calc.mode.study"))
         self._mode_combo.setItemText(1, tr("calc.mode.standalone"))
         self._copy_button.setText(tr("calc.copy"))
@@ -436,6 +468,8 @@ class CalculatorsPanel(QWidget):
         return {item.id: item for item in calculations.inputs}
 
     def _refresh(self, *, force_text: bool = False) -> None:
+        if not self._built:
+            return  # state is kept; _build() renders it
         standalone = self._mode == MODE_STANDALONE
         editable = standalone or self._has_study
         if standalone:

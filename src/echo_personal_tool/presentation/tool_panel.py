@@ -262,7 +262,7 @@ class ToolPanel(QWidget):
         self.controls = ControlsTab()
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
-        self.calculators = CalculatorsPanel()
+        self.calculators = CalculatorsPanel(lazy=True)
 
         self._tabs.addTab(self.measure, "Measures")
         self._tabs.addTab(self.calculators, "Calculators")
