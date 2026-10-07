@@ -32,6 +32,9 @@ class InstanceMetadata:
     frame_time_vector: tuple[float, ...] | None = None
     patient_height_m: float | None = None
     patient_weight_kg: float | None = None
+    #: DICOM ``HeartRate`` (0018,1088) recorded by the scanner for this clip;
+    #: feeds the cardiac-output calculator (Э11) with DICOM provenance.
+    heart_rate_bpm: float | None = None
 
 
 @dataclass(frozen=True)

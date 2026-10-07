@@ -430,6 +430,39 @@ The `Low noise`, `Normal`, and `High noise` presets change trace sensitivity. Th
 
 Select and drag supported peaks, interval endpoints, and trace points. The derived metrics are recalculated. If a value is wrong because the velocity or time scale is wrong, correct calibration first rather than moving the trace to match an expected number.
 
+### 9.6 Calculations: continuity equation
+
+The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation. All values are for research use only (RUO). Verify every number.
+
+**What is computed**
+
+| Output | Formula | Needs |
+|---|---|---|
+| LVOT area | π·(LVOTd/2)² | `LVOTd` |
+| Stroke volume (SV) | LVOT area × `LVOT VTI` | + `LVOT VTI` |
+| Cardiac output (CO) | SV × HR / 1000 | + HR |
+| SVi, CI | SV / BSA, CO / BSA | + BSA |
+| AVA (VTI) | LVOT area × `LVOT VTI` / `AV VTI` | + `AV VTI` |
+| AVA (Vmax) | LVOT area × `LVOT Vmax` / `AV Vmax` | `LVOT Vmax` (PW, cm/s), `AV Vmax` (CW, m/s) |
+| AVAi | AVA (VTI) / BSA | + BSA |
+| DVI | `LVOT VTI` / `AV VTI` (or the Vmax ratio) | no diameter needed |
+
+**Where the inputs come from (“From study” mode)**
+
+- `LVOTd`: the `LVOTd` caliper from any clip of the study (usually parasternal). The mean of the last three is used, converted from mm to cm.
+- `LVOT VTI`, `AV VTI`, `LVOT Vmax`, `AV Vmax`: Doppler measurements from the whole study. Repeats are averaged as in the report (last three). Without a `Vmax` peak, the trace maximum is used; the source line says so.
+- HR: a manual value → DICOM `HeartRate` of the clip with the `LVOT VTI` trace → the cine HR estimate. BSA is computed with Du Bois from the patient height and weight.
+
+Every field shows its source underneath. You can type a value to override the measurement for the session; the measured value stays visible in the caption. `↺` restores the measured value. An empty field means the output is not computed: typical values are **never substituted**, and the card lists what is missing.
+
+**Checks.** A value outside the plausible range is outlined in orange and listed in the warnings. You also get a warning when DVI > 1 (labels or modes are probably swapped: LVOT is PW, AV is CW) and when AVA by VTI and by Vmax differ by more than 25 %. The reference gradations (AVA, AVAi, DSI) are shown under the results. No severity grade is assigned **automatically**.
+
+**Standalone mode.** Switch the selector at the top of the tab to `Standalone (manual entry)` to type values by hand without an open study (dot or comma decimals). Study measurements are left untouched, and standalone results never reach the report. `Clear` resets the typed values. `Copy` (in both modes) puts the results on the clipboard with formulas, inputs and the RUO note.
+
+**Report.** In “From study” mode the computed values appear in the `Calculations` group of the report: the window, the PDF and the text. The inputs with their sources, the method assumptions, the warnings and the RUO note are printed under the table.
+
+Current limitations: manual values are not saved between sessions; results are not shown on the overlay yet.
+
 ---
 
 ## 10. Calibration and manual correction

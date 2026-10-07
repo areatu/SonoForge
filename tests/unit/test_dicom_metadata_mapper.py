@@ -63,6 +63,15 @@ def test_map_instance_metadata_from_ultrasound_region() -> None:
     assert meta.pixel_spacing_source == "SequenceOfUltrasoundRegions"
 
 
+def test_heart_rate_is_mapped_when_positive() -> None:
+    ds = _minimal_dataset()
+    assert map_instance_metadata(ds).heart_rate_bpm is None
+    ds.HeartRate = 64
+    assert map_instance_metadata(ds).heart_rate_bpm == 64.0
+    ds.HeartRate = 0
+    assert map_instance_metadata(ds).heart_rate_bpm is None
+
+
 def test_parse_study_datetime() -> None:
     dt = parse_study_datetime(_minimal_dataset())
     assert dt == datetime(2024, 1, 15, 10, 30, 45)

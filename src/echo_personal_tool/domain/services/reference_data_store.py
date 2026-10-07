@@ -367,3 +367,14 @@ class ReferenceDataStore:
             log.info("Saved reference data to %s", self._yaml_path)
         except Exception:
             log.exception("Failed to save reference data")
+            return
+        _invalidate_reference_caches()
+
+
+def _invalidate_reference_caches() -> None:
+    """Drop the per-process parsed copies so report norms and calculator gradations follow an edit."""
+    from echo_personal_tool.domain.calculators import reference_hints
+    from echo_personal_tool.domain.services import report_builder
+
+    reference_hints.clear_cache()
+    report_builder._reference_store.cache_clear()

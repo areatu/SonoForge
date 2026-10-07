@@ -187,6 +187,20 @@ def test_full_name_parsed_and_persisted(tmp_path):
     assert param.full_name == "Фракция выброса (LVEF)"
 
 
+def test_save_invalidates_report_and_calculator_caches(tmp_path, monkeypatch):
+    from echo_personal_tool.domain.calculators import reference_hints
+    from echo_personal_tool.domain.services import report_builder
+
+    calls: list[str] = []
+    monkeypatch.setattr(reference_hints, "clear_cache", lambda: calls.append("hints"))
+    monkeypatch.setattr(report_builder._reference_store, "cache_clear", lambda: calls.append("report"))
+    path = tmp_path / "test_refs.yaml"
+    path.write_text(_SAMPLE_YAML, encoding="utf-8")
+    store = ReferenceDataStore(str(path)).load()
+    store._save_to_yaml()
+    assert calls == ["hints", "report"]
+
+
 def test_norm_range_none():
     nr = NormRange(low=None, high=35.0)
     assert nr.low is None

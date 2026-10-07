@@ -1257,9 +1257,18 @@ class MainWindow(QMainWindow):
                 return
 
     def _on_activity_tab_activated(self, tab: str) -> None:
-        tab_map = {"measures": 0, "controls": 1, "properties": 2, "dicom": 3}
-        if tab in tab_map:
-            self._tool_panel._tabs.setCurrentIndex(tab_map[tab])
+        # Widgets, not indexes: the tab order changes (Calculators, optional
+        # Properties/DICOM tabs), the activity buttons must not drift with it.
+        tab_map = {
+            "measures": self._tool_panel.measure,
+            "calculators": self._tool_panel.calculators,
+            "controls": self._tool_panel.controls,
+            "properties": self._tool_panel.properties_panel,
+            "dicom": self._tool_panel._tag_inspector,
+        }
+        target = tab_map.get(tab)
+        if target is not None and self._tool_panel._tabs.indexOf(target) >= 0:
+            self._tool_panel._tabs.setCurrentWidget(target)
         self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
         if self._activity_bar is not None:
             if self._content_layout.indexOf(self._activity_bar) >= 0:
@@ -2196,6 +2205,11 @@ class MainWindow(QMainWindow):
         if instance_changed:
             self._refresh_dicom_inspector()
         self._update_properties_panel(state)
+        snapshot = state.measurement_snapshot
+        self._tool_panel.set_calculations(
+            snapshot.calculations if snapshot is not None else None,
+            has_study=state.instance is not None,
+        )
         if self._multiview_enabled():
             self._sync_left_pane_from_controller()
             self._multiview.on_main_frame_changed(state.current_frame_index)
@@ -2511,6 +2525,7 @@ class MainWindow(QMainWindow):
         self._tool_panel.action_requested.connect(self._on_measure_action)
         self._tool_panel.doppler_mode_changed.connect(self._viewer.set_doppler_mode_override)
         self._tool_panel.patient_metrics_changed.connect(self._controller.on_patient_metrics_changed)
+        self._tool_panel.calculator_input_changed.connect(self._controller.set_calculator_input)
         self._tool_panel.results_requested.connect(self._show_results_dialog)
         self._tool_panel.magnetic_snap_changed.connect(self._on_magnetic_snap_changed)
         self._tool_panel.despeckle_changed.connect(self._on_despeckle_changed)
@@ -2912,6 +2927,8 @@ class MainWindow(QMainWindow):
         )
         msg = f"HR: {bpm:.0f} BPM ({method_label}, conf {confidence:.0%})"
         self._show_status(msg)
+        # Calculator source for cardiac output when the clip has no DICOM HR (Э11).
+        self._controller.record_heart_rate_estimate(bpm, method)
         overlay = self._viewer.results_overlay_text()
         hr_line = f"HR: {bpm:.0f} BPM"
         if overlay:

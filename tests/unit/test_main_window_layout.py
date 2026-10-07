@@ -167,11 +167,35 @@ def test_horizontal_swap_activity_toggle_restores_tool_panel(qtbot) -> None:
     window._activity_bar._buttons["controls"].setChecked(True)
     window._on_activity_tab_activated("controls")
     assert window._content_layout.indexOf(window._tool_panel) >= 0
-    assert window._tool_panel._tabs.currentIndex() == 1
+    assert window._tool_panel._tabs.currentWidget() is window._tool_panel.controls
 
     _apply(window, gallery_horizontal=True, swap_places=False, activity_bar=False)
     assert window._content_layout.indexOf(window._tool_panel) >= 0
     assert window._tool_panel.isVisible()
+
+
+def test_activity_tabs_select_widgets_not_indexes(qtbot) -> None:
+    """Э11 inserted a Calculators tab: activity buttons must still hit their tab."""
+    window = _make_window(qtbot)
+    tabs = window._tool_panel._tabs
+    for key, widget in (
+        ("calculators", window._tool_panel.calculators),
+        ("controls", window._tool_panel.controls),
+        ("measures", window._tool_panel.measure),
+    ):
+        window._on_activity_tab_activated(key)
+        assert tabs.currentWidget() is widget
+    # A hidden tab (Properties not added yet) leaves the selection alone.
+    if tabs.indexOf(window._tool_panel.properties_panel) < 0:
+        window._on_activity_tab_activated("properties")
+        assert tabs.currentWidget() is window._tool_panel.measure
+
+
+def test_calculator_override_reaches_the_controller(qtbot) -> None:
+    window = _make_window(qtbot)
+    controller = window._controller
+    window._tool_panel.calculators.study_input_changed.emit("hr", 70.0)
+    assert controller._calculator_inputs.manual(controller._resolve_study_uid()) == {"hr": 70.0}
 
 
 @pytest.fixture(scope="session", autouse=True)
