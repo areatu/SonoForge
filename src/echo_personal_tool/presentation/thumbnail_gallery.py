@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
 from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.instance_sort import sort_instances_by
 from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
@@ -187,6 +188,8 @@ class ThumbnailGalleryWidget(QListWidget):
         self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._items_by_uid: dict[str, QListWidgetItem] = {}
         self._instances: list[InstanceMetadata] = []
+        self._studies: list[StudyMetadata] = []
+        self._sort_mode = "created"
         self._thumbnail_loader: ThumbnailLoader | None = None
         self._loader_accepts_priority = False
         self._building = False
@@ -307,28 +310,36 @@ class ThumbnailGalleryWidget(QListWidget):
         except (TypeError, ValueError):
             self._loader_accepts_priority = False
 
+    def set_sort_mode(self, mode: str) -> None:
+        """Choose the panel order; re-populates when a study is already shown."""
+        normalized = mode if mode in ("created", "filename") else "created"
+        if normalized == self._sort_mode:
+            return
+        self._sort_mode = normalized
+        if self._studies:
+            self.populate(self._studies)
+
     def populate(self, studies: list[StudyMetadata]) -> None:
         self._building = True
+        self._studies = list(studies)
         self.clear()
         self._items_by_uid.clear()
         self._instances.clear()
         self._thumbnail_pixmaps.clear()
         self._thumbnail_cache.clear()
-        index = 1
-        for study in studies:
-            for series in study.series:
-                for instance in series.instances:
-                    self._instances.append(instance)
-                    item = QListWidgetItem()
-                    item.setData(_ITEM_ROLE, instance)
-                    item.setData(Qt.ItemDataRole.UserRole + 1, index)
-                    item.setSizeHint(QSize(self._cell_w, self._cell_h))
-                    cached = self._thumbnail_cache.get(instance.sop_instance_uid)
-                    if cached is not None:
-                        item.setIcon(cached)
-                    self.addItem(item)
-                    self._items_by_uid[instance.sop_instance_uid] = item
-                    index += 1
+        flattened = [instance for study in studies for series in study.series for instance in series.instances]
+        ordered = sort_instances_by(flattened, self._sort_mode)
+        for index, instance in enumerate(ordered, start=1):
+            self._instances.append(instance)
+            item = QListWidgetItem()
+            item.setData(_ITEM_ROLE, instance)
+            item.setData(Qt.ItemDataRole.UserRole + 1, index)
+            item.setSizeHint(QSize(self._cell_w, self._cell_h))
+            cached = self._thumbnail_cache.get(instance.sop_instance_uid)
+            if cached is not None:
+                item.setIcon(cached)
+            self.addItem(item)
+            self._items_by_uid[instance.sop_instance_uid] = item
         self._building = False
         QTimer.singleShot(0, self._after_populate)
 

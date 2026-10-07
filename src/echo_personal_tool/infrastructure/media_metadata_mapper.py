@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from pathlib import Path
 
 from echo_personal_tool.domain.models import InstanceMetadata
@@ -11,6 +12,13 @@ from echo_personal_tool.infrastructure.video_reader import VideoReader
 
 MP4_SERIES_DESCRIPTION = "Cine (MP4)"
 JPEG_SERIES_DESCRIPTION = "Still (JPEG)"
+
+
+def _file_created_at(path: Path) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return None
 
 
 def synthetic_instance_uid(study_folder: Path, filename: str) -> str:
@@ -53,6 +61,7 @@ def map_mp4_instance(
         series_description=MP4_SERIES_DESCRIPTION,
         path=path,
         media_format="mp4",
+        created_at=_file_created_at(path),
     )
 
 
@@ -74,4 +83,5 @@ def map_image_instance(
         series_description=JPEG_SERIES_DESCRIPTION,
         path=path,
         media_format=media_format,
+        created_at=_file_created_at(path),
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata
 
@@ -34,6 +35,32 @@ def series_filename_sort_key(series: SeriesMetadata) -> tuple:
     if series.instances:
         return instance_filename_sort_key(series.instances[0])
     return (2, series.modality, series.description or series.series_uid)
+
+
+def _instance_created_at(instance: InstanceMetadata) -> datetime | None:
+    if instance.created_at is not None:
+        return instance.created_at
+    if instance.path is not None:
+        try:
+            return datetime.fromtimestamp(instance.path.stat().st_mtime)
+        except OSError:
+            return None
+    return None
+
+
+def instance_created_sort_key(instance: InstanceMetadata) -> tuple:
+    """Clinical order: acquisition/creation date, earliest first.
+
+    Instances without any date sort last; filename is the stable tie-breaker so
+    frames acquired in the same second keep their on-disk sequence.
+    """
+    created = _instance_created_at(instance)
+    return (created is None, created or datetime.min, instance_filename_sort_key(instance))
+
+
+def sort_instances_by(instances: list[InstanceMetadata], mode: str = "created") -> tuple[InstanceMetadata, ...]:
+    key = instance_filename_sort_key if mode == "filename" else instance_created_sort_key
+    return tuple(sorted(instances, key=key))
 
 
 def sort_instances(instances: list[InstanceMetadata]) -> tuple[InstanceMetadata, ...]:

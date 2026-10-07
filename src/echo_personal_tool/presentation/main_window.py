@@ -1406,6 +1406,7 @@ class MainWindow(QMainWindow):
         self._viewer.set_area_tool_mode(preferences.area_tool_mode)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
+        self._gallery.set_sort_mode(preferences.thumbnail_sort_mode)
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()

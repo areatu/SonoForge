@@ -32,6 +32,9 @@ class InstanceMetadata:
     frame_time_vector: tuple[float, ...] | None = None
     patient_height_m: float | None = None
     patient_weight_kg: float | None = None
+    #: Acquisition/content creation moment; used to restore the "as performed"
+    #: order in the thumbnail panel.  ``None`` falls back to the file mtime.
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)

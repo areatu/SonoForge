@@ -49,6 +49,30 @@ def test_map_instance_metadata_fields() -> None:
     assert meta.path == Path("/tmp/test.dcm")
 
 
+def test_created_at_prefers_acquisition_datetime() -> None:
+    ds = _minimal_dataset()
+    ds.AcquisitionDateTime = "20240115103045.123456"
+    ds.ContentDate = "20240116"
+    ds.ContentTime = "110000"
+    meta = map_instance_metadata(ds)
+    assert meta.created_at == datetime(2024, 1, 15, 10, 30, 45)
+
+
+def test_created_at_uses_content_date_when_no_acquisition() -> None:
+    ds = _minimal_dataset()
+    ds.ContentDate = "20240116"
+    ds.ContentTime = "110000"
+    meta = map_instance_metadata(ds)
+    assert meta.created_at == datetime(2024, 1, 16, 11, 0, 0)
+
+
+def test_created_at_falls_back_to_file_mtime(tmp_path: Path) -> None:
+    path = tmp_path / "no_date.dcm"
+    path.write_bytes(b"x")
+    meta = map_instance_metadata(_minimal_dataset(), path=path)
+    assert meta.created_at is not None
+
+
 def test_map_instance_metadata_from_ultrasound_region() -> None:
     ds = _minimal_dataset()
     del ds.PixelSpacing

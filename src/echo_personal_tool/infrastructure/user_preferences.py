@@ -116,6 +116,8 @@ class UserPreferences:
     show_caliper_inline_labels: bool = False
     show_doppler_calibration_roi: bool = False
     thumbnail_scale: str = "medium"
+    #: Thumbnail panel order: "created" (as performed, earliest first) or "filename".
+    thumbnail_sort_mode: str = "created"
     magnetic_snap_weight_threshold: float = DEFAULT_MAGNETIC_WEIGHT
     magnetic_snap_release_strength: float = DEFAULT_MAGNETIC_RELEASE
     magnetic_snap_release_max_radial_px: float = DEFAULT_MAGNETIC_RADIUS
@@ -304,6 +306,11 @@ def load_user_preferences() -> UserPreferences:
             store.value("thumbnail_scale"),
             "medium",
             {"small", "medium", "large"},
+        ),
+        thumbnail_sort_mode=_read_choice(
+            store.value("thumbnail_sort_mode"),
+            "created",
+            {"created", "filename"},
         ),
         magnetic_snap_weight_threshold=_clamp_float(
             store.value("magnetic_snap_weight_threshold"),

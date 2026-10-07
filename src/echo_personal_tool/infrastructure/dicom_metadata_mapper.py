@@ -59,6 +59,50 @@ def _safe_float(value) -> float | None:
         return None
 
 
+def _file_mtime(path: Path | None) -> datetime | None:
+    if path is None:
+        return None
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _parse_dicom_datetime(date_value, time_value) -> datetime | None:
+    date_text = str(date_value or "").strip()
+    if len(date_text) < 8 or not date_text[:8].isdigit():
+        return None
+    time_digits = "".join(ch for ch in str(time_value or "").split(".")[0] if ch.isdigit())
+    time_digits = time_digits.ljust(6, "0")[:6] if time_digits else "000000"
+    try:
+        return datetime.strptime(date_text[:8] + time_digits, "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+def _instance_created_at(dataset: Dataset, path: Path | None) -> datetime | None:
+    """Moment the instance was acquired/created (earliest-first ordering).
+
+    Echo measurements are stored under hashed filenames (Orthanc cache), so the
+    filename carries no clinical sequence.  Prefer the DICOM timestamps and only
+    fall back to the file mtime.
+    """
+    acquisition_dt = str(dataset.get("AcquisitionDateTime", "") or "").strip()
+    if acquisition_dt:
+        parsed = _parse_dicom_datetime(acquisition_dt[:8], acquisition_dt[8:])
+        if parsed is not None:
+            return parsed
+    for date_tag, time_tag in (
+        ("AcquisitionDate", "AcquisitionTime"),
+        ("ContentDate", "ContentTime"),
+        ("InstanceCreationDate", "InstanceCreationTime"),
+    ):
+        parsed = _parse_dicom_datetime(dataset.get(date_tag), dataset.get(time_tag))
+        if parsed is not None:
+            return parsed
+    return _file_mtime(path)
+
+
 def map_instance_metadata(
     dataset: Dataset, path: Path | None = None, *, pixel_data: bytes | None = None
 ) -> InstanceMetadata:
@@ -80,6 +124,7 @@ def map_instance_metadata(
         media_format="dicom",
         patient_height_m=_safe_float(dataset.get("PatientSize")),
         patient_weight_kg=_safe_float(dataset.get("PatientWeight")),
+        created_at=_instance_created_at(dataset, path),
     )
 
 

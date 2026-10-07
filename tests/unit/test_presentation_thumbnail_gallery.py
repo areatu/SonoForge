@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
 
 pytestmark = pytest.mark.gui
 
@@ -27,23 +30,38 @@ def _fake_instance(
     pixel_spacing: tuple | None = None,
     frame_time_ms: float | None = None,
     path: Path | None = None,
+    created_at: datetime | None = None,
 ):
-    return MagicMock(
+    return InstanceMetadata(
         sop_instance_uid=sop_instance_uid,
-        media_format=media_format,
+        series_uid="series-001",
+        modality="US",
         number_of_frames=number_of_frames,
         pixel_spacing=pixel_spacing,
         frame_time_ms=frame_time_ms,
+        series_description="",
         path=path,
+        media_format=media_format,
+        created_at=created_at,
     )
 
 
 def _fake_series(instances=None):
-    return MagicMock(instances=instances or [])
+    return SeriesMetadata(
+        series_uid="series-001",
+        study_uid="study-001",
+        modality="US",
+        description="",
+        instances=tuple(instances or []),
+    )
 
 
 def _fake_study(series=None):
-    return MagicMock(series=series or [])
+    return StudyMetadata(
+        study_uid="study-001",
+        study_datetime=datetime(2026, 1, 1, 12, 0, 0),
+        series=tuple(series or []),
+    )
 
 
 class TestHasDicomTags:
@@ -185,6 +203,36 @@ class TestThumbnailGalleryWidget:
         w = ThumbnailGalleryWidget()
         w.populate([])
         assert w.count() == 0
+        w.close()
+
+    def test_populate_orders_by_creation_date(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        insts = [
+            _fake_instance(sop_instance_uid="late", created_at=datetime(2026, 1, 3)),
+            _fake_instance(sop_instance_uid="early", created_at=datetime(2026, 1, 1)),
+            _fake_instance(sop_instance_uid="mid", created_at=datetime(2026, 1, 2)),
+        ]
+        study = _fake_study(series=[_fake_series(instances=insts)])
+        w = ThumbnailGalleryWidget()
+        w.populate([study])
+        assert [i.sop_instance_uid for i in w._instances] == ["early", "mid", "late"]
+        w.close()
+
+    def test_set_sort_mode_repopulates(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        insts = [
+            _fake_instance(sop_instance_uid="a", path=Path("002.dcm"), created_at=datetime(2026, 1, 1)),
+            _fake_instance(sop_instance_uid="b", path=Path("001.dcm"), created_at=datetime(2026, 1, 2)),
+        ]
+        study = _fake_study(series=[_fake_series(instances=insts)])
+        w = ThumbnailGalleryWidget()
+        w.populate([study])
+        assert [i.sop_instance_uid for i in w._instances] == ["a", "b"]
+        w.set_sort_mode("filename")
+        assert w._sort_mode == "filename"
+        assert [i.sop_instance_uid for i in w._instances] == ["b", "a"]
         w.close()
 
     def test_set_thumbnail(self):

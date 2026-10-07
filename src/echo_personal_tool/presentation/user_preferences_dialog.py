@@ -243,6 +243,11 @@ class UserPreferencesDialog(QDialog):
         self._thumbnail_scale.addItem(tr("tool_panel.large"), "large")
         thumb_index = self._thumbnail_scale.findData(current.thumbnail_scale)
         self._thumbnail_scale.setCurrentIndex(max(thumb_index, 0))
+        self._thumbnail_sort = QComboBox()
+        self._thumbnail_sort.addItem(tr("tool_panel.thumbnail_sort_created"), "created")
+        self._thumbnail_sort.addItem(tr("tool_panel.thumbnail_sort_filename"), "filename")
+        sort_index = self._thumbnail_sort.findData(current.thumbnail_sort_mode)
+        self._thumbnail_sort.setCurrentIndex(max(sort_index, 0))
         self._show_crosshair = QCheckBox()
         self._show_crosshair.setChecked(current.show_crosshair)
         self._show_panel_frames = QCheckBox()
@@ -258,6 +263,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
         display_form.addRow(tr("tool_panel.wl_preset"), self._wl_preset)
         display_form.addRow(tr("tool_panel.thumbnail_size"), self._thumbnail_scale)
+        display_form.addRow(tr("tool_panel.thumbnail_sort"), self._thumbnail_sort)
         display_form.addRow(tr("tool_panel.crosshair"), self._show_crosshair)
         display_form.addRow(tr("tool_panel.panel_frames"), self._show_panel_frames)
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
@@ -625,6 +631,7 @@ class UserPreferencesDialog(QDialog):
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),
             show_doppler_calibration_roi=self._show_doppler_cal_roi.isChecked(),
             thumbnail_scale=str(self._thumbnail_scale.currentData()),
+            thumbnail_sort_mode=str(self._thumbnail_sort.currentData()),
             magnetic_snap_weight_threshold=float(self._magnetic_weight_spin.value()),
             magnetic_snap_release_strength=float(self._magnetic_release_spin.value()),
             magnetic_snap_release_max_radial_px=float(self._magnetic_radius_spin.value()),
