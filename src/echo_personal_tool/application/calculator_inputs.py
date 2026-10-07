@@ -69,6 +69,8 @@ _DOPPLER_INPUTS: dict[str, tuple[str, str, float]] = {
 _INTERVAL_INPUTS: dict[str, str] = {
     "mv_pht": "mv_pht_ms",
     "rvot_at": "rvot_at_ms",
+    "mr_dpdt_dt": "mr_dpdt_ms",
+    "tr_dpdt_dt": "tr_dpdt_ms",
 }
 
 

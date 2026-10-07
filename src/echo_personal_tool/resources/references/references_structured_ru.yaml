@@ -275,6 +275,17 @@ topics:
       - name: Тяжёлое
         range_male: {high: 29.0}
         range_female: {high: 29.0}
+    - id: lv_dpdt
+      name: dP/dt ЛЖ (MR)
+      unit: мм рт. ст./с
+      norm_male: {low: 1200}
+      norm_female: {low: 1200}
+      source: "1989, Bargiggia et al., Circulation 80:1287–1292 (dP/dt по CW-допплеру); порог >1200 мм рт. ст./с — как в клинических эхо-калькуляторах"
+      note: "Время нарастания скорости струи MR от 1 до 3 м/с (32 мм рт. ст.). Неприменимо при острой тяжёлой MR и эксцентричной, не полностью записанной струе."
+      gradations:
+      - name: Норма
+        range_male: {low: 1200}
+        range_female: {low: 1200}
     - id: svi
       name: Ударный индекс (SVi)
       unit: мл/м²
@@ -696,6 +707,18 @@ topics:
       - name: Тяжёлое
         range_male: {high: 5.0}
         range_female: {high: 5.0}
+    - id: rv_dpdt
+      name: dP/dt ПЖ (TR)
+      unit: мм рт. ст./с
+      norm_male: {low: 400}
+      norm_female: {low: 400}
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
+        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      note: "Время нарастания скорости струи TR от 1 до 2 м/с (12 мм рт. ст.), развёртка 200 мм/с. Для рутинного применения не рекомендуется."
+      gradations:
+      - name: Норма
+        range_male: {low: 400}
+        range_female: {low: 400}
     - id: rv_gls
       name: RV GLS (6 сегментов)
       unit: '%'

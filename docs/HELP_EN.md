@@ -432,7 +432,7 @@ Select and drag supported peaks, interval endpoints, and trace points. The deriv
 
 ### 9.6 Calculations (calculators)
 
-The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation, MR and AR regurgitation with the PISA method, mitral valve area, pulmonary pressures and resistance, Qp:Qs, LV volumes and EF by Teichholz and orifice area from a diameter. All values are for research use only (RUO). Verify every number.
+The `Calculators` tab of the side panel (next to `Measures`) computes stroke volume and aortic valve area with the continuity equation, MR and AR regurgitation with the PISA method, mitral valve area, pulmonary pressures and resistance, Qp:Qs, LV volumes and EF by Teichholz, LV and RV dP/dt from the regurgitant jets and orifice area from a diameter. All values are for research use only (RUO). Verify every number.
 
 **What is computed**
 
@@ -488,12 +488,15 @@ The “Mitral regurgitation (PISA)” and “Aortic regurgitation (PISA)” card
 | | Qp:Qs | Qp / Qs | |
 | LV by Teichholz | EDV, ESV, mL | 7 / (2.4 + D) × D³ | `LVEDD`, `LVESD` (cm) |
 | | SV, EF, FS | EDV − ESV; (EDV − ESV)/EDV; (LVEDD − LVESD)/LVEDD | |
+| dP/dt | LV dP/dt, mmHg/s | 32 mmHg / Δt (MR 1→3 m/s) | `MR dP/dt` interval, ms |
+| | RV dP/dt, mmHg/s | 12 mmHg / Δt (TR 1→2 m/s) | `TR dP/dt` interval, ms |
 | Orifice area | LVOT area, RVOT area, Area (D) | π·(D/2)² | `LVOTd`, `RVOTd`, any diameter D |
 
 - **New calipers** in the valve group of the `Measures` tab: `PISA MS` is the PISA radius in mitral stenosis (colour frame, atrial side); `RVOTd` is the RVOT diameter at the `RVOT VTI` PW sample site, below the pulmonary valve. The RV-group `RVOT` caliper measures RV size at another level and is not used for Qp.
 - **`LVEDD` and `LVESD`** come from the 2D LV calipers (`IVSd-LVIDd-LVPWd (2D)`, `LVIDs (2D)`) and from the M-mode Teichholz (`IVSd-LVIDd-LVPWd`, `LVIDs`), mean of the newest three.
 - **`MV PHT`, `RVOT AT`** are Doppler intervals; **`MV Vmax`, `TR Vmax`, `RVOT VTI`** are the study Doppler measurements.
 - **Typed only:** Va and the angle α in mitral stenosis (not in DICOM), RAP (3, 8 or 15 mmHg from IVC size and collapse — see the “Right Atrial Pressure” reference) and the free diameter D. Until RAP is entered PASP is not computed, but the TR gradient is shown.
+- **dP/dt:** the Doppler menu (MV and TV groups) has the intervals `MR dP/dt (Δt 1→3 m/s)` and `TR dP/dt (Δt 1→2 m/s)`. On the CW spectrum of the regurgitant jet at a fast sweep (100–200 mm/s) mark the ascending limb: start at 1 m/s, end at 3 m/s (MR) or 2 m/s (TR). By the simplified Bernoulli equation these are pressure rises of 32 and 12 mmHg, dP/dt = ΔP/Δt. Δt can also be typed. Reference gradations: LV dP/dt ≥1200 mmHg/s normal (Bargiggia 1989, threshold of clinical calculators), RV dP/dt ≥400 mmHg/s normal (ASE 2025, which does not recommend it for routine use). Not valid with acute severe regurgitation or an eccentric, incompletely recorded jet.
 - **Teichholz:** ASE/EACVI 2015 do not recommend linear methods for EF and the EF gradations in the reference refer to Simpson, so the card shows none. If `LVESD` is not smaller than `LVEDD`, EF, FS and SV are not computed and the card warns about swapped labels or phases.
 - **Reference gradations:** MVA (`ms_area`, `ms_pht`), TR Vmax (PH probability), PASP, mPAP, PVR (≤2 WU, ESC/ERS 2022), Qp:Qs (≥1.5 haemodynamically significant shunt, AHA/ACC 2018). PVR and Qp:Qs were added to the reference in this version.
 - **Secondary MR:** severe is EROA ≥0.4 cm² and RVol ≥60 mL; a note under the gradations says that with an elliptical orifice or low flow severe may start at EROA ≥0.3 cm² and RVol ≥45 mL.

@@ -128,6 +128,7 @@ def test_stage3_calculators_are_registered_in_order() -> None:
         "pulmonary_pressure",
         "qp_qs",
         "teichholz",
+        "dpdt",
         "orifice_area",
     ]
     for input_id in ("va_ms", "ms_angle", "rap", "orifice_d"):

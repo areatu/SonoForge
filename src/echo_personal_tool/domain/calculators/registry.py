@@ -11,7 +11,8 @@ Stage 11а (decision D-25) ships the continuity family: LVOT area, SV, SVi,
 CO, CI, AVA (VTI and Vmax), AVAi and DVI.  Stage 11б adds PISA for MR and AR
 (flow rate, EROA, RVol, RF).  Stage 11в adds MVA (PHT and PISA), pulmonary
 pressures and resistance (PASP, mPAP, PVR), Qp:Qs, Teichholz volumes/EF and a
-plain orifice-area card (LVOT, RVOT, any diameter).
+plain orifice-area card (LVOT, RVOT, any diameter), and LV/RV dP/dt from the
+MR/TR jets.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from echo_personal_tool.domain.calculations.continuity import (
     qp_qs_ratio,
     stroke_volume_ml,
 )
+from echo_personal_tool.domain.calculations.contractility import lv_dpdt_mmhg_s, rv_dpdt_mmhg_s
 from echo_personal_tool.domain.calculations.mitral_stenosis import mva_pht_cm2, mva_pisa_cm2
 from echo_personal_tool.domain.calculations.pisa import (
     eroa_cm2,
@@ -58,6 +60,7 @@ SECTION_AR = "ar"
 SECTION_MS = "ms"
 SECTION_RIGHT = "right"
 SECTION_LV = "lv"
+SECTION_DPDT = "dpdt"
 SECTION_ORIFICE = "orifice"
 SECTION_PATIENT = "patient"
 
@@ -177,6 +180,11 @@ INPUTS: tuple[InputSpec, ...] = (
     # LV linear dimensions (2D or M-mode calipers LVEDD / LVESD).
     InputSpec("lvedd", "LVEDD", "calc.input.lvedd", "cm", 2, (3.0, 7.0), (0.5, 12.0), SECTION_LV),
     InputSpec("lvesd", "LVESD", "calc.input.lvesd", "cm", 2, (2.0, 5.5), (0.3, 10.0), SECTION_LV),
+    # dP/dt: Δt between fixed velocities on the regurgitant CW jet ("MR dP/dt",
+    # "TR dP/dt" Doppler intervals).  Plausible ranges ≈ dP/dt 400–3200 (LV) and
+    # 200–1500 mmHg/s (RV).
+    InputSpec("mr_dpdt_dt", "MR dP/dt Δt", "calc.input.mr_dpdt_dt", "ms", 0, (10.0, 120.0), (2.0, 400.0), SECTION_DPDT),
+    InputSpec("tr_dpdt_dt", "TR dP/dt Δt", "calc.input.tr_dpdt_dt", "ms", 0, (8.0, 80.0), (2.0, 400.0), SECTION_DPDT),
     # Any other circular orifice (pulmonary annulus, conduit…): typed only.
     InputSpec("orifice_d", "D", "calc.input.orifice_d", "cm", 2, (0.5, 4.0), (0.05, 10.0), SECTION_ORIFICE, True),
     InputSpec("hr", "HR", "calc.input.hr", "bpm", 0, (30.0, 200.0), (10.0, 300.0), SECTION_PATIENT),
@@ -231,6 +239,14 @@ _REF_TEICHHOLZ_1976 = (
 _REF_LANG_2015 = (
     "Lang RM et al. Recommendations for cardiac chamber quantification by echocardiography in adults: "
     "an update from the ASE and the EACVI. J Am Soc Echocardiogr 2015;28:1–39"
+)
+_REF_BARGIGGIA_1989 = (
+    "Bargiggia GS et al. A new method for estimating left ventricular dP/dt by continuous wave "
+    "Doppler-echocardiography. Validation studies at cardiac catheterization. Circulation 1989;80:1287–1292"
+)
+_REF_ASE_RIGHT_HEART_2025 = (
+    "Guidelines for the echocardiographic assessment of the right heart in adults and special "
+    "considerations in pulmonary hypertension: recommendations from the ASE. J Am Soc Echocardiogr 2025;38(3)"
 )
 _REF_BAUMGARTNER_2017 = (
     "Baumgartner H et al. Recommendations on the echocardiographic assessment of aortic valve "
@@ -701,6 +717,37 @@ ORIFICE_AREA = CalculatorSpec(
     references=(_REF_QUINONES_2002,),
 )
 
+DPDT = CalculatorSpec(
+    id="dpdt",
+    title_key="calc.title.dpdt",
+    outputs=(
+        OutputSpec(
+            "lv_dpdt",
+            "LV dP/dt",
+            "calc.output.lv_dpdt",
+            "mmHg/s",
+            0,
+            "32 mmHg / Δt(MR 1→3 m/s)",
+            ("mr_dpdt_dt",),
+            lambda v: lv_dpdt_mmhg_s(v.get("mr_dpdt_dt")),
+            reference_ids=("lv_dpdt",),
+        ),
+        OutputSpec(
+            "rv_dpdt",
+            "RV dP/dt",
+            "calc.output.rv_dpdt",
+            "mmHg/s",
+            0,
+            "12 mmHg / Δt(TR 1→2 m/s)",
+            ("tr_dpdt_dt",),
+            lambda v: rv_dpdt_mmhg_s(v.get("tr_dpdt_dt")),
+            reference_ids=("rv_dpdt",),
+        ),
+    ),
+    assumptions_key="calc.assumptions.dpdt",
+    references=(_REF_BARGIGGIA_1989, _REF_RUDSKI_2010, _REF_ASE_RIGHT_HEART_2025),
+)
+
 CALCULATORS: tuple[CalculatorSpec, ...] = (
     STROKE_VOLUME,
     AORTIC_VALVE_AREA,
@@ -710,6 +757,7 @@ CALCULATORS: tuple[CalculatorSpec, ...] = (
     PULMONARY_PRESSURE,
     QP_QS,
     TEICHHOLZ,
+    DPDT,
     ORIFICE_AREA,
 )
 

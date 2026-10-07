@@ -82,6 +82,10 @@ class DopplerResults:
     av_at_ms: float | None = None
     av_et_ms: float | None = None
     rvot_at_ms: float | None = None
+    #: Δt of the MR jet rising 1 → 3 m/s and of the TR jet rising 1 → 2 m/s
+    #: (``MR dP/dt`` / ``TR dP/dt`` intervals), inputs of the dP/dt calculator.
+    mr_dpdt_ms: float | None = None
+    tr_dpdt_ms: float | None = None
 
     def flow(self, site: str) -> DopplerFlowResult | None:
         """Return one site result using case-insensitive lookup."""
