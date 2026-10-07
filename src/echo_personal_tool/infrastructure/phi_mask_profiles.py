@@ -22,6 +22,7 @@ Rules encoded here:
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,19 +85,29 @@ class PhiMaskContext:
     panel_top: int | None = None
     #: Raw ``BurnedInAnnotation`` (0028,0301) when present, else ``None``.
     burned_in: str | None = None
+    #: Whether the file carried a parseable ``SequenceOfUltrasoundRegions``.
+    #: ``panel_top`` is its topmost panel row, so this flag distinguishes "no
+    #: regions at all" from "regions whose clamp happened to be row 0" — the
+    #: evaluation log of §9 records both, and they mean different things.
+    has_regions: bool = False
 
     @property
     def is_dicom(self) -> bool:
-        return self.burned_in is not None or self.panel_top is not None
+        return self.burned_in is not None or self.panel_top is not None or self.has_regions
 
 
 _CONTEXT_CACHE: dict[str, PhiMaskContext] = {}
 _CACHE_LIMIT = 256
+# The viewer asks for contexts on the GUI thread and the MP4 export worker asks
+# from a pool thread, so the read-check-fill sequence below is serialised: the
+# hit path stays cheap, `_read_context` runs outside the lock.
+_CACHE_LOCK = threading.Lock()
 
 
 def clear_phi_mask_context_cache() -> None:
     """Drop cached file headers (tests, and after a study is re-exported)."""
-    _CONTEXT_CACHE.clear()
+    with _CACHE_LOCK:
+        _CONTEXT_CACHE.clear()
 
 
 def phi_mask_context(path: Path | str | None) -> PhiMaskContext:
@@ -105,20 +116,24 @@ def phi_mask_context(path: Path | str | None) -> PhiMaskContext:
     Only the header is parsed (``stop_before_pixels``).  Non-DICOM files,
     missing files and unreadable headers all yield the unknown context, which
     means the conservative default profile and no panel clamping — never an
-    exception reaching the render loop.
+    exception reaching the render loop or the export worker.
     """
     if path is None:
         return PhiMaskContext()
 
     key = str(path)
-    cached = _CONTEXT_CACHE.get(key)
+    with _CACHE_LOCK:
+        cached = _CONTEXT_CACHE.get(key)
     if cached is not None:
         return cached
 
     context = _read_context(Path(key))
-    if len(_CONTEXT_CACHE) >= _CACHE_LIMIT:
-        _CONTEXT_CACHE.pop(next(iter(_CONTEXT_CACHE)), None)
-    _CONTEXT_CACHE[key] = context
+    with _CACHE_LOCK:
+        _CONTEXT_CACHE[key] = context
+        # Two threads can race to fill the same key or push the cache one entry
+        # over the limit; trimming by insertion order keeps it bounded.
+        while len(_CONTEXT_CACHE) > _CACHE_LIMIT:
+            _CONTEXT_CACHE.pop(next(iter(_CONTEXT_CACHE)), None)
     return context
 
 
@@ -148,9 +163,11 @@ def _read_context(path: Path) -> PhiMaskContext:
     except Exception:  # noqa: BLE001
         vendor = Vendor.UNKNOWN
 
+    has_regions = False
     try:
         layout = parse_panels_from_dataset(dataset)
         if layout is not None and layout.panels:
+            has_regions = True
             tops = [int(panel.bounds.y0) for panel in layout.panels]
             if tops:
                 panel_top = max(min(tops), 0)
@@ -164,7 +181,31 @@ def _read_context(path: Path) -> PhiMaskContext:
     except Exception:  # noqa: BLE001
         burned_in = None
 
-    return PhiMaskContext(vendor=vendor, panel_top=panel_top, burned_in=burned_in)
+    return PhiMaskContext(vendor=vendor, panel_top=panel_top, burned_in=burned_in, has_regions=has_regions)
+
+
+def profile_recommends_pixel_masking(
+    context: PhiMaskContext,
+    height: int,
+    width: int,
+) -> tuple[bool, str]:
+    """Whether this file's class should have its pixels masked, and why.
+
+    This is the §5 default of the DICOM export dialog, kept next to the profile
+    table it is derived from: a class whose band is zero (Philips, GE, the
+    strain analysis screen) has no burned-in header to erase, and a file that
+    declares ``BurnedInAnnotation = NO`` asked not to be masked at all.  The
+    answer is a *default*: the dialog shows it as the preselected variant and
+    the user can override it.
+    """
+    if masks_disabled_by_header(context):
+        return False, "burned-in-annotation-no"
+    spec = resolve_mask_spec(context.vendor, height, width)
+    if spec.preserve_ui:
+        return False, "preserve-ui"
+    if spec.top <= 0.0 and spec.bottom <= 0.0 and spec.left <= 0.0 and spec.right <= 0.0:
+        return False, "no-burned-in-band"
+    return True, "profile-band"
 
 
 def masks_disabled_by_header(context: PhiMaskContext) -> bool:

@@ -30,6 +30,7 @@ from echo_personal_tool.infrastructure.vendor_profiles.base import Vendor
 from echo_personal_tool.presentation.anonymization_filter import (
     BACKGROUND_REFRESH_EVERY,
     AnonymizationFilter,
+    frame_masker,
 )
 
 # ── Geometry ────────────────────────────────────────────────────────────
@@ -352,3 +353,61 @@ def test_solid_band_fills_with_its_own_colour() -> None:
 
     assert masked[0:20, :].max() == 240
     assert masked[0:20, :].std() == 0
+
+
+# ── Masker handed to the MP4 export worker ──────────────────────────────
+
+
+def test_frame_masker_is_none_when_masking_is_off(tmp_path) -> None:
+    """No masker means the exporter can keep copying / writing raw frames."""
+    assert frame_masker(tmp_path / "clip.mp4", enabled=False) is None
+
+
+def test_frame_masker_resolves_the_profile_of_the_exported_file(tmp_path) -> None:
+    """The band comes from the exported file's header, not from the viewer.
+
+    Exports are requested from the gallery, so the clip being written is not
+    necessarily the one on screen; taking the geometry from the file itself is
+    what keeps the export identical to that clip's preview — panel clamp
+    included, so the Samsung calibration strip above the sector survives.
+    """
+    path = _write_dicom(tmp_path / "samsung.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="YES")
+    frame = np.full((884, 1180), 30, dtype=np.uint8)
+    frame[0:100, 100:600] = 250  # header glyphs
+
+    mask = frame_masker(path)
+    assert mask is not None
+    masked = mask(frame)
+
+    assert masked is not frame
+    assert masked[0:100].max() == 30, "the burned-in header must be gone"
+    np.testing.assert_array_equal(masked[100:, :], frame[100:, :])
+
+    # And the source frame is still intact for the cache, playback and M-mode.
+    assert frame[0:100, 100:600].max() == 250
+
+
+def test_frame_masker_conservative_band_for_a_foreign_video(tmp_path) -> None:
+    """An MP4 has no region geometry: 10 % of the height and no clamp."""
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+
+    frame = np.full((200, 300), 40, dtype=np.uint8)
+    frame[0:20, 0:60] = 255  # sparse glyphs, 20 % of the band
+
+    mask = frame_masker(str(clip))
+    assert mask is not None
+    masked = mask(frame)
+
+    assert masked[0:20, :].max() == 40
+    assert masked[25, :].max() == 40  # 10 % of 200 rows = 20 rows
+
+
+def test_frame_masker_respects_burned_in_annotation_no(tmp_path) -> None:
+    path = _write_dicom(tmp_path / "clean.dcm", manufacturer="SAMSUNG", panel_top=100, burned_in="NO")
+    frame = np.full((884, 1180), 30, dtype=np.uint8)
+    frame[0:100, :] = 200
+
+    mask = frame_masker(path)
+    assert mask is not None
+    assert mask(frame) is frame

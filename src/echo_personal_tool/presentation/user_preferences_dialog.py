@@ -261,6 +261,9 @@ class UserPreferencesDialog(QDialog):
         self._anonymize_frames = QCheckBox()
         self._anonymize_frames.setChecked(current.anonymize_frames)
         self._anonymize_frames.setToolTip(tr("preferences.anonymize_frames_hint"))
+        self._phi_text_detector = QCheckBox()
+        self._phi_text_detector.setChecked(current.phi_text_detector)
+        self._phi_text_detector.setToolTip(tr("preferences.phi_text_detector_hint"))
         self._reduce_motion = QCheckBox(tr("preferences.reduce_motion"))
         self._reduce_motion.setChecked(current.reduce_motion)
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
@@ -273,6 +276,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.caliper_inline_labels"), self._show_caliper_inline_labels)
         display_form.addRow(self._show_doppler_cal_roi)
         display_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
+        display_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
 
         tabs.addTab(
@@ -647,6 +651,7 @@ class UserPreferencesDialog(QDialog):
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),
             show_doppler_calibration_roi=self._show_doppler_cal_roi.isChecked(),
             anonymize_frames=self._anonymize_frames.isChecked(),
+            phi_text_detector=self._phi_text_detector.isChecked(),
             thumbnail_scale=str(self._thumbnail_scale.currentData()),
             thumbnail_sort_mode=str(self._thumbnail_sort.currentData()),
             magnetic_snap_weight_threshold=float(self._magnetic_weight_spin.value()),

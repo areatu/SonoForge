@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PySide6.QtWidgets import QDialog
 
 from echo_personal_tool.domain.models.orthanc import SeriesInfo, StudyInfo
 from echo_personal_tool.presentation.orthanc_study_delegate import ROLE_CHECKED, ROLE_PARTIAL, ROLE_ROW, ROLE_UID
@@ -534,7 +536,12 @@ class TestResetAfterDownload:
 
 
 class TestOnDiskDownloadDone:
-    """Regression: a stuck ``_downloading`` flag locks the dialog forever."""
+    """The download is half the job: the de-identifying export is the other half.
+
+    Regression for two things: a stuck ``_downloading`` flag locks the dialog
+    forever, and an export that never reports back leaves the user with a folder
+    of files that still carry the identifiers.
+    """
 
     def _prepare(self, dialog, tmp_path):
         dialog._downloading = True
@@ -543,24 +550,78 @@ class TestOnDiskDownloadDone:
         dialog._save_to_disk_path = str(tmp_path)
         dialog._cache.session_path.return_value = tmp_path
 
-    def test_success_resets_and_accepts(self, dialog, tmp_path):
-        self._prepare(dialog, tmp_path)
+    def _confirm_export(self, dialog, tmp_path, *, accepted: bool = True):
+        """Run the download-complete half with the confirmation dialog faked."""
+        plan = [(tmp_path / "IMG1.dcm", tmp_path / "Instance" / "1" / "IMG1.dcm")]
+        options = MagicMock(name="options")
         with (
-            patch.object(dialog, "_copy_session_files", return_value=3),
+            patch.object(dialog, "_session_export_plan", return_value=plan),
+            patch("echo_personal_tool.presentation.dicom_export_dialog.DicomExportDialog") as mock_dialog,
+            patch("echo_personal_tool.presentation.dicom_export_dialog.load_preview_frame", return_value=None),
+            patch("echo_personal_tool.presentation.ui_animations.exec_animated") as mock_exec,
             patch.object(dialog, "accept") as mock_accept,
+            patch.object(dialog, "_start_export_worker") as mock_start,
             patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
         ):
+            mock_exec.return_value = QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
+            mock_dialog.return_value.chosen_options.return_value = options
+            mock_dialog.return_value.evaluation_record.return_value = (
+                "vendor=Samsung H=884 W=1180 has_regions=True min_panel_y=100 detected_band=None "
+                "confidence=0.00 applied_band=(0, 100) profile_band=(0, 100) files=1 user_action=принял"
+            )
             dialog._on_disk_download_done()
+        return plan, options, mock_accept, mock_start
+
+    def test_success_starts_the_export_then_accepts(self, dialog, tmp_path):
+        self._prepare(dialog, tmp_path)
+        plan, options, mock_accept, mock_start = self._confirm_export(dialog, tmp_path)
+
+        assert mock_start.call_args.args == (plan, options)
+        assert dialog._downloading is True  # still busy while the worker writes
+        mock_accept.assert_not_called()
+
+        dialog._worker = MagicMock()
+        with (
+            patch.object(dialog, "accept") as mock_final_accept,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
+        ):
+            dialog._on_export_finished(SimpleNamespace(exported=1, failed=0, unverified=0, lines=(), cancelled=False))
+
         assert dialog._downloading is False
         assert dialog._worker is None
         assert dialog._session_id is None
         assert dialog.completed_disk_download_path() == tmp_path
-        mock_accept.assert_called_once()
+        mock_final_accept.assert_called_once()
 
-    def test_copy_error_still_resets(self, dialog, tmp_path):
+    def test_evaluation_line_is_logged_for_the_choice(self, dialog, tmp_path, caplog):
+        """§9: the export decision is recorded once, without PHI."""
+        import logging
+
+        self._prepare(dialog, tmp_path)
+        with caplog.at_level(logging.INFO, logger="echo_personal_tool.presentation.orthanc_study_dialog"):
+            plan, _options, _accept, _start = self._confirm_export(dialog, tmp_path)
+
+        lines = [record.getMessage() for record in caplog.records if record.getMessage().startswith("[DEID]")]
+        assert len(plan) == 1 and len(lines) == 1
+        assert "applied_band=" in lines[0] and "user_action=" in lines[0]
+        assert "IMG1" not in lines[0]  # the file name of the sample never leaks
+
+    def test_user_cancel_keeps_the_dialog_usable(self, dialog, tmp_path):
+        self._prepare(dialog, tmp_path)
+        _plan, _options, mock_accept, mock_start = self._confirm_export(dialog, tmp_path, accepted=False)
+
+        mock_start.assert_not_called()
+        assert dialog._downloading is False
+        assert dialog._worker is None
+        assert dialog._session_id is None
+        assert dialog._find_btn.isEnabled()
+        assert dialog.completed_disk_download_path() is None
+        mock_accept.assert_not_called()
+
+    def test_export_error_still_resets(self, dialog, tmp_path):
         self._prepare(dialog, tmp_path)
         with (
-            patch.object(dialog, "_copy_session_files", side_effect=OSError("No space left on device")),
+            patch.object(dialog, "_session_export_plan", side_effect=OSError("No space left on device")),
             patch.object(dialog, "accept") as mock_accept,
             patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox") as mock_box,
         ):
@@ -571,13 +632,13 @@ class TestOnDiskDownloadDone:
         mock_accept.assert_not_called()
         mock_box.warning.assert_called_once()
 
-    def test_partial_copy_error_keeps_ui_unblocked(self, dialog, tmp_path):
+    def test_empty_plan_keeps_ui_unblocked(self, dialog, tmp_path):
         self._prepare(dialog, tmp_path)
         dialog._completed_downloads = 2
         dialog._failed_downloads = 1
         dialog._total_studies = 3
         with (
-            patch.object(dialog, "_copy_session_files", side_effect=PermissionError("denied")),
+            patch.object(dialog, "_session_export_plan", return_value=[]),
             patch.object(dialog, "accept") as mock_accept,
             patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox"),
         ):
@@ -585,6 +646,21 @@ class TestOnDiskDownloadDone:
         assert dialog._downloading is False
         assert dialog._find_btn.isEnabled()
         mock_accept.assert_not_called()
+
+    def test_worker_failure_still_resets(self, dialog, tmp_path):
+        self._prepare(dialog, tmp_path)
+        dialog._worker = MagicMock()
+        with (
+            patch.object(dialog, "accept") as mock_accept,
+            patch("echo_personal_tool.presentation.orthanc_study_dialog.QMessageBox") as mock_box,
+        ):
+            dialog._on_export_failed("disk full")
+        assert dialog._downloading is False
+        assert dialog._worker is None
+        assert dialog._session_id is None
+        assert dialog._find_btn.isEnabled()
+        mock_accept.assert_not_called()
+        mock_box.warning.assert_called_once()
 
 
 class TestSeriesLoadingState:
