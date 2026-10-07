@@ -119,6 +119,11 @@ class UserPreferences:
     # switchable at runtime: the band geometry is empirical and can be wrong on
     # a scanner we have never measured.
     anonymize_frames: bool = True
+    # Experimental (§9 of the de-identification spec): run the text detector as
+    # a verification layer over masked export pixels and show its finding in the
+    # DICOM export dialog.  Off by default: the detector is calibrated on a
+    # corpus, not proven, and it never changes the mask by itself.
+    phi_text_detector: bool = False
     thumbnail_scale: str = "medium"
     #: Thumbnail panel order: "created" (as performed, earliest first) or "filename".
     thumbnail_sort_mode: str = "created"
@@ -311,6 +316,7 @@ def load_user_preferences() -> UserPreferences:
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),
         show_doppler_calibration_roi=_read_bool(store.value("show_doppler_calibration_roi"), False),
         anonymize_frames=_read_bool(store.value("anonymize_frames"), True),
+        phi_text_detector=_read_bool(store.value("phi_text_detector"), False),
         thumbnail_scale=_read_choice(
             store.value("thumbnail_scale"),
             "medium",

@@ -85,10 +85,15 @@ class PhiMaskContext:
     panel_top: int | None = None
     #: Raw ``BurnedInAnnotation`` (0028,0301) when present, else ``None``.
     burned_in: str | None = None
+    #: Whether the file carried a parseable ``SequenceOfUltrasoundRegions``.
+    #: ``panel_top`` is its topmost panel row, so this flag distinguishes "no
+    #: regions at all" from "regions whose clamp happened to be row 0" — the
+    #: evaluation log of §9 records both, and they mean different things.
+    has_regions: bool = False
 
     @property
     def is_dicom(self) -> bool:
-        return self.burned_in is not None or self.panel_top is not None
+        return self.burned_in is not None or self.panel_top is not None or self.has_regions
 
 
 _CONTEXT_CACHE: dict[str, PhiMaskContext] = {}
@@ -158,9 +163,11 @@ def _read_context(path: Path) -> PhiMaskContext:
     except Exception:  # noqa: BLE001
         vendor = Vendor.UNKNOWN
 
+    has_regions = False
     try:
         layout = parse_panels_from_dataset(dataset)
         if layout is not None and layout.panels:
+            has_regions = True
             tops = [int(panel.bounds.y0) for panel in layout.panels]
             if tops:
                 panel_top = max(min(tops), 0)
@@ -174,7 +181,31 @@ def _read_context(path: Path) -> PhiMaskContext:
     except Exception:  # noqa: BLE001
         burned_in = None
 
-    return PhiMaskContext(vendor=vendor, panel_top=panel_top, burned_in=burned_in)
+    return PhiMaskContext(vendor=vendor, panel_top=panel_top, burned_in=burned_in, has_regions=has_regions)
+
+
+def profile_recommends_pixel_masking(
+    context: PhiMaskContext,
+    height: int,
+    width: int,
+) -> tuple[bool, str]:
+    """Whether this file's class should have its pixels masked, and why.
+
+    This is the §5 default of the DICOM export dialog, kept next to the profile
+    table it is derived from: a class whose band is zero (Philips, GE, the
+    strain analysis screen) has no burned-in header to erase, and a file that
+    declares ``BurnedInAnnotation = NO`` asked not to be masked at all.  The
+    answer is a *default*: the dialog shows it as the preselected variant and
+    the user can override it.
+    """
+    if masks_disabled_by_header(context):
+        return False, "burned-in-annotation-no"
+    spec = resolve_mask_spec(context.vendor, height, width)
+    if spec.preserve_ui:
+        return False, "preserve-ui"
+    if spec.top <= 0.0 and spec.bottom <= 0.0 and spec.left <= 0.0 and spec.right <= 0.0:
+        return False, "no-burned-in-band"
+    return True, "profile-band"
 
 
 def masks_disabled_by_header(context: PhiMaskContext) -> bool:
