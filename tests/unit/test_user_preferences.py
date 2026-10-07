@@ -259,3 +259,34 @@ class TestAreaToolMode:
     def test_freehand_valid(self) -> None:
         prefs = UserPreferences(area_tool_mode="freehand")
         assert prefs.area_tool_mode == "freehand"
+
+
+class TestLastSessionSource:
+    """Q-05/D-27: where the last opened study came from."""
+
+    def test_default_is_unknown(self) -> None:
+        assert default_user_preferences().last_session_source == ""
+
+    def test_round_trip(self, isolated_prefs: None) -> None:
+        prefs = default_user_preferences()
+        prefs.last_session_source = up_mod.SESSION_SOURCE_SERVER
+        save_user_preferences(prefs)
+
+        assert load_user_preferences().last_session_source == up_mod.SESSION_SOURCE_SERVER
+
+    def test_folder_value_round_trips(self, isolated_prefs: None) -> None:
+        prefs = default_user_preferences()
+        prefs.last_session_source = up_mod.SESSION_SOURCE_FOLDER
+        save_user_preferences(prefs)
+
+        assert load_user_preferences().last_session_source == up_mod.SESSION_SOURCE_FOLDER
+
+    def test_unknown_value_falls_back_to_empty(self, isolated_prefs: None) -> None:
+        store = QSettings(up_mod._SETTINGS_ORG, up_mod._SETTINGS_APP)
+        store.setValue("last_session_source", "cloud")
+        store.sync()
+
+        assert load_user_preferences().last_session_source == ""
+
+    def test_missing_value_falls_back_to_empty(self, isolated_prefs: None) -> None:
+        assert load_user_preferences().last_session_source == ""

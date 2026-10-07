@@ -128,3 +128,119 @@ def test_main_prints_profiler_on_exit() -> None:
 
     assert result == 0
     mock_print_summary.assert_called_once()
+
+
+def _prefs(**overrides):
+    """Startup preferences as main() sees them (attribute access only)."""
+    values = {
+        "startup_mode": "empty",
+        "last_opened_folder": "",
+        "last_session_source": "",
+        "ui_font_size": 10,
+        "language": "en",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+class TestScheduleLastSession:
+    """Q-05/D-27: what "Last session" reopens at startup."""
+
+    def test_server_session_opens_the_server_dialog(self) -> None:
+        from echo_personal_tool.main import _schedule_last_session
+
+        window = MagicMock()
+        with patch("echo_personal_tool.main.QTimer") as timer:
+            scheduled = _schedule_last_session(window, _prefs(startup_mode="last_folder", last_session_source="server"))
+
+        assert scheduled == "server"
+        assert timer.singleShot.call_count == 1
+        assert timer.singleShot.call_args[0][1] is window.open_server_dialog
+        window.open_folder_path.assert_not_called()
+
+    def test_server_session_wins_over_a_stale_folder_path(self, tmp_path: Path) -> None:
+        """The PACS cache is gone after exit: never reopen a stale cache folder."""
+        from echo_personal_tool.main import _schedule_last_session
+
+        window = MagicMock()
+        preferences = _prefs(
+            startup_mode="last_folder",
+            last_session_source="server",
+            last_opened_folder=str(tmp_path),
+        )
+        with patch("echo_personal_tool.main.QTimer") as timer:
+            assert _schedule_last_session(window, preferences) == "server"
+        assert timer.singleShot.call_args[0][1] is window.open_server_dialog
+
+    def test_folder_session_opens_the_folder(self, tmp_path: Path) -> None:
+        from echo_personal_tool.main import _schedule_last_session
+
+        window = MagicMock()
+        preferences = _prefs(
+            startup_mode="last_folder",
+            last_session_source="folder",
+            last_opened_folder=str(tmp_path),
+        )
+        with patch("echo_personal_tool.main.QTimer") as timer:
+            assert _schedule_last_session(window, preferences) == "folder"
+        assert timer.singleShot.call_count == 1
+
+    def test_preferences_from_before_the_field_existed_still_open_the_folder(self, tmp_path: Path) -> None:
+        from echo_personal_tool.main import _schedule_last_session
+
+        window = MagicMock()
+        preferences = _prefs(startup_mode="last_folder", last_session_source="", last_opened_folder=str(tmp_path))
+        with patch("echo_personal_tool.main.QTimer"):
+            assert _schedule_last_session(window, preferences) == "folder"
+
+    def test_missing_folder_is_reported_and_nothing_is_scheduled(self) -> None:
+        from echo_personal_tool.main import _schedule_last_session
+
+        window = MagicMock()
+        preferences = _prefs(
+            startup_mode="last_folder",
+            last_session_source="folder",
+            last_opened_folder="/tmp/echo_folder_that_does_not_exist_42",
+        )
+        with patch("echo_personal_tool.main.QTimer") as timer:
+            assert _schedule_last_session(window, preferences) == "missing_folder"
+        timer.singleShot.assert_not_called()
+
+    def test_empty_startup_mode_never_restores_anything(self) -> None:
+        from echo_personal_tool.main import _schedule_last_session
+
+        window = MagicMock()
+        preferences = _prefs(startup_mode="empty", last_session_source="server")
+        with patch("echo_personal_tool.main.QTimer") as timer:
+            assert _schedule_last_session(window, preferences) == "none"
+        timer.singleShot.assert_not_called()
+
+
+def test_main_opens_the_server_dialog_for_a_server_session() -> None:
+    """End-to-end through main(): a PACS session reopens the loader dialog."""
+    mock_app = MagicMock()
+    mock_app.exec.return_value = 0
+
+    with (
+        patch("echo_personal_tool.main.QApplication", return_value=mock_app),
+        patch("echo_personal_tool.main.MainWindow") as mock_mw_cls,
+        patch("echo_personal_tool.main.load_user_preferences") as mock_prefs,
+        patch("echo_personal_tool.main.ensure_bundled_fonts_loaded"),
+        patch("echo_personal_tool.main.patch_pyqtgraph_export_dialog"),
+        patch("echo_personal_tool.main.is_enabled", return_value=False),
+        patch("echo_personal_tool.main.apply_maximized_to_work_area"),
+        patch("echo_personal_tool.main.QTimer") as mock_timer,
+        patch("echo_personal_tool.presentation.dark_theme.get_logo_path", return_value=Path("/fake/logo.png")),
+        patch("echo_personal_tool.main.ui_font", return_value=MagicMock()),
+        patch("echo_personal_tool.infrastructure.runtime_setup.check_models", return_value=True),
+    ):
+        mock_prefs.return_value = _prefs(startup_mode="last_folder", last_session_source="server")
+        mock_window = MagicMock()
+        mock_mw_cls.return_value = mock_window
+
+        from echo_personal_tool.main import main
+
+        assert main() == 0
+
+    scheduled = [call.args[1] for call in mock_timer.singleShot.call_args_list]
+    assert mock_window.open_server_dialog in scheduled

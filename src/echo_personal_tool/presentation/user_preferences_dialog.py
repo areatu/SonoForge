@@ -421,6 +421,9 @@ class UserPreferencesDialog(QDialog):
         other_form.addRow(tr("preferences.confirm_reset"), self._confirm_reset)
         other_form.addRow(tr("preferences.pdf_font"), self._pdf_font_spin)
         other_form.addRow(tr("preferences.startup_at"), self._startup_mode)
+        startup_hint = QLabel(tr("preferences.startup_last_folder_hint"))
+        startup_hint.setWordWrap(True)
+        other_form.addRow("", startup_hint)
 
         persistence_form = QFormLayout()
         self._persist_measurements = QCheckBox(tr("persistence.enable"))
@@ -506,6 +509,13 @@ class UserPreferencesDialog(QDialog):
         theme_button_box_icons(buttons)
 
         reset_row = QHBoxLayout()
+        # Q-13: the way out when something is broken lives in Settings, next to
+        # the destructive action, so it is reachable from every tab.
+        feedback_btn = QPushButton(tr("feedback.button"))
+        feedback_btn.setObjectName("feedbackButton")
+        feedback_btn.setToolTip(tr("feedback.intro"))
+        feedback_btn.clicked.connect(self._report_problem)
+        reset_row.addWidget(feedback_btn)
         reset_defaults_btn = QPushButton(tr("preferences.reset_defaults"))
         reset_defaults_btn.clicked.connect(self._reset_to_defaults)
         reset_row.addWidget(reset_defaults_btn)
@@ -596,10 +606,17 @@ class UserPreferencesDialog(QDialog):
         defaults = default_user_preferences()
         stored = load_user_preferences()
         defaults.last_opened_folder = stored.last_opened_folder
+        defaults.last_session_source = stored.last_session_source
         save_user_preferences(defaults)
         if self._on_apply is not None:
             self._on_apply(defaults)
         self.accept()
+
+    def _report_problem(self) -> None:
+        """Open the "report a problem" dialog (Q-13) without touching settings."""
+        from echo_personal_tool.presentation.feedback_dialog import show_support_feedback_dialog
+
+        show_support_feedback_dialog(self)
 
     def _browse_gold_path(self) -> None:
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory

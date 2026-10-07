@@ -1009,3 +1009,117 @@ class TestOpenFolderRemembersRecents:
 
         assert called == []
         assert RecentStore().paths() == []
+
+
+class TestLastSessionSource:
+    """Q-05/D-27: "Last session" reopens a folder or the server dialog."""
+
+    def test_folder_open_records_the_disk_source(self, main_window, tmp_path, monkeypatch):
+        from echo_personal_tool.infrastructure.user_preferences import (
+            SESSION_SOURCE_FOLDER,
+            load_user_preferences,
+        )
+
+        chosen = tmp_path / "study"
+        chosen.mkdir()
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            lambda *args, **kwargs: str(chosen),
+        )
+        monkeypatch.setattr(main_window, "open_folder_path", lambda path: None)
+
+        main_window._open_folder()
+
+        assert main_window._user_preferences.last_session_source == SESSION_SOURCE_FOLDER
+        # Persisted, not just in memory: startup reads it back from the store.
+        assert load_user_preferences().last_session_source == SESSION_SOURCE_FOLDER
+
+    def test_cancelled_dialog_keeps_the_previous_source(self, main_window, monkeypatch):
+        main_window._user_preferences.last_session_source = "server"
+        monkeypatch.setattr(
+            "echo_personal_tool.presentation.styled_dialogs.styled_select_directory",
+            lambda *args, **kwargs: "",
+        )
+
+        main_window._open_folder()
+
+        assert main_window._user_preferences.last_session_source == "server"
+
+    def _run_server_dialog(self, main_window, monkeypatch, tmp_path, *, disk_path, result, downloaded):
+        """Drive `_open_orthanc_dialog` with a stubbed dialog and clients."""
+        dialog = MagicMock()
+        dialog.result_data.return_value = result
+        dialog.downloaded_studies.return_value = downloaded
+        dialog.completed_disk_download_path.return_value = disk_path
+        for name in (
+            "load_server_settings",
+            "make_dicom_web_client",
+            "make_dimse_client",
+            "make_dicom_query_service",
+            "make_dicom_retrieve_service",
+            "OrthancStudyDialog",
+        ):
+            monkeypatch.setattr(f"echo_personal_tool.presentation.main_window.{name}", MagicMock(return_value=dialog))
+        monkeypatch.setattr("echo_personal_tool.presentation.ui_animations.exec_animated", lambda *a, **k: 0)
+        opened: list = []
+        monkeypatch.setattr(main_window, "open_folder_path", lambda path: opened.append(path))
+        main_window._open_orthanc_dialog()
+        return opened
+
+    def test_cache_download_records_the_server_source(self, main_window, monkeypatch, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import (
+            SESSION_SOURCE_SERVER,
+            load_user_preferences,
+        )
+
+        self._run_server_dialog(
+            main_window,
+            monkeypatch,
+            tmp_path,
+            disk_path=None,
+            result=("session-1", "1.2.3"),
+            downloaded=[MagicMock(series=[])],
+        )
+
+        assert main_window._user_preferences.last_session_source == SESSION_SOURCE_SERVER
+        assert load_user_preferences().last_session_source == SESSION_SOURCE_SERVER
+        main_window._controller.load_pre_scanned_studies.assert_called_once()
+
+    def test_disk_export_records_the_folder_source(self, main_window, monkeypatch, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_FOLDER
+
+        exported = tmp_path / "exported-study"
+        exported.mkdir()
+        opened = self._run_server_dialog(
+            main_window,
+            monkeypatch,
+            tmp_path,
+            disk_path=exported,
+            result=("session-1", "1.2.3"),
+            downloaded=[],
+        )
+
+        assert opened == [exported]
+        assert main_window._user_preferences.last_session_source == SESSION_SOURCE_FOLDER
+        assert main_window._user_preferences.last_opened_folder == str(exported)
+
+    def test_cancelled_server_dialog_records_nothing(self, main_window, monkeypatch, tmp_path):
+        main_window._user_preferences.last_session_source = "folder"
+        self._run_server_dialog(
+            main_window,
+            monkeypatch,
+            tmp_path,
+            disk_path=None,
+            result=None,
+            downloaded=[],
+        )
+
+        assert main_window._user_preferences.last_session_source == "folder"
+
+    def test_open_server_dialog_is_the_public_entry_point(self, main_window, monkeypatch):
+        calls: list = []
+        monkeypatch.setattr(main_window, "_open_orthanc_dialog", lambda: calls.append(True))
+
+        main_window.open_server_dialog()
+
+        assert calls == [True]

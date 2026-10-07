@@ -151,6 +151,40 @@ def _schedule_reference_preload(window: MainWindow) -> None:
     QTimer.singleShot(1500, _preload_when_idle)
 
 
+def _schedule_last_session(window: MainWindow, preferences) -> str:  # noqa: ANN001
+    """Reopen the last session for ``startup_mode="last_folder"`` (Q-05/D-27).
+
+    Returns what was scheduled ("server", "folder", "missing_folder", "none") —
+    the value exists for tests and for the startup log line.
+
+    A study downloaded from a PACS is *not* reopened from disk: the cache is
+    cleared on exit (and after 7 days at startup), so "Last session" opens the
+    server dialog and the images are fetched again. Measurements are restored
+    from the local measurement store once the same study is loaded, so the
+    user's work is not lost by that round trip.
+    """
+    from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_SERVER
+
+    if getattr(preferences, "startup_mode", "empty") != "last_folder":
+        return "none"
+
+    source = getattr(preferences, "last_session_source", "") or ""
+    if source == SESSION_SOURCE_SERVER:
+        QTimer.singleShot(200, window.open_server_dialog)
+        return "server"
+
+    last_folder_text = getattr(preferences, "last_opened_folder", "") or ""
+    if not last_folder_text:
+        return "none"
+    last_folder = Path(last_folder_text)
+    if not last_folder.is_dir():
+        # The path itself is not logged: a patient folder name is PHI.
+        _LOG.info("Startup: last folder is no longer available")
+        return "missing_folder"
+    QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
+    return "folder"
+
+
 def _schedule_ui_scale_hint(window: MainWindow) -> None:
     """Offer the multiplier once on a 4K-class screen that the OS leaves at 100 %."""
     QTimer.singleShot(2500, lambda: _maybe_show_ui_scale_hint(window))
@@ -277,10 +311,9 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
     set_language(preferences.language)
     app.setFont(ui_font(pixel_size=preferences.ui_font_size))
     window = MainWindow(user_preferences=preferences)
-    if preferences.startup_mode == "last_folder" and preferences.last_opened_folder:
-        last_folder = Path(preferences.last_opened_folder)
-        if last_folder.is_dir():
-            QTimer.singleShot(200, lambda: window.open_folder_path(last_folder))
+    scheduled = _schedule_last_session(window, preferences)
+    if scheduled != "none":
+        _LOG.info("Startup: last session restored (%s)", scheduled)
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
     _schedule_ui_scale_hint(window)

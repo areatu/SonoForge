@@ -11,6 +11,12 @@ from echo_personal_tool.infrastructure.ui_scale import UI_SCALE_AUTO, normalize_
 _SETTINGS_ORG = "sonoforge"
 _SETTINGS_APP = "preferences"
 
+#: Values of :attr:`UserPreferences.last_session_source`.  ``""`` means "no
+#: session recorded yet" (first run, or a version before the field existed).
+SESSION_SOURCE_FOLDER = "folder"
+SESSION_SOURCE_SERVER = "server"
+SESSION_SOURCES = frozenset({"", SESSION_SOURCE_FOLDER, SESSION_SOURCE_SERVER})
+
 # One logical unit for UI fonts: pixels, both in the QSS stylesheet and in the
 # application font (Э4).  ``pt`` stays for PDF/print only.
 MIN_UI_FONT_SIZE = 10
@@ -145,6 +151,12 @@ class UserPreferences:
     pdf_font_size: int = DEFAULT_PDF_FONT_SIZE
     startup_mode: str = "empty"
     last_opened_folder: str = ""
+    #: Where the last opened study came from: ``""`` (unknown/first run),
+    #: ``"folder"`` (a directory on disk) or ``"server"`` (downloaded from a
+    #: PACS).  The PACS cache is cleared on exit (decision D-27), so "Last
+    #: session" cannot reopen server images from disk — it reopens the server
+    #: load dialog instead.
+    last_session_source: str = ""
     # Orthanc downloads contain raw DICOM/PHI. Preserve the existing normal-exit
     # cleanup behavior by default; the cache UI lets users opt out explicitly.
     orthanc_cache_clear_on_exit: bool = True
@@ -373,6 +385,7 @@ def load_user_preferences() -> UserPreferences:
         ),
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
+        last_session_source=_read_choice(store.value("last_session_source"), "", SESSION_SOURCES),
         measurement_persistence_enabled=_read_bool(store.value("measurement_persistence_enabled"), False),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(

@@ -46,6 +46,8 @@ from echo_personal_tool.infrastructure.server_client_factory import (
 )
 from echo_personal_tool.infrastructure.server_settings import load_server_settings
 from echo_personal_tool.infrastructure.user_preferences import (
+    SESSION_SOURCE_FOLDER,
+    SESSION_SOURCE_SERVER,
     UserPreferences,
     load_user_preferences,
     save_user_preferences,
@@ -1665,6 +1667,22 @@ class MainWindow(QMainWindow):
         self._reset_doppler_mode_override()
         self._controller.open_folder(directory, error_log_path=logs_dir() / "scan_errors.log")
 
+    def open_server_dialog(self) -> None:
+        """Open the "load from server" dialog (also used at startup, D-27)."""
+        self._open_orthanc_dialog()
+
+    def _remember_session_source(self, source: str, folder: str | None = None) -> None:
+        """Record what "Last session" has to reopen next time (Q-05/D-27).
+
+        ``folder`` keeps ``last_opened_folder`` in sync for the disk case; the
+        server case records only the source, because the PACS cache is cleared
+        on exit and there is no path worth remembering.
+        """
+        self._user_preferences.last_session_source = source
+        if folder is not None:
+            self._user_preferences.last_opened_folder = folder
+        save_user_preferences(self._user_preferences)
+
     def _reset_doppler_mode_override(self) -> None:
         """Drop the explicit Doppler mode back to Auto on study open (Э2).
 
@@ -1687,11 +1705,10 @@ class MainWindow(QMainWindow):
         if not directory:
             return
         folder = Path(directory)
-        # The recent list drives the dialog; `last_opened_folder` feeds the
-        # "open last folder at startup" mode and stays in sync with it.
+        # The recent list drives the dialog; `last_opened_folder` and the
+        # session source feed the "last session at startup" mode (Q-05/D-27).
         store.record(folder)
-        self._user_preferences.last_opened_folder = str(folder)
-        save_user_preferences(self._user_preferences)
+        self._remember_session_source(SESSION_SOURCE_FOLDER, str(folder))
         self.open_folder_path(folder)
 
     def _on_export_mp4_requested(self, instance: object) -> None:
@@ -1792,8 +1809,14 @@ class MainWindow(QMainWindow):
             # Re-scan the exported short paths so the active StudyMetadata also
             # points at files that persist after the Orthanc cache is cleaned.
             # True Study/Series/SOP UIDs are reconstructed from DICOM headers.
+            # A disk export survives the cache cleanup, so "Last session" can
+            # reopen the folder itself (D-27).
+            self._remember_session_source(SESSION_SOURCE_FOLDER, str(disk_path))
             self.open_folder_path(disk_path)
         elif result:
+            # Cache-only download: the images are deleted on exit, so the next
+            # "Last session" has to go through the server dialog again (Q-05).
+            self._remember_session_source(SESSION_SOURCE_SERVER)
             if downloaded:
                 self._reset_doppler_mode_override()
                 self._controller.load_pre_scanned_studies(downloaded)

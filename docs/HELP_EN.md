@@ -660,13 +660,15 @@ Contour pen widths change the rendered line, not its stored points. Magnetic set
 
 ### 15.3 `Other`
 
-The main block contains reset confirmation, PDF font size, and startup mode. Other blocks contain:
+The main block contains reset confirmation, PDF font size, and the startup mode. "Last session" reopens whatever was open last time: a folder on disk, or — when the study came from a server — the server load dialog, because the PACS cache is cleared on exit and the images are downloaded again while saved measurements are restored from the local store once the same study is loaded. Other blocks contain:
 
 - `Gold Annotation`: experimental flag and dataset folder;
 - `DICOM`: tag inspector and comma-separated overlay tags such as `PatientName,StudyDate,HeartRate,FrameRate`;
 - `References`: the one selected `.md`/`.pdf` folder described in [section 14](#14-user-md-and-pdf-documents).
 
-`Reset defaults` restores application preferences and layout while retaining the last opened folder. It does not reset the server profile.
+`Reset defaults` restores application preferences and layout while retaining the last opened folder and the record of where the last study came from, so a reset never silently changes the startup mode. It does not reset the server profile.
+
+`Report a problem…` at the bottom of Settings opens a new GitHub issue form: the version, operating system and environment are prefilled into the link, and logs travel only as a diagnostic bundle created on your disk that you attach to the issue yourself (details in [section 20](#20-troubleshooting-and-limitations)). Patient data, measurements, preferences and server addresses are never part of the link.
 
 ### 15.4 `Experimental`
 
@@ -964,6 +966,16 @@ Fullscreen without a second display: `F11` hides the entire UI; move the mouse t
 ---
 
 ## 20. Troubleshooting and limitations
+
+### How to report a problem
+
+`Settings → Report a problem…` collects what a triage needs without manual version hunting:
+
+1. The GitHub form link is prefilled with the SonoForge version, build profile, operating system, Python and Qt versions, and the screen list with scale and logical DPI — exactly the block shown in the dialog preview, nothing else.
+2. The "Create a diagnostic bundle" checkbox (on by default) writes a ZIP with the application logs: log text is filtered for identifiers, source file names never enter the archive, and DICOM folders, measurements, preferences and server credentials are not read at all. "Change…" picks another destination; after the bundle is written, its folder is opened so the archive can be dragged into the issue.
+3. "Copy link" puts the same link on the clipboard for machines without a browser or without internet.
+
+The form itself needs a GitHub account: description, steps and expected behavior are filled in by hand. Without internet, the session logs live in the log directory (`%LOCALAPPDATA%\SonoForge\logs` on Windows, `~/.local/share/sonoforge/logs` or `$XDG_DATA_HOME/sonoforge/logs` on Linux, `~/Library/Application Support/SonoForge/logs` on macOS) as `session-*.log` files and can be attached manually.
 
 ### No thumbnails after opening a folder
 
