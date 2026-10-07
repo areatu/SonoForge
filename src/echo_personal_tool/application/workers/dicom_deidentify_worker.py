@@ -27,10 +27,30 @@ from echo_personal_tool.infrastructure.dicom_deidentifier import (
 logger = logging.getLogger(__name__)
 
 
+def _export_root(destinations: list[Path]) -> Path:
+    """The folder the export was written under (informational).
+
+    The plan uses ``<target>/Instance/<study>/<file>``, so the deepest common
+    parent of the destinations is that ``Instance`` folder.  It is reported for
+    the log and the summary; the dialog opens the folder it was given and does
+    not depend on this value.
+    """
+    if not destinations:
+        return Path(".")
+    root = destinations[0].parent
+    for destination in destinations[1:]:
+        while root != destination.parent and root not in destination.parent.parents:
+            if root == root.parent:  # a filesystem root, nothing left to climb
+                return root
+            root = root.parent
+    return root
+
+
 @dataclass(frozen=True)
 class DeidentificationSummary:
     """Counts and PHI-free notes for the finished export."""
 
+    #: Folder the files were written under (deepest common parent of the plan).
     target_dir: Path
     exported: int = 0
     failed: int = 0
@@ -74,7 +94,7 @@ class DicomDeidentifyWorker(QRunnable):
 
     @Slot()
     def run(self) -> None:
-        target = self._plan[0][1].parents[1] if self._plan and len(self._plan[0][1].parents) > 1 else Path(".")
+        target = _export_root([destination for _source, destination in self._plan])
         exported = 0
         failed = 0
         unverified = 0
