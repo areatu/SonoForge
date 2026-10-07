@@ -738,7 +738,12 @@ class MainWindow(QMainWindow):
         self._rebuild_layout()
 
     def _save_layout_state(self) -> None:
-        self._user_preferences.layout_state_json = json.dumps(asdict(self._layout_config))
+        state = asdict(self._layout_config)
+        # Multiview is a session-only mode (spec 4): a relaunch always starts
+        # single-view, so a close (or a kill) from the mode must not leave it
+        # behind in storage.
+        state["multiview"] = False
+        self._user_preferences.layout_state_json = json.dumps(state)
         save_user_preferences(self._user_preferences)
 
     def _show_layout_menu(self) -> None:
@@ -1413,8 +1418,11 @@ class MainWindow(QMainWindow):
         self._tool_panel.set_auto_play(preferences.auto_play)
         self._viewer.set_magnetic_snap_enabled(preferences.magnetic_snap_enabled)
         self._viewer.set_area_tool_mode(preferences.area_tool_mode)
+        self._viewer.set_lv_contour_input(preferences.lv_contour_input)
+        self._viewer.set_atrial_contour_input(preferences.atrial_contour_input)
         self._viewer.apply_user_preferences(preferences)
         self._gallery.apply_scale(preferences.thumbnail_scale)
+        self._gallery.set_sort_mode(preferences.thumbnail_sort_mode)
         self._controller.set_playback_speed_multiplier(preferences.playback_speed_multiplier)
         self._tool_panel.set_dicom_inspector_visible(preferences.show_dicom_tag_inspector)
         self._refresh_dicom_inspector()
@@ -1848,6 +1856,11 @@ class MainWindow(QMainWindow):
             self._presenter.stop()
         if self.isFullScreen():
             self._remove_fullscreen_chrome_filter()
+        if self._layout_config.multiview:
+            # Closing from Multiview: hand the interface back to the initial
+            # single-view layout first (the window may stay visible for up to
+            # 2 s while pending workers drain below).
+            self._on_multiview_button()
         self._multiview.shutdown()
         self._viewer.disconnect_display_controls()
         # Wait briefly for pending workers to finish so signals don't fire
@@ -3273,11 +3286,20 @@ class MainWindow(QMainWindow):
         view: str,
         *,
         model: bool = False,
+        force_landmarks: bool = False,
         overlay: str,
         status: str,
     ) -> bool:
-        starter = self._viewer.start_model_contour if model else self._viewer.start_contour
-        if not starter(chamber=chamber, phase=phase, view=view):
+        if model:
+            started = self._viewer.start_model_contour(chamber=chamber, phase=phase, view=view)
+        else:
+            started = self._viewer.start_contour(
+                chamber=chamber,
+                phase=phase,
+                view=view,
+                force_landmarks=force_landmarks,
+            )
+        if not started:
             return False
         self._viewer.clear_frame_overlay()
         self._viewer.append_frame_overlay(overlay)
@@ -3315,6 +3337,7 @@ class MainWindow(QMainWindow):
             "LA",
             "ES",
             "A4C",
+            force_landmarks=True,
             overlay=tr("status.lav4c_ai_plus_overlay"),
             status=tr("status.lav4c_ai_plus_status"),
         )

@@ -502,3 +502,37 @@ class TestMockModeClient:
         client = worker._make_thread_client()
         assert not isinstance(client, FakeDicomWebClient)
         client.close()
+
+
+class TestResolveConcurrency:
+    """`SONOFORGE_ORTHANC_CONCURRENCY` tunes the download worker count."""
+
+    def test_default_without_env(self, monkeypatch) -> None:
+        from echo_personal_tool.application.workers.orthanc_download_worker import (
+            _DEFAULT_CONCURRENT_DOWNLOADS,
+            _resolve_concurrency,
+        )
+
+        monkeypatch.delenv("SONOFORGE_ORTHANC_CONCURRENCY", raising=False)
+        assert _resolve_concurrency() == _DEFAULT_CONCURRENT_DOWNLOADS
+
+    def test_env_override_is_clamped(self, monkeypatch) -> None:
+        from echo_personal_tool.application.workers.orthanc_download_worker import (
+            _resolve_concurrency,
+        )
+
+        monkeypatch.setenv("SONOFORGE_ORTHANC_CONCURRENCY", "12")
+        assert _resolve_concurrency() == 12
+        monkeypatch.setenv("SONOFORGE_ORTHANC_CONCURRENCY", "999")
+        assert _resolve_concurrency() == 16
+        monkeypatch.setenv("SONOFORGE_ORTHANC_CONCURRENCY", "0")
+        assert _resolve_concurrency() == 1
+
+    def test_invalid_env_falls_back(self, monkeypatch) -> None:
+        from echo_personal_tool.application.workers.orthanc_download_worker import (
+            _DEFAULT_CONCURRENT_DOWNLOADS,
+            _resolve_concurrency,
+        )
+
+        monkeypatch.setenv("SONOFORGE_ORTHANC_CONCURRENCY", "fast")
+        assert _resolve_concurrency() == _DEFAULT_CONCURRENT_DOWNLOADS

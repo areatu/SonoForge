@@ -35,6 +35,9 @@ class InstanceMetadata:
     #: DICOM ``HeartRate`` (0018,1088) recorded by the scanner for this clip;
     #: feeds the cardiac-output calculator (Э11) with DICOM provenance.
     heart_rate_bpm: float | None = None
+    #: Acquisition/content creation moment; used to restore the "as performed"
+    #: order in the thumbnail panel.  ``None`` falls back to the file mtime.
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)

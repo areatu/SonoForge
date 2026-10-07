@@ -243,6 +243,11 @@ class UserPreferencesDialog(QDialog):
         self._thumbnail_scale.addItem(tr("tool_panel.large"), "large")
         thumb_index = self._thumbnail_scale.findData(current.thumbnail_scale)
         self._thumbnail_scale.setCurrentIndex(max(thumb_index, 0))
+        self._thumbnail_sort = QComboBox()
+        self._thumbnail_sort.addItem(tr("tool_panel.thumbnail_sort_created"), "created")
+        self._thumbnail_sort.addItem(tr("tool_panel.thumbnail_sort_filename"), "filename")
+        sort_index = self._thumbnail_sort.findData(current.thumbnail_sort_mode)
+        self._thumbnail_sort.setCurrentIndex(max(sort_index, 0))
         self._show_crosshair = QCheckBox()
         self._show_crosshair.setChecked(current.show_crosshair)
         self._show_panel_frames = QCheckBox()
@@ -261,6 +266,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
         display_form.addRow(tr("tool_panel.wl_preset"), self._wl_preset)
         display_form.addRow(tr("tool_panel.thumbnail_size"), self._thumbnail_scale)
+        display_form.addRow(tr("tool_panel.thumbnail_sort"), self._thumbnail_sort)
         display_form.addRow(tr("tool_panel.crosshair"), self._show_crosshair)
         display_form.addRow(tr("tool_panel.panel_frames"), self._show_panel_frames)
         display_form.addRow(tr("tool_panel.caliper_labels"), self._show_caliper_labels)
@@ -331,6 +337,16 @@ class UserPreferencesDialog(QDialog):
         self._area_tool_mode_combo.addItem(tr("preferences.area_mode_freehand"), "freehand")
         area_mode_index = self._area_tool_mode_combo.findData(current.area_tool_mode)
         self._area_tool_mode_combo.setCurrentIndex(max(area_mode_index, 0))
+        self._lv_contour_input_combo = QComboBox()
+        self._lv_contour_input_combo.addItem(tr("preferences.lv_input_landmarks"), "landmarks")
+        self._lv_contour_input_combo.addItem(tr("preferences.lv_input_trace"), "trace")
+        lv_input_index = self._lv_contour_input_combo.findData(current.lv_contour_input)
+        self._lv_contour_input_combo.setCurrentIndex(max(lv_input_index, 0))
+        self._atrial_contour_input_combo = QComboBox()
+        self._atrial_contour_input_combo.addItem(tr("preferences.atrial_input_landmarks"), "landmarks")
+        self._atrial_contour_input_combo.addItem(tr("preferences.atrial_input_trace"), "trace")
+        atrial_input_index = self._atrial_contour_input_combo.findData(current.atrial_contour_input)
+        self._atrial_contour_input_combo.setCurrentIndex(max(atrial_input_index, 0))
         measure_form.addRow(tr("preferences.contour_manual"), self._manual_contour_spin)
         measure_form.addRow(tr("preferences.contour_ai"), self._ai_contour_spin)
         measure_form.addRow(tr("preferences.contour_simpson"), self._simpson_contour_spin)
@@ -343,6 +359,8 @@ class UserPreferencesDialog(QDialog):
         measure_form.addRow(self._auto_depth_cal)
         measure_form.addRow(tr("preferences.length_display_unit"), self._length_unit)
         measure_form.addRow(tr("preferences.area_tool_mode"), self._area_tool_mode_combo)
+        measure_form.addRow(tr("preferences.lv_contour_input"), self._lv_contour_input_combo)
+        measure_form.addRow(tr("preferences.atrial_contour_input"), self._atrial_contour_input_combo)
         tabs.addTab(_scrollable_tab(measure_form), tr("preferences.tab_measurement"))
 
         self._tool_panel_settings = ToolPanelSettingsWidget(current.tool_panel_layout_json)
@@ -630,6 +648,7 @@ class UserPreferencesDialog(QDialog):
             show_doppler_calibration_roi=self._show_doppler_cal_roi.isChecked(),
             anonymize_frames=self._anonymize_frames.isChecked(),
             thumbnail_scale=str(self._thumbnail_scale.currentData()),
+            thumbnail_sort_mode=str(self._thumbnail_sort.currentData()),
             magnetic_snap_weight_threshold=float(self._magnetic_weight_spin.value()),
             magnetic_snap_release_strength=float(self._magnetic_release_spin.value()),
             magnetic_snap_release_max_radial_px=float(self._magnetic_radius_spin.value()),
@@ -638,6 +657,8 @@ class UserPreferencesDialog(QDialog):
             auto_depth_calibration_enabled=self._auto_depth_cal.isChecked(),
             length_display_unit=str(self._length_unit.currentData()),
             area_tool_mode=str(self._area_tool_mode_combo.currentData()),
+            lv_contour_input=str(self._lv_contour_input_combo.currentData()),
+            atrial_contour_input=str(self._atrial_contour_input_combo.currentData()),
             show_dicom_tag_inspector=self._show_dicom_inspector.isChecked(),
             interesting_dicom_tags=self._interesting_tags.text().strip(),
             confirm_reset=self._confirm_reset.isChecked(),
