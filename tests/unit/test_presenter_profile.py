@@ -103,19 +103,8 @@ class TestPortableRoot:
 class TestPortableStores:
     @pytest.fixture
     def portable_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path):
-        import echo_personal_tool.infrastructure.server_settings as server_settings
-        import echo_personal_tool.infrastructure.user_preferences as user_preferences
-
         monkeypatch.setenv(profile.PROFILE_ENV, "presenter")
         monkeypatch.setenv(profile.PORTABLE_DIR_ENV, str(tmp_path / "stick"))
-        # The autouse QSettings isolation (conftest) renames the stores to
-        # "test-<id>", and portable INI files are named after the store. These
-        # tests check the real on-stick file names; the stick is a tmp dir, so
-        # restoring the production names keeps the run isolated.
-        monkeypatch.setattr(user_preferences, "_SETTINGS_ORG", "sonoforge")
-        monkeypatch.setattr(user_preferences, "_SETTINGS_APP", "preferences")
-        monkeypatch.setattr(server_settings, "_SETTINGS_ORG", "sonoforge")
-        monkeypatch.setattr(server_settings, "_SETTINGS_APP", "server")
         return tmp_path / "stick"
 
     def test_qsettings_for_uses_ini_on_stick(self, portable_dir):
