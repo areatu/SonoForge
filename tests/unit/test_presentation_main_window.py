@@ -704,6 +704,90 @@ class TestOnGoldExportRequested:
         main_window._controller.save_gold_annotation.assert_called_once_with(phase="ED", frame_index=0, chamber="LV")
 
 
+class TestOnExportMp4Requested:
+    """The exported MP4 has to be anonymized like the preview (PR #120 follow-up)."""
+
+    def _instance(self, tmp_path, *, name="clip.dcm", media_format="dicom"):
+        from echo_personal_tool.domain.models import InstanceMetadata
+
+        path = tmp_path / name
+        path.write_bytes(b"DICM")
+        return InstanceMetadata(
+            sop_instance_uid="1.2.3",
+            series_uid="1.2",
+            modality="US",
+            number_of_frames=2,
+            pixel_spacing=None,
+            frame_time_ms=33.3,
+            series_description="Cine",
+            path=path,
+            media_format=media_format,
+        )
+
+    def test_dicom_export_carries_a_masker_for_the_exported_file(self, main_window, tmp_path):
+        instance = self._instance(tmp_path)
+        dest = tmp_path / "out.mp4"
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(dest), ""),
+            ),
+            patch("echo_personal_tool.application.workers.mp4_export_worker.Mp4ExportWorker") as worker_cls,
+        ):
+            main_window._on_export_mp4_requested(instance)
+
+        mask = worker_cls.call_args.kwargs["mask"]
+        assert callable(mask)
+        frame = np.full((200, 120), 20, dtype=np.uint8)
+        frame[0:20, 10:40] = 250  # a burned-in header line
+        assert mask(frame)[0:20].max() == 20
+
+    def test_export_without_masking_leaves_the_dicom_pixels_alone(self, main_window, tmp_path):
+        instance = self._instance(tmp_path)
+        main_window._viewer._phi_filter.set_enabled(False)
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(tmp_path / "out.mp4"), ""),
+            ),
+            patch("echo_personal_tool.application.workers.mp4_export_worker.Mp4ExportWorker") as worker_cls,
+        ):
+            main_window._on_export_mp4_requested(instance)
+
+        assert worker_cls.call_args.kwargs["mask"] is None
+
+    def test_mp4_source_is_copied_when_nothing_is_masked(self, main_window, tmp_path):
+        instance = self._instance(tmp_path, name="clip.mp4", media_format="mp4")
+        dest = tmp_path / "copy.mp4"
+        main_window._viewer._phi_filter.set_enabled(False)
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(dest), ""),
+            ),
+            patch("echo_personal_tool.application.workers.mp4_export_worker.Mp4ExportWorker") as worker_cls,
+        ):
+            main_window._on_export_mp4_requested(instance)
+
+        worker_cls.assert_not_called()
+        assert dest.read_bytes() == (tmp_path / "clip.mp4").read_bytes()
+
+    def test_mp4_source_is_re_encoded_when_masking_is_on(self, main_window, tmp_path):
+        instance = self._instance(tmp_path, name="clip.mp4", media_format="mp4")
+        with (
+            patch(
+                "echo_personal_tool.presentation.styled_dialogs.styled_save_file",
+                return_value=(str(tmp_path / "out.mp4"), ""),
+            ),
+            patch("echo_personal_tool.application.workers.mp4_export_worker.Mp4ExportWorker") as worker_cls,
+        ):
+            main_window._on_export_mp4_requested(instance)
+
+        # Masking pixels requires decoding them: the copy shortcut cannot apply.
+        assert worker_cls.call_args.kwargs["media_format"] == "mp4"
+        assert callable(worker_cls.call_args.kwargs["mask"])
+
+
 class TestOnHeartRateResult:
     def test_updates_status(self, main_window):
         main_window._on_heart_rate_result(72.0, 0.95, "optical_flow")

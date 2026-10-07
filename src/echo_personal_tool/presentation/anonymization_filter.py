@@ -8,6 +8,7 @@ to switch the whole thing off at runtime.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -123,3 +124,37 @@ class AnonymizationFilter:
 
     def context_for(self, source_path: Path | str | None) -> PhiMaskContext:
         return phi_mask_context(source_path)
+
+
+#: A callable that hides burned-in PHI on one frame and returns it to render.
+FrameMasker = Callable[[np.ndarray], np.ndarray]
+
+
+def frame_masker(
+    source_path: Path | str | None,
+    *,
+    enabled: bool = True,
+) -> FrameMasker | None:
+    """Build a masker bound to one file, for code that consumes frames off-screen.
+
+    The MP4 export worker runs on a pool thread and never renders anything: it
+    cannot ask a widget which file it is exporting or whether masking is on.  It
+    gets its own filter — with the geometry resolved from *the exported file's
+    own header*, exactly like the preview does for the displayed one, so the
+    exported video and what the user saw agree on the band, panel clamp
+    included.
+
+    A private filter per export also keeps the cached fill colour of this clip
+    out of the viewer's filter, which lives on the GUI thread.
+
+    Returns ``None`` when masking is switched off, so a caller can keep the path
+    that skips re-encoding the file altogether.
+    """
+    if not enabled:
+        return None
+    filter_ = AnonymizationFilter(enabled=True)
+
+    def mask(frame: np.ndarray) -> np.ndarray:
+        return filter_.apply(frame, source_path)
+
+    return mask

@@ -22,6 +22,7 @@ Rules encoded here:
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -92,11 +93,16 @@ class PhiMaskContext:
 
 _CONTEXT_CACHE: dict[str, PhiMaskContext] = {}
 _CACHE_LIMIT = 256
+# The viewer asks for contexts on the GUI thread and the MP4 export worker asks
+# from a pool thread, so the read-check-fill sequence below is serialised: the
+# hit path stays cheap, `_read_context` runs outside the lock.
+_CACHE_LOCK = threading.Lock()
 
 
 def clear_phi_mask_context_cache() -> None:
     """Drop cached file headers (tests, and after a study is re-exported)."""
-    _CONTEXT_CACHE.clear()
+    with _CACHE_LOCK:
+        _CONTEXT_CACHE.clear()
 
 
 def phi_mask_context(path: Path | str | None) -> PhiMaskContext:
@@ -105,20 +111,24 @@ def phi_mask_context(path: Path | str | None) -> PhiMaskContext:
     Only the header is parsed (``stop_before_pixels``).  Non-DICOM files,
     missing files and unreadable headers all yield the unknown context, which
     means the conservative default profile and no panel clamping — never an
-    exception reaching the render loop.
+    exception reaching the render loop or the export worker.
     """
     if path is None:
         return PhiMaskContext()
 
     key = str(path)
-    cached = _CONTEXT_CACHE.get(key)
+    with _CACHE_LOCK:
+        cached = _CONTEXT_CACHE.get(key)
     if cached is not None:
         return cached
 
     context = _read_context(Path(key))
-    if len(_CONTEXT_CACHE) >= _CACHE_LIMIT:
-        _CONTEXT_CACHE.pop(next(iter(_CONTEXT_CACHE)), None)
-    _CONTEXT_CACHE[key] = context
+    with _CACHE_LOCK:
+        _CONTEXT_CACHE[key] = context
+        # Two threads can race to fill the same key or push the cache one entry
+        # over the limit; trimming by insertion order keeps it bounded.
+        while len(_CONTEXT_CACHE) > _CACHE_LIMIT:
+            _CONTEXT_CACHE.pop(next(iter(_CONTEXT_CACHE)), None)
     return context
 
 

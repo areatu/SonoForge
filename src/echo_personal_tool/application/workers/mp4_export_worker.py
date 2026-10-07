@@ -1,8 +1,16 @@
-"""Background worker that exports DICOM/MP4 to MP4 file."""
+"""Background worker that exports DICOM/MP4 to MP4 file.
+
+Frames can be masked on their way to the encoder (``mask``), which is how the
+exported video ends up looking like the preview: the viewer masks the frames it
+draws, and this worker is the other place where pixels leave the application.
+The mask covers burned-in patient data, so it is applied before the frame is
+converted for the writer — the same representation the viewer receives.
+"""
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import cv2
@@ -41,7 +49,12 @@ class Mp4ExportSignals(QObject):
 
 
 class Mp4ExportWorker(QRunnable):
-    """Export DICOM or MP4 source to MP4 file in a background thread."""
+    """Export DICOM or MP4 source to MP4 file in a background thread.
+
+    ``mask`` optionally anonymizes every frame before it reaches the encoder;
+    it is applied on both the DICOM and the MP4 source paths, so the exported
+    file never contains more than the viewer showed.
+    """
 
     def __init__(
         self,
@@ -49,6 +62,7 @@ class Mp4ExportWorker(QRunnable):
         dest_path: str,
         media_format: str,
         frame_time_ms: float | None = None,
+        mask: Callable[[np.ndarray], np.ndarray] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__()
@@ -56,6 +70,7 @@ class Mp4ExportWorker(QRunnable):
         self._dest_path = dest_path
         self._media_format = media_format
         self._frame_time_ms = frame_time_ms
+        self._mask = mask
         self.signals = Mp4ExportSignals()
         self.setAutoDelete(True)
 
@@ -69,6 +84,12 @@ class Mp4ExportWorker(QRunnable):
         except Exception as exc:  # noqa: BLE001
             logger.exception("MP4 export failed for %s", self._source_path)
             self.signals.failed.emit(str(exc))
+
+    def _writer_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Prepare one decoded frame for the writer: mask it, then convert to BGR."""
+        if self._mask is not None:
+            frame = self._mask(frame)
+        return self._to_bgr(frame)
 
     def _export_from_mp4(self) -> None:
         cap = cv2.VideoCapture(str(self._source_path))
@@ -88,7 +109,7 @@ class Mp4ExportWorker(QRunnable):
                     ok, bgr = cap.read()
                     if not ok or bgr is None:
                         break
-                    writer.write(bgr)
+                    writer.write(self._writer_frame(bgr))
                     i += 1
                     if i % 5 == 0 or i == total:
                         self.signals.progress.emit(i, total)
@@ -119,14 +140,14 @@ class Mp4ExportWorker(QRunnable):
         h, w = first_frame.shape[:2]
         writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
         try:
-            bgr = self._to_bgr(first_frame)
+            bgr = self._writer_frame(first_frame)
             writer.write(bgr)
 
             all_frames = session.decode_all_frames()
             for i, frame in enumerate(all_frames):
                 if i == 0:
                     continue
-                bgr = self._to_bgr(frame)
+                bgr = self._writer_frame(frame)
                 writer.write(bgr)
                 if i % 5 == 0 or i == total - 1:
                     self.signals.progress.emit(i + 1, total)
@@ -141,7 +162,7 @@ class Mp4ExportWorker(QRunnable):
         h, w = frame.shape[:2]
         writer = _open_video_writer(self._dest_path, "mp4v", fps, w, h)
         try:
-            bgr = self._to_bgr(frame)
+            bgr = self._writer_frame(frame)
             writer.write(bgr)
             self.signals.progress.emit(1, total)
         finally:

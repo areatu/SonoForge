@@ -98,7 +98,18 @@ class TestMp4ExportWorkerConstruction:
         assert worker._dest_path == "/tmp/dest.mp4"
         assert worker._media_format == "mp4"
         assert worker._frame_time_ms is None
+        assert worker._mask is None
         assert worker.autoDelete() is True
+
+    def test_init_keeps_the_mask(self):
+        mask = lambda frame: frame  # noqa: E731 - the worker only calls it
+        worker = Mp4ExportWorker(
+            source_path=Path("/tmp/src.dcm"),
+            dest_path="/tmp/dest.mp4",
+            media_format="dicom",
+            mask=mask,
+        )
+        assert worker._mask is mask
 
     def test_init_with_frame_time(self):
         worker = Mp4ExportWorker(
@@ -328,3 +339,136 @@ class TestRunDispatch:
         worker.run()
         assert len(failed_received) == 1
         assert "boom" in failed_received[0]
+
+
+# ── masking on the way to the encoder ─────────────────────────────
+
+
+def _frame_with_header(height: int = 200, width: int = 120) -> np.ndarray:
+    """Dark frame with sparse bright "text" in the upper tenth (a scanner header)."""
+    frame = np.full((height, width), 20, dtype=np.uint8)
+    frame[60:, :] = 90  # "sector"
+    frame[5:15, 10:40] = 250  # glyphs, 15 % of the 20-row band
+    return frame
+
+
+def _flat_top_band(frame: np.ndarray) -> np.ndarray:
+    """Stand-in for the real masker: fill the top tenth with the band's median."""
+    masked = frame.copy()
+    band = max(int(round(frame.shape[0] * 0.10)), 1)
+    masked[0:band] = int(np.median(masked[0:band]))
+    return masked
+
+
+class TestMaskedExport:
+    """The exported file must never contain more than the viewer showed."""
+
+    @patch("echo_personal_tool.application.workers.mp4_export_worker._open_video_writer")
+    def test_dicom_frames_are_masked_before_writing(self, mock_open_writer):
+        frames = [_frame_with_header() for _ in range(3)]
+        session = MagicMock()
+        session.frame_count = 3
+        session.decode_first_frame.return_value = frames[0]
+        session.decode_all_frames.return_value = frames
+
+        mask = MagicMock(side_effect=_flat_top_band)
+        writer = MagicMock()
+        mock_open_writer.return_value = writer
+
+        with patch(
+            "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
+            return_value=session,
+        ):
+            worker = Mp4ExportWorker(
+                Path("/tmp/src.dcm"),
+                "/tmp/dest.mp4",
+                "dicom",
+                frame_time_ms=33.3,
+                mask=mask,
+            )
+            worker.run()
+
+        # Once for the first frame (written before the bulk decode) and once per
+        # remaining frame — no frame may slip to the writer unmasked.
+        assert mask.call_count == 3
+        assert writer.write.call_count == 3
+        for call in writer.write.call_args_list:
+            written = call.args[0]
+            assert written.ndim == 3  # converted to BGR for the writer
+            assert written[0:20].max() == 20, "header band was written unmasked"
+            assert written[0:20].min() == 20
+            assert written[60:].max() == 90, "image below the band must survive"
+
+    @patch("echo_personal_tool.application.workers.mp4_export_worker._open_video_writer")
+    def test_single_frame_dicom_is_masked(self, mock_open_writer):
+        frame = _frame_with_header()
+        session = MagicMock()
+        session.frame_count = 1
+        session.decode_first_frame.return_value = frame
+
+        mask = MagicMock(side_effect=_flat_top_band)
+        writer = MagicMock()
+        mock_open_writer.return_value = writer
+
+        with patch(
+            "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
+            return_value=session,
+        ):
+            worker = Mp4ExportWorker(Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", mask=mask)
+            worker.run()
+
+        assert mask.call_count == 1
+        written = writer.write.call_args.args[0]
+        assert written[0:20].max() == 20
+
+    @patch("echo_personal_tool.application.workers.mp4_export_worker._open_video_writer")
+    @patch("echo_personal_tool.application.workers.mp4_export_worker.cv2")
+    def test_mp4_frames_are_masked_before_writing(self, mock_cv2, mock_open_writer):
+        frames = [_frame_with_header() for _ in range(2)]
+        cap = MagicMock()
+        cap.isOpened.return_value = True
+        cap.get.side_effect = lambda prop: {
+            mock_cv2.CAP_PROP_FRAME_COUNT: 2,
+            mock_cv2.CAP_PROP_FPS: 25.0,
+            mock_cv2.CAP_PROP_FRAME_WIDTH: 120,
+            mock_cv2.CAP_PROP_FRAME_HEIGHT: 200,
+        }[prop]
+        cap.read.side_effect = [(True, f) for f in frames] + [(False, None)]
+        mock_cv2.VideoCapture.return_value = cap
+        mock_cv2.cvtColor.side_effect = lambda frame, code: frame  # BGR already
+
+        mask = MagicMock(side_effect=_flat_top_band)
+        writer = MagicMock()
+        mock_open_writer.return_value = writer
+
+        worker = Mp4ExportWorker(Path("/tmp/src.mp4"), "/tmp/dest.mp4", "mp4", mask=mask)
+        worker.run()
+
+        assert mask.call_count == 2
+        for call in writer.write.call_args_list:
+            assert call.args[0][0:20].max() == 20
+
+    @patch("echo_personal_tool.application.workers.mp4_export_worker._open_video_writer")
+    def test_mask_failure_reaches_the_failed_signal(self, mock_open_writer):
+        frame = _frame_with_header()
+        session = MagicMock()
+        session.frame_count = 1
+        session.decode_first_frame.return_value = frame
+
+        def broken_mask(_frame):
+            raise RuntimeError("mask exploded")
+
+        worker = Mp4ExportWorker(Path("/tmp/src.dcm"), "/tmp/dest.mp4", "dicom", mask=broken_mask)
+        failed = []
+        worker.signals.failed.connect(lambda msg: failed.append(msg))
+
+        with patch(
+            "echo_personal_tool.infrastructure.dicom_session.get_thread_dicom_session",
+            return_value=session,
+        ):
+            worker.run()
+
+        assert len(failed) == 1
+        assert "mask exploded" in failed[0]
+        # The encoder is closed even when the mask fails mid-export.
+        mock_open_writer.return_value.release.assert_called_once()
