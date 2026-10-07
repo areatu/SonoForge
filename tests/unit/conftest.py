@@ -98,6 +98,17 @@ def _isolate_measurement_store(request, tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_user_settings(isolated_qsettings):
+    """Run every unit test against a throwaway QSettings store.
+
+    The app loads real user preferences from QSettings; without this a
+    developer's saved preferences (for example a changed contour input mode)
+    would leak into tests and make them environment-dependent.
+    """
+    yield isolated_qsettings
+
+
+@pytest.fixture(autouse=True)
 def _gc_per_test():
     """Freeze GC during each test; collect only between tests.
 

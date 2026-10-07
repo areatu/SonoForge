@@ -105,6 +105,59 @@ class TestFinishFreehandOpenArc:
         assert w._contour_mode_active is False
 
 
+class TestAtrialContourInput:
+    def test_default_is_landmarks(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        assert w.atrial_contour_input() == "landmarks"
+
+    def test_set_trace(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_atrial_contour_input("trace")
+        assert w.atrial_contour_input() == "trace"
+        w.set_atrial_contour_input("invalid")
+        assert w.atrial_contour_input() == "trace"
+
+    def test_trace_enabled_per_chamber(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_atrial_contour_input("trace")
+        assert w._trace_enabled_for("LA") is True
+        assert w._trace_enabled_for("RA") is True
+        assert w._trace_enabled_for("LV") is False
+        assert w._trace_enabled_for("RV") is False
+
+    def test_la_trace_start(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_atrial_contour_input("trace")
+        assert w.start_contour(phase="ES", view="A4C", chamber="LA") is True
+        assert w._contour_stage == "trace"
+        assert w._freehand_open_arc is True
+
+    def test_ra_trace_start(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_atrial_contour_input("trace")
+        assert w.start_contour(phase="ES", view="A4C", chamber="RA") is True
+        assert w._contour_stage == "trace"
+
+    def test_force_landmarks_overrides_trace(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_atrial_contour_input("trace")
+        assert w.start_contour(phase="ES", view="A4C", chamber="LA", force_landmarks=True) is True
+        assert w._contour_stage == "ma_septal"
+        assert w._freehand_open_arc is False
+
+    def test_finish_la_open_arc(self, qtbot) -> None:
+        w = _make_viewer(qtbot)
+        w.set_atrial_contour_input("trace")
+        w.start_contour(phase="ES", view="A4C", chamber="LA")
+        completed: list = []
+        w.contour_completed.connect(completed.append)
+        w._freehand_points = [(10.0, 50.0), (30.0, 10.0), (50.0, 50.0)]
+        assert w._finish_freehand_open_arc() is True
+        assert completed[0].chamber == "LA"
+        assert completed[0].is_open_arc is True
+        assert completed[0].mitral_annulus == ((10.0, 50.0), (50.0, 50.0))
+
+
 class TestTraceClickAddsNode:
     def test_plain_click_appends_point(self, qtbot) -> None:
         from PySide6.QtCore import QPointF, Qt
