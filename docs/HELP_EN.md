@@ -388,6 +388,8 @@ Verify that the frame contains a spectrum and not only a scale or ECG overlay. S
 
 Time-dependent tools (`Interval`, VTI, DT, IVRT, AT, and parts of the vessel workflow) remain unavailable without a time calibration. This is an input limitation, not a zero clinical result.
 
+The acquisition mode (CW / PW / TDI) is read from the DICOM tag of the current clip, and velocities are shown in matching units: CW in m/s, PW and TDI in cm/s (gradients in mmHg, VTI in cm). For MP4/JPEG clips without DICOM tags there is a “Doppler mode” switch at the bottom of the Measures tab: `Auto` (from the tag), `CW`, `PW`, `TDI`; an explicit choice wins over the tag. The mode is captured when a marker is placed: markers committed earlier are not recalculated when the switch changes. When the mode is unknown, fast flows (from 1 m/s) read in m/s and slow flows in cm/s, like on a scanner. Opening a new study returns the switch to `Auto`. Every peak marker on the spectrum carries a value caption (`label V unit`, flow sites append `· PGmax … mmHg`). The Doppler-zone caliper shows time and velocity in the units of the captured mode with PGmax (pure time reads carry no PG).
+
 ### 9.2 Peaks and intervals
 
 Examples:

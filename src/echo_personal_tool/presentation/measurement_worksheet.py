@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
-from echo_personal_tool.domain.doppler_catalog import FLOW_SITES
+from echo_personal_tool.domain.doppler_catalog import FLOW_SITES, scale_velocity_for_display
 from echo_personal_tool.domain.models import Contour
 from echo_personal_tool.domain.models.measurements import MeasurementSnapshot
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
@@ -250,7 +250,7 @@ class MeasurementWorksheet(QWidget):
             self._set_value("dop_ivrt", ddop.ivrt_ms, "ms")
             for flow in _flow_results_for_display(ddop):
                 prefix = f"dop_{flow.site.lower()}"
-                self._set_value(f"{prefix}_vmax", flow.vmax_cm_s, "cm/s")
+                self._set_velocity(f"{prefix}_vmax", flow.vmax_cm_s, flow.mode)
                 self._set_value(f"{prefix}_pgmax", flow.pgmax_mmhg, "mmHg")
                 self._set_value(f"{prefix}_vti", flow.vti_cm, "cm")
                 self._set_value(f"{prefix}_pgmean", flow.pgmean_mmhg, "mmHg")
@@ -340,6 +340,7 @@ class MeasurementWorksheet(QWidget):
         suffix: str,
         *,
         key_override: str | None = None,
+        decimals: int = 1,
     ) -> None:
         item = self._rows_by_key.get(key_override or key)
         if item is None or value is None:
@@ -349,11 +350,18 @@ class MeasurementWorksheet(QWidget):
         elif suffix == "%":
             text = f"{value:.1f}{suffix}"
         elif suffix:
-            text = f"{value:.1f} {suffix}".strip()
+            text = f"{value:.{decimals}f} {suffix}".strip()
         else:
             text = f"{value:.2f}"
         item.setText(1, text)
         self._mark_done(key_override or key)
+
+    def _set_velocity(self, key: str, velocity_cm_s: float | None, mode: str) -> None:
+        """Spectral-Doppler velocity in mode-appropriate units (Э2)."""
+        if velocity_cm_s is None:
+            return
+        scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, mode)
+        self._set_value(key, scaled, unit, decimals=decimals)
 
     def _mark_done(self, key: str) -> None:
         item = self._rows_by_key.get(key)

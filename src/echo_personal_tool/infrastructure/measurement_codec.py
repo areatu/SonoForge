@@ -14,6 +14,9 @@ Versioning (WP4.1 §6.4): ``schema_version`` describes the document structure,
   and each marker carries a ``measurement_id``; the report uses the mean of the
   last three (
   :data:`~echo_personal_tool.domain.services.doppler_repeats.REPORT_WINDOW`).
+  Version 2 also captures the acquisition mode (``CW`` | ``PW`` | ``TDI``)
+  on peaks and traces (Э2); it is display-only metadata, storage stays in
+  cm/s, and older version-2 documents without it keep loading.
 
 Version 1 documents are migrated on read: duplicate peak/interval labels are
 collapsed to the newest one, which is exactly what version 1 itself displayed
@@ -252,11 +255,15 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
     for item in data.linear_measurements:
         if len(item.label) > 256 or item.pixel_length < 0:
             raise MeasurementStorageError("invalid")
+        if item.doppler_mode not in ("", "CW", "PW", "TDI"):
+            raise MeasurementStorageError("invalid")
     seen_ids: set[tuple[str, str]] = set()
     per_label: dict[str, int] = {}
 
-    def check_repeats(label: str, measurement_id: str) -> None:
+    def check_repeats(label: str, measurement_id: str, mode: str = "") -> None:
         if len(label) > 256 or len(measurement_id) > 256:
+            raise MeasurementStorageError("invalid")
+        if mode not in ("", "CW", "PW", "TDI"):
             raise MeasurementStorageError("invalid")
         # An empty id keeps the historical identity: at most one marker per
         # label may omit it, so old documents stay unambiguous.
@@ -276,7 +283,8 @@ def validate_data(data: StudyMeasurementData, sources: dict) -> None:
                 seen_ids.clear()
                 per_label.clear()
                 for item in values:
-                    check_repeats(item.label, item.measurement_id)
+                    # Intervals carry no acquisition mode (ms need no units).
+                    check_repeats(item.label, item.measurement_id, getattr(item, "mode", ""))
     for uid, _, frame, area in data.simpson_area_by_frame:
         check(uid, frame)
         if area < 0:

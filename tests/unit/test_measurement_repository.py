@@ -353,6 +353,8 @@ def test_v1_dump_matches_v1_schema():
     def strip(node) -> None:
         if isinstance(node, dict):
             node.pop("measurement_id", None)
+            node.pop("mode", None)
+            node.pop("doppler_mode", None)
             for value in node.values():
                 strip(value)
         elif isinstance(node, list):

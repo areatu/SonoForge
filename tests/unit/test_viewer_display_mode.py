@@ -51,11 +51,14 @@ def test_rgb_dicom_keeps_red_channel(viewer, qtbot, tmp_path: Path) -> None:
     pixels[:, :, 0] = 200
     pixels[:, :, 1] = 40
     pixels[:, :, 2] = 20
-    pixels[0, 0] = np.array([255, 0, 0], dtype=np.uint8)
+    # The upper band of a frame is masked by the PHI filter (this synthetic file
+    # has no Manufacturer, so it gets the conservative 10 % default), therefore
+    # the probe pixel sits below the band.
+    pixels[20, 20] = np.array([255, 0, 0], dtype=np.uint8)
     viewer.show_frame(pixels)
     frame = viewer._color_source_rgb
     assert frame is not None
-    assert np.array_equal(frame[0, 0], np.array([255, 0, 0], dtype=np.uint8))
+    assert np.array_equal(frame[20, 20], np.array([255, 0, 0], dtype=np.uint8))
 
 
 def test_grayscale_dicom_enables_window_level(viewer, qtbot, tmp_path: Path) -> None:

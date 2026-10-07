@@ -135,6 +135,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     UserPreferences,
     resolve_wl_values,
 )
+from echo_personal_tool.presentation.anonymization_filter import AnonymizationFilter
 from echo_personal_tool.presentation.calibration_snap import snap_y_to_nearest_tick
 from echo_personal_tool.presentation.caliper_label_item import (
     compute_caliper_label_layout,
@@ -794,6 +795,11 @@ class ViewerWidget(QWidget):
         self._crosshair_v_item: pg.PlotDataItem | None = None
         self._doppler_cal_step: Literal["baseline"] | None = None
         self._doppler_cal_kind = DopplerKind.SPECTRAL
+        # Acquisition mode for Doppler display units (Э2): DICOM-derived per
+        # clip, with an explicit manual override (MP4/JPEG) winning. The
+        # resolved mode is stamped on markers at measurement time.
+        self._dicom_doppler_mode: str = ""
+        self._doppler_mode_override: str = ""
         self._last_view_cursor_xy: tuple[float, float] | None = None
         self._doppler_roi_corner1: tuple[float, float] | None = None
         self._doppler_pending_roi: DopplerSpectrogramRoi | None = None
@@ -949,6 +955,9 @@ class ViewerWidget(QWidget):
         self._panel_frame_items: list[pg.PlotDataItem] = []
         self._magnetic_snap_enabled = True
         self._despeckle_enabled = False
+        # Burned-in PHI (name/ID/date) is masked before anything else sees the
+        # frame, so calibration, M-mode and export all work on masked pixels.
+        self._phi_filter = AnonymizationFilter(enabled=True)
         self._results_overlay_custom_position = False
         self._results_overlay_cleared = False
         self._results_overlay_position_just_restored = False
@@ -1313,6 +1322,7 @@ class ViewerWidget(QWidget):
                 preferences.results_overlay_opacity,
             )
         )
+        self._phi_filter.set_enabled(preferences.anonymize_frames)
         self._show_crosshair = preferences.show_crosshair
         self._show_panel_frames = preferences.show_panel_frames
         self._show_caliper_labels_on_frame = preferences.show_caliper_labels_on_frame
@@ -1740,11 +1750,27 @@ class ViewerWidget(QWidget):
             return color, not color
         return False, True
 
+    def mask_phi(self, pixels: np.ndarray) -> np.ndarray:
+        """Mask burned-in PHI on a frame outside the render path.
+
+        Used where frames are consumed directly rather than drawn — the M-mode
+        sweep rebuilt from cached frames, and later the export seams.  Keeps one
+        owner of the profile and of the on/off switch.
+        """
+        return self._phi_filter.apply(pixels, self._phi_mask_source_path())
+
+    def _phi_mask_source_path(self) -> Path | None:
+        """Path of the file currently displayed, used to pick a PHI profile."""
+        if self._current_state is None or self._current_state.instance is None:
+            return None
+        return self._current_state.instance.path
+
     @_prof
     def show_frame(self, pixels: np.ndarray) -> None:
         """Render a 2D grayscale (H, W) or color BGR (H, W, 3) array."""
         self._vessel_sensitivity.hide()
         frame = np.asarray(pixels)
+        frame = self._phi_filter.apply(frame, self._phi_mask_source_path())
         media_format = (
             self._current_state.instance.media_format
             if self._current_state is not None and self._current_state.instance is not None
@@ -1887,6 +1913,7 @@ class ViewerWidget(QWidget):
     def show_frame_fast(self, pixels: np.ndarray) -> None:
         """Fast render for playback: skip layout/doppler/panel detection."""
         frame = np.asarray(pixels)
+        frame = self._phi_filter.apply(frame, self._phi_mask_source_path())
         media_format = (
             self._current_state.instance.media_format
             if self._current_state is not None and self._current_state.instance is not None
@@ -3568,7 +3595,10 @@ class ViewerWidget(QWidget):
     def _doppler_trace_summary(metrics, trace_label: str) -> str:
         """Format the transient result overlay with a specific flow label."""
 
-        from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
+        from echo_personal_tool.domain.doppler_catalog import (
+            flow_site_from_trace_label,
+            scale_velocity_for_display,
+        )
 
         site = flow_site_from_trace_label(trace_label) or "AV"
         flow = metrics.flow(site)
@@ -3577,10 +3607,10 @@ class ViewerWidget(QWidget):
         parts: list[str] = []
         if flow.vti_cm is not None:
             parts.append(f"{site} VTI: {flow.vti_cm:.1f} cm")
-        if flow.vmax_cm_s is not None:
-            parts.append(f"{site} Vmax: {flow.vmax_cm_s:.0f} cm/s")
-        if flow.vmean_cm_s is not None:
-            parts.append(f"{site} Vmean: {flow.vmean_cm_s:.0f} cm/s")
+        for name, velocity_cm_s in (("Vmax", flow.vmax_cm_s), ("Vmean", flow.vmean_cm_s)):
+            if velocity_cm_s is not None:
+                scaled, unit, decimals = scale_velocity_for_display(velocity_cm_s, flow.mode)
+                parts.append(f"{site} {name}: {scaled:.{decimals}f} {unit}")
         if flow.pgmax_mmhg is not None:
             parts.append(f"{site} PGmax: {flow.pgmax_mmhg:.0f} mmHg")
         if flow.pgmean_mmhg is not None:
@@ -3594,6 +3624,40 @@ class ViewerWidget(QWidget):
 
     def get_doppler_dto(self):
         return self._doppler.get_measurement_dto()
+
+    def set_dicom_doppler_mode(self, mode: str | None) -> None:
+        """Record the current clip's DICOM-derived acquisition mode (Э2)."""
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        normalized = normalize_doppler_mode(mode)
+        if normalized == self._dicom_doppler_mode:
+            return
+        self._dicom_doppler_mode = normalized
+        self._doppler.set_doppler_mode(self._resolved_doppler_mode())
+
+    def set_doppler_mode_override(self, mode: str | None) -> None:
+        """Set the explicit acquisition-mode override ("" = Auto, Э2).
+
+        The override wins over the DICOM-derived mode and stays until the
+        user changes it or a new study is opened; only markers placed while
+        it is active capture it.
+        """
+        from echo_personal_tool.domain.doppler_catalog import normalize_doppler_mode
+
+        normalized = normalize_doppler_mode(mode)
+        if normalized == self._doppler_mode_override:
+            return
+        self._doppler_mode_override = normalized
+        self._doppler.set_doppler_mode(self._resolved_doppler_mode())
+
+    def reset_doppler_mode_override(self) -> None:
+        self.set_doppler_mode_override("")
+
+    def doppler_mode_override(self) -> str:
+        return self._doppler_mode_override
+
+    def _resolved_doppler_mode(self) -> str:
+        return self._doppler_mode_override or self._dicom_doppler_mode
 
     def _try_auto_detect_doppler_calibration(self) -> bool:
         if not self._doppler_auto_calibration_enabled:
@@ -7674,6 +7738,7 @@ class ViewerWidget(QWidget):
             time_ms=time_ms,
             velocity_cm_s=velocity_cm_s,
             doppler=True,
+            doppler_mode=self._resolved_doppler_mode(),
         )
 
     def _linear_measurement_from_endpoints(

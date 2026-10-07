@@ -369,6 +369,11 @@
           "type": "string",
           "maxLength": 256,
           "description": "Identity of the measurement act (D-23); empty in legacy documents."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["", "CW", "PW", "TDI"],
+          "description": "Acquisition mode captured at measurement time (E2); empty when unknown."
         }
       },
       "required": [
@@ -428,6 +433,11 @@
           "type": "string",
           "maxLength": 256,
           "description": "Identity of the measurement act (D-23); empty in legacy documents."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["", "CW", "PW", "TDI"],
+          "description": "Acquisition mode captured at measurement time (E2); empty when unknown."
         }
       },
       "required": [
@@ -530,6 +540,11 @@
               "type": "null"
             }
           ]
+        },
+        "doppler_mode": {
+          "type": "string",
+          "enum": ["", "CW", "PW", "TDI"],
+          "description": "Acquisition mode captured at measurement time (E2); empty when unknown."
         }
       },
       "required": [

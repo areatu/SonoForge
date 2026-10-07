@@ -141,3 +141,60 @@ def canonical_interval_label(label: str) -> str:
         if normalize_label(canonical) == key:
             return canonical
     return (label or "").strip()
+
+
+#: Acquisition modes a spectral-Doppler marker can be measured in (Э2).
+#: Resolved per marker from the DICOM ``RegionDataType`` (3 = PW, 4 = CW,
+#: 0x10/0x11 = TDI) with an explicit manual override winning; empty means
+#: the mode is unknown (legacy records, MP4/JPEG without an override).
+DOPPLER_MODES: tuple[str, ...] = ("CW", "PW", "TDI")
+
+#: Magnitude (cm/s) at which an unknown-mode velocity is shown in m/s,
+#: mirroring the scanner convention used by the Doppler caliper.
+UNKNOWN_MODE_MS_THRESHOLD_CM_S = 100.0
+
+
+def normalize_doppler_mode(mode: str | None) -> str:
+    """Canonicalize an acquisition mode; unknown spellings become ``""``.
+
+    ``TDI_PW`` (pulsed tissue Doppler, ``RegionDataType`` 0x11) is tissue
+    Doppler for display purposes and folds into ``TDI``.
+    """
+
+    text = (mode or "").strip().upper()
+    if text in DOPPLER_MODES:
+        return text
+    if text in {"TDI_PW", "TDI-PW", "TDIPW"}:
+        return "TDI"
+    return ""
+
+
+def velocity_display_unit(mode: str | None, velocity_cm_s: float | None = None) -> str:
+    """Display unit for a Doppler velocity (Э2/D-17).
+
+    CW is shown in m/s, PW and TDI in cm/s.  When the mode is unknown the
+    unit follows the magnitude, like on a scanner: at least 1 m/s reads in
+    m/s, slower flows in cm/s.
+    """
+
+    normalized = normalize_doppler_mode(mode)
+    if normalized == "CW":
+        return "m/s"
+    if normalized in ("PW", "TDI"):
+        return "cm/s"
+    if velocity_cm_s is not None and abs(velocity_cm_s) >= UNKNOWN_MODE_MS_THRESHOLD_CM_S:
+        return "m/s"
+    return "cm/s"
+
+
+def scale_velocity_for_display(velocity_cm_s: float, mode: str | None) -> tuple[float, str, int]:
+    """Scale a stored cm/s velocity for display: ``(value, unit, decimals)``.
+
+    m/s reads with two decimals (``3.12 m/s``), cm/s with one (``72.4 cm/s``),
+    matching the scanner convention for CW jets and PW/TDI flows.
+    """
+
+    unit = velocity_display_unit(mode, velocity_cm_s)
+    if unit == "m/s":
+        return velocity_cm_s / 100.0, unit, 2
+    return velocity_cm_s, unit, 1
