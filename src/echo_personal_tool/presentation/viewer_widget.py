@@ -929,9 +929,6 @@ class ViewerWidget(QWidget):
         self._cached_display_high: float | None = None
         self._cached_lut: np.ndarray | None = None
         self._cached_lut_key: tuple[float, float, str] | None = None
-        self._last_gray_frame_ptr: int | None = None
-        self._cached_grayscale_frame: np.ndarray | None = None
-        self._last_color_frame_ptr: int | None = None
         self._display_buffers: list[np.ndarray] = []
         self._display_buf_idx: int = 0
         self._drag_session: tuple[int, float, float, int, int] | None = None
@@ -1955,20 +1952,22 @@ class ViewerWidget(QWidget):
         # true (and, with the key order the two methods used to disagree on, permanently
         # false), so the W/L window was either frozen or recomputed on every frame.
 
+        # NOTE: no per-frame derived-data cache keyed on the frame's memory
+        # address.  Decoded and PHI-masked frames are fresh temporaries; the
+        # allocator recycles their addresses, so an address-keyed cache
+        # false-hits after the first frame and the viewer keeps re-rendering an
+        # older frame (frozen playback, stale/artefact frames on scroll).
         if self._is_color_frame:
-            frame_data_ptr = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
-            if frame_data_ptr != self._last_color_frame_ptr:
-                self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
-                if self._despeckle_enabled:
-                    from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
+            self._color_source_rgb = to_display_rgb(frame, channel_order=channel_order)
+            if self._despeckle_enabled:
+                from echo_personal_tool.infrastructure.pixel_utils import decolor_frame
 
-                    self._color_source_rgb = decolor_frame(self._color_source_rgb)
-                self._last_color_frame_ptr = frame_data_ptr
+                self._color_source_rgb = decolor_frame(self._color_source_rgb)
             self._current_frame = to_grayscale_array(frame)
             self._image_item.setImage(self._color_source_rgb, autoLevels=False)
             if self._window_level_enabled:
                 self._update_levels()
-            elif not self._window_level_enabled:
+            else:
                 self._image_item.setLevels((0, 255))
         else:
             self._color_source_rgb = None
@@ -1976,18 +1975,12 @@ class ViewerWidget(QWidget):
             if frame.ndim == 2:
                 self._current_frame = frame
             elif frame.ndim == 3 and frame.shape[2] >= 3:
-                frame_data_ptr = frame.ctypes.data if hasattr(frame, "ctypes") else id(frame)
-                if frame_data_ptr == self._last_gray_frame_ptr and self._cached_grayscale_frame is not None:
-                    self._current_frame = self._cached_grayscale_frame
+                # SIMD: cv2.cvtColor returns WRITABLE contiguous uint8
+                frame_c = np.ascontiguousarray(frame)  # Safety for cv2
+                if channel_order == "bgr":
+                    self._current_frame = cv2.cvtColor(frame_c[..., :3], cv2.COLOR_BGR2GRAY)
                 else:
-                    # SIMD: cv2.cvtColor returns WRITABLE contiguous uint8
-                    frame_c = np.ascontiguousarray(frame)  # Safety for cv2
-                    if channel_order == "bgr":
-                        self._current_frame = cv2.cvtColor(frame_c[..., :3], cv2.COLOR_BGR2GRAY)
-                    else:
-                        self._current_frame = cv2.cvtColor(frame_c[..., :3], cv2.COLOR_RGB2GRAY)
-                    self._last_gray_frame_ptr = frame_data_ptr
-                    self._cached_grayscale_frame = self._current_frame
+                    self._current_frame = cv2.cvtColor(frame_c[..., :3], cv2.COLOR_RGB2GRAY)
             else:
                 self._current_frame = frame[..., 0] if frame.ndim == 3 else frame
             if self._despeckle_enabled:
