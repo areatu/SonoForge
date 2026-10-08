@@ -42,6 +42,16 @@ def test_record_is_survived_by_a_new_store_instance(tmp_path: Path) -> None:
     assert second.paths() == [str(tmp_path / "clips")]
 
 
+def test_reload_refreshes_an_existing_store_instance(tmp_path: Path) -> None:
+    first = _store(tmp_path)
+    second = _store(tmp_path)
+    first.record(tmp_path / "clips")
+
+    assert second.paths() == []
+    second.reload()
+    assert second.paths() == [str(tmp_path / "clips")]
+
+
 def test_entries_are_trimmed_but_pins_are_kept(tmp_path: Path) -> None:
     store = _store(tmp_path, limit=3)
     pinned = tmp_path / "pinned"

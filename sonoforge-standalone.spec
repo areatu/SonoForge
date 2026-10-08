@@ -37,6 +37,8 @@ datas = [
     ('src/echo_personal_tool/resources/icons', 'echo_personal_tool/resources/icons'),
     ('src/echo_personal_tool/resources/logo.png', 'echo_personal_tool/resources'),
     ('src/echo_personal_tool/resources/logo_dark.png', 'echo_personal_tool/resources'),
+    ('docs/HELP_EN.md', 'docs'),
+    ('docs/HELP_RU.md', 'docs'),
 ]
 datas += collect_data_files('echo_personal_tool')
 

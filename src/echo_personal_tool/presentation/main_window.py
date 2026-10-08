@@ -22,11 +22,13 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
+from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
@@ -64,6 +66,7 @@ from echo_personal_tool.presentation.orthanc_study_dialog import OrthancStudyDia
 from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, PresenterMode
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
+from echo_personal_tool.presentation.start_page import StartPage
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
@@ -136,6 +139,10 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle(display_name())
         self._user_preferences = user_preferences or load_user_preferences()
+        from echo_personal_tool.infrastructure.recent_store import RecentStore
+
+        self._recent_store = RecentStore()
+        self._has_loaded_study = False
         self._click_to_frame_started_at: float | None = None
         # Armed on gallery click, consumed when the new file's first frame is
         # painted: visual reset of the previous clip (strain window, manual
@@ -296,6 +303,33 @@ class MainWindow(QMainWindow):
         self._viewer.context_doppler_calibration_requested.connect(self._on_doppler_calibration_requested)
         self._viewer.context_properties_requested.connect(self._show_properties_tab)
         self._viewer.context_reset_requested.connect(self._on_reset_measurements_requested)
+        from echo_personal_tool.infrastructure.profile import is_presenter
+
+        self._start_page = StartPage(
+            recent_store=self._recent_store,
+            version=__version__,
+            profile_name="presenter" if is_presenter() else "full",
+            measurement_persistence_enabled=self._user_preferences.measurement_persistence_enabled,
+            ui_font_size=self._user_preferences.ui_font_size,
+        )
+        self._start_page.set_continue_target(
+            self._user_preferences.last_session_source,
+            self._user_preferences.last_opened_folder,
+        )
+        self._viewer_stack = QStackedWidget(self._content_widget)
+        self._viewer_stack.setObjectName("viewerStack")
+        self._viewer_stack.addWidget(self._viewer)
+        self._viewer_stack.addWidget(self._start_page)
+        self._viewer_stack.setCurrentWidget(self._start_page)
+        self._start_page.open_folder_requested.connect(self._open_folder)
+        self._start_page.load_from_server_requested.connect(self._open_orthanc_dialog)
+        self._start_page.continue_requested.connect(self._continue_last_session)
+        self._start_page.recent_folder_requested.connect(self._open_recent_folder)
+        self._start_page.references_requested.connect(self._show_references)
+        self._start_page.documents_requested.connect(self._open_user_reference_document)
+        self._start_page.feedback_requested.connect(self._show_support_feedback)
+        self._start_page.settings_requested.connect(self._show_user_preferences)
+        self._start_page.help_requested.connect(self._show_help)
         self._controller.state_manager.state_changed.connect(self._viewer.set_state)
         self._doppler_frame_context: tuple[str | None, int | None] = (None, None)
         self._strain_window: StrainWindow | None = None
@@ -340,8 +374,6 @@ class MainWindow(QMainWindow):
         status.addPermanentWidget(self._research_warning)
 
         # Permanent release version label, shown left of the research warning
-        from echo_personal_tool import __version__
-
         self._version_label = QLabel(f"SonoForge {__version__}")
         self._version_label.setStyleSheet("color: #999; padding-right: 10px;")
         status.addPermanentWidget(self._version_label)
@@ -352,6 +384,8 @@ class MainWindow(QMainWindow):
     def _install_shortcuts(self) -> None:
         """Window-level shortcuts that work when the viewer or browser has focus."""
         bindings: list[tuple[str, object]] = [
+            ("Ctrl+O", self._open_folder),
+            ("Ctrl+P", self._open_orthanc_dialog),
             ("L", self._viewer.toggle_linear_caliper),
             ("C", self._start_manual_contour_shortcut),
             ("M", self._start_model_contour_shortcut),
@@ -620,17 +654,18 @@ class MainWindow(QMainWindow):
             self._mmode_widget.deactivate_requested.connect(self._toggle_mmode)
             self._mmode_widget.teichholz_ed_complete.connect(self._on_teichholz_ed_complete)
             self._mmode_widget.teichholz_es_complete.connect(self._on_teichholz_es_complete)
-        # Find viewer's current position BEFORE reparenting
-        idx = self._content_splitter.indexOf(self._viewer)
+        # Find the viewer surface's current position BEFORE reparenting.
+        idx = self._content_splitter.indexOf(self._viewer_stack)
         if idx < 0:
             for i in range(self._content_splitter.count()):
                 w = self._content_splitter.widget(i)
-                if isinstance(w, QSplitter) and w.indexOf(self._viewer) >= 0:
+                if isinstance(w, QSplitter) and w.indexOf(self._viewer_stack) >= 0:
                     idx = i
                     break
+        content_index = self._content_layout.indexOf(self._viewer_stack)
         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
         self._mmode_vertical_splitter.setHandleWidth(4)
-        self._mmode_vertical_splitter.addWidget(self._viewer)
+        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
         self._mmode_vertical_splitter.addWidget(self._mmode_widget)
         self._mmode_vertical_splitter.setSizes([400, 600])
         self._mmode_vertical_splitter.setStretchFactor(0, 1)
@@ -639,6 +674,8 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self._content_splitter.insertWidget(idx, self._mmode_vertical_splitter)
             self._content_splitter.setStretchFactor(idx, 1)
+        elif content_index >= 0:
+            self._content_layout.insertWidget(content_index, self._mmode_vertical_splitter, stretch=1)
         self._mmode_vertical_splitter.show()
 
         # Animate M-mode widget expand
@@ -675,8 +712,8 @@ class MainWindow(QMainWindow):
     def _finish_mmode_deactivation(self) -> None:
         if self._mmode_vertical_splitter is None:
             return
-        # Remove viewer from vertical splitter (reparent to content_widget)
-        self._viewer.setParent(self._content_widget)
+        # Remove the viewer surface from the vertical splitter before rebuilding.
+        self._viewer_stack.setParent(self._content_widget)
         # Schedule splitter deletion
         self._mmode_vertical_splitter.deleteLater()
         self._mmode_vertical_splitter = None
@@ -842,8 +879,11 @@ class MainWindow(QMainWindow):
             if pane is None:
                 continue
             if pane_id is PaneId.LEFT:
-                # The main viewer returns to the content area on its own.
-                self._viewer.setParent(self._content_widget)
+                # The main viewer returns to its welcome/viewer stack.
+                if self._viewer_stack.indexOf(self._viewer) < 0:
+                    self._viewer.setParent(None)
+                    self._viewer_stack.addWidget(self._viewer)
+                self._viewer_stack.setCurrentWidget(self._viewer if self._has_loaded_study else self._start_page)
             pane.hide()
             pane.setParent(self._content_widget)
 
@@ -853,6 +893,11 @@ class MainWindow(QMainWindow):
             self._pane_left = MultiViewPaneWidget(PaneId.LEFT, self._viewer, self)
             self._multiview.attach_pane(PaneId.LEFT, self._pane_left)
             self._wire_pane(self._pane_left, owned_by_main=True)
+        elif self._pane_left.layout().indexOf(self._viewer) < 0:
+            # Leaving Multiview hands the main viewer back to its stack;
+            # reattach it when Multiview is enabled again.
+            self._viewer.setParent(None)
+            self._pane_left.layout().insertWidget(1, self._viewer, 1)
         if self._viewer2 is None:
             self._ensure_viewer2()
         self._sync_left_pane_from_controller()
@@ -1026,12 +1071,19 @@ class MainWindow(QMainWindow):
         left: QWidget | None,
         right: QWidget | None,
     ) -> None:
-        self._viewer.show()
-        if cfg.multiview:
+        if self._viewer_stack.indexOf(self._viewer) < 0:
+            self._viewer.show()
+        if cfg.multiview and self._has_loaded_study:
             if self._pane_left is not None:
                 self._pane_left.show()
             if self._pane_right is not None:
                 self._pane_right.show()
+        elif cfg.multiview:
+            # Persisted pane wrappers can remain parented to the content widget
+            # while an empty workspace displays the welcome stack.
+            for pane in (self._pane_left, self._pane_right):
+                if pane is not None and self._content_splitter.indexOf(pane) < 0:
+                    pane.hide()
 
         if cfg.gallery_horizontal:
             if self._bottom_container is not None:
@@ -1069,7 +1121,12 @@ class MainWindow(QMainWindow):
                 not cfg.activity_bar and not cfg.gallery_horizontal and not cfg.multiview and not cfg.swap_places
             )
 
-            if cfg.multiview:
+            if cfg.multiview and not self._has_loaded_study:
+                # A persisted Multiview preference must not hide the empty-tab
+                # welcome page on startup. Panes are created when data arrive.
+                self._viewer_stack.setCurrentWidget(self._start_page)
+                center = self._viewer_stack
+            elif cfg.multiview:
                 self._ensure_multiview_panes()
                 assert self._pane_left is not None and self._pane_right is not None
                 self._content_splitter.addWidget(self._pane_left)
@@ -1090,8 +1147,8 @@ class MainWindow(QMainWindow):
                     if self._mmode_vertical_splitter is None:
                         self._mmode_vertical_splitter = QSplitter(Qt.Orientation.Vertical)
                         self._mmode_vertical_splitter.setHandleWidth(4)
-                    if self._mmode_vertical_splitter.indexOf(self._viewer) < 0:
-                        self._mmode_vertical_splitter.addWidget(self._viewer)
+                    if self._mmode_vertical_splitter.indexOf(self._viewer_stack) < 0:
+                        self._mmode_vertical_splitter.addWidget(self._viewer_stack)
                     if self._mmode_vertical_splitter.indexOf(self._mmode_widget) < 0:
                         self._mmode_vertical_splitter.addWidget(self._mmode_widget)
                     self._mmode_vertical_splitter.setSizes([400, 600])
@@ -1105,7 +1162,7 @@ class MainWindow(QMainWindow):
                     center = self._content_splitter
                 else:
                     self._content_splitter.blockSignals(True)
-                    self._content_splitter.addWidget(self._viewer)
+                    self._content_splitter.addWidget(self._viewer_stack)
                     self._content_splitter.addWidget(self._tool_panel)
                     self._content_splitter.setStretchFactor(0, 1)
                     self._content_splitter.setStretchFactor(1, 0)
@@ -1113,7 +1170,7 @@ class MainWindow(QMainWindow):
                     self._content_splitter.blockSignals(False)
                     center = self._content_splitter
             else:
-                center = self._viewer
+                center = self._viewer_stack
 
             if not cfg.multiview:
                 self._detach_viewer2()
@@ -1300,7 +1357,25 @@ class MainWindow(QMainWindow):
     def _show_references(self) -> None:
         self._open_reference_dialog()
 
-    def _open_reference_dialog(self, param_id: str | None = None) -> None:
+    def _open_user_reference_document(self) -> None:
+        self._open_reference_dialog(open_document=True)
+
+    def _show_support_feedback(self) -> None:
+        from echo_personal_tool.presentation.feedback_dialog import show_support_feedback_dialog
+
+        show_support_feedback_dialog(self)
+
+    def _show_help(self) -> None:
+        from echo_personal_tool.presentation.help_dialog import show_help_dialog
+
+        show_help_dialog(self)
+
+    def _open_reference_dialog(
+        self,
+        param_id: str | None = None,
+        *,
+        open_document: bool = False,
+    ) -> None:
         # Lazy import: the reference dialog pulls in QtWebEngine/PyMuPDF,
         # which are excluded from the Presenter (lite) build.
         from echo_personal_tool.infrastructure.profile import has_reference_ui
@@ -1315,7 +1390,7 @@ class MainWindow(QMainWindow):
         except ImportError:
             self._show_status(tr("app.reference_unavailable"))
             return
-        show_ase_reference_dialog(self, param_id=param_id)
+        show_ase_reference_dialog(self, param_id=param_id, open_document=open_document)
 
     @_prof
     def _show_user_preferences(self) -> None:
@@ -1395,6 +1470,11 @@ class MainWindow(QMainWindow):
         # object is kept as the base, the effective copy is applied.
         preferences = self._presenter.intercept_preferences(preferences)
         self._user_preferences = preferences
+        start_page = getattr(self, "_start_page", None)
+        if start_page is not None:
+            start_page.set_measurement_persistence_enabled(preferences.measurement_persistence_enabled)
+            start_page.set_continue_target(preferences.last_session_source, preferences.last_opened_folder)
+            start_page.set_ui_font_size(preferences.ui_font_size)
         if not preferences.results_overlay_custom_position:
             self._instance_overlay_positions.clear()
             self._study_overlay_positions.clear()
@@ -1411,6 +1491,8 @@ class MainWindow(QMainWindow):
             font_size=preferences.ui_font_size,
             theme=preferences.theme_mode,
         )
+        if start_page is not None:
+            start_page.refresh_theme()
         # Chrome sizes are font-derived (Э4): re-measure after a font change.
         self._tool_panel.update_font_metrics()
         activity_bar = getattr(self, "_activity_bar", None)  # built later, may be off
@@ -1445,6 +1527,9 @@ class MainWindow(QMainWindow):
             self._activity_bar.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        start_page = getattr(self, "_start_page", None)
+        if start_page is not None:
+            start_page.reload_text()
         self._show_status(tr("status.startup"))
         self._sync_results_overlay(self._controller.state_manager.snapshot)
 
@@ -1645,6 +1730,9 @@ class MainWindow(QMainWindow):
         from echo_personal_tool.infrastructure.diagnostics import migrate_legacy_scan_errors
         from echo_personal_tool.infrastructure.paths import logs_dir
 
+        directory = Path(directory)
+        self._recent_store.record(directory)
+        self._start_page.refresh_recent_places()
         try:
             migrate_legacy_scan_errors(directory)
         except OSError:
@@ -1667,6 +1755,8 @@ class MainWindow(QMainWindow):
         if folder is not None:
             self._user_preferences.last_opened_folder = folder
         save_user_preferences(self._user_preferences)
+        if hasattr(self, "_start_page"):
+            self._start_page.set_continue_target(source, self._user_preferences.last_opened_folder)
 
     def _reset_doppler_mode_override(self) -> None:
         """Drop the explicit Doppler mode back to Auto on study open (Э2).
@@ -1680,19 +1770,42 @@ class MainWindow(QMainWindow):
     @_prof
     def _open_folder(self) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
-        from echo_personal_tool.infrastructure.recent_store import RecentStore
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
 
-        # Э3: start where the user was last time instead of an arbitrary place.
-        store = RecentStore()
-        start = store.last_folder() or self._user_preferences.last_opened_folder or ""
+        # Э3: external dialog/store instances may have written since startup.
+        self._recent_store.reload()
+        self._start_page.refresh_recent_places()
+        start = self._recent_store.last_folder() or self._user_preferences.last_opened_folder or ""
         directory = styled_select_directory(self, tr("dialog.select_folder"), start)
         if not directory:
             return
         folder = Path(directory)
-        # The recent list drives the dialog; `last_opened_folder` and the
-        # session source feed the "last session at startup" mode (Q-05/D-27).
-        store.record(folder)
+        # Record immediately for the next picker; `open_folder_path` also covers
+        # non-dialog entry points such as the Continue action.
+        self._recent_store.record(folder)
+        self._start_page.refresh_recent_places()
+        self._remember_session_source(SESSION_SOURCE_FOLDER, str(folder))
+        self.open_folder_path(folder)
+
+    def _open_recent_folder(self, path_text: str) -> None:
+        folder = Path(path_text)
+        if not folder.is_dir():
+            self._start_page.refresh_recent_places()
+            self._show_status(tr("start_page.missing_folder"))
+            return
+        self._remember_session_source(SESSION_SOURCE_FOLDER, str(folder))
+        self.open_folder_path(folder)
+
+    def _continue_last_session(self) -> None:
+        source = self._user_preferences.last_session_source
+        if source == SESSION_SOURCE_SERVER:
+            self.open_server_dialog()
+            return
+        folder = Path(self._user_preferences.last_opened_folder) if self._user_preferences.last_opened_folder else None
+        if folder is None or not folder.is_dir():
+            self._start_page.set_continue_target(SESSION_SOURCE_FOLDER, str(folder or ""))
+            self._show_status(tr("start_page.missing_folder"))
+            return
         self._remember_session_source(SESSION_SOURCE_FOLDER, str(folder))
         self.open_folder_path(folder)
 
@@ -1890,6 +2003,8 @@ class MainWindow(QMainWindow):
         study_list = list(studies)  # type: ignore[arg-type]
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
+        self._has_loaded_study = n_inst > 0
+        self._set_start_page_visible(not self._has_loaded_study)
         self._instance_overlay_cache.clear()
         self._instance_overlay_positions.clear()
         self._study_overlay_positions.clear()
@@ -1906,7 +2021,17 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
-        self._autoload_first_instance(study_list)
+        if self._layout_config.multiview:
+            panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
+            if not self._has_loaded_study or not panes_attached:
+                # Empty folders reveal the welcome page; the next study restores
+                # existing panes before main-viewer state starts syncing again.
+                self._rebuild_layout()
+        # Rebased merge (main daa0a89 + PR #126): restore panes first, then
+        # autoload the first clip so _on_instance_selected routes into a live
+        # viewer/pane. Guarded: an empty load keeps the welcome page visible.
+        if self._has_loaded_study:
+            self._autoload_first_instance(study_list)
 
     def _autoload_first_instance(self, study_list: list) -> None:
         """Show the new study at once: load its first clip without a click.
@@ -1920,6 +2045,21 @@ class MainWindow(QMainWindow):
                     self._gallery.select_instance(instance)
                     self._on_instance_selected(instance)
                     return
+
+    def _set_start_page_visible(self, visible: bool) -> None:
+        """Select the welcome page only while the main viewer surface owns a slot."""
+        if self._viewer_stack.indexOf(self._start_page) < 0 or self._viewer_stack.indexOf(self._viewer) < 0:
+            return
+        target = self._start_page if visible else self._viewer
+        self._viewer_stack.setCurrentWidget(target)
+
+    def show_empty_start_page(self) -> None:
+        """Show the empty-workspace page (also used by future empty tabs)."""
+        self._has_loaded_study = False
+        if self._layout_config.multiview:
+            self._rebuild_layout()
+        else:
+            self._set_start_page_visible(True)
 
     # ── gallery → pane routing (spec §6) ────────────────────────────
 
