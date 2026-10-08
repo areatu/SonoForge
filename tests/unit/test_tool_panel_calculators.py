@@ -90,3 +90,26 @@ def test_lazy_panel_public_api_builds_on_demand() -> None:
     assert not panel.is_built
     assert panel.is_section_expanded("continuity")
     assert panel.is_built
+
+
+def test_calculators_tab_widens_panel() -> None:
+    """The narrow panel (280) grows ≥1.5× on the Calculators tab and back."""
+    panel = ToolPanel()
+    base = panel._base_width
+    assert base >= 280
+    panel.show_calculators_tab()
+    assert panel.width() == panel.minimumWidth() == int(base * 1.5)
+    panel._tabs.setCurrentWidget(panel.measure)
+    assert panel.width() == panel.minimumWidth() == base
+
+
+def test_calculators_tab_widens_panel_animated(qtbot) -> None:
+    """Visible panel glides (not snaps) between the widths."""
+    panel = ToolPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    base = panel._base_width
+    panel.show_calculators_tab()
+    qtbot.waitUntil(lambda: panel.width() == int(base * 1.5))
+    panel._tabs.setCurrentWidget(panel.controls)
+    qtbot.waitUntil(lambda: panel.width() == base)

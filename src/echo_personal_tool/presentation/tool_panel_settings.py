@@ -1,8 +1,9 @@
 """Tools tab: customize the Measures tool panel per section.
 
 Each group box mirrors a toolbar section; every tool is a checkable item and
-items can be dragged between sections.  Sections are laid out in two columns
-so the tab fits without nested scrolling.  The resulting layout is serialized
+items can be dragged between sections.  Sections flow into two independent
+columns (masonry style, balanced by row count) so a tall section never leaves
+an empty gap under its shorter neighbour.  The resulting layout is serialized
 as JSON and persisted through ``UserPreferences.tool_panel_layout_json``.
 """
 
@@ -13,8 +14,8 @@ from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
-    QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -150,17 +151,25 @@ class ToolPanelSettingsWidget(QWidget):
         hint.setWordWrap(True)
         host_layout.addWidget(hint)
 
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(8)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        host_layout.addLayout(grid)
+        grid_host = QWidget()
+        columns_row = QHBoxLayout(grid_host)
+        columns_row.setContentsMargins(0, 0, 0, 0)
+        columns_row.setSpacing(8)
+        self._columns: list[QVBoxLayout] = []
+        for _ in range(2):
+            column = QVBoxLayout()
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(8)
+            columns_row.addLayout(column, stretch=1)
+            self._columns.append(column)
+        host_layout.addWidget(grid_host)
         host_layout.addStretch(1)
-        self._grid = grid
 
-        for index, (group_key, buttons) in enumerate(catalog):
+        # Balance the columns by estimated row count so a tall section never
+        # leaves an empty gap under its shorter grid neighbour.
+        column_rows = [0, 0]
+        boxes: list[tuple[int, str, QGroupBox]] = []
+        for group_key, buttons in catalog:
             box = QGroupBox(tr(group_key))
             box_layout = QVBoxLayout(box)
             box_layout.setContentsMargins(6, 6, 6, 6)
@@ -178,7 +187,17 @@ class ToolPanelSettingsWidget(QWidget):
             tool_list.rows_changed.connect(self._reflow)
             self._lists[group_key] = tool_list
             box_layout.addWidget(tool_list)
-            grid.addWidget(box, index // 2, index % 2, Qt.AlignmentFlag.AlignTop)
+            rows = max(1, tool_list.count())
+            column = 0 if column_rows[0] <= column_rows[1] else 1
+            column_rows[column] += rows
+            boxes.append((column, group_key, box))
+
+        self._section_boxes: dict[str, QGroupBox] = {}
+        for column, group_key, box in boxes:
+            self._columns[column].addWidget(box, alignment=Qt.AlignmentFlag.AlignTop)
+            self._section_boxes[group_key] = box
+        for column_layout in self._columns:
+            column_layout.addStretch(1)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

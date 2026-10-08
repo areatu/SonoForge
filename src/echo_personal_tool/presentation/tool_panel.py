@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -22,7 +22,7 @@ from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
 from echo_personal_tool.presentation.measures_menu import MeasuresMenuWidget
 from echo_personal_tool.presentation.properties_panel import PropertiesPanel
-from echo_personal_tool.presentation.ui_animations import HoverButtonMixin
+from echo_personal_tool.presentation.ui_animations import HoverButtonMixin, _reduce_motion_enabled
 from echo_personal_tool.presentation.ui_metrics import icon_button_size, widest_text_width
 
 
@@ -240,6 +240,11 @@ class MeasureTab(QWidget):
 class ToolPanel(QWidget):
     """Clinical-style right tool menu."""
 
+    #: How much wider the panel gets on the Calculators tab (≥1.5×).
+    _CALC_WIDTH_FACTOR = 1.5
+    #: Glide duration, same feel as the Measures accordion sections.
+    _CALC_WIDTH_ANIM_MS = 180
+
     action_requested = Signal(object, str, str, str)
     patient_metrics_changed = Signal(object, object)
     auto_play_changed = Signal(bool)
@@ -255,6 +260,8 @@ class ToolPanel(QWidget):
         self.setObjectName("toolPanel")
         self._collapsed = False
         self._saved_width = 280
+        self._base_width = 280
+        self._width_anim: QVariantAnimation | None = None
         self.setMinimumWidth(280)  # widened to the tab captions by update_font_metrics()
 
         self._tabs = QTabWidget()
@@ -321,6 +328,36 @@ class ToolPanel(QWidget):
         self._fade_anim.start()
 
         self._current_tab_widget = widget
+        self.sync_width()
+
+    def _target_width(self) -> int:
+        """Normal width, or widened (≥1.5×) while the Calculators tab is open."""
+        if self._tabs.currentWidget() is self.calculators:
+            return int(self._base_width * self._CALC_WIDTH_FACTOR)
+        return self._base_width
+
+    def sync_width(self, *, animated: bool = True) -> None:
+        """Snap or glide the panel to the width of the active tab."""
+        target = self._target_width()
+        if self._width_anim is not None:
+            self._width_anim.stop()
+            self._width_anim = None
+        if not animated or not self.isVisible() or self._collapsed or _reduce_motion_enabled():
+            self.setFixedWidth(target)
+            return
+        start = self.width()
+        if start == target:
+            self.setFixedWidth(target)
+            return
+        anim = QVariantAnimation(self)
+        anim.setDuration(self._CALC_WIDTH_ANIM_MS)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.setStartValue(start)
+        anim.setEndValue(target)
+        anim.valueChanged.connect(lambda value: self.setFixedWidth(int(value)))
+        anim.finished.connect(lambda: self.setFixedWidth(target))
+        self._width_anim = anim
+        anim.start()
 
     def showAnimated(self) -> None:
         """Show panel with slide animation."""
@@ -415,7 +452,9 @@ class ToolPanel(QWidget):
     def update_font_metrics(self) -> None:
         """Keep the panel wide enough for its tab captions (Э4)."""
         labels = [self._tabs.tabText(index) for index in range(self._tabs.count())]
-        self.setMinimumWidth(widest_text_width(self, labels, padding=48, minimum=280))
+        self._base_width = widest_text_width(self, labels, padding=48, minimum=280)
+        self.setMinimumWidth(self._base_width)
+        self.sync_width(animated=False)
 
     def toggle_collapse(self) -> None:
         if self._collapsed:

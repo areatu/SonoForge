@@ -107,11 +107,25 @@ def test_settings_widget_lays_sections_in_two_columns() -> None:
     from echo_personal_tool.presentation.tool_panel_settings import ToolPanelSettingsWidget
 
     widget = ToolPanelSettingsWidget()
-    assert widget._grid.columnCount() == 2
-    assert len(widget.findChildren(QGroupBox)) == len(widget._lists)
-    assert widget._grid.getItemPosition(0)[:2] == (0, 0)
-    assert widget._grid.getItemPosition(1)[:2] == (0, 1)
-    assert widget._grid.getItemPosition(2)[:2] == (1, 0)
+    assert len(widget._columns) == 2
+    boxes = widget.findChildren(QGroupBox)
+    assert len(boxes) == len(widget._lists)
+    # Masonry: every section sits in exactly one column, so a tall section
+    # never leaves a grid-row gap under its shorter neighbour.
+    per_column: list[list] = []
+    for column in widget._columns:
+        in_column = [
+            column.itemAt(index).widget() for index in range(column.count()) if column.itemAt(index).widget() in boxes
+        ]
+        per_column.append(in_column)
+    assert all(len(items) > 0 for items in per_column)
+    flat = [box for items in per_column for box in items]
+    assert sorted(map(id, flat)) == sorted(map(id, boxes))
+    # Columns are balanced by row count: the gap is at most one section.
+    key_of = {id(box): key for key, box in widget._section_boxes.items()}
+    rows = [sum(max(1, widget._lists[key_of[id(box)]].count()) for box in items) for items in per_column]
+    biggest = max(max(1, widget._lists[key].count()) for key in widget._lists)
+    assert abs(rows[0] - rows[1]) <= biggest
 
 
 def test_relocate_moves_item_between_sections() -> None:
