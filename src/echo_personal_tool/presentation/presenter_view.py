@@ -448,7 +448,7 @@ class PresenterWindow(QWidget):
                 "placement_shown",
                 handle_screen=handle.screen().name() if handle is not None else None,
             )
-        if handle is not None:
+        if handle is not None and handle.screen() is not self._target_screen:
             handle.setScreen(self._target_screen)
         self.setGeometry(self._target_screen.geometry())
         self._enter_fullscreen()

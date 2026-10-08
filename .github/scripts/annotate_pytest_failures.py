@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections import deque
 
 # pytest's short summary lines look like:
 #   FAILED tests/unit/test_x.py::test_y - AssertionError: ...
@@ -36,8 +37,10 @@ def main() -> int:
     node_file = sys.argv[1] if len(sys.argv) > 1 else None
     seen: set[tuple[str, str]] = set()
     last_node: str | None = None
+    last_lines: deque[str] = deque(maxlen=12)
     for raw in sys.stdin:
         line = raw.rstrip("\n")
+        last_lines.append(line)
         _emit(line)
         stripped = line.strip()
         node_match = _TEST_NODE.match(stripped)
@@ -55,9 +58,12 @@ def main() -> int:
             message = f"{message} — {detail}"
         # GitHub trims long annotation messages; the node id survives the cut.
         _emit(f"::error title={kind} {node_id}::{message[:1800]}")
-    if node_file is not None and last_node is not None:
-        with open(node_file, "w", encoding="utf-8") as last_node_stream:
-            last_node_stream.write(last_node + "\n")
+    if node_file is not None:
+        if last_node is not None:
+            with open(node_file, "w", encoding="utf-8") as last_node_stream:
+                last_node_stream.write(last_node + "\n")
+        with open(node_file + ".tail", "w", encoding="utf-8") as tail_stream:
+            tail_stream.write("\n".join(last_lines) + "\n")
     if seen:
         _emit(f"::notice::pytest failures: {len(seen)}")
     return 0
