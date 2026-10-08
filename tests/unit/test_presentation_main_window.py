@@ -1215,3 +1215,31 @@ class TestLastSessionSource:
         main_window.open_server_dialog()
 
         assert calls == [True]
+
+    def test_continue_button_reopens_the_last_local_folder(self, main_window, monkeypatch, tmp_path):
+        from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_FOLDER
+
+        folder = tmp_path / "last-study"
+        folder.mkdir()
+        main_window._user_preferences.last_session_source = SESSION_SOURCE_FOLDER
+        main_window._user_preferences.last_opened_folder = str(folder)
+        main_window._start_page.set_continue_target(SESSION_SOURCE_FOLDER, str(folder))
+        opened: list[Path] = []
+        monkeypatch.setattr(main_window, "open_folder_path", lambda path: opened.append(path))
+
+        main_window._start_page.continue_button.click()
+
+        assert opened == [folder]
+        assert main_window._start_page.continue_button.isEnabled()
+
+    def test_continue_button_reopens_server_loader(self, main_window, monkeypatch):
+        from echo_personal_tool.infrastructure.user_preferences import SESSION_SOURCE_SERVER
+
+        main_window._user_preferences.last_session_source = SESSION_SOURCE_SERVER
+        main_window._start_page.set_continue_target(SESSION_SOURCE_SERVER)
+        calls: list[bool] = []
+        monkeypatch.setattr(main_window, "open_server_dialog", lambda: calls.append(True))
+
+        main_window._start_page.continue_button.click()
+
+        assert calls == [True]

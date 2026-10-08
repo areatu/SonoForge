@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPoint, QSettings, Qt, QUrl, Signal
+from PySide6.QtCore import QPoint, QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -76,7 +76,12 @@ def _load_icon(name: str) -> QPixmap:
 _CACHED_REFERENCE_DIALOG: AseReferenceDialog | None = None
 
 
-def show_ase_reference_dialog(parent: QWidget | None = None, param_id: str | None = None) -> None:
+def show_ase_reference_dialog(
+    parent: QWidget | None = None,
+    param_id: str | None = None,
+    *,
+    open_document: bool = False,
+) -> None:
     global _CACHED_REFERENCE_DIALOG
     if _CACHED_REFERENCE_DIALOG is None:
         try:
@@ -104,6 +109,8 @@ def show_ase_reference_dialog(parent: QWidget | None = None, param_id: str | Non
     # before the modal loop (harmless for dialogs already maximized in __init__).
     if not dialog.isVisible():
         dialog.showMaximized()
+    if open_document:
+        QTimer.singleShot(0, dialog._add_document)
     dialog.exec()
 
 

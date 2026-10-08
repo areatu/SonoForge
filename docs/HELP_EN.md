@@ -66,10 +66,12 @@ The Windows and macOS release builds bundle Python and application dependencies;
 
 `Settings → Interface → On startup` provides:
 
-- `Empty window` (`empty`): do not open data automatically;
-- `Last folder` (`last_folder`): reopen the last existing folder selected with `Open folder…` after startup.
+- `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
+- `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
 
-Language and theme are set in `Settings → Interface`. The language change rebuilds the UI; an already open reference document may need to be opened again.
+The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+
+Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
 ### Minimal workflow
 
