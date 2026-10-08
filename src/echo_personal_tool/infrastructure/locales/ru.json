@@ -2043,5 +2043,14 @@
   "start_page.settings": "Настройки",
   "start_page.subtitle": "Откройте локальную папку или загрузите исследование с сервера, чтобы начать работу.",
   "start_page.title": "Добро пожаловать в SonoForge",
-  "start_page.version": "Версия SonoForge {version}"
+  "start_page.version": "Версия SonoForge {version}",
+  "tabs.new": "Новая вкладка",
+  "tabs.empty": "Пустая вкладка",
+  "tabs.loading": "Загрузка…",
+  "tabs.untitled": "Без описания",
+  "tabs.busy": "Дождитесь окончания загрузки исследования",
+  "tabs.limit.title": "Слишком много вкладок",
+  "tabs.limit.body": "Открыто вкладок: {max}. Закрыть неактивную вкладку «{title}»? Измерения сохранены; кэш с сервера будет удалён.",
+  "tabs.placeholder.title": "Откройте исследование",
+  "tabs.placeholder.hint": "«Открыть папку…» или «Загрузить с сервера…». Каждое исследование открывается в своей вкладке."
 }

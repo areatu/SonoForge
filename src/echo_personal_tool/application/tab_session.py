@@ -66,6 +66,25 @@ class TabSession:
         return sum(len(study.series) for study in self.studies)
 
 
+def tab_title(tab: TabSession, position: int, *, empty_label: str, untitled_label: str) -> str:
+    """Tab-bar caption: «N · дата · модальность · описание серии» (spec §2.3).
+
+    No patient name: PHI in titles waits for the PHI policy (N-01).
+    ``position`` is zero-based; the caption shows it one-based.
+    """
+    prefix = f"{position + 1}"
+    if not tab.studies:
+        return f"{prefix} · {empty_label}"
+    study = min(tab.studies, key=lambda item: item.study_datetime)
+    date = study.study_datetime.strftime("%d.%m.%Y")
+    series = next((item for item in study.series if item.modality or item.description), None)
+    if series is None:
+        return f"{prefix} · {date} · {untitled_label}"
+    description = series.description.strip()[:24] or untitled_label
+    parts = [prefix, date, series.modality or "", description]
+    return " · ".join(part for part in parts if part)
+
+
 def encode_viewer_state(state: Mapping[str, Any]) -> str:
     """Serialize viewer state (W/L, calibrations, overlays) to a stable JSON string.
 
@@ -178,12 +197,7 @@ class TabSessionManager:
         studies: list[StudyMetadata] | tuple[StudyMetadata, ...] = (),
         activate: bool = True,
     ) -> TabSession:
-        if origin not in TAB_ORIGINS:
-            raise TabSessionError(f"unknown tab origin: {origin!r}")
-        if origin == TAB_ORIGIN_SERVER and root:
-            raise TabSessionError("server tabs have no local root")
-        if origin == TAB_ORIGIN_FOLDER and cache_session_id:
-            raise TabSessionError("folder tabs have no PACS cache session")
+        self._validate_source(origin, root, cache_session_id)
         if self.is_full:
             raise TabLimitError(f"tab limit reached ({self._max_tabs})")
         if cache_session_id and self.owner_of_cache_session(cache_session_id):
@@ -230,6 +244,39 @@ class TabSessionManager:
 
     def set_studies(self, tab_id: str, studies: list[StudyMetadata] | tuple[StudyMetadata, ...]) -> None:
         self.get(tab_id).studies = list(studies)
+
+    def retarget_empty(
+        self,
+        tab_id: str,
+        *,
+        origin: str,
+        root: str = "",
+        cache_session_id: str = "",
+    ) -> TabSession:
+        """Give an empty tab (the « + » tab) the source of a new load.
+
+        A tab that already holds studies is never retargeted: opening another
+        study always gets its own tab (D-29).
+        """
+        tab = self.get(tab_id)
+        if tab.studies:
+            raise TabSessionError("only an empty tab can be retargeted")
+        self._validate_source(origin, root, cache_session_id)
+        if cache_session_id and self.owner_of_cache_session(cache_session_id) not in (None, tab_id):
+            raise TabCacheConflictError(cache_session_id)
+        tab.origin = origin
+        tab.root = root
+        tab.cache_session_id = cache_session_id
+        return tab
+
+    @staticmethod
+    def _validate_source(origin: str, root: str, cache_session_id: str) -> None:
+        if origin not in TAB_ORIGINS:
+            raise TabSessionError(f"unknown tab origin: {origin!r}")
+        if origin == TAB_ORIGIN_SERVER and root:
+            raise TabSessionError("server tabs have no local root")
+        if origin == TAB_ORIGIN_FOLDER and cache_session_id:
+            raise TabSessionError("folder tabs have no PACS cache session")
 
     def close_tab(self, tab_id: str) -> CloseResult:
         position = self.index_of(tab_id)

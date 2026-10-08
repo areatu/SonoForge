@@ -30,6 +30,14 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.tab_session import (
+    TAB_ORIGIN_EMPTY,
+    TAB_ORIGIN_FOLDER,
+    TAB_ORIGIN_SERVER,
+    TabSessionManager,
+    park_tab,
+    tab_title,
+)
 from echo_personal_tool.domain.models import Contour, InstanceMetadata
 from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.domain.models.viewer_state import ViewerState
@@ -68,6 +76,7 @@ from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import StartPage
 from echo_personal_tool.presentation.system_bar import SystemBar
+from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 from echo_personal_tool.presentation.tool_panel import ToolPanel
 from echo_personal_tool.presentation.user_preferences_dialog import show_user_preferences_dialog
@@ -227,6 +236,12 @@ class MainWindow(QMainWindow):
             theme=self._user_preferences.theme_mode,
         )
 
+        # Tabs (Э9, PR-B): one study set per tab; the controller shows the active one.
+        self._tabs = TabSessionManager()
+        self._tab_loading_id: str | None = None
+        self._restore_target: tuple[str, str, int] | None = None
+        self._pending_cache_purges: set[str] = set()
+
         central = QWidget()
         self.setCentralWidget(central)
         self._root_layout = QVBoxLayout(central)
@@ -242,10 +257,19 @@ class MainWindow(QMainWindow):
         self._system_bar.set_multiview_checked(self._layout_config.multiview)
         self._controller.decode_progress.connect(self._system_bar.show_decode_progress)
         self._controller.decode_finished.connect(self._system_bar.hide_decode_progress)
+        self._tab_strip = TabStrip()
+        self._tab_strip.tab_selected.connect(self._on_tab_selected)
+        self._tab_strip.tab_close_requested.connect(self._on_tab_close_requested)
+        self._tab_strip.new_tab_requested.connect(self._on_new_tab_requested)
+        self._root_layout.addWidget(self._tab_strip)
         self._root_layout.addWidget(self._system_bar)
 
         self._content_widget = QWidget()
-        self._root_layout.addWidget(self._content_widget, stretch=1)
+        self._empty_tab_page = EmptyTabPlaceholder()
+        self._main_stack = QStackedWidget()
+        self._main_stack.addWidget(self._content_widget)
+        self._main_stack.addWidget(self._empty_tab_page)
+        self._root_layout.addWidget(self._main_stack, stretch=1)
         self._content_layout = QHBoxLayout(self._content_widget)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
         self._content_layout.setSpacing(0)
@@ -382,6 +406,10 @@ class MainWindow(QMainWindow):
 
         self._install_shortcuts()
         self._rebuild_layout()
+        # The first tab exists from the start; the startup load fills it (D-29).
+        self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY)
+        self._refresh_tab_strip()
+        self._update_main_stack()
 
     def _install_shortcuts(self) -> None:
         """Window-level shortcuts that work when the viewer or browser has focus."""
@@ -400,6 +428,9 @@ class MainWindow(QMainWindow):
             ("F11", self._toggle_fullscreen_shortcut),
             ("Up", self._gallery.select_previous_instance),
             ("Down", self._gallery.select_next_instance),
+            ("Ctrl+Tab", lambda: self._cycle_tab(1)),
+            ("Ctrl+Shift+Tab", lambda: self._cycle_tab(-1)),
+            ("Ctrl+W", self._close_active_tab_shortcut),
         ]
         from echo_personal_tool.infrastructure.profile import (
             has_ai_segmentation,
@@ -509,6 +540,7 @@ class MainWindow(QMainWindow):
         if self._activity_bar is not None:
             self._activity_bar.hide()
         self._system_bar.hide()
+        self._tab_strip.hide()
         self.statusBar().hide()
         self.showFullScreen()
         self._show_status(tr("status.fullscreen_hint"))
@@ -518,6 +550,7 @@ class MainWindow(QMainWindow):
         self._remove_fullscreen_chrome_filter()
         self.showNormal()
         self._system_bar.show()
+        self._tab_strip.show()
         cfg = self._layout_config
         self.statusBar().setVisible(cfg.status_bar_visible)
         self._gallery.show()
@@ -548,6 +581,7 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             return
         self._system_bar.show()
+        self._tab_strip.show()
         if auto_hide:
             if self._fullscreen_chrome_timer is None:
                 self._fullscreen_chrome_timer = QTimer(self)
@@ -565,6 +599,7 @@ class MainWindow(QMainWindow):
         )
         if not over_bar:
             self._system_bar.hide()
+            self._tab_strip.hide()
 
     def _fullscreen_handle_hover(self, event: QEvent) -> None:
         """Top-edge hover reveal for the F11 kiosk mode (app-level filter)."""
@@ -1523,6 +1558,7 @@ class MainWindow(QMainWindow):
                     session_id = self._orthanc_cache.session_id_for_path(Path(path))
                     if session_id is not None:
                         active.add(session_id)
+        active.update(tab.cache_session_id for tab in self._tabs.tabs if tab.cache_session_id)
         return active
 
     def _show_properties_tab(self) -> None:
@@ -1793,13 +1829,52 @@ class MainWindow(QMainWindow):
         path = instance.path if instance is not None else None
         self._tool_panel.load_dicom_inspector(path)
 
-    def open_folder_path(self, directory: Path) -> None:
+    def _save_diagnostics(self) -> None:
+        from datetime import datetime
+
+        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        default_name = f"SonoForge-diagnostics-{datetime.now().astimezone():%Y%m%d-%H%M%S}.zip"
+        destination, _ = styled_save_file(
+            self,
+            tr("diagnostics.save_dialog_title"),
+            str(Path.home() / default_name),
+            tr("diagnostics.file_filter"),
+        )
+        if not destination:
+            return
+        try:
+            saved_path = create_diagnostic_bundle(Path(destination), app=QApplication.instance())
+        except Exception as exc:  # noqa: BLE001 - report a failed support export to the user
+            logger.exception("Could not create privacy-filtered diagnostic archive")
+            QMessageBox.warning(
+                self,
+                tr("diagnostics.save_dialog_title"),
+                tr("diagnostics.error", error=str(exc)),
+            )
+            return
+        QMessageBox.information(
+            self,
+            tr("diagnostics.save_dialog_title"),
+            tr("diagnostics.saved", path=str(saved_path)) + "\n\n" + tr("diagnostics.privacy"),
+        )
+
+    def open_folder_path(
+        self,
+        directory: Path,
+        *,
+        origin: str = TAB_ORIGIN_FOLDER,
+        cache_session_id: str = "",
+    ) -> None:
         from echo_personal_tool.infrastructure.diagnostics import migrate_legacy_scan_errors
         from echo_personal_tool.infrastructure.paths import logs_dir
 
-        directory = Path(directory)
-        self._recent_store.record(directory)
-        self._start_page.refresh_recent_places()
+        # The folder opens in a tab of its own (D-29); a server-backed session
+        # keeps its PACS cache id and has no local root.
+        root = "" if origin == TAB_ORIGIN_SERVER else str(directory)
+        if not self._acquire_tab_for_load(origin, root, cache_session_id):
+            return
         try:
             migrate_legacy_scan_errors(directory)
         except OSError:
@@ -1982,14 +2057,16 @@ class MainWindow(QMainWindow):
             # Cache-only download: the images are deleted on exit, so the next
             # "Last session" has to go through the server dialog again (Q-05).
             self._remember_session_source(SESSION_SOURCE_SERVER)
+            session_id, _study_uid = result
             if downloaded:
+                if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
+                    return
                 self._reset_doppler_mode_override()
                 self._controller.load_pre_scanned_studies(downloaded)
             else:
-                session_id, _study_uid = result
                 path = self._orthanc_cache.session_path(session_id)
                 logger.info("[MW] scan fallback: session=%s directory_exists=%s", session_id[:8], path.exists())
-                self.open_folder_path(path)
+                self.open_folder_path(path, origin=TAB_ORIGIN_SERVER, cache_session_id=session_id)
         else:
             logger.warning("[MW] dialog closed with no result (user cancelled or error)")
 
@@ -2068,6 +2145,7 @@ class MainWindow(QMainWindow):
         # of two studies in the same pair (spec 4.3).
         self._multiview.reset_session()
         study_list = list(studies)  # type: ignore[arg-type]
+        loaded_tab_id = self._finish_tab_load(study_list)
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
         self._has_loaded_study = n_inst > 0
@@ -2088,17 +2166,7 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
-        if self._layout_config.multiview:
-            panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
-            if not self._has_loaded_study or not panes_attached:
-                # Empty folders reveal the welcome page; the next study restores
-                # existing panes before main-viewer state starts syncing again.
-                self._rebuild_layout()
-        # Rebased merge (main daa0a89 + PR #126): restore panes first, then
-        # autoload the first clip so _on_instance_selected routes into a live
-        # viewer/pane. Guarded: an empty load keeps the welcome page visible.
-        if self._has_loaded_study:
-            self._autoload_first_instance(study_list)
+        self._after_tab_loaded(loaded_tab_id, study_list)
 
     def _autoload_first_instance(self, study_list: list) -> None:
         """Show the new study at once: load its first clip without a click.
@@ -2127,6 +2195,245 @@ class MainWindow(QMainWindow):
             self._rebuild_layout()
         else:
             self._set_start_page_visible(True)
+    # ── tabs (Э9, PR-B) ─────────────────────────────────────────────
+
+    def _tab_flush_or_block(self) -> bool:
+        """Measurements must be on disk before the viewer leaves the current study."""
+        if self._controller.measurement_persistence.flush():
+            return True
+        self._show_status(tr("persistence.blocked_navigation"))
+        self._on_persistence_blocked()
+        return False
+
+    def _tab_busy(self) -> bool:
+        if self._tab_loading_id is None:
+            return False
+        self._show_status(tr("tabs.busy"))
+        return True
+
+    def _claimable_cache_id(self, cache_session_id: str, own_tab_id: str | None = None) -> str:
+        """A PACS cache session belongs to one tab; a conflicting id is not claimed."""
+        if not cache_session_id:
+            return ""
+        owner = self._tabs.owner_of_cache_session(cache_session_id)
+        return "" if owner not in (None, own_tab_id) else cache_session_id
+
+    def _acquire_tab_for_load(self, origin: str, root: str, cache_session_id: str) -> bool:
+        """Pick the tab a new load goes into: the empty « + » tab, or a new one."""
+        if self._tab_busy() or not self._tab_flush_or_block():
+            return False
+        active = self._tabs.active
+        if active is not None and not active.studies:
+            cache_id = self._claimable_cache_id(cache_session_id, active.tab_id)
+            self._tabs.retarget_empty(active.tab_id, origin=origin, root=root, cache_session_id=cache_id)
+        else:
+            if not self._ensure_tab_capacity():
+                return False
+            self._park_active_tab()
+            self._tabs.open_tab(
+                origin=origin,
+                root=root,
+                cache_session_id=self._claimable_cache_id(cache_session_id),
+                activate=True,
+            )
+        self._leave_special_layouts()
+        self._tab_loading_id = self._tabs.active_tab_id
+        self._restore_target = None
+        self._refresh_tab_strip()
+        self._update_main_stack()
+        return True
+
+    def _ensure_tab_capacity(self) -> bool:
+        """At the limit, ask before closing the oldest inactive tab (spec §4, no silent LRU)."""
+        if not self._tabs.is_full:
+            return True
+        active_id = self._tabs.active_tab_id
+        inactive = [tab for tab in self._tabs.tabs if tab.tab_id != active_id]
+        if not inactive:
+            return False
+        oldest = min(inactive, key=lambda tab: tab.created_at)
+        title = self._tab_caption(oldest)
+        answer = QMessageBox.question(
+            self,
+            tr("tabs.limit.title"),
+            tr("tabs.limit.body", max=self._tabs.max_tabs, title=title),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+        self._close_inactive_tab(oldest.tab_id)
+        return True
+
+    def _park_active_tab(self) -> None:
+        """Save what the viewer shows into the tab before it is left (spec §5)."""
+        tab = self._tabs.active
+        if tab is None or not tab.studies:
+            return
+        snapshot = self._controller.state_manager.snapshot
+        instance = snapshot.instance
+        park_tab(
+            self._tabs,
+            tab.tab_id,
+            viewer_state={},
+            frame_index=snapshot.current_frame_index,
+            active_instance_uid=instance.sop_instance_uid if instance is not None else "",
+        )
+
+    def _leave_special_layouts(self) -> None:
+        """Multiview and M-mode show the previous study's clips; they end with the tab."""
+        if self._layout_config.multiview:
+            self._on_multiview_button()
+        if self._mmode_active:
+            self._toggle_mmode()
+
+    def _load_tab_content(self, tab) -> None:  # noqa: ANN001 - TabSession
+        """Make ``tab`` the content of the viewer (switch, close of the active tab)."""
+        self._leave_special_layouts()
+        self._reset_doppler_mode_override()
+        self._tab_loading_id = tab.tab_id
+        self._restore_target = (
+            (tab.tab_id, tab.active_instance_uid, tab.frame_index) if tab.studies and tab.active_instance_uid else None
+        )
+        self._refresh_tab_strip()
+        self._update_main_stack()
+        self._controller.load_pre_scanned_studies(list(tab.studies))
+
+    def _switch_to_tab(self, tab_id: str) -> bool:
+        if tab_id == self._tabs.active_tab_id:
+            return True
+        if self._tab_busy() or not self._tab_flush_or_block():
+            self._refresh_tab_strip()
+            return False
+        self._park_active_tab()
+        self._tabs.activate(tab_id)
+        self._load_tab_content(self._tabs.get(tab_id))
+        return True
+
+    def _on_tab_selected(self, tab_id: str) -> None:
+        self._switch_to_tab(tab_id)
+
+    def _on_new_tab_requested(self) -> None:
+        if self._tab_busy() or not self._tab_flush_or_block() or not self._ensure_tab_capacity():
+            self._refresh_tab_strip()
+            return
+        self._park_active_tab()
+        tab = self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+        self._load_tab_content(tab)
+
+    def _on_tab_close_requested(self, tab_id: str) -> None:
+        if self._tab_busy():
+            self._refresh_tab_strip()
+            return
+        if tab_id == self._tabs.active_tab_id:
+            if not self._tab_flush_or_block():
+                return
+            result = self._tabs.close_tab(tab_id)
+            self._queue_cache_purge(result.purge_cache_session_id)
+            if self._tabs.active is None:
+                self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
+            self._load_tab_content(self._tabs.active)
+            return
+        self._close_inactive_tab(tab_id)
+
+    def _close_inactive_tab(self, tab_id: str) -> None:
+        result = self._tabs.close_tab(tab_id)
+        self._queue_cache_purge(result.purge_cache_session_id)
+        self._refresh_tab_strip()
+        self._process_pending_cache_purges()
+
+    def _cycle_tab(self, step: int) -> None:
+        tabs = self._tabs.tabs
+        active_id = self._tabs.active_tab_id
+        if len(tabs) < 2 or active_id is None:
+            return
+        position = self._tabs.index_of(active_id)
+        self._switch_to_tab(tabs[(position + step) % len(tabs)].tab_id)
+
+    def _close_active_tab_shortcut(self) -> None:
+        if self._tabs.active_tab_id is not None:
+            self._on_tab_close_requested(self._tabs.active_tab_id)
+
+    def _queue_cache_purge(self, session_id: str) -> None:
+        if session_id:
+            self._pending_cache_purges.add(session_id)
+
+    def _process_pending_cache_purges(self) -> None:
+        """Delete a closed tab's PACS cache once nothing on screen still uses it (D-27)."""
+        if not self._pending_cache_purges:
+            return
+        protected = self._active_orthanc_cache_sessions()
+        for session_id in sorted(self._pending_cache_purges - protected):
+            try:
+                self._orthanc_cache.clear_session(session_id)
+            except OSError:
+                logger.warning("Could not clear a closed tab's Orthanc cache session")
+            self._pending_cache_purges.discard(session_id)
+
+    def _tab_caption(self, tab) -> str:  # noqa: ANN001 - TabSession
+        position = self._tabs.index_of(tab.tab_id)
+        return tab_title(
+            tab,
+            position,
+            empty_label=tr("tabs.loading") if tab.tab_id == self._tab_loading_id else tr("tabs.empty"),
+            untitled_label=tr("tabs.untitled"),
+        )
+
+    def _refresh_tab_strip(self) -> None:
+        self._tab_strip.set_tabs(
+            [(tab.tab_id, self._tab_caption(tab)) for tab in self._tabs.tabs],
+            self._tabs.active_tab_id,
+        )
+        self._tab_strip.new_button().setToolTip(tr("tabs.new"))
+
+    def _update_main_stack(self) -> None:
+        """Viewer while the active tab shows studies, placeholder otherwise."""
+        if self._tab_loading_id is not None:
+            self._empty_tab_page.show_message(tr("tabs.loading"), "")
+            self._main_stack.setCurrentIndex(1)
+            return
+        tab = self._tabs.active
+        if tab is not None and tab.studies:
+            self._main_stack.setCurrentIndex(0)
+            return
+        self._empty_tab_page.show_message(tr("tabs.placeholder.title"), tr("tabs.placeholder.hint"))
+        self._main_stack.setCurrentIndex(1)
+
+    def _finish_tab_load(self, studies: list) -> str | None:
+        """The controller published a study set: it belongs to the loading tab."""
+        # The controller only ever holds the active tab's studies, so a set that
+        # arrives without a pending load still belongs to the active tab.
+        loading_id = self._tab_loading_id or self._tabs.active_tab_id
+        self._tab_loading_id = None
+        if loading_id is not None and loading_id in self._tabs:
+            self._tabs.set_studies(loading_id, studies)
+        self._refresh_tab_strip()
+        return loading_id
+
+    def _abort_tab_load(self) -> None:
+        self._tab_loading_id = None
+        self._restore_target = None
+        self._refresh_tab_strip()
+        self._update_main_stack()
+
+    def _after_tab_loaded(self, loaded_tab_id: str | None, studies: list) -> None:
+        self._update_main_stack()
+        target = self._restore_target
+        self._restore_target = None
+        if target is not None and loaded_tab_id is not None and target[0] == loaded_tab_id:
+            self._restore_tab_view(studies, target[1])
+        self._process_pending_cache_purges()
+
+    def _restore_tab_view(self, studies: list, instance_uid: str) -> None:
+        """Re-select the instance the tab was showing. The frame index is kept in the tab
+        but not applied yet: the gallery click path loads the instance at its first frame."""
+        for study in studies:
+            for series in study.series:
+                for instance in series.instances:
+                    if instance.sop_instance_uid == instance_uid:
+                        self._gallery.select_instance(instance)
+                        self._on_instance_selected(instance)
+                        return
 
     # ── gallery → pane routing (spec §6) ────────────────────────────
 
@@ -2249,6 +2556,7 @@ class MainWindow(QMainWindow):
     def _on_scan_failed(self, message: str) -> None:
         from echo_personal_tool.infrastructure.i18n import tr
 
+        self._abort_tab_load()
         QMessageBox.warning(self, tr("error.scan_failed"), message)
 
     def _on_instance_selected(self, selected: object) -> None:

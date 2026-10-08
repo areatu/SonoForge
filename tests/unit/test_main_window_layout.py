@@ -29,7 +29,37 @@ def _make_window(qtbot) -> MainWindow:
     window.resize(1280, 800)
     window.show()
     qtbot.waitExposed(window)
+    # The start tab is empty and shows the tab placeholder (Э9); these tests
+    # check the viewer page, so publish one study into the start tab first.
+    _publish_one_study(window)
     return window
+
+
+def _publish_one_study(window: MainWindow) -> None:
+    from datetime import datetime
+
+    from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
+
+    instance = InstanceMetadata(
+        sop_instance_uid="1.2.3.layout",
+        series_uid="1.2.3.layout.series",
+        modality="US",
+        number_of_frames=4,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="A4C",
+        path=None,
+    )
+    series = SeriesMetadata(
+        series_uid="1.2.3.layout.series",
+        study_uid="1.2.3.layout",
+        modality="US",
+        description="A4C",
+        instances=(instance,),
+    )
+    study = StudyMetadata(study_uid="1.2.3.layout", study_datetime=datetime(2026, 10, 1), series=(series,))
+    window._controller.studies_loaded.emit([study])
+    QApplication.processEvents()
 
 
 def _apply(window: MainWindow, **kwargs: object) -> None:

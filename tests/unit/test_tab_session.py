@@ -326,3 +326,53 @@ def test_bad_id_factory_is_rejected() -> None:
     m = TabSessionManager(id_factory=lambda: "")
     with pytest.raises(TabSessionError):
         m.open_tab(origin=TAB_ORIGIN_EMPTY)
+
+
+# ----- PR-B additions: retarget of the empty tab and captions ------------------
+
+
+def test_empty_tab_can_be_retargeted_to_a_new_source() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    m.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
+    assert (tab.origin, tab.cache_session_id) == (TAB_ORIGIN_SERVER, "z3-A")
+    assert m.owner_of_cache_session("z3-A") == tab.tab_id
+
+
+def test_tab_with_studies_is_never_retargeted() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/a", studies=[_study("1.2")])
+    with pytest.raises(TabSessionError):
+        m.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_FOLDER, root="/b")
+    assert tab.root == "/a"
+
+
+def test_retarget_validates_source_and_cache_conflicts() -> None:
+    m = _manager()
+    m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
+    empty = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    with pytest.raises(TabCacheConflictError):
+        m.retarget_empty(empty.tab_id, origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
+    with pytest.raises(TabSessionError):
+        m.retarget_empty(empty.tab_id, origin="ftp")
+    assert empty.origin == TAB_ORIGIN_EMPTY
+
+
+def test_tab_title_has_no_patient_name_and_is_one_based() -> None:
+    from echo_personal_tool.application.tab_session import tab_title
+
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/a", studies=[_study("1.2", 2)])
+    title = tab_title(tab, 1, empty_label="Пусто", untitled_label="Без описания")
+    assert title == "2 · 01.10.2026 · US · A4C"
+
+
+def test_tab_title_for_empty_and_undescribed_tabs() -> None:
+    from echo_personal_tool.application.tab_session import tab_title
+
+    m = _manager()
+    empty = m.open_tab(origin=TAB_ORIGIN_EMPTY)
+    assert tab_title(empty, 0, empty_label="Пусто", untitled_label="?") == "1 · Пусто"
+    bare = StudyMetadata(study_uid="9", study_datetime=datetime(2026, 1, 2), series=())
+    tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/b", studies=[bare])
+    assert tab_title(tab, 1, empty_label="Пусто", untitled_label="Без описания") == "2 · 02.01.2026 · Без описания"
