@@ -79,8 +79,49 @@ class LocalMediaDirectoryScanner:
             if study is not None:
                 studies.extend(self._split_verified_studies(study, study_folder))
 
-        studies.sort(key=lambda s: s.study_datetime or datetime.min, reverse=True)
-        return studies
+        return self._merge_studies_by_uid(studies)
+
+    @staticmethod
+    def _merge_studies_by_uid(studies: list[StudyMetadata]) -> list[StudyMetadata]:
+        """Rejoin a study whose series live in separate nested folders.
+
+        ``iter_study_roots`` may find one media-bearing directory per series.
+        DICOM StudyInstanceUID remains the authoritative grouping key, so those
+        partial results are merged without duplicating instances.
+        """
+        merged_studies: dict[str, StudyMetadata] = {}
+        series_by_study: dict[str, dict[str, SeriesMetadata]] = {}
+        seen_sops_by_study: dict[str, set[str]] = {}
+        for study in studies:
+            merged_studies.setdefault(study.study_uid, study)
+            series_map = series_by_study.setdefault(study.study_uid, {})
+            seen_sops = seen_sops_by_study.setdefault(study.study_uid, set())
+            for series in study.series:
+                existing_series = series_map.get(series.series_uid)
+                combined = list(existing_series.instances) if existing_series is not None else []
+                for instance in series.instances:
+                    if instance.sop_instance_uid not in seen_sops:
+                        combined.append(instance)
+                        seen_sops.add(instance.sop_instance_uid)
+                if not combined:
+                    continue
+                series_map[series.series_uid] = SeriesMetadata(
+                    series_uid=series.series_uid,
+                    study_uid=study.study_uid,
+                    modality=existing_series.modality if existing_series is not None else series.modality,
+                    description=existing_series.description if existing_series is not None else series.description,
+                    instances=sort_instances(combined),
+                )
+
+        output = [
+            replace(
+                study,
+                series=tuple(sort_series_list(list(series_by_study[study_uid].values()))),
+            )
+            for study_uid, study in merged_studies.items()
+        ]
+        output.sort(key=lambda study: study.study_datetime or datetime.min, reverse=True)
+        return output
 
     def _split_verified_studies(self, study: StudyMetadata, folder: Path) -> list[StudyMetadata]:
         """A folder is not a patient identity. Never assign every file the first UID."""
@@ -361,11 +402,36 @@ def iter_media_files(root: Path):
 
 
 def iter_study_roots(root: Path) -> list[Path]:
-    media_in_root = has_media_in_directory(root, recursive=False)
-    child_dirs = sorted(
-        (path for path in root.iterdir() if path.is_dir() and has_media(path)),
-        key=lambda path: path.name,
-    )
-    if child_dirs and not media_in_root:
-        return child_dirs
-    return [root]
+    """Find disjoint media-bearing roots at any depth beneath ``root``.
+
+    Walk directories until one contains supported media directly. That
+    directory becomes a root and its descendants remain together; if it has no
+    direct media, keep descending. This avoids a full media-file walk before
+    the scanner's actual pass. The scan later reunites DICOM series by UID.
+    """
+    roots: list[Path] = []
+
+    def visit(directory: Path) -> None:
+        try:
+            entries = sorted(directory.iterdir(), key=lambda path: path.name.casefold())
+        except OSError:
+            return
+        child_dirs: list[Path] = []
+        has_direct_media = False
+        for path in entries:
+            if is_ignored_scan_path(path):
+                continue
+            if path.is_file() and is_media_file(path):
+                has_direct_media = True
+            elif path.is_dir() and not path.is_symlink():
+                child_dirs.append(path)
+        if has_direct_media:
+            roots.append(directory)
+            return
+        for child in child_dirs:
+            visit(child)
+
+    visit(root)
+    if not roots:
+        return [root]
+    return sorted(roots, key=lambda path: path.relative_to(root).as_posix().casefold())
