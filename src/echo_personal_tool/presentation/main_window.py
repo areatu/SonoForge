@@ -133,6 +133,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(display_name())
         self._user_preferences = user_preferences or load_user_preferences()
         self._click_to_frame_started_at: float | None = None
+        # Armed on gallery click, consumed when the new file's first frame is
+        # painted: visual reset of the previous clip (strain window, manual
+        # ED/ES) runs atomically with the swap, not on click.
+        self._pending_swap_uid: str | None = None
         self._playback_active = False
         self._lav_bi_active = False
         self._rv_fac_awaiting_es = False
@@ -2079,21 +2083,17 @@ class MainWindow(QMainWindow):
 
         label = _loaded_file_label(selected)
         self._system_bar.set_study_context(label)
-        self._viewer.set_results_overlay("")
-        # STE results belong to the previous clip: drop tracked kernels,
-        # contours and the strain window when switching to another file so
-        # nothing leaks onto the new cine (issue: contours/dots visible on
-        # every frame of every clip). Re-selecting the same instance keeps
-        # the results.
-        if previous is None or previous.sop_instance_uid != selected.sop_instance_uid:
-            self._viewer.clear_speckle_overlay()
-            if self._strain_window is not None:
-                self._strain_window.close()
-                self._strain_window = None
-            # Manual ED/ES frames belong to the previous clip: drop them so the
-            # next STE run detects frames for the new file (issue #5).
-            self._manual_ed_frame = None
-            self._manual_es_frame = None
+        # Hold the old frame AND its overlays until the new file's first frame
+        # is decoded: clearing here, on click, popped graphics off the still
+        # visible old anatomy (a flicker before the actual swap). The results
+        # text is re-synced by _on_state_changed at swap time; the STE reset
+        # below is armed and runs once in _on_frame_loaded, atomically with
+        # the new pixels. Re-selecting the same instance keeps its results.
+        self._pending_swap_uid = (
+            selected.sop_instance_uid
+            if previous is None or previous.sop_instance_uid != selected.sop_instance_uid
+            else None
+        )
         self._controller.load_instance(selected)
 
     @_prof
@@ -2112,8 +2112,33 @@ class MainWindow(QMainWindow):
         if is_playing or scroll_active:
             self._viewer.show_frame_fast(image)
         elif instance_switch:
-            self._viewer.show_frame_fast(image)
-            QTimer.singleShot(0, lambda: self._deferred_instance_switch_restore(image, is_playing))
+            # Atomic swap, single render: the old fast + deferred-full double
+            # render moved viewRange twice per switch (measured 167-1974 px
+            # jumps on cross-vendor cuts). The old frame stays until now.
+            if self._pending_swap_uid is not None:
+                # STE/strain state belongs to the previous clip (same reset
+                # as before, just deferred from click time to swap time).
+                if self._strain_window is not None:
+                    self._strain_window.close()
+                    self._strain_window = None
+                self._manual_ed_frame = None
+                self._manual_es_frame = None
+                self._pending_swap_uid = None
+            self._viewer.show_frame(image)
+            self._viewer.reposition_overlays()
+            self._viewer.refresh_dicom_tags_overlay()
+            self._viewer._refresh_frame_overlays()
+            self._restore_doppler_for_current_instance()
+            self._restore_mmode_for_current_instance()
+            self._sync_doppler_tool_availability()
+            if self._user_preferences.auto_play and not is_playing:
+                self._controller.toggle_playback()
+            if self._controller.needs_manual_calibration():
+                self._viewer._auto_calibration_succeeded = False
+                if self._controller.try_auto_depth_calibration(image):
+                    self._viewer.show_calibration_ok_overlay()
+                elif self._viewer.start_calibration_caliper():
+                    self._show_status(tr("status.calibration_click"))
         else:
             self._viewer.show_frame(image)
             self._viewer.reposition_overlays()
@@ -2137,23 +2162,6 @@ class MainWindow(QMainWindow):
                 scroll_active,
                 (perf_counter() - _ft0) * 1000,
             )
-
-    def _deferred_instance_switch_restore(self, image: np.ndarray, is_playing: bool) -> None:
-        self._viewer.show_frame(image)
-        self._viewer.reposition_overlays()
-        self._viewer.refresh_dicom_tags_overlay()
-        self._viewer._refresh_frame_overlays()
-        self._restore_doppler_for_current_instance()
-        self._restore_mmode_for_current_instance()
-        self._sync_doppler_tool_availability()
-        if self._user_preferences.auto_play and not is_playing:
-            self._controller.toggle_playback()
-        if self._controller.needs_manual_calibration():
-            self._viewer._auto_calibration_succeeded = False
-            if self._controller.try_auto_depth_calibration(image):
-                self._viewer.show_calibration_ok_overlay()
-            elif self._viewer.start_calibration_caliper():
-                self._show_status(tr("status.calibration_click"))
 
     def _on_slider_frame_selected(self, index: int) -> None:
         if (
