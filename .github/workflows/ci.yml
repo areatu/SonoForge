@@ -119,34 +119,6 @@ jobs:
           name: pytest-linux-log
           path: /tmp/pytest.log
           retention-days: 7
-
-          set -euo pipefail
-          export PYTHONFAULTHANDLER=1
-          last_node_file="$RUNNER_TEMP/pytest-last-node.txt"
-          last_tail_file="${last_node_file}.tail"
-          rm -f "$last_node_file" "$last_tail_file"
-          set +e
-          xvfb-run -a pytest tests/unit/ -vv --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov 2>&1 \
-            | python .github/scripts/annotate_pytest_failures.py "$last_node_file"
-          statuses=("${PIPESTATUS[@]}")
-          set -e
-          pytest_status="${statuses[0]}"
-          filter_status="${statuses[1]}"
-          if (( pytest_status != 0 )); then
-            last_node="(no pytest node was reported)"
-            if [[ -s "$last_node_file" ]]; then
-              last_node="$(cat "$last_node_file")"
-            fi
-            if [[ -s "$last_tail_file" ]]; then
-              tail_output="$(tail -n 30 "$last_tail_file" | tr -d '\r' | tr '\n' ' ' | cut -c1-5000)"
-              echo "::error title=pytest process exit ${pytest_status}::Last pytest node: ${last_node}; output tail: ${tail_output}"
-            else
-              echo "::error title=pytest process exit ${pytest_status}::Last pytest node reached: ${last_node}"
-            fi
-            exit "$pytest_status"
-          fi
-          exit "$filter_status"
-
       # Linux CI is the single coverage producer/uploader; no separate coverage workflow.
       - name: Upload coverage report artifact
         if: runner.os == 'Linux'

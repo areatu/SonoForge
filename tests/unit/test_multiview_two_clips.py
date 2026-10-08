@@ -89,6 +89,10 @@ def multiview(qtbot, monkeypatch, clips, isolated_qsettings):
     window.resize(1400, 900)
     window.show()
     qtbot.waitExposed(window)
+    # This fixture models the loaded-study state that enables pane creation;
+    # an empty workspace intentionally remains on the welcome page.
+    window._has_loaded_study = True
+    window._set_start_page_visible(False)
     window._on_multiview_button()
     qtbot.wait(50)
 
