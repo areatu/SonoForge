@@ -81,9 +81,9 @@ jobs:
 
       - run: pip install -e ".[dev]" "PySide6!=6.12.0"
 
-      # Linux: run with virtual display (xvfb-run for Qt tests). The output is
-      # piped through the annotation filter so failing test names stay readable
-      # via the check-run REST API even when job logs are not downloadable.
+      # Linux: run with a virtual display. Verbose node IDs plus the annotation
+      # filter keep test failures and native abort locations readable through
+      # the check-run REST API even when job logs are not downloadable.
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -92,6 +92,7 @@ jobs:
           # non-zero pytest exit (pytest-timeout's os._exit(1) on a hang
           # included) would kill this script before the diagnostics below.
           set +e
+          export PYTHONFAULTHANDLER=1
           xvfb-run -a pytest tests/unit/ -v --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
             > /tmp/pytest.log 2>&1
           status=$?
@@ -116,6 +117,26 @@ jobs:
           name: pytest-linux-log
           path: /tmp/pytest.log
           retention-days: 7
+
+          set -euo pipefail
+          last_node_file="$RUNNER_TEMP/pytest-last-node.txt"
+          rm -f "$last_node_file"
+          set +e
+          xvfb-run -a pytest tests/unit/ -vv --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
+            | python .github/scripts/annotate_pytest_failures.py "$last_node_file"
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          pytest_status="${statuses[0]}"
+          filter_status="${statuses[1]}"
+          if (( pytest_status != 0 )); then
+            last_node="(no pytest node was reported)"
+            if [[ -s "$last_node_file" ]]; then
+              last_node="$(cat "$last_node_file")"
+            fi
+            echo "::error title=pytest process exit ${pytest_status}::Last pytest node reached: ${last_node}"
+            exit "$pytest_status"
+          fi
+          exit "$filter_status"
 
       # Linux CI is the single coverage producer/uploader; no separate coverage workflow.
       - name: Upload coverage report artifact
