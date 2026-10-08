@@ -301,6 +301,17 @@ class TestPresenterWindow:
         window.stop()
         assert not window.isVisible()
 
+    def test_stop_cancels_pending_placement_verification(self, qapp_session, qtbot):
+        window, _ = self._make(qapp_session, qtbot)
+        placed_screens: list[object] = []
+        window.placed.connect(placed_screens.append)
+
+        window.start()
+        window.stop()
+        qtbot.wait(5)
+
+        assert placed_screens == []
+
     def test_never_takes_focus_or_activation(self, qapp_session, qtbot):
         window, _ = self._make(qapp_session, qtbot)
         assert window.focusPolicy() == Qt.FocusPolicy.NoFocus
