@@ -24,6 +24,7 @@ from echo_personal_tool.domain.services.ase_reference_norms import (
     is_outside_norm,
     linear_norm_for_label,
 )
+from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr
 
@@ -110,6 +111,17 @@ class ReportValue:
     norm: str = ""
     pathological: bool = False
     group: str = GROUP_OTHER
+    #: Number of repeats that actually contributed to an averaged value (D-23).
+    #: Kept separate from ``value`` so norms and machine consumers still see
+    #: the unannotated numeric result.
+    sample_count: int | None = None
+
+    @property
+    def display_value(self) -> str:
+        """Value plus the localized count of samples entering a repeat mean."""
+        if self.sample_count is None or self.sample_count <= 1:
+            return self.value
+        return self.value + tr("domain.report.repeat_suffix", count=self.sample_count)
 
 
 @dataclass(frozen=True)
@@ -374,6 +386,7 @@ def _value(
     default_group: str | None = None,
     norm_label: str | None = None,
     scale: float | None = None,
+    sample_count: int | None = None,
 ) -> ReportValue | None:
     """One report row; ``norm_label`` names the reference parameter to compare with.
 
@@ -399,6 +412,7 @@ def _value(
         norm=norm_text,
         pathological=pathological,
         group=resolved,
+        sample_count=sample_count,
     )
 
 
@@ -579,6 +593,7 @@ def build_report_groups(
         # Acquisition mode per flow-velocity row (Э2); velocities read in
         # m/s under CW and in cm/s under PW/TDI.
         flow_mode_by_label: dict[str, str] = {}
+        flow_sample_count_by_label: dict[str, int] = {}
         doppler_values = [
             ("E", doppler.e_cm_s, "cm/s", GROUP_MITRAL_VALVE),
             ("A", doppler.a_cm_s, "cm/s", GROUP_MITRAL_VALVE),
@@ -620,6 +635,9 @@ def build_report_groups(
             )
             flow_mode_by_label[f"{flow.site} Vmax"] = flow.mode
             flow_mode_by_label[f"{flow.site} Vmean"] = flow.mode
+            vmax_repeat_count = flow.vmax_repeats or flow.vti_repeats
+            flow_sample_count_by_label[f"{flow.site} Vmax"] = report_sample_count(vmax_repeat_count)
+            flow_sample_count_by_label[f"{flow.site} VTI"] = report_sample_count(flow.vti_repeats)
         doppler_values.extend(
             (
                 ("MV PHT", doppler.mv_pht_ms, "ms", GROUP_MITRAL_VALVE),
@@ -639,7 +657,19 @@ def build_report_groups(
                 if unit == "m/s":
                     # Already in reference units (TR norm is stored in m/s).
                     scale = 1.0
-            item = _value(label, value, unit, sex=sex, decimals=decimals, group=group, scale=scale)
+            sample_count = flow_sample_count_by_label.get(label)
+            if sample_count is not None and sample_count <= 1:
+                sample_count = None
+            item = _value(
+                label,
+                value,
+                unit,
+                sex=sex,
+                decimals=decimals,
+                group=group,
+                scale=scale,
+                sample_count=sample_count,
+            )
             if item:
                 values.append(item)
 

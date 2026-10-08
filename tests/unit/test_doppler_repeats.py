@@ -31,6 +31,7 @@ from echo_personal_tool.domain.services.doppler_repeats import (
     mean_of_last,
     merge_newest_wins,
     new_measurement_id,
+    report_sample_count,
 )
 
 UID = "1.2.3"
@@ -60,6 +61,11 @@ def test_mean_of_last_uses_most_recent_values() -> None:
 
 def test_mean_of_last_accepts_other_windows() -> None:
     assert mean_of_last([100.0, 200.0, 300.0], window=1) == 300.0
+
+
+@pytest.mark.parametrize("stored, expected_in_report", [(0, 0), (1, 1), (2, 2), (3, 3), (4, 3), (10, 3)])
+def test_report_sample_count_matches_last_three_window(stored: int, expected_in_report: int) -> None:
+    assert report_sample_count(stored) == expected_in_report
 
 
 # ── storage bound ───────────────────────────────────────────────────

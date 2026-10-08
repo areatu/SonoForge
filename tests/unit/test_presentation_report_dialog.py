@@ -8,6 +8,7 @@ import pytest
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
+    DopplerFlowResult,
     DopplerResults,
     IndexedMeasurements,
     LvefResult,
@@ -100,6 +101,27 @@ class TestGroupedTable:
         assert lvedd.text(1) == "62.0"
         assert lvedd.text(2) == "mm"
         assert lvedd.text(3) == "42–59"
+
+    def test_repeat_count_shows_only_samples_in_the_report_mean(self) -> None:
+        from echo_personal_tool.presentation.report_dialog import ReportDialog
+
+        snapshot = MeasurementSnapshot(
+            doppler=DopplerResults(
+                flow_results=(DopplerFlowResult(site="TR", vmax_cm_s=313.3, vmax_repeats=4, mode="CW"),),
+            ),
+        )
+        dialog = ReportDialog(snapshot)
+        tr_vmax = None
+        for i in range(dialog._tree.topLevelItemCount()):
+            top = dialog._tree.topLevelItem(i)
+            for j in range(top.childCount()):
+                child = top.child(j)
+                if child.text(0) == "TR Vmax":
+                    tr_vmax = child
+        assert tr_vmax is not None
+        assert tr_vmax.text(1) == "3.13 (n=3)"
+        assert tr_vmax.text(2) == "m/s"
+        assert tr_vmax.text(3) == "≤2.80"
 
     def test_pathological_row_is_highlighted(self) -> None:
         from echo_personal_tool.presentation.report_dialog import _PATHOLOGY_COLOR, ReportDialog

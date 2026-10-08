@@ -241,7 +241,7 @@ class ReportDialog(QDialog):
             top.setFont(0, font)
             self._tree.addTopLevelItem(top)
             for value in group.values:
-                item = QTreeWidgetItem([value.label, value.value, value.unit, value.norm])
+                item = QTreeWidgetItem([value.label, value.display_value, value.unit, value.norm])
                 item.setTextAlignment(1, Qt.AlignmentFlag.AlignRight)
                 if value.pathological:
                     for column in range(4):

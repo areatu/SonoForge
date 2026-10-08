@@ -6,6 +6,7 @@ import pytest
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.measurements import (
+    DopplerFlowResult,
     DopplerResults,
     IndexedMeasurements,
     LvefResult,
@@ -192,6 +193,32 @@ class TestBuildReportGroups:
         groups = build_report_groups(snapshot, sex="M")
         assert "E" in _values(groups, GROUP_MITRAL_VALVE)
         assert "TR Vmax" in _values(groups, GROUP_TRICUSPID_VALVE)
+
+    def test_structured_report_shows_count_used_by_last_three_mean(self) -> None:
+        snapshot = _snapshot(
+            doppler=DopplerResults(
+                flow_results=(
+                    DopplerFlowResult(site="TR", vmax_cm_s=313.3, vmax_repeats=4, mode="CW"),
+                    DopplerFlowResult(site="AV", vti_cm=21.5, vti_repeats=4),
+                ),
+            ),
+        )
+
+        groups = build_report_groups(snapshot, sex="M")
+        rows = {value.label: value for group in groups for value in group.values}
+
+        tr_vmax = rows["TR Vmax"]
+        assert tr_vmax.group == GROUP_TRICUSPID_VALVE
+        assert tr_vmax.value == "3.13"
+        assert tr_vmax.unit == "m/s"
+        assert tr_vmax.sample_count == 3
+        assert tr_vmax.display_value == "3.13 (n=3)"
+
+        av_vti = rows["AV VTI"]
+        assert av_vti.group == GROUP_AORTIC_VALVE
+        assert av_vti.value == "21.5"
+        assert av_vti.sample_count == 3
+        assert av_vti.display_value == "21.5 (n=3)"
 
     def test_tr_vmax_norm_follows_the_display_unit(self) -> None:
         # 310 cm/s without a mode reads in m/s (magnitude fallback, Э2), so

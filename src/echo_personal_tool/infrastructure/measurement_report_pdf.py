@@ -231,7 +231,7 @@ def _group_table(group: ReportGroup, styles: dict[str, ParagraphStyle], size: in
     data: list[list] = [header]
     pathology_rows: list[int] = []
     for index, value in enumerate(group.values, start=1):
-        text = _xml_escape(value.value)
+        text = _xml_escape(value.display_value)
         if value.unit:
             text = f"{text} {_xml_escape(value.unit)}"
         if value.pathological:
