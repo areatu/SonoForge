@@ -105,7 +105,7 @@ jobs:
               last_node="$(cat "$last_node_file")"
             fi
             if [[ -s "$last_tail_file" ]]; then
-              tail_output="$(tail -n 12 "$last_tail_file" | tr -d '\r' | tr '\n' ' ' | cut -c1-1200)"
+              tail_output="$(tail -n 30 "$last_tail_file" | tr -d '\r' | tr '\n' ' ' | cut -c1-5000)"
               echo "::error title=pytest process exit ${pytest_status}::Last pytest node: ${last_node}; output tail: ${tail_output}"
             else
               echo "::error title=pytest process exit ${pytest_status}::Last pytest node reached: ${last_node}"
