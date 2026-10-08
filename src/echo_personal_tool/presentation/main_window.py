@@ -1557,6 +1557,7 @@ class MainWindow(QMainWindow):
         )
         if start_page is not None:
             start_page.refresh_theme()
+        self._gallery.reload_text()
         # Chrome sizes are font-derived (Э4): re-measure after a font change.
         self._tool_panel.update_font_metrics()
         activity_bar = getattr(self, "_activity_bar", None)  # built later, may be off
@@ -1592,6 +1593,7 @@ class MainWindow(QMainWindow):
             self._activity_bar.reload_text()
         self._viewer.reload_text()
         self._tool_panel.reload_text()
+        self._gallery.reload_text()
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.reload_text()

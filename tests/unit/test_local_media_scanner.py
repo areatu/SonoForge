@@ -37,6 +37,17 @@ def test_iter_study_roots_container_with_child_studies(tmp_path: Path) -> None:
     assert roots == [study_a, study_b]
 
 
+def test_iter_study_roots_walks_deep_nested_folder_tree(tmp_path: Path) -> None:
+    first_series = tmp_path / "patient" / "date" / "study" / "series-1"
+    second_series = tmp_path / "patient" / "date" / "study" / "series-2"
+    write_synthetic_dicom(first_series / "a.dcm")
+    write_synthetic_dicom(second_series / "b.dcm")
+
+    roots = iter_study_roots(tmp_path)
+
+    assert roots == [first_series, second_series]
+
+
 def test_scan_mixed_dicom_mp4_jpeg_folder(tmp_path: Path) -> None:
     study_uid = generate_uid()
     write_synthetic_dicom(tmp_path / "apical.dcm", study_uid=study_uid, series_uid=generate_uid())
@@ -86,6 +97,42 @@ def test_scan_multi_study_container(tmp_path: Path) -> None:
     studies = LocalMediaDirectoryScanner().scan(tmp_path)
 
     assert len(studies) == 2
+
+
+def test_scan_merges_series_from_deep_nested_folders_by_study_uid(tmp_path: Path) -> None:
+    uid_a, uid_b = generate_uid(), generate_uid()
+    series_a, series_a_two, series_b = generate_uid(), generate_uid(), generate_uid()
+    duplicate_sop = generate_uid()
+    root = tmp_path / "patient" / "2026"
+    a_series_one = root / "study-a" / "series-1"
+    a_series_duplicate = root / "study-a" / "series-duplicate"
+    a_series_two = root / "study-a" / "series-2"
+    b_series = root / "study-b" / "series-1"
+    write_synthetic_dicom(
+        a_series_one / "a1.dcm",
+        study_uid=uid_a,
+        series_uid=series_a,
+        sop_uid=duplicate_sop,
+    )
+    write_synthetic_dicom(
+        a_series_duplicate / "a1-copy.dcm",
+        study_uid=uid_a,
+        series_uid=series_a,
+        sop_uid=duplicate_sop,
+    )
+    write_synthetic_dicom(a_series_duplicate / "a2.dcm", study_uid=uid_a, series_uid=series_a)
+    write_synthetic_dicom(a_series_two / "a3.dcm", study_uid=uid_a, series_uid=series_a_two)
+    write_synthetic_dicom(b_series / "b1.dcm", study_uid=uid_b, series_uid=series_b)
+
+    studies = LocalMediaDirectoryScanner().scan(tmp_path)
+
+    assert {study.study_uid for study in studies} == {uid_a, uid_b}
+    by_uid = {study.study_uid: study for study in studies}
+    assert len(by_uid[uid_a].series) == 2
+    assert sum(len(series.instances) for series in by_uid[uid_a].series) == 3
+    by_series = {series.series_uid: series for series in by_uid[uid_a].series}
+    assert len(by_series[series_a].instances) == 2
+    assert len(by_uid[uid_b].series) == 1
 
 
 def test_scan_dicom_instances_sorted_by_filename(tmp_path: Path) -> None:

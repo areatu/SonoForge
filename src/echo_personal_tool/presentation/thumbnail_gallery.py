@@ -6,14 +6,19 @@ import inspect
 import shutil
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
 
-from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QImage, QPixmap
+from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QImage, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QGridLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QPushButton,
     QSizePolicy,
     QStyle,
     QStyledItemDelegate,
@@ -23,14 +28,51 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
-from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.infrastructure.i18n import get_language, tr, tr_plural
 from echo_personal_tool.infrastructure.instance_sort import sort_instances_by
-from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT
+from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT, get_theme_palette
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
+_GROUP_MARKER_ROLE = Qt.ItemDataRole.UserRole + 2
+_GROUP_COLOR_ROLE = Qt.ItemDataRole.UserRole + 3
 _VISIBLE_PADDING = 8
 _SCROLL_DEBOUNCE_MS = 25
 _THUMBNAIL_PIXMAP_MAX = 200
+
+# Okabe–Ito-inspired palette: color is paired with a letter so groups remain
+# distinguishable in grayscale and for users with color-vision deficiency.
+_GROUP_COLORS = (
+    "#E69F00",
+    "#56B4E9",
+    "#009E73",
+    "#F0E442",
+    "#0072B2",
+    "#D55E00",
+    "#CC79A7",
+    "#8A8A8A",
+)
+
+
+@dataclass(frozen=True)
+class _GalleryGroup:
+    marker: str
+    color: str
+    study_date: str
+    clip_count: int
+    first_item: QListWidgetItem
+
+
+def _group_marker(index: int) -> str:
+    """Return spreadsheet-style group labels: A…Z, AA, AB, and so on."""
+    if index < 0:
+        raise ValueError("Group index must be non-negative")
+    marker = ""
+    number = index + 1
+    while number:
+        number, remainder = divmod(number - 1, 26)
+        marker = chr(ord("A") + remainder) + marker
+    return marker
+
 
 _THUMBNAIL_SCALES: dict[str, dict[str, tuple[int, int]]] = {
     "small": {"thumb": (72, 54), "cell": (84, 66)},
@@ -93,6 +135,33 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
             painter.setPen(QColor_from("#4a5564"))
             painter.drawRect(thumb_rect)
 
+        group_marker = index.data(_GROUP_MARKER_ROLE)
+        group_color_text = index.data(_GROUP_COLOR_ROLE)
+        if group_marker and group_color_text:
+            group_color = QColor_from(str(group_color_text))
+            painter.setPen(QPen(group_color, 3))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(thumb_rect.adjusted(1, 1, -2, -2))
+
+            marker = str(group_marker)
+            badge_font = painter.font()
+            badge_font.setBold(True)
+            badge_font.setPointSize(8)
+            painter.setFont(badge_font)
+            badge_width = max(16, painter.fontMetrics().horizontalAdvance(marker) + 8)
+            badge_height = max(15, painter.fontMetrics().height())
+            badge_rect = QRect(
+                thumb_rect.right() - badge_width + 1,
+                thumb_rect.top() + 2,
+                badge_width,
+                badge_height,
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(group_color)
+            painter.drawRoundedRect(badge_rect, 3, 3)
+            painter.setPen(QColor_from(_contrast_text_color(group_color)))
+            painter.drawText(badge_rect, int(Qt.AlignmentFlag.AlignCenter), marker)
+
         # Index top-left
         if display_index is not None:
             painter.setPen(QColor_from(TEXT))
@@ -134,10 +203,22 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-def QColor_from(hex_color: str):  # noqa: N802
-    from PySide6.QtGui import QColor
-
+def QColor_from(hex_color: str) -> QColor:  # noqa: N802
     return QColor(hex_color)
+
+
+def _contrast_text_color(color: QColor) -> str:
+    """Choose black or white marker text with the stronger WCAG contrast."""
+
+    def linear_channel(value: int) -> float:
+        normalized = value / 255
+        return normalized / 12.92 if normalized <= 0.04045 else ((normalized + 0.055) / 1.055) ** 2.4
+
+    red, green, blue, _alpha = color.getRgb()
+    luminance = 0.2126 * linear_channel(red) + 0.7152 * linear_channel(green) + 0.0722 * linear_channel(blue)
+    black_contrast = (luminance + 0.05) / 0.05
+    white_contrast = 1.05 / (luminance + 0.05)
+    return "#000000" if black_contrast >= white_contrast else "#ffffff"
 
 
 def _has_dicom_tags(instance: InstanceMetadata) -> bool:
@@ -184,6 +265,16 @@ class ThumbnailGalleryWidget(QListWidget):
         self.customContextMenuRequested.connect(self._on_context_menu)
 
         self._multiview_enabled = False
+        self._gallery_groups: list[_GalleryGroup] = []
+        self._group_legend_height = 0
+        self._group_legend = QWidget(self)
+        self._group_legend.setObjectName("thumbnailGroupLegend")
+        self._group_legend_layout = QGridLayout(self._group_legend)
+        self._group_legend_layout.setContentsMargins(4, 3, 4, 3)
+        self._group_legend_layout.setHorizontalSpacing(4)
+        self._group_legend_layout.setVerticalSpacing(2)
+        self._group_legend.hide()
+
         self._thumbnail_cache: dict[str, QIcon] = {}
         self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._items_by_uid: dict[str, QListWidgetItem] = {}
@@ -239,6 +330,90 @@ class ThumbnailGalleryWidget(QListWidget):
         super().resizeEvent(event)
         if self._mv_start_hint.isVisible():
             self._position_start_hint()
+        if self._group_legend.isVisible():
+            self._position_group_legend()
+
+    def _position_group_legend(self) -> None:
+        if self._group_legend_height <= 0:
+            return
+        self._group_legend.setGeometry(1, 1, max(0, self.width() - 2), self._group_legend_height)
+        self._group_legend.raise_()
+
+    def _sync_horizontal_gallery_height(self) -> None:
+        if self._horizontal_mode:
+            row_height = self._cell_h + _CELL_SPACING
+            self.setFixedHeight(row_height * 2 + 4 + self._group_legend_height)
+
+    def _clear_group_legend(self) -> None:
+        while self._group_legend_layout.count():
+            item = self._group_legend_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _update_group_legend(self) -> None:
+        self._clear_group_legend()
+        if len(self._gallery_groups) < 2:
+            self._group_legend.hide()
+            self._group_legend_height = 0
+            self.setViewportMargins(0, 0, 0, 0)
+            self._sync_horizontal_gallery_height()
+            return
+
+        for column in range(2):
+            self._group_legend_layout.setColumnStretch(column, 1)
+        for index, group in enumerate(self._gallery_groups):
+            clips = tr_plural("gallery.group.clips", group.clip_count)
+            button = QPushButton(
+                tr("gallery.group.chip", marker=group.marker, date=group.study_date, clips=clips),
+                self._group_legend,
+            )
+            button.setObjectName("thumbnailGroupChip")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setFixedHeight(max(36, button.fontMetrics().lineSpacing() * 2 + 8))
+            tooltip = tr(
+                "gallery.group.tooltip",
+                marker=group.marker,
+                date=group.study_date,
+                clips=clips,
+            )
+            button.setToolTip(tooltip)
+            button.setAccessibleName(tooltip)
+            palette = get_theme_palette()
+            button.setStyleSheet(
+                "QPushButton { color: "
+                + palette["text"]
+                + "; background-color: "
+                + palette["bg_control"]
+                + "; border: 1px solid "
+                + group.color
+                + "; border-radius: 4px; padding: 1px 4px; text-align: left; }"
+                "QPushButton:hover { background-color: " + palette["bg_button_hover"] + "; }"
+            )
+            button.clicked.connect(lambda _checked=False, item=group.first_item: self._scroll_to_group(item))
+            self._group_legend_layout.addWidget(button, index // 2, index % 2)
+
+        self._group_legend.adjustSize()
+        self._group_legend_height = self._group_legend_layout.sizeHint().height()
+        self._group_legend.setFixedHeight(self._group_legend_height)
+        self.setViewportMargins(0, self._group_legend_height, 0, 0)
+        self._position_group_legend()
+        self._group_legend.show()
+        self._sync_horizontal_gallery_height()
+
+    def _scroll_to_group(self, item: QListWidgetItem) -> None:
+        instance = item.data(_ITEM_ROLE)
+        if not isinstance(instance, InstanceMetadata):
+            return
+        self.setCurrentItem(item)
+        self.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtTop)
+        self.request_visible_previews(instance)
+
+    def reload_text(self) -> None:
+        """Refresh localized legend labels and the Multiview hint."""
+        self.set_multiview_enabled(self._multiview_enabled)
+        self._update_group_legend()
 
     def set_multiview_enabled(self, enabled: bool) -> None:
         """Show the "open in pane" actions and the Ctrl+click hint."""
@@ -266,6 +441,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self._thumb_w, self._thumb_h = spec["thumb"]
         self._cell_w, self._cell_h = spec["cell"]
         self._apply_gallery_metrics()
+        self._sync_horizontal_gallery_height()
         self.viewport().update()
 
     def set_horizontal_mode(self, enabled: bool) -> None:
@@ -289,6 +465,7 @@ class ThumbnailGalleryWidget(QListWidget):
             self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._horizontal_mode = enabled
+        self._sync_horizontal_gallery_height()
 
     def wheelEvent(self, event) -> None:
         if self._horizontal_mode:
@@ -325,22 +502,56 @@ class ThumbnailGalleryWidget(QListWidget):
         self.clear()
         self._items_by_uid.clear()
         self._instances.clear()
+        self._gallery_groups.clear()
         self._thumbnail_pixmaps.clear()
         self._thumbnail_cache.clear()
-        flattened = [instance for study in studies for series in study.series for instance in series.instances]
-        ordered = sort_instances_by(flattened, self._sort_mode)
-        for index, instance in enumerate(ordered, start=1):
-            self._instances.append(instance)
-            item = QListWidgetItem()
-            item.setData(_ITEM_ROLE, instance)
-            item.setData(Qt.ItemDataRole.UserRole + 1, index)
-            item.setSizeHint(QSize(self._cell_w, self._cell_h))
-            cached = self._thumbnail_cache.get(instance.sop_instance_uid)
-            if cached is not None:
-                item.setIcon(cached)
-            self.addItem(item)
-            self._items_by_uid[instance.sop_instance_uid] = item
+
+        grouped_studies = []
+        for study in studies:
+            instances = [instance for series in study.series for instance in series.instances]
+            if instances:
+                grouped_studies.append((study, instances))
+        grouped_studies.sort(
+            key=lambda item: item[0].study_datetime or datetime.min,
+            reverse=True,
+        )
+
+        has_multiple_groups = len(grouped_studies) > 1
+        display_index = 0
+        for group_index, (study, study_instances) in enumerate(grouped_studies):
+            marker = _group_marker(group_index) if has_multiple_groups else ""
+            color = _GROUP_COLORS[group_index % len(_GROUP_COLORS)] if has_multiple_groups else ""
+            date_format = "%d.%m.%Y" if get_language() == "ru" else "%Y-%m-%d"
+            study_date = study.study_datetime.strftime(date_format) if study.study_datetime else "—"
+            first_item: QListWidgetItem | None = None
+
+            for instance in sort_instances_by(study_instances, self._sort_mode):
+                display_index += 1
+                self._instances.append(instance)
+                item = QListWidgetItem()
+                item.setData(_ITEM_ROLE, instance)
+                item.setData(Qt.ItemDataRole.UserRole + 1, display_index)
+                item.setData(_GROUP_MARKER_ROLE, marker or None)
+                item.setData(_GROUP_COLOR_ROLE, color or None)
+                item.setSizeHint(QSize(self._cell_w, self._cell_h))
+                self.addItem(item)
+                self._items_by_uid[instance.sop_instance_uid] = item
+                if first_item is None:
+                    first_item = item
+
+            if first_item is not None:
+                self._gallery_groups.append(
+                    _GalleryGroup(
+                        marker=marker,
+                        color=color,
+                        study_date=study_date,
+                        clip_count=len(study_instances),
+                        first_item=first_item,
+                    )
+                )
+
         self._building = False
+        self._update_group_legend()
         QTimer.singleShot(0, self._after_populate)
 
     def _after_populate(self) -> None:
