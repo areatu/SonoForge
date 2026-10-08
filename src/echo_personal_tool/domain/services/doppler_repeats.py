@@ -46,6 +46,17 @@ def mean_of_last(values: Iterable[float], *, window: int = REPORT_WINDOW) -> flo
     return sum(recent) / len(recent)
 
 
+def report_sample_count(count: int, *, window: int = REPORT_WINDOW) -> int:
+    """Number of repeats that actually contribute to a reported mean.
+
+    Storage may retain more than the report window (up to
+    :data:`MAX_REPEATS_PER_PARAMETER`), but the displayed ``n`` must describe
+    the measurements used in the mean, not every older measurement still
+    available for review.
+    """
+    return min(max(int(count), 0), max(int(window), 0))
+
+
 def keep_newest_per_label(
     markers: Sequence[T],
     *,
