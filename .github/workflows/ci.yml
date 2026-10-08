@@ -79,7 +79,9 @@ jobs:
           done
           exit 1
 
-      - run: pip install -e ".[dev]"
+      # PySide6 6.12.0 aborts during Linux QWidget teardown; keep CI on the
+      # latest stable release until that upstream regression is resolved.
+      - run: pip install -e ".[dev]" "PySide6!=6.12.0"
 
       # Linux: run with a virtual display. Verbose node IDs plus the annotation
       # filter keep test failures and native abort locations readable through
