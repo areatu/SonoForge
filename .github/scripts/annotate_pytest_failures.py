@@ -26,6 +26,18 @@ from collections import deque
 #   ERROR tests/unit/test_x.py - ImportError: ...
 _SUMMARY = re.compile(r"^(FAILED|ERROR)\s+(\S+)(?:\s+-\s+(.*))?$")
 _TEST_NODE = re.compile(r"^(tests/\S+::\S+)")
+_ABORT_MARKERS = (
+    "fatal python error",
+    "qthread:",
+    "qt fatal",
+    "segmentation fault",
+    "core dumped",
+    "aborted",
+    "assertion failure",
+    "terminate called",
+    "fatal signal",
+    "traceback (most recent call last)",
+)
 
 
 def _emit(line: str) -> None:
@@ -38,9 +50,17 @@ def main() -> int:
     seen: set[tuple[str, str]] = set()
     last_node: str | None = None
     last_lines: deque[str] = deque(maxlen=12)
+    diagnostic_lines: deque[str] = deque(maxlen=24)
+    diagnostic_context_remaining = 0
     for raw in sys.stdin:
         line = raw.rstrip("\n")
         last_lines.append(line)
+        lowered = line.lower()
+        if any(marker in lowered for marker in _ABORT_MARKERS):
+            diagnostic_context_remaining = 12
+        if diagnostic_context_remaining:
+            diagnostic_lines.append(line)
+            diagnostic_context_remaining -= 1
         _emit(line)
         stripped = line.strip()
         node_match = _TEST_NODE.match(stripped)
@@ -62,8 +82,9 @@ def main() -> int:
         if last_node is not None:
             with open(node_file, "w", encoding="utf-8") as last_node_stream:
                 last_node_stream.write(last_node + "\n")
+        tail_lines = diagnostic_lines or last_lines
         with open(node_file + ".tail", "w", encoding="utf-8") as tail_stream:
-            tail_stream.write("\n".join(last_lines) + "\n")
+            tail_stream.write("\n".join(tail_lines) + "\n")
     if seen:
         _emit(f"::notice::pytest failures: {len(seen)}")
     return 0
