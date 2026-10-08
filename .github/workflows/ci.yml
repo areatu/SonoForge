@@ -89,6 +89,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PYTHONFAULTHANDLER=1
           last_node_file="$RUNNER_TEMP/pytest-last-node.txt"
           last_tail_file="${last_node_file}.tail"
           rm -f "$last_node_file" "$last_tail_file"
