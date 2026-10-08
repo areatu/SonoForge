@@ -49,12 +49,14 @@ def test_manager_delete_keeps_ram_but_disables_disk_writes(tmp_path, monkeypatch
 
 def test_summary_uses_plural_forms(tmp_path, monkeypatch, qapp, isolated_qsettings):
     p, dialog = _make_dialog(tmp_path, monkeypatch)
+    assert p.flush()
     assert dialog.records.count() == 1
     assert dialog.summary.text().startswith("1 запись ·")
 
     p.load([SimpleNamespace(study_uid="1.2.4")], lambda: None)
     assert p.flush()
     dialog.refresh()
+    assert p.flush()
     assert dialog.summary.text().startswith("2 записи ·")
     dialog.close()
     assert p.close()
