@@ -326,8 +326,7 @@ class OrthancDownloadWorker(QRunnable):
             elapsed_total = time.monotonic() - t_start
             avg_payload_kb = total_payload_bytes / saved_count / 1024.0 if saved_count else 0.0
             logger.info(
-                "[DIAG] worker finished study=%s saved=%d failed=%d elapsed_s=%.1f "
-                "avg_kb=%.0f max_kb=%.0f mbit_s=%.1f",
+                "[DIAG] worker finished study=%s saved=%d failed=%d elapsed_s=%.1f avg_kb=%.0f max_kb=%.0f mbit_s=%.1f",
                 self._study_uid[:16],
                 saved_count,
                 failed_count,

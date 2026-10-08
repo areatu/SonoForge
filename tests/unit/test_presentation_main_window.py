@@ -162,10 +162,16 @@ class TestMainWindow:
     def test_on_instance_selected_clears_ste_results(self, main_window):
         """Switching to another file must drop the previous clip's STE overlay
         and close its strain window, so kernels/contours don't leak onto the
-        new cine (issue: dots visible on every frame of every clip)."""
+        new cine (issue: dots visible on every frame of every clip).
+
+        The reset is armed on click (old frame + overlays stay on screen while
+        the new file decodes) and runs atomically with the swap: speckle
+        kernels drop in set_state, strain/manuals drop on first frame.
+        """
         from PySide6.QtWidgets import QWidget
 
         from echo_personal_tool.domain.models.metadata import InstanceMetadata
+        from echo_personal_tool.domain.models.viewer_state import ViewerState
 
         instance = InstanceMetadata(
             sop_instance_uid="1.2.3.4",
@@ -187,13 +193,35 @@ class TestMainWindow:
 
         main_window._on_instance_selected(instance)
 
+        # Click only arms the swap: nothing pops off the still-visible frame.
+        assert viewer._speckle_result is not None
+        assert main_window._strain_window is strain_win
+        assert main_window._manual_ed_frame == 3
+        assert main_window._manual_es_frame == 8
+        assert main_window._pending_swap_uid == "1.2.3.4"
+        main_window._controller.load_instance.assert_called_once_with(instance)
+
+        # Swap, phase 1 — new instance state arrives: kernels drop.
+        viewer.set_state(
+            ViewerState(
+                instance=instance,
+                current_frame_index=0,
+                total_frames=10,
+                frame_time_ms=33.3,
+                is_playing=False,
+            )
+        )
         assert viewer._speckle_result is None  # overlay state fully dropped
+
+        # Swap, phase 2 — first frame paints: strain window + manuals reset.
+        main_window._controller.is_scroll_active.return_value = False
+        main_window._controller.needs_manual_calibration.return_value = False
+        main_window._on_frame_loaded(np.zeros((32, 32), dtype=np.uint8))
         assert main_window._strain_window is None  # results window closed
         # Manual ED/ES frames belong to the old clip and must not leak onto the
         # new one (issue #5: STE kept the previous file's frames).
         assert main_window._manual_ed_frame is None
         assert main_window._manual_es_frame is None
-        main_window._controller.load_instance.assert_called_once_with(instance)
 
     def test_on_instance_selected_same_instance_keeps_manual_frames(self, main_window):
         """Re-selecting the same clip must NOT reset manual ED/ES frames."""

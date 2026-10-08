@@ -270,6 +270,7 @@ class WebReferenceBridge(QObject):
                     "norm_female": self._fmt_range(param.norm_female) if self._has_range(param.norm_female) else "",
                     "pathology_desc": param.pathology_desc or "",
                     "source": param.source or "",
+                    "note": getattr(param, "note", None) or "",
                     "gradations": grad_values,
                 }
             )

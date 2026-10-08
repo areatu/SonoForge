@@ -304,6 +304,8 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
     av_at_ms = _find_interval_duration_ms(dto, "AV AT")
     av_et_ms = _find_interval_duration_ms(dto, "AV ET")
     rvot_at_ms = _find_interval_duration_ms(dto, "RVOT AT")
+    mr_dpdt_ms = _find_interval_duration_ms(dto, "MR dP/dt")
+    tr_dpdt_ms = _find_interval_duration_ms(dto, "TR dP/dt")
 
     flow_results = _compute_flow_results(dto)
     vti_cm = _find_vti_cm(dto)
@@ -362,4 +364,6 @@ def compute(dto: DopplerMeasurementDTO) -> DopplerResults:
         av_at_ms=av_at_ms,
         av_et_ms=av_et_ms,
         rvot_at_ms=rvot_at_ms,
+        mr_dpdt_ms=mr_dpdt_ms,
+        tr_dpdt_ms=tr_dpdt_ms,
     )

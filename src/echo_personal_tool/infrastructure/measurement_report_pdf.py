@@ -98,6 +98,8 @@ def export_report_document_pdf(
     for group in document.groups:
         story.append(Paragraph(_xml_escape(group.title), styles["group"]))
         story.append(_group_table(group, styles, size))
+        for note in group.notes:
+            story.append(Paragraph(_xml_escape(note), styles["note"]))
         story.append(Spacer(1, 4 * mm))
 
     conclusion = (document.patient.conclusion or "").strip()

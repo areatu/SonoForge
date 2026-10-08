@@ -59,6 +59,11 @@ def _safe_float(value) -> float | None:
         return None
 
 
+def _positive_float(value) -> float | None:
+    number = _safe_float(value)
+    return number if number is not None and number > 0 else None
+
+
 def _file_mtime(path: Path | None) -> datetime | None:
     if path is None:
         return None
@@ -124,6 +129,7 @@ def map_instance_metadata(
         media_format="dicom",
         patient_height_m=_safe_float(dataset.get("PatientSize")),
         patient_weight_kg=_safe_float(dataset.get("PatientWeight")),
+        heart_rate_bpm=_positive_float(dataset.get("HeartRate")),
         created_at=_instance_created_at(dataset, path),
     )
 

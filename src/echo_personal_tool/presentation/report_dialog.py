@@ -250,6 +250,14 @@ class ReportDialog(QDialog):
                     bold.setBold(True)
                     item.setFont(1, bold)
                 top.addChild(item)
+            for note in group.notes:
+                note_item = QTreeWidgetItem([note, "", "", ""])
+                note_font = note_item.font(0)
+                note_font.setItalic(True)
+                note_item.setFont(0, note_font)
+                note_item.setToolTip(0, note)
+                top.addChild(note_item)
+                note_item.setFirstColumnSpanned(True)
             top.setExpanded(True)
         self._tree.resizeColumnToContents(0)
 

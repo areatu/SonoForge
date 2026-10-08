@@ -60,11 +60,24 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       # Linux: install display server for headless Qt
+      # Hosted ubuntu runners occasionally hang in apt (stalled mirror or a
+      # dpkg lock) with no output; bound every attempt and retry instead of
+      # holding the PR check until the 6-hour job limit.
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 16
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get $apt_opts update \
+              && sudo timeout 180 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
 
       - run: pip install -e ".[dev]"
 

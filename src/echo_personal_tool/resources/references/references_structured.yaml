@@ -275,6 +275,17 @@ topics:
       - name: Severe
         range_male: {high: 29}
         range_female: {high: 29}
+    - id: lv_dpdt
+      name: LV dP/dt (MR)
+      unit: mmHg/s
+      norm_male: {low: 1200}
+      norm_female: {low: 1200}
+      source: "1989, Bargiggia et al., Circulation 80:1287–1292 (CW Doppler dP/dt); threshold >1200 mmHg/s as used in clinical echo calculators"
+      note: "Time for the MR jet to rise from 1 to 3 m/s (32 mmHg). Not valid with acute severe MR or an eccentric, incompletely recorded jet."
+      gradations:
+      - name: Normal
+        range_male: {low: 1200}
+        range_female: {low: 1200}
     - id: svi
       name: SVi
       unit: mL/m²
@@ -696,6 +707,18 @@ topics:
       - name: Severe
         range_male: {high: 5.0}
         range_female: {high: 5.0}
+    - id: rv_dpdt
+      name: RV dP/dt (TR)
+      unit: mmHg/s
+      norm_male: {low: 400}
+      norm_female: {low: 400}
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
+        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      note: "Time for the TR jet to rise from 1 to 2 m/s (12 mmHg), sweep 200 mm/s. Not recommended for routine use."
+      gradations:
+      - name: Normal
+        range_male: {low: 400}
+        range_female: {low: 400}
     - id: rv_gls
       name: RV GLS (6 segments)
       unit: '%'
@@ -854,6 +877,17 @@ topics:
       - name: Normal
         range_male: {high: 20}
         range_female: {high: 20}
+    - id: pvr
+      name: PVR
+      unit: WU
+      norm_male: {high: 2}
+      norm_female: {high: 2}
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
+        of Pulmonary Hypertension
+      gradations:
+      - name: Normal
+        range_male: {high: 2}
+        range_female: {high: 2}
   - name: Pulmonary Hypertension Probability
     slug: pulmonary_hypertension_prob
     parameters:
@@ -1050,8 +1084,10 @@ topics:
       gradations:
       - name: Mild
         range_male: {high: 30.0}
-      - {name: Moderate}
-      - {name: Severe}
+      - name: Moderate
+        range_male: {low: 30.0, high: 59.0}
+      - name: Severe
+        range_male: {low: 60.0}
     - id: mr_vc_primary
       name: VC
       unit: mm
@@ -1088,25 +1124,29 @@ topics:
       unit: cm²
       source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
         Heart Disease
+      note: 'Elliptical orifice or low flow (secondary MR): severe may start at EROA
+        ≥0.3 cm² (2021 ESC/EACTS; 2017 ASE/SCMR).'
       gradations:
       - name: Mild
         range_male: {high: 0.2}
       - name: Moderate
-        range_male: {low: 0.2, high: 0.29}
+        range_male: {low: 0.2, high: 0.39}
       - name: Severe
-        range_male: {low: 0.3}
+        range_male: {low: 0.4}
     - id: mr_rvol_secondary
       name: RVol
       unit: mL
       source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
         Valvular Regurgitation
+      note: 'Elliptical orifice or low flow (secondary MR): severe may start at RVol
+        ≥45 mL (2021 ESC/EACTS; 2017 ASE/SCMR).'
       gradations:
       - name: Mild
         range_male: {high: 30.0}
       - name: Moderate
-        range_male: {low: 30.0, high: 44.0}
+        range_male: {low: 30.0, high: 59.0}
       - name: Severe
-        range_male: {low: 45.0}
+        range_male: {low: 60.0}
     - id: mr_rf_secondary
       name: RF
       unit: '%'
@@ -1827,6 +1867,18 @@ topics:
     slug: pda
     image_paths:
     - PDA.png
+  - name: Intracardiac Shunts
+    slug: shunts
+    parameters:
+    - id: qp_qs
+      name: Qp:Qs
+      full_name: Pulmonary-to-systemic flow ratio
+      source: 2018, AHA/ACC, Guideline for the Management of Adults With Congenital
+        Heart Disease
+      gradations:
+      - name: Hemodynamically significant shunt
+        range_male: {low: 1.5}
+        range_female: {low: 1.5}
 - name: Carotid Arteries
   slug: carotid_arteries
   pathologies:

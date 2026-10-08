@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from echo_personal_tool.presentation.calculators_panel import CalculatorsPanel
 from echo_personal_tool.presentation.dicom_tag_inspector_widget import DicomTagInspectorWidget
 from echo_personal_tool.presentation.ge_labeled_slider import TopLabeledSlider
 from echo_personal_tool.presentation.measurement_action import MeasurementAction
@@ -246,6 +247,8 @@ class ToolPanel(QWidget):
     magnetic_snap_changed = Signal(bool)
     despeckle_changed = Signal(bool)
     doppler_mode_changed = Signal(str)
+    #: Calculators tab (Э11): study-mode override of one input (``None`` clears).
+    calculator_input_changed = Signal(str, object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -259,10 +262,13 @@ class ToolPanel(QWidget):
         self.controls = ControlsTab()
         self._tag_inspector = DicomTagInspectorWidget()
         self._properties_panel = PropertiesPanel()
+        self.calculators = CalculatorsPanel(lazy=True)
 
         self._tabs.addTab(self.measure, "Measures")
+        self._tabs.addTab(self.calculators, "Calculators")
         self._tabs.addTab(self.controls, "Controls")
         self._tabs.addTab(self._tag_inspector, "DICOM Tags")
+        self.calculators.study_input_changed.connect(self.calculator_input_changed.emit)
 
         self.measure.action_requested.connect(self.action_requested.emit)
         self.measure.patient_metrics_changed.connect(self.patient_metrics_changed.emit)
@@ -349,8 +355,10 @@ class ToolPanel(QWidget):
         from echo_personal_tool.infrastructure.i18n import tr
 
         self.measure.reload_text()
-        self._tabs.setTabText(0, tr("tool_panel.measures"))
-        self._tabs.setTabText(1, tr("tool_panel.controls"))
+        self.calculators.reload_text()
+        self._tabs.setTabText(self._tabs.indexOf(self.measure), tr("tool_panel.measures"))
+        self._tabs.setTabText(self._tabs.indexOf(self.calculators), tr("tool_panel.calculators"))
+        self._tabs.setTabText(self._tabs.indexOf(self.controls), tr("tool_panel.controls"))
 
     def set_dicom_inspector_visible(self, visible: bool) -> None:
         """Show/hide the DICOM Tags tab."""
@@ -369,6 +377,13 @@ class ToolPanel(QWidget):
     def load_dicom_inspector(self, path) -> None:
         """Load DICOM tags from a file path into the inspector."""
         self._tag_inspector.load_instance(path)
+
+    def set_calculations(self, calculations, *, has_study: bool) -> None:
+        """Feed the study-mode calculators with the latest snapshot (Э11)."""
+        self.calculators.set_study_calculations(calculations, has_study=has_study)
+
+    def show_calculators_tab(self) -> None:
+        self._tabs.setCurrentWidget(self.calculators)
 
     def show_properties_tab(self) -> None:
         """Switch to the Properties tab and make it visible if hidden."""

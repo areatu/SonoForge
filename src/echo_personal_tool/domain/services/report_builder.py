@@ -39,6 +39,7 @@ GROUP_AORTIC_VALVE = "av"
 GROUP_TRICUSPID_VALVE = "tv"
 GROUP_VESSELS = "vessels"
 GROUP_PLANIMETRY = "planimetry"
+GROUP_CALCULATIONS = "calculations"
 GROUP_OTHER = "other"
 
 GROUP_ORDER: tuple[str, ...] = (
@@ -51,6 +52,7 @@ GROUP_ORDER: tuple[str, ...] = (
     GROUP_TRICUSPID_VALVE,
     GROUP_VESSELS,
     GROUP_PLANIMETRY,
+    GROUP_CALCULATIONS,
     GROUP_OTHER,
 )
 
@@ -115,6 +117,9 @@ class ReportGroup:
     title: str
     key: str
     values: tuple[ReportValue, ...]
+    #: Footnotes printed under the group table (calculations: provenance of
+    #: the inputs, assumptions, warnings and the RUO statement).
+    notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -793,13 +798,42 @@ def build_report_groups(
                 )
             )
 
+    calculation_notes: tuple[str, ...] = ()
+    calculations = snapshot.calculations
+    if calculations is not None and not calculations.standalone and calculations.has_values:
+        values.extend(_calculation_values(calculations))
+        from echo_personal_tool.domain.calculators.text import report_notes
+
+        calculation_notes = report_notes(calculations)
+
     grouped: list[ReportGroup] = []
     for key in GROUP_ORDER:
         group_values = tuple(value for value in values if value.group == key)
         if not group_values:
             continue
-        grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values))
+        notes = calculation_notes if key == GROUP_CALCULATIONS else ()
+        grouped.append(ReportGroup(title=tr(f"report.group.{key}"), key=key, values=group_values, notes=notes))
     return tuple(grouped)
+
+
+def _calculation_values(calculations) -> list[ReportValue]:
+    """Computed calculator outputs (Э11); shared outputs (LVOT area) appear once."""
+    rows: list[ReportValue] = []
+    seen: set[str] = set()
+    for result in calculations.results:
+        for output in result.outputs:
+            if not output.computed or output.id in seen:
+                continue
+            seen.add(output.id)
+            rows.append(
+                ReportValue(
+                    label=output.label,
+                    value=output.formatted(),
+                    unit=output.unit,
+                    group=GROUP_CALCULATIONS,
+                )
+            )
+    return rows
 
 
 def build_report_document(

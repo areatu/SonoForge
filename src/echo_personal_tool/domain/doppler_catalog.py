@@ -51,6 +51,10 @@ INTERVAL_LABELS: tuple[str, ...] = (
     "AV AT",
     "AV ET",
     "RVOT AT",
+    # Δt between fixed velocities on the regurgitant CW jet (Э11 dP/dt):
+    # MR 1 → 3 m/s (LV), TR 1 → 2 m/s (RV).
+    "MR dP/dt",
+    "TR dP/dt",
 )
 
 
@@ -134,6 +138,8 @@ def canonical_interval_label(label: str) -> str:
         "rvot_acc_t": "RVOT AT",
         "rvot_acceleration_time": "RVOT AT",
         "pht": "MV PHT",
+        "lv_dp_dt": "MR dP/dt",
+        "rv_dp_dt": "TR dP/dt",
     }
     if key in aliases:
         return aliases[key]

@@ -17,6 +17,11 @@ import psutil
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImage
 
+from echo_personal_tool.application.calculator_inputs import (
+    CalculatorInputStore,
+    HeartRateCandidate,
+    resolve_study_inputs,
+)
 from echo_personal_tool.application.decode_gate import DecodeGate, DecodePriority
 from echo_personal_tool.application.frame_cache import FrameCache
 from echo_personal_tool.application.state_manager import StateManager
@@ -51,6 +56,9 @@ from echo_personal_tool.domain.calculations.lvm import from_linear_measurements 
 from echo_personal_tool.domain.calculations.rv_fac import from_rv_contours
 from echo_personal_tool.domain.calculations.rwt import from_linear_measurements as rwt_from_linear
 from echo_personal_tool.domain.calculations.teichholz import from_linear_measurements
+from echo_personal_tool.domain.calculators.engine import evaluate as evaluate_calculators
+from echo_personal_tool.domain.calculators.models import SOURCE_DICOM
+from echo_personal_tool.domain.doppler_catalog import flow_site_from_trace_label
 from echo_personal_tool.domain.models import (
     Contour,
     InstanceMetadata,
@@ -187,6 +195,8 @@ class AppController(QObject):
         # the controller so the protocol row and the strain window are derived
         # from one accumulation instead of two (plan §5.3 п.6).
         self._strain_studies: dict[str, StrainStudy] = {}
+        # Manual calculator inputs and the cine HR estimate per study (Э11).
+        self._calculator_inputs = CalculatorInputStore()
         self._study_load_generation = 0
         self._study_switching = False
         self._cache_retained_studies: tuple[StudyMetadata, ...] = ()
@@ -1576,6 +1586,7 @@ class AppController(QObject):
         self._study_load_generation += 1  # invalidate pending analysis results after an explicit reset
         self._measurement_session.reset_measurements(study_uid)
         self._strain_studies.pop(study_uid, None)
+        self._calculator_inputs.clear_study(study_uid)
         self._state_manager.reset_measurement_inputs()
         self._recompute_measurements()
         self.status_message.emit(tr("status.measurements_reset"))
@@ -1951,6 +1962,7 @@ class AppController(QObject):
                 e_prime_sept_cm_s=doppler.e_prime_sept_cm_s,
                 e_prime_lat_cm_s=doppler.e_prime_lat_cm_s,
             )
+        calculations = self._compute_calculations(doppler, session, state)
         return MeasurementSnapshot(
             doppler=doppler,
             display_doppler=display_doppler,
@@ -1972,7 +1984,83 @@ class AppController(QObject):
             planimeter=planimeter,
             vessel_measurements=vessel_measurements,
             strain=session.strain,
+            calculations=calculations,
         )
+
+    # ── calculators (Э11) ────────────────────────────────────────────────
+    def _compute_calculations(self, doppler, session: StudyMeasurementData, state: ViewerState):
+        """Evaluate the calculators over *study-wide* inputs.
+
+        The overlay snapshot is scoped to the current clip, but a continuity
+        equation combines the LVOT diameter from a parasternal clip with VTIs
+        from apical Doppler clips — so the calculator always reads the whole
+        session (``doppler`` is computed from the study-wide DTO by every
+        caller).
+        """
+        study_uid = self._resolve_study_uid(state.instance)
+        heart_rate = self._calculator_heart_rate(session, study_uid)
+        inputs = resolve_study_inputs(
+            doppler=doppler,
+            linear_measurements=session.linear_measurements,
+            height_cm=session.height_cm,
+            weight_kg=session.weight_kg,
+            height_source=session.height_source,
+            weight_source=session.weight_source,
+            heart_rate=heart_rate,
+            manual=self._calculator_inputs.manual(study_uid),
+        )
+        if not any(item.available for item in inputs.values()):
+            return None
+        return evaluate_calculators(inputs)
+
+    def _calculator_heart_rate(self, session: StudyMeasurementData, study_uid: str | None) -> HeartRateCandidate | None:
+        """HR for cardiac output: DICOM ``HeartRate`` of the LVOT VTI clip, else the cine estimate."""
+        lvot_instances: list[str] = []
+        for uid, dto in session.doppler_by_instance:
+            if any(flow_site_from_trace_label(trace.label) == "LVOT" for trace in dto.traces):
+                lvot_instances.append(uid)
+        for uid, _frame, dto in session.doppler_by_instance_frame:
+            if uid not in lvot_instances and any(
+                flow_site_from_trace_label(trace.label) == "LVOT" for trace in dto.traces
+            ):
+                lvot_instances.append(uid)
+        # Newest clip first: the most recent LVOT trace is what the mean favours.
+        for uid in reversed(lvot_instances):
+            instance = self._instance_metadata(uid)
+            if instance is not None and instance.heart_rate_bpm:
+                return HeartRateCandidate(float(instance.heart_rate_bpm), SOURCE_DICOM, "HeartRate")
+        return self._calculator_inputs.hr_estimate(study_uid)
+
+    def _instance_metadata(self, sop_instance_uid: str) -> InstanceMetadata | None:
+        current = self._current_instance
+        if current is not None and current.sop_instance_uid == sop_instance_uid:
+            return current
+        for study in self._studies:
+            for series in study.series:
+                for instance in series.instances:
+                    if instance.sop_instance_uid == sop_instance_uid:
+                        return instance
+        return None
+
+    def set_calculator_input(self, input_id: str, value: float | None) -> None:
+        """Override (or clear the override of) one calculator input for the open study."""
+        if self._study_switching:
+            return
+        study_uid = self._resolve_study_uid()
+        try:
+            changed = self._calculator_inputs.set_manual(study_uid, input_id, value)
+        except (KeyError, ValueError):
+            logger.warning("calculator input rejected: %s", input_id)
+            return
+        if changed:
+            self._recompute_measurements()
+
+    def record_heart_rate_estimate(self, bpm: float, method: str) -> None:
+        """Keep the cine HR estimate as a calculator source for the open study."""
+        if bpm <= 0 or self._study_switching:
+            return
+        self._calculator_inputs.set_hr_estimate(self._resolve_study_uid(), bpm, method)
+        self._recompute_measurements()
 
     def _request_frame_if_needed(self, state: ViewerState) -> None:
         if self._current_instance is None or self._current_instance.path is None:

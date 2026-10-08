@@ -64,6 +64,13 @@ MIN_MAGNETIC_RADIUS = 5.0
 MAX_MAGNETIC_RADIUS = 40.0
 DEFAULT_MAGNETIC_RADIUS = 15.0
 
+MIN_MAGNIFIER_ZOOM = 2.0
+MAX_MAGNIFIER_ZOOM = 6.0
+DEFAULT_MAGNIFIER_ZOOM = 3.0
+MIN_MAGNIFIER_RADIUS_PX = 40
+MAX_MAGNIFIER_RADIUS_PX = 120
+DEFAULT_MAGNIFIER_RADIUS_PX = 70
+
 MIN_PDF_FONT_SIZE = 8
 MAX_PDF_FONT_SIZE = 16
 DEFAULT_PDF_FONT_SIZE = 10
@@ -117,6 +124,9 @@ class UserPreferences:
     wl_level: int = DEFAULT_WL_LEVEL
     wl_dr: int = DEFAULT_WL_DR
     show_crosshair: bool = True
+    magnifier_enabled: bool = True
+    magnifier_zoom: float = DEFAULT_MAGNIFIER_ZOOM
+    magnifier_radius_px: int = DEFAULT_MAGNIFIER_RADIUS_PX
     show_panel_frames: bool = False
     show_caliper_labels_on_frame: bool = True
     show_caliper_inline_labels: bool = False
@@ -323,6 +333,19 @@ def load_user_preferences() -> UserPreferences:
         wl_level=_clamp_int(store.value("wl_level"), DEFAULT_WL_LEVEL, 0, 100),
         wl_dr=_clamp_int(store.value("wl_dr"), DEFAULT_WL_DR, 0, 100),
         show_crosshair=_read_bool(store.value("show_crosshair"), True),
+        magnifier_enabled=_read_bool(store.value("magnifier_enabled"), True),
+        magnifier_zoom=_clamp_float(
+            store.value("magnifier_zoom"),
+            DEFAULT_MAGNIFIER_ZOOM,
+            MIN_MAGNIFIER_ZOOM,
+            MAX_MAGNIFIER_ZOOM,
+        ),
+        magnifier_radius_px=_clamp_int(
+            store.value("magnifier_radius_px"),
+            DEFAULT_MAGNIFIER_RADIUS_PX,
+            MIN_MAGNIFIER_RADIUS_PX,
+            MAX_MAGNIFIER_RADIUS_PX,
+        ),
         show_panel_frames=_read_bool(store.value("show_panel_frames"), False),
         show_caliper_labels_on_frame=_read_bool(store.value("show_caliper_labels_on_frame"), True),
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),

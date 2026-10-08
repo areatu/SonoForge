@@ -58,6 +58,7 @@ def format_measurement_report(
         _format_vessel_section(report_snapshot),
         _format_strain_section(report_snapshot),
         _format_indexed_section(report_snapshot),
+        _format_calculations_section(report_snapshot),
     ):
         if section:
             sections.append(section)
@@ -385,6 +386,26 @@ def _format_indexed_section(snapshot: MeasurementSnapshot) -> list[str]:
             lines.append(line)
 
     return lines if len(lines) > 1 else []
+
+
+def _format_calculations_section(snapshot: MeasurementSnapshot) -> list[str]:
+    """Calculator outputs (Э11) with the provenance/assumption footnotes."""
+    calculations = snapshot.calculations
+    if calculations is None or calculations.standalone or not calculations.has_values:
+        return []
+    from echo_personal_tool.domain.calculators.text import report_notes
+
+    lines = [tr("report.group.calculations")]
+    seen: set[str] = set()
+    for result in calculations.results:
+        for output in result.outputs:
+            if not output.computed or output.id in seen:
+                continue
+            seen.add(output.id)
+            unit = f" {output.unit}" if output.unit else ""
+            lines.append(_line(output.label, output.value, unit, decimals=output.decimals))
+    lines.extend(f"  {note}" for note in report_notes(calculations))
+    return lines
 
 
 def _repeat_suffix(repeats: int) -> str:

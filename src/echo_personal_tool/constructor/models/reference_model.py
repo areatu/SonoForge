@@ -55,6 +55,7 @@ class ParameterModel:
     norm_female: NormRangeModel | None = None
     pathology_desc: str | None = None
     source: str | None = None
+    note: str | None = None
     gradations: list[ParameterGradationModel] = field(default_factory=list)
 
     @property
@@ -78,6 +79,8 @@ class ParameterModel:
             d["pathology_desc"] = self.pathology_desc
         if self.source:
             d["source"] = self.source
+        if self.note:
+            d["note"] = self.note
         if self.gradations:
             d["gradations"] = [g.to_dict() for g in self.gradations]
         return d
@@ -93,6 +96,7 @@ class ParameterModel:
             norm_female=NormRangeModel.from_dict(d.get("norm_female")),
             pathology_desc=d.get("pathology_desc"),
             source=d.get("source"),
+            note=d.get("note"),
             gradations=[ParameterGradationModel.from_dict(g) for g in d.get("gradations", [])],
         )
 

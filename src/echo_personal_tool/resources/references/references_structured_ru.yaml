@@ -275,6 +275,17 @@ topics:
       - name: Тяжёлое
         range_male: {high: 29.0}
         range_female: {high: 29.0}
+    - id: lv_dpdt
+      name: dP/dt ЛЖ (MR)
+      unit: мм рт. ст./с
+      norm_male: {low: 1200}
+      norm_female: {low: 1200}
+      source: "1989, Bargiggia et al., Circulation 80:1287–1292 (dP/dt по CW-допплеру); порог >1200 мм рт. ст./с — как в клинических эхо-калькуляторах"
+      note: "Время нарастания скорости струи MR от 1 до 3 м/с (32 мм рт. ст.). Неприменимо при острой тяжёлой MR и эксцентричной, не полностью записанной струе."
+      gradations:
+      - name: Норма
+        range_male: {low: 1200}
+        range_female: {low: 1200}
     - id: svi
       name: Ударный индекс (SVi)
       unit: мл/м²
@@ -696,6 +707,18 @@ topics:
       - name: Тяжёлое
         range_male: {high: 5.0}
         range_female: {high: 5.0}
+    - id: rv_dpdt
+      name: dP/dt ПЖ (TR)
+      unit: мм рт. ст./с
+      norm_male: {low: 400}
+      norm_female: {low: 400}
+      source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
+        Heart in Adults and Special Considerations in Pulmonary Hypertension
+      note: "Время нарастания скорости струи TR от 1 до 2 м/с (12 мм рт. ст.), развёртка 200 мм/с. Для рутинного применения не рекомендуется."
+      gradations:
+      - name: Норма
+        range_male: {low: 400}
+        range_female: {low: 400}
     - id: rv_gls
       name: RV GLS (6 сегментов)
       unit: '%'
@@ -854,6 +877,17 @@ topics:
       - name: Норма
         range_male: {high: 20}
         range_female: {high: 20}
+    - id: pvr
+      name: Лёгочное сосудистое сопротивление (PVR)
+      unit: ед. Вуда
+      norm_male: {high: 2}
+      norm_female: {high: 2}
+      source: 2022, ESC/ERS, 2022 ESC/ERS Guidelines for the Diagnosis and Treatment
+        of Pulmonary Hypertension
+      gradations:
+      - name: Норма
+        range_male: {high: 2}
+        range_female: {high: 2}
   - name: Вероятность легочной гипертензии
     slug: pulmonary_hypertension_prob
     parameters:
@@ -1050,8 +1084,10 @@ topics:
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
-      - {name: Умеренная}
-      - {name: Тяжёлая}
+      - name: Умеренная
+        range_male: {low: 30.0, high: 59.0}
+      - name: Тяжёлая
+        range_male: {low: 60.0}
     - id: mr_vc_primary
       name: VC
       unit: мм
@@ -1088,25 +1124,27 @@ topics:
       unit: см²
       source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
         Heart Disease
+      note: 'При эллиптическом отверстии или низком потоке (вторичная MR) тяжёлой может считаться уже EROA ≥0,3 см² (ESC/EACTS 2021; ASE/SCMR 2017).'
       gradations:
       - name: Лёгкая
         range_male: {high: 0.2}
       - name: Умеренная
-        range_male: {low: 0.2, high: 0.29}
+        range_male: {low: 0.2, high: 0.39}
       - name: Тяжёлая
-        range_male: {low: 0.3}
+        range_male: {low: 0.4}
     - id: mr_rvol_secondary
       name: RVol
       unit: мл
       source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
         Valvular Regurgitation
+      note: 'При эллиптическом отверстии или низком потоке (вторичная MR) тяжёлой может считаться уже RVol ≥45 мл (ESC/EACTS 2021; ASE/SCMR 2017).'
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
       - name: Умеренная
-        range_male: {low: 30.0, high: 44.0}
+        range_male: {low: 30.0, high: 59.0}
       - name: Тяжёлая
-        range_male: {low: 45.0}
+        range_male: {low: 60.0}
     - id: mr_rf_secondary
       name: RF
       unit: '%'
@@ -1815,6 +1853,19 @@ topics:
     slug: pda
     image_paths:
     - PDA.png
+  - name: Внутрисердечные шунты
+    slug: shunts
+    parameters:
+    - id: qp_qs
+      name: Qp:Qs
+      full_name: Отношение лёгочного и системного кровотока
+      unit: ''
+      source: 2018, AHA/ACC, Guideline for the Management of Adults With Congenital
+        Heart Disease
+      gradations:
+      - name: Гемодинамически значимый шунт
+        range_male: {low: 1.5}
+        range_female: {low: 1.5}
 - name: Сонные артерии
   slug: carotid_arteries
   pathologies:

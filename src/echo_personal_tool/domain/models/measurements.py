@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from echo_personal_tool.domain.models.linear_measurement import LinearMeasurement
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
+
+if TYPE_CHECKING:  # runtime import would be circular (calculators → calculations → this module)
+    from echo_personal_tool.domain.calculators.models import CalculationsSnapshot
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,10 @@ class DopplerResults:
     av_at_ms: float | None = None
     av_et_ms: float | None = None
     rvot_at_ms: float | None = None
+    #: Δt of the MR jet rising 1 → 3 m/s and of the TR jet rising 1 → 2 m/s
+    #: (``MR dP/dt`` / ``TR dP/dt`` intervals), inputs of the dP/dt calculator.
+    mr_dpdt_ms: float | None = None
+    tr_dpdt_ms: float | None = None
 
     def flow(self, site: str) -> DopplerFlowResult | None:
         """Return one site result using case-insensitive lookup."""
@@ -229,3 +237,6 @@ class MeasurementSnapshot:
     #: Speckle-tracking result of the study (plan §5.3 п.6). ``None`` until a
     #: view has been analysed — the report then simply has no strain section.
     strain: StrainReport | None = None
+    #: Calculators (Э11) evaluated over study-wide inputs with provenance.
+    #: ``None`` when nothing could be resolved; outputs without inputs stay empty.
+    calculations: CalculationsSnapshot | None = None
