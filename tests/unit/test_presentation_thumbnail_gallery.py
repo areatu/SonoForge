@@ -124,6 +124,29 @@ class TestThumbnailGalleryWidget:
         assert w._horizontal_mode is False
         w.close()
 
+    def test_widget_is_collectible_after_close(self):
+        import gc
+        import weakref
+
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate(
+            [
+                _grouped_study("study-old", datetime(2026, 1, 1), 1),
+                _grouped_study("study-new", datetime(2026, 1, 2), 1),
+            ]
+        )
+        gallery_ref = weakref.ref(gallery)
+        gallery.close()
+        QApplication.instance().processEvents()
+        del gallery
+        gc.collect()
+
+        assert gallery_ref() is None
+
     def test_cell_dimensions(self):
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 
@@ -247,6 +270,27 @@ class TestThumbnailGalleryWidget:
         assert tr_plural("gallery.group.clips", 1) in second_group_chip.text()
         second_group_chip.click()
         assert gallery.currentItem() is gallery._gallery_groups[1].first_item
+        gallery.close()
+
+    def test_stale_group_chip_cannot_target_repopulated_gallery(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate(
+            [
+                _grouped_study("study-old", datetime(2026, 1, 1), 1),
+                _grouped_study("study-new", datetime(2026, 1, 2), 1),
+            ]
+        )
+        stale_chip = gallery._group_legend_layout.itemAt(1).widget()
+
+        gallery.populate([_grouped_study("study-only", datetime(2026, 1, 3), 1)])
+        assert gallery._group_legend.isHidden()
+
+        # deleteLater has not been processed yet: a stale button must be inert
+        # rather than selecting an unrelated group with the same index.
+        stale_chip.click()
+        assert gallery.currentItem() is None
         gallery.close()
 
     def test_single_study_remains_unmarked(self):

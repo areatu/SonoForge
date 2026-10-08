@@ -266,6 +266,7 @@ class ThumbnailGalleryWidget(QListWidget):
 
         self._multiview_enabled = False
         self._gallery_groups: list[_GalleryGroup] = []
+        self._group_legend_revision = 0
         self._group_legend_height = 0
         self._group_legend = QWidget(self)
         self._group_legend.setObjectName("thumbnailGroupLegend")
@@ -288,7 +289,7 @@ class ThumbnailGalleryWidget(QListWidget):
         self._scroll_timer.setSingleShot(True)
         self._scroll_timer.setInterval(_SCROLL_DEBOUNCE_MS)
         self._scroll_timer.timeout.connect(self.request_visible_previews)
-        self.verticalScrollBar().valueChanged.connect(lambda _v: self._scroll_timer.start())
+        self.verticalScrollBar().valueChanged.connect(self._on_scroll_bar_value_changed)
 
         self._mv_start_hint = QLabel(self.viewport())
         self._mv_start_hint.setObjectName("multiviewStartHint")
@@ -345,6 +346,9 @@ class ThumbnailGalleryWidget(QListWidget):
             self.setFixedHeight(row_height * 2 + 4 + self._group_legend_height)
 
     def _clear_group_legend(self) -> None:
+        # Invalidate buttons already queued for deleteLater so a late click
+        # cannot act on a new population's group at the same index.
+        self._group_legend_revision += 1
         while self._group_legend_layout.count():
             item = self._group_legend_layout.takeAt(0)
             widget = item.widget()
@@ -380,6 +384,8 @@ class ThumbnailGalleryWidget(QListWidget):
             )
             button.setToolTip(tooltip)
             button.setAccessibleName(tooltip)
+            button.setProperty("thumbnailGroupRevision", self._group_legend_revision)
+            button.setProperty("thumbnailGroupIndex", index)
             palette = get_theme_palette()
             button.setStyleSheet(
                 "QPushButton { color: "
@@ -391,7 +397,7 @@ class ThumbnailGalleryWidget(QListWidget):
                 + "; border-radius: 4px; padding: 1px 4px; text-align: left; }"
                 "QPushButton:hover { background-color: " + palette["bg_button_hover"] + "; }"
             )
-            button.clicked.connect(lambda _checked=False, item=group.first_item: self._scroll_to_group(item))
+            button.clicked.connect(self._on_group_chip_clicked)
             self._group_legend_layout.addWidget(button, index // 2, index % 2)
 
         self._group_legend.adjustSize()
@@ -401,6 +407,20 @@ class ThumbnailGalleryWidget(QListWidget):
         self._position_group_legend()
         self._group_legend.show()
         self._sync_horizontal_gallery_height()
+
+    def _on_group_chip_clicked(self, _checked: bool = False) -> None:
+        button = self.sender()
+        if not isinstance(button, QPushButton):
+            return
+        if button.property("thumbnailGroupRevision") != self._group_legend_revision:
+            return
+        try:
+            group_index = int(button.property("thumbnailGroupIndex"))
+        except (TypeError, ValueError):
+            return
+        if not 0 <= group_index < len(self._gallery_groups):
+            return
+        self._scroll_to_group(self._gallery_groups[group_index].first_item)
 
     def _scroll_to_group(self, item: QListWidgetItem) -> None:
         instance = item.data(_ITEM_ROLE)
@@ -557,6 +577,9 @@ class ThumbnailGalleryWidget(QListWidget):
     def _after_populate(self) -> None:
         self.request_visible_previews()
         self._enqueue_background_previews()
+
+    def _on_scroll_bar_value_changed(self, _value: int) -> None:
+        self._scroll_timer.start()
 
     def _enqueue_background_previews(self) -> None:
         if self._thumbnail_loader is None:
