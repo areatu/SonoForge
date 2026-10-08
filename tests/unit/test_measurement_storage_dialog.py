@@ -53,10 +53,18 @@ def test_summary_uses_plural_forms(tmp_path, monkeypatch, qapp, isolated_qsettin
     assert dialog.records.count() == 1
     assert dialog.summary.text().startswith("1 запись ·")
 
-    p.load([SimpleNamespace(study_uid="1.2.4")], lambda: None)
+    # Второй этюд становится записью только когда его замеры сохранены:
+    # load() сам по себе лишь читает существующие файлы.
+    p.load(
+        [SimpleNamespace(study_uid="1.2.3"), SimpleNamespace(study_uid="1.2.4")],
+        lambda: None,
+    )
+    assert p.flush()
+    p.store.set_patient_metrics("1.2.4", 165.0, 60.0)
     assert p.flush()
     dialog.refresh()
     assert p.flush()
+    assert dialog.records.count() == 2
     assert dialog.summary.text().startswith("2 записи ·")
     dialog.close()
     assert p.close()
