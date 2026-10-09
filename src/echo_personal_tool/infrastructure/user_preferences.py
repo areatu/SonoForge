@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from PySide6.QtCore import QSettings
@@ -409,7 +410,10 @@ def load_user_preferences() -> UserPreferences:
         startup_mode=_read_choice(store.value("startup_mode"), "empty", {"empty", "last_folder"}),
         last_opened_folder=str(store.value("last_opened_folder", "")),
         last_session_source=_read_choice(store.value("last_session_source"), "", SESSION_SOURCES),
-        measurement_persistence_enabled=_read_bool(store.value("measurement_persistence_enabled"), False),
+        measurement_persistence_enabled=_read_bool(
+            store.value("measurement_persistence_enabled"),
+            default_measurement_persistence_enabled(),
+        ),
         orthanc_cache_clear_on_exit=_read_bool(store.value("orthanc_cache_clear_on_exit"), True),
         theme_mode=_read_choice(
             store.value("theme_mode"), "vscode_dark", {"dark", "light", "system", "vscode_dark", "vscode_light"}
@@ -437,6 +441,37 @@ def load_user_preferences() -> UserPreferences:
 def default_user_preferences() -> UserPreferences:
     """Factory-default preferences (not read from disk)."""
     return UserPreferences()
+
+
+def default_measurement_persistence_enabled() -> bool:
+    """W41-02 (decided 2026-10-09): measurement autosave is on by default in
+    the full profile; the Presenter build stays opt-in (portable media, other
+    people's machines). An explicitly stored preference always wins.
+
+    Under pytest the answer is always False: test suites construct real
+    controllers, and none of them may start writing measurement records into
+    the host profile (a CI runner included). Tests of this default unset
+    ``PYTEST_CURRENT_TEST`` explicitly.
+    """
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    from echo_personal_tool.infrastructure.profile import is_presenter
+
+    return not is_presenter()
+
+
+def measurement_persistence_notice_shown() -> bool:
+    store = _settings_store()
+    value = store.value("measurement_persistence_notice_shown", False)
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes")
+    return bool(value)
+
+
+def mark_measurement_persistence_notice_shown() -> None:
+    store = _settings_store()
+    store.setValue("measurement_persistence_notice_shown", True)
+    store.sync()
 
 
 def interesting_dicom_tag_list(preferences: UserPreferences) -> list[str]:

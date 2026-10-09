@@ -99,6 +99,7 @@ class MeasurementPersistence(QObject):
         self._studies = {}
         self._suppressed = set()
         self.sources = {}  # GUI-owned checked descriptors, for per-instance calculations
+        self.restore_conflicts = set()  # studies with records left out by load(restore=…)
         self._errors = set()
         self._first_dirty = None
         self._closed = False
@@ -109,6 +110,35 @@ class MeasurementPersistence(QObject):
         # The disabled path must remain cheap: the store detaches observers
         # rather than making a full detached snapshot just to throw it away.
         store.on_change = self.changed if enabled else None
+
+    def enable(self):
+        """Runtime enable (Settings OK, no restart): track committed changes now.
+
+        Records of studies opened while disabled are read separately by the
+        controller via load(restore=set()) — enable() itself never touches RAM.
+        """
+        if self._closed:
+            return
+        self.enabled = True
+        self.store.on_change = self.changed
+        self.status.emit("ready")
+
+    def disable(self):
+        """Runtime disable (Settings OK, no restart): stop tracking changes.
+
+        The caller owns unsaved edits first — flush() them or discard_pending();
+        disable() itself never drops or resurrects dirty data.
+        """
+        self.enabled = False
+        self.store.on_change = None
+        self._timer.stop()
+        self._first_dirty = None
+        self.status.emit("disabled")
+
+    @property
+    def has_pending_edits(self) -> bool:
+        """True while unsaved edits or an in-flight write exist (disable asks the user)."""
+        return self._saving or bool(self._dirty)
 
     def submit(self, operation, callback):
         """Public entry point; presentation code must not depend on `_submit`."""
@@ -147,8 +177,16 @@ class MeasurementPersistence(QObject):
         else:
             self._timer.start(1000)
 
-    def load(self, studies, callback):
-        """Called before exposing the new study set to editable UI."""
+    def load(self, studies, callback, restore=None):
+        """Called before exposing the new study set to editable UI.
+
+        ``restore=None`` (open path) applies every study that has a record to the
+        RAM store. An explicit set restores only those uids — used when autosave
+        is enabled at runtime while studies are already open: their saved records
+        are read into the persistence contexts (required for saves) without
+        touching the live session; uids with records left out land in
+        ``restore_conflicts`` for the caller's RAM-vs-disk resolution.
+        """
         # One detached copy serves both the RAM view and the worker read: both only read it.
         snapshot = deepcopy(studies)
         self._studies = {study.study_uid: study for study in snapshot}
@@ -192,6 +230,7 @@ class MeasurementPersistence(QObject):
             self.loaded.clear()
             self.sources.clear()
             self._errors.clear()
+            self.restore_conflicts = set()
             if error:
                 self._errors.add("load")
                 self.status.emit(error)
@@ -199,8 +238,14 @@ class MeasurementPersistence(QObject):
                 for uid, (data, sources, state) in results.items():
                     self.sources[uid] = sources
                     if data is not None:
-                        self.store.restore(uid, data)
-                        self.loaded.add(uid)
+                        if restore is None or uid in restore:
+                            self.store.restore(uid, data)
+                            self.loaded.add(uid)
+                        else:
+                            # A saved record exists but the live session owns the
+                            # study for now; the caller decides disk vs RAM.
+                            self.restore_conflicts.add(uid)
+                            continue
                     if state not in ("ready", "restored", "partial"):
                         self._errors.add(uid)
                     self.status.emit(state)
@@ -211,6 +256,14 @@ class MeasurementPersistence(QObject):
             callback()
 
         self._submit(read, apply)
+
+    def adopt_conflicts(self):
+        """Resolution «keep the live session»: RAM is authoritative, the saved
+        record is rewritten by the next save. Marks the studies as loaded so
+        embedded DICOM annotations are not re-imported next to the record."""
+        self.loaded.update(self.restore_conflicts)
+        self.restore_conflicts.clear()
+        self.status.emit("dirty" if self._dirty else ("saving" if self._saving else "ready"))
 
     def save_pending(self):
         self._timer.stop()

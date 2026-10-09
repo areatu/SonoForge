@@ -61,6 +61,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MIN_PLAYBACK_SPEED,
     MIN_UI_FONT_SIZE,
     UserPreferences,
+    default_measurement_persistence_enabled,
     default_user_preferences,
     load_user_preferences,
     save_user_preferences,
@@ -77,7 +78,7 @@ def show_user_preferences_dialog(
     on_apply: Callable[[UserPreferences], None] | None = None,
     orthanc_cache: OrthancSessionCache | None = None,
     protected_cache_sessions: Callable[[], set[str]] | None = None,
-    measurement_storage_action: Callable[[], None] | None = None,
+    measurement_storage_action: Callable[[], bool | None] | None = None,
 ) -> bool:
     from echo_personal_tool.presentation.ui_animations import exec_animated
 
@@ -126,7 +127,7 @@ class UserPreferencesDialog(QDialog):
         on_apply: Callable[[UserPreferences], None] | None = None,
         orthanc_cache: OrthancSessionCache | None = None,
         protected_cache_sessions: Callable[[], set[str]] | None = None,
-        measurement_storage_action: Callable[[], None] | None = None,
+        measurement_storage_action: Callable[[], bool | None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._on_apply = on_apply
@@ -450,7 +451,7 @@ class UserPreferencesDialog(QDialog):
         self._persist_measurements = QCheckBox(tr("persistence.enable"))
         self._persist_measurements.setChecked(current.measurement_persistence_enabled)
         persistence_form.addRow(self._persist_measurements)
-        persistence_hint = QLabel(tr("persistence.privacy") + "\n" + tr("persistence.restart"))
+        persistence_hint = QLabel(tr("persistence.privacy") + "\n" + tr("persistence.toggle_hint"))
         persistence_hint.setWordWrap(True)
         persistence_form.addRow(persistence_hint)
         self._measurement_manage = QPushButton(tr("persistence.manage"))
@@ -458,8 +459,11 @@ class UserPreferencesDialog(QDialog):
         if measurement_storage_action is not None:
 
             def manage_measurements():
-                measurement_storage_action()
-                self._persist_measurements.setChecked(load_user_preferences().measurement_persistence_enabled)
+                # Sync from disk only when the manager itself rewrote the stored
+                # preference (delete-all); a pending checkbox edit must survive
+                # a plain open/close of the manager.
+                if measurement_storage_action():
+                    self._persist_measurements.setChecked(load_user_preferences().measurement_persistence_enabled)
 
             self._measurement_manage.clicked.connect(manage_measurements)
         persistence_form.addRow(self._measurement_manage)
@@ -633,6 +637,9 @@ class UserPreferencesDialog(QDialog):
         stored = load_user_preferences()
         defaults.last_opened_folder = stored.last_opened_folder
         defaults.last_session_source = stored.last_session_source
+        # W41-02: «reset to defaults» must reset to the *profile* default,
+        # not to the dataclass default (autosave is default-on in full).
+        defaults.measurement_persistence_enabled = default_measurement_persistence_enabled()
         save_user_preferences(defaults)
         if self._on_apply is not None:
             self._on_apply(defaults)

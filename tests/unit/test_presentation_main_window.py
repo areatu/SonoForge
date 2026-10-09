@@ -49,6 +49,14 @@ def mock_controller():
     c = MagicMock()
     c.state_manager = MagicMock()
     c.state_manager.snapshot = snapshot
+    # A MagicMock controller would leave measurement_persistence as a truthy
+    # auto-mock: MainWindow._sync_measurement_persistence would then open a
+    # modal QMessageBox.exec() during construction and hang the test forever.
+    # Behave like the real disabled persistence (plain bools, successful ops).
+    c.measurement_persistence.enabled = False
+    c.measurement_persistence.has_pending_edits = False
+    c.measurement_persistence.flush.return_value = True
+    c.measurement_persistence.discard_pending.return_value = True
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
     c.get_cached_frames.return_value = []

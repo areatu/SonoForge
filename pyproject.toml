@@ -6,7 +6,11 @@ readme = "README.md"
 license = "GPL-3.0-only"
 requires-python = ">=3.10,<3.12"
 dependencies = [
-    "pyside6>=6.6",
+    # 6.12.0 (2026-10-08) aborts the process at interpreter shutdown after
+    # QApplication usage ("Fatal Python error: bool_dealloc" during GC
+    # finalization) — kills the ubuntu CI job with SIGABRT (exit 134) even
+    # when every test passed. 6.11.x is field-proven; revisit when fixed.
+    "pyside6>=6.6,<6.12",
     "pyqtgraph>=0.13",
     "pydicom>=3.0",
     "pylibjpeg>=2.0",

@@ -364,3 +364,35 @@ class TestShowUserPreferencesDialog:
 
         result = show_user_preferences_dialog()
         assert result is True
+
+
+class TestMeasurementPersistenceCheckboxSync:
+    """The manager may rewrite the stored autosave preference (delete-all);
+    a pending checkbox edit must survive a plain open/close of the manager."""
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_manager_without_preference_change_keeps_pending_checkbox(self, mock_load):
+        prefs = _default_prefs()
+        prefs.measurement_persistence_enabled = False
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog(measurement_storage_action=lambda: False)
+        dlg._persist_measurements.setChecked(True)  # pending user edit, not yet applied
+        dlg._measurement_manage.click()
+        assert dlg._persist_measurements.isChecked()
+
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_manager_delete_all_resets_checkbox_from_disk(self, mock_load):
+        prefs = _default_prefs()
+        prefs.measurement_persistence_enabled = False  # delete-all already rewrote disk
+        mock_load.return_value = prefs
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        def delete_all_action():
+            return True
+
+        dlg = UserPreferencesDialog(measurement_storage_action=delete_all_action)
+        dlg._persist_measurements.setChecked(True)
+        dlg._measurement_manage.click()
+        assert not dlg._persist_measurements.isChecked()

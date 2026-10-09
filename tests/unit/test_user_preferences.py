@@ -290,3 +290,47 @@ class TestLastSessionSource:
 
     def test_missing_value_falls_back_to_empty(self, isolated_prefs: None) -> None:
         assert load_user_preferences().last_session_source == ""
+
+
+class TestMeasurementPersistenceDefault:
+    """W41-02 (2026-10-09): autosave default-on in the full profile, opt-in in
+    Presenter, explicit user choice always wins, tests never inherit the
+    default-on behaviour."""
+
+    def test_default_is_off_under_pytest(self):
+        # The host-profile guard: no test may start writing records to disk.
+        assert up_mod.default_measurement_persistence_enabled() is False
+
+    def test_full_profile_defaults_on(self, monkeypatch):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        monkeypatch.delenv("SONOFORGE_PROFILE", raising=False)
+        assert up_mod.default_measurement_persistence_enabled() is True
+
+    def test_presenter_profile_defaults_off(self, monkeypatch):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        monkeypatch.setenv("SONOFORGE_PROFILE", "presenter")
+        assert up_mod.default_measurement_persistence_enabled() is False
+
+    def test_unset_key_uses_profile_default(self, monkeypatch, isolated_prefs):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        assert load_user_preferences().measurement_persistence_enabled is True
+
+    def test_presenter_unset_key_stays_off(self, monkeypatch, isolated_prefs):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        monkeypatch.setenv("SONOFORGE_PROFILE", "presenter")
+        assert load_user_preferences().measurement_persistence_enabled is False
+
+    def test_explicitly_stored_choice_wins(self, monkeypatch, isolated_prefs):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        prefs = default_user_preferences()
+        prefs.measurement_persistence_enabled = False
+        save_user_preferences(prefs)
+        assert load_user_preferences().measurement_persistence_enabled is False
+        prefs.measurement_persistence_enabled = True
+        save_user_preferences(prefs)
+        assert load_user_preferences().measurement_persistence_enabled is True
+
+    def test_notice_flag_roundtrip(self, isolated_prefs):
+        assert up_mod.measurement_persistence_notice_shown() is False
+        up_mod.mark_measurement_persistence_notice_shown()
+        assert up_mod.measurement_persistence_notice_shown() is True

@@ -111,7 +111,11 @@ from echo_personal_tool.infrastructure.ui_scale import (
     should_suggest_scale,
     ui_scale_hint_shown,
 )
-from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+from echo_personal_tool.infrastructure.user_preferences import (
+    load_user_preferences,
+    mark_measurement_persistence_notice_shown,
+    measurement_persistence_notice_shown,
+)
 from echo_personal_tool.presentation.main_window import MainWindow, apply_maximized_to_work_area
 from echo_personal_tool.presentation.pyqtgraph_export import patch_pyqtgraph_export_dialog
 from echo_personal_tool.resources.bundled_fonts import ensure_bundled_fonts_loaded, ui_font
@@ -188,6 +192,42 @@ def _schedule_last_session(window: MainWindow, preferences) -> str:  # noqa: ANN
 def _schedule_ui_scale_hint(window: MainWindow) -> None:
     """Offer the multiplier once on a 4K-class screen that the OS leaves at 100 %."""
     QTimer.singleShot(2500, lambda: _maybe_show_ui_scale_hint(window))
+
+
+def _schedule_measurement_persistence_notice(window: MainWindow) -> None:
+    """One-time notice that measurement autosave is on (W41-02, WP4.1 §10.1)."""
+    QTimer.singleShot(1500, lambda: _maybe_show_measurement_persistence_notice(window))
+
+
+def _maybe_show_measurement_persistence_notice(window: MainWindow) -> None:
+    """Inform, once, that measurements are stored locally until explicit deletion.
+
+    Shown only when autosave is actually enabled; the Presenter build keeps
+    the feature off by default and never sees this notice. Users who enabled
+    autosave explicitly before the default flip see it once as well — the
+    text is the §10.1 privacy summary they never got.
+    """
+    try:
+        persistence = getattr(getattr(window, "_controller", None), "measurement_persistence", None)
+        if persistence is None or not persistence.enabled:
+            return
+        if measurement_persistence_notice_shown():
+            return
+        mark_measurement_persistence_notice_shown()
+        _LOG.info("Startup: measurement autosave notice shown")
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox(window)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(tr("persistence.notice_title"))
+        box.setText(tr("persistence.notice_text"))
+        settings_button = box.addButton(tr("persistence.notice_open_settings"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("button.ok"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is settings_button:
+            window._show_user_preferences()
+    except Exception:  # noqa: BLE001 - a notice must never break startup
+        _LOG.debug("Measurement persistence notice failed", exc_info=True)
 
 
 def _maybe_show_ui_scale_hint(window: MainWindow) -> None:
@@ -317,6 +357,7 @@ def _run_application(app: QApplication, has_ai_segmentation, has_reference_ui, p
     # Deferred maximize: reliable on Windows (showMaximized in __init__ often leaves a small window).
     QTimer.singleShot(0, lambda: apply_maximized_to_work_area(window))
     _schedule_ui_scale_hint(window)
+    _schedule_measurement_persistence_notice(window)
     if has_reference_ui():
         _schedule_reference_preload(window)
     result = app.exec()

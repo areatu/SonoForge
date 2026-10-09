@@ -244,3 +244,53 @@ def test_main_opens_the_server_dialog_for_a_server_session() -> None:
 
     scheduled = [call.args[1] for call in mock_timer.singleShot.call_args_list]
     assert mock_window.open_server_dialog in scheduled
+
+
+class TestMeasurementPersistenceNotice:
+    """W41-02: the one-time «autosave is on» notice (WP4.1 §10.1)."""
+
+    def _window(self, enabled: bool) -> SimpleNamespace:
+        persistence = SimpleNamespace(enabled=enabled)
+        controller = SimpleNamespace(measurement_persistence=persistence)
+        return SimpleNamespace(_controller=controller, _show_user_preferences=MagicMock())
+
+    def _patch(self, monkeypatch, *, notice_shown: bool) -> tuple[list, MagicMock]:
+        from echo_personal_tool import main as main_mod
+
+        marked: list = []
+        monkeypatch.setattr(main_mod, "measurement_persistence_notice_shown", lambda: notice_shown or bool(marked))
+        monkeypatch.setattr(main_mod, "mark_measurement_persistence_notice_shown", lambda: marked.append(True))
+        box_cls = MagicMock()
+        monkeypatch.setattr("PySide6.QtWidgets.QMessageBox", box_cls)
+        return marked, box_cls
+
+    def test_disabled_persistence_shows_nothing(self, monkeypatch):
+        from echo_personal_tool import main as main_mod
+
+        marked, box_cls = self._patch(monkeypatch, notice_shown=False)
+        main_mod._maybe_show_measurement_persistence_notice(self._window(enabled=False))
+        assert not box_cls.called
+        assert marked == []
+
+    def test_enabled_shows_once_then_flag_blocks_repeat(self, monkeypatch):
+        from echo_personal_tool import main as main_mod
+
+        marked, box_cls = self._patch(monkeypatch, notice_shown=False)
+        main_mod._maybe_show_measurement_persistence_notice(self._window(enabled=True))
+        assert box_cls.called
+        assert marked == [True]
+        box_cls.reset_mock()
+        main_mod._maybe_show_measurement_persistence_notice(self._window(enabled=True))
+        assert not box_cls.called  # flag already set
+
+    def test_settings_button_opens_preferences(self, monkeypatch):
+        from echo_personal_tool import main as main_mod
+
+        marked, box_cls = self._patch(monkeypatch, notice_shown=False)
+        sentinel = object()
+        box = box_cls.return_value
+        box.addButton.return_value = sentinel
+        box.clickedButton.return_value = sentinel
+        window = self._window(enabled=True)
+        main_mod._maybe_show_measurement_persistence_notice(window)
+        assert window._show_user_preferences.called

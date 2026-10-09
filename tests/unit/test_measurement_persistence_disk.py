@@ -233,3 +233,106 @@ def test_export_cannot_bypass_managed_repository_lock_and_revision(tmp_path, mon
     assert results == ["unsafe_path"]
     assert p.repository.load(UID) == before
     assert p.close()
+
+
+def test_runtime_enable_saves_without_restart(tmp_path, monkeypatch, qapp):
+    """Settings toggle applies in-session: enable() hooks the store, the controller
+    adopts open studies (contexts), and the next committed edit lands on disk."""
+    monkeypatch.setattr("echo_personal_tool.application.measurement_persistence.describe_study", lambda s: SOURCES)
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=False)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)  # open while disabled: no contexts
+    store.set_patient_metrics(UID, 175, 72)  # session-only while disabled
+    p.enable()
+    # The controller adopts open studies right after a runtime enable; without
+    # the adoption read a save is refused with `identity` (no checked context).
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None, restore=set())
+    assert p.flush()
+    store.set_linear_measurements_for_instance(UID, SOP, (LinearMeasurement("LVEDD", 20, 10, 0, sop_instance_uid=SOP),))
+    assert p.flush()
+    record = p.repository.load(UID)
+    # The full-study snapshot includes the edit made before enabling.
+    assert record["data"].height_cm == 175
+    assert len(record["data"].linear_measurements) == 1
+    assert p.close()
+
+
+def test_runtime_disable_stops_tracking_after_settled_edits(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 72)
+    assert p.has_pending_edits
+    assert p.flush()  # «save and turn off» settles unsaved edits first
+    assert not p.has_pending_edits
+    p.disable()
+    store.set_patient_metrics(UID, 180, 74)  # session-only again
+    assert p.flush()
+    assert p.repository.load(UID)["data"].height_cm == 175
+    assert p.close()
+
+
+def test_runtime_enable_with_open_study_reports_record_conflict(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 72)
+    assert p.flush()
+    assert p.close()
+
+    monkeypatch.setattr("echo_personal_tool.application.measurement_persistence.describe_study", lambda s: SOURCES)
+    store2 = StudyMeasurementSessionStore()
+    p2 = MeasurementPersistence(tmp_path, store2, enabled=False)
+    p2.load([SimpleNamespace(study_uid=UID)], lambda: None)
+    store2.set_patient_metrics(UID, 180, 74)  # live session edits the record has never seen
+    p2.enable()
+    conflicts = []
+    p2.load(
+        [SimpleNamespace(study_uid=UID)],
+        lambda: conflicts.extend(sorted(p2.restore_conflicts)),
+        restore=set(),
+    )
+    assert p2.flush()
+    assert conflicts == [UID]
+    assert store2.get(UID).height_cm == 180  # RAM untouched by the adopt read
+    assert UID not in p2.loaded
+    # «Keep current»: RAM is authoritative; the next save rewrites the record.
+    p2.adopt_conflicts()
+    assert UID in p2.loaded
+    assert not p2.restore_conflicts
+    store2.set_patient_metrics(UID, 181, 75)
+    assert p2.flush()
+    assert p2.repository.load(UID)["data"].height_cm == 181
+    assert p2.close()
+
+
+def test_runtime_enable_restore_set_adopts_record_into_ram(tmp_path, monkeypatch, qapp):
+    p, store = setup_persistence(tmp_path, monkeypatch, qapp)
+    store.set_patient_metrics(UID, 175, 72)
+    assert p.flush()
+    assert p.close()
+
+    monkeypatch.setattr("echo_personal_tool.application.measurement_persistence.describe_study", lambda s: SOURCES)
+    store2 = StudyMeasurementSessionStore()
+    p2 = MeasurementPersistence(tmp_path, store2, enabled=False)
+    p2.enable()
+    p2.load([SimpleNamespace(study_uid=UID)], lambda: None, restore={UID})
+    assert p2.flush()
+    assert store2.get(UID).height_cm == 175  # record applied to the live store
+    assert UID in p2.loaded
+    assert not p2.restore_conflicts
+    assert p2.close()
+
+
+def test_enable_without_adoption_refuses_save_with_identity(tmp_path, monkeypatch, qapp):
+    """Why the controller adopts open studies: saving needs a checked context,
+    and a refused save keeps the shutdown barrier (fail-fast, no silent loss)."""
+    monkeypatch.setattr("echo_personal_tool.application.measurement_persistence.describe_study", lambda s: SOURCES)
+    store = StudyMeasurementSessionStore()
+    p = MeasurementPersistence(tmp_path, store, enabled=False)
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None)
+    p.enable()
+    store.set_patient_metrics(UID, 175, 72)
+    assert not p.flush()  # refused: `identity`, nothing written
+    assert p.repository.load(UID) is None
+    # The adoption read (what the controller does right after a runtime enable) unblocks it.
+    p.load([SimpleNamespace(study_uid=UID)], lambda: None, restore=set())
+    assert p.flush()
+    assert p.repository.load(UID)["data"].height_cm == 175
+    assert p.close()

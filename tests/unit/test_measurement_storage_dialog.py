@@ -137,3 +137,21 @@ def test_delete_all_writes_prefs_only_on_success(tmp_path, monkeypatch, qapp, is
     finally:
         dialog.close()
         assert p.close()
+
+
+def test_delete_all_reports_stored_preference_change(tmp_path, monkeypatch, qapp, isolated_qsettings):
+    p, dialog = _make_dialog(tmp_path, monkeypatch)
+    assert not dialog.preferences_changed
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: QMessageBox.StandardButton.Yes)
+    dialog.delete_all()
+    assert p.flush()
+    assert dialog.preferences_changed
+    dialog.close()
+    assert p.close()
+
+
+def test_plain_close_reports_no_preference_change(tmp_path, monkeypatch, qapp):
+    p, dialog = _make_dialog(tmp_path, monkeypatch)
+    dialog.close()
+    assert not dialog.preferences_changed
+    assert p.close()
