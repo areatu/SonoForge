@@ -20,5 +20,10 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
+          # Qt for Python ships the upstream triple license (LGPL-3.0-only OR
+          # GPL-2.0-only OR GPL-3.0-only) on every PyPI package; the LGPL branch
+          # is the one we use. Exempt them from the GPL deny-list so a version
+          # pin (e.g. pyside6<6.12) does not fail the check as a "changed" dep.
+          allow-dependencies-licenses: pyside6,pyside6-essentials,pyside6-addons,shiboken6
           deny-licenses: GPL-3.0, AGPL-3.0
           allow-ghsas: GHSA-8mgp-746c-j5xp
