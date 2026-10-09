@@ -280,14 +280,12 @@ topics:
       unit: мм рт. ст./с
       norm_male: {low: 1200}
       norm_female: {low: 1200}
-      source: 1989, Bargiggia et al., Circulation 80:1287–1292 (dP/dt по CW-допплеру);
-        порог >1200 мм рт. ст./с — как в клинических эхо-калькуляторах
-      note: Время нарастания скорости струи MR от 1 до 3 м/с (32 мм рт. ст.). Неприменимо
-        при острой тяжёлой MR и эксцентричной, не полностью записанной струе.
+      source: "1989, Bargiggia et al., Circulation 80:1287–1292 (dP/dt по CW-допплеру); порог >1200 мм рт. ст./с — как в клинических эхо-калькуляторах"
+      note: "Время нарастания скорости струи MR от 1 до 3 м/с (32 мм рт. ст.). Неприменимо при острой тяжёлой MR и эксцентричной, не полностью записанной струе."
       gradations:
       - name: Норма
-        range_male: {low: 1200.0}
-        range_female: {low: 1200.0}
+        range_male: {low: 1200}
+        range_female: {low: 1200}
     - id: svi
       name: Ударный индекс (SVi)
       unit: мл/м²
@@ -716,8 +714,7 @@ topics:
       norm_female: {low: 400}
       source: 2025, ASE, Guidelines for the Echocardiographic Assessment of the Right
         Heart in Adults and Special Considerations in Pulmonary Hypertension
-      note: Время нарастания скорости струи TR от 1 до 2 м/с (12 мм рт. ст.), развёртка
-        200 мм/с. Для рутинного применения не рекомендуется.
+      note: "Время нарастания скорости струи TR от 1 до 2 м/с (12 мм рт. ст.), развёртка 200 мм/с. Для рутинного применения не рекомендуется."
       gradations:
       - name: Норма
         range_male: {low: 400}
@@ -1127,8 +1124,7 @@ topics:
       unit: см²
       source: 2021, ESC/EACTS, 2021 ESC/EACTS Guidelines for the Management of Valvular
         Heart Disease
-      note: При эллиптическом отверстии или низком потоке (вторичная MR) тяжёлой может
-        считаться уже EROA ≥0,3 см² (ESC/EACTS 2021; ASE/SCMR 2017).
+      note: 'При эллиптическом отверстии или низком потоке (вторичная MR) тяжёлой может считаться уже EROA ≥0,3 см² (ESC/EACTS 2021; ASE/SCMR 2017).'
       gradations:
       - name: Лёгкая
         range_male: {high: 0.2}
@@ -1141,8 +1137,7 @@ topics:
       unit: мл
       source: 2017, ASE/SCMR, Recommendations for the Noninvasive Evaluation of Native
         Valvular Regurgitation
-      note: При эллиптическом отверстии или низком потоке (вторичная MR) тяжёлой может
-        считаться уже RVol ≥45 мл (ESC/EACTS 2021; ASE/SCMR 2017).
+      note: 'При эллиптическом отверстии или низком потоке (вторичная MR) тяжёлой может считаться уже RVol ≥45 мл (ESC/EACTS 2021; ASE/SCMR 2017).'
       gradations:
       - name: Лёгкая
         range_male: {high: 30.0}
@@ -1864,6 +1859,7 @@ topics:
     - id: qp_qs
       name: Qp:Qs
       full_name: Отношение лёгочного и системного кровотока
+      unit: ''
       source: 2018, AHA/ACC, Guideline for the Management of Adults With Congenital
         Heart Disease
       gradations:
