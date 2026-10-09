@@ -56,7 +56,7 @@ def test_cache_clear_during_restore_preserves_previous_visible_study(tmp_path, m
         # Pause restore deterministically. A Settings cache clear may happen here.
         monkeypatch.setattr(controller.measurement_persistence, "load", lambda *args: None)
         controller.load_pre_scanned_studies(new)
-        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache)
+        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache, _tabs=SimpleNamespace(tabs=()))
         protected = MainWindow._active_orthanc_cache_sessions(window)
         cache.clear_all(preserve_session_ids=protected)
         assert old_path.exists(), "the old source is still shown/read while restore is pending"
@@ -216,7 +216,7 @@ def test_old_cache_protection_released_after_selection_not_before(tmp_path, monk
         controller.load_pre_scanned_studies(old)
         assert controller.measurement_persistence.flush()
         controller.load_instance(old[0].series[0].instances[0])
-        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache)
+        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache, _tabs=SimpleNamespace(tabs=()))
         during_publish = []
         controller.studies_loaded.connect(
             lambda _: during_publish.append(MainWindow._active_orthanc_cache_sessions(window))
@@ -264,7 +264,7 @@ def test_failed_scan_keeps_previous_identity_and_cache_protection(tmp_path, monk
         assert controller.retained_studies_for_cache == ()
         assert controller.state_manager.snapshot.instance is instance
         assert controller._current_instance is instance
-        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache)
+        window = SimpleNamespace(_controller=controller, _orthanc_cache=cache, _tabs=SimpleNamespace(tabs=()))
         protected = MainWindow._active_orthanc_cache_sessions(window)
         assert protected == {session_id}
         cache.clear_all(preserve_session_ids=protected)

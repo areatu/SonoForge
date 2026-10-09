@@ -325,4 +325,5 @@ def test_batch_accepted_room_question_closes_oldest_inactive_tabs(window, monkey
     assert len(window._tabs) == MAX_OPEN_TABS
     shared = [t for t in window._tabs.tabs if t.cache_session_id == "sess-1"]
     assert len(shared) == 3
-    assert {t.studies[0].study_uid for t in shared} == {"a.study", "b.study", "c.study"}
+    # the reused « + » tab gets its studies when the controller publishes them
+    assert [t.studies[0].study_uid for t in shared if t.studies] == ["b.study", "c.study"]
