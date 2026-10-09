@@ -1,7 +1,7 @@
 """Recently opened folders and pinned places (Э3).
 
-The same store feeds the "Open folder" dialog sidebar and (later) the welcome
-page, so the list must survive restarts and live next to the other user
+The same store feeds the "Open folder" dialog sidebar and the welcome page,
+so the list must survive restarts and live next to the other user
 preferences (portable builds keep them in the INI next to the executable).
 
 Entries are stored as a single JSON value instead of a ``QStringList`` because
@@ -113,6 +113,10 @@ class RecentStore:
         store = self._store_object()
         store.setValue(_SETTINGS_KEY, payload)
         store.sync()
+
+    def reload(self) -> None:
+        """Refresh from QSettings after another store instance has written."""
+        self._entries = self._load()
 
     # ── reading ──────────────────────────────────────────────────────
 

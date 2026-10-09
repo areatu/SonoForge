@@ -348,6 +348,11 @@ class PresenterWindow(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(16)
         self._timer.timeout.connect(self._keep_on_top)
+        # Parent the deferred verification to this window so an immediate
+        # stop/close cancels it instead of leaving a contextless callback queued.
+        self._placement_timer = QTimer(self)
+        self._placement_timer.setSingleShot(True)
+        self._placement_timer.timeout.connect(self._verify_placement)
 
     # ── construction helpers ────────────────────────────────────────
 
@@ -448,7 +453,7 @@ class PresenterWindow(QWidget):
                 "placement_shown",
                 handle_screen=handle.screen().name() if handle is not None else None,
             )
-        if handle is not None:
+        if handle is not None and handle.screen() is not self._target_screen:
             handle.setScreen(self._target_screen)
         self.setGeometry(self._target_screen.geometry())
         self._enter_fullscreen()
@@ -459,7 +464,7 @@ class PresenterWindow(QWidget):
                 geometry=self.geometry(),
             )
         self._timer.start()
-        QTimer.singleShot(0, self._verify_placement)
+        self._placement_timer.start(0)
 
     def _verify_placement(self) -> None:
         handle = self.windowHandle()
@@ -512,6 +517,7 @@ class PresenterWindow(QWidget):
     def stop(self) -> None:
         self._closed = True
         self._timer.stop()
+        self._placement_timer.stop()
         self._overlay.set_enabled(False)
         for item in (
             self._live_contour_item,
@@ -585,6 +591,7 @@ class PresenterWindow(QWidget):
         # emitting ``exit_requested`` here would re-enter stop().
         self._closed = True
         self._timer.stop()
+        self._placement_timer.stop()
         self._overlay.set_enabled(False)
         event.accept()
 

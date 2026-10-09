@@ -60,6 +60,17 @@ def test_plural_falls_back_for_unknown_category() -> None:
     assert tr_plural("status.studies_loaded", 1.5) == "Loaded 1.5 studies"
 
 
+def test_gallery_group_clip_count_pluralization() -> None:
+    set_language("en")
+    assert tr_plural("gallery.group.clips", 1) == "1 clip"
+    assert tr_plural("gallery.group.clips", 2) == "2 clips"
+
+    set_language("ru")
+    assert tr_plural("gallery.group.clips", 1) == "1 клип"
+    assert tr_plural("gallery.group.clips", 3) == "3 клипа"
+    assert tr_plural("gallery.group.clips", 5) == "5 клипов"
+
+
 def test_plural_forms_for_count_sensitive_strings() -> None:
     """The strings a user sees with small counts must not read "1 записей"."""
     set_language("ru")

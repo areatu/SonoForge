@@ -64,6 +64,21 @@ def _fake_study(series=None):
     )
 
 
+def _grouped_study(study_uid: str, study_date: datetime, instance_count: int) -> StudyMetadata:
+    instances = [
+        _fake_instance(sop_instance_uid=f"{study_uid}-sop-{index}", path=Path(f"{index:03}.dcm"))
+        for index in range(instance_count)
+    ]
+    series = SeriesMetadata(
+        series_uid=f"{study_uid}-series",
+        study_uid=study_uid,
+        modality="US",
+        description="",
+        instances=tuple(instances),
+    )
+    return StudyMetadata(study_uid=study_uid, study_datetime=study_date, series=(series,))
+
+
 class TestHasDicomTags:
     def test_non_dicom_returns_false(self):
         from echo_personal_tool.presentation.thumbnail_gallery import _has_dicom_tags
@@ -108,6 +123,29 @@ class TestThumbnailGalleryWidget:
         assert not w._collapsed
         assert w._horizontal_mode is False
         w.close()
+
+    def test_widget_is_collectible_after_close(self):
+        import gc
+        import weakref
+
+        from PySide6.QtWidgets import QApplication
+
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate(
+            [
+                _grouped_study("study-old", datetime(2026, 1, 1), 1),
+                _grouped_study("study-new", datetime(2026, 1, 2), 1),
+            ]
+        )
+        gallery_ref = weakref.ref(gallery)
+        gallery.close()
+        QApplication.instance().processEvents()
+        del gallery
+        gc.collect()
+
+        assert gallery_ref() is None
 
     def test_cell_dimensions(self):
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
@@ -196,6 +234,93 @@ class TestThumbnailGalleryWidget:
         w.populate([study])
         assert w.count() == 5
         w.close()
+
+    def test_multiple_studies_are_grouped_with_markers_colors_and_legend(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import (
+            _GROUP_COLOR_ROLE,
+            _GROUP_MARKER_ROLE,
+            ThumbnailGalleryWidget,
+        )
+
+        older = _grouped_study("study-old", datetime(2026, 1, 1), 1)
+        newer = _grouped_study("study-new", datetime(2026, 1, 2), 2)
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate([older, newer])
+
+        assert gallery.count() == 3
+        assert gallery._gallery_groups[0].marker == "A"
+        assert gallery._gallery_groups[1].marker == "B"
+        assert gallery.item(0).data(_GROUP_MARKER_ROLE) == "A"
+        assert gallery.item(1).data(_GROUP_MARKER_ROLE) == "A"
+        assert gallery.item(2).data(_GROUP_MARKER_ROLE) == "B"
+        assert gallery.item(0).data(_GROUP_COLOR_ROLE) != gallery.item(2).data(_GROUP_COLOR_ROLE)
+        assert not gallery._group_legend.isHidden()
+        assert gallery._group_legend_height > 0
+
+        from echo_personal_tool.infrastructure.i18n import tr_plural
+
+        first_group_chip = gallery._group_legend_layout.itemAt(0).widget()
+        assert "A" in first_group_chip.text()
+        assert gallery._gallery_groups[0].study_date in first_group_chip.text()
+        assert tr_plural("gallery.group.clips", 2) in first_group_chip.text()
+        assert "study-new" not in first_group_chip.text()
+        assert "000.dcm" not in first_group_chip.text()
+
+        second_group_chip = gallery._group_legend_layout.itemAt(1).widget()
+        assert tr_plural("gallery.group.clips", 1) in second_group_chip.text()
+        second_group_chip.click()
+        assert gallery.currentItem() is gallery._gallery_groups[1].first_item
+        gallery.close()
+
+    def test_stale_group_chip_cannot_target_repopulated_gallery(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate(
+            [
+                _grouped_study("study-old", datetime(2026, 1, 1), 1),
+                _grouped_study("study-new", datetime(2026, 1, 2), 1),
+            ]
+        )
+        stale_chip = gallery._group_legend_layout.itemAt(1).widget()
+
+        gallery.populate([_grouped_study("study-only", datetime(2026, 1, 3), 1)])
+        assert gallery._group_legend.isHidden()
+
+        # deleteLater has not been processed yet: a stale button must be inert
+        # rather than selecting an unrelated group with the same index.
+        stale_chip.click()
+        assert gallery.currentItem() is None
+        gallery.close()
+
+    def test_single_study_remains_unmarked(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import (
+            _GROUP_COLOR_ROLE,
+            _GROUP_MARKER_ROLE,
+            ThumbnailGalleryWidget,
+        )
+
+        gallery = ThumbnailGalleryWidget()
+        gallery.populate([_grouped_study("study-one", datetime(2026, 1, 1), 1)])
+
+        assert gallery.item(0).data(_GROUP_MARKER_ROLE) is None
+        assert gallery.item(0).data(_GROUP_COLOR_ROLE) is None
+        assert gallery._group_legend.isHidden()
+        assert gallery._group_legend_height == 0
+        gallery.close()
+
+    def test_group_markers_continue_after_z(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import _group_marker
+
+        assert [_group_marker(index) for index in (0, 25, 26, 27)] == ["A", "Z", "AA", "AB"]
+
+    def test_marker_text_uses_high_contrast_color(self):
+        from PySide6.QtGui import QColor
+
+        from echo_personal_tool.presentation.thumbnail_gallery import _contrast_text_color
+
+        assert _contrast_text_color(QColor("#F0E442")) == "#000000"
+        assert _contrast_text_color(QColor("#0072B2")) == "#ffffff"
 
     def test_populate_empty(self):
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget

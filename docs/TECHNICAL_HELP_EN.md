@@ -17,7 +17,7 @@ SonoForge keeps raw measurement inputs in an in-memory `StudyMeasurementSessionS
 
 The session is application-runtime state. It is not a promise of a persistent database or of a durable edit to the source DICOM. Reset clears measurement inputs and manual calibration for the current study while retaining the patient metrics in the current session data structure.
 
-The visible thumbnail gallery is not a study-grouping view: opening a root that contains several study folders currently places all discovered files in one flat thumbnail pool. Study UIDs still matter internally for measurement-session lookup, but they do not create separate visible gallery sections.
+The gallery remains a scrollable list, but it preserves visual study groups: thumbnails receive a colored border and letter marker, while the legend shows each letter, date, and clip count and scrolls to the selected group. DICOM is split by `StudyInstanceUID`; when media is found at any depth, results with the same UID are merged and duplicate instances are removed by SOP Instance UID. UIDs, full paths, and patient details are not shown in the legend. Nested media roots are discovered recursively when the selected root has no direct media; when it does, the selected root is scanned as a whole.
 
 ## 2. Unit and calibration pipeline
 

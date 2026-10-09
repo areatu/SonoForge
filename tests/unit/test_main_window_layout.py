@@ -7,7 +7,7 @@ from dataclasses import asdict, replace
 import pytest
 
 pytestmark = pytest.mark.gui
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QSplitter
 
 
 @pytest.fixture(autouse=True)
@@ -40,11 +40,16 @@ def _apply(window: MainWindow, **kwargs: object) -> None:
 
 def _viewer_in_content_tree(window: MainWindow) -> bool:
     viewer = window._viewer
-    if window._content_layout.indexOf(viewer) >= 0:
+    surface = window._viewer_stack
+    if window._content_layout.indexOf(surface) >= 0:
         return True
     splitter_idx = window._content_layout.indexOf(window._content_splitter)
-    if splitter_idx >= 0 and window._content_splitter.indexOf(viewer) >= 0:
+    if splitter_idx >= 0 and window._content_splitter.indexOf(surface) >= 0:
         return True
+    for index in range(window._content_splitter.count()):
+        child = window._content_splitter.widget(index)
+        if isinstance(child, QSplitter) and child.indexOf(surface) >= 0:
+            return True
     # Multiview: the main viewer lives inside its pane widget, which in turn
     # sits in the content splitter.
     pane = getattr(window, "_pane_left", None)
@@ -125,11 +130,17 @@ def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
     _apply(window, **cfg_kwargs)
 
     assert _viewer_in_content_tree(window)
-    assert window._viewer.isVisible()
+    if cfg_kwargs.get("multiview"):
+        assert window._viewer_stack.currentWidget() is window._start_page
+        assert window._pane_left is None  # empty workspaces defer pane creation
+    else:
+        assert window._viewer_stack.isVisible()
+        assert window._viewer_stack.currentWidget() is window._start_page
     assert _gallery_alive(window)
     assert window._gallery.isVisible()
 
-    if cfg_kwargs.get("multiview"):
+    if cfg_kwargs.get("multiview") and window._has_loaded_study:
+        assert window._viewer.isVisible()
         assert window._viewer2 is not None
         assert window._viewer2.isVisible()
         # The second clip lives in its own pane widget inside the splitter.
@@ -157,6 +168,112 @@ def test_horizontal_gallery_toggle_does_not_destroy_gallery(qtbot) -> None:
     assert window._content_layout.indexOf(window._gallery) >= 0
 
 
+def test_viewer_stack_switches_between_welcome_and_loaded_viewer(qtbot) -> None:
+    window = _make_window(qtbot)
+    assert window._viewer_stack.currentWidget() is window._start_page
+
+    window._has_loaded_study = True
+    window._set_start_page_visible(False)
+    assert window._viewer_stack.currentWidget() is window._viewer
+
+    window.show_empty_start_page()
+    assert window._viewer_stack.currentWidget() is window._start_page
+
+
+def test_persisted_multiview_layout_keeps_welcome_page_until_studies_load(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._layout_config = replace(window._layout_config, multiview=True)
+    window._rebuild_layout()
+
+    assert window._viewer_stack.currentWidget() is window._start_page
+    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._pane_left is None
+
+    window._has_loaded_study = True
+    window._rebuild_layout()
+    assert window._pane_left is not None
+    pane_left = window._pane_left
+    assert window._content_splitter.indexOf(pane_left) >= 0
+
+    window.show_empty_start_page()
+    assert window._viewer_stack.currentWidget() is window._start_page
+    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert pane_left.isHidden()
+
+    window._has_loaded_study = True
+    window._rebuild_layout()
+    assert window._pane_left is pane_left
+    assert not pane_left.isHidden()
+    assert window._content_splitter.indexOf(pane_left) >= 0
+
+
+def test_empty_studies_reveal_start_page_in_multiview_and_restore_on_reload(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._has_loaded_study = True
+    window._layout_config = replace(window._layout_config, multiview=True)
+    window._rebuild_layout()
+    pane = window._pane_left
+    assert pane is not None
+
+    window._on_studies_loaded([])
+    assert not window._has_loaded_study
+    assert window._viewer_stack.currentWidget() is window._start_page
+    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert pane.isHidden()
+
+    window._has_loaded_study = True
+    window._rebuild_layout()
+    assert not pane.isHidden()
+    assert window._content_splitter.indexOf(pane) >= 0
+
+
+def test_mmode_wraps_and_restores_the_viewer_surface(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._activate_mmode()
+
+    assert window._mmode_vertical_splitter.indexOf(window._viewer_stack) >= 0
+    window._finish_mmode_deactivation()
+    QApplication.processEvents()
+
+    assert window._content_splitter.indexOf(window._viewer_stack) >= 0
+    assert window._viewer_stack.currentWidget() is window._start_page
+
+
+def test_mmode_wraps_a_direct_viewer_stack_layout(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._layout_config = replace(window._layout_config, gallery_horizontal=True)
+    window._rebuild_layout()
+    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+
+    window._activate_mmode()
+    assert window._content_layout.indexOf(window._mmode_vertical_splitter) >= 0
+
+    window._finish_mmode_deactivation()
+    QApplication.processEvents()
+    assert window._content_layout.indexOf(window._viewer_stack) >= 0
+    assert window._viewer_stack.currentWidget() is window._start_page
+
+
+def test_main_viewer_is_restored_when_multiview_is_reenabled(qtbot) -> None:
+    window = _make_window(qtbot)
+    window._has_loaded_study = True
+    window._layout_config = replace(window._layout_config, multiview=True)
+    window._rebuild_layout()
+    pane = window._pane_left
+    assert pane is not None
+    assert pane.layout().indexOf(window._viewer) >= 0
+
+    window._layout_config = replace(window._layout_config, multiview=False)
+    window._rebuild_layout()
+    assert window._viewer_stack.indexOf(window._viewer) >= 0
+
+    window._layout_config = replace(window._layout_config, multiview=True)
+    window._rebuild_layout()
+    assert window._pane_left is pane
+    assert pane.layout().indexOf(window._viewer) >= 0
+    assert window._viewer_stack.indexOf(window._viewer) < 0
+
+
 def test_activity_bar_off_restores_tool_panel_with_horizontal_gallery(qtbot) -> None:
     window = _make_window(qtbot)
     _apply(window, activity_bar=True, gallery_horizontal=True)
@@ -170,11 +287,11 @@ def test_activity_bar_off_restores_tool_panel_with_horizontal_gallery(qtbot) -> 
 def test_swap_then_default_restores_viewer(qtbot) -> None:
     window = _make_window(qtbot)
     _apply(window, swap_places=True)
-    assert window._viewer.isVisible()
+    assert window._viewer_stack.currentWidget() is window._start_page
 
     _apply(window, swap_places=False)
-    assert window._viewer.isVisible()
-    assert window._content_splitter.indexOf(window._viewer) >= 0
+    assert window._viewer_stack.currentWidget() is window._start_page
+    assert window._content_splitter.indexOf(window._viewer_stack) >= 0
     assert window._content_splitter.indexOf(window._tool_panel) >= 0
 
 

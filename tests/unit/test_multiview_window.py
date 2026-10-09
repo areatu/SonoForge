@@ -52,6 +52,10 @@ def window(qtbot, isolated_qsettings):
 
 
 def _enable(window) -> None:
+    # These tests exercise pane behavior in a loaded workspace. Empty
+    # workspaces intentionally keep the welcome page and defer pane creation.
+    window._has_loaded_study = True
+    window._set_start_page_visible(False)
     window._on_multiview_button()
     assert window._layout_config.multiview is True
 

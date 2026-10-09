@@ -79,11 +79,13 @@ jobs:
           done
           exit 1
 
+      # PySide6 6.12.0 aborts during Linux QWidget teardown; keep CI on the
+      # latest stable release until that upstream regression is resolved.
       - run: pip install -e ".[dev]" "PySide6!=6.12.0"
 
-      # Linux: run with virtual display (xvfb-run for Qt tests). The output is
-      # piped through the annotation filter so failing test names stay readable
-      # via the check-run REST API even when job logs are not downloadable.
+      # Linux: run with a virtual display. Verbose node IDs plus the annotation
+      # filter keep test failures and native abort locations readable through
+      # the check-run REST API even when job logs are not downloadable.
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -92,6 +94,7 @@ jobs:
           # non-zero pytest exit (pytest-timeout's os._exit(1) on a hang
           # included) would kill this script before the diagnostics below.
           set +e
+          export PYTHONFAULTHANDLER=1
           xvfb-run -a pytest tests/unit/ -v --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
             > /tmp/pytest.log 2>&1
           status=$?
@@ -116,7 +119,6 @@ jobs:
           name: pytest-linux-log
           path: /tmp/pytest.log
           retention-days: 7
-
       # Linux CI is the single coverage producer/uploader; no separate coverage workflow.
       - name: Upload coverage report artifact
         if: runner.os == 'Linux'

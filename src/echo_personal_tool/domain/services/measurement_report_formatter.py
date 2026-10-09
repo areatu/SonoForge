@@ -13,6 +13,7 @@ from echo_personal_tool.domain.models.linear_measurement import LinearMeasuremen
 from echo_personal_tool.domain.models.measurements import (
     MeasurementSnapshot,
 )
+from echo_personal_tool.domain.services.doppler_repeats import report_sample_count
 from echo_personal_tool.domain.services.measurement_results_formatter import _flow_results_for_display
 from echo_personal_tool.infrastructure.i18n import tr, tr_plural
 
@@ -95,7 +96,10 @@ def _format_doppler_section(snapshot: MeasurementSnapshot) -> list[str]:
         _optional_line("e'/a'", doppler.e_prime_over_a_prime, decimals=2),
     ]
     for flow in _flow_results_for_display(doppler):
-        vmax_repeats = _repeat_suffix(flow.vmax_repeats)
+        # Vmax can come from explicit peaks or (when none were placed) from
+        # repeated VTI traces. In either case, n is the number used in the
+        # displayed last-three mean, not the total retained for review.
+        vmax_repeats = _repeat_suffix(flow.vmax_repeats or flow.vti_repeats)
         field_lines.extend(
             (
                 _optional_velocity(f"{flow.site} Vmax", flow.vmax_cm_s, flow.mode, vmax_repeats),
@@ -409,10 +413,11 @@ def _format_calculations_section(snapshot: MeasurementSnapshot) -> list[str]:
 
 
 def _repeat_suffix(repeats: int) -> str:
-    """Show how many measurements entered the value (D-23), when more than one."""
-    if repeats <= 1:
+    """Show the number of measurements that entered the value (D-23)."""
+    count = report_sample_count(repeats)
+    if count <= 1:
         return ""
-    return tr("domain.report.repeat_suffix", count=repeats)
+    return tr("domain.report.repeat_suffix", count=count)
 
 
 def _optional_line(

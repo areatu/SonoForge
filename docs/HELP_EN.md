@@ -66,10 +66,12 @@ The Windows and macOS release builds bundle Python and application dependencies;
 
 `Settings → Interface → On startup` provides:
 
-- `Empty window` (`empty`): do not open data automatically;
-- `Last folder` (`last_folder`): reopen the last existing folder selected with `Open folder…` after startup.
+- `Empty window` (`empty`): do not open data automatically; show the native welcome page in the viewer area;
+- `Last folder` (`last_folder`): reopen the last session after startup — a local folder, or the server loader when the previous study came from PACS.
 
-Language and theme are set in `Settings → Interface`. The language change rebuilds the UI; an already open reference document may need to be opened again.
+The welcome page provides `Open folder…`, `Load from server…`, and a `Continue` action for the last session. In the Full profile it also lists up to eight recent folders (pinned entries first; missing folders are greyed out), an optional recent-studies section, reference ranges, user documents, feedback, settings, and this guide. Presenter keeps the page limited to the two open actions and Help. `Ctrl+O` opens a folder and `Ctrl+P` opens the server loader. The welcome page is built from native Qt widgets; it does not embed HTML or QtWebEngine.
+
+Language and theme are set in `Settings → Interface`. The welcome page refreshes its text and palette along with the rest of the UI. The language change rebuilds the UI; an already open reference document may need to be opened again.
 
 ### Minimal workflow
 
@@ -109,20 +111,14 @@ The status bar shows startup, scan, loading, calibration, tool, and error messag
 
 The thumbnail gallery lists instances/series. `Settings → Interface → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
 
+When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with colored thumbnail borders and letter markers. A legend above the list shows each group’s letter, date, and clip count; click an entry to jump to that group. A single group is left unmarked. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. The legend does not show UIDs, full paths, patient names, or patient IDs.
+
 The thumbnail context menu includes:
 
 - `Copy DICOM file…`: copy the original DICOM file;
 - `Export to MP4…`: convert a cine source to MP4, or copy an existing MP4 according to the current media type.
 
 Neither command exports the current measurements, and neither automatically inserts the current calipers or contours into the copied file.
-
-#### Important multiple-study limitation
-
-The internal data model carries study, series, and instance identifiers, but the **current visible thumbnail gallery is a single flat pool**. If the selected root contains several study folders, their files currently appear together in one thumbnail list; the gallery does not create separate visual groups per study. For reliable navigation:
-
-- open one study root at a time when identity matters;
-- check patient, date, series description, and DICOM tags;
-- do not infer study membership from thumbnail position.
 
 ### 2.3 Viewer
 
@@ -146,7 +142,7 @@ The main right panel includes:
 - DICOM properties/tag inspection when enabled;
 - a properties view for the current instance and calibration availability.
 
-`Customize Layout` can change gallery position, activity bar, status bar, panel arrangement, and the optional second viewer. A second viewer can show the same current instance; it does **not** turn a flat multi-study gallery into separate study groups.
+`Customize Layout` can change gallery position, activity bar, status bar, panel arrangement, and the optional second viewer. A second viewer can show the same current instance; it does not create separate tabs or independent sessions for the gallery groups.
 
 ### 2.5 Selecting an instance or tool
 
@@ -180,9 +176,9 @@ Studies/
 └── Study_2026_02/cine.dcm
 ```
 
-When the selected folder has no media directly in its root but has child folders containing media, the child folders are treated as separate local roots in the data model. When media are present directly in the selected root, that root is treated as one root and nested media are scanned below it. Do not mix unrelated direct files and study folders if identity is important.
+The scanner searches recursively. If the selected root has no media directly in it, media-bearing directories are discovered at any depth; studies found in different directories are then merged by `StudyInstanceUID`. If the root itself contains media, it is scanned as a whole, while DICOM files are still split by the UIDs in their headers. One gallery can therefore contain several marked groups.
 
-DICOM is grouped from its UIDs. MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the local folder. The gallery can still display the complete selected root as one flat thumbnail pool.
+MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the scanned folder. These identifiers and full paths are not shown in the legend.
 
 ### 3.3 Open and diagnose a scan
 
@@ -997,9 +993,9 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 
 ### 19.3 Multiple studies
 
-1. Prefer one study folder at a time.
-2. If opening a common root, remember that the gallery is one flat thumbnail pool.
-3. Use DICOM tags, dates, patient, and series description to confirm identity.
+1. In a common root containing several studies, distinguish them by the thumbnail border color and letter marker; the legend shows the date and clip count.
+2. Click a legend entry to scroll to the beginning of that group.
+3. Use available DICOM tags and the series description to verify membership; group letters and colors are navigation aids only.
 4. For separate delivery, save each server study through **`Save to Disk`** or open separate roots.
 
 ### 19.4 PACS → permanent local files

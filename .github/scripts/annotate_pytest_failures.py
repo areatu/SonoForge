@@ -9,32 +9,64 @@ annotation per failing test, so the failing test names are always reachable:
 
     gh api repos/<owner>/<repo>/check-runs/<job-check-run-id>/annotations
 
-Usage (inside a workflow step):
-
-    set -o pipefail
-    pytest tests/unit/ -q --tb=line --no-header | python .github/scripts/annotate_pytest_failures.py
-
-``pipefail`` keeps the step red when pytest fails; the filter itself always
-exits 0 so a broken pipe cannot mask the real status.
+This script is called from the Linux CI workflow after verbose pytest output.
+Its optional file argument receives the most recently reported test node after
+stdout closes, so the workflow can annotate native aborts that have no pytest
+failure summary.
 """
 
 from __future__ import annotations
 
 import re
 import sys
+from collections import deque
 
 # pytest's short summary lines look like:
 #   FAILED tests/unit/test_x.py::test_y - AssertionError: ...
 #   ERROR tests/unit/test_x.py - ImportError: ...
 _SUMMARY = re.compile(r"^(FAILED|ERROR)\s+(\S+)(?:\s+-\s+(.*))?$")
+_TEST_NODE = re.compile(r"^(tests/\S+::\S+)")
+_ABORT_MARKERS = (
+    "fatal python error",
+    "qthread:",
+    "qt fatal",
+    "segmentation fault",
+    "core dumped",
+    "aborted",
+    "assertion failure",
+    "terminate called",
+    "fatal signal",
+    "traceback (most recent call last)",
+)
+
+
+def _emit(line: str) -> None:
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
 
 
 def main() -> int:
+    node_file = sys.argv[1] if len(sys.argv) > 1 else None
     seen: set[tuple[str, str]] = set()
+    last_node: str | None = None
+    last_lines: deque[str] = deque(maxlen=12)
+    diagnostic_lines: deque[str] = deque(maxlen=24)
+    diagnostic_context_remaining = 0
     for raw in sys.stdin:
         line = raw.rstrip("\n")
-        print(line, flush=True)
-        match = _SUMMARY.match(line.strip())
+        last_lines.append(line)
+        lowered = line.lower()
+        if any(marker in lowered for marker in _ABORT_MARKERS):
+            diagnostic_context_remaining = 12
+        if diagnostic_context_remaining:
+            diagnostic_lines.append(line)
+            diagnostic_context_remaining -= 1
+        _emit(line)
+        stripped = line.strip()
+        node_match = _TEST_NODE.match(stripped)
+        if node_match is not None:
+            last_node = node_match.group(1)
+        match = _SUMMARY.match(stripped)
         if match is None:
             continue
         kind, node_id, detail = match.group(1), match.group(2), match.group(3) or ""
@@ -45,9 +77,16 @@ def main() -> int:
         if detail:
             message = f"{message} — {detail}"
         # GitHub trims long annotation messages; the node id survives the cut.
-        print(f"::error title={kind} {node_id}::{message[:1800]}", flush=True)
+        _emit(f"::error title={kind} {node_id}::{message[:1800]}")
+    if node_file is not None:
+        if last_node is not None:
+            with open(node_file, "w", encoding="utf-8") as last_node_stream:
+                last_node_stream.write(last_node + "\n")
+        tail_lines = diagnostic_lines or last_lines
+        with open(node_file + ".tail", "w", encoding="utf-8") as tail_stream:
+            tail_stream.write("\n".join(tail_lines) + "\n")
     if seen:
-        print(f"::notice::pytest failures: {len(seen)}", flush=True)
+        _emit(f"::notice::pytest failures: {len(seen)}")
     return 0
 
 
