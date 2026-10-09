@@ -15,7 +15,7 @@ from typing import Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -707,6 +707,31 @@ class _ComparisonState:
         self.frame_index = None
 
 
+class _LoupeKeyRelay(QObject):
+    """Forwards Z to a viewer without installing the viewer itself on QApplication.
+
+    The viewer is destroyed at the end of each GUI test. An event filter that
+    is the viewer segfaults on the next event (Linux CI) if it is still
+    installed. This relay is parented to the application and dropped first.
+    """
+
+    def __init__(self, viewer: QWidget) -> None:
+        app = QApplication.instance()
+        super().__init__(app)
+        self._viewer = viewer
+
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        viewer = self._viewer
+        if viewer is None or not isValid(viewer):
+            self._viewer = None
+            return False
+        try:
+            return bool(viewer._loupe_key_from_app(watched, event))
+        except RuntimeError:
+            self._viewer = None
+            return False
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -954,8 +979,9 @@ class ViewerWidget(QWidget):
         self._magnifier_held = False
         self._magnifier_linear_persistent = False
         self._magnifier_persistent_active = False
-        self._magnifier_key_filter = False
+        self._loupe_key_relay: _LoupeKeyRelay | None = None
         self._magnifier_lens = None
+        self.destroyed.connect(self._remove_loupe_key_relay)
         self._reduce_motion = False
         self._show_panel_frames = False
         self._show_caliper_labels_on_frame = True
@@ -1178,31 +1204,57 @@ class ViewerWidget(QWidget):
 
     def showEvent(self, event) -> None:  # type: ignore[override]
         # Z must reach the loupe even when focus sits on the gallery or the tool panel.
-        app = QApplication.instance()
-        if app is not None and not self._magnifier_key_filter:
-            app.installEventFilter(self)
-            self._magnifier_key_filter = True
+        self._install_loupe_key_relay()
         super().showEvent(event)
+
+    def hideEvent(self, event) -> None:  # type: ignore[override]
+        self._remove_loupe_key_relay()
+        super().hideEvent(event)
+
+    def _install_loupe_key_relay(self) -> None:
+        app = QApplication.instance()
+        if app is None or self._loupe_key_relay is not None:
+            return
+        relay = _LoupeKeyRelay(self)
+        app.installEventFilter(relay)
+        self._loupe_key_relay = relay
+
+    def _remove_loupe_key_relay(self) -> None:
+        relay = self._loupe_key_relay
+        self._loupe_key_relay = None
+        if relay is None:
+            return
+        relay._viewer = None
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.removeEventFilter(relay)
+            except RuntimeError:
+                pass
+        relay.deleteLater()
+
+    def _loupe_key_from_app(self, watched, event) -> bool:  # type: ignore[no-untyped-def]
+        if not hasattr(self, "_graphics") or self._graphics is None or not self.isVisible():
+            return False
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+            return False
+        if event.key() != Qt.Key.Key_Z or event.isAutoRepeat():
+            return False
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier or self._text_input_has_focus():
+            return False
+        if watched is self._graphics or watched is self._graphics.viewport():
+            return False
+        if event.type() == QEvent.Type.KeyPress and self._scene_pos_under_cursor() is not None:
+            self.keyPressEvent(event)
+            return True
+        if event.type() == QEvent.Type.KeyRelease and self._magnifier_held:
+            self.keyReleaseEvent(event)
+            return True
+        return False
 
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
         if not hasattr(self, "_graphics") or self._graphics is None:
             return super().eventFilter(watched, event)  # type: ignore[arg-type]
-        if (
-            self.isVisible()
-            and event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease)
-            and event.key() == Qt.Key.Key_Z
-            and not event.isAutoRepeat()
-            and not event.modifiers() & Qt.KeyboardModifier.ControlModifier
-            and not self._text_input_has_focus()
-            and watched is not self._graphics
-            and watched is not self._graphics.viewport()
-        ):
-            if event.type() == QEvent.Type.KeyPress and self._scene_pos_under_cursor() is not None:
-                self.keyPressEvent(event)
-                return True
-            if event.type() == QEvent.Type.KeyRelease and self._magnifier_held:
-                self.keyReleaseEvent(event)
-                return True
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
             if event.type() == QEvent.Type.MouseButtonPress:

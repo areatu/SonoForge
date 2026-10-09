@@ -215,6 +215,9 @@
         "source": {
           "type": "string"
         },
+        "unassisted": {
+          "type": "boolean"
+        },
         "view": {
           "type": "string"
         }
@@ -233,6 +236,7 @@
         "review_pending",
         "sop_instance_uid",
         "source",
+        "unassisted",
         "view"
       ],
       "additionalProperties": false

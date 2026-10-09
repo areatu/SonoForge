@@ -83,6 +83,23 @@ def test_disabled_preference_hides_loupe_on_the_first_click(qtbot) -> None:
     assert viewer._magnifier_held is False
 
 
+def test_loupe_key_relay_is_removed_with_the_viewer(qtbot) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    viewer = _viewer(qtbot)
+    app = QApplication.instance()
+    assert app is not None
+    relay = viewer._loupe_key_relay
+    assert relay is not None
+    assert relay in app.findChildren(type(relay))
+    viewer.hide()
+    assert viewer._loupe_key_relay is None
+    viewer.show()
+    assert viewer._loupe_key_relay is not None
+    viewer.close()
+    assert viewer._loupe_key_relay is None
+
+
 def test_doppler_and_vessel_do_not_arm_persistent_loupe(qtbot) -> None:
     viewer = _viewer(qtbot)
     viewer._magnifier_linear_persistent = True
