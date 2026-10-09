@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import time
+import weakref
 from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
