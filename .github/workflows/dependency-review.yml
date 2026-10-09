@@ -24,6 +24,7 @@ jobs:
           # GPL-2.0-only OR GPL-3.0-only) on every PyPI package; the LGPL branch
           # is the one we use. Exempt them from the GPL deny-list so a version
           # pin (e.g. pyside6<6.12) does not fail the check as a "changed" dep.
-          allow-dependencies-licenses: pyside6,pyside6-essentials,pyside6-addons,shiboken6
+          # Entries are package-URLs (pkg:pypi/<name>), not bare names.
+          allow-dependencies-licenses: pkg:pypi/pyside6,pkg:pypi/pyside6-essentials,pkg:pypi/pyside6-addons,pkg:pypi/shiboken6
           deny-licenses: GPL-3.0, AGPL-3.0
           allow-ghsas: GHSA-8mgp-746c-j5xp
