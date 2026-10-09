@@ -6,19 +6,15 @@ import inspect
 import shutil
 from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QImage, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QGridLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QPushButton,
     QSizePolicy,
     QStyle,
     QStyledItemDelegate,
@@ -28,9 +24,9 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool.application.thumbnail_scheduler import ThumbnailPriority
 from echo_personal_tool.domain.models import InstanceMetadata, StudyMetadata
-from echo_personal_tool.infrastructure.i18n import get_language, tr, tr_plural
+from echo_personal_tool.infrastructure.i18n import tr
 from echo_personal_tool.infrastructure.instance_sort import sort_instances_by
-from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT, get_theme_palette
+from echo_personal_tool.presentation.dark_theme import ACCENT_BRIGHT, BG_DARK, TEXT
 
 _ITEM_ROLE = Qt.ItemDataRole.UserRole
 _GROUP_MARKER_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -38,6 +34,11 @@ _GROUP_COLOR_ROLE = Qt.ItemDataRole.UserRole + 3
 _VISIBLE_PADDING = 8
 _SCROLL_DEBOUNCE_MS = 25
 _THUMBNAIL_PIXMAP_MAX = 200
+
+# Group outline stays thin so the selection ring (outer cell edge) reads as the
+# current file. Widths are constants so tests can lock the visual contract.
+GROUP_BORDER_WIDTH = 1
+SELECTION_BORDER_WIDTH = 3
 
 # Okabe–Ito-inspired palette: color is paired with a letter so groups remain
 # distinguishable in grayscale and for users with color-vision deficiency.
@@ -51,15 +52,6 @@ _GROUP_COLORS = (
     "#CC79A7",
     "#8A8A8A",
 )
-
-
-@dataclass(frozen=True)
-class _GalleryGroup:
-    marker: str
-    color: str
-    study_date: str
-    clip_count: int
-    first_item: QListWidgetItem
 
 
 def _group_marker(index: int) -> str:
@@ -104,12 +96,16 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
 
         painter.save()
         rect = option.rect
+        painter.fillRect(rect, QColor_from(BG_DARK))
+        # Selection sits on the outer cell edge so it does not merge with the
+        # 1 px group outline drawn later on the thumbnail itself.
         if option.state & QStyle.StateFlag.State_Selected:
-            painter.setPen(QColor_from(ACCENT_BRIGHT))
+            selection_pen = QPen(QColor_from(ACCENT_BRIGHT), SELECTION_BORDER_WIDTH)
+            selection_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            painter.setPen(selection_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(rect.adjusted(1, 1, -2, -2))
-        else:
-            painter.fillRect(rect, QColor_from(BG_DARK))
+            inset = SELECTION_BORDER_WIDTH // 2
+            painter.drawRect(rect.adjusted(inset, inset, -(inset + 1), -(inset + 1)))
 
         thumb_rect = rect.adjusted(4, 4, -4, -4)
         list_widget = option.widget
@@ -139,9 +135,11 @@ class ThumbnailGalleryDelegate(QStyledItemDelegate):
         group_color_text = index.data(_GROUP_COLOR_ROLE)
         if group_marker and group_color_text:
             group_color = QColor_from(str(group_color_text))
-            painter.setPen(QPen(group_color, 3))
+            group_pen = QPen(group_color, GROUP_BORDER_WIDTH)
+            group_pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+            painter.setPen(group_pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(thumb_rect.adjusted(1, 1, -2, -2))
+            painter.drawRect(thumb_rect.adjusted(0, 0, -1, -1))
 
             marker = str(group_marker)
             badge_font = painter.font()
@@ -265,16 +263,6 @@ class ThumbnailGalleryWidget(QListWidget):
         self.customContextMenuRequested.connect(self._on_context_menu)
 
         self._multiview_enabled = False
-        self._gallery_groups: list[_GalleryGroup] = []
-        self._group_legend_revision = 0
-        self._group_legend_height = 0
-        self._group_legend = QWidget(self)
-        self._group_legend.setObjectName("thumbnailGroupLegend")
-        self._group_legend_layout = QGridLayout(self._group_legend)
-        self._group_legend_layout.setContentsMargins(4, 3, 4, 3)
-        self._group_legend_layout.setHorizontalSpacing(4)
-        self._group_legend_layout.setVerticalSpacing(2)
-        self._group_legend.hide()
 
         self._thumbnail_cache: dict[str, QIcon] = {}
         self._thumbnail_pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
@@ -331,109 +319,15 @@ class ThumbnailGalleryWidget(QListWidget):
         super().resizeEvent(event)
         if self._mv_start_hint.isVisible():
             self._position_start_hint()
-        if self._group_legend.isVisible():
-            self._position_group_legend()
-
-    def _position_group_legend(self) -> None:
-        if self._group_legend_height <= 0:
-            return
-        self._group_legend.setGeometry(1, 1, max(0, self.width() - 2), self._group_legend_height)
-        self._group_legend.raise_()
 
     def _sync_horizontal_gallery_height(self) -> None:
         if self._horizontal_mode:
             row_height = self._cell_h + _CELL_SPACING
-            self.setFixedHeight(row_height * 2 + 4 + self._group_legend_height)
-
-    def _clear_group_legend(self) -> None:
-        # Invalidate buttons already queued for deleteLater so a late click
-        # cannot act on a new population's group at the same index.
-        self._group_legend_revision += 1
-        while self._group_legend_layout.count():
-            item = self._group_legend_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-
-    def _update_group_legend(self) -> None:
-        self._clear_group_legend()
-        if len(self._gallery_groups) < 2:
-            self._group_legend.hide()
-            self._group_legend_height = 0
-            self.setViewportMargins(0, 0, 0, 0)
-            self._sync_horizontal_gallery_height()
-            return
-
-        for column in range(2):
-            self._group_legend_layout.setColumnStretch(column, 1)
-        for index, group in enumerate(self._gallery_groups):
-            clips = tr_plural("gallery.group.clips", group.clip_count)
-            button = QPushButton(
-                tr("gallery.group.chip", marker=group.marker, date=group.study_date, clips=clips),
-                self._group_legend,
-            )
-            button.setObjectName("thumbnailGroupChip")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.setFixedHeight(max(36, button.fontMetrics().lineSpacing() * 2 + 8))
-            tooltip = tr(
-                "gallery.group.tooltip",
-                marker=group.marker,
-                date=group.study_date,
-                clips=clips,
-            )
-            button.setToolTip(tooltip)
-            button.setAccessibleName(tooltip)
-            button.setProperty("thumbnailGroupRevision", self._group_legend_revision)
-            button.setProperty("thumbnailGroupIndex", index)
-            palette = get_theme_palette()
-            button.setStyleSheet(
-                "QPushButton { color: "
-                + palette["text"]
-                + "; background-color: "
-                + palette["bg_control"]
-                + "; border: 1px solid "
-                + group.color
-                + "; border-radius: 4px; padding: 1px 4px; text-align: left; }"
-                "QPushButton:hover { background-color: " + palette["bg_button_hover"] + "; }"
-            )
-            button.clicked.connect(self._on_group_chip_clicked)
-            self._group_legend_layout.addWidget(button, index // 2, index % 2)
-
-        self._group_legend.adjustSize()
-        self._group_legend_height = self._group_legend_layout.sizeHint().height()
-        self._group_legend.setFixedHeight(self._group_legend_height)
-        self.setViewportMargins(0, self._group_legend_height, 0, 0)
-        self._position_group_legend()
-        self._group_legend.show()
-        self._sync_horizontal_gallery_height()
-
-    def _on_group_chip_clicked(self, _checked: bool = False) -> None:
-        button = self.sender()
-        if not isinstance(button, QPushButton):
-            return
-        if button.property("thumbnailGroupRevision") != self._group_legend_revision:
-            return
-        try:
-            group_index = int(button.property("thumbnailGroupIndex"))
-        except (TypeError, ValueError):
-            return
-        if not 0 <= group_index < len(self._gallery_groups):
-            return
-        self._scroll_to_group(self._gallery_groups[group_index].first_item)
-
-    def _scroll_to_group(self, item: QListWidgetItem) -> None:
-        instance = item.data(_ITEM_ROLE)
-        if not isinstance(instance, InstanceMetadata):
-            return
-        self.setCurrentItem(item)
-        self.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtTop)
-        self.request_visible_previews(instance)
+            self.setFixedHeight(row_height * 2 + 4)
 
     def reload_text(self) -> None:
-        """Refresh localized legend labels and the Multiview hint."""
+        """Refresh the localized Multiview hint."""
         self.set_multiview_enabled(self._multiview_enabled)
-        self._update_group_legend()
 
     def set_multiview_enabled(self, enabled: bool) -> None:
         """Show the "open in pane" actions and the Ctrl+click hint."""
@@ -522,7 +416,6 @@ class ThumbnailGalleryWidget(QListWidget):
         self.clear()
         self._items_by_uid.clear()
         self._instances.clear()
-        self._gallery_groups.clear()
         self._thumbnail_pixmaps.clear()
         self._thumbnail_cache.clear()
 
@@ -541,9 +434,6 @@ class ThumbnailGalleryWidget(QListWidget):
         for group_index, (study, study_instances) in enumerate(grouped_studies):
             marker = _group_marker(group_index) if has_multiple_groups else ""
             color = _GROUP_COLORS[group_index % len(_GROUP_COLORS)] if has_multiple_groups else ""
-            date_format = "%d.%m.%Y" if get_language() == "ru" else "%Y-%m-%d"
-            study_date = study.study_datetime.strftime(date_format) if study.study_datetime else "—"
-            first_item: QListWidgetItem | None = None
 
             for instance in sort_instances_by(study_instances, self._sort_mode):
                 display_index += 1
@@ -556,22 +446,10 @@ class ThumbnailGalleryWidget(QListWidget):
                 item.setSizeHint(QSize(self._cell_w, self._cell_h))
                 self.addItem(item)
                 self._items_by_uid[instance.sop_instance_uid] = item
-                if first_item is None:
-                    first_item = item
-
-            if first_item is not None:
-                self._gallery_groups.append(
-                    _GalleryGroup(
-                        marker=marker,
-                        color=color,
-                        study_date=study_date,
-                        clip_count=len(study_instances),
-                        first_item=first_item,
-                    )
-                )
 
         self._building = False
-        self._update_group_legend()
+        self.setViewportMargins(0, 0, 0, 0)
+        self._sync_horizontal_gallery_height()
         QTimer.singleShot(0, self._after_populate)
 
     def _after_populate(self) -> None:

@@ -111,7 +111,7 @@ The status bar shows startup, scan, loading, calibration, tool, and error messag
 
 The thumbnail gallery lists instances/series. `Settings → Interface → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
 
-When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with colored thumbnail borders and letter markers. A legend above the list shows each group’s letter, date, and clip count; click an entry to jump to that group. A single group is left unmarked. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. The legend does not show UIDs, full paths, patient names, or patient IDs.
+When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with a thin colored thumbnail border and a letter marker on the thumbnail itself. The selected file has a thicker accent border. A single group is left unmarked. There is no legend above the list. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. UIDs, full paths, patient names, and patient IDs are not drawn on the thumbnails.
 
 The thumbnail context menu includes:
 
@@ -189,7 +189,7 @@ Studies/
 
 The scanner searches recursively. If the selected root has no media directly in it, media-bearing directories are discovered at any depth; studies found in different directories are then merged by `StudyInstanceUID`. If the root itself contains media, it is scanned as a whole, while DICOM files are still split by the UIDs in their headers. One gallery can therefore contain several marked groups.
 
-MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the scanned folder. These identifiers and full paths are not shown in the legend.
+MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the scanned folder. These identifiers and full paths are not drawn on the thumbnails.
 
 ### 3.3 Open and diagnose a scan
 
@@ -1004,8 +1004,8 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 
 ### 19.3 Multiple studies
 
-1. In a common root containing several studies, distinguish them by the thumbnail border color and letter marker; the legend shows the date and clip count.
-2. Click a legend entry to scroll to the beginning of that group.
+1. In a common root containing several studies, distinguish them by the thin thumbnail border color and the letter marker on each thumbnail. The selected file has a thicker accent border.
+2. Scroll the gallery to the group you need; there is no legend above the thumbnails.
 3. Use available DICOM tags and the series description to verify membership; group letters and colors are navigation aids only.
 4. For separate delivery, save each server study through **`Save to Disk`** or open separate roots.
 
