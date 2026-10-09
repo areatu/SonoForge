@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QComboBox,
@@ -55,7 +55,10 @@ from echo_personal_tool.domain.calculators.text import (
     warning_text,
 )
 from echo_personal_tool.infrastructure.i18n import get_language, tr
+from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 from echo_personal_tool.presentation.ui_metrics import font_pixel_size, text_width
+
+_SECTION_ANIM_MS = 180
 
 MODE_STUDY = "study"
 MODE_STANDALONE = "standalone"
@@ -238,6 +241,10 @@ class CalculatorsPanel(QWidget):
         # change repolishes all live widgets, so building them up front made
         # window creation and theme changes noticeably slower.
         self._built = False
+        self._surface: QWidget | None = None
+        self._pinned_width: int | None = None
+        self._section_anims: dict[str, QPropertyAnimation] = {}
+        self._section_hide_slots: dict[str, object] = {}
         if not lazy:
             self._ensure_built()
 
@@ -255,8 +262,29 @@ class CalculatorsPanel(QWidget):
         self._built = True
         self._build()
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._place_surface()
+
+    def set_clip_width(self, width: int | None) -> None:
+        """Pin the built surface so a parent width glide does not reflow it."""
+        self._pinned_width = None if width is None else int(width)
+        self._place_surface()
+
+    def clip_width(self) -> int | None:
+        return self._pinned_width
+
+    def _place_surface(self) -> None:
+        surface = self._surface
+        if surface is None:
+            return
+        width = self._pinned_width if self._pinned_width is not None else self.width()
+        surface.setGeometry(0, 0, max(1, width), max(1, self.height()))
+
     def _build(self) -> None:
-        root = QVBoxLayout(self)
+        self._surface = QWidget(self)
+        self._surface.setObjectName("calcSurface")
+        root = QVBoxLayout(self._surface)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
 
@@ -310,9 +338,9 @@ class CalculatorsPanel(QWidget):
                 heading = QToolButton()
                 heading.setObjectName(f"calcSection_{section}")
                 heading.setCheckable(True)
-                heading.setChecked(True)
+                heading.setChecked(False)
                 heading.setAutoRaise(True)
-                heading.setArrowType(Qt.ArrowType.DownArrow)
+                heading.setArrowType(Qt.ArrowType.RightArrow)
                 heading.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
                 font = heading.font()
                 font.setBold(True)
@@ -325,7 +353,13 @@ class CalculatorsPanel(QWidget):
                 grid.setVerticalSpacing(1)
                 grid.setColumnStretch(0, 1)
                 grids[section] = grid
+                body.setVisible(False)
+                body.setMaximumHeight(0)
                 heading.toggled.connect(lambda expanded, key=section: self._on_section_toggled(key, expanded))
+                anim = QPropertyAnimation(body, b"maximumHeight", self)
+                anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+                anim.setDuration(_SECTION_ANIM_MS)
+                self._section_anims[section] = anim
                 inputs_layout.addWidget(heading)
                 inputs_layout.addWidget(body)
                 self._section_labels[section] = heading
@@ -347,6 +381,7 @@ class CalculatorsPanel(QWidget):
 
         self.reload_text()
         self._refresh(force_text=True)
+        self._place_surface()
 
     # ── public API ───────────────────────────────────────────────────────
     @property
@@ -361,8 +396,8 @@ class CalculatorsPanel(QWidget):
 
     def is_section_expanded(self, section: str) -> bool:
         self._ensure_built()
-        body = self._section_bodies.get(section)
-        return body is not None and not body.isHidden()
+        heading = self._section_labels.get(section)
+        return heading is not None and heading.isChecked()
 
     def set_mode(self, mode: str) -> None:
         if mode not in (MODE_STUDY, MODE_STANDALONE):
@@ -447,8 +482,51 @@ class CalculatorsPanel(QWidget):
 
     # ── internals ────────────────────────────────────────────────────────
     def _on_section_toggled(self, section: str, expanded: bool) -> None:
-        self._section_bodies[section].setVisible(expanded)
-        self._section_labels[section].setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        body = self._section_bodies[section]
+        heading = self._section_labels[section]
+        # Arrow changes at the start of the motion, not when it finishes.
+        heading.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        anim = self._section_anims[section]
+        previous = self._section_hide_slots.pop(section, None)
+        if previous is not None:
+            anim.finished.disconnect(previous)
+        anim.stop()
+        if _reduce_motion_enabled():
+            if expanded:
+                body.setVisible(True)
+                body.setMaximumHeight(16777215)
+            else:
+                body.setMaximumHeight(0)
+                body.setVisible(False)
+            return
+        if expanded:
+            was_closed = (not body.isVisible()) or body.maximumHeight() == 0
+            body.setVisible(True)
+            body.setMaximumHeight(16777215)
+            target = max(1, body.sizeHint().height())
+            start = 0 if was_closed else min(body.height(), target)
+            body.setMaximumHeight(start)
+            anim.setStartValue(start)
+            anim.setEndValue(target)
+        else:
+            start = body.height() if body.isVisible() and body.height() > 0 else max(1, body.sizeHint().height())
+            anim.setStartValue(start)
+            anim.setEndValue(0)
+
+            def _hide(key: str = section) -> None:
+                self._hide_section_body(key)
+
+            self._section_hide_slots[section] = _hide
+            anim.finished.connect(_hide)
+        anim.start()
+
+    def _hide_section_body(self, section: str) -> None:
+        heading = self._section_labels.get(section)
+        body = self._section_bodies.get(section)
+        if heading is None or body is None or heading.isChecked():
+            return
+        body.setMaximumHeight(0)
+        body.setVisible(False)
 
     def _update_section_headings(self, inputs: dict[str, InputValue]) -> None:
         """Heading text with the number of inputs that have a value (useful when collapsed)."""

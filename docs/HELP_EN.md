@@ -508,7 +508,7 @@ The “Mitral regurgitation (PISA)” and “Aortic regurgitation (PISA)” card
 - **Reference gradations:** MVA (`ms_area`, `ms_pht`), TR Vmax (PH probability), PASP, mPAP, PVR (≤2 WU, ESC/ERS 2022), Qp:Qs (≥1.5 haemodynamically significant shunt, AHA/ACC 2018). PVR and Qp:Qs were added to the reference in this version.
 - **Secondary MR:** severe is EROA ≥0.4 cm² and RVol ≥60 mL; a note under the gradations says that with an elliptical orifice or low flow severe may start at EROA ≥0.3 cm² and RVol ≥45 mL.
 
-**Collapsible sections.** Inputs are grouped into sections; click a heading to collapse it. The heading shows how many fields of the section have a value, e.g. `Mitral stenosis (2/5)`.
+**Collapsible sections.** Input sections start collapsed. Click a heading to open or close a section with a short animation; sections opened during the session stay open until restart. The heading shows how many fields have a value, e.g. `Mitral stenosis (2/5)`. Calculator cards do not collapse.
 
 **Checks.** A value outside the plausible range is outlined in orange and listed in the warnings. You also get a warning when DVI > 1 (labels or modes are probably swapped: LVOT is PW, AV is CW) and when AVA by VTI and by Vmax differ by more than 25 %. The reference gradations (AVA, AVAi, DSI) are shown under the results. No severity grade is assigned **automatically**.
 

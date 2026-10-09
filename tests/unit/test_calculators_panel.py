@@ -218,18 +218,39 @@ def test_inputs_are_grouped_by_section() -> None:
     assert panel.findChild(QToolButton, "calcSection_ms").text().endswith("(0/5)")
 
 
+def test_sections_start_collapsed_and_animate_height(qtbot) -> None:
+    from PySide6.QtCore import QAbstractAnimation
+
+    panel = CalculatorsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(320, 640)
+    panel.show()
+    assert all(not panel.is_section_expanded(section) for section in panel._section_labels)
+    panel.set_section_expanded("lv", True)
+    anim = panel._section_anims["lv"]
+    assert anim.state() == QAbstractAnimation.State.Running
+    assert bytes(anim.propertyName()) == b"maximumHeight"
+    target = anim.endValue()
+    assert target == panel._section_bodies["lv"].sizeHint().height() or target >= 1
+    anim.setCurrentTime(anim.duration())
+    assert panel._section_bodies["lv"].maximumHeight() == anim.endValue()
+    assert panel.is_section_expanded("lv")
+
+
 def test_sections_collapse_and_count_filled_inputs() -> None:
     panel = CalculatorsPanel()
     panel.set_mode(MODE_STANDALONE)
     heading = panel.findChild(QToolButton, "calcSection_lv")
     _type(panel, "lvedd", "5")
     assert heading.text().endswith("(1/2)")
-    assert panel.is_section_expanded("lv")
-    heading.click()
     assert not panel.is_section_expanded("lv")
-    assert panel.findChild(QWidget, "calcSectionBody_lv").isHidden()
-    panel.set_section_expanded("lv", True)
+    heading.click()
     assert panel.is_section_expanded("lv")
+    anim = panel._section_anims["lv"]
+    anim.setCurrentTime(anim.duration())
+    assert not panel.findChild(QWidget, "calcSectionBody_lv").isHidden()
+    panel.set_section_expanded("lv", False)
+    assert not panel.is_section_expanded("lv")
 
 
 def test_pisa_card_in_standalone_mode() -> None:
