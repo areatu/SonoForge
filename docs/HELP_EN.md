@@ -125,7 +125,7 @@ Neither command exports the current measurements, and neither automatically inse
 The central viewer displays the current frame, calipers, contours, result overlay, and optional diagnostic labels. Depending on the source, it supports:
 
 - cine playback and frame selection;
-- W/L controls and presets in `Controls` or `Settings → Interface`;
+- W/L sliders in `Controls`; the Interface settings no longer offer a W/L preset;
 - crosshair, panel frames, caliper labels, and inline labels;
 - zoom levels `Fit`, `100%`, and `200%` with `0`, `+`/`=`, and `-`;
 - a context menu with `Save as…`, properties, overlay/reset commands, and calibration actions;
@@ -726,7 +726,6 @@ These documents are reading material. They do not modify structured YAML norms o
 - results-overlay font size and opacity;
 - caliper line width;
 - cine playback speed multiplier;
-- W/L preset: Last used, Soft, Contrast;
 - thumbnail size: Small, Medium, Large;
 - crosshair;
 - panel frames;

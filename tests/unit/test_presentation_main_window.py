@@ -931,7 +931,9 @@ class TestPersistWindowLevelPreferences:
     def test_saves_preferences(self, main_window):
         with patch("echo_personal_tool.presentation.main_window.save_user_preferences"):
             main_window._persist_window_level_preferences()
-            assert main_window._user_preferences.wl_preset == "last_used"
+            assert not hasattr(main_window._user_preferences, "wl_preset")
+            window = main_window._tool_panel.controls.window_slider.slider().value()
+            assert main_window._user_preferences.wl_window == window
 
 
 class TestApplyAreaToolMode:

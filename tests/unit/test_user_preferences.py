@@ -108,17 +108,22 @@ class TestReadChoice:
 
 
 class TestResolveWlValues:
-    def test_soft_preset(self):
-        prefs = UserPreferences(wl_preset="soft")
-        assert resolve_wl_values(prefs) == (70, 40, 35)
-
-    def test_contrast_preset(self):
-        prefs = UserPreferences(wl_preset="contrast")
-        assert resolve_wl_values(prefs) == (140, 55, 65)
-
-    def test_last_used(self):
-        prefs = UserPreferences(wl_preset="last_used", wl_window=100, wl_level=50, wl_dr=50)
+    def test_always_returns_stored_window_level(self):
+        prefs = UserPreferences(wl_window=100, wl_level=50, wl_dr=50)
+        assert not hasattr(prefs, "wl_preset")
         assert resolve_wl_values(prefs) == (100, 50, 50)
+
+    def test_stored_preset_does_not_override_window_level(self, isolated_prefs):
+        store = QSettings("sonoforge-test", "prefs-test")
+        store.setValue("wl_preset", "soft")
+        store.setValue("wl_window", 111)
+        store.setValue("wl_level", 22)
+        store.setValue("wl_dr", 33)
+        store.sync()
+        loaded = load_user_preferences()
+        assert not hasattr(loaded, "wl_preset")
+        assert resolve_wl_values(loaded) == (111, 22, 33)
+        assert store.value("wl_preset") == "soft"
 
 
 class TestDefaultUserPreferences:
