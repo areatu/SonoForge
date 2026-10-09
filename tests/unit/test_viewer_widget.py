@@ -4335,3 +4335,81 @@ class TestMmodeTimeAutoScale:
         )
         w._prompt_mmode_time_span(length_px=100.0)
         assert len(calls) == 1
+
+
+class TestDopplerManualCalibrationHint:
+    def test_placeholder_span_shows_hint_until_scale_is_real(self, qtbot) -> None:
+        from dataclasses import replace
+
+        from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+
+        viewer = _make_viewer(qtbot)
+        viewer._current_frame = np.zeros((240, 480), dtype=np.uint8)
+        roi = DopplerSpectrogramRoi(x0=20.0, y0=140.0, width=440.0, height=80.0)
+        placeholder = DopplerCalibrationState(
+            roi=roi,
+            baseline_y_px=180.0,
+            velocity_span_cm_s=200.0,
+            time_span_ms=0.0,
+        )
+        viewer._doppler_velocity_confirmed = False
+        viewer.apply_doppler_calibration_state(placeholder, persist=False)
+        assert placeholder.has_velocity_scale()
+        assert viewer._doppler.manual_calibration_hint_visible()
+        hint = viewer._doppler._manual_calibration_hint
+        assert hint is not None
+        assert hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        tagged = replace(placeholder, velocity_from_dicom_tags=True)
+        viewer.apply_doppler_calibration_state(tagged, persist=False)
+        assert not viewer._doppler.manual_calibration_hint_visible()
+
+        # Velocity without time is enough: the time axis is out of scope.
+        viewer._doppler_velocity_confirmed = True
+        viewer.apply_doppler_calibration_state(placeholder, persist=False)
+        assert not viewer.is_doppler_time_calibrated()
+        assert not viewer._doppler.manual_calibration_hint_visible()
+
+        time_only = replace(placeholder, velocity_span_cm_s=0.0, time_span_ms=800.0, time_from_dicom_tags=True)
+        viewer.apply_doppler_calibration_state(time_only, persist=False)
+        assert not time_only.has_velocity_scale()
+        assert viewer._doppler.manual_calibration_hint_visible()
+
+    def test_hint_hides_during_calibration_and_returns_if_cancelled(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+
+        viewer = _make_viewer(qtbot)
+        viewer._current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer._doppler_velocity_confirmed = False
+        viewer.apply_doppler_calibration_state(
+            DopplerCalibrationState(
+                roi=DopplerSpectrogramRoi(x0=10.0, y0=120.0, width=400.0, height=90.0),
+                baseline_y_px=160.0,
+                velocity_span_cm_s=200.0,
+            ),
+            persist=False,
+        )
+        assert viewer._doppler.manual_calibration_hint_visible()
+
+        assert viewer.start_doppler_calibration() is True
+        assert not viewer._doppler.manual_calibration_hint_visible()
+
+        viewer.cancel_active_tool()
+        assert viewer._doppler.manual_calibration_hint_visible()
+
+    def test_heuristic_panel_alone_does_not_show_hint(self, qtbot) -> None:
+        from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
+        from echo_personal_tool.domain.models.frame_panels import FramePanelLayout, PanelKind, UltrasoundPanel
+
+        viewer = _make_viewer(qtbot)
+        viewer._current_frame = np.zeros((240, 480), dtype=np.uint8)
+        viewer.clear_doppler_calibration_display()
+        roi = DopplerSpectrogramRoi(x0=0.0, y0=150.0, width=480.0, height=90.0)
+        viewer._frame_panels_from_dicom = False
+        viewer._frame_panel_layout = FramePanelLayout(panels=(UltrasoundPanel(kind=PanelKind.DOPPLER, bounds=roi),))
+        viewer._sync_doppler_manual_calibration_hint()
+        assert not viewer._doppler.manual_calibration_hint_visible()
+
+        viewer._frame_panels_from_dicom = True
+        viewer._sync_doppler_manual_calibration_hint()
+        assert viewer._doppler.manual_calibration_hint_visible()

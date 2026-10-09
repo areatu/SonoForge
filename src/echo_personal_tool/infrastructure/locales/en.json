@@ -886,6 +886,7 @@
   "viewer.doppler.cal_baseline": "Doppler calibration: click on zero-velocity baseline line; range is auto-detected",
   "viewer.doppler.cal_velocity": "Doppler: auto-detection failed. Click top and bottom of velocity scale",
   "viewer.doppler_calibration_complete": "Doppler: calibration complete",
+  "viewer.doppler_manual_calibration_hint": "Draw the manual Doppler calibration",
   "viewer.doppler_calibration_auto_ok": "Doppler velocity scale calibrated automatically",
   "viewer.doppler_calibration_prompt": "Doppler calibration: click on the zero-velocity baseline line; velocity scale range is detected automatically",
   "viewer.doppler_partial_calibration": "Doppler: ROI and baseline from DICOM. Set velocity and time scale manually.",

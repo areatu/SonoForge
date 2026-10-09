@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QRectF, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -31,8 +31,14 @@ from echo_personal_tool.domain.models import (
     DopplerTrace,
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState
 from echo_personal_tool.domain.models.ecg import EcgWaveform
+from echo_personal_tool.domain.services.doppler_calibration import build_axis_mapping
 from echo_personal_tool.domain.services.doppler_repeats import keep_newest_per_label, new_measurement_id
+from echo_personal_tool.presentation.doppler_calibration_hint import (
+    DopplerManualCalibrationHint,
+    place_hint_in_rect,
+)
 from echo_personal_tool.presentation.ecg_strip_widget import EcgStripWidget
 
 
@@ -118,6 +124,12 @@ class DopplerWidget(QWidget):
         layout.addWidget(self._ecg_strip)
         layout.addWidget(self._status_label)
 
+        # Hint lives on the plot viewport so it tracks the spectrogram, not the toolbar.
+        self._hint_requested = False
+        self._calibration_active = False
+        self._manual_calibration_hint = DopplerManualCalibrationHint(self._plot.viewport())
+        self._plot.viewport().installEventFilter(self)
+
     def set_ecg_waveform(self, ecg: EcgWaveform | None) -> None:
         """Load and display ECG waveform in the strip under the spectrogram."""
         self._ecg_strip.set_ecg(ecg)
@@ -130,8 +142,51 @@ class DopplerWidget(QWidget):
         """Highlight a specific ECG cycle."""
         self._ecg_strip.highlight_cycle(cycle_index)
 
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        if watched is self._plot.viewport() and event.type() == QEvent.Type.Resize:
+            self._position_manual_calibration_hint()
+        return super().eventFilter(watched, event)
+
+    def set_manual_calibration_hint_visible(self, visible: bool) -> None:
+        """Ask to show the hint. Hidden again while calibration points are being placed."""
+        self._hint_requested = bool(visible)
+        self._sync_manual_calibration_hint()
+
+    def set_calibration_active(self, active: bool) -> None:
+        """Hide the hint for the duration of an active manual calibration (Q8)."""
+        self._calibration_active = bool(active)
+        self._sync_manual_calibration_hint()
+
+    def set_calibration_state(self, state: DopplerCalibrationState | None) -> None:
+        """Drive the hint from a calibration state: visible iff the velocity scale is missing."""
+        if state is not None:
+            self.set_axis_mapping(build_axis_mapping(state))
+        self.set_manual_calibration_hint_visible(state is None or not state.has_velocity_scale())
+
+    def manual_calibration_hint_visible(self) -> bool:
+        return self._manual_calibration_hint.isVisible()
+
+    def _sync_manual_calibration_hint(self) -> None:
+        hint = self._manual_calibration_hint
+        if self._hint_requested and not self._calibration_active:
+            hint.reload_text()
+            hint.show()
+            self._position_manual_calibration_hint()
+            return
+        hint.hide()
+
+    def _position_manual_calibration_hint(self) -> None:
+        if not self._manual_calibration_hint.isVisible():
+            return
+        viewport = self._plot.viewport()
+        if self._manual_calibration_hint.parent() is not viewport:
+            self._manual_calibration_hint.setParent(viewport)
+        # The standalone plot *is* the spectrogram, so the viewport center is the ROI center.
+        place_hint_in_rect(self._manual_calibration_hint, viewport.rect())
+
     def set_axis_mapping(self, mapping: DopplerAxisMapping) -> None:
         self._axis_mapping = mapping
+        self._position_manual_calibration_hint()
         span = mapping.velocity_max_cm_s - mapping.velocity_min_cm_s
         self._image_item.setRect(
             QRectF(

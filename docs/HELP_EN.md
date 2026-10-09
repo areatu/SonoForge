@@ -549,6 +549,8 @@ Doppler calibration may use, in the relevant source-specific order:
 
 Some vendor layouts provide a real ROI or time scale but not a reliable velocity span. The code can refine it from visible ticks or fall back to a manual baseline/velocity dialog. Treat an automatic value as a proposal and compare it with the displayed scale.
 
+If a spectral strip is open and the vertical scale is still missing (no Doppler tags, and automatic velocity calibration did not succeed), the center of the Doppler ROI shows **Draw the manual Doppler calibration**. The hint disappears while calibration points are being placed, comes back if calibration is cancelled and the scale is still missing, and stays hidden once the velocity scale is set. A missing time scale alone does not show this hint.
+
 `Settings → Measurement → Doppler from DICOM/scale` controls the Doppler automatic path. Manual calibration has priority for the current workflow.
 
 ### 10.4 Doppler manual velocity calibration

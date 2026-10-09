@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from PySide6.QtCore import Qt
 
 from echo_personal_tool.domain.models import (
     DopplerIntervalMarker,
@@ -13,6 +14,9 @@ from echo_personal_tool.domain.models import (
     DopplerPeakMarker,
     DopplerTrace,
 )
+from echo_personal_tool.domain.models.doppler_roi import DopplerCalibrationState, DopplerSpectrogramRoi
+from echo_personal_tool.infrastructure.i18n import tr
+from echo_personal_tool.presentation.doppler_calibration_hint import DOPPLER_MANUAL_CALIBRATION_HINT_KEY
 from echo_personal_tool.presentation.doppler_widget import DopplerWidget
 
 pytestmark = pytest.mark.gui
@@ -197,3 +201,105 @@ def test_trace_clicks_and_finish_trace_emit_updated_measurement(qtbot) -> None:
     assert widget._active_partial_points == []
     assert len(widget._trace_items) == 1
     assert widget._status_label.text() == ("Tool: VTI trace (V) | Click points, double-click to finish")
+
+
+def _velocity_missing_state() -> DopplerCalibrationState:
+    return DopplerCalibrationState(
+        roi=DopplerSpectrogramRoi(x0=0.0, y0=0.0, width=400.0, height=160.0),
+        baseline_y_px=80.0,
+        velocity_span_cm_s=0.0,
+        time_span_ms=1000.0,
+    )
+
+
+def test_manual_calibration_hint_follows_velocity_scale(qtbot) -> None:
+    widget = DopplerWidget()
+    qtbot.addWidget(widget)
+    widget.resize(640, 420)
+    widget.show()
+    qtbot.waitExposed(widget)
+
+    missing = _velocity_missing_state()
+    assert not missing.has_velocity_scale()
+    widget.set_calibration_state(missing)
+    assert widget.manual_calibration_hint_visible()
+    hint = widget._manual_calibration_hint
+    assert hint.text() == tr(DOPPLER_MANUAL_CALIBRATION_HINT_KEY)
+    assert hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    # Centered on the spectrogram viewport (the ROI of this standalone plot).
+    viewport = widget._plot.viewport()
+    assert viewport.rect().contains(hint.geometry().center())
+
+    calibrated = replace(missing, velocity_span_cm_s=200.0)
+    assert calibrated.is_complete()
+    widget.set_calibration_state(calibrated)
+    assert not widget.manual_calibration_hint_visible()
+
+
+def test_manual_calibration_hint_hides_while_calibration_is_active(qtbot) -> None:
+    widget = DopplerWidget()
+    qtbot.addWidget(widget)
+    widget.resize(640, 420)
+    widget.show()
+    qtbot.waitExposed(widget)
+
+    widget.set_calibration_state(_velocity_missing_state())
+    assert widget.manual_calibration_hint_visible()
+
+    widget.set_calibration_active(True)
+    assert not widget.manual_calibration_hint_visible()
+
+    widget.set_calibration_active(False)
+    assert widget.manual_calibration_hint_visible()
+
+
+def test_manual_calibration_hint_click_reaches_the_plot(qtbot) -> None:
+    from PySide6.QtCore import QEvent, QObject, QPointF
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    widget = DopplerWidget()
+    qtbot.addWidget(widget)
+    widget.resize(640, 420)
+    widget.show()
+    qtbot.waitExposed(widget)
+    widget.set_calibration_state(_velocity_missing_state())
+    hint = widget._manual_calibration_hint
+    assert hint.isVisible()
+    assert hint.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    received: list[object] = []
+    viewport = widget._plot.viewport()
+
+    class _Filter(QObject):
+        def eventFilter(self, obj, event) -> bool:  # noqa: N802
+            if obj is viewport and event.type() == QEvent.Type.MouseButtonPress:
+                received.append(obj)
+            return False
+
+    filt = _Filter(viewport)
+    viewport.installEventFilter(filt)
+    # Press in viewport coordinates at the hint center. The window system
+    # delivers that to the widget underneath a transparent-for-mouse label.
+    local = viewport.mapFromGlobal(hint.mapToGlobal(hint.rect().center()))
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(local),
+        viewport.mapToGlobal(local),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    assert QApplication.sendEvent(viewport, event) is True
+    assert viewport in received
+    # A press aimed at the label is not consumed by the label itself.
+    hint_event = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(hint.rect().center()),
+        hint.mapToGlobal(hint.rect().center()),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    assert hint.event(hint_event) is False
+    assert not hint_event.isAccepted()

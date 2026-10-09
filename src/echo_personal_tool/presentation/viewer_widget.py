@@ -782,10 +782,15 @@ class ViewerWidget(QWidget):
             None
         )
         self._doppler_axis_calibrated = False
+        # True only when tags, a confident auto result, manual entry, or a
+        # restored calibration established the vertical scale. Heuristic paths
+        # store the dataclass default span even after auto-calibration fails.
+        self._doppler_velocity_confirmed = False
         self._doppler_calibration_state: DopplerCalibrationState | None = None
         self._doppler_calibration_instance_uid: str | None = None
         self._doppler_calibration_frame_index: int | None = None
         self._frame_panel_layout: FramePanelLayout | None = None
+        self._frame_panels_from_dicom = False
         self._mmode_calibration_state: MmodeCalibrationState | None = None
         self._mmode_cal_step: Literal["roi"] | None = None
         self._mmode_roi_corner1: tuple[float, float] | None = None
@@ -1259,6 +1264,7 @@ class ViewerWidget(QWidget):
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._position_overlay_labels(reposition_results=True)
+        self._doppler.reposition_manual_calibration_hint()
 
     def _position_overlay_labels(self, *, reposition_results: bool = False) -> None:
         geo = self._graphics.geometry()
@@ -1426,6 +1432,7 @@ class ViewerWidget(QWidget):
             total = self._current_state.total_frames
             current = self._current_state.current_frame_index + 1 if total > 0 else 0
             self._set_frame_counter_label(current=current, total=total)
+        self._doppler.reload_manual_calibration_hint_text()
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -2233,6 +2240,7 @@ class ViewerWidget(QWidget):
             self._doppler_calibration_state = None
             self._doppler_calibration_instance_uid = None
             self._doppler_calibration_frame_index = None
+            self._doppler_velocity_confirmed = False
             self._doppler.clear_measurements(keep_calibration_graphics=False)
             if not self._syncing_state:
                 self.doppler_frame_changed.emit(viewer_state.current_frame_index)
@@ -2699,6 +2707,7 @@ class ViewerWidget(QWidget):
         self._doppler_pending_auto_velocity_span = None
         self._measurement_label.setText(tr(_DOPPLER_CAL_BASELINE_KEY))
         self._measurement_label.show()
+        self._sync_doppler_manual_calibration_hint()
         return True
 
     @staticmethod
@@ -2746,8 +2755,10 @@ class ViewerWidget(QWidget):
         self._doppler_calibration_instance_uid = None
         self._doppler_calibration_frame_index = None
         self._doppler_axis_calibrated = False
+        self._doppler_velocity_confirmed = False
         self._doppler.clear_measurements(keep_calibration_graphics=False)
         if self._current_frame is None:
+            self._sync_doppler_manual_calibration_hint()
             return
         height, width = self._current_frame.shape[:2]
         if keep_time_scale and time_span_ms > 0.0:
@@ -2767,6 +2778,7 @@ class ViewerWidget(QWidget):
             self._doppler.set_axis_mapping(build_axis_mapping(state))
         else:
             self._doppler.set_axis_mapping(DopplerAxisMapping.from_frame_size(width, height, time_span_ms=0.0))
+        self._sync_doppler_manual_calibration_hint()
 
     def is_doppler_axis_calibrated(self) -> bool:
         return self.is_doppler_velocity_calibrated() and self.is_doppler_time_calibrated()
@@ -2778,6 +2790,58 @@ class ViewerWidget(QWidget):
     def is_doppler_time_calibrated(self) -> bool:
         state = self._doppler_calibration_state
         return state is not None and state.has_time_scale_from_dicom()
+
+    def _doppler_velocity_scale_is_set(self) -> bool:
+        """True when the vertical scale is real, not a placeholder span.
+
+        The spec hides the hint when ``has_velocity_scale()`` is true. Heuristic
+        paths still store the dataclass default span (200 cm/s) after auto
+        calibration fails, so that predicate alone would hide the hint on the
+        untagged clips it is meant for. A scale counts when DICOM tags, a
+        per-pixel tag formula, a confident auto result, manual entry, or a
+        restored calibration established it.
+        """
+        state = self._doppler_calibration_state
+        if state is not None and state.has_velocity_scale():
+            if state.has_velocity_scale_from_dicom() or (
+                state.velocity_per_pixel_cm_s is not None and state.velocity_per_pixel_cm_s > 0.0
+            ):
+                return True
+            return self._doppler_velocity_confirmed
+        panel = self._dicom_doppler_panel()
+        return panel is not None and panel.vertical_cm_s_per_pixel is not None
+
+    def _dicom_doppler_panel(self):
+        if not self._frame_panels_from_dicom or self._frame_panel_layout is None:
+            return None
+        return self._frame_panel_layout.doppler
+
+    def _doppler_hint_roi(self) -> DopplerSpectrogramRoi | None:
+        state = self._doppler_calibration_state
+        if state is not None and state.roi.width > 0.0 and state.roi.height > 0.0:
+            return state.roi
+        mapping = self._doppler.axis_mapping()
+        if mapping.roi is not None and mapping.roi.width > 0.0 and mapping.roi.height > 0.0:
+            return mapping.roi
+        panel = self._dicom_doppler_panel()
+        if panel is not None and panel.bounds.width > 0.0 and panel.bounds.height > 0.0:
+            return panel.bounds
+        return None
+
+    def _doppler_calibration_in_progress(self) -> bool:
+        if self._doppler_cal_step is not None:
+            return True
+        return bool(self._calibration_active and self._calibration_kind in {"spectral", "doppler_velocity"})
+
+    def _sync_doppler_manual_calibration_hint(self) -> None:
+        """Show the hint in the ROI center when a Doppler strip has no velocity scale."""
+        active = self._doppler_calibration_in_progress()
+        roi = self._doppler_hint_roi()
+        clip_open = self._current_frame is not None and roi is not None
+        wanted = clip_open and not self._doppler_velocity_scale_is_set()
+        self._doppler.set_calibration_active(active)
+        self._doppler.set_hint_roi(roi)
+        self._doppler.set_manual_calibration_hint_visible(wanted)
 
     def start_mitral_inflow_workflow(self) -> bool:
         if self._current_frame is None:
@@ -3176,6 +3240,10 @@ class ViewerWidget(QWidget):
         self._doppler_calibration_frame_index = self._current_frame_index()
         self._doppler.set_axis_mapping(build_axis_mapping(state))
         self._doppler_axis_calibrated = state.has_velocity_scale()
+        if state.has_velocity_scale_from_dicom() or (
+            state.velocity_per_pixel_cm_s is not None and state.velocity_per_pixel_cm_s > 0.0
+        ):
+            self._doppler_velocity_confirmed = True
 
         # Show ECG strip and load ECG data when Doppler is active
         if state is not None:
@@ -3186,6 +3254,7 @@ class ViewerWidget(QWidget):
 
         if persist and not self._syncing_state and self._doppler_calibration_matches_instance():
             self.doppler_calibration_changed.emit(state)
+        self._sync_doppler_manual_calibration_hint()
 
     def show_ecg_strip(self) -> None:
         """Show the ECG strip under the spectrogram."""
@@ -3238,6 +3307,7 @@ class ViewerWidget(QWidget):
         dto: object | None,
     ) -> None:
         if calibration is not None:
+            self._doppler_velocity_confirmed = calibration.has_velocity_scale()
             self.apply_doppler_calibration_state(calibration, persist=False)
         elif not self._try_auto_detect_doppler_calibration():
             self.clear_doppler_calibration_display()
@@ -3567,11 +3637,13 @@ class ViewerWidget(QWidget):
 
     def _refresh_frame_panel_layout(self) -> None:
         self._frame_panel_layout = None
+        self._frame_panels_from_dicom = False
         if self._current_frame is None:
             return
         instance = self._current_state.instance if self._current_state else None
         if instance is not None and instance.media_format == "dicom" and instance.path is not None:
             self._frame_panel_layout = try_parse_panels_from_path(instance.path)
+            self._frame_panels_from_dicom = self._frame_panel_layout is not None
         if self._frame_panel_layout is None:
             gray = self._current_frame
             if gray.ndim == 3:
@@ -3778,6 +3850,7 @@ class ViewerWidget(QWidget):
                                 velocity_span_cm_s=auto.velocity_span_cm_s,
                                 velocity_from_dicom_tags=False,
                             )
+                            self._doppler_velocity_confirmed = True
                     self.apply_doppler_calibration_state(parsed, persist=True)
                     return True
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
@@ -3800,6 +3873,7 @@ class ViewerWidget(QWidget):
                             time_span_ms=parsed.time_span_ms,
                             kind=parsed.kind,
                         )
+                        self._doppler_velocity_confirmed = True
                         self.apply_doppler_calibration_state(state, persist=True)
                         self._doppler_pending_roi = None
                         self._doppler_pending_baseline_y = None
@@ -3812,6 +3886,7 @@ class ViewerWidget(QWidget):
 
     def _configure_doppler_axis_for_frame(self) -> None:
         if self._current_frame is None:
+            self._sync_doppler_manual_calibration_hint()
             return
         if self._doppler_calibration_state is not None and self._doppler_calibration_matches_instance():
             self.apply_doppler_calibration_state(
@@ -3824,6 +3899,8 @@ class ViewerWidget(QWidget):
 
         if self._try_auto_detect_doppler_calibration():
             return
+        # A new heuristic pass must not inherit a confirmation from another clip.
+        self._doppler_velocity_confirmed = False
 
         height, width = self._current_frame.shape[:2]
 
@@ -3838,6 +3915,7 @@ class ViewerWidget(QWidget):
             mapping = DopplerAxisMapping.from_frame_size(width, height)
             self._doppler.set_axis_mapping(mapping)
             self._doppler_axis_calibrated = False
+            self._sync_doppler_manual_calibration_hint()
             return
 
         # If refined ROI was computed from velocity scales, verify it's real Doppler.
@@ -3866,6 +3944,7 @@ class ViewerWidget(QWidget):
                 mapping = DopplerAxisMapping.from_frame_size(width, height)
                 self._doppler.set_axis_mapping(mapping)
                 self._doppler_axis_calibrated = False
+                self._sync_doppler_manual_calibration_hint()
                 return
             baseline_y = roi.y0 + roi.height / 2.0
             # Use time scale to compute time span from visible width
@@ -3893,6 +3972,7 @@ class ViewerWidget(QWidget):
             )
             if auto_vel is not None:
                 velocity_span = auto_vel.velocity_span_cm_s
+                self._doppler_velocity_confirmed = True
             state = calibration_from_roi_and_baseline(
                 roi,
                 baseline_y,
@@ -3947,6 +4027,7 @@ class ViewerWidget(QWidget):
                 )
                 if auto_vel is not None:
                     velocity_span = auto_vel.velocity_span_cm_s
+                    self._doppler_velocity_confirmed = True
                 state = calibration_from_roi_and_baseline(
                     roi,
                     baseline_y,
@@ -3995,6 +4076,7 @@ class ViewerWidget(QWidget):
                 mapping = DopplerAxisMapping.from_frame_size(width, height)
                 self._doppler.set_axis_mapping(mapping)
         self._doppler_axis_calibrated = False
+        self._sync_doppler_manual_calibration_hint()
 
     def _handle_doppler_calibration_click(self, ev) -> bool:
         if self._doppler_cal_step is None or self._current_frame is None:
@@ -4081,6 +4163,7 @@ class ViewerWidget(QWidget):
             )
         self._calibration_start_y = start_y
         self._measurement_label.setText(tr(_DOPPLER_CAL_VELOCITY_KEY))
+        self._sync_doppler_manual_calibration_hint()
 
     def _handle_doppler_mouse_click(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:
@@ -4920,6 +5003,7 @@ class ViewerWidget(QWidget):
             self._doppler_pending_roi = None
             self._doppler_pending_baseline_y = None
             self._doppler_pending_velocity_span = None
+            self._sync_doppler_manual_calibration_hint()
             return
         if self._doppler.cancel_active_tool():
             return
@@ -5510,6 +5594,7 @@ class ViewerWidget(QWidget):
         self._clear_calibration_graphics()
         if not self._linear_caliper_active:
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+        self._sync_doppler_manual_calibration_hint()
 
     def _clear_calibration_graphics(self) -> None:
         if self._calibration_line_item is not None:
@@ -7093,6 +7178,7 @@ class ViewerWidget(QWidget):
                 time_origin_ms=prior.time_origin_ms,
                 time_from_dicom_tags=prior.time_from_dicom_tags,
             )
+        self._doppler_velocity_confirmed = True
         self.apply_doppler_calibration_state(state)
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None

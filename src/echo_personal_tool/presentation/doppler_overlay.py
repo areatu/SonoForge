@@ -7,7 +7,7 @@ import statistics
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QWidget
 
@@ -39,6 +39,7 @@ from echo_personal_tool.domain.models import (
     DopplerTrace,
 )
 from echo_personal_tool.domain.models.doppler_axis import DopplerAxisMapping
+from echo_personal_tool.domain.models.doppler_roi import DopplerSpectrogramRoi
 from echo_personal_tool.domain.models.vessel_measurement import VesselMeasurement
 from echo_personal_tool.domain.services.cardiac_cycle_service import (
     CardiacCycle,
@@ -52,6 +53,10 @@ from echo_personal_tool.domain.services.doppler_repeats import (
 from echo_personal_tool.domain.services.doppler_trace_points import (
     filter_velocity_spikes,
     finalize_vti_trace_points,
+)
+from echo_personal_tool.presentation.doppler_calibration_hint import (
+    DopplerManualCalibrationHint,
+    place_hint_in_rect,
 )
 
 logger = logging.getLogger(__name__)
@@ -216,6 +221,20 @@ class DopplerOverlayTools(QWidget):
         # override wins), "" when unknown. Fixed at measurement time.
         self._doppler_mode: str = ""
 
+        # Manual-calibration hint. Created lazily so unit tests that pass a
+        # mock plot never construct a QLabel against a non-widget parent.
+        self._hint_requested = False
+        self._calibration_active = False
+        self._hint_roi: DopplerSpectrogramRoi | None = None
+        self._manual_calibration_hint: DopplerManualCalibrationHint | None = None
+        range_changed = getattr(self._plot, "sigRangeChanged", None)
+        connect = getattr(range_changed, "connect", None)
+        if callable(connect):
+            try:
+                connect(self._position_manual_calibration_hint)
+            except TypeError:
+                pass
+
     def set_doppler_mode(self, mode: str) -> None:
         """Set the acquisition mode stamped on newly committed markers.
 
@@ -236,6 +255,116 @@ class DopplerOverlayTools(QWidget):
         self._redraw_intervals()
         self._redraw_traces()
         self._redraw_vessel_graphics()
+        self._position_manual_calibration_hint()
+
+    def set_manual_calibration_hint_visible(self, visible: bool) -> None:
+        """Viewer asks to show the hint (Doppler strip open, no velocity scale)."""
+        self._hint_requested = bool(visible)
+        self._sync_manual_calibration_hint()
+
+    def set_calibration_active(self, active: bool) -> None:
+        """Hide the hint while the user is placing calibration points (Q8)."""
+        self._calibration_active = bool(active)
+        self._sync_manual_calibration_hint()
+
+    def set_hint_roi(self, roi: DopplerSpectrogramRoi | None) -> None:
+        """Pixel ROI the hint is centered on. ``None`` hides positioning until one exists."""
+        self._hint_roi = roi
+        self._position_manual_calibration_hint()
+
+    def manual_calibration_hint_visible(self) -> bool:
+        hint = self._manual_calibration_hint
+        return hint is not None and hint.isVisible()
+
+    def reposition_manual_calibration_hint(self) -> None:
+        self._position_manual_calibration_hint()
+
+    def reload_manual_calibration_hint_text(self) -> None:
+        if self._manual_calibration_hint is not None:
+            self._manual_calibration_hint.reload_text()
+            self._position_manual_calibration_hint()
+
+    def _sync_manual_calibration_hint(self) -> None:
+        show = self._hint_requested and not self._calibration_active
+        if not show:
+            if self._manual_calibration_hint is not None:
+                self._manual_calibration_hint.hide()
+            return
+        hint = self._ensure_manual_calibration_hint()
+        if hint is None:
+            return
+        hint.reload_text()
+        hint.show()
+        self._position_manual_calibration_hint()
+
+    def _ensure_manual_calibration_hint(self) -> DopplerManualCalibrationHint | None:
+        if self._manual_calibration_hint is not None:
+            return self._manual_calibration_hint
+        parent = self._hint_parent()
+        if parent is None:
+            return None
+        self._manual_calibration_hint = DopplerManualCalibrationHint(parent)
+        return self._manual_calibration_hint
+
+    def _hint_parent(self):
+        graphics = self._graphics_view()
+        if graphics is None:
+            return None
+        viewport = getattr(graphics, "viewport", None)
+        if not callable(viewport):
+            return None
+        try:
+            return graphics.viewport()
+        except (AttributeError, RuntimeError, TypeError):
+            return None
+
+    def _graphics_view(self):
+        scene_fn = getattr(self._plot, "scene", None)
+        if not callable(scene_fn):
+            return None
+        try:
+            scene = self._plot.scene()
+        except (AttributeError, RuntimeError, TypeError):
+            return None
+        if scene is None or not hasattr(scene, "views"):
+            return None
+        try:
+            views = scene.views()
+        except (AttributeError, RuntimeError, TypeError):
+            return None
+        if not views:
+            return None
+        return views[0]
+
+    def _position_manual_calibration_hint(self, *_args) -> None:
+        hint = self._manual_calibration_hint
+        if hint is None or not hint.isVisible():
+            return
+        graphics = self._graphics_view()
+        if graphics is None:
+            return
+        try:
+            viewport = graphics.viewport()
+        except (AttributeError, RuntimeError, TypeError):
+            return
+        if hint.parent() is not viewport:
+            hint.setParent(viewport)
+        bounds = viewport.rect()
+        center = self._hint_center_in_viewport(graphics, viewport)
+        place_hint_in_rect(hint, bounds, center)
+
+    def _hint_center_in_viewport(self, graphics, viewport):
+        roi = self._hint_roi if self._hint_roi is not None else self._axis_mapping.roi
+        if roi is None or not hasattr(self._plot, "mapViewToScene"):
+            return None
+        cx = float(roi.x0) + float(roi.width) / 2.0
+        cy = float(roi.y0) + float(roi.height) / 2.0
+        try:
+            scene_point = self._plot.mapViewToScene(QPointF(cx, cy))
+            view_point = graphics.mapFromScene(scene_point)
+            return viewport.mapFrom(graphics, view_point)
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return None
 
     def set_show_calibration_roi(self, visible: bool) -> None:
         self._show_calibration_roi = bool(visible)
