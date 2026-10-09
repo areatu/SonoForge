@@ -469,6 +469,8 @@
   "preferences.magnetic_weight": "Магнит: порог:",
   "preferences.magnifier": "Лупа (удерживать Z)",
   "preferences.magnifier_hint": "Удерживайте Z при постановке точек контура/калипера — рядом появится лупа с зумом. Источник — отображаемый (маскированный) кадр.",
+  "preferences.magnifier_linear_persistent": "Лупа при линейных измерениях",
+  "preferences.magnifier_linear_persistent_hint": "Пока активен линейный калипер в B-режиме или M-режиме, лупа следует за курсором до последней точки. По умолчанию выключено. Для допплера и сосудов не используется.",
   "preferences.magnifier_radius": "Размер лупы:",
   "preferences.magnifier_zoom": "Зум лупы:",
   "preferences.no": "Нет",

@@ -952,6 +952,9 @@ class ViewerWidget(QWidget):
         self._magnifier_zoom = 3.0
         self._magnifier_radius_px = 70
         self._magnifier_held = False
+        self._magnifier_linear_persistent = False
+        self._magnifier_persistent_active = False
+        self._magnifier_key_filter = False
         self._magnifier_lens = None
         self._reduce_motion = False
         self._show_panel_frames = False
@@ -1173,9 +1176,33 @@ class ViewerWidget(QWidget):
             return
         self._update_contour_hover((float(mapped.x()), float(mapped.y())))
 
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        # Z must reach the loupe even when focus sits on the gallery or the tool panel.
+        app = QApplication.instance()
+        if app is not None and not self._magnifier_key_filter:
+            app.installEventFilter(self)
+            self._magnifier_key_filter = True
+        super().showEvent(event)
+
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
         if not hasattr(self, "_graphics") or self._graphics is None:
             return super().eventFilter(watched, event)  # type: ignore[arg-type]
+        if (
+            self.isVisible()
+            and event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease)
+            and event.key() == Qt.Key.Key_Z
+            and not event.isAutoRepeat()
+            and not event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            and not self._text_input_has_focus()
+            and watched is not self._graphics
+            and watched is not self._graphics.viewport()
+        ):
+            if event.type() == QEvent.Type.KeyPress and self._scene_pos_under_cursor() is not None:
+                self.keyPressEvent(event)
+                return True
+            if event.type() == QEvent.Type.KeyRelease and self._magnifier_held:
+                self.keyReleaseEvent(event)
+                return True
         graphics_target = watched is self._graphics or watched is self._graphics.viewport()
         if graphics_target:
             if event.type() == QEvent.Type.MouseButtonPress:
@@ -1213,7 +1240,7 @@ class ViewerWidget(QWidget):
         return self._magnifier_lens
 
     def _update_magnifier_loupe(self, scene_pos) -> None:  # type: ignore[no-untyped-def]
-        if not self._magnifier_enabled or not self._magnifier_held:
+        if not self._magnifier_enabled or not (self._magnifier_held or self._magnifier_persistent_active):
             if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
                 self._magnifier_lens.hide_animated(instant=True)
             return
@@ -1249,9 +1276,59 @@ class ViewerWidget(QWidget):
 
     def _hide_magnifier_on_point(self) -> None:
         # Point placed (click): drop the hold so the loupe closes; user can
-        # hold Z again for the next point.
+        # hold Z again for the next point. A persistent linear-measurement
+        # loupe stays up until the last point, Esc, or a tool change.
+        if self._magnifier_persistent_active:
+            return
         self._magnifier_held = False
         if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+            self._magnifier_lens.hide_animated()
+
+    def _scene_pos_under_cursor(self):  # type: ignore[no-untyped-def]
+        """Scene position when the cursor is over the viewer, else None."""
+        if not self.isVisible():
+            return None
+        try:
+            global_pos = QCursor.pos()
+        except RuntimeError:
+            return None
+        if not self.rect().contains(self.mapFromGlobal(global_pos)):
+            return None
+        graphics_local = self._graphics.mapFromGlobal(global_pos)
+        if not self._graphics.rect().contains(graphics_local):
+            return None
+        return self._graphics.mapToScene(graphics_local)
+
+    def _text_input_has_focus(self) -> bool:
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return False
+        from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit, QTextEdit
+
+        return isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
+
+    def _show_magnifier_now(self) -> None:
+        scene_pos = self._scene_pos_under_cursor()
+        if scene_pos is not None:
+            self._update_magnifier_loupe(scene_pos)
+
+    def _persistent_loupe_allowed(self) -> bool:
+        """Linear B/M calipers only. Doppler tools and vessels stay unaided."""
+        if not self._magnifier_enabled or not self._magnifier_linear_persistent:
+            return False
+        if self._doppler.get_tool_mode() != "none":
+            return False
+        if self._doppler.vessel_status() != "none":
+            return False
+        return True
+
+    def _sync_persistent_loupe(self) -> None:
+        if self._linear_caliper_active and self._persistent_loupe_allowed():
+            self._magnifier_persistent_active = True
+            self._show_magnifier_now()
+            return
+        self._magnifier_persistent_active = False
+        if not self._magnifier_held and self._magnifier_lens is not None and self._magnifier_lens.isVisible():
             self._magnifier_lens.hide_animated()
 
     @_prof
@@ -1391,6 +1468,9 @@ class ViewerWidget(QWidget):
         self._magnifier_enabled = preferences.magnifier_enabled
         self._magnifier_zoom = preferences.magnifier_zoom
         self._magnifier_radius_px = preferences.magnifier_radius_px
+        self._magnifier_linear_persistent = preferences.magnifier_linear_persistent
+        if not self._magnifier_linear_persistent:
+            self._magnifier_persistent_active = False
         self._reduce_motion = preferences.reduce_motion
         if self._magnifier_lens is not None:
             self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
@@ -4334,6 +4414,7 @@ class ViewerWidget(QWidget):
         self._linear_caliper_active = True
         self._linear_caliper_start = None
         self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=label))
+        self._sync_persistent_loupe()
         return True
 
     def cycle_caliper_label(self) -> None:
@@ -5583,6 +5664,7 @@ class ViewerWidget(QWidget):
         self._caliper_sequence_size = 0
         self._reset_mmode_session_vertical_labels()
         self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+        self._sync_persistent_loupe()
         if not self._syncing_state:
             self._emit_stored_linear_measurements()
 
@@ -8032,6 +8114,7 @@ class ViewerWidget(QWidget):
             self._update_linear_caliper_label_preview_from_state()
         else:
             self._linear_caliper_active = False
+        self._sync_persistent_loupe()
 
     def add_linear_measurements(self, measurements: Iterable[LinearMeasurement]) -> None:
         """Insert calipers measured outside the click-click flow (e.g. M-mode).
@@ -8217,6 +8300,7 @@ class ViewerWidget(QWidget):
         if event.key() == Qt.Key.Key_Z and not event.isAutoRepeat():
             if self._magnifier_enabled and not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 self._magnifier_held = True
+                self._show_magnifier_now()
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Escape:
@@ -8306,7 +8390,11 @@ class ViewerWidget(QWidget):
     def keyReleaseEvent(self, event) -> None:  # type: ignore[override]
         if event.key() == Qt.Key.Key_Z and not event.isAutoRepeat():
             self._magnifier_held = False
-            if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+            if (
+                not self._magnifier_persistent_active
+                and self._magnifier_lens is not None
+                and self._magnifier_lens.isVisible()
+            ):
                 self._magnifier_lens.hide_animated()
             event.accept()
             return

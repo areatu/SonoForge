@@ -268,6 +268,9 @@ class UserPreferencesDialog(QDialog):
         self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
         self._magnifier_check.setChecked(current.magnifier_enabled)
         self._magnifier_check.setToolTip(tr("preferences.magnifier_hint"))
+        self._magnifier_linear_persistent = QCheckBox(tr("preferences.magnifier_linear_persistent"))
+        self._magnifier_linear_persistent.setChecked(current.magnifier_linear_persistent)
+        self._magnifier_linear_persistent.setToolTip(tr("preferences.magnifier_linear_persistent_hint"))
         self._magnifier_zoom_spin = QDoubleSpinBox()
         self._magnifier_zoom_spin.setRange(MIN_MAGNIFIER_ZOOM, MAX_MAGNIFIER_ZOOM)
         self._magnifier_zoom_spin.setSingleStep(0.5)
@@ -290,6 +293,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
         display_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
         display_form.addRow(self._magnifier_check)
+        display_form.addRow(self._magnifier_linear_persistent)
         display_form.addRow(tr("preferences.magnifier_zoom"), self._magnifier_zoom_spin)
         display_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
@@ -725,6 +729,7 @@ class UserPreferencesDialog(QDialog):
             magnifier_enabled=self._magnifier_check.isChecked(),
             magnifier_zoom=float(self._magnifier_zoom_spin.value()),
             magnifier_radius_px=int(self._magnifier_radius_spin.value()),
+            magnifier_linear_persistent=self._magnifier_linear_persistent.isChecked(),
             show_panel_frames=self._show_panel_frames.isChecked(),
             show_caliper_labels_on_frame=self._show_caliper_labels.isChecked(),
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),

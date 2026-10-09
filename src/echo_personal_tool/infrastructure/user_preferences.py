@@ -125,6 +125,7 @@ class UserPreferences:
     magnifier_enabled: bool = True
     magnifier_zoom: float = DEFAULT_MAGNIFIER_ZOOM
     magnifier_radius_px: int = DEFAULT_MAGNIFIER_RADIUS_PX
+    magnifier_linear_persistent: bool = False
     show_panel_frames: bool = False
     show_caliper_labels_on_frame: bool = True
     show_caliper_inline_labels: bool = False
@@ -337,6 +338,7 @@ def load_user_preferences() -> UserPreferences:
             MIN_MAGNIFIER_RADIUS_PX,
             MAX_MAGNIFIER_RADIUS_PX,
         ),
+        magnifier_linear_persistent=_read_bool(store.value("magnifier_linear_persistent"), False),
         show_panel_frames=_read_bool(store.value("show_panel_frames"), False),
         show_caliper_labels_on_frame=_read_bool(store.value("show_caliper_labels_on_frame"), True),
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),

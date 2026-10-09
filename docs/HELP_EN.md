@@ -730,6 +730,7 @@ These documents are reading material. They do not modify structured YAML norms o
 - crosshair;
 - panel frames;
 - caliper labels on frame and inline labels;
+- loupe: holding `Z` shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
 - Reduce motion.
 
 Line width and overlay settings affect display. Playback speed and cache affect playback behavior, not the measurement formulas.

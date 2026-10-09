@@ -469,6 +469,8 @@
   "preferences.magnetic_weight": "Magnetic: threshold:",
   "preferences.magnifier": "Magnifier loupe (hold Z)",
   "preferences.magnifier_hint": "Hold Z while placing contour/caliper points to show an offset zoom loupe. Source is the displayed (masked) frame.",
+  "preferences.magnifier_linear_persistent": "Loupe during linear measurements",
+  "preferences.magnifier_linear_persistent_hint": "While a B-mode or M-mode linear caliper is active, keep the loupe on the cursor until the last point. Off by default. Not used for Doppler or vessel tools.",
   "preferences.magnifier_radius": "Loupe size:",
   "preferences.magnifier_zoom": "Loupe zoom:",
   "preferences.no": "No",
