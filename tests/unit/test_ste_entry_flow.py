@@ -138,6 +138,13 @@ def mock_controller():
     c._frame_cache = MagicMock(_total_frames=20)
     c._current_study_uid = None
     c._measurement_session = {}
+    # Real-disabled persistence semantics: a truthy auto-mock would make
+    # MainWindow._sync_measurement_persistence open a modal QMessageBox.exec()
+    # during construction and hang the test (see test_presenter_view.py).
+    c.measurement_persistence.enabled = False
+    c.measurement_persistence.has_pending_edits = False
+    c.measurement_persistence.flush.return_value = True
+    c.measurement_persistence.discard_pending.return_value = True
     return c
 
 

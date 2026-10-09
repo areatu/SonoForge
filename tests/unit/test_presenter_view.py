@@ -64,6 +64,16 @@ def _make_controller():
     c.playback_config = MagicMock(scroll_debounce_ms=100)
     c.studies = []
     c.get_cached_frames.return_value = []
+    # A MagicMock controller would leave measurement_persistence as a truthy
+    # auto-mock: MainWindow._sync_measurement_persistence would then open a
+    # modal QMessageBox.exec() during construction and hang the test forever
+    # (this exact hang killed the ubuntu CI job with a silent exit 1 — see
+    # the identical fix in test_presentation_main_window.py). Behave like the
+    # real disabled persistence: plain bools, successful operations.
+    c.measurement_persistence.enabled = False
+    c.measurement_persistence.has_pending_edits = False
+    c.measurement_persistence.flush.return_value = True
+    c.measurement_persistence.discard_pending.return_value = True
     # Persistent (not context-patched): _apply_user_preferences runs inside
     # the tests and must not hit the real results formatter.
     c.compute_overlay_snapshot = MagicMock(return_value=None)
