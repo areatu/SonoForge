@@ -1421,9 +1421,7 @@ class MainWindow(QMainWindow):
             self._show_status(tr("persistence.disable_blocked"))
         self._revert_measurement_persistence_preference(stored, effective)
 
-    def _revert_measurement_persistence_preference(
-        self, stored: UserPreferences, effective: UserPreferences
-    ) -> None:
+    def _revert_measurement_persistence_preference(self, stored: UserPreferences, effective: UserPreferences) -> None:
         from echo_personal_tool.infrastructure.user_preferences import save_user_preferences
 
         stored.measurement_persistence_enabled = True
