@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from time import perf_counter
@@ -76,6 +77,7 @@ from echo_personal_tool.presentation.presenter_view import TOP_EDGE_REVEAL_PX, P
 from echo_personal_tool.presentation.report_dialog import ReportDialog
 from echo_personal_tool.presentation.speckle_settings_dialog import SpeckleSettingsDialog
 from echo_personal_tool.presentation.start_page import StartPage
+from echo_personal_tool.presentation.study_loading_overlay import StudyLoadingOverlay
 from echo_personal_tool.presentation.system_bar import SystemBar
 from echo_personal_tool.presentation.tab_bar import EmptyTabPlaceholder, TabStrip
 from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
@@ -240,6 +242,8 @@ class MainWindow(QMainWindow):
         # Tabs (Э9, PR-B): one study set per tab; the controller shows the active one.
         self._tabs = TabSessionManager()
         self._tab_loading_id: str | None = None
+        self._tab_keep_content_visible = False
+        self._tab_switch_previous_id: str | None = None
         self._restore_target: tuple[str, str, int] | None = None
         self._pending_cache_purges: set[str] = set()
         self._download_history = DownloadHistory()
@@ -346,6 +350,7 @@ class MainWindow(QMainWindow):
         self._viewer_stack.addWidget(self._viewer)
         self._viewer_stack.addWidget(self._start_page)
         self._viewer_stack.setCurrentWidget(self._start_page)
+        self._study_loading_overlay = StudyLoadingOverlay(self._viewer_stack)
         self._start_page.open_folder_requested.connect(self._open_folder)
         self._start_page.load_from_server_requested.connect(self._open_orthanc_dialog)
         self._start_page.continue_requested.connect(self._continue_last_session)
@@ -1481,6 +1486,10 @@ class MainWindow(QMainWindow):
             self._show_status(text)
 
     def _on_persistence_blocked(self) -> None:
+        # A second flush inside the controller can refuse a tab load after
+        # the UI has entered its busy state. Do not leave the input veil up.
+        if self._tab_loading_id is not None:
+            self._abort_tab_load()
         QMessageBox.warning(self, tr("persistence.title"), tr("persistence.blocked_navigation"))
 
     def _on_persistence_conflict(self, study_uids: list) -> None:
@@ -2148,6 +2157,14 @@ class MainWindow(QMainWindow):
 
     @_prof
     def _on_studies_loaded(self, studies: object) -> None:
+        try:
+            with self._batch_study_surface_updates():
+                self._apply_loaded_studies(studies)
+        except Exception:
+            self._abort_tab_load()
+            raise
+
+    def _apply_loaded_studies(self, studies: object) -> None:
         # A new study/patient invalidates every Multiview pane: never mix clips
         # of two studies in the same pair (spec 4.3).
         self._multiview.reset_session()
@@ -2251,7 +2268,10 @@ class MainWindow(QMainWindow):
                 cache_session_id=cache_session_id,
                 activate=True,
             )
-        self._leave_special_layouts()
+        if self._layout_config.multiview or self._mmode_active:
+            self._leave_special_layouts()
+        self._tab_keep_content_visible = False
+        self._tab_switch_previous_id = None
         self._tab_loading_id = self._tabs.active_tab_id
         self._restore_target = None
         self._refresh_tab_strip()
@@ -2358,17 +2378,45 @@ class MainWindow(QMainWindow):
         if self._mmode_active:
             self._toggle_mmode()
 
+    @contextmanager
+    def _batch_study_surface_updates(self):
+        """Coalesce synchronous surface changes, never freeze the whole window.
+
+        Restore the previous flags (also on exceptions/nested calls); updates
+        are enabled again before control returns to the async event loop.
+        """
+        widgets = (self._viewer_stack, self._gallery)
+        enabled = [widget.updatesEnabled() for widget in widgets]
+        try:
+            for widget, was_enabled in zip(widgets, enabled):
+                if was_enabled:
+                    widget.setUpdatesEnabled(False)
+            yield
+        finally:
+            for widget, was_enabled in zip(widgets, enabled):
+                if was_enabled:
+                    widget.setUpdatesEnabled(True)
+
     def _load_tab_content(self, tab) -> None:  # noqa: ANN001 - TabSession
         """Make ``tab`` the content of the viewer (switch, close of the active tab)."""
-        self._leave_special_layouts()
-        self._reset_doppler_mode_override()
-        self._tab_loading_id = tab.tab_id
-        self._restore_target = (
-            (tab.tab_id, tab.active_instance_uid, tab.frame_index) if tab.studies and tab.active_instance_uid else None
-        )
-        self._refresh_tab_strip()
-        self._update_main_stack()
-        self._controller.load_pre_scanned_studies(list(tab.studies))
+        self._tab_keep_content_visible = bool(tab.studies and self._main_stack.currentWidget() is self._content_widget)
+        try:
+            with self._batch_study_surface_updates():
+                if self._layout_config.multiview or self._mmode_active:
+                    self._leave_special_layouts()
+                self._reset_doppler_mode_override()
+                self._tab_loading_id = tab.tab_id
+                self._restore_target = (
+                    (tab.tab_id, tab.active_instance_uid, tab.frame_index)
+                    if tab.studies and tab.active_instance_uid
+                    else None
+                )
+                self._refresh_tab_strip()
+                self._update_main_stack()
+                self._controller.load_pre_scanned_studies(list(tab.studies))
+        except Exception:
+            self._abort_tab_load()
+            raise
 
     def _switch_to_tab(self, tab_id: str) -> bool:
         if tab_id == self._tabs.active_tab_id:
@@ -2377,9 +2425,11 @@ class MainWindow(QMainWindow):
             self._refresh_tab_strip()
             return False
         self._park_active_tab()
+        self._tab_switch_previous_id = self._tabs.active_tab_id
         self._tabs.activate(tab_id)
         self._load_tab_content(self._tabs.get(tab_id))
-        return True
+        # A synchronous controller-side refusal can already have rolled back.
+        return self._tabs.active_tab_id == tab_id
 
     def _tab_has_live_measurements(self, tab) -> bool:  # noqa: ANN001 - TabSession
         store = self._controller.measurement_persistence.store
@@ -2488,6 +2538,10 @@ class MainWindow(QMainWindow):
 
     def _update_main_stack(self) -> None:
         """Viewer while the active tab shows studies, placeholder otherwise."""
+        if self._tab_loading_id is not None and self._tab_keep_content_visible:
+            self._study_loading_overlay.start(tr("tabs.loading_overlay"))
+            return
+        self._study_loading_overlay.stop()
         if self._tab_loading_id is not None:
             self._empty_tab_page.show_message(tr("tabs.loading"), "")
             self._main_stack.setCurrentIndex(1)
@@ -2505,6 +2559,7 @@ class MainWindow(QMainWindow):
         # arrives without a pending load still belongs to the active tab.
         loading_id = self._tab_loading_id or self._tabs.active_tab_id
         self._tab_loading_id = None
+        self._tab_switch_previous_id = None
         if loading_id is not None and loading_id in self._tabs:
             self._tabs.set_studies(loading_id, studies)
         self._refresh_tab_strip()
@@ -2513,12 +2568,24 @@ class MainWindow(QMainWindow):
     def _abort_tab_load(self) -> None:
         self._tab_loading_id = None
         self._restore_target = None
+        previous = self._tab_switch_previous_id
+        self._tab_switch_previous_id = None
+        self._tab_keep_content_visible = False
+        if previous is not None and previous in self._tabs:
+            self._tabs.activate(previous)
         self._refresh_tab_strip()
         self._update_main_stack()
 
     def _after_tab_loaded(self, loaded_tab_id: str | None, studies: list) -> bool:
         """Finish a tab load. Returns True when the tab's parked view was
         restored (the caller must not autoload the first clip on top)."""
+        if self._tab_keep_content_visible and self._restore_target is None:
+            # A never-visited tab has no clip to restore. Do not present the
+            # previous study's image as its content, or write a UI-only clear
+            # back into the new study's measurement store.
+            with QSignalBlocker(self._viewer):
+                self._viewer.clear()
+        self._tab_keep_content_visible = False
         self._update_main_stack()
         target = self._restore_target
         self._restore_target = None

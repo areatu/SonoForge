@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.ui_metrics import control_height
@@ -44,22 +44,21 @@ class TabStrip(QWidget):
     # ----- state -----------------------------------------------------------
 
     def set_tabs(self, items: Sequence[tuple[str, str]], active_tab_id: str | None) -> None:
-        """Rebuild the strip from ``(tab_id, caption)`` pairs, without emitting signals."""
-        self._bar.blockSignals(True)
-        try:
-            while self._bar.count():
-                self._bar.removeTab(0)
-            current = -1
-            for position, (tab_id, caption) in enumerate(items):
-                index = self._bar.addTab(caption)
-                self._bar.setTabData(index, tab_id)
-                self._bar.setTabToolTip(index, caption)
-                if tab_id == active_tab_id:
-                    current = position
-            if current >= 0:
-                self._bar.setCurrentIndex(current)
-        finally:
-            self._bar.blockSignals(False)
+        """Update in place when ids/order match, preserving close buttons and geometry."""
+        with QSignalBlocker(self._bar):
+            if self.tab_ids() != [tab_id for tab_id, _ in items]:
+                while self._bar.count():
+                    self._bar.removeTab(0)
+                for tab_id, caption in items:
+                    index = self._bar.addTab(caption)
+                    self._bar.setTabData(index, tab_id)
+            for index, (tab_id, caption) in enumerate(items):
+                if self._bar.tabText(index) != caption:
+                    self._bar.setTabText(index, caption)
+                if self._bar.tabToolTip(index) != caption:
+                    self._bar.setTabToolTip(index, caption)
+                if tab_id == active_tab_id and self._bar.currentIndex() != index:
+                    self._bar.setCurrentIndex(index)
 
     def tab_count(self) -> int:
         return self._bar.count()

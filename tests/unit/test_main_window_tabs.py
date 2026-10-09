@@ -554,3 +554,206 @@ def test_disable_preserves_live_measurements_when_first_tab_is_already_active(wi
     assert len(window._tabs) == 1
     assert window._test_calls["studies"] == before
     assert store.get("a.study") == data
+
+
+# ----- step 4: retain chrome while the study surface changes -------------------
+
+
+def _two_loaded_tabs(window):
+    first = _open_and_publish(window, "/data/A", "a")
+    second = _open_and_publish(window, "/data/B", "b")
+    return first, second
+
+
+def test_switch_keeps_content_and_tools_visible_until_studies_arrive(window, monkeypatch):
+    from unittest.mock import Mock
+
+    from PySide6.QtCore import QEvent, QObject
+
+    first, _ = _two_loaded_tabs(window)
+    hidden = []
+
+    class Filter(QObject):
+        def eventFilter(self, watched, event):
+            if event.type() == QEvent.Type.Hide:
+                hidden.append(watched)
+            return False
+
+    observer = Filter()
+    for widget in (window._tool_panel, window._content_widget, window._viewer):
+        widget.installEventFilter(observer)
+    pages = []
+    window._main_stack.currentChanged.connect(pages.append)
+    leave = Mock()
+    monkeypatch.setattr(window, "_leave_special_layouts", leave)
+    assert window._switch_to_tab(first)
+    assert window._main_stack.currentWidget() is window._content_widget
+    assert window._study_loading_overlay.isVisible()
+    assert window._study_loading_overlay.geometry() == window._viewer_stack.rect()
+    assert window._viewer_stack.updatesEnabled()
+    assert window._gallery.updatesEnabled()
+    assert window._tool_panel.updatesEnabled()
+    assert window.updatesEnabled()
+    leave.assert_not_called()
+    _publish(window, _studies("a"))
+    assert pages == hidden == []
+    assert window._study_loading_overlay.isHidden()
+    assert not window._study_loading_overlay._filter_installed
+
+
+def test_retained_image_cannot_receive_mouse_keyboard_or_shortcut_actions(window, qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeySequence, QShortcut
+
+    first, _ = _two_loaded_tabs(window)
+    clicked = []
+    window._system_bar._btn_caliper.clicked.connect(lambda: clicked.append(True))
+    shortcuts = []
+    shortcut = QShortcut(QKeySequence("Ctrl+J"), window)
+    shortcut.activated.connect(lambda: shortcuts.append(True))
+    window._switch_to_tab(first)
+    qtbot.mouseClick(window._system_bar._btn_caliper, Qt.MouseButton.LeftButton)
+    qtbot.keyClick(window, Qt.Key.Key_J, Qt.KeyboardModifier.ControlModifier)
+    qtbot.keyClick(window._viewer, Qt.Key.Key_L)
+    assert clicked == shortcuts == []
+    _publish(window, _studies("a"))
+    qtbot.mouseClick(window._system_bar._btn_caliper, Qt.MouseButton.LeftButton)
+    assert clicked == [True]
+
+
+def test_overlay_resizes_and_reinstalls_input_guard_after_window_hide_show(window, qtbot):
+    first, _ = _two_loaded_tabs(window)
+    window._switch_to_tab(first)
+    window.resize(1400, 900)
+    QApplication.processEvents()
+    assert window._study_loading_overlay.geometry() == window._viewer_stack.rect()
+    window.hide()
+    assert not window._study_loading_overlay._filter_installed
+    window.show()
+    qtbot.waitExposed(window)
+    assert window._study_loading_overlay._filter_installed
+    window._abort_tab_load()
+
+
+def test_abort_removes_loading_veil_and_restores_previous_tab(window):
+    first, second = _two_loaded_tabs(window)
+    window._switch_to_tab(first)
+    window._abort_tab_load()
+    assert window._tabs.active_tab_id == second
+    assert window._tab_loading_id is None
+    assert window._main_stack.currentWidget() is window._content_widget
+    assert window._study_loading_overlay.isHidden()
+    assert not window._study_loading_overlay._filter_installed
+
+
+def test_synchronous_loader_exception_restores_updates_and_input(window, monkeypatch):
+    first, second = _two_loaded_tabs(window)
+
+    def fail(_studies):
+        raise RuntimeError("loader failed")
+
+    monkeypatch.setattr(window._controller, "load_pre_scanned_studies", fail)
+    with pytest.raises(RuntimeError, match="loader failed"):
+        window._switch_to_tab(first)
+    assert window._viewer_stack.updatesEnabled()
+    assert window._gallery.updatesEnabled()
+    assert window._study_loading_overlay.isHidden()
+    assert window._tabs.active_tab_id == second
+
+
+def test_batch_update_guard_is_nested_exception_safe_and_does_not_touch_chrome(window):
+    window._gallery.setUpdatesEnabled(False)
+    with pytest.raises(RuntimeError):
+        with window._batch_study_surface_updates():
+            assert not window._viewer_stack.updatesEnabled()
+            assert window._tool_panel.updatesEnabled()
+            assert window._system_bar.updatesEnabled()
+            assert window.updatesEnabled()
+            with window._batch_study_surface_updates():
+                pass
+            assert not window._viewer_stack.updatesEnabled()
+            raise RuntimeError("test cleanup")
+    assert window._viewer_stack.updatesEnabled()
+    assert not window._gallery.updatesEnabled()
+    window._gallery.setUpdatesEnabled(True)
+
+
+def test_second_flush_refusal_does_not_leave_loading_veil(window, monkeypatch):
+    first, second = _two_loaded_tabs(window)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
+    monkeypatch.setattr(
+        window._controller, "load_pre_scanned_studies", lambda studies: window._on_persistence_blocked()
+    )
+    assert not window._switch_to_tab(first)
+    assert window._tabs.active_tab_id == second
+    assert window._tab_loading_id is None
+    assert window._study_loading_overlay.isHidden()
+
+
+def test_new_folder_load_still_uses_placeholder_not_retained_study(window):
+    _open_and_publish(window, "/data/A", "a")
+    window.open_folder_path("/data/B")
+    assert window._main_stack.currentWidget() is window._empty_tab_page
+    assert window._study_loading_overlay.isHidden()
+
+
+def test_unvisited_tab_does_not_expose_old_pixels_or_emit_measurement_clear(window, monkeypatch):
+    from unittest.mock import Mock
+
+    first, _ = _two_loaded_tabs(window)
+    cleared = []
+    window._viewer.contours_changed.connect(cleared.append)
+    clear = Mock(wraps=window._viewer.clear)
+    monkeypatch.setattr(window._viewer, "clear", clear)
+    window._switch_to_tab(first)
+    _publish(window, _studies("a"))
+    clear.assert_called_once()
+    assert cleared == []
+
+
+def test_special_layout_exit_runs_only_when_a_special_layout_is_active(window, monkeypatch):
+    from unittest.mock import Mock
+
+    first, _ = _two_loaded_tabs(window)
+    window._mmode_active = True
+    leave = Mock(side_effect=lambda: setattr(window, "_mmode_active", False))
+    monkeypatch.setattr(window, "_leave_special_layouts", leave)
+    window._switch_to_tab(first)
+    leave.assert_called_once()
+    _publish(window, _studies("a"))
+
+
+def test_synchronous_completion_and_empty_result_both_release_busy_state(window, monkeypatch):
+    first, second = _two_loaded_tabs(window)
+    monkeypatch.setattr(
+        window._controller, "load_pre_scanned_studies", lambda studies: window._controller.studies_loaded.emit(studies)
+    )
+    window._switch_to_tab(first)
+    assert window._tab_loading_id is None
+    assert window._study_loading_overlay.isHidden()
+    assert window._viewer_stack.updatesEnabled()
+    monkeypatch.setattr(
+        window._controller, "load_pre_scanned_studies", lambda studies: window._controller.studies_loaded.emit([])
+    )
+    window._switch_to_tab(second)
+    assert window._main_stack.currentWidget() is window._empty_tab_page
+    assert not window._study_loading_overlay._filter_installed
+    assert window._gallery.updatesEnabled()
+
+
+def test_input_guard_does_not_block_other_windows_or_error_dialogs(window, qtbot):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QDialog, QPushButton
+
+    first, _ = _two_loaded_tabs(window)
+    window._switch_to_tab(first)
+    dialog = QDialog(window)
+    qtbot.addWidget(dialog)
+    button = QPushButton("Close error", dialog)
+    clicked = []
+    button.clicked.connect(lambda: clicked.append(True))
+    dialog.show()
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+    assert clicked == [True]
+    dialog.close()
+    window._abort_tab_load()

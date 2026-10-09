@@ -2049,6 +2049,7 @@
   "tabs.disable.title": "Disable tabs?",
   "tabs.disable.body": "The tabs being closed contain measurements. Unsaved measurements may be lost. Only the first tab will remain. Close these tabs?\n\n{titles}",
   "tabs.empty": "Empty tab",
+  "tabs.loading_overlay": "Loading study… The previous image is temporarily unavailable for measurements.",
   "tabs.loading": "Loading…",
   "tabs.untitled": "Untitled series",
   "tabs.busy": "Wait for the current study to finish loading",

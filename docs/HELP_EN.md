@@ -155,7 +155,7 @@ Measurement inputs are associated with the current SOP Instance and frame where 
 When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. At most 8 tabs are open.
 
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
-- While a study loads, switching and closing tabs are unavailable (a message appears in the status bar).
+- When switching between loaded tabs, the system bar, tab strip, and tools stay in place. A loading indicator temporarily covers the viewer; the previous image cannot be measured, and input to this window is blocked until the study list arrives. For a tab without a previously selected clip, choose a thumbnail after loading. Initial loads and new sources still use the placeholder. Switching and closing tabs are unavailable during loading.
 - Switching reloads the tab's study. Saved measurements are restored from the local store by UID; closing a tab does not delete saved measurements.
 - A server download with several studies opens each in its own tab. They share one cache, which is removed only after the last tab using it closes and the viewer releases its files.
 - With eight tabs open, the app asks whether to close the oldest inactive tab.
