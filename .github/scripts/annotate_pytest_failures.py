@@ -100,6 +100,11 @@ def main() -> int:
 def _emit_abort_frames(tail: list[str]) -> None:
     log_path = Path("/tmp/pytest.log")
     lines = log_path.read_text(errors="replace").splitlines() if log_path.is_file() else tail
+    fatal_at = next((index for index, line in enumerate(lines) if "Fatal Python error" in line), None)
+    if fatal_at is not None:
+        for index, line in enumerate(lines[max(0, fatal_at - 25) : fatal_at]):
+            safe = line.replace("%", "%25").replace("\r", "")[:700]
+            _emit(f"::error title=pytest before fatal {index}::{safe}")
     start = next(
         (index for index, line in enumerate(lines) if "Fatal Python error" in line or "Current thread" in line),
         0,

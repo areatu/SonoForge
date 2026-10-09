@@ -84,14 +84,11 @@ def test_disabled_preference_hides_loupe_on_the_first_click(qtbot) -> None:
 
 
 def test_loupe_key_relay_is_removed_with_the_viewer(qtbot) -> None:
-    from PySide6.QtWidgets import QApplication
 
     viewer = _viewer(qtbot)
-    app = QApplication.instance()
-    assert app is not None
     relay = viewer._loupe_key_relay
     assert relay is not None
-    assert relay in app.findChildren(type(relay))
+    assert relay._viewer() is viewer
     viewer.hide()
     assert viewer._loupe_key_relay is None
     viewer.show()

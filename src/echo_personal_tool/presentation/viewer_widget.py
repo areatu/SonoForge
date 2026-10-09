@@ -30,6 +30,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import delete as shiboken_delete
+from shiboken6 import isValid
 
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 from echo_personal_tool.domain.calculations.planimeter import (
@@ -710,18 +712,18 @@ class _ComparisonState:
 class _LoupeKeyRelay(QObject):
     """Forwards Z to a viewer without installing the viewer itself on QApplication.
 
-    The viewer is destroyed at the end of each GUI test. An event filter that
-    is the viewer segfaults on the next event (Linux CI) if it is still
-    installed. This relay is parented to the application and dropped first.
+    A strong reference back to the viewer makes a QObject cycle. The unit
+    suite collects garbage between tests, and collecting that cycle segfaults
+    on Linux. The viewer is held weakly, and the relay is deleted explicitly.
     """
 
     def __init__(self, viewer: QWidget) -> None:
-        app = QApplication.instance()
-        super().__init__(app)
-        self._viewer = viewer
+        super().__init__()
+        self._viewer = weakref.ref(viewer)
 
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
-        viewer = self._viewer
+        viewer_ref = self._viewer
+        viewer = viewer_ref() if viewer_ref is not None else None
         if viewer is None or not isValid(viewer):
             self._viewer = None
             return False
@@ -1226,12 +1228,14 @@ class ViewerWidget(QWidget):
             return
         relay._viewer = None
         app = QApplication.instance()
-        if app is not None:
+        if app is not None and isValid(relay):
             try:
                 app.removeEventFilter(relay)
             except RuntimeError:
                 pass
-        relay.deleteLater()
+        # deleteLater races the between-test gc.collect() and double-frees.
+        if isValid(relay):
+            shiboken_delete(relay)
 
     def _loupe_key_from_app(self, watched, event) -> bool:  # type: ignore[no-untyped-def]
         if not hasattr(self, "_graphics") or self._graphics is None or not self.isVisible():
