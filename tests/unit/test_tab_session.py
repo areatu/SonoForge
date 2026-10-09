@@ -11,7 +11,6 @@ from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
     TAB_ORIGIN_SERVER,
-    TabCacheConflictError,
     TabLimitError,
     TabSessionError,
     TabSessionManager,
@@ -135,12 +134,20 @@ def test_closing_frees_a_slot() -> None:
 # ----- PACS cache session invariants --------------------------------------
 
 
-def test_two_tabs_cannot_share_one_cache_session() -> None:
+def test_tabs_of_one_download_batch_share_the_cache_session() -> None:
     m = _manager()
-    m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
-    with pytest.raises(TabCacheConflictError):
-        m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
-    assert len(m) == 1
+    first = m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
+    second = m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A", activate=False)
+    assert len(m) == 2
+    assert m.cache_session_users("z3-A") == (first.tab_id, second.tab_id)
+
+
+def test_cache_session_is_purged_only_when_its_last_tab_closes() -> None:
+    m = _manager()
+    first = m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
+    second = m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A", activate=False)
+    assert m.close_tab(first.tab_id).purge_cache_session_id == ""
+    assert m.close_tab(second.tab_id).purge_cache_session_id == "z3-A"
 
 
 def test_empty_cache_session_id_never_conflicts() -> None:
@@ -150,12 +157,13 @@ def test_empty_cache_session_id_never_conflicts() -> None:
     assert len(m) == 2
 
 
-def test_owner_of_cache_session_lookup() -> None:
+def test_cache_session_users_lookup() -> None:
     m = _manager()
     tab = m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
-    assert m.owner_of_cache_session("z3-A") == tab.tab_id
-    assert m.owner_of_cache_session("z3-B") is None
-    assert m.owner_of_cache_session("") is None
+    assert m.cache_session_users("z3-A") == (tab.tab_id,)
+    assert m.cache_session_users("z3-A", except_tab_id=tab.tab_id) == ()
+    assert m.cache_session_users("z3-B") == ()
+    assert m.cache_session_users("") == ()
 
 
 # ----- close --------------------------------------------------------------
@@ -336,7 +344,7 @@ def test_empty_tab_can_be_retargeted_to_a_new_source() -> None:
     tab = m.open_tab(origin=TAB_ORIGIN_EMPTY)
     m.retarget_empty(tab.tab_id, origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
     assert (tab.origin, tab.cache_session_id) == (TAB_ORIGIN_SERVER, "z3-A")
-    assert m.owner_of_cache_session("z3-A") == tab.tab_id
+    assert m.cache_session_users("z3-A") == (tab.tab_id,)
 
 
 def test_tab_with_studies_is_never_retargeted() -> None:
@@ -347,12 +355,9 @@ def test_tab_with_studies_is_never_retargeted() -> None:
     assert tab.root == "/a"
 
 
-def test_retarget_validates_source_and_cache_conflicts() -> None:
+def test_retarget_validates_source() -> None:
     m = _manager()
-    m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
     empty = m.open_tab(origin=TAB_ORIGIN_EMPTY)
-    with pytest.raises(TabCacheConflictError):
-        m.retarget_empty(empty.tab_id, origin=TAB_ORIGIN_SERVER, cache_session_id="z3-A")
     with pytest.raises(TabSessionError):
         m.retarget_empty(empty.tab_id, origin="ftp")
     assert empty.origin == TAB_ORIGIN_EMPTY

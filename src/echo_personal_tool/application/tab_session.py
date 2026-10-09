@@ -39,10 +39,6 @@ class TabLimitError(TabSessionError):
     """Raised when opening a tab would exceed ``max_tabs``."""
 
 
-class TabCacheConflictError(TabSessionError):
-    """Raised when two tabs would share one PACS cache session."""
-
-
 class UnknownTabError(TabSessionError, KeyError):
     """Raised when a tab id is not open."""
 
@@ -178,13 +174,13 @@ class TabSessionManager:
                 return position
         raise UnknownTabError(tab_id)
 
-    def owner_of_cache_session(self, cache_session_id: str) -> str | None:
+    def cache_session_users(self, cache_session_id: str, *, except_tab_id: str | None = None) -> tuple[str, ...]:
+        """Open tabs that still need a PACS cache session (one batch can feed several tabs)."""
         if not cache_session_id:
-            return None
-        for tab in self._tabs:
-            if tab.cache_session_id == cache_session_id:
-                return tab.tab_id
-        return None
+            return ()
+        return tuple(
+            tab.tab_id for tab in self._tabs if tab.cache_session_id == cache_session_id and tab.tab_id != except_tab_id
+        )
 
     # ----- mutations -----------------------------------------------------
 
@@ -200,8 +196,6 @@ class TabSessionManager:
         self._validate_source(origin, root, cache_session_id)
         if self.is_full:
             raise TabLimitError(f"tab limit reached ({self._max_tabs})")
-        if cache_session_id and self.owner_of_cache_session(cache_session_id):
-            raise TabCacheConflictError(cache_session_id)
 
         tab = TabSession(
             tab_id=self._new_id(),
@@ -262,8 +256,6 @@ class TabSessionManager:
         if tab.studies:
             raise TabSessionError("only an empty tab can be retargeted")
         self._validate_source(origin, root, cache_session_id)
-        if cache_session_id and self.owner_of_cache_session(cache_session_id) not in (None, tab_id):
-            raise TabCacheConflictError(cache_session_id)
         tab.origin = origin
         tab.root = root
         tab.cache_session_id = cache_session_id
@@ -290,7 +282,7 @@ class TabSessionManager:
                 next_active = neighbour.tab_id
             self._active_id = next_active
         purge = ""
-        if closed.cache_session_id and self.owner_of_cache_session(closed.cache_session_id) is None:
+        if closed.cache_session_id and not self.cache_session_users(closed.cache_session_id):
             purge = closed.cache_session_id
         return CloseResult(closed=closed, next_active_tab_id=next_active, purge_cache_session_id=purge)
 

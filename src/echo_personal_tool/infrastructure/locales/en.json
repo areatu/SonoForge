@@ -2050,7 +2050,9 @@
   "tabs.untitled": "Untitled series",
   "tabs.busy": "Wait for the current study to finish loading",
   "tabs.limit.title": "Too many tabs",
-  "tabs.limit.body": "{max} tabs are open. Close the inactive tab “{title}”? Measurements are kept; its server cache will be deleted.",
+  "tabs.limit.body": "{max} tabs are open. Free space by closing {count} inactive tab(s)?\n{titles}\nMeasurements are kept. A server cache is deleted only when no other tab uses it.",
   "tabs.placeholder.title": "Open a study",
-  "tabs.placeholder.hint": "“Open folder…” or “Load from server…”. Each study opens in its own tab."
+  "tabs.placeholder.hint": "“Open folder…” or “Load from server…”. Each study opens in its own tab.",
+  "tabs.limit.nothing_opened": "No room for the studies. Close a tab and load again.",
+  "tabs.batch.partial": "Opened {opened} of {total} studies: not enough room in the tabs."
 }

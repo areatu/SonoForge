@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from echo_personal_tool import __version__
 from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.application.download_history import DownloadHistory
 from echo_personal_tool.application.tab_session import (
     TAB_ORIGIN_EMPTY,
     TAB_ORIGIN_FOLDER,
@@ -241,6 +242,7 @@ class MainWindow(QMainWindow):
         self._tab_loading_id: str | None = None
         self._restore_target: tuple[str, str, int] | None = None
         self._pending_cache_purges: set[str] = set()
+        self._download_history = DownloadHistory()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -2059,10 +2061,7 @@ class MainWindow(QMainWindow):
             self._remember_session_source(SESSION_SOURCE_SERVER)
             session_id, _study_uid = result
             if downloaded:
-                if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
-                    return
-                self._reset_doppler_mode_override()
-                self._controller.load_pre_scanned_studies(downloaded)
+                self._open_server_batch(downloaded, session_id)
             else:
                 path = self._orthanc_cache.session_path(session_id)
                 logger.info("[MW] scan fallback: session=%s directory_exists=%s", session_id[:8], path.exists())
@@ -2211,21 +2210,13 @@ class MainWindow(QMainWindow):
         self._show_status(tr("tabs.busy"))
         return True
 
-    def _claimable_cache_id(self, cache_session_id: str, own_tab_id: str | None = None) -> str:
-        """A PACS cache session belongs to one tab; a conflicting id is not claimed."""
-        if not cache_session_id:
-            return ""
-        owner = self._tabs.owner_of_cache_session(cache_session_id)
-        return "" if owner not in (None, own_tab_id) else cache_session_id
-
     def _acquire_tab_for_load(self, origin: str, root: str, cache_session_id: str) -> bool:
         """Pick the tab a new load goes into: the empty « + » tab, or a new one."""
         if self._tab_busy() or not self._tab_flush_or_block():
             return False
         active = self._tabs.active
         if active is not None and not active.studies:
-            cache_id = self._claimable_cache_id(cache_session_id, active.tab_id)
-            self._tabs.retarget_empty(active.tab_id, origin=origin, root=root, cache_session_id=cache_id)
+            self._tabs.retarget_empty(active.tab_id, origin=origin, root=root, cache_session_id=cache_session_id)
         else:
             if not self._ensure_tab_capacity():
                 return False
@@ -2233,7 +2224,7 @@ class MainWindow(QMainWindow):
             self._tabs.open_tab(
                 origin=origin,
                 root=root,
-                cache_session_id=self._claimable_cache_id(cache_session_id),
+                cache_session_id=cache_session_id,
                 activate=True,
             )
         self._leave_special_layouts()
@@ -2247,22 +2238,71 @@ class MainWindow(QMainWindow):
         """At the limit, ask before closing the oldest inactive tab (spec §4, no silent LRU)."""
         if not self._tabs.is_full:
             return True
+        return self._make_room(1)
+
+    def _make_room(self, count: int) -> bool:
+        """Ask once, then close the ``count`` oldest inactive tabs. Never closes the active one."""
         active_id = self._tabs.active_tab_id
-        inactive = [tab for tab in self._tabs.tabs if tab.tab_id != active_id]
-        if not inactive:
+        inactive = sorted(
+            (tab for tab in self._tabs.tabs if tab.tab_id != active_id),
+            key=lambda tab: tab.created_at,
+        )
+        if len(inactive) < count:
             return False
-        oldest = min(inactive, key=lambda tab: tab.created_at)
-        title = self._tab_caption(oldest)
+        victims = inactive[:count]
+        titles = "\n".join(f"• {self._tab_caption(tab)}" for tab in victims)
         answer = QMessageBox.question(
             self,
             tr("tabs.limit.title"),
-            tr("tabs.limit.body", max=self._tabs.max_tabs, title=title),
+            tr("tabs.limit.body", max=self._tabs.max_tabs, count=count, titles=titles),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
             return False
-        self._close_inactive_tab(oldest.tab_id)
+        for tab in victims:
+            self._close_inactive_tab(tab.tab_id)
+        return True
+
+    def _open_server_batch(self, studies: list[StudyMetadata], session_id: str) -> bool:
+        """Open every study of one PACS download batch in its own tab (D-29, PR-C).
+
+        The batch shares one cache session; the session is deleted only when the
+        last tab using it closes. The first study loads now, the others wait in
+        their tabs and load when they are activated.
+        """
+        if not studies:
+            return False
+        for study in studies:
+            self._download_history.record(study)
+        if self._tab_busy() or not self._tab_flush_or_block():
+            return False
+        active = self._tabs.active
+        reuse_active = active is not None and not active.studies
+        wanted_new = len(studies) - (1 if reuse_active else 0)
+        free = self._tabs.max_tabs - len(self._tabs)
+        allowed = len(studies)
+        if wanted_new > free and not self._make_room(wanted_new - free):
+            # Declined: open only what fits without closing anything.
+            allowed = min(len(studies), free + (1 if reuse_active else 0))
+            if allowed < 1:
+                self._show_status(tr("tabs.limit.nothing_opened"))
+                return False
+        to_open = studies[:allowed]
+        if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
+            return False
+        self._reset_doppler_mode_override()
+        for study in to_open[1:]:
+            self._tabs.open_tab(
+                origin=TAB_ORIGIN_SERVER,
+                cache_session_id=session_id,
+                studies=[study],
+                activate=False,
+            )
+        self._refresh_tab_strip()
+        if allowed < len(studies):
+            self._show_status(tr("tabs.batch.partial", opened=allowed, total=len(studies)))
+        self._controller.load_pre_scanned_studies([to_open[0]])
         return True
 
     def _park_active_tab(self) -> None:

@@ -157,7 +157,7 @@ Each open study (folder or server download) gets **its own tab** above the syste
 - `+` — a new empty tab; the next load fills it.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
 - While a study loads, switching and new tabs are unavailable (a message appears in the status bar).
-- Closing a tab does not delete measurements. A server study's tab removes its cache unless another tab uses it.
+- Closing a tab does not delete measurements. A server download with several studies opens each in its own tab; they share one cache, which is removed when the last of these tabs closes.
 - With eight tabs open, the app asks whether to close the oldest inactive tab.
 - Multiview and M-mode end when you switch tabs. Comparing clips across tabs comes later.
 

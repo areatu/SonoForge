@@ -262,3 +262,67 @@ def test_tab_strip_signals_are_not_emitted_by_programmatic_rebuilds(window) -> N
     _publish(window, _studies("b"))
     QApplication.processEvents()
     assert selected == []
+
+
+# ----- PR-C: a PACS download batch opens one tab per study ----------------------
+
+
+def _batch(*prefixes: str) -> list[StudyMetadata]:
+    out: list[StudyMetadata] = []
+    for prefix in prefixes:
+        out.extend(_studies(prefix))
+    return out
+
+
+def test_batch_opens_each_study_in_its_own_tab(window) -> None:
+    window._open_server_batch(_batch("a", "b", "c"), "sess-1")
+    tabs = window._tabs.tabs
+    assert len(tabs) == 3
+    assert all(t.origin == TAB_ORIGIN_SERVER for t in tabs)
+    assert all(t.cache_session_id == "sess-1" for t in tabs)
+    # only the first study loads now; the others wait in their tabs
+    assert window._test_calls["studies"][-1] == _studies("a")
+    assert window._tab_loading_id == tabs[0].tab_id
+    assert window._tabs.active_tab_id == tabs[0].tab_id
+    assert [len(t.studies) for t in tabs[1:]] == [1, 1]
+    _publish(window, _studies("a"))
+    assert [len(t.studies) for t in tabs] == [1, 1, 1]
+
+
+def test_batch_is_recorded_in_the_download_history(window) -> None:
+    window._open_server_batch(_batch("a", "b"), "sess-1")
+    assert [r.study_uid for r in window._download_history.records()] == ["b.study", "a.study"]
+
+
+def test_batch_cache_is_purged_only_after_the_last_tab_of_the_batch_closes(window) -> None:
+    window._open_server_batch(_batch("a", "b", "c"), "sess-1")
+    a, b, c = (t.tab_id for t in window._tabs.tabs)
+    _publish(window, _studies("a"))
+    window._on_tab_close_requested(b)
+    window._on_tab_close_requested(c)
+    assert window._test_cleared == []
+    window._on_tab_close_requested(a)
+    _publish(window, [])
+    assert window._test_cleared == ["sess-1"]
+
+
+def test_batch_declined_room_question_opens_only_what_fits(window, monkeypatch) -> None:
+    for prefix in ("f1", "f2", "f3", "f4", "f5", "f6", "f7"):
+        window._tabs.open_tab(origin=TAB_ORIGIN_FOLDER, root=f"/{prefix}", studies=_studies(prefix), activate=False)
+    assert window._tabs.is_full
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.No))
+    window._open_server_batch(_batch("a", "b", "c"), "sess-1")
+    assert len(window._tabs) == MAX_OPEN_TABS
+    assert window._test_calls["studies"][-1] == _studies("a")
+    assert [t.cache_session_id for t in window._tabs.tabs].count("sess-1") == 1
+
+
+def test_batch_accepted_room_question_closes_oldest_inactive_tabs(window, monkeypatch) -> None:
+    for prefix in ("f1", "f2", "f3", "f4", "f5", "f6", "f7"):
+        window._tabs.open_tab(origin=TAB_ORIGIN_FOLDER, root=f"/{prefix}", studies=_studies(prefix), activate=False)
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes))
+    window._open_server_batch(_batch("a", "b", "c"), "sess-1")
+    assert len(window._tabs) == MAX_OPEN_TABS
+    shared = [t for t in window._tabs.tabs if t.cache_session_id == "sess-1"]
+    assert len(shared) == 3
+    assert {t.studies[0].study_uid for t in shared} == {"a.study", "b.study", "c.study"}
