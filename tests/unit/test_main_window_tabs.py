@@ -341,19 +341,74 @@ def _apply_tabs(window, enabled: bool) -> None:
     window._apply_user_preferences(preferences)
 
 
+# A font change repolishes *every* widget owned by QApplication, including
+# hidden dialogs left by earlier tests. Exercise the real settings path in a
+# fresh Qt process, as test_ui_scale does, instead of measuring suite history.
+_TAB_HEIGHT_PROBE = r"""
+import json
+import sys
+from dataclasses import replace
+from pathlib import Path
+from unittest.mock import patch
+
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings
+from PySide6.QtWidgets import QApplication
+
+from echo_personal_tool.application.app_controller import AppController
+from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+from echo_personal_tool.presentation.main_window import MainWindow
+from echo_personal_tool.presentation.ui_metrics import control_height
+
+root = Path(sys.argv[2])
+app = QApplication([])
+settings = QSettings(str(root / "settings.ini"), QSettings.Format.IniFormat)
+with (
+    patch("echo_personal_tool.infrastructure.user_preferences._settings_store", lambda: settings),
+    patch("echo_personal_tool.infrastructure.paths.measurements_dir", lambda: root / "measurements"),
+    patch("echo_personal_tool.infrastructure.profile.orthanc_cache_root", lambda: root / "cache"),
+):
+    window = MainWindow(controller=AppController(), user_preferences=UserPreferences())
+    try:
+        window.resize(1200, 800)
+        window.show()
+        app.processEvents()
+        window._apply_user_preferences(replace(window._user_preferences, ui_font_size=int(sys.argv[1])))
+        app.processEvents()
+        strip = window._tab_strip
+        print(json.dumps({
+            "expected": control_height(window._system_bar._btn_caliper),
+            "caliper_font_px": window._system_bar._btn_caliper.font().pixelSize(),
+            "strip": strip.height(),
+            "bar": strip._bar.height(),
+            "tab": strip._bar.tabRect(0).height(),
+            "margin_top": strip.layout().contentsMargins().top(),
+        }))
+    finally:
+        window.close()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+"""
+
+
 @pytest.mark.parametrize("font_size", [12, 18])
-def test_strip_height_tracks_caliper_control(window, font_size) -> None:
-    from dataclasses import replace
+def test_strip_height_tracks_caliper_control(tmp_path, font_size) -> None:
+    import json
+    import os
+    import subprocess
+    import sys
 
-    from echo_personal_tool.presentation.ui_metrics import control_height
-
-    window._apply_user_preferences(replace(window._user_preferences, ui_font_size=font_size))
-    QApplication.processEvents()
-    expected = control_height(window._system_bar._btn_caliper)
-    assert window._tab_strip.height() == expected
-    assert window._tab_strip._bar.height() == expected
-    assert window._tab_strip._bar.tabRect(0).height() == expected
-    assert window._tab_strip.layout().contentsMargins().top() == 0
+    result = subprocess.run(
+        [sys.executable, "-c", _TAB_HEIGHT_PROBE, str(font_size), str(tmp_path)],
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert report["strip"] == report["bar"] == report["tab"] == report["expected"]
+    assert report["margin_top"] == 0
+    assert report["caliper_font_px"] == max(font_size - 1, 11)
 
 
 def test_disabled_tabs_replace_folder_without_growing_count(window) -> None:
