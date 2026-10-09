@@ -265,6 +265,19 @@ class StudyMeasurementData:
     strain: StrainReport | None = None
 
     @property
+    def has_measurements(self) -> bool:
+        """User measurements, excluding automatic patient metadata/calibrations."""
+        return bool(
+            self.contours
+            or self.linear_measurements
+            or self.vessel_measurements
+            or self.simpson_area_by_frame
+            or self.strain is not None
+            or any(dto.peaks or dto.intervals or dto.traces for _, dto in self.doppler_by_instance)
+            or any(dto.peaks or dto.intervals or dto.traces for _, _, dto in self.doppler_by_instance_frame)
+        )
+
+    @property
     def doppler_measurement(self) -> DopplerMeasurementDTO | None:
         return aggregate_doppler_by_instance(dict(self.doppler_by_instance))
 

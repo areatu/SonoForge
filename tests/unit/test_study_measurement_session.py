@@ -239,3 +239,45 @@ def test_session_store_merge_vessel_and_reset() -> None:
     assert len(data.vessel_measurements) == 1
     store.reset_measurements("study1")
     assert store.get("study1").vessel_measurements == ()
+
+
+def test_measurement_presence_excludes_empty_doppler_and_automatic_patient_data() -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+    from echo_personal_tool.domain.models.doppler import DopplerMeasurementDTO
+
+    assert not StudyMeasurementData().has_measurements
+    assert not StudyMeasurementData(
+        height_cm=180,
+        weight_kg=80,
+        height_source="dicom",
+        weight_source="dicom",
+        doppler_by_instance=(("clip", DopplerMeasurementDTO((), (), ())),),
+    ).has_measurements
+
+
+def test_measurement_presence_covers_doppler_repeats_and_frame_specific_data() -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+    from echo_personal_tool.domain.models.doppler import (
+        DopplerIntervalMarker,
+        DopplerMeasurementDTO,
+        DopplerPeakMarker,
+        DopplerTrace,
+    )
+
+    for dto in (
+        DopplerMeasurementDTO((DopplerPeakMarker("E", 0, 100),), (), ()),
+        DopplerMeasurementDTO((), (DopplerIntervalMarker("IVRT", 0, 50),), ()),
+        DopplerMeasurementDTO((), (), (DopplerTrace("VTI", ((0, 0), (100, 100))),)),
+    ):
+        assert StudyMeasurementData(doppler_by_instance=(("clip", dto),)).has_measurements
+        assert StudyMeasurementData(doppler_by_instance_frame=(("clip", 2, dto),)).has_measurements
+
+
+def test_measurement_presence_covers_contours_and_linear_calipers() -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+
+    assert StudyMeasurementData(linear_measurements=(LinearMeasurement("LA", 60, 30),)).has_measurements
+    assert StudyMeasurementData(
+        contours=(Contour(phase="ED", view="A4C", chamber="LV", points=[(0, 0), (10, 0), (0, 10)]),)
+    ).has_measurements
+    assert StudyMeasurementData(simpson_area_by_frame=(("clip", "A4C", 0, 15.0),)).has_measurements

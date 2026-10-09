@@ -1,4 +1,4 @@
-"""Tab strip above the system bar (Э9, PR-B) and the placeholder of an empty tab.
+"""Tab strip below the system bar (Э9, PR-B) and the placeholder of an empty tab.
 
 The strip only renders: the window owns the tab state (``TabSessionManager``)
 and reacts to the signals. The placeholder is a stub until the start page
@@ -10,15 +10,16 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QVBoxLayout, QWidget
+
+from echo_personal_tool.presentation.ui_metrics import control_height
 
 
 class TabStrip(QWidget):
-    """Horizontal list of open tabs with a « + » button on the right."""
+    """Horizontal list of open tabs, sized like a system-bar control."""
 
     tab_selected = Signal(str)  # tab_id
     tab_close_requested = Signal(str)  # tab_id
-    new_tab_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -34,17 +35,10 @@ class TabStrip(QWidget):
         self._bar.currentChanged.connect(self._on_current_changed)
         self._bar.tabCloseRequested.connect(self._on_close_requested)
 
-        self._new_button = QToolButton(self)
-        self._new_button.setObjectName("tabStripNew")
-        self._new_button.setText("+")
-        self._new_button.setAutoRaise(True)
-        self._new_button.clicked.connect(self.new_tab_requested)
-
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 0)
-        layout.setSpacing(2)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         layout.addWidget(self._bar, stretch=1)
-        layout.addWidget(self._new_button, stretch=0, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     # ----- state -----------------------------------------------------------
@@ -83,8 +77,19 @@ class TabStrip(QWidget):
                 return self._bar.tabText(index)
         raise KeyError(tab_id)
 
-    def new_button(self) -> QToolButton:
-        return self._new_button
+    def update_control_height(self, reference: QWidget) -> None:
+        """Re-measure after the system-bar font/theme has been applied."""
+        reference.ensurePolished()
+        height = control_height(reference)
+        # The global QTabBar rule has 8px vertical padding. Merely shrinking
+        # the widget clips both text and close buttons; size the tabs as well.
+        # The theme contributes a 1px top border and no bottom border.
+        self._bar.setStyleSheet(
+            f"QTabBar#tabStripBar::tab {{ height: {height - 1}px; padding: 0px 12px; }}"
+            "QTabBar#tabStripBar QToolButton { min-height: 0px; padding: 0px; }"
+        )
+        self._bar.setFixedHeight(height)
+        self.setFixedHeight(height)
 
     # ----- internal --------------------------------------------------------
 

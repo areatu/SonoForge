@@ -262,9 +262,8 @@ class MainWindow(QMainWindow):
         self._tab_strip = TabStrip()
         self._tab_strip.tab_selected.connect(self._on_tab_selected)
         self._tab_strip.tab_close_requested.connect(self._on_tab_close_requested)
-        self._tab_strip.new_tab_requested.connect(self._on_new_tab_requested)
-        self._root_layout.addWidget(self._tab_strip)
         self._root_layout.addWidget(self._system_bar)
+        self._root_layout.addWidget(self._tab_strip)
 
         self._content_widget = QWidget()
         self._empty_tab_page = EmptyTabPlaceholder()
@@ -552,7 +551,7 @@ class MainWindow(QMainWindow):
         self._remove_fullscreen_chrome_filter()
         self.showNormal()
         self._system_bar.show()
-        self._tab_strip.show()
+        self._tab_strip.setVisible(self._user_preferences.tabs_enabled)
         cfg = self._layout_config
         self.statusBar().setVisible(cfg.status_bar_visible)
         self._gallery.show()
@@ -583,7 +582,7 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             return
         self._system_bar.show()
-        self._tab_strip.show()
+        self._tab_strip.setVisible(self._user_preferences.tabs_enabled)
         if auto_hide:
             if self._fullscreen_chrome_timer is None:
                 self._fullscreen_chrome_timer = QTimer(self)
@@ -1571,7 +1570,15 @@ class MainWindow(QMainWindow):
         # object is kept as the base, the effective copy is applied.
         stored = preferences  # the object the settings dialog already persisted
         preferences = self._presenter.intercept_preferences(preferences)
+        if not preferences.tabs_enabled and not self._close_extra_tabs_for_single_mode():
+            # The dialog persists before on_apply. Cancel/failure must restore
+            # both the runtime flag and QSettings, without undoing other settings.
+            stored.tabs_enabled = preferences.tabs_enabled = True
+            save_user_preferences(stored)
         self._user_preferences = preferences
+        self._tab_strip.setVisible(
+            preferences.tabs_enabled and (not self.isFullScreen() or not self._system_bar.isHidden())
+        )
         start_page = getattr(self, "_start_page", None)
         if start_page is not None:
             start_page.set_measurement_persistence_enabled(preferences.measurement_persistence_enabled)
@@ -1608,6 +1615,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowIcon(QIcon(str(get_logo_path())))
         self._system_bar.reload_icons()
+        self._tab_strip.update_control_height(self._system_bar._btn_caliper)
         with QSignalBlocker(self._tool_panel.controls._magnetic_snap_check):
             self._tool_panel.controls._magnetic_snap_check.setChecked(preferences.magnetic_snap_enabled)
         self._tool_panel.set_auto_play(preferences.auto_play)
@@ -2224,11 +2232,14 @@ class MainWindow(QMainWindow):
         return True
 
     def _acquire_tab_for_load(self, origin: str, root: str, cache_session_id: str) -> bool:
-        """Pick the tab a new load goes into: the empty « + » tab, or a new one."""
+        """Pick a new/empty tab, or replace the active source with tabs disabled."""
         if self._tab_busy() or not self._tab_flush_or_block():
             return False
         active = self._tabs.active
-        if active is not None and not active.studies:
+        if active is not None and not self._user_preferences.tabs_enabled:
+            purge = self._tabs.replace_active(origin=origin, root=root, cache_session_id=cache_session_id)
+            self._queue_cache_purge(purge)
+        elif active is not None and not active.studies:
             self._tabs.retarget_empty(active.tab_id, origin=origin, root=root, cache_session_id=cache_session_id)
         else:
             if not self._ensure_tab_capacity():
@@ -2288,6 +2299,12 @@ class MainWindow(QMainWindow):
             return False
         for study in studies:
             self._download_history.record(study)
+        if not self._user_preferences.tabs_enabled:
+            if not self._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", session_id):
+                return False
+            self._reset_doppler_mode_override()
+            self._controller.load_pre_scanned_studies(studies)
+            return True
         if self._tab_busy() or not self._tab_flush_or_block():
             return False
         active = self._tabs.active
@@ -2323,6 +2340,7 @@ class MainWindow(QMainWindow):
         tab = self._tabs.active
         if tab is None or not tab.studies:
             return
+        tab.has_measurements = self._tab_has_live_measurements(tab)
         snapshot = self._controller.state_manager.snapshot
         instance = snapshot.instance
         park_tab(
@@ -2363,18 +2381,46 @@ class MainWindow(QMainWindow):
         self._load_tab_content(self._tabs.get(tab_id))
         return True
 
-    def _on_tab_selected(self, tab_id: str) -> None:
-        self._switch_to_tab(tab_id)
+    def _tab_has_live_measurements(self, tab) -> bool:  # noqa: ANN001 - TabSession
+        store = self._controller.measurement_persistence.store
+        return any(study.study_uid in store and store.get(study.study_uid).has_measurements for study in tab.studies)
 
-    def _on_new_tab_requested(self) -> None:
-        if self._tab_busy() or not self._tab_flush_or_block() or not self._ensure_tab_capacity():
-            self._refresh_tab_strip()
-            return
-        self._park_active_tab()
-        tab = self._tabs.open_tab(origin=TAB_ORIGIN_EMPTY, activate=True)
-        self._load_tab_content(tab)
+    def _close_extra_tabs_for_single_mode(self) -> bool:
+        """Keep the first tab; ask once before closing tabs with measurements."""
+        if len(self._tabs) <= 1:
+            return True
+        if self._tab_busy() or not self._tab_flush_or_block():
+            return False
+        first, *victims = self._tabs.tabs
+        measured = [
+            tab
+            for tab in victims
+            if (self._tab_has_live_measurements(tab) if tab is self._tabs.active else tab.has_measurements)
+        ]
+        if measured:
+            titles = "\n".join(f"• {self._tab_caption(tab)}" for tab in victims)
+            answer = QMessageBox.question(
+                self,
+                tr("tabs.disable.title"),
+                tr("tabs.disable.body", titles=titles),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return False
+        if not self._switch_to_tab(first.tab_id):
+            return False
+        for tab in victims:
+            self._close_inactive_tab(tab.tab_id)
+        return True
+
+    def _on_tab_selected(self, tab_id: str) -> None:
+        if self._user_preferences.tabs_enabled and tab_id in self._tabs:
+            self._switch_to_tab(tab_id)
 
     def _on_tab_close_requested(self, tab_id: str) -> None:
+        if not self._user_preferences.tabs_enabled or tab_id not in self._tabs:
+            return
         if self._tab_busy():
             self._refresh_tab_strip()
             return
@@ -2396,6 +2442,8 @@ class MainWindow(QMainWindow):
         self._process_pending_cache_purges()
 
     def _cycle_tab(self, step: int) -> None:
+        if not self._user_preferences.tabs_enabled:
+            return
         tabs = self._tabs.tabs
         active_id = self._tabs.active_tab_id
         if len(tabs) < 2 or active_id is None:
@@ -2437,7 +2485,6 @@ class MainWindow(QMainWindow):
             [(tab.tab_id, self._tab_caption(tab)) for tab in self._tabs.tabs],
             self._tabs.active_tab_id,
         )
-        self._tab_strip.new_button().setToolTip(tr("tabs.new"))
 
     def _update_main_stack(self) -> None:
         """Viewer while the active tab shows studies, placeholder otherwise."""

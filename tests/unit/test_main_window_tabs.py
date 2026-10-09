@@ -12,7 +12,7 @@ import pytest
 
 pytestmark = pytest.mark.gui
 
-from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox, QWidget  # noqa: E402
 
 from echo_personal_tool.application.tab_session import (  # noqa: E402
     MAX_OPEN_TABS,
@@ -154,13 +154,12 @@ def test_switch_is_refused_when_measurements_cannot_be_flushed(window, monkeypat
     assert window._tabs.active_tab_id != a
 
 
-def test_new_plus_tab_is_empty_and_shows_the_placeholder(window) -> None:
-    _open_and_publish(window, "/data/A", "a")
-    window._on_new_tab_requested()
-    assert len(window._tabs) == 2
-    assert window._tabs.active.origin == TAB_ORIGIN_EMPTY
-    assert window._main_stack.currentWidget() is window._empty_tab_page
-    assert window._test_calls["studies"][-1] == []
+def test_strip_is_below_system_bar_without_plus_button(window) -> None:
+    assert window._root_layout.indexOf(window._system_bar) == 0
+    assert window._root_layout.indexOf(window._tab_strip) == 1
+    assert window._root_layout.indexOf(window._main_stack) == 2
+    assert window.findChild(QWidget, "tabStripNew") is None
+    assert not hasattr(window._tab_strip, "new_button")
 
 
 def test_closing_the_active_tab_loads_its_neighbour(window) -> None:
@@ -188,8 +187,7 @@ def test_closing_a_server_tab_purges_its_pacs_cache_once(window) -> None:
     window._acquire_tab_for_load(TAB_ORIGIN_SERVER, "", "z3-A")
     _publish(window, _studies("srv"))
     server_tab = window._tabs.tabs[0].tab_id
-    window._on_new_tab_requested()
-    _publish(window, [])  # the controller publishes the empty set for the « + » tab
+    _open_and_publish(window, "/data/local", "local")
     window._on_tab_close_requested(server_tab)
     assert window._test_cleared == ["z3-A"]
 
@@ -325,5 +323,234 @@ def test_batch_accepted_room_question_closes_oldest_inactive_tabs(window, monkey
     assert len(window._tabs) == MAX_OPEN_TABS
     shared = [t for t in window._tabs.tabs if t.cache_session_id == "sess-1"]
     assert len(shared) == 3
-    # the reused « + » tab gets its studies when the controller publishes them
+    # the reused initial empty tab gets its studies when the controller publishes them
     assert [t.studies[0].study_uid for t in shared if t.studies] == ["b.study", "c.study"]
+
+
+# ----- pre-release step 2: optional tabs ---------------------------------------
+
+
+def _apply_tabs(window, enabled: bool) -> None:
+    from dataclasses import replace
+
+    from echo_personal_tool.infrastructure.user_preferences import save_user_preferences
+
+    preferences = replace(window._user_preferences, tabs_enabled=enabled)
+    # The settings dialog writes first, then invokes on_apply.
+    save_user_preferences(preferences)
+    window._apply_user_preferences(preferences)
+
+
+@pytest.mark.parametrize("font_size", [12, 18])
+def test_strip_height_tracks_caliper_control(window, font_size) -> None:
+    from dataclasses import replace
+
+    from echo_personal_tool.presentation.ui_metrics import control_height
+
+    window._apply_user_preferences(replace(window._user_preferences, ui_font_size=font_size))
+    QApplication.processEvents()
+    expected = control_height(window._system_bar._btn_caliper)
+    assert window._tab_strip.height() == expected
+    assert window._tab_strip._bar.height() == expected
+    assert window._tab_strip._bar.tabRect(0).height() == expected
+    assert window._tab_strip.layout().contentsMargins().top() == 0
+
+
+def test_disabled_tabs_replace_folder_without_growing_count(window) -> None:
+    first = _open_and_publish(window, "/data/A", "a")
+    _apply_tabs(window, False)
+    assert window._tab_strip.isHidden()
+    window._tabs.update_viewer(first, active_instance_uid="a.1", frame_index=3, viewer_state={"old": True})
+    window.open_folder_path("/data/B")
+    assert window._tabs.active_tab_id == first
+    assert len(window._tabs) == window._tab_strip.tab_count() == 1
+    assert window._tabs.active.root == "/data/B"
+    assert window._tabs.active.active_instance_uid == ""
+    assert window._tabs.active.viewer_state_json == "{}"
+    _publish(window, _studies("b"))
+    assert window._tabs.active.studies == _studies("b")
+    _apply_tabs(window, True)
+    assert not window._tab_strip.isHidden()
+    window.open_folder_path("/data/C")
+    assert len(window._tabs) == 2
+
+
+def test_disabled_tabs_load_entire_pacs_batch_even_over_tab_limit(window) -> None:
+    _open_and_publish(window, "/data/A", "a")
+    _apply_tabs(window, False)
+    batch = _batch(*(f"s{i}" for i in range(MAX_OPEN_TABS + 2)))
+    assert window._open_server_batch(batch, "batch-cache")
+    assert len(window._tabs) == 1
+    assert window._test_calls["studies"][-1] == batch
+    _publish(window, batch)
+    assert window._tabs.active.studies == batch
+    assert window._tabs.active.cache_session_id == "batch-cache"
+
+
+def test_single_tab_replacement_flush_failure_keeps_source(window, monkeypatch) -> None:
+    first = _open_and_publish(window, "/data/A", "a")
+    _apply_tabs(window, False)
+    monkeypatch.setattr(window, "_tab_flush_or_block", lambda: False)
+    window.open_folder_path("/data/B")
+    assert window._tabs.active_tab_id == first
+    assert window._tabs.active.root == "/data/A"
+    assert window._test_calls["folder"] == ["/data/A"]
+
+
+def test_single_tab_replacement_defers_pacs_purge_until_old_files_are_released(window, monkeypatch) -> None:
+    _apply_tabs(window, False)
+    assert window._open_server_batch(_studies("srv"), "old-cache")
+    _publish(window, _studies("srv"))
+    window.open_folder_path("/data/local")
+    assert window._test_cleared == []
+    monkeypatch.setattr(window, "_active_orthanc_cache_sessions", lambda: {"old-cache"})
+    _publish(window, _studies("local"))
+    assert window._test_cleared == []
+    monkeypatch.setattr(window, "_active_orthanc_cache_sessions", lambda: set())
+    window._process_pending_cache_purges()
+    assert window._test_cleared == ["old-cache"]
+
+
+def test_disabled_tab_shortcuts_do_nothing(window, qtbot) -> None:
+    from PySide6.QtCore import Qt
+
+    first = _open_and_publish(window, "/data/A", "a")
+    _apply_tabs(window, False)
+    for key, modifiers in [
+        (Qt.Key.Key_W, Qt.KeyboardModifier.ControlModifier),
+        (Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier),
+        (Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier),
+    ]:
+        qtbot.keyClick(window, key, modifiers)
+    window._cycle_tab(1)
+    window._cycle_tab(-1)
+    window._close_active_tab_shortcut()
+    assert window._tabs.active_tab_id == first
+    assert window._tabs.active.studies == _studies("a")
+    assert len(window._tabs) == 1
+
+
+def test_disable_keeps_first_and_closes_others_without_empty_measurement_prompt(window, monkeypatch) -> None:
+    first = _open_and_publish(window, "/data/A", "a")
+    window._open_server_batch(_batch("b", "c"), "extra-cache")
+    _publish(window, _studies("b"))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: pytest.fail("No measurements: no prompt"))
+    _apply_tabs(window, False)
+    assert len(window._tabs) == 1
+    assert window._tabs.active_tab_id == first
+    assert window._test_calls["studies"][-1] == _studies("a")
+    _publish(window, _studies("a"))
+    assert window._test_cleared == ["extra-cache"]
+
+
+def test_disable_keeps_shared_cache_of_first_tab(window) -> None:
+    window._open_server_batch(_batch("a", "b", "c"), "shared-cache")
+    first = window._tabs.active_tab_id
+    _publish(window, _studies("a"))
+    _apply_tabs(window, False)
+    assert window._tabs.active_tab_id == first
+    assert len(window._tabs) == 1
+    assert window._test_cleared == []
+
+
+@pytest.mark.parametrize("accept", [False, True])
+def test_disable_confirms_once_for_active_and_parked_measurements(window, monkeypatch, accept) -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+    from echo_personal_tool.domain.models import LinearMeasurement
+    from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+
+    first = _open_and_publish(window, "/data/A", "a")
+    second = _open_and_publish(window, "/data/B", "b")
+    store = window._controller.measurement_persistence.store
+    store.restore("b.study", StudyMeasurementData(linear_measurements=(LinearMeasurement("LA", 60.0, 30.0),)))
+    third = _open_and_publish(window, "/data/C", "c")
+    assert window._tabs.get(second).has_measurements
+    # The real controller clears the previous live store on each study load.
+    store.clear()
+    store.restore("c.study", StudyMeasurementData(linear_measurements=(LinearMeasurement("LA", 64.0, 32.0),)))
+    asked = []
+
+    def question(*args):
+        asked.append(args)
+        return QMessageBox.StandardButton.Yes if accept else QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "question", question)
+    captions = [window._tab_caption(window._tabs.get(t)) for t in (second, third)]
+    _apply_tabs(window, False)
+    assert len(asked) == 1
+    assert all(caption in asked[0][2] for caption in captions)
+    assert asked[0][-1] == QMessageBox.StandardButton.No
+    assert load_user_preferences().tabs_enabled is (not accept)
+    assert window._user_preferences.tabs_enabled is (not accept)
+    assert len(window._tabs) == (1 if accept else 3)
+    assert window._tabs.active_tab_id == (first if accept else third)
+
+
+def test_disable_detects_parked_measurements_with_empty_active_tab_data(window, monkeypatch) -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+    from echo_personal_tool.domain.models import LinearMeasurement
+
+    _open_and_publish(window, "/data/A", "a")
+    _open_and_publish(window, "/data/B", "b")
+    store = window._controller.measurement_persistence.store
+    store.restore("b.study", StudyMeasurementData(linear_measurements=(LinearMeasurement("LA", 60.0, 30.0),)))
+    _open_and_publish(window, "/data/C", "c")
+    store.clear()
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: asked.append(args) or QMessageBox.StandardButton.No)
+    _apply_tabs(window, False)
+    assert len(asked) == 1
+    assert len(window._tabs) == 3
+
+
+@pytest.mark.parametrize("blocked", ["load", "flush"])
+def test_disable_is_rolled_back_when_navigation_is_blocked(window, monkeypatch, blocked) -> None:
+    from echo_personal_tool.infrastructure.user_preferences import load_user_preferences
+
+    _open_and_publish(window, "/data/A", "a")
+    window.open_folder_path("/data/B")
+    if blocked == "flush":
+        _publish(window, _studies("b"))
+        monkeypatch.setattr(window, "_tab_flush_or_block", lambda: False)
+    active = window._tabs.active_tab_id
+    _apply_tabs(window, False)
+    assert load_user_preferences().tabs_enabled
+    assert window._user_preferences.tabs_enabled
+    assert len(window._tabs) == 2
+    assert window._tabs.active_tab_id == active
+    assert not window._tab_strip.isHidden()
+
+
+def test_disabled_strip_stays_hidden_when_fullscreen_chrome_returns(window) -> None:
+    _apply_tabs(window, False)
+    window._enter_fullscreen_kiosk()
+    window._fullscreen_reveal_chrome(auto_hide=False)
+    assert window._tab_strip.isHidden()
+    window._exit_fullscreen_kiosk()
+    assert window._tab_strip.isHidden()
+
+
+def test_startup_with_tabs_disabled(qtbot, make_main_window) -> None:
+    from echo_personal_tool.infrastructure.user_preferences import UserPreferences
+
+    win = make_main_window(user_preferences=UserPreferences(tabs_enabled=False))
+    assert win._tab_strip.isHidden()
+    assert len(win._tabs) == 1
+
+
+def test_disable_preserves_live_measurements_when_first_tab_is_already_active(window, monkeypatch) -> None:
+    from echo_personal_tool.application.study_measurement_session import StudyMeasurementData
+    from echo_personal_tool.domain.models import LinearMeasurement
+
+    first = _open_and_publish(window, "/data/A", "a")
+    window._tabs.open_tab(origin=TAB_ORIGIN_FOLDER, root="/data/B", studies=_studies("b"), activate=False)
+    store = window._controller.measurement_persistence.store
+    data = StudyMeasurementData(linear_measurements=(LinearMeasurement("LA", 60, 30),))
+    store.restore("a.study", data)
+    before = list(window._test_calls["studies"])
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: pytest.fail("The measured first tab is not closing"))
+    _apply_tabs(window, False)
+    assert window._tabs.active_tab_id == first
+    assert len(window._tabs) == 1
+    assert window._test_calls["studies"] == before
+    assert store.get("a.study") == data
