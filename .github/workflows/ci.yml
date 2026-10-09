@@ -111,19 +111,6 @@ jobs:
             if [ -f /tmp/pytest-last-node ]; then
               printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
             fi
-            # faulthandler prints the crashing frame first. The last lines are
-            # only the pytest entry point, so publish the head of the dump.
-            python -c 'from pathlib import Path
-lines = Path("/tmp/pytest.log").read_text(errors="replace").splitlines()
-start = next((i for i, line in enumerate(lines) if "Fatal Python error" in line or "Current thread" in line), 0)
-window = lines[start:start + 35] or lines[:35]
-for index, line in enumerate(window):
-    safe = line.replace("%", "%25").replace("\r", "")[:700]
-    print(f"::error title=pytest frame {index}::{safe}")
-for index, line in enumerate(lines[:12]):
-    safe = line.replace("%", "%25").replace("\r", "")[:700]
-    print(f"::notice title=pytest log {index}::{safe}")
-'
           fi
           exit "$status"
 
