@@ -333,6 +333,8 @@ class MainWindow(QMainWindow):
             self._controller.persistence_status.connect(self._on_persistence_status)
         if hasattr(self._controller, "persistence_blocked"):
             self._controller.persistence_blocked.connect(self._on_persistence_blocked)
+        if hasattr(self._controller, "persistence_conflict"):
+            self._controller.persistence_conflict.connect(self._on_persistence_conflict)
         self._research_warning = QLabel(tr("layout.research_use_only"))
         self._research_warning.setStyleSheet("color: #ff9800; font-weight: bold; padding-right: 10px;")
         status.addPermanentWidget(self._research_warning)
@@ -1324,12 +1326,14 @@ class MainWindow(QMainWindow):
             measurement_storage_action=self._show_measurement_storage,
         )
 
-    def _show_measurement_storage(self) -> None:
+    def _show_measurement_storage(self) -> bool:
+        """Open the saved-measurements manager; returns True when it rewrote the
+        stored autosave preference (delete-all disables it «now and next launch»)."""
         from echo_personal_tool.presentation.measurement_storage_dialog import MeasurementStorageDialog
 
         dialog = MeasurementStorageDialog(self._controller, self)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.exec()
+        return dialog.preferences_changed
 
     def _on_persistence_status(self, code: str) -> None:
         states = {"ready", "dirty", "loading", "saving", "saved", "restored", "partial", "disabled", "saved_drafts"}
@@ -1365,6 +1369,67 @@ class MainWindow(QMainWindow):
     def _on_persistence_blocked(self) -> None:
         QMessageBox.warning(self, tr("persistence.title"), tr("persistence.blocked_navigation"))
 
+    def _on_persistence_conflict(self, study_uids: list) -> None:
+        """Runtime enable: an open study has a saved record this session never loaded."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(tr("persistence.conflict_title"))
+        box.setText(tr("persistence.conflict_text"))
+        load_button = box.addButton(tr("persistence.conflict_load"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("persistence.conflict_keep"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        self._controller.resolve_persistence_conflict(box.clickedButton() is load_button)
+
+    def _sync_measurement_persistence(self, stored: UserPreferences, effective: UserPreferences) -> None:
+        """Apply the autosave toggle immediately (no restart).
+
+        Enabling starts saving in this session (records of already open studies
+        are adopted first, with a RAM-vs-disk resolution when they have one).
+        Disabling settles unsaved edits first: save / discard / cancel.
+        ``stored`` is the object the dialog persisted; ``effective`` is the
+        presenter-intercepted copy the window runs with.
+        """
+        persistence = self._controller.measurement_persistence
+        enabled = effective.measurement_persistence_enabled
+        if persistence.enabled == enabled:
+            return
+        if enabled:
+            self._controller.set_measurement_persistence_enabled(True)
+            return
+        if not persistence.has_pending_edits:
+            self._controller.set_measurement_persistence_enabled(False)
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(tr("persistence.disable_title"))
+        box.setText(tr("persistence.disable_dirty_text"))
+        save_button = box.addButton(tr("persistence.disable_save"), QMessageBox.ButtonRole.AcceptRole)
+        discard_button = box.addButton(tr("persistence.disable_discard"), QMessageBox.ButtonRole.DestructiveRole)
+        cancel_button = box.addButton(tr("button.cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is discard_button:
+            if persistence.discard_pending():
+                return
+        elif clicked is save_button:
+            if persistence.flush():
+                self._controller.set_measurement_persistence_enabled(False)
+                return
+        # Cancel, or a write/discard that could not be confirmed: keep autosave
+        # on and put the stored preference back so the next launch agrees with it.
+        if clicked is not None and clicked is not cancel_button:
+            self._show_status(tr("persistence.disable_blocked"))
+        self._revert_measurement_persistence_preference(stored, effective)
+
+    def _revert_measurement_persistence_preference(
+        self, stored: UserPreferences, effective: UserPreferences
+    ) -> None:
+        from echo_personal_tool.infrastructure.user_preferences import save_user_preferences
+
+        stored.measurement_persistence_enabled = True
+        effective.measurement_persistence_enabled = True
+        save_user_preferences(stored)
+
     def _active_orthanc_cache_sessions(self) -> set[str]:
         """Cache sessions backing the currently loaded PACS studies."""
         active: set[str] = set()
@@ -1390,6 +1455,7 @@ class MainWindow(QMainWindow):
     def _apply_user_preferences(self, preferences: UserPreferences) -> None:
         # Presenter mode may overlay the projector preset: the caller's
         # object is kept as the base, the effective copy is applied.
+        stored = preferences  # the object the settings dialog already persisted
         preferences = self._presenter.intercept_preferences(preferences)
         self._user_preferences = preferences
         if not preferences.results_overlay_custom_position:
@@ -1435,6 +1501,7 @@ class MainWindow(QMainWindow):
         self._refresh_dicom_inspector()
         self._tool_panel.rebuild_menu_with_preferences(preferences)
         self._sync_results_overlay(self._controller.state_manager.snapshot)
+        self._sync_measurement_persistence(stored, preferences)
 
     def _reload_ui_language(self) -> None:
         self._system_bar.reload_text()

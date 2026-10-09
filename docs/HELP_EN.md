@@ -1127,7 +1127,10 @@ Do not use this guide or the application as a replacement for the ultrasound sys
 
 ## Saved measurements and height/weight — experimental
 
-In **Settings → Other → Saved measurements**, enable persistence and restart SonoForge. It is currently off by default in both Full and Presenter. Records live under `<app-data>/measurements`, separately from the disposable DICOM cache, until explicitly deleted.
+In **Settings → Other → Saved measurements**, enable persistence — the setting applies immediately, no restart. It is currently off by default in both Full and Presenter. Records live under `<app-data>/measurements`, separately from the disposable DICOM cache, until explicitly deleted.
+
+- When you enable persistence while a study with an existing saved record is open, the app asks whether to load the saved measurements (replacing this session's) or keep the current ones (the saved record is then overwritten on the next save).
+- When disabling with unsaved changes, the app asks whether to save and turn off, turn off without saving, or cancel.
 
 - Completed edits are queued for saving after about one second. Wait for “Measurements saved”; crash recovery restores the last acknowledged snapshot, not necessarily the last action.
 - Reopen the original sources, or retrieve the same DICOM study from PACS again, to restore checked measurements. Clearing the PACS cache does not remove measurements, but a measurement file does not contain images. Non-DICOM currently requires the same location and matching content.

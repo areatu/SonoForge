@@ -172,6 +172,7 @@ class AppController(QObject):
     speckle_result_ready = Signal(object)
     persistence_status = Signal(str)
     persistence_blocked = Signal()  # flush failed: navigation must be refused loudly, not only in the status bar
+    persistence_conflict = Signal(list)  # runtime-enable: open studies having an unloaded saved record
     scroll_settled = Signal()
     la_assist_contour_ready = Signal(object)
 
@@ -502,6 +503,44 @@ class AppController(QObject):
             self._cache_retained_studies = ()
 
         self.measurement_persistence.load(studies, ready)
+
+    def set_measurement_persistence_enabled(self, enabled: bool) -> None:
+        """Runtime toggle from the Settings dialog — applies without a restart.
+
+        Disabling stops tracking (the caller settles unsaved edits first, see
+        MainWindow); enabling reads the saved records of already open studies
+        into the persistence contexts without touching the live session — a
+        record found this way raises a RAM-vs-disk resolution.
+        """
+        persistence = self.measurement_persistence
+        if persistence.enabled == enabled:
+            return
+        if not enabled:
+            persistence.disable()
+            return
+        persistence.enable()
+        if self._studies:
+            self._adopt_open_studies_for_persistence()
+
+    def _adopt_open_studies_for_persistence(self) -> None:
+        generation = self._study_load_generation
+        studies = list(self._studies)
+
+        def ready():
+            if generation != self._study_load_generation:
+                return
+            conflicts = sorted(self.measurement_persistence.restore_conflicts)
+            if conflicts:
+                self.persistence_conflict.emit(conflicts)
+
+        self.measurement_persistence.load(studies, ready, restore=set())
+
+    def resolve_persistence_conflict(self, load_saved: bool) -> None:
+        """User decision for open studies that have both a live session and a saved record."""
+        if load_saved:
+            self._restore_measurement_studies()
+        else:
+            self.measurement_persistence.adopt_conflicts()
 
     def _on_studies_scanned(self, studies: object) -> None:
         self._studies = list(studies)  # type: ignore[arg-type]

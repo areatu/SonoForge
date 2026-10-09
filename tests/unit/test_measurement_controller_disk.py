@@ -100,3 +100,113 @@ def test_report_contours_use_their_own_source_spacing(qapp):
         result = {p.label: p.value for p in controller.compute_study_snapshot().planimeter}
         assert result == pytest.approx({"A": 0.25, "B": 1.0})
     assert controller.measurement_persistence.close()
+
+
+def test_runtime_enable_adopts_open_study_and_resolves_conflict(tmp_path, monkeypatch, qapp):
+    """The Settings toggle applies without a restart: enabling while a study is
+    open adopts its saved record; a record the session never loaded raises a
+    RAM-vs-disk resolution instead of a silent overwrite."""
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.load_user_preferences",
+        lambda: UserPreferences(measurement_persistence_enabled=True),
+    )
+    root = tmp_path / "sources"
+    root.mkdir()
+    write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
+    studies = LocalMediaDirectoryScanner().scan(root)
+    instance = studies[0].series[0].instances[0]
+    pool = SimpleNamespace(start=lambda *args: None)
+    first = AppController(thread_pool=pool)
+    first.load_pre_scanned_studies(studies)
+    assert first.measurement_persistence.flush()
+    first.load_instance(instance)
+    first.on_patient_metrics_changed(181, 82)
+    assert first.measurement_persistence.flush()
+    assert first.measurement_persistence.close()
+
+    # New session with autosave off: open the same study, measure, enable at runtime.
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.load_user_preferences",
+        lambda: UserPreferences(measurement_persistence_enabled=False),
+    )
+    second = AppController(thread_pool=pool)
+    conflicts: list = []
+    second.persistence_conflict.connect(lambda uids: conflicts.append(list(uids)))
+    second.load_pre_scanned_studies(studies)
+    assert second.measurement_persistence.flush()
+    second.load_instance(instance)
+    second.on_patient_metrics_changed(190, 90)
+    assert not second.measurement_persistence.enabled
+    second.set_measurement_persistence_enabled(True)
+    assert second.measurement_persistence.enabled
+    assert second.measurement_persistence.flush()
+    assert conflicts == [["1.2.3"]]
+    assert second.compute_study_snapshot().height_cm == 190  # live session kept
+    second.resolve_persistence_conflict(load_saved=False)  # «keep current»
+    second.on_patient_metrics_changed(191, 91)
+    assert second.measurement_persistence.flush()
+    record = second.measurement_persistence.repository.load("1.2.3")
+    assert record["data"].height_cm == 191
+    assert second.measurement_persistence.close()
+
+
+def test_runtime_enable_load_saved_restores_record(tmp_path, monkeypatch, qapp):
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.load_user_preferences",
+        lambda: UserPreferences(measurement_persistence_enabled=True),
+    )
+    root = tmp_path / "sources"
+    root.mkdir()
+    write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
+    studies = LocalMediaDirectoryScanner().scan(root)
+    instance = studies[0].series[0].instances[0]
+    pool = SimpleNamespace(start=lambda *args: None)
+    first = AppController(thread_pool=pool)
+    first.load_pre_scanned_studies(studies)
+    assert first.measurement_persistence.flush()
+    first.load_instance(instance)
+    first.on_patient_metrics_changed(181, 82)
+    assert first.measurement_persistence.flush()
+    assert first.measurement_persistence.close()
+
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.load_user_preferences",
+        lambda: UserPreferences(measurement_persistence_enabled=False),
+    )
+    second = AppController(thread_pool=pool)
+    second.load_pre_scanned_studies(studies)
+    assert second.measurement_persistence.flush()
+    second.set_measurement_persistence_enabled(True)
+    assert second.measurement_persistence.flush()
+    second.resolve_persistence_conflict(load_saved=True)  # «load saved»
+    assert second.measurement_persistence.flush()
+    # studies_loaded rebuilds the gallery in the UI; the test reloads the instance likewise
+    second.load_instance(instance)
+    assert second.compute_study_snapshot().height_cm == 181  # record replaced the RAM session
+    assert second.measurement_persistence.close()
+
+
+def test_runtime_disable_settles_pending_edits(tmp_path, monkeypatch, qapp):
+    monkeypatch.setattr(
+        "echo_personal_tool.application.app_controller.load_user_preferences",
+        lambda: UserPreferences(measurement_persistence_enabled=True),
+    )
+    root = tmp_path / "sources"
+    root.mkdir()
+    write_synthetic_dicom(root / "clip.dcm", study_uid="1.2.3", series_uid="1.2.99")
+    studies = LocalMediaDirectoryScanner().scan(root)
+    instance = studies[0].series[0].instances[0]
+    controller = AppController(thread_pool=SimpleNamespace(start=lambda *args: None))
+    controller.load_pre_scanned_studies(studies)
+    assert controller.measurement_persistence.flush()
+    controller.load_instance(instance)
+    controller.on_patient_metrics_changed(181, 82)
+    assert controller.measurement_persistence.has_pending_edits
+    assert controller.measurement_persistence.flush()  # «save and turn off»
+    controller.set_measurement_persistence_enabled(False)
+    assert not controller.measurement_persistence.enabled
+    controller.on_patient_metrics_changed(200, 100)  # session-only from here on
+    assert controller.measurement_persistence.flush()
+    record = controller.measurement_persistence.repository.load("1.2.3")
+    assert record["data"].height_cm == 181
+    assert controller.measurement_persistence.close()

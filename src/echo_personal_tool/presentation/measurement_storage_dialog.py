@@ -27,6 +27,10 @@ class MeasurementStorageDialog(QDialog):
         self.controller = controller
         self.persistence = controller.measurement_persistence
         self._alive = True
+        # Set when the dialog itself rewrites the stored autosave preference
+        # (delete-all disables it «now and next launch»); the settings dialog
+        # syncs its checkbox only then, keeping the user's pending edit otherwise.
+        self.preferences_changed = False
         self.setWindowTitle(tr("persistence.title"))
         self.resize(700, 430)
         layout = QVBoxLayout(self)
@@ -244,6 +248,7 @@ class MeasurementStorageDialog(QDialog):
                 preferences = load_user_preferences()
                 preferences.measurement_persistence_enabled = False
                 save_user_preferences(preferences)
+                self.preferences_changed = True
             self.message(error)
 
         self.persistence.delete_all(applied)
