@@ -2043,5 +2043,16 @@
   "start_page.settings": "Settings",
   "start_page.subtitle": "Open a local folder or load a study from the server to get started.",
   "start_page.title": "Welcome to SonoForge",
-  "start_page.version": "SonoForge version {version}"
+  "start_page.version": "SonoForge version {version}",
+  "tabs.new": "New tab",
+  "tabs.empty": "Empty tab",
+  "tabs.loading": "Loading…",
+  "tabs.untitled": "Untitled series",
+  "tabs.busy": "Wait for the current study to finish loading",
+  "tabs.limit.title": "Too many tabs",
+  "tabs.limit.body": "{max} tabs are open. Free space by closing {count} inactive tab(s)?\n{titles}\nMeasurements are kept. A server cache is deleted only when no other tab uses it.",
+  "tabs.placeholder.title": "Open a study",
+  "tabs.placeholder.hint": "“Open folder…” or “Load from server…”. Each study opens in its own tab.",
+  "tabs.limit.nothing_opened": "No room for the studies. Close a tab and load again.",
+  "tabs.batch.partial": "Opened {opened} of {total} studies: not enough room in the tabs."
 }

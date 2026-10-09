@@ -150,6 +150,17 @@ Measurement inputs are associated with the current SOP Instance and frame where 
 
 ---
 
+### 2.6 Tabs
+
+Each open study (folder or server download) gets **its own tab** above the system bar. Switching tabs reloads that tab's study; measurements come back from the local store by UID. At most 8 tabs are open. An empty tab (`+`) shows a placeholder until a study is loaded.
+
+- `+` — a new empty tab; the next load fills it.
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
+- While a study loads, switching and new tabs are unavailable (a message appears in the status bar).
+- Closing a tab does not delete measurements. A server download with several studies opens each in its own tab; they share one cache, which is removed when the last of these tabs closes.
+- With eight tabs open, the app asks whether to close the oldest inactive tab.
+- Multiview and M-mode end when you switch tabs. Comparing clips across tabs comes later.
+
 ## 3. Local files and folders
 
 ### 3.1 Supported files

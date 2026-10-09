@@ -1132,6 +1132,34 @@ class TestPresenterDefaultLayout:
 # ── F11 fullscreen kiosk ────────────────────────────────────────────
 
 
+def _show_study_in_start_tab(window) -> None:
+    """Empty start tab shows the placeholder (Э9); publish one study so the viewer page is shown."""
+    from datetime import datetime
+
+    from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
+
+    instance = InstanceMetadata(
+        sop_instance_uid="study.presenter.1",
+        series_uid="series.presenter",
+        modality="US",
+        number_of_frames=4,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="A4C",
+        path=None,
+    )
+    series = SeriesMetadata(
+        series_uid="series.presenter",
+        study_uid="study.presenter",
+        modality="US",
+        description="A4C",
+        instances=(instance,),
+    )
+    studies = [StudyMetadata(study_uid="study.presenter", study_datetime=datetime(2026, 10, 1), series=(series,))]
+    loaded = window._finish_tab_load(studies)
+    window._after_tab_loaded(loaded, studies)
+
+
 class TestFullscreenKiosk:
     def test_fullscreen_hides_all_chrome(self, presenter_window, qtbot):
         window = presenter_window
@@ -1147,6 +1175,7 @@ class TestFullscreenKiosk:
 
     def test_exit_fullscreen_restores_chrome(self, presenter_window, qtbot):
         window = presenter_window
+        _show_study_in_start_tab(window)
         window._gallery.show()
         window._tool_panel.show()
         window._system_bar.show()
@@ -1165,6 +1194,7 @@ class TestFullscreenKiosk:
         from dataclasses import replace as dc_replace
 
         window = presenter_window
+        _show_study_in_start_tab(window)
         window.show()
         qtbot.waitExposed(window, timeout=2000)
         window._layout_config = dc_replace(window._layout_config, activity_bar=True)

@@ -32,10 +32,46 @@ def _make_window(qtbot) -> MainWindow:
     return window
 
 
+def _publish_one_study(window: MainWindow) -> None:
+    from datetime import datetime
+
+    from echo_personal_tool.domain.models.metadata import InstanceMetadata, SeriesMetadata, StudyMetadata
+
+    instance = InstanceMetadata(
+        sop_instance_uid="1.2.3.layout",
+        series_uid="1.2.3.layout.series",
+        modality="US",
+        number_of_frames=4,
+        pixel_spacing=(0.5, 0.5),
+        frame_time_ms=33.3,
+        series_description="A4C",
+        path=None,
+    )
+    series = SeriesMetadata(
+        series_uid="1.2.3.layout.series",
+        study_uid="1.2.3.layout",
+        modality="US",
+        description="A4C",
+        instances=(instance,),
+    )
+    study = StudyMetadata(study_uid="1.2.3.layout", study_datetime=datetime(2026, 10, 1), series=(series,))
+    window._controller.studies_loaded.emit([study])
+    QApplication.processEvents()
+
+
 def _apply(window: MainWindow, **kwargs: object) -> None:
     window._layout_config = replace(LayoutConfig(), **{**asdict(window._layout_config), **kwargs})
     window._rebuild_layout()
     QApplication.processEvents()
+
+
+@pytest.fixture(autouse=True)
+def _stub_load_failure_dialog(monkeypatch) -> None:
+    """Synthetic publishes autoload a clip whose files do not exist; the async
+    load failure would open a modal QMessageBox and block headless runs."""
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
 
 
 def _viewer_in_content_tree(window: MainWindow) -> bool:
@@ -127,15 +163,16 @@ def test_maximize_sets_geometry_before_first_show(qtbot, monkeypatch) -> None:
 )
 def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
     window = _make_window(qtbot)
+    # Tabs show the viewer page once the start tab holds a study (Э9); the
+    # placeholder hides the whole content area while the tab is empty.
+    _publish_one_study(window)
     _apply(window, **cfg_kwargs)
 
     assert _viewer_in_content_tree(window)
-    if cfg_kwargs.get("multiview"):
-        assert window._viewer_stack.currentWidget() is window._start_page
-        assert window._pane_left is None  # empty workspaces defer pane creation
-    else:
-        assert window._viewer_stack.isVisible()
-        assert window._viewer_stack.currentWidget() is window._start_page
+    if not cfg_kwargs.get("multiview"):
+        # Under Multiview the viewers live in the panes (checked below), so
+        # the stack page is moot; otherwise the loaded study owns the page.
+        assert window._viewer_stack.currentWidget() is window._viewer
     assert _gallery_alive(window)
     assert window._gallery.isVisible()
 
@@ -156,6 +193,7 @@ def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
 
 def test_horizontal_gallery_toggle_does_not_destroy_gallery(qtbot) -> None:
     window = _make_window(qtbot)
+    _publish_one_study(window)
     gallery_id = id(window._gallery)
 
     _apply(window, gallery_horizontal=True)
@@ -276,6 +314,7 @@ def test_main_viewer_is_restored_when_multiview_is_reenabled(qtbot) -> None:
 
 def test_activity_bar_off_restores_tool_panel_with_horizontal_gallery(qtbot) -> None:
     window = _make_window(qtbot)
+    _publish_one_study(window)
     _apply(window, activity_bar=True, gallery_horizontal=True)
     assert not window._tool_panel.isVisible()
 
@@ -298,6 +337,7 @@ def test_swap_then_default_restores_viewer(qtbot) -> None:
 def test_horizontal_swap_activity_toggle_restores_tool_panel(qtbot) -> None:
     """Regression: horizontal gallery + swap/activity toggles must not leave empty 280px strip."""
     window = _make_window(qtbot)
+    _publish_one_study(window)
     _apply(window, gallery_horizontal=True)
     _apply(window, gallery_horizontal=True, swap_places=True)
     _apply(window, gallery_horizontal=True, swap_places=True, activity_bar=True)

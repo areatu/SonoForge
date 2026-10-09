@@ -16,6 +16,16 @@ from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.infrastructure.i18n import tr
 
 
+@pytest.fixture(autouse=True)
+def _stub_load_failure_dialog(monkeypatch) -> None:
+    """The fixture publishes a synthetic study whose files do not exist; the
+    autoloaded clip fails async and would open a modal QMessageBox, blocking
+    headless runs."""
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+
 def _instance(uid: str, *, study: str = "study.1", frames: int = 30, name: str | None = None) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid=uid,
@@ -48,7 +58,32 @@ def window(qtbot, isolated_qsettings):
     w.resize(1400, 900)
     w.show()
     qtbot.waitExposed(w)
+    # An empty start tab shows the tab placeholder (Э9); multiview panes live in
+    # the viewer page, so publish one study into the start tab first.
+    _publish_study(w)
     yield w
+
+
+def _publish_study(window) -> None:
+    from datetime import datetime
+
+    from echo_personal_tool.domain.models.metadata import SeriesMetadata, StudyMetadata
+
+    instance = InstanceMetadata(
+        sop_instance_uid="study.fixture.1",
+        series_uid="series.fixture",
+        modality="US",
+        number_of_frames=4,
+        pixel_spacing=None,
+        frame_time_ms=33.3,
+        series_description="A4C",
+        path=None,
+    )
+    series = SeriesMetadata(
+        series_uid="series.fixture", study_uid="study.fixture", modality="US", description="A4C", instances=(instance,)
+    )
+    study = StudyMetadata(study_uid="study.fixture", study_datetime=datetime(2026, 10, 1), series=(series,))
+    window._controller.studies_loaded.emit([study])
 
 
 def _enable(window) -> None:
