@@ -314,7 +314,7 @@ For `Area` or `Volume` in polygon mode:
 3. close the polygon with a double click or `Enter`/`Return` when prompted;
 4. check that there are at least three points and no self-intersection.
 
-`Settings → Measurement → Area tool mode` selects `Polygon (clicks)` or `Freehand drawing`. Freehand input is simplified to a finite set of points; magnetic snap can then change it further. `Area comparison` collects two valid closed areas before displaying the comparison.
+`Settings → Measurement → Area tool mode` selects `Polygon (clicks)` or `Freehand drawing`. Freehand input is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand trace (LV, atrial, or freehand area); click polygons and landmark contours still use magnetic snap when it is enabled. `Area comparison` collects two valid closed areas before displaying the comparison.
 
 ### 7.2 Manual LV contour and Simpson
 

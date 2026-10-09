@@ -4552,7 +4552,11 @@ class ViewerWidget(QWidget):
             self._active_arc_points.append(click)
         elif self._contour_stage == "polygon":
             self._active_arc_points.append(click)
-            if self._magnetic_snap_enabled and len(self._active_arc_points) >= 5:
+            if (
+                self._magnetic_snap_enabled
+                and not self._is_unassisted_freehand_trace()
+                and len(self._active_arc_points) >= 5
+            ):
                 edge_map = self._get_edge_map()
                 if edge_map is not None:
                     from echo_personal_tool.domain.services.contour_edge_snap import (
@@ -4728,6 +4732,8 @@ class ViewerWidget(QWidget):
         # Find and replace the existing LA contour
         for i, c in enumerate(self._contours):
             if c.chamber == "LA" and c.view == contour.view and c.phase == contour.phase:
+                if c.unassisted:
+                    return
                 self._contours[i] = contour
                 # Update stored contour too
                 self._upsert_stored_contour(contour)
@@ -4749,6 +4755,8 @@ class ViewerWidget(QWidget):
         if contour_index < 0 or contour_index >= len(self._contours):
             return
         contour = self._contours[contour_index]
+        if contour.unassisted:
+            return
         if self._current_state is None or self._current_state.instance is None:
             return
         instance = self._current_state.instance
@@ -4901,6 +4909,7 @@ class ViewerWidget(QWidget):
         )
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
+        unassisted = self._is_unassisted_freehand_trace()
         reduced = reduce_polygon_points(self._freehand_points, epsilon=3.0, closed=False)
         if len(reduced) > 30:
             reduced = reduce_polygon_points(reduced, epsilon=5.0, closed=False)
@@ -4912,7 +4921,7 @@ class ViewerWidget(QWidget):
         if reduced[0] != reduced[-1]:
             reduced.append(reduced[0])
 
-        if self._magnetic_snap_enabled:
+        if self._magnetic_snap_enabled and not unassisted:
             edge_map = self._get_edge_map()
             if edge_map is not None:
                 reduced = snap_closed_polygon(reduced, edge_map)
@@ -4932,6 +4941,7 @@ class ViewerWidget(QWidget):
             points=reduced,
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
+            unassisted=unassisted,
         )
         self._freehand_recording = False
         self._freehand_points = []
@@ -4956,6 +4966,7 @@ class ViewerWidget(QWidget):
         """
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
+        unassisted = self._is_unassisted_freehand_trace()
         points = self._dedupe_closed_polygon(list(self._freehand_points))
         if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
@@ -4979,10 +4990,12 @@ class ViewerWidget(QWidget):
             points=resampled,
             num_nodes=DEFAULT_NODE_COUNT,
             frame_index=self._contour_frame_index(),
+            unassisted=unassisted,
         )
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
-        self._auto_snap_new_contour(contour)
+        if not unassisted:
+            self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -8652,6 +8665,10 @@ class ViewerWidget(QWidget):
         self._edge_map_cache_key = cache_key
         return self._edge_map_cache
 
+    def _is_unassisted_freehand_trace(self) -> bool:
+        """True while a freehand LV/atrial trace or freehand area stroke is being finished."""
+        return bool(self._freehand_recording and (self._freehand_open_arc or self._area_tool_mode == "freehand"))
+
     def _apply_magnetic_snap_to_contour(
         self,
         contour_index: int,
@@ -8660,6 +8677,8 @@ class ViewerWidget(QWidget):
         grab_index: int | None = None,
     ) -> None:
         if not self._magnetic_snap_enabled:
+            return
+        if 0 <= contour_index < len(self._contours) and self._contours[contour_index].unassisted:
             return
         edge_map = self._get_edge_map()
         if edge_map is None:
@@ -8691,11 +8710,15 @@ class ViewerWidget(QWidget):
 
     def _auto_snap_new_contour(self, contour: Contour) -> None:
         """Apply magnetic edge snap to a freshly placed contour."""
+        if contour.unassisted or self._is_unassisted_freehand_trace():
+            return
         if not self._magnetic_snap_enabled:
             return
         frame_index = self._contour_frame_index()
         instance_uid = self._current_instance_uid()
         for i, c in enumerate(self._contours):
+            if c.unassisted:
+                continue
             if (c is contour or (c.frame_index == frame_index and c.chamber == contour.chamber)) and (
                 instance_uid is None or c.sop_instance_uid is None or c.sop_instance_uid == instance_uid
             ):
