@@ -106,8 +106,10 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
         return
     geo = screen.availableGeometry()
     if sys.platform == "win32":
-        window.show()
+        # Geometry first, show second: showing a small window and resizing it
+        # afterwards flashes on Windows (frameless + GL viewport repaint).
         window.setGeometry(geo)
+        window.show()
         window._user_maximized = True  # type: ignore[attr-defined]
         return
     window.showMaximized()
@@ -1283,7 +1285,8 @@ class MainWindow(QMainWindow):
         target = tab_map.get(tab)
         if target is not None and self._tool_panel._tabs.indexOf(target) >= 0:
             self._tool_panel._tabs.setCurrentWidget(target)
-        self._tool_panel.setFixedWidth(_TOOL_PANEL_WIDTH)
+        # Keep the Calculators widening in sync (instant: the panel just appeared).
+        self._tool_panel.sync_width(animated=False)
         if self._activity_bar is not None:
             if self._content_layout.indexOf(self._activity_bar) >= 0:
                 self._attach_tool_panel_after(self._activity_bar)
@@ -1703,37 +1706,6 @@ class MainWindow(QMainWindow):
         path = instance.path if instance is not None else None
         self._tool_panel.load_dicom_inspector(path)
 
-    def _save_diagnostics(self) -> None:
-        from datetime import datetime
-
-        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
-        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
-
-        default_name = f"SonoForge-diagnostics-{datetime.now().astimezone():%Y%m%d-%H%M%S}.zip"
-        destination, _ = styled_save_file(
-            self,
-            tr("diagnostics.save_dialog_title"),
-            str(Path.home() / default_name),
-            tr("diagnostics.file_filter"),
-        )
-        if not destination:
-            return
-        try:
-            saved_path = create_diagnostic_bundle(Path(destination), app=QApplication.instance())
-        except Exception as exc:  # noqa: BLE001 - report a failed support export to the user
-            logger.exception("Could not create privacy-filtered diagnostic archive")
-            QMessageBox.warning(
-                self,
-                tr("diagnostics.save_dialog_title"),
-                tr("diagnostics.error", error=str(exc)),
-            )
-            return
-        QMessageBox.information(
-            self,
-            tr("diagnostics.save_dialog_title"),
-            tr("diagnostics.saved", path=str(saved_path)) + "\n\n" + tr("diagnostics.privacy"),
-        )
-
     def open_folder_path(self, directory: Path) -> None:
         from echo_personal_tool.infrastructure.diagnostics import migrate_legacy_scan_errors
         from echo_personal_tool.infrastructure.paths import logs_dir
@@ -1999,6 +1971,20 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
+        self._autoload_first_instance(study_list)
+
+    def _autoload_first_instance(self, study_list: list) -> None:
+        """Show the new study at once: load its first clip without a click.
+
+        Otherwise the viewer keeps the previous study's frame until the user
+        picks a thumbnail by hand.
+        """
+        for study in study_list:
+            for series in study.series:
+                for instance in series.instances:
+                    self._gallery.select_instance(instance)
+                    self._on_instance_selected(instance)
+                    return
 
     # ── gallery → pane routing (spec §6) ────────────────────────────
 
@@ -2629,7 +2615,6 @@ class MainWindow(QMainWindow):
         self._system_bar.heart_rate_requested.connect(self._on_heart_rate_requested)
         self._system_bar.settings_requested.connect(self._show_user_preferences)
         self._system_bar.references_requested.connect(self._show_references)
-        self._system_bar.diagnostics_requested.connect(self._save_diagnostics)
         self._system_bar.minimize_requested.connect(self.showMinimized)
         self._system_bar.maximize_requested.connect(self._toggle_maximize)
         self._system_bar.close_requested.connect(self.close)

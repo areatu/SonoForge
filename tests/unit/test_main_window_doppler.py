@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMessageBox
 
 from echo_personal_tool.application.app_controller import AppController
 from echo_personal_tool.domain.models import InstanceMetadata, SeriesMetadata, StudyMetadata
@@ -140,5 +141,20 @@ def test_studies_loaded_requests_visible_previews_once_in_real_flow(qtbot, monke
         "request_visible_previews",
         counted_request_visible_previews,
     )
+    # First-frame autoload performs a real load of the synthetic study. Its
+    # files do not exist, so the load fails: stub the failure dialog (a modal
+    # QMessageBox would block headless CI forever) and assert the load was
+    # actually attempted.
+    warnings: list[tuple] = []
+
+    def fake_warning(*args, **kwargs):
+        warnings.append(args)
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", fake_warning)
     window._on_studies_loaded([_build_study()])
     assert call_count == 1
+    # The failing decode runs in a worker thread: wait until its failure
+    # warning is delivered (stubbed above, so no modal loop can block us).
+    qtbot.waitUntil(lambda: bool(warnings), timeout=10000)
+    assert warnings

@@ -90,3 +90,73 @@ def test_lazy_panel_public_api_builds_on_demand() -> None:
     assert not panel.is_built
     assert panel.is_section_expanded("continuity")
     assert panel.is_built
+
+
+def test_calculators_tab_widens_panel() -> None:
+    """The narrow panel (280) grows ≥1.5× on the Calculators tab and back."""
+    panel = ToolPanel()
+    base = panel._base_width
+    assert base >= 280
+    panel.show_calculators_tab()
+    assert panel.width() == panel.minimumWidth() == int(base * 1.5)
+    panel._tabs.setCurrentWidget(panel.measure)
+    assert panel.width() == panel.minimumWidth() == base
+
+
+def test_calculators_tab_widens_panel_animated(qtbot) -> None:
+    """Visible panel glides (not snaps) between the widths.
+
+    The animation clock is driven manually: in a full suite earlier modules
+    leave thousands of undisposed widgets behind and the event queue can stay
+    saturated for seconds, starving wall-clock animations. Driving the clock
+    checks the same plumbing (target, duration, width at rest) deterministically.
+    """
+    from PySide6.QtCore import QAbstractAnimation
+
+    panel = ToolPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    base = panel._base_width
+    expanded = int(base * 1.5)
+    panel.show_calculators_tab()
+    anim = panel._width_anim
+    assert anim is not None
+    assert anim.state() == QAbstractAnimation.State.Running
+    assert anim.duration() == panel._CALC_WIDTH_ANIM_MS
+    assert anim.endValue() == expanded
+    anim.setCurrentTime(anim.duration())
+    assert panel.width() == expanded
+    panel._tabs.setCurrentWidget(panel.controls)
+    anim = panel._width_anim
+    assert anim is not None
+    anim.setCurrentTime(anim.duration())
+    assert panel.width() == base
+
+
+def test_crossfade_leaves_no_graphics_effect(qtbot) -> None:
+    """Opacity effects are dropped at rest so later paints stay cheap."""
+    panel = ToolPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel._tabs.setCurrentWidget(panel.controls)
+    fade = panel._fade_anim
+    assert fade is not None
+    fade.setCurrentTime(fade.duration())
+    assert panel.controls.graphicsEffect() is None
+
+
+def test_controls_tab_follows_the_language() -> None:
+    """Window/Level/DR sliders and checks re-render on language switch."""
+    panel = ToolPanel()
+    set_language("ru")
+    panel.reload_text()
+    assert panel.controls.window_slider._title.text() == tr("tools.window") == "Окно"
+    assert panel.controls.level_slider._title.text() == tr("tools.level") == "Уровень"
+    assert panel.controls.dr_slider._title.text() == tr("tools.dr") == "ДР"
+    assert panel.controls._magnetic_snap_check.text() == tr("tools.magnetic_snap")
+    assert panel.controls._despeckle_check.text() == tr("tools.grayscale")
+    set_language("en")
+    panel.reload_text()
+    assert panel.controls.window_slider._title.text() == "Window"
+    assert panel.controls.level_slider._title.text() == "Level"
+    assert panel.controls.dr_slider._title.text() == "DR"

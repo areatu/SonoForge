@@ -102,7 +102,6 @@ class SystemBar(QWidget):
     doppler_calibration_requested = Signal()
     settings_requested = Signal()
     references_requested = Signal()
-    diagnostics_requested = Signal()
     heart_rate_requested = Signal()
     minimize_requested = Signal()
     maximize_requested = Signal()
@@ -151,11 +150,6 @@ class SystemBar(QWidget):
         self._btn_settings.setIcon(_load_icon("settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings_tooltip"))
         self._btn_settings.clicked.connect(self.settings_requested.emit)
-
-        self._btn_diagnostics = QPushButton(tr("system_bar.save_diagnostics"))
-        self._btn_diagnostics.setIcon(_load_icon("description"))
-        self._btn_diagnostics.setToolTip(tr("system_bar.save_diagnostics_tooltip"))
-        self._btn_diagnostics.clicked.connect(self.diagnostics_requested.emit)
 
         btn_caliper = QPushButton("Caliper")
         btn_caliper.setIcon(_load_icon("straighten"))
@@ -257,7 +251,6 @@ class SystemBar(QWidget):
             btn_load_server,
             btn_send_server,
             self._btn_settings,
-            self._btn_diagnostics,
             btn_caliper,
             btn_calibration,
             btn_doppler_calibration,
@@ -311,7 +304,6 @@ class SystemBar(QWidget):
         for button in (
             btn_caliper,
             self._btn_settings,
-            self._btn_diagnostics,
             self._btn_presenter,
             self._btn_references,
             btn_reset,
@@ -387,7 +379,6 @@ class SystemBar(QWidget):
         self._btn_load_server.setIcon(_load_icon("cloud_download"))
         self._btn_send_server.setIcon(_load_icon("activity_dicom"))
         self._btn_settings.setIcon(_load_icon("settings"))
-        self._btn_diagnostics.setIcon(_load_icon("description"))
         self._btn_caliper.setIcon(_load_icon("straighten"))
         self._btn_calibration.setIcon(_load_icon("tune"))
         self._btn_doppler_calibration.setIcon(_load_icon("show_chart"))
@@ -410,8 +401,6 @@ class SystemBar(QWidget):
         self._btn_send_server.setText(tr("system_bar.send_to_server"))
         self._btn_settings.setText(tr("system_bar.settings"))
         self._btn_settings.setToolTip(tr("system_bar.settings"))
-        self._btn_diagnostics.setText(tr("system_bar.save_diagnostics"))
-        self._btn_diagnostics.setToolTip(tr("system_bar.save_diagnostics_tooltip"))
         self._btn_caliper.setText(tr("system_bar.caliper"))
         self._btn_caliper.setToolTip(tr("system_bar.caliper_tooltip"))
         self._btn_calibration.setText(tr("system_bar.calibration_bmode"))

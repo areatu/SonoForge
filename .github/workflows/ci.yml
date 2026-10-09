@@ -79,7 +79,7 @@ jobs:
           done
           exit 1
 
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev]" "PySide6!=6.12.0"
 
       # Linux: run with virtual display (xvfb-run for Qt tests). The output is
       # piped through the annotation filter so failing test names stay readable

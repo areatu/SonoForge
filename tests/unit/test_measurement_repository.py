@@ -178,6 +178,39 @@ def test_failed_replace_leaves_last_committed_record(tmp_path, monkeypatch):
         repo.close()
 
 
+def test_denied_directory_fails_fast_without_retry_storm(tmp_path, monkeypatch):
+    """An ACL-denied directory must fail the write at once.
+
+    tempfile.mkstemp() retries TMP_MAX times on Windows because its
+    PermissionError fallback trusts os.access(W_OK), which cannot see deny
+    ACEs — stalling the writer for minutes. atomic_write makes one attempt.
+    """
+    import time
+
+    repo = MeasurementRepository(tmp_path)
+    first = repo.save(UID, complete_data(), SOURCES, 0)
+    calls = 0
+    real_open = os.open
+
+    def _denied(path, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(os, "open", _denied)
+    started = time.monotonic()
+    try:
+        with pytest.raises(PermissionError):
+            repo.save(UID, StudyMeasurementData(), SOURCES, 1)
+        assert time.monotonic() - started < 5
+        assert calls == 1
+        assert repo.load(UID) == first
+        assert not list(tmp_path.glob(".pending-*"))
+    finally:
+        monkeypatch.setattr(os, "open", real_open)
+        repo.close()
+
+
 def test_quota_does_not_evict(tmp_path):
     repo = MeasurementRepository(tmp_path)
     first = repo.save(UID, StudyMeasurementData(), SOURCES, 0)

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import re
-import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -111,8 +112,22 @@ class MeasurementRepository:
     def atomic_write(path: Path, payload: bytes) -> None:
         if path.is_symlink():
             raise MeasurementStorageError("unsafe_path")
-        fd, name = tempfile.mkstemp(prefix=".pending-", suffix=".tmp", dir=path.parent)
-        temp = Path(name)
+        # One attempt with a uuid name, never tempfile.mkstemp(): on Windows a
+        # directory denied by ACL makes mkstemp spin through TMP_MAX retries —
+        # its PermissionError fallback trusts os.access(W_OK), which cannot see
+        # deny ACEs — stalling the writer for minutes instead of failing fast.
+        temp: Path | None = None
+        fd = -1
+        for _ in range(3):
+            candidate = path.parent / f".pending-{uuid.uuid4().hex}.tmp"
+            try:
+                fd = os.open(candidate, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                continue
+            temp = candidate
+            break
+        if temp is None:
+            raise FileExistsError(errno.EEXIST, "No usable temporary file name found")
         try:
             with os.fdopen(fd, "wb") as file:
                 file.write(payload)

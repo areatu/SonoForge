@@ -269,7 +269,7 @@ class UserPreferencesDialog(QDialog):
         self._phi_text_detector = QCheckBox()
         self._phi_text_detector.setChecked(current.phi_text_detector)
         self._phi_text_detector.setToolTip(tr("preferences.phi_text_detector_hint"))
-        self._reduce_motion = QCheckBox(tr("preferences.reduce_motion"))
+        self._reduce_motion = QCheckBox()
         self._reduce_motion.setChecked(current.reduce_motion)
         self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
         self._magnifier_check.setChecked(current.magnifier_enabled)
@@ -541,6 +541,11 @@ class UserPreferencesDialog(QDialog):
         feedback_btn.setToolTip(tr("feedback.intro"))
         feedback_btn.clicked.connect(self._report_problem)
         reset_row.addWidget(feedback_btn)
+        diagnostics_btn = QPushButton(tr("system_bar.save_diagnostics"))
+        diagnostics_btn.setObjectName("saveDiagnosticsButton")
+        diagnostics_btn.setToolTip(tr("system_bar.save_diagnostics_tooltip"))
+        diagnostics_btn.clicked.connect(self._save_diagnostics)
+        reset_row.addWidget(diagnostics_btn)
         reset_defaults_btn = QPushButton(tr("preferences.reset_defaults"))
         reset_defaults_btn.clicked.connect(self._reset_to_defaults)
         reset_row.addWidget(reset_defaults_btn)
@@ -645,6 +650,40 @@ class UserPreferencesDialog(QDialog):
         from echo_personal_tool.presentation.feedback_dialog import show_support_feedback_dialog
 
         show_support_feedback_dialog(self)
+
+    def _save_diagnostics(self) -> None:
+        """Write a privacy-filtered diagnostic archive (moved from the top bar)."""
+        import logging
+        from datetime import datetime
+
+        from echo_personal_tool.infrastructure.diagnostics import create_diagnostic_bundle
+        from echo_personal_tool.presentation.styled_dialogs import styled_save_file
+
+        logger = logging.getLogger(__name__)
+        default_name = f"SonoForge-diagnostics-{datetime.now().astimezone():%Y%m%d-%H%M%S}.zip"
+        destination, _ = styled_save_file(
+            self,
+            tr("diagnostics.save_dialog_title"),
+            str(Path.home() / default_name),
+            tr("diagnostics.file_filter"),
+        )
+        if not destination:
+            return
+        try:
+            saved_path = create_diagnostic_bundle(Path(destination), app=QApplication.instance())
+        except Exception as exc:  # noqa: BLE001 - report a failed support export to the user
+            logger.exception("Could not create privacy-filtered diagnostic archive")
+            QMessageBox.warning(
+                self,
+                tr("diagnostics.save_dialog_title"),
+                tr("diagnostics.error", error=str(exc)),
+            )
+            return
+        QMessageBox.information(
+            self,
+            tr("diagnostics.save_dialog_title"),
+            tr("diagnostics.saved", path=str(saved_path)) + "\n\n" + tr("diagnostics.privacy"),
+        )
 
     def _browse_gold_path(self) -> None:
         from echo_personal_tool.presentation.styled_dialogs import styled_select_directory
