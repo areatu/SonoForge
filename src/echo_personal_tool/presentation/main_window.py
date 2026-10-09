@@ -2165,20 +2165,13 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
+        if self._layout_config.multiview:
+            panes_attached = self._pane_left is not None and self._content_splitter.indexOf(self._pane_left) >= 0
+            if not self._has_loaded_study or not panes_attached:
+                # Empty loads reveal the welcome page; the next study restores
+                # existing panes before main-viewer state starts syncing again.
+                self._rebuild_layout()
         self._after_tab_loaded(loaded_tab_id, study_list)
-
-    def _autoload_first_instance(self, study_list: list) -> None:
-        """Show the new study at once: load its first clip without a click.
-
-        Otherwise the viewer keeps the previous study's frame until the user
-        picks a thumbnail by hand.
-        """
-        for study in study_list:
-            for series in study.series:
-                for instance in series.instances:
-                    self._gallery.select_instance(instance)
-                    self._on_instance_selected(instance)
-                    return
 
     def _set_start_page_visible(self, visible: bool) -> None:
         """Select the welcome page only while the main viewer surface owns a slot."""
@@ -2194,6 +2187,7 @@ class MainWindow(QMainWindow):
             self._rebuild_layout()
         else:
             self._set_start_page_visible(True)
+
     # ── tabs (Э9, PR-B) ─────────────────────────────────────────────
 
     def _tab_flush_or_block(self) -> bool:

@@ -29,9 +29,6 @@ def _make_window(qtbot) -> MainWindow:
     window.resize(1280, 800)
     window.show()
     qtbot.waitExposed(window)
-    # The start tab is empty and shows the tab placeholder (Э9); these tests
-    # check the viewer page, so publish one study into the start tab first.
-    _publish_one_study(window)
     return window
 
 
@@ -157,15 +154,16 @@ def test_maximize_sets_geometry_before_first_show(qtbot, monkeypatch) -> None:
 )
 def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
     window = _make_window(qtbot)
+    # Tabs show the viewer page once the start tab holds a study (Э9); the
+    # placeholder hides the whole content area while the tab is empty.
+    _publish_one_study(window)
     _apply(window, **cfg_kwargs)
 
     assert _viewer_in_content_tree(window)
-    if cfg_kwargs.get("multiview"):
-        assert window._viewer_stack.currentWidget() is window._start_page
-        assert window._pane_left is None  # empty workspaces defer pane creation
-    else:
-        assert window._viewer_stack.isVisible()
-        assert window._viewer_stack.currentWidget() is window._start_page
+    if not cfg_kwargs.get("multiview"):
+        # Under Multiview the viewers live in the panes (checked below), so
+        # the stack page is moot; otherwise the loaded study owns the page.
+        assert window._viewer_stack.currentWidget() is window._viewer
     assert _gallery_alive(window)
     assert window._gallery.isVisible()
 
@@ -186,6 +184,7 @@ def test_layout_preserves_viewer_and_gallery(qtbot, cfg_kwargs: dict) -> None:
 
 def test_horizontal_gallery_toggle_does_not_destroy_gallery(qtbot) -> None:
     window = _make_window(qtbot)
+    _publish_one_study(window)
     gallery_id = id(window._gallery)
 
     _apply(window, gallery_horizontal=True)
@@ -306,6 +305,7 @@ def test_main_viewer_is_restored_when_multiview_is_reenabled(qtbot) -> None:
 
 def test_activity_bar_off_restores_tool_panel_with_horizontal_gallery(qtbot) -> None:
     window = _make_window(qtbot)
+    _publish_one_study(window)
     _apply(window, activity_bar=True, gallery_horizontal=True)
     assert not window._tool_panel.isVisible()
 
@@ -328,6 +328,7 @@ def test_swap_then_default_restores_viewer(qtbot) -> None:
 def test_horizontal_swap_activity_toggle_restores_tool_panel(qtbot) -> None:
     """Regression: horizontal gallery + swap/activity toggles must not leave empty 280px strip."""
     window = _make_window(qtbot)
+    _publish_one_study(window)
     _apply(window, gallery_horizontal=True)
     _apply(window, gallery_horizontal=True, swap_places=True)
     _apply(window, gallery_horizontal=True, swap_places=True, activity_bar=True)
