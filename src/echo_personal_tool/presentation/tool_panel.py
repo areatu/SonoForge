@@ -94,7 +94,7 @@ class ControlsTab(QWidget):
         self.window_slider = TopLabeledSlider(tr("tools.window"), minimum=1, maximum=400, value=100)
         self.level_slider = TopLabeledSlider(tr("tools.level"), minimum=0, maximum=100, value=50)
         self.dr_slider = TopLabeledSlider(tr("tools.dr"), minimum=0, maximum=100, value=50)
-        self.dr_slider.slider().setToolTip("Dynamic range: center = full range; left = clip dark (typical for US)")
+        self.dr_slider.slider().setToolTip(tr("tools.dr_tip"))
         from echo_personal_tool.infrastructure.i18n import tr
 
         self._magnetic_snap_check = QCheckBox(tr("tools.magnetic_snap"))
@@ -102,9 +102,9 @@ class ControlsTab(QWidget):
         self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
         self._magnetic_snap_check.toggled.connect(self.magnetic_snap_changed.emit)
 
-        self._despeckle_check = QCheckBox("Grayscale (remove color)")
+        self._despeckle_check = QCheckBox(tr("tools.grayscale"))
         self._despeckle_check.setChecked(False)
-        self._despeckle_check.setToolTip("Remove color from Doppler, ECG overlays — display in grayscale")
+        self._despeckle_check.setToolTip(tr("tools.grayscale_tip"))
         self._despeckle_check.toggled.connect(self.despeckle_changed.emit)
 
         layout = QVBoxLayout(self)
@@ -116,6 +116,18 @@ class ControlsTab(QWidget):
         layout.addWidget(self._magnetic_snap_check)
         layout.addWidget(self._despeckle_check)
         layout.addStretch(1)
+
+    def reload_text(self) -> None:
+        from echo_personal_tool.infrastructure.i18n import tr
+
+        self.window_slider.set_label(tr("tools.window"))
+        self.level_slider.set_label(tr("tools.level"))
+        self.dr_slider.set_label(tr("tools.dr"))
+        self.dr_slider.slider().setToolTip(tr("tools.dr_tip"))
+        self._magnetic_snap_check.setText(tr("tools.magnetic_snap"))
+        self._magnetic_snap_check.setToolTip(tr("tools.magnetic_snap_tip"))
+        self._despeckle_check.setText(tr("tools.grayscale"))
+        self._despeckle_check.setToolTip(tr("tools.grayscale_tip"))
 
 
 class MeasureTab(QWidget):
@@ -304,20 +316,31 @@ class ToolPanel(QWidget):
         widget = self._tabs.widget(index)
         if widget is None or widget == self._current_tab_widget:
             return
+        previous = self._current_tab_widget
+        self._current_tab_widget = widget
 
-        # Fade out current widget
-        if self._current_tab_widget is not None:
-            effect = self._current_tab_widget.graphicsEffect()
-            if effect is not None:
-                effect.setOpacity(1.0)
+        if widget is self.calculators or previous is self.calculators:
+            # Width glide instead of crossfade: repainting the ~350-widget
+            # Calculators tab on top of an opacity fade stutters, while the
+            # glide alone already signals the switch.
+            self.sync_width()
+            return
+
+        if self._fade_anim is not None:
+            self._fade_anim.stop()
+            self._fade_anim = None
+        # Stale opacity effects force offscreen composition on every later
+        # paint — drop them so tab switches stay cheap.
+        # paint — drop them so tab switches stay cheap.
+        for stale in (previous, widget):
+            if stale is not None and stale.graphicsEffect() is not None:
+                stale.setGraphicsEffect(None)
 
         # Set new widget opacity to 0 and animate to 1
-        effect = widget.graphicsEffect()
-        if effect is None:
-            from PySide6.QtWidgets import QGraphicsOpacityEffect
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
 
-            effect = QGraphicsOpacityEffect(widget)
-            widget.setGraphicsEffect(effect)
+        effect = QGraphicsOpacityEffect(widget)
+        widget.setGraphicsEffect(effect)
 
         effect.setOpacity(0.0)
         self._fade_anim = QPropertyAnimation(effect, b"opacity")
@@ -325,9 +348,14 @@ class ToolPanel(QWidget):
         self._fade_anim.setStartValue(0.0)
         self._fade_anim.setEndValue(1.0)
         self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._fade_anim.start()
 
-        self._current_tab_widget = widget
+        def _cleanup() -> None:
+            if widget.graphicsEffect() is effect:
+                widget.setGraphicsEffect(None)
+
+        self._fade_anim.finished.connect(_cleanup)
+        self._fade_anim.start()
+        # Glide back if a previous tab left the panel widened.
         self.sync_width()
 
     def _target_width(self) -> int:
@@ -392,6 +420,7 @@ class ToolPanel(QWidget):
         from echo_personal_tool.infrastructure.i18n import tr
 
         self.measure.reload_text()
+        self.controls.reload_text()
         self.calculators.reload_text()
         self._tabs.setTabText(self._tabs.indexOf(self.measure), tr("tool_panel.measures"))
         self._tabs.setTabText(self._tabs.indexOf(self.calculators), tr("tool_panel.calculators"))

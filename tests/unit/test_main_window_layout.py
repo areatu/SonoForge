@@ -60,6 +60,41 @@ def _gallery_alive(window: MainWindow) -> bool:
         return False
 
 
+def test_maximize_sets_geometry_before_first_show(qtbot, monkeypatch) -> None:
+    """No show-small-then-resize flash: geometry lands before the window appears."""
+    from PySide6.QtWidgets import QMainWindow
+
+    from echo_personal_tool.presentation.main_window import apply_maximized_to_work_area
+
+    calls: list[str] = []
+    orig_show = QMainWindow.show
+    orig_set_geometry = QMainWindow.setGeometry
+
+    def _show(self) -> None:
+        calls.append("show")
+        orig_show(self)
+
+    def _set_geometry(self, rect) -> None:
+        calls.append("setGeometry")
+        orig_set_geometry(self, rect)
+
+    monkeypatch.setattr(QMainWindow, "show", _show)
+    monkeypatch.setattr(QMainWindow, "setGeometry", _set_geometry)
+
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    assert not window.isVisible()
+    apply_maximized_to_work_area(window)
+    assert window.isVisible()
+    assert window._user_maximized is True
+    import sys
+
+    if sys.platform == "win32":
+        # Geometry first, show second — never show() before setGeometry().
+        assert calls[0] == "setGeometry"
+        assert window.size() == window.screen().availableGeometry().size()
+
+
 @pytest.mark.parametrize(
     "cfg_kwargs",
     [

@@ -268,7 +268,7 @@ class UserPreferencesDialog(QDialog):
         self._phi_text_detector = QCheckBox()
         self._phi_text_detector.setChecked(current.phi_text_detector)
         self._phi_text_detector.setToolTip(tr("preferences.phi_text_detector_hint"))
-        self._reduce_motion = QCheckBox(tr("preferences.reduce_motion"))
+        self._reduce_motion = QCheckBox()
         self._reduce_motion.setChecked(current.reduce_motion)
         self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
         self._magnifier_check.setChecked(current.magnifier_enabled)

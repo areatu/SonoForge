@@ -251,6 +251,62 @@ class TestMainWindow:
         assert main_window._manual_ed_frame == 3
         assert main_window._manual_es_frame == 8
 
+    def test_studies_loaded_autoloads_first_clip(self, main_window):
+        """A newly opened study must show its first clip at once instead of
+        keeping the previous study's frame until a manual click."""
+        from datetime import datetime
+
+        from echo_personal_tool.domain.models.metadata import (
+            InstanceMetadata,
+            SeriesMetadata,
+            StudyMetadata,
+        )
+
+        first = InstanceMetadata(
+            sop_instance_uid="1.2.3.first",
+            series_uid="series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="",
+            media_format="dicom",
+            path=None,
+        )
+        second = InstanceMetadata(
+            sop_instance_uid="1.2.3.second",
+            series_uid="series-1",
+            modality="US",
+            number_of_frames=10,
+            pixel_spacing=None,
+            frame_time_ms=None,
+            series_description="",
+            media_format="dicom",
+            path=None,
+        )
+        studies = [
+            StudyMetadata(
+                study_uid="study-1",
+                study_datetime=datetime(2026, 10, 1),
+                series=(
+                    SeriesMetadata(
+                        series_uid="series-1",
+                        study_uid="study-1",
+                        modality="US",
+                        description="",
+                        instances=(first, second),
+                    ),
+                ),
+            )
+        ]
+        main_window._on_studies_loaded(studies)
+        main_window._controller.load_instance.assert_called_once_with(first)
+        assert main_window._pending_swap_uid == "1.2.3.first"
+
+    def test_studies_loaded_empty_loads_nothing(self, main_window):
+        main_window._on_studies_loaded([])
+        main_window._controller.load_instance.assert_not_called()
+
     def test_on_strain_window_closed_hides_smoothing_overlay(self, main_window):
         """Closing the strain window must hide the viewer's smoothing slider
         (issue #1: the slider stayed at bottom-left after closing STE)."""

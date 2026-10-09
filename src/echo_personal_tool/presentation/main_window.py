@@ -106,8 +106,10 @@ def apply_maximized_to_work_area(window: QMainWindow) -> None:
         return
     geo = screen.availableGeometry()
     if sys.platform == "win32":
-        window.show()
+        # Geometry first, show second: showing a small window and resizing it
+        # afterwards flashes on Windows (frameless + GL viewport repaint).
         window.setGeometry(geo)
+        window.show()
         window._user_maximized = True  # type: ignore[attr-defined]
         return
     window.showMaximized()
@@ -1904,6 +1906,20 @@ class MainWindow(QMainWindow):
             populate_elapsed_ms,
         )
         self._gallery.request_visible_previews()
+        self._autoload_first_instance(study_list)
+
+    def _autoload_first_instance(self, study_list: list) -> None:
+        """Show the new study at once: load its first clip without a click.
+
+        Otherwise the viewer keeps the previous study's frame until the user
+        picks a thumbnail by hand.
+        """
+        for study in study_list:
+            for series in study.series:
+                for instance in series.instances:
+                    self._gallery.select_instance(instance)
+                    self._on_instance_selected(instance)
+                    return
 
     # ── gallery → pane routing (spec §6) ────────────────────────────
 
