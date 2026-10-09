@@ -61,6 +61,7 @@ from echo_personal_tool.infrastructure.user_preferences import (
     MIN_PLAYBACK_SPEED,
     MIN_UI_FONT_SIZE,
     UserPreferences,
+    default_measurement_persistence_enabled,
     default_user_preferences,
     load_user_preferences,
     save_user_preferences,
@@ -631,6 +632,9 @@ class UserPreferencesDialog(QDialog):
         stored = load_user_preferences()
         defaults.last_opened_folder = stored.last_opened_folder
         defaults.last_session_source = stored.last_session_source
+        # W41-02: «reset to defaults» must reset to the *profile* default,
+        # not to the dataclass default (autosave is default-on in full).
+        defaults.measurement_persistence_enabled = default_measurement_persistence_enabled()
         save_user_preferences(defaults)
         if self._on_apply is not None:
             self._on_apply(defaults)

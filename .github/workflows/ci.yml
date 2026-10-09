@@ -89,8 +89,22 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          xvfb-run -a pytest tests/unit/ -q --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
-            | python .github/scripts/annotate_pytest_failures.py
+          xvfb-run -a pytest tests/unit/ -v --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
+            > /tmp/pytest.log 2>&1
+          status=$?
+          cat /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py < /tmp/pytest.log || true
+          if [ "$status" -ne 0 ]; then
+            # A hang (pytest-timeout thread method calls os._exit(1)) or an
+            # INTERNALERROR dies without any FAILED summary lines, leaving the
+            # annotator nothing to publish. Surface the tail of the verbose
+            # log as annotations so the blocking test is identifiable from
+            # the checks API even when job logs are not downloadable.
+            tail -n 10 /tmp/pytest.log | while IFS= read -r line; do
+              printf '::error title=pytest tail::%s\n' "${line:0:1500}"
+            done
+          fi
+          exit "$status"
 
       # Linux CI is the single coverage producer/uploader; no separate coverage workflow.
       - name: Upload coverage report artifact
