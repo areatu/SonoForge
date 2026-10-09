@@ -2144,6 +2144,9 @@ class MainWindow(QMainWindow):
         # of two studies in the same pair (spec 4.3).
         self._multiview.reset_session()
         study_list = list(studies)  # type: ignore[arg-type]
+        # Tab-managed loads (acquire/switch/batch) own their selection via
+        # _restore_target; only a direct load may autoload the first clip.
+        tab_managed_load = self._tab_loading_id is not None
         loaded_tab_id = self._finish_tab_load(study_list)
         n_inst = sum(len(s.instances) for st in study_list for s in st.series)
         logger.info("[MW] _on_studies_loaded: %d studies, %d instances", len(study_list), n_inst)
@@ -2171,7 +2174,23 @@ class MainWindow(QMainWindow):
                 # Empty loads reveal the welcome page; the next study restores
                 # existing panes before main-viewer state starts syncing again.
                 self._rebuild_layout()
-        self._after_tab_loaded(loaded_tab_id, study_list)
+        restored = self._after_tab_loaded(loaded_tab_id, study_list)
+        if self._has_loaded_study and not restored and not tab_managed_load:
+            self._autoload_first_instance(study_list)
+
+    def _autoload_first_instance(self, study_list: list) -> None:
+        """Show the new study at once: load its first clip without a click.
+
+        Otherwise the viewer keeps the previous study's frame until the user
+        picks a thumbnail by hand. Skipped when a tab switch just restored
+        the tab's own instance (the caller reports it via ``_after_tab_loaded``).
+        """
+        for study in study_list:
+            for series in study.series:
+                for instance in series.instances:
+                    self._gallery.select_instance(instance)
+                    self._on_instance_selected(instance)
+                    return
 
     def _set_start_page_visible(self, visible: bool) -> None:
         """Select the welcome page only while the main viewer surface owns a slot."""
@@ -2450,13 +2469,18 @@ class MainWindow(QMainWindow):
         self._refresh_tab_strip()
         self._update_main_stack()
 
-    def _after_tab_loaded(self, loaded_tab_id: str | None, studies: list) -> None:
+    def _after_tab_loaded(self, loaded_tab_id: str | None, studies: list) -> bool:
+        """Finish a tab load. Returns True when the tab's parked view was
+        restored (the caller must not autoload the first clip on top)."""
         self._update_main_stack()
         target = self._restore_target
         self._restore_target = None
         if target is not None and loaded_tab_id is not None and target[0] == loaded_tab_id:
             self._restore_tab_view(studies, target[1])
+            self._process_pending_cache_purges()
+            return True
         self._process_pending_cache_purges()
+        return False
 
     def _restore_tab_view(self, studies: list, instance_uid: str) -> None:
         """Re-select the instance the tab was showing. The frame index is kept in the tab

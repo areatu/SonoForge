@@ -16,6 +16,16 @@ from echo_personal_tool.domain.models.multiview import PaneId, PlaybackMode
 from echo_personal_tool.infrastructure.i18n import tr
 
 
+@pytest.fixture(autouse=True)
+def _stub_load_failure_dialog(monkeypatch) -> None:
+    """The fixture publishes a synthetic study whose files do not exist; the
+    autoloaded clip fails async and would open a modal QMessageBox, blocking
+    headless runs."""
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+
 def _instance(uid: str, *, study: str = "study.1", frames: int = 30, name: str | None = None) -> InstanceMetadata:
     return InstanceMetadata(
         sop_instance_uid=uid,

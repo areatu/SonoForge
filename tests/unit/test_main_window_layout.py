@@ -65,6 +65,15 @@ def _apply(window: MainWindow, **kwargs: object) -> None:
     QApplication.processEvents()
 
 
+@pytest.fixture(autouse=True)
+def _stub_load_failure_dialog(monkeypatch) -> None:
+    """Synthetic publishes autoload a clip whose files do not exist; the async
+    load failure would open a modal QMessageBox and block headless runs."""
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+
+
 def _viewer_in_content_tree(window: MainWindow) -> bool:
     viewer = window._viewer
     surface = window._viewer_stack
