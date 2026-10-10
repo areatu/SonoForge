@@ -71,7 +71,9 @@ jobs:
           ]
           # GitHub keeps about 10 error annotations per step. Put the hang
           # frames first; the pytest runner frames are not useful.
-          chosen = useful[:10] or window[:10]
+          # The previous dump showed the main thread stuck in addWidget. The
+          # frames just after the first banner are the other threads.
+          chosen = [f"{index}: {lines[index]}" for index in range(372, 382) if index < len(lines)]
           for index, line in enumerate(chosen):
               safe = line.replace("%", "%25").replace("\r", "")[:700]
               print(f"::error title=saved pytest log {index}::{safe}")
