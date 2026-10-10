@@ -46,17 +46,11 @@ class TestPreferencesWorkflow:
         assert _clamp_int(99, DEFAULT_UI_FONT_SIZE, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE) == MAX_UI_FONT_SIZE
         assert _clamp_int(12, DEFAULT_UI_FONT_SIZE, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE) == 12
 
-    def test_wl_preset_resolution(self) -> None:
-        """Window/level preset resolves to correct values."""
+    def test_wl_values_follow_last_used_sliders(self) -> None:
+        """Window/level always follows the stored slider values; presets are gone."""
         prefs = default_user_preferences()
-
-        soft = replace(prefs, wl_preset="soft")
-        assert resolve_wl_values(soft) == (70, 40, 35)
-
-        contrast = replace(prefs, wl_preset="contrast")
-        assert resolve_wl_values(contrast) == (140, 55, 65)
-
-        custom = replace(prefs, wl_preset="last_used", wl_window=120, wl_level=60, wl_dr=40)
+        assert not hasattr(prefs, "wl_preset")
+        custom = replace(prefs, wl_window=120, wl_level=60, wl_dr=40)
         assert resolve_wl_values(custom) == (120, 60, 40)
 
     def test_layout_state_json_field(self) -> None:

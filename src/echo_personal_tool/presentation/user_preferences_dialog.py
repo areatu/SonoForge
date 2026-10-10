@@ -240,12 +240,6 @@ class UserPreferencesDialog(QDialog):
         self._playback_spin.setDecimals(2)
         self._playback_spin.setSuffix("×")
         self._playback_spin.setValue(current.playback_speed_multiplier)
-        self._wl_preset = QComboBox()
-        self._wl_preset.addItem(tr("preferences.wl_last_used"), "last_used")
-        self._wl_preset.addItem(tr("preferences.wl_soft"), "soft")
-        self._wl_preset.addItem(tr("preferences.wl_contrast"), "contrast")
-        preset_index = self._wl_preset.findData(current.wl_preset)
-        self._wl_preset.setCurrentIndex(max(preset_index, 0))
         self._thumbnail_scale = QComboBox()
         self._thumbnail_scale.addItem(tr("tool_panel.small"), "small")
         self._thumbnail_scale.addItem(tr("tool_panel.medium"), "medium")
@@ -278,6 +272,9 @@ class UserPreferencesDialog(QDialog):
         self._magnifier_check = QCheckBox(tr("preferences.magnifier"))
         self._magnifier_check.setChecked(current.magnifier_enabled)
         self._magnifier_check.setToolTip(tr("preferences.magnifier_hint"))
+        self._magnifier_linear_persistent = QCheckBox(tr("preferences.magnifier_linear_persistent"))
+        self._magnifier_linear_persistent.setChecked(current.magnifier_linear_persistent)
+        self._magnifier_linear_persistent.setToolTip(tr("preferences.magnifier_linear_persistent_hint"))
         self._magnifier_zoom_spin = QDoubleSpinBox()
         self._magnifier_zoom_spin.setRange(MIN_MAGNIFIER_ZOOM, MAX_MAGNIFIER_ZOOM)
         self._magnifier_zoom_spin.setSingleStep(0.5)
@@ -290,7 +287,6 @@ class UserPreferencesDialog(QDialog):
         self._magnifier_radius_spin.setSuffix(" px")
         self._magnifier_radius_spin.setValue(current.magnifier_radius_px)
         display_form.addRow(tr("tool_panel.cine_speed"), self._playback_spin)
-        display_form.addRow(tr("tool_panel.wl_preset"), self._wl_preset)
         display_form.addRow(tr("tool_panel.thumbnail_size"), self._thumbnail_scale)
         display_form.addRow(tr("tool_panel.thumbnail_sort"), self._thumbnail_sort)
         display_form.addRow(tr("tool_panel.crosshair"), self._show_crosshair)
@@ -301,6 +297,7 @@ class UserPreferencesDialog(QDialog):
         display_form.addRow(tr("preferences.anonymize_frames"), self._anonymize_frames)
         display_form.addRow(tr("preferences.phi_text_detector"), self._phi_text_detector)
         display_form.addRow(self._magnifier_check)
+        display_form.addRow(self._magnifier_linear_persistent)
         display_form.addRow(tr("preferences.magnifier_zoom"), self._magnifier_zoom_spin)
         display_form.addRow(tr("preferences.magnifier_radius"), self._magnifier_radius_spin)
         display_form.addRow(tr("preferences.reduce_motion"), self._reduce_motion)
@@ -730,7 +727,6 @@ class UserPreferencesDialog(QDialog):
             contour_pen_simpson_width=float(self._simpson_contour_spin.value()),
             magnetic_snap_enabled=self._magnetic_snap_check.isChecked(),
             playback_speed_multiplier=float(self._playback_spin.value()),
-            wl_preset=str(self._wl_preset.currentData()),
             wl_window=stored.wl_window,
             wl_level=stored.wl_level,
             wl_dr=stored.wl_dr,
@@ -738,6 +734,7 @@ class UserPreferencesDialog(QDialog):
             magnifier_enabled=self._magnifier_check.isChecked(),
             magnifier_zoom=float(self._magnifier_zoom_spin.value()),
             magnifier_radius_px=int(self._magnifier_radius_spin.value()),
+            magnifier_linear_persistent=self._magnifier_linear_persistent.isChecked(),
             show_panel_frames=self._show_panel_frames.isChecked(),
             show_caliper_labels_on_frame=self._show_caliper_labels.isChecked(),
             show_caliper_inline_labels=self._show_caliper_inline_labels.isChecked(),

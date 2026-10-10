@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import time
+import weakref
 from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -15,7 +16,7 @@ from typing import Literal
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QCursor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -30,6 +31,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import delete as shiboken_delete
+from shiboken6 import isValid
 
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
 from echo_personal_tool.domain.calculations.planimeter import (
@@ -707,6 +710,35 @@ class _ComparisonState:
         self.frame_index = None
 
 
+class _LoupeKeyRelay(QObject):
+    """Forwards Z to one viewer without installing the viewer on QApplication.
+
+    The viewer is held weakly: a strong back-reference is a QObject cycle, and
+    collecting that cycle segfaults on Linux. The relay is deleted in
+    ``hideEvent`` so a later ``gc.collect()`` does not free an installed
+    filter. Layout and paint events must not touch the viewer — ``isVisible()``
+    re-enters the layout that is delivering the event and stalls
+    ``QLayout.addWidget`` past the 60s pytest-timeout.
+    """
+
+    def __init__(self, viewer: QWidget) -> None:
+        super().__init__()
+        self._viewer = weakref.ref(viewer)
+
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+            return False
+        viewer = self._viewer() if self._viewer is not None else None
+        if viewer is None or not isValid(viewer):
+            self._viewer = None
+            return False
+        try:
+            return bool(viewer._loupe_key_from_app(watched, event))
+        except RuntimeError:
+            self._viewer = None
+            return False
+
+
 class ViewerWidget(QWidget):
     """Display a frame with playback controls and window/level sliders."""
 
@@ -782,10 +814,15 @@ class ViewerWidget(QWidget):
             None
         )
         self._doppler_axis_calibrated = False
+        # True only when tags, a confident auto result, manual entry, or a
+        # restored calibration established the vertical scale. Heuristic paths
+        # store the dataclass default span even after auto-calibration fails.
+        self._doppler_velocity_confirmed = False
         self._doppler_calibration_state: DopplerCalibrationState | None = None
         self._doppler_calibration_instance_uid: str | None = None
         self._doppler_calibration_frame_index: int | None = None
         self._frame_panel_layout: FramePanelLayout | None = None
+        self._frame_panels_from_dicom = False
         self._mmode_calibration_state: MmodeCalibrationState | None = None
         self._mmode_cal_step: Literal["roi"] | None = None
         self._mmode_roi_corner1: tuple[float, float] | None = None
@@ -947,7 +984,11 @@ class ViewerWidget(QWidget):
         self._magnifier_zoom = 3.0
         self._magnifier_radius_px = 70
         self._magnifier_held = False
+        self._magnifier_linear_persistent = False
+        self._magnifier_persistent_active = False
+        self._loupe_key_relay: _LoupeKeyRelay | None = None
         self._magnifier_lens = None
+        self.destroyed.connect(self._remove_loupe_key_relay)
         self._reduce_motion = False
         self._show_panel_frames = False
         self._show_caliper_labels_on_frame = True
@@ -1168,6 +1209,58 @@ class ViewerWidget(QWidget):
             return
         self._update_contour_hover((float(mapped.x()), float(mapped.y())))
 
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        # Z must reach the loupe even when focus sits on the gallery or the tool panel.
+        self._install_loupe_key_relay()
+        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:  # type: ignore[override]
+        self._remove_loupe_key_relay()
+        super().hideEvent(event)
+
+    def _install_loupe_key_relay(self) -> None:
+        app = QApplication.instance()
+        if app is None or self._loupe_key_relay is not None:
+            return
+        relay = _LoupeKeyRelay(self)
+        app.installEventFilter(relay)
+        self._loupe_key_relay = relay
+
+    def _remove_loupe_key_relay(self) -> None:
+        relay = self._loupe_key_relay
+        self._loupe_key_relay = None
+        if relay is None:
+            return
+        relay._viewer = None
+        app = QApplication.instance()
+        if app is not None and isValid(relay):
+            try:
+                app.removeEventFilter(relay)
+            except RuntimeError:
+                pass
+        # deleteLater races the between-test gc.collect() and double-frees.
+        if isValid(relay):
+            shiboken_delete(relay)
+
+    def _loupe_key_from_app(self, watched, event) -> bool:  # type: ignore[no-untyped-def]
+        if not hasattr(self, "_graphics") or self._graphics is None or not self.isVisible():
+            return False
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+            return False
+        if event.key() != Qt.Key.Key_Z or event.isAutoRepeat():
+            return False
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier or self._text_input_has_focus():
+            return False
+        if watched is self._graphics or watched is self._graphics.viewport():
+            return False
+        if event.type() == QEvent.Type.KeyPress and self._scene_pos_under_cursor() is not None:
+            self.keyPressEvent(event)
+            return True
+        if event.type() == QEvent.Type.KeyRelease and self._magnifier_held:
+            self.keyReleaseEvent(event)
+            return True
+        return False
+
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
         if not hasattr(self, "_graphics") or self._graphics is None:
             return super().eventFilter(watched, event)  # type: ignore[arg-type]
@@ -1208,7 +1301,7 @@ class ViewerWidget(QWidget):
         return self._magnifier_lens
 
     def _update_magnifier_loupe(self, scene_pos) -> None:  # type: ignore[no-untyped-def]
-        if not self._magnifier_enabled or not self._magnifier_held:
+        if not self._magnifier_enabled or not (self._magnifier_held or self._magnifier_persistent_active):
             if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
                 self._magnifier_lens.hide_animated(instant=True)
             return
@@ -1244,9 +1337,59 @@ class ViewerWidget(QWidget):
 
     def _hide_magnifier_on_point(self) -> None:
         # Point placed (click): drop the hold so the loupe closes; user can
-        # hold Z again for the next point.
+        # hold Z again for the next point. A persistent linear-measurement
+        # loupe stays up until the last point, Esc, or a tool change.
+        if self._magnifier_persistent_active:
+            return
         self._magnifier_held = False
         if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+            self._magnifier_lens.hide_animated()
+
+    def _scene_pos_under_cursor(self):  # type: ignore[no-untyped-def]
+        """Scene position when the cursor is over the viewer, else None."""
+        if not self.isVisible():
+            return None
+        try:
+            global_pos = QCursor.pos()
+        except RuntimeError:
+            return None
+        if not self.rect().contains(self.mapFromGlobal(global_pos)):
+            return None
+        graphics_local = self._graphics.mapFromGlobal(global_pos)
+        if not self._graphics.rect().contains(graphics_local):
+            return None
+        return self._graphics.mapToScene(graphics_local)
+
+    def _text_input_has_focus(self) -> bool:
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return False
+        from PySide6.QtWidgets import QAbstractSpinBox, QComboBox, QLineEdit, QPlainTextEdit, QTextEdit
+
+        return isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox))
+
+    def _show_magnifier_now(self) -> None:
+        scene_pos = self._scene_pos_under_cursor()
+        if scene_pos is not None:
+            self._update_magnifier_loupe(scene_pos)
+
+    def _persistent_loupe_allowed(self) -> bool:
+        """Linear B/M calipers only. Doppler tools and vessels stay unaided."""
+        if not self._magnifier_enabled or not self._magnifier_linear_persistent:
+            return False
+        if self._doppler.get_tool_mode() != "none":
+            return False
+        if self._doppler.vessel_status() != "none":
+            return False
+        return True
+
+    def _sync_persistent_loupe(self) -> None:
+        if self._linear_caliper_active and self._persistent_loupe_allowed():
+            self._magnifier_persistent_active = True
+            self._show_magnifier_now()
+            return
+        self._magnifier_persistent_active = False
+        if not self._magnifier_held and self._magnifier_lens is not None and self._magnifier_lens.isVisible():
             self._magnifier_lens.hide_animated()
 
     @_prof
@@ -1259,6 +1402,7 @@ class ViewerWidget(QWidget):
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._position_overlay_labels(reposition_results=True)
+        self._doppler.reposition_manual_calibration_hint()
 
     def _position_overlay_labels(self, *, reposition_results: bool = False) -> None:
         geo = self._graphics.geometry()
@@ -1385,6 +1529,9 @@ class ViewerWidget(QWidget):
         self._magnifier_enabled = preferences.magnifier_enabled
         self._magnifier_zoom = preferences.magnifier_zoom
         self._magnifier_radius_px = preferences.magnifier_radius_px
+        self._magnifier_linear_persistent = preferences.magnifier_linear_persistent
+        if not self._magnifier_linear_persistent:
+            self._magnifier_persistent_active = False
         self._reduce_motion = preferences.reduce_motion
         if self._magnifier_lens is not None:
             self._magnifier_lens.configure(self._magnifier_zoom, preferences.reduce_motion)
@@ -1426,6 +1573,7 @@ class ViewerWidget(QWidget):
             total = self._current_state.total_frames
             current = self._current_state.current_frame_index + 1 if total > 0 else 0
             self._set_frame_counter_label(current=current, total=total)
+        self._doppler.reload_manual_calibration_hint_text()
 
     def _rebuild_contour_pens(self, preferences: UserPreferences) -> None:
         manual_width = preferences.contour_pen_manual_width
@@ -2233,6 +2381,7 @@ class ViewerWidget(QWidget):
             self._doppler_calibration_state = None
             self._doppler_calibration_instance_uid = None
             self._doppler_calibration_frame_index = None
+            self._doppler_velocity_confirmed = False
             self._doppler.clear_measurements(keep_calibration_graphics=False)
             if not self._syncing_state:
                 self.doppler_frame_changed.emit(viewer_state.current_frame_index)
@@ -2699,6 +2848,7 @@ class ViewerWidget(QWidget):
         self._doppler_pending_auto_velocity_span = None
         self._measurement_label.setText(tr(_DOPPLER_CAL_BASELINE_KEY))
         self._measurement_label.show()
+        self._sync_doppler_manual_calibration_hint()
         return True
 
     @staticmethod
@@ -2746,8 +2896,10 @@ class ViewerWidget(QWidget):
         self._doppler_calibration_instance_uid = None
         self._doppler_calibration_frame_index = None
         self._doppler_axis_calibrated = False
+        self._doppler_velocity_confirmed = False
         self._doppler.clear_measurements(keep_calibration_graphics=False)
         if self._current_frame is None:
+            self._sync_doppler_manual_calibration_hint()
             return
         height, width = self._current_frame.shape[:2]
         if keep_time_scale and time_span_ms > 0.0:
@@ -2767,6 +2919,7 @@ class ViewerWidget(QWidget):
             self._doppler.set_axis_mapping(build_axis_mapping(state))
         else:
             self._doppler.set_axis_mapping(DopplerAxisMapping.from_frame_size(width, height, time_span_ms=0.0))
+        self._sync_doppler_manual_calibration_hint()
 
     def is_doppler_axis_calibrated(self) -> bool:
         return self.is_doppler_velocity_calibrated() and self.is_doppler_time_calibrated()
@@ -2778,6 +2931,58 @@ class ViewerWidget(QWidget):
     def is_doppler_time_calibrated(self) -> bool:
         state = self._doppler_calibration_state
         return state is not None and state.has_time_scale_from_dicom()
+
+    def _doppler_velocity_scale_is_set(self) -> bool:
+        """True when the vertical scale is real, not a placeholder span.
+
+        The spec hides the hint when ``has_velocity_scale()`` is true. Heuristic
+        paths still store the dataclass default span (200 cm/s) after auto
+        calibration fails, so that predicate alone would hide the hint on the
+        untagged clips it is meant for. A scale counts when DICOM tags, a
+        per-pixel tag formula, a confident auto result, manual entry, or a
+        restored calibration established it.
+        """
+        state = self._doppler_calibration_state
+        if state is not None and state.has_velocity_scale():
+            if state.has_velocity_scale_from_dicom() or (
+                state.velocity_per_pixel_cm_s is not None and state.velocity_per_pixel_cm_s > 0.0
+            ):
+                return True
+            return self._doppler_velocity_confirmed
+        panel = self._dicom_doppler_panel()
+        return panel is not None and panel.vertical_cm_s_per_pixel is not None
+
+    def _dicom_doppler_panel(self):
+        if not self._frame_panels_from_dicom or self._frame_panel_layout is None:
+            return None
+        return self._frame_panel_layout.doppler
+
+    def _doppler_hint_roi(self) -> DopplerSpectrogramRoi | None:
+        state = self._doppler_calibration_state
+        if state is not None and state.roi.width > 0.0 and state.roi.height > 0.0:
+            return state.roi
+        mapping = self._doppler.axis_mapping()
+        if mapping.roi is not None and mapping.roi.width > 0.0 and mapping.roi.height > 0.0:
+            return mapping.roi
+        panel = self._dicom_doppler_panel()
+        if panel is not None and panel.bounds.width > 0.0 and panel.bounds.height > 0.0:
+            return panel.bounds
+        return None
+
+    def _doppler_calibration_in_progress(self) -> bool:
+        if self._doppler_cal_step is not None:
+            return True
+        return bool(self._calibration_active and self._calibration_kind in {"spectral", "doppler_velocity"})
+
+    def _sync_doppler_manual_calibration_hint(self) -> None:
+        """Show the hint in the ROI center when a Doppler strip has no velocity scale."""
+        active = self._doppler_calibration_in_progress()
+        roi = self._doppler_hint_roi()
+        clip_open = self._current_frame is not None and roi is not None
+        wanted = clip_open and not self._doppler_velocity_scale_is_set()
+        self._doppler.set_calibration_active(active)
+        self._doppler.set_hint_roi(roi)
+        self._doppler.set_manual_calibration_hint_visible(wanted)
 
     def start_mitral_inflow_workflow(self) -> bool:
         if self._current_frame is None:
@@ -3176,6 +3381,10 @@ class ViewerWidget(QWidget):
         self._doppler_calibration_frame_index = self._current_frame_index()
         self._doppler.set_axis_mapping(build_axis_mapping(state))
         self._doppler_axis_calibrated = state.has_velocity_scale()
+        if state.has_velocity_scale_from_dicom() or (
+            state.velocity_per_pixel_cm_s is not None and state.velocity_per_pixel_cm_s > 0.0
+        ):
+            self._doppler_velocity_confirmed = True
 
         # Show ECG strip and load ECG data when Doppler is active
         if state is not None:
@@ -3186,6 +3395,7 @@ class ViewerWidget(QWidget):
 
         if persist and not self._syncing_state and self._doppler_calibration_matches_instance():
             self.doppler_calibration_changed.emit(state)
+        self._sync_doppler_manual_calibration_hint()
 
     def show_ecg_strip(self) -> None:
         """Show the ECG strip under the spectrogram."""
@@ -3238,6 +3448,7 @@ class ViewerWidget(QWidget):
         dto: object | None,
     ) -> None:
         if calibration is not None:
+            self._doppler_velocity_confirmed = calibration.has_velocity_scale()
             self.apply_doppler_calibration_state(calibration, persist=False)
         elif not self._try_auto_detect_doppler_calibration():
             self.clear_doppler_calibration_display()
@@ -3567,11 +3778,13 @@ class ViewerWidget(QWidget):
 
     def _refresh_frame_panel_layout(self) -> None:
         self._frame_panel_layout = None
+        self._frame_panels_from_dicom = False
         if self._current_frame is None:
             return
         instance = self._current_state.instance if self._current_state else None
         if instance is not None and instance.media_format == "dicom" and instance.path is not None:
             self._frame_panel_layout = try_parse_panels_from_path(instance.path)
+            self._frame_panels_from_dicom = self._frame_panel_layout is not None
         if self._frame_panel_layout is None:
             gray = self._current_frame
             if gray.ndim == 3:
@@ -3778,6 +3991,7 @@ class ViewerWidget(QWidget):
                                 velocity_span_cm_s=auto.velocity_span_cm_s,
                                 velocity_from_dicom_tags=False,
                             )
+                            self._doppler_velocity_confirmed = True
                     self.apply_doppler_calibration_state(parsed, persist=True)
                     return True
                 elif parsed.has_velocity_scale() or parsed.roi.width > 0:
@@ -3800,6 +4014,7 @@ class ViewerWidget(QWidget):
                             time_span_ms=parsed.time_span_ms,
                             kind=parsed.kind,
                         )
+                        self._doppler_velocity_confirmed = True
                         self.apply_doppler_calibration_state(state, persist=True)
                         self._doppler_pending_roi = None
                         self._doppler_pending_baseline_y = None
@@ -3812,6 +4027,7 @@ class ViewerWidget(QWidget):
 
     def _configure_doppler_axis_for_frame(self) -> None:
         if self._current_frame is None:
+            self._sync_doppler_manual_calibration_hint()
             return
         if self._doppler_calibration_state is not None and self._doppler_calibration_matches_instance():
             self.apply_doppler_calibration_state(
@@ -3824,6 +4040,8 @@ class ViewerWidget(QWidget):
 
         if self._try_auto_detect_doppler_calibration():
             return
+        # A new heuristic pass must not inherit a confirmation from another clip.
+        self._doppler_velocity_confirmed = False
 
         height, width = self._current_frame.shape[:2]
 
@@ -3838,6 +4056,7 @@ class ViewerWidget(QWidget):
             mapping = DopplerAxisMapping.from_frame_size(width, height)
             self._doppler.set_axis_mapping(mapping)
             self._doppler_axis_calibrated = False
+            self._sync_doppler_manual_calibration_hint()
             return
 
         # If refined ROI was computed from velocity scales, verify it's real Doppler.
@@ -3866,6 +4085,7 @@ class ViewerWidget(QWidget):
                 mapping = DopplerAxisMapping.from_frame_size(width, height)
                 self._doppler.set_axis_mapping(mapping)
                 self._doppler_axis_calibrated = False
+                self._sync_doppler_manual_calibration_hint()
                 return
             baseline_y = roi.y0 + roi.height / 2.0
             # Use time scale to compute time span from visible width
@@ -3893,6 +4113,7 @@ class ViewerWidget(QWidget):
             )
             if auto_vel is not None:
                 velocity_span = auto_vel.velocity_span_cm_s
+                self._doppler_velocity_confirmed = True
             state = calibration_from_roi_and_baseline(
                 roi,
                 baseline_y,
@@ -3947,6 +4168,7 @@ class ViewerWidget(QWidget):
                 )
                 if auto_vel is not None:
                     velocity_span = auto_vel.velocity_span_cm_s
+                    self._doppler_velocity_confirmed = True
                 state = calibration_from_roi_and_baseline(
                     roi,
                     baseline_y,
@@ -3995,6 +4217,7 @@ class ViewerWidget(QWidget):
                 mapping = DopplerAxisMapping.from_frame_size(width, height)
                 self._doppler.set_axis_mapping(mapping)
         self._doppler_axis_calibrated = False
+        self._sync_doppler_manual_calibration_hint()
 
     def _handle_doppler_calibration_click(self, ev) -> bool:
         if self._doppler_cal_step is None or self._current_frame is None:
@@ -4081,6 +4304,7 @@ class ViewerWidget(QWidget):
             )
         self._calibration_start_y = start_y
         self._measurement_label.setText(tr(_DOPPLER_CAL_VELOCITY_KEY))
+        self._sync_doppler_manual_calibration_hint()
 
     def _handle_doppler_mouse_click(self, ev) -> bool:
         if self._doppler_cal_step is not None or self._calibration_active:
@@ -4251,6 +4475,7 @@ class ViewerWidget(QWidget):
         self._linear_caliper_active = True
         self._linear_caliper_start = None
         self._measurement_label.setText(tr("viewer.linear_caliper_click_start", label=label))
+        self._sync_persistent_loupe()
         return True
 
     def cycle_caliper_label(self) -> None:
@@ -4469,7 +4694,11 @@ class ViewerWidget(QWidget):
             self._active_arc_points.append(click)
         elif self._contour_stage == "polygon":
             self._active_arc_points.append(click)
-            if self._magnetic_snap_enabled and len(self._active_arc_points) >= 5:
+            if (
+                self._magnetic_snap_enabled
+                and not self._is_unassisted_freehand_trace()
+                and len(self._active_arc_points) >= 5
+            ):
                 edge_map = self._get_edge_map()
                 if edge_map is not None:
                     from echo_personal_tool.domain.services.contour_edge_snap import (
@@ -4645,6 +4874,8 @@ class ViewerWidget(QWidget):
         # Find and replace the existing LA contour
         for i, c in enumerate(self._contours):
             if c.chamber == "LA" and c.view == contour.view and c.phase == contour.phase:
+                if c.unassisted:
+                    return
                 self._contours[i] = contour
                 # Update stored contour too
                 self._upsert_stored_contour(contour)
@@ -4666,6 +4897,8 @@ class ViewerWidget(QWidget):
         if contour_index < 0 or contour_index >= len(self._contours):
             return
         contour = self._contours[contour_index]
+        if contour.unassisted:
+            return
         if self._current_state is None or self._current_state.instance is None:
             return
         instance = self._current_state.instance
@@ -4818,6 +5051,7 @@ class ViewerWidget(QWidget):
         )
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
+        unassisted = self._is_unassisted_freehand_trace()
         reduced = reduce_polygon_points(self._freehand_points, epsilon=3.0, closed=False)
         if len(reduced) > 30:
             reduced = reduce_polygon_points(reduced, epsilon=5.0, closed=False)
@@ -4829,7 +5063,7 @@ class ViewerWidget(QWidget):
         if reduced[0] != reduced[-1]:
             reduced.append(reduced[0])
 
-        if self._magnetic_snap_enabled:
+        if self._magnetic_snap_enabled and not unassisted:
             edge_map = self._get_edge_map()
             if edge_map is not None:
                 reduced = snap_closed_polygon(reduced, edge_map)
@@ -4849,6 +5083,7 @@ class ViewerWidget(QWidget):
             points=reduced,
             frame_index=self._contour_frame_index(),
             measurement_label=measurement_label,
+            unassisted=unassisted,
         )
         self._freehand_recording = False
         self._freehand_points = []
@@ -4873,6 +5108,7 @@ class ViewerWidget(QWidget):
         """
         from echo_personal_tool.domain.services.polygon_reduce import reduce_polygon_points
 
+        unassisted = self._is_unassisted_freehand_trace()
         points = self._dedupe_closed_polygon(list(self._freehand_points))
         if len(points) < _CONTOUR_MIN_POINTS_TO_CLOSE:
             self._measurement_label.setText(tr_plural("viewer.area_points_needed", _CONTOUR_MIN_POINTS_TO_CLOSE))
@@ -4896,10 +5132,12 @@ class ViewerWidget(QWidget):
             points=resampled,
             num_nodes=DEFAULT_NODE_COUNT,
             frame_index=self._contour_frame_index(),
+            unassisted=unassisted,
         )
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
-        self._auto_snap_new_contour(contour)
+        if not unassisted:
+            self._auto_snap_new_contour(contour)
         self.contour_completed.emit(contour)
         return True
 
@@ -4920,6 +5158,7 @@ class ViewerWidget(QWidget):
             self._doppler_pending_roi = None
             self._doppler_pending_baseline_y = None
             self._doppler_pending_velocity_span = None
+            self._sync_doppler_manual_calibration_hint()
             return
         if self._doppler.cancel_active_tool():
             return
@@ -5486,6 +5725,7 @@ class ViewerWidget(QWidget):
         self._caliper_sequence_size = 0
         self._reset_mmode_session_vertical_labels()
         self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+        self._sync_persistent_loupe()
         if not self._syncing_state:
             self._emit_stored_linear_measurements()
 
@@ -5510,6 +5750,7 @@ class ViewerWidget(QWidget):
         self._clear_calibration_graphics()
         if not self._linear_caliper_active:
             self._measurement_label.setText(f"{self._current_caliper_label()}: —")
+        self._sync_doppler_manual_calibration_hint()
 
     def _clear_calibration_graphics(self) -> None:
         if self._calibration_line_item is not None:
@@ -7093,6 +7334,7 @@ class ViewerWidget(QWidget):
                 time_origin_ms=prior.time_origin_ms,
                 time_from_dicom_tags=prior.time_from_dicom_tags,
             )
+        self._doppler_velocity_confirmed = True
         self.apply_doppler_calibration_state(state)
         self._doppler_pending_roi = None
         self._doppler_pending_baseline_y = None
@@ -7933,6 +8175,7 @@ class ViewerWidget(QWidget):
             self._update_linear_caliper_label_preview_from_state()
         else:
             self._linear_caliper_active = False
+        self._sync_persistent_loupe()
 
     def add_linear_measurements(self, measurements: Iterable[LinearMeasurement]) -> None:
         """Insert calipers measured outside the click-click flow (e.g. M-mode).
@@ -8118,6 +8361,7 @@ class ViewerWidget(QWidget):
         if event.key() == Qt.Key.Key_Z and not event.isAutoRepeat():
             if self._magnifier_enabled and not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 self._magnifier_held = True
+                self._show_magnifier_now()
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Escape:
@@ -8207,7 +8451,11 @@ class ViewerWidget(QWidget):
     def keyReleaseEvent(self, event) -> None:  # type: ignore[override]
         if event.key() == Qt.Key.Key_Z and not event.isAutoRepeat():
             self._magnifier_held = False
-            if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+            if (
+                not self._magnifier_persistent_active
+                and self._magnifier_lens is not None
+                and self._magnifier_lens.isVisible()
+            ):
                 self._magnifier_lens.hide_animated()
             event.accept()
             return
@@ -8566,6 +8814,10 @@ class ViewerWidget(QWidget):
         self._edge_map_cache_key = cache_key
         return self._edge_map_cache
 
+    def _is_unassisted_freehand_trace(self) -> bool:
+        """True while a freehand LV/atrial trace or freehand area stroke is being finished."""
+        return bool(self._freehand_recording and (self._freehand_open_arc or self._area_tool_mode == "freehand"))
+
     def _apply_magnetic_snap_to_contour(
         self,
         contour_index: int,
@@ -8574,6 +8826,8 @@ class ViewerWidget(QWidget):
         grab_index: int | None = None,
     ) -> None:
         if not self._magnetic_snap_enabled:
+            return
+        if 0 <= contour_index < len(self._contours) and self._contours[contour_index].unassisted:
             return
         edge_map = self._get_edge_map()
         if edge_map is None:
@@ -8605,11 +8859,15 @@ class ViewerWidget(QWidget):
 
     def _auto_snap_new_contour(self, contour: Contour) -> None:
         """Apply magnetic edge snap to a freshly placed contour."""
+        if contour.unassisted or self._is_unassisted_freehand_trace():
+            return
         if not self._magnetic_snap_enabled:
             return
         frame_index = self._contour_frame_index()
         instance_uid = self._current_instance_uid()
         for i, c in enumerate(self._contours):
+            if c.unassisted:
+                continue
             if (c is contour or (c.frame_index == frame_index and c.chamber == contour.chamber)) and (
                 instance_uid is None or c.sop_instance_uid is None or c.sop_instance_uid == instance_uid
             ):

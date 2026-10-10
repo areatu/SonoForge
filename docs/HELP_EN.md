@@ -111,7 +111,7 @@ The status bar shows startup, scan, loading, calibration, tool, and error messag
 
 The thumbnail gallery lists instances/series. `Settings → Interface → Thumbnail size` selects small, medium, or large thumbnails. `Up` and `Down` select the previous or next instance; the backtick key `` ` `` collapses or expands the gallery.
 
-When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with colored thumbnail borders and letter markers. A legend above the list shows each group’s letter, date, and clip count; click an entry to jump to that group. A single group is left unmarked. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. The legend does not show UIDs, full paths, patient names, or patient IDs.
+When an opened folder contains multiple studies or media subfolders, the gallery distinguishes groups with a thin colored thumbnail border and a letter marker on the thumbnail itself. The selected file has a thicker accent border. A single group is left unmarked. There is no legend above the list. DICOM groups are merged by `StudyInstanceUID`, including series discovered in separate nested folders. UIDs, full paths, patient names, and patient IDs are not drawn on the thumbnails.
 
 The thumbnail context menu includes:
 
@@ -125,7 +125,7 @@ Neither command exports the current measurements, and neither automatically inse
 The central viewer displays the current frame, calipers, contours, result overlay, and optional diagnostic labels. Depending on the source, it supports:
 
 - cine playback and frame selection;
-- W/L controls and presets in `Controls` or `Settings → Interface`;
+- W/L sliders in `Controls`; the Interface settings no longer offer a W/L preset;
 - crosshair, panel frames, caliper labels, and inline labels;
 - zoom levels `Fit`, `100%`, and `200%` with `0`, `+`/`=`, and `-`;
 - a context menu with `Save as…`, properties, overlay/reset commands, and calibration actions;
@@ -193,7 +193,7 @@ Studies/
 
 The scanner searches recursively. If the selected root has no media directly in it, media-bearing directories are discovered at any depth; studies found in different directories are then merged by `StudyInstanceUID`. If the root itself contains media, it is scanned as a whole, while DICOM files are still split by the UIDs in their headers. One gallery can therefore contain several marked groups.
 
-MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the scanned folder. These identifiers and full paths are not shown in the legend.
+MP4/JPEG/PNG without DICOM metadata receive synthetic study/series identifiers associated with the scanned folder. These identifiers and full paths are not drawn on the thumbnails.
 
 ### 3.3 Open and diagnose a scan
 
@@ -318,7 +318,7 @@ For `Area` or `Volume` in polygon mode:
 3. close the polygon with a double click or `Enter`/`Return` when prompted;
 4. check that there are at least three points and no self-intersection.
 
-`Settings → Measurement → Area tool mode` selects `Polygon (clicks)` or `Freehand drawing`. Freehand input is simplified to a finite set of points; magnetic snap can then change it further. `Area comparison` collects two valid closed areas before displaying the comparison.
+`Settings → Measurement → Area tool mode` selects `Polygon (clicks)` or `Freehand drawing`. Freehand input is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand trace (LV, atrial, or freehand area); click polygons and landmark contours still use magnetic snap when it is enabled. `Area comparison` collects two valid closed areas before displaying the comparison.
 
 ### 7.2 Manual LV contour and Simpson
 
@@ -512,7 +512,7 @@ The “Mitral regurgitation (PISA)” and “Aortic regurgitation (PISA)” card
 - **Reference gradations:** MVA (`ms_area`, `ms_pht`), TR Vmax (PH probability), PASP, mPAP, PVR (≤2 WU, ESC/ERS 2022), Qp:Qs (≥1.5 haemodynamically significant shunt, AHA/ACC 2018). PVR and Qp:Qs were added to the reference in this version.
 - **Secondary MR:** severe is EROA ≥0.4 cm² and RVol ≥60 mL; a note under the gradations says that with an elliptical orifice or low flow severe may start at EROA ≥0.3 cm² and RVol ≥45 mL.
 
-**Collapsible sections.** Inputs are grouped into sections; click a heading to collapse it. The heading shows how many fields of the section have a value, e.g. `Mitral stenosis (2/5)`.
+**Collapsible sections.** Input sections start collapsed. Click a heading to open or close a section with a short animation; sections opened during the session stay open until restart. The heading shows how many fields have a value, e.g. `Mitral stenosis (2/5)`. Calculator cards do not collapse.
 
 **Checks.** A value outside the plausible range is outlined in orange and listed in the warnings. You also get a warning when DVI > 1 (labels or modes are probably swapped: LVOT is PW, AV is CW) and when AVA by VTI and by Vmax differ by more than 25 %. The reference gradations (AVA, AVAi, DSI) are shown under the results. No severity grade is assigned **automatically**.
 
@@ -552,6 +552,8 @@ Doppler calibration may use, in the relevant source-specific order:
 4. a guarded fallback when the ROI passes validation.
 
 Some vendor layouts provide a real ROI or time scale but not a reliable velocity span. The code can refine it from visible ticks or fall back to a manual baseline/velocity dialog. Treat an automatic value as a proposal and compare it with the displayed scale.
+
+If a spectral strip is open and the vertical scale is still missing (no Doppler tags, and automatic velocity calibration did not succeed), the center of the Doppler ROI shows **Draw the manual Doppler calibration**. The hint disappears while calibration points are being placed, comes back if calibration is cancelled and the scale is still missing, and stays hidden once the velocity scale is set. A missing time scale alone does not show this hint.
 
 `Settings → Measurement → Doppler from DICOM/scale` controls the Doppler automatic path. Manual calibration has priority for the current workflow.
 
@@ -728,11 +730,11 @@ These documents are reading material. They do not modify structured YAML norms o
 - results-overlay font size and opacity;
 - caliper line width;
 - cine playback speed multiplier;
-- W/L preset: Last used, Soft, Contrast;
 - thumbnail size: Small, Medium, Large;
 - crosshair;
 - panel frames;
 - caliper labels on frame and inline labels;
+- loupe: holding `Z` shows it immediately while the cursor is over the viewer; `Loupe during linear measurements` keeps it until the last B-mode or M-mode caliper point (not used for Doppler or vessels);
 - Reduce motion.
 
 Line width and overlay settings affect display. Playback speed and cache affect playback behavior, not the measurement formulas.
@@ -1020,8 +1022,8 @@ There is no confirmed main-window shortcut for `M-Mode`, `Calibration Doppler`, 
 
 ### 19.3 Multiple studies
 
-1. In a common root containing several studies, distinguish them by the thumbnail border color and letter marker; the legend shows the date and clip count.
-2. Click a legend entry to scroll to the beginning of that group.
+1. In a common root containing several studies, distinguish them by the thin thumbnail border color and the letter marker on each thumbnail. The selected file has a thicker accent border.
+2. Scroll the gallery to the group you need; there is no legend above the thumbnails.
 3. Use available DICOM tags and the series description to verify membership; group letters and colors are navigation aids only.
 4. For separate delivery, save each server study through **`Save to Disk`** or open separate roots.
 

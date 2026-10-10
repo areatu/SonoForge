@@ -21,6 +21,8 @@ class Contour:
     refine_step: int = 0
     refine_locked_indices: tuple[int, ...] = ()
     measurement_label: str | None = None
+    #: Freehand trace (LV/atrial stroke or freehand area). Assistants must not move it.
+    unassisted: bool = False
 
     @property
     def is_open_arc(self) -> bool:

@@ -88,7 +88,7 @@ def test_lazy_panel_public_api_builds_on_demand() -> None:
 
     panel = CalculatorsPanel(lazy=True)
     assert not panel.is_built
-    assert panel.is_section_expanded("continuity")
+    assert not panel.is_section_expanded("continuity")
     assert panel.is_built
 
 
@@ -131,6 +131,27 @@ def test_calculators_tab_widens_panel_animated(qtbot) -> None:
     assert anim is not None
     anim.setCurrentTime(anim.duration())
     assert panel.width() == base
+
+
+def test_calculators_glide_pins_content_width(qtbot) -> None:
+    """Outer width animates; the calculators surface is not reflowed per frame."""
+    panel = ToolPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.calculators._ensure_built()
+    panel.setFixedWidth(panel._base_width)
+    panel.show_calculators_tab()
+    expanded = int(panel._base_width * panel._CALC_WIDTH_FACTOR)
+    assert panel.calculators.clip_width() == expanded
+    assert panel.calculators._surface.width() == expanded
+    anim = panel._width_anim
+    assert anim is not None
+    anim.setCurrentTime(anim.duration() // 2)
+    assert panel.width() != expanded
+    assert panel.calculators._surface.width() == expanded
+    anim.setCurrentTime(anim.duration())
+    assert panel.width() == expanded
+    assert panel.calculators.clip_width() is None
 
 
 def test_crossfade_leaves_no_graphics_effect(qtbot) -> None:

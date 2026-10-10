@@ -47,8 +47,6 @@ MIN_PLAYBACK_SPEED = 0.25
 MAX_PLAYBACK_SPEED = 4.0
 DEFAULT_PLAYBACK_SPEED = 1.0
 
-WL_PRESET_SOFT = (70, 40, 35)
-WL_PRESET_CONTRAST = (140, 55, 65)
 DEFAULT_WL_WINDOW = 100
 DEFAULT_WL_LEVEL = 50
 DEFAULT_WL_DR = 50
@@ -121,7 +119,6 @@ class UserPreferences:
     magnetic_snap_enabled: bool = True
     playback_speed_multiplier: float = DEFAULT_PLAYBACK_SPEED
     playback_max_cache_mb: int = 64
-    wl_preset: str = "last_used"
     wl_window: int = DEFAULT_WL_WINDOW
     wl_level: int = DEFAULT_WL_LEVEL
     wl_dr: int = DEFAULT_WL_DR
@@ -129,6 +126,7 @@ class UserPreferences:
     magnifier_enabled: bool = True
     magnifier_zoom: float = DEFAULT_MAGNIFIER_ZOOM
     magnifier_radius_px: int = DEFAULT_MAGNIFIER_RADIUS_PX
+    magnifier_linear_persistent: bool = False
     show_panel_frames: bool = False
     show_caliper_labels_on_frame: bool = True
     show_caliper_inline_labels: bool = False
@@ -242,10 +240,7 @@ def _read_choice(value: object, default: str, choices: set[str]) -> str:
 
 
 def resolve_wl_values(preferences: UserPreferences) -> tuple[int, int, int]:
-    if preferences.wl_preset == "soft":
-        return WL_PRESET_SOFT
-    if preferences.wl_preset == "contrast":
-        return WL_PRESET_CONTRAST
+    """Return the last-used window/level/DR. Soft/contrast presets are no longer applied."""
     return preferences.wl_window, preferences.wl_level, preferences.wl_dr
 
 
@@ -327,11 +322,7 @@ def load_user_preferences() -> UserPreferences:
             8,
             512,
         ),
-        wl_preset=_read_choice(
-            store.value("wl_preset"),
-            "last_used",
-            {"soft", "contrast", "last_used"},
-        ),
+        # ``wl_preset`` (soft/contrast/last_used) is ignored if an older build stored it.
         wl_window=_clamp_int(store.value("wl_window"), DEFAULT_WL_WINDOW, 1, 400),
         wl_level=_clamp_int(store.value("wl_level"), DEFAULT_WL_LEVEL, 0, 100),
         wl_dr=_clamp_int(store.value("wl_dr"), DEFAULT_WL_DR, 0, 100),
@@ -349,6 +340,7 @@ def load_user_preferences() -> UserPreferences:
             MIN_MAGNIFIER_RADIUS_PX,
             MAX_MAGNIFIER_RADIUS_PX,
         ),
+        magnifier_linear_persistent=_read_bool(store.value("magnifier_linear_persistent"), False),
         show_panel_frames=_read_bool(store.value("show_panel_frames"), False),
         show_caliper_labels_on_frame=_read_bool(store.value("show_caliper_labels_on_frame"), True),
         show_caliper_inline_labels=_read_bool(store.value("show_caliper_inline_labels"), False),

@@ -1837,7 +1837,6 @@ class MainWindow(QMainWindow):
             slider_widget.slider().valueChanged.connect(self._persist_window_level_preferences)
 
     def _persist_window_level_preferences(self) -> None:
-        self._user_preferences.wl_preset = "last_used"
         self._user_preferences.wl_window = self._tool_panel.controls.window_slider.slider().value()
         self._user_preferences.wl_level = self._tool_panel.controls.level_slider.slider().value()
         self._user_preferences.wl_dr = self._tool_panel.controls.dr_slider.slider().value()

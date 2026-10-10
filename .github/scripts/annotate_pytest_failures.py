@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 import sys
 from collections import deque
+from pathlib import Path
 
 # pytest's short summary lines look like:
 #   FAILED tests/unit/test_x.py::test_y - AssertionError: ...
@@ -47,17 +48,26 @@ def _emit(line: str) -> None:
 
 def main() -> int:
     node_file = sys.argv[1] if len(sys.argv) > 1 else None
+    try:
+        failure_status = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+    except ValueError:
+        failure_status = 0
     seen: set[tuple[str, str]] = set()
+    abort_seen = False
     last_node: str | None = None
-    last_lines: deque[str] = deque(maxlen=12)
-    diagnostic_lines: deque[str] = deque(maxlen=24)
+    last_lines: deque[str] = deque(maxlen=80)
+    diagnostic_lines: deque[str] = deque(maxlen=60)
     diagnostic_context_remaining = 0
     for raw in sys.stdin:
         line = raw.rstrip("\n")
         last_lines.append(line)
         lowered = line.lower()
-        if any(marker in lowered for marker in _ABORT_MARKERS):
-            diagnostic_context_remaining = 12
+        # pytest-timeout's thread method prints "+++ Timeout +++" and then
+        # os._exit(1). There is no FAILED summary and no traceback header.
+        timed_out = "timeout" in lowered and "+" in line
+        if timed_out or any(marker in lowered for marker in _ABORT_MARKERS):
+            abort_seen = True
+            diagnostic_context_remaining = 40
         if diagnostic_context_remaining:
             diagnostic_lines.append(line)
             diagnostic_context_remaining -= 1
@@ -87,7 +97,46 @@ def main() -> int:
             tail_stream.write("\n".join(tail_lines) + "\n")
     if seen:
         _emit(f"::notice::pytest failures: {len(seen)}")
+    elif failure_status != 0 or abort_seen:
+        # No FAILED summary. A native abort or pytest-timeout's os._exit(1)
+        # both look like this. Publish the banner window and the log tail so
+        # the hung test is visible without downloading the job log.
+        # GitHub keeps about 10 error annotations per step. The crash stack
+        # follows "Fatal Python error" / the timeout banner; the log tail is
+        # only the pytest entry point and must not crowd that window out.
+        _emit_named_lines("pytest crash", _crash_window(list(last_lines)))
     return 0
+
+
+def _emit_named_lines(title: str, lines: list[str]) -> None:
+    for index, line in enumerate(lines):
+        safe = line.replace("%", "%25").replace("\r", "")[:700]
+        if safe.strip():
+            _emit(f"::error title={title} {index}::{safe}")
+
+
+def _crash_window(tail: list[str]) -> list[str]:
+    log_path = Path("/tmp/pytest.log")
+    lines = log_path.read_text(errors="replace").splitlines() if log_path.is_file() else tail
+    marker_at = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if "Fatal Python error" in line
+            or "Segmentation fault" in line
+            or ("timeout" in line.lower() and "+" in line)
+        ),
+        None,
+    )
+    if marker_at is None:
+        return lines[-8:]
+    window = lines[marker_at : marker_at + 40]
+    useful = [
+        line
+        for line in window
+        if any(token in line for token in ("echo_personal_tool", "tests/", "Fatal", "Segmentation", "Timeout", "File "))
+    ]
+    return (useful or window)[:8]
 
 
 if __name__ == "__main__":

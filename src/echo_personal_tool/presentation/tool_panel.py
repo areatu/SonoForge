@@ -371,19 +371,30 @@ class ToolPanel(QWidget):
             self._width_anim.stop()
             self._width_anim = None
         if not animated or not self.isVisible() or self._collapsed or _reduce_motion_enabled():
+            self.calculators.set_clip_width(None)
             self.setFixedWidth(target)
             return
         start = self.width()
         if start == target:
+            self.calculators.set_clip_width(None)
             self.setFixedWidth(target)
             return
+        # The Calculators page keeps a pinned width, so the glide only changes
+        # this outer container. The ~350 input widgets are not laid out per frame.
+        if self.calculators.is_built:
+            self.calculators.set_clip_width(target if target >= start else start)
         anim = QVariantAnimation(self)
         anim.setDuration(self._CALC_WIDTH_ANIM_MS)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         anim.setStartValue(start)
         anim.setEndValue(target)
         anim.valueChanged.connect(lambda value: self.setFixedWidth(int(value)))
-        anim.finished.connect(lambda: self.setFixedWidth(target))
+
+        def _finish() -> None:
+            self.setFixedWidth(target)
+            self.calculators.set_clip_width(None)
+
+        anim.finished.connect(_finish)
         self._width_anim = anim
         anim.start()
 

@@ -53,6 +53,20 @@ class TestUserPreferencesDialogConstruction:
         dlg = UserPreferencesDialog()
         assert dlg._language_combo.count() == 2
 
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_display_section_has_no_wl_preset(self, mock_load):
+        mock_load.return_value = _default_prefs()
+        from PySide6.QtWidgets import QLabel
+
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        assert not hasattr(dlg, "_wl_preset")
+        labels = [label.text() for label in dlg.findChildren(QLabel)]
+        assert "tool_panel.wl_preset" not in labels
+        assert "W/L preset:" not in labels
+        assert "Пресет W/L:" not in labels
+
 
 class TestUserPreferencesDialogValues:
     @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")

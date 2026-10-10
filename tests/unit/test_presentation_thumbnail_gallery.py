@@ -235,7 +235,9 @@ class TestThumbnailGalleryWidget:
         assert w.count() == 5
         w.close()
 
-    def test_multiple_studies_are_grouped_with_markers_colors_and_legend(self):
+    def test_multiple_studies_keep_markers_without_legend(self):
+        from PySide6.QtWidgets import QPushButton, QWidget
+
         from echo_personal_tool.presentation.thumbnail_gallery import (
             _GROUP_COLOR_ROLE,
             _GROUP_MARKER_ROLE,
@@ -248,31 +250,18 @@ class TestThumbnailGalleryWidget:
         gallery.populate([older, newer])
 
         assert gallery.count() == 3
-        assert gallery._gallery_groups[0].marker == "A"
-        assert gallery._gallery_groups[1].marker == "B"
         assert gallery.item(0).data(_GROUP_MARKER_ROLE) == "A"
         assert gallery.item(1).data(_GROUP_MARKER_ROLE) == "A"
         assert gallery.item(2).data(_GROUP_MARKER_ROLE) == "B"
         assert gallery.item(0).data(_GROUP_COLOR_ROLE) != gallery.item(2).data(_GROUP_COLOR_ROLE)
-        assert not gallery._group_legend.isHidden()
-        assert gallery._group_legend_height > 0
-
-        from echo_personal_tool.infrastructure.i18n import tr_plural
-
-        first_group_chip = gallery._group_legend_layout.itemAt(0).widget()
-        assert "A" in first_group_chip.text()
-        assert gallery._gallery_groups[0].study_date in first_group_chip.text()
-        assert tr_plural("gallery.group.clips", 2) in first_group_chip.text()
-        assert "study-new" not in first_group_chip.text()
-        assert "000.dcm" not in first_group_chip.text()
-
-        second_group_chip = gallery._group_legend_layout.itemAt(1).widget()
-        assert tr_plural("gallery.group.clips", 1) in second_group_chip.text()
-        second_group_chip.click()
-        assert gallery.currentItem() is gallery._gallery_groups[1].first_item
+        assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
+        assert gallery.findChildren(QPushButton, "thumbnailGroupChip") == []
+        assert gallery.viewportMargins().top() == 0
         gallery.close()
 
-    def test_stale_group_chip_cannot_target_repopulated_gallery(self):
+    def test_repopulate_does_not_create_a_legend(self):
+        from PySide6.QtWidgets import QWidget
+
         from echo_personal_tool.presentation.thumbnail_gallery import ThumbnailGalleryWidget
 
         gallery = ThumbnailGalleryWidget()
@@ -282,18 +271,14 @@ class TestThumbnailGalleryWidget:
                 _grouped_study("study-new", datetime(2026, 1, 2), 1),
             ]
         )
-        stale_chip = gallery._group_legend_layout.itemAt(1).widget()
-
         gallery.populate([_grouped_study("study-only", datetime(2026, 1, 3), 1)])
-        assert gallery._group_legend.isHidden()
-
-        # deleteLater has not been processed yet: a stale button must be inert
-        # rather than selecting an unrelated group with the same index.
-        stale_chip.click()
-        assert gallery.currentItem() is None
+        assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
+        assert gallery.viewportMargins().top() == 0
         gallery.close()
 
     def test_single_study_remains_unmarked(self):
+        from PySide6.QtWidgets import QWidget
+
         from echo_personal_tool.presentation.thumbnail_gallery import (
             _GROUP_COLOR_ROLE,
             _GROUP_MARKER_ROLE,
@@ -305,9 +290,15 @@ class TestThumbnailGalleryWidget:
 
         assert gallery.item(0).data(_GROUP_MARKER_ROLE) is None
         assert gallery.item(0).data(_GROUP_COLOR_ROLE) is None
-        assert gallery._group_legend.isHidden()
-        assert gallery._group_legend_height == 0
+        assert gallery.findChild(QWidget, "thumbnailGroupLegend") is None
+        assert gallery.viewportMargins().top() == 0
         gallery.close()
+
+    def test_group_and_selection_pen_widths(self):
+        from echo_personal_tool.presentation.thumbnail_gallery import GROUP_BORDER_WIDTH, SELECTION_BORDER_WIDTH
+
+        assert GROUP_BORDER_WIDTH == 1
+        assert SELECTION_BORDER_WIDTH == 3
 
     def test_group_markers_continue_after_z(self):
         from echo_personal_tool.presentation.thumbnail_gallery import _group_marker

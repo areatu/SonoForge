@@ -95,24 +95,29 @@ jobs:
           # included) would kill this script before the diagnostics below.
           set +e
           export PYTHONFAULTHANDLER=1
-          # pyproject addopts includes -q; -vv is needed for individual node IDs.
-          xvfb-run -a pytest tests/unit/ -vv --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
+          export PYTHONUNBUFFERED=1
+          # addopts starts at -q, which cancels a single -v. -vv nets to verbose
+          # node ids, and the plugin flushes the current node before each test
+          # so a pytest-timeout os._exit still leaves a name on disk.
+          export PYTHONPATH="${PWD}/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          xvfb-run -a pytest tests/unit/ -vv -p pytest_current_node --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
-          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node < /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
           if [ "$status" -ne 0 ]; then
             if [ -s /tmp/pytest-last-node ]; then
               printf '::error title=pytest last test before exit::%s\n' "$(cat /tmp/pytest-last-node)"
             fi
             # A hang (pytest-timeout thread method calls os._exit(1)) or an
             # INTERNALERROR dies without any FAILED summary lines, leaving the
-            # annotator nothing to publish. Surface the tail of the verbose
-            # log as annotations so the blocking test is identifiable from
-            # the checks API even when job logs are not downloadable.
-            tail -n 10 /tmp/pytest.log | while IFS= read -r line; do
-              printf '::error title=pytest tail::%s\n' "${line:0:1500}"
-            done
+            # annotator nothing to publish. Surface the last test node and the
+            # tail of the verbose log as annotations so the blocking test is
+            # identifiable from the checks API even when job logs are not
+            # downloadable.
+            if [ -f /tmp/pytest-last-node ]; then
+              printf '::error title=pytest abort::last test before abort: %s\n' "$(head -n 1 /tmp/pytest-last-node)"
+            fi
           fi
           exit "$status"
 
