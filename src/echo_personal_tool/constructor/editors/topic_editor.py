@@ -58,7 +58,7 @@ class TopicEditor(BaseEditor):
         self._list.setStyleSheet(
             f"QListWidget {{ border: none; color: {p['text']}; background: {p['bg_panel']}; }}"
             f"QListWidget::item {{ padding: 8px 12px; border-bottom: 1px solid {p['border']}; }}"
-            f"QListWidget::item:selected {{ background: {p['accent']}; color: white; }}"
+            f"QListWidget::item:selected {{ background: {p['accent']}; color: {p['progress_text']}; }}"
             f"QListWidget::item:hover {{ background: {p['bg_button_hover']}; }}"
         )
         self._list.itemClicked.connect(self._on_item_clicked)

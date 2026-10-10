@@ -10,9 +10,34 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QVBoxLayout, QWidget
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QTabBar, QToolButton, QVBoxLayout, QWidget
 
 from echo_personal_tool.presentation.ui_metrics import control_height
+
+
+def _close_icon() -> QIcon:
+    """PR2: close glyph recolored to the theme text color.
+
+    The native Fusion PE_IndicatorTabClose paints the selected tab's glyph
+    orange-red; the repo never overrode it, so it surfaced with the tab strip.
+    """
+    from pathlib import Path
+
+    from PySide6.QtGui import QPixmap
+
+    from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+    svg_path = Path(__file__).resolve().parents[1] / "resources" / "icons" / "close.svg"
+    if svg_path.is_file():
+        svg_text = svg_path.read_text(encoding="utf-8")
+        color = get_theme_palette().get("text", "#f1f5f9")
+        svg_text = svg_text.replace("currentColor", color)
+        pixmap = QPixmap()
+        pixmap.loadFromData(svg_text.encode("utf-8"))
+        if not pixmap.isNull():
+            return QIcon(pixmap)
+    return QIcon()
 
 
 class TabStrip(QWidget):
@@ -59,6 +84,7 @@ class TabStrip(QWidget):
                     self._bar.setTabToolTip(index, caption)
                 if tab_id == active_tab_id and self._bar.currentIndex() != index:
                     self._bar.setCurrentIndex(index)
+            self._refresh_close_buttons()
 
     def tab_count(self) -> int:
         return self._bar.count()
@@ -89,6 +115,31 @@ class TabStrip(QWidget):
         )
         self._bar.setFixedHeight(height)
         self.setFixedHeight(height)
+        # Theme change path (called from MainWindow._on_preferences_changed):
+        # recolor themed close glyphs along with the metrics.
+        self._refresh_close_buttons()
+
+    def _refresh_close_buttons(self) -> None:
+        """Replace native close glyphs with theme-colored ones."""
+        for index in range(self._bar.count()):
+            old = self._bar.tabButton(index, QTabBar.ButtonPosition.RightSide)
+            if isinstance(old, QToolButton) and old.property("themedClose"):
+                old.setIcon(_close_icon())
+                continue
+            btn = QToolButton(self._bar)
+            btn.setProperty("themedClose", True)
+            btn.setIcon(_close_icon())
+            btn.setAutoRaise(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(self._on_close_button_clicked)
+            self._bar.setTabButton(index, QTabBar.ButtonPosition.RightSide, btn)
+
+    def _on_close_button_clicked(self) -> None:
+        sender = self.sender()
+        for index in range(self._bar.count()):
+            if self._bar.tabButton(index, QTabBar.ButtonPosition.RightSide) is sender:
+                self._on_close_requested(index)
+                return
 
     # ----- internal --------------------------------------------------------
 

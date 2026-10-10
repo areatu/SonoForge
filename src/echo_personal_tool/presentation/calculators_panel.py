@@ -382,6 +382,11 @@ class CalculatorsPanel(QWidget):
         self.reload_text()
         self._refresh(force_text=True)
         self._place_surface()
+        # PR2: surface built while the panel is hidden inherits hidden state
+        # (QTabWidget had not shown the tab yet) — nobody showed it, so the
+        # glide animation ran over an empty panel. Explicit show persists
+        # once the parent tab becomes visible.
+        self._surface.setVisible(True)
 
     # ── public API ───────────────────────────────────────────────────────
     @property

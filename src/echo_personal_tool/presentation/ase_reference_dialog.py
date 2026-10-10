@@ -185,8 +185,10 @@ class _DocTab(QWidget):
     def _apply_label_style(self, active: bool) -> None:
         p = get_theme_palette()
         if active:
+            # PR2: text-on-accent from the palette, not hardcoded white, so the
+            # active tab stays contrast in every theme (dark/light/vscode).
             self._btn_label.setStyleSheet(
-                "QPushButton { border: none; padding: 0; background: transparent; color: #ffffff; font-weight: bold; }"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p['progress_text']}; font-weight: bold; }}"
             )
         else:
             self._btn_label.setStyleSheet(
@@ -207,6 +209,9 @@ class _DocTab(QWidget):
 
     def set_active(self, active: bool) -> None:
         self._btn_label.setChecked(active)
+        # PR2: switching tabs never refreshed the visuals — the newly active
+        # tab kept the inactive (light) background. Re-apply style on switch.
+        self._apply_style(active)
         self._apply_style(active)
 
 
