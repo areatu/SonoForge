@@ -1085,7 +1085,7 @@ def _apply_theme_direct(
 
 def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
     from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
-    from PySide6.QtWidgets import QGraphicsOpacityEffect
+    from PySide6.QtWidgets import QGraphicsOpacityEffect, QMainWindow
 
     from echo_personal_tool.presentation.ui_animations import _reduce_motion_enabled
 
@@ -1095,13 +1095,43 @@ def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
     _apply_theme_direct(app, widget, font_size, theme)
     if _reduce_motion_enabled():
         return
-    effect = QGraphicsOpacityEffect(widget)
-    widget.setGraphicsEffect(effect)
+    try:
+        import shiboken6
+
+        if not shiboken6.isValid(widget):
+            return
+    except ImportError:
+        pass
+    # PR1 stability: never attach a GraphicsEffect to a top-level/main window.
+    # With a live QWebEngineView/video surface this is a known SIGSEGV path
+    # (theme switch or tab switch then crashes, spawn pool leaks semaphores).
+    if isinstance(widget, QMainWindow) or widget.isWindow():
+        return
+    try:
+        effect = QGraphicsOpacityEffect(widget)
+        widget.setGraphicsEffect(effect)
+    except RuntimeError:
+        return
     anim = QPropertyAnimation(effect, b"opacity")
     anim.setDuration(150)
     anim.setStartValue(0.6)
     anim.setEndValue(1.0)
     anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
-    QTimer.singleShot(0, anim.start)
+
+    def _cleanup() -> None:
+        try:
+            import shiboken6
+
+            if shiboken6.isValid(widget):
+                widget.setGraphicsEffect(None)
+        except (ImportError, RuntimeError):
+            pass
+
+    anim.finished.connect(_cleanup)
+    try:
+        QTimer.singleShot(0, anim.start)
+    except RuntimeError:
+        _cleanup()
+        return
     widget._theme_anim = anim
     widget._theme_effect = effect
