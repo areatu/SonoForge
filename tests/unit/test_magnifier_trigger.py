@@ -84,17 +84,27 @@ def test_disabled_preference_hides_loupe_on_the_first_click(qtbot) -> None:
 
 
 def test_loupe_key_relay_is_removed_with_the_viewer(qtbot) -> None:
+    from echo_personal_tool.presentation.viewer_widget import shared_loupe_key_relay
 
     viewer = _viewer(qtbot)
-    relay = viewer._loupe_key_relay
-    assert relay is not None
-    assert relay._viewer() is viewer
+    other = _viewer(qtbot)
+    relay = shared_loupe_key_relay()
+    assert viewer._loupe_key_relay is relay
+    assert other._loupe_key_relay is relay
+    assert relay.tracks(viewer)
+    assert relay.tracks(other)
     viewer.hide()
     assert viewer._loupe_key_relay is None
+    assert not relay.tracks(viewer)
+    # Hiding one viewer must not drop the shared filter or the other viewer.
+    assert other._loupe_key_relay is relay
+    assert relay.tracks(other)
     viewer.show()
-    assert viewer._loupe_key_relay is not None
+    assert viewer._loupe_key_relay is relay
+    assert relay.tracks(viewer)
     viewer.close()
     assert viewer._loupe_key_relay is None
+    assert not relay.tracks(viewer)
 
 
 def test_doppler_and_vessel_do_not_arm_persistent_loupe(qtbot) -> None:

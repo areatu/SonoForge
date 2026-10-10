@@ -31,7 +31,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from shiboken6 import delete as shiboken_delete
 from shiboken6 import isValid
 
 from echo_personal_tool.domain.calculations.lvef_simpson import format_contour_overlay
@@ -711,28 +710,70 @@ class _ComparisonState:
 
 
 class _LoupeKeyRelay(QObject):
-    """Forwards Z to a viewer without installing the viewer itself on QApplication.
+    """One application-wide Z filter shared by every viewer.
 
-    A strong reference back to the viewer makes a QObject cycle. The unit
-    suite collects garbage between tests, and collecting that cycle segfaults
-    on Linux. The viewer is held weakly, and the relay is deleted explicitly.
+    A filter per viewer makes Qt call back into Python for every event of
+    every live viewer. The unit suite shows hundreds of viewers; that cost
+    stalls ``QLayout.addWidget`` past the 60s pytest-timeout on Linux. The
+    relay is never deleted from ``hideEvent``: deleting the filter while it
+    is still on the delivery stack deadlocks. Layout and paint events must
+    not touch widgets — ``isVisible()`` re-enters the layout that is
+    delivering the event.
     """
 
-    def __init__(self, viewer: QWidget) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._viewer = weakref.ref(viewer)
+        self._viewers: list[weakref.ref[QWidget]] = []
+        self._installed_on: QApplication | None = None
+
+    def track(self, viewer: QWidget) -> None:
+        self._viewers = [ref for ref in self._viewers if ref() is not None and ref() is not viewer]
+        self._viewers.append(weakref.ref(viewer))
+
+    def untrack(self, viewer: QWidget) -> None:
+        self._viewers = [ref for ref in self._viewers if ref() is not None and ref() is not viewer]
+
+    def tracks(self, viewer: QWidget) -> bool:
+        return any(ref() is viewer for ref in self._viewers)
 
     def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
-        viewer_ref = self._viewer
-        viewer = viewer_ref() if viewer_ref is not None else None
-        if viewer is None or not isValid(viewer):
-            self._viewer = None
+        event_type = event.type()
+        if event_type not in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             return False
-        try:
-            return bool(viewer._loupe_key_from_app(watched, event))
-        except RuntimeError:
-            self._viewer = None
+        if event.key() != Qt.Key.Key_Z or event.isAutoRepeat():
             return False
+        for ref in self._viewers:
+            viewer = ref()
+            if viewer is None or not isValid(viewer):
+                continue
+            try:
+                if viewer._loupe_key_from_app(watched, event):
+                    return True
+            except RuntimeError:
+                continue
+        return False
+
+
+_shared_loupe_relay: _LoupeKeyRelay | None = None
+
+
+def shared_loupe_key_relay() -> _LoupeKeyRelay:
+    """Return the process-wide loupe filter, installed on the current application."""
+    global _shared_loupe_relay
+    app = QApplication.instance()
+    if _shared_loupe_relay is None or not isValid(_shared_loupe_relay):
+        _shared_loupe_relay = _LoupeKeyRelay()
+    relay = _shared_loupe_relay
+    if isinstance(app, QApplication) and relay._installed_on is not app:
+        previous = relay._installed_on
+        if previous is not None and isValid(previous):
+            try:
+                previous.removeEventFilter(relay)
+            except RuntimeError:
+                pass
+        app.installEventFilter(relay)
+        relay._installed_on = app
+    return relay
 
 
 class ViewerWidget(QWidget):
@@ -1215,28 +1256,18 @@ class ViewerWidget(QWidget):
         super().hideEvent(event)
 
     def _install_loupe_key_relay(self) -> None:
-        app = QApplication.instance()
-        if app is None or self._loupe_key_relay is not None:
+        if self._loupe_key_relay is not None:
             return
-        relay = _LoupeKeyRelay(self)
-        app.installEventFilter(relay)
+        relay = shared_loupe_key_relay()
+        relay.track(self)
         self._loupe_key_relay = relay
 
     def _remove_loupe_key_relay(self) -> None:
         relay = self._loupe_key_relay
         self._loupe_key_relay = None
-        if relay is None:
+        if relay is None or not isValid(relay):
             return
-        relay._viewer = None
-        app = QApplication.instance()
-        if app is not None and isValid(relay):
-            try:
-                app.removeEventFilter(relay)
-            except RuntimeError:
-                pass
-        # deleteLater races the between-test gc.collect() and double-frees.
-        if isValid(relay):
-            shiboken_delete(relay)
+        relay.untrack(self)
 
     def _loupe_key_from_app(self, watched, event) -> bool:  # type: ignore[no-untyped-def]
         if not hasattr(self, "_graphics") or self._graphics is None or not self.isVisible():
