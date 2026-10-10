@@ -189,3 +189,47 @@ class LandingPageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TourPageTests(unittest.TestCase):
+    """The feature-tour page: recorded GIFs exist, stay small and every text has both languages."""
+
+    ROOT = Path(__file__).resolve().parents[2]
+    TOUR = ROOT / "site" / "tour.html"
+    MEDIA = ROOT / "site" / "media" / "tour"
+    MAX_TOTAL_BYTES = 2 * 1024 * 1024
+
+    def test_every_referenced_gif_exists_and_total_size_is_bounded(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        refs = re.findall(r'src="(media/tour/[^"]+\.gif)"', html)
+        self.assertGreaterEqual(len(refs), 7)
+        total = 0
+        for ref in set(refs):
+            path = self.ROOT / "site" / ref
+            self.assertTrue(path.is_file(), f"missing GIF: {ref}")
+            self.assertEqual(path.read_bytes()[:6], b"GIF89a", f"not a GIF: {ref}")
+            total += path.stat().st_size
+        self.assertLessEqual(total, self.MAX_TOTAL_BYTES)
+
+    def test_every_gif_on_disk_is_linked_from_the_page(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for path in self.MEDIA.glob("*.gif"):
+            self.assertIn(f"media/tour/{path.name}", html, f"unused GIF: {path.name}")
+
+    def test_bilingual_siblings_for_every_visible_block(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for tag in ("span", "p", "h2", "h3", "figcaption"):
+            en = len(re.findall(rf'<{tag}[^>]*\blang="en"', html))
+            ru = len(re.findall(rf'<{tag}[^>]*\blang="ru"', html))
+            self.assertEqual(en, ru, f"<{tag}> blocks: {en} English vs {ru} Russian")
+
+    def test_local_links_resolve(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for href in re.findall(r'href="([^"#?]+)', html):
+            if href.startswith(("http", "mailto:")):
+                continue
+            self.assertTrue((self.ROOT / "site" / href).exists(), f"broken local link: {href}")
+
+    def test_index_links_to_tour(self):
+        html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="tour.html"', html)
