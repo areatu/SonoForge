@@ -381,3 +381,51 @@ def test_tab_title_for_empty_and_undescribed_tabs() -> None:
     bare = StudyMetadata(study_uid="9", study_datetime=datetime(2026, 1, 2), series=())
     tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/b", studies=[bare])
     assert tab_title(tab, 1, empty_label="Пусто", untitled_label="Без описания") == "2 · 02.01.2026 · Без описания"
+
+
+# ----- active source replacement with tabs disabled ---------------------------
+
+
+def test_replace_active_resets_studies_and_parked_state_but_keeps_identity() -> None:
+    m = _manager()
+    tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/old", studies=[_study("old")])
+    m.update_viewer(tab.tab_id, active_instance_uid="old.1", frame_index=4, viewer_state={"wl": 100})
+    tab.has_measurements = True
+    assert m.replace_active(origin=TAB_ORIGIN_SERVER, cache_session_id="new-cache") == ""
+    assert m.active is tab
+    assert len(m) == 1
+    assert tab.origin == TAB_ORIGIN_SERVER
+    assert tab.root == ""
+    assert tab.cache_session_id == "new-cache"
+    assert tab.studies == []
+    assert tab.active_instance_uid == ""
+    assert tab.frame_index == 0
+    assert tab.viewer_state_json == "{}"
+    assert not tab.has_measurements
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_replace_active_only_returns_unreferenced_cache_for_purge(shared) -> None:
+    m = _manager()
+    active = m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="old")
+    if shared:
+        m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="old", activate=False)
+    assert m.replace_active(origin=TAB_ORIGIN_FOLDER, root="/new") == ("" if shared else "old")
+    assert m.active is active
+
+
+def test_replace_active_with_same_cache_does_not_purge_it() -> None:
+    m = _manager()
+    m.open_tab(origin=TAB_ORIGIN_SERVER, cache_session_id="shared")
+    assert m.replace_active(origin=TAB_ORIGIN_SERVER, cache_session_id="shared") == ""
+
+
+def test_replace_active_validates_before_mutating() -> None:
+    m = _manager()
+    with pytest.raises(TabSessionError):
+        m.replace_active(origin=TAB_ORIGIN_FOLDER)
+    tab = m.open_tab(origin=TAB_ORIGIN_FOLDER, root="/old", studies=[_study("old")])
+    with pytest.raises(TabSessionError):
+        m.replace_active(origin=TAB_ORIGIN_FOLDER, root="/new", cache_session_id="invalid")
+    assert tab.root == "/old"
+    assert tab.studies == [_study("old")]

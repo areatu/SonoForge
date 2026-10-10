@@ -410,3 +410,28 @@ class TestMeasurementPersistenceCheckboxSync:
         dlg._persist_measurements.setChecked(True)
         dlg._measurement_manage.click()
         assert not dlg._persist_measurements.isChecked()
+
+
+@pytest.mark.parametrize("initial", [True, False])
+def test_tabs_checkbox_first_interface_row_and_saved(qtbot, initial):
+    from PySide6.QtWidgets import QFormLayout
+
+    from echo_personal_tool.infrastructure.user_preferences import load_user_preferences, save_user_preferences
+    from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+    preferences = _default_prefs()
+    preferences.tabs_enabled = initial
+    save_user_preferences(preferences)
+    applied = []
+    dlg = UserPreferencesDialog(on_apply=applied.append)
+    qtbot.addWidget(dlg)
+    box = dlg._tabs_enabled
+    assert box.isChecked() is initial
+    assert dlg._tabs.widget(0).isAncestorOf(box)
+    form = next(form for form in dlg.findChildren(QFormLayout) if form.indexOf(box) >= 0)
+    assert form.getWidgetPosition(box)[0] == 0
+    box.setChecked(not initial)
+    with patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings"):
+        dlg._on_accept()
+    assert load_user_preferences().tabs_enabled is (not initial)
+    assert applied[0].tabs_enabled is (not initial)

@@ -105,6 +105,7 @@ class UserPreferences:
     #: Global multiplier applied through QT_SCALE_FACTOR before QApplication;
     #: 0 = Auto (follow the operating system).  Меняется только перезапуском.
     ui_scale_percent: int = UI_SCALE_AUTO
+    tabs_enabled: bool = True
     ui_font_size: int = DEFAULT_UI_FONT_SIZE
     results_overlay_x_ratio: float = DEFAULT_RESULTS_OVERLAY_X_RATIO
     results_overlay_y_ratio: float = DEFAULT_RESULTS_OVERLAY_Y_RATIO
@@ -261,6 +262,7 @@ def load_user_preferences() -> UserPreferences:
     if overlay_custom and overlay_x_ratio < 0.15:
         overlay_custom = False
     return UserPreferences(
+        tabs_enabled=_read_bool(store.value("tabs_enabled"), True),
         ui_scale_percent=normalize_ui_scale(store.value("ui_scale_percent")),
         ui_font_size=_clamp_int(
             store.value("ui_font_size"),

@@ -180,6 +180,10 @@ class UserPreferencesDialog(QDialog):
         self._tabs = tabs
 
         interface_form = QFormLayout()
+        self._tabs_enabled = QCheckBox(tr("preferences.tabs_enabled"))
+        self._tabs_enabled.setChecked(current.tabs_enabled)
+        self._tabs_enabled.setToolTip(tr("preferences.tabs_enabled_hint"))
+        interface_form.addRow(self._tabs_enabled)
         self._theme_combo = QComboBox()
         self._theme_combo.addItem(tr("preferences.theme_dark"), "dark")
         self._theme_combo.addItem(tr("preferences.theme_light"), "light")
@@ -709,6 +713,7 @@ class UserPreferencesDialog(QDialog):
     def _on_accept(self) -> None:
         stored = load_user_preferences()
         preferences = UserPreferences(
+            tabs_enabled=self._tabs_enabled.isChecked(),
             ui_scale_percent=normalize_ui_scale(self._ui_scale.currentData()),
             ui_font_size=self._font_spin.value(),
             results_overlay_x_ratio=stored.results_overlay_x_ratio,
