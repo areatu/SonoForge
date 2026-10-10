@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10, <3.12"
 resolution-markers = [
     "python_full_version >= '3.11' and sys_platform == 'darwin'",
@@ -1722,7 +1722,7 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.24" },
     { name = "pynetdicom", specifier = ">=2.0" },
     { name = "pyqtgraph", specifier = ">=0.13" },
-    { name = "pyside6", specifier = ">=6.6" },
+    { name = "pyside6", specifier = ">=6.6,<6.12" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },

@@ -23,6 +23,8 @@ a single file, no installation, all measurement tools and PACS connectivity on b
 
 [English user help](docs/HELP_EN.md) · [Technical help (EN)](docs/TECHNICAL_HELP_EN.md) · [Техническая справка (RU)](docs/TECHNICAL_HELP_RU.md)
 
+[Feature tour in GIFs](https://areatu.github.io/SonoForge/tour.html) — tabs, contours, tool panel, layout, calipers and calculators, recorded from the real interface
+
 </div>
 
 ---
@@ -162,6 +164,8 @@ SonoForge provides a comprehensive set of tools for **echocardiographic assessme
 
 ### Cardiac Measurements
 
+- **LV contour input** — Choose three landmarks (septal annulus, lateral annulus, apex) or a freehand trace in Settings → Measurement → Manual LV contour. Freehand strokes skip magnetic snap and optical correction. See the [feature tour](https://areatu.github.io/SonoForge/tour.html)
+
 | Category | Measurements | Description |
 |----------|--------------|-------------|
 | **Linear (M-Mode/B-Mode)** | LVEDD, LVESD, IVSd, IVSs, LVPWd, LVPWs, TAPSE, RVOT, LA diameter | Standard ASE linear measurements with real-time caliper labels |
@@ -224,6 +228,7 @@ Full DICOM connectivity for seamless integration with hospital information syste
 - **PDF Export** — Clinical-grade PDF reports with patient information, measurements, and reference ranges
 - **ASE Reference Norms** — Built-in reference tables for adult echocardiography (age/sex-specific)
 - **Structured Reports** — DICOM SR-compatible output
+- **De-identified DICOM Export** — Save to a folder after a confirmation on a real frame; MP4 export masks burned-in patient data the same way the viewer does
 - **Constructor** — Custom reference browser editor with Excel import, PDF/HTML export
 
 ### Reference Constructor
@@ -268,6 +273,11 @@ Beyond adult echocardiography, the built-in handbook now covers vascular ultraso
 - **Micro-Animations** — Accordion chevrons, panel slides, tab crossfades, button feedback, and skeleton placeholders
 - **Smart Result Overlays** — Re-measuring the same parameter updates the existing value instead of duplicating it
 - **Configurable Layout** — Gallery position (left/right), status bar visibility, activity bar mode, dual viewer
+- **Study Tabs** — Each study opens in its own tab (click or `Ctrl+Tab`); switching keeps the session's measurements. Tabs are on by default and can be turned off in Settings → Interface
+- **Start Page** — Before the first study loads: open a folder, load from a server, resume the last session, or pick a recent place
+- **Recent Folders and Places** — The Open Folder dialog remembers recent folders and lists known system locations
+- **Tool Panel Customization** — Settings → Tools: add your own sections, reorder sections with ↑/↓, show or hide tools
+- **Interface Scale** — 100–250 % in 25 % steps, or follow the OS scaling (applied at start-up)
 
 ### Performance and Reliability
 
@@ -305,7 +315,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%L
 
 ## Quick Start
 
-> Check the installed version anytime: `sonoforge --version` (current release: **v0.3.1**).
+> Check the installed version anytime: `sonoforge --version` (latest published release: **v0.3.1**; unreleased changes are listed in [CHANGELOG.md](CHANGELOG.md)).
 
 ### 1. Open DICOM Data
 
@@ -317,6 +327,7 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%L
 - **Gallery** -> Select series -> Frame opens in main viewer
 - **Scroll** through cine frames using mouse wheel or keyboard arrows
 - **Play/Pause** with `Space` for automated cine loop
+- **Tabs** — Each study opens in its own tab; switch by clicking a tab or with `Ctrl+Tab`
 
 ### 3. Perform Measurements
 
@@ -325,6 +336,8 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%L
 | Linear Caliper | `L` | Distance measurement; stays armed for consecutive measurements (Dist1, Dist2, …). Inside the Doppler ROI measures Δt (ms) + velocity (cm/s or m/s) |
 | Simpson Biplane | `C` | LV volume measurement (open-arc contour) |
 | M-Mode | `M` | M-Mode trace and measurements |
+
+LV contour (`C`) uses the input mode chosen in Settings: landmarks or freehand.
 
 ### 4. View Results
 
@@ -343,6 +356,8 @@ Full-profile models, DICOM cache, fonts, and logs use the OS data directory: `%L
 | [docs/security/code-signing.md](docs/security/code-signing.md) | Release verification (`SHA256SUMS`, build-provenance attestations), signing status per platform, and the code signing policy |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines, code style, testing |
 | [ROADMAP.md](ROADMAP.md) | Feature status and development roadmap |
+| [CHANGELOG.md](CHANGELOG.md) | Changes by release, including the unreleased section |
+| [Feature tour (GIFs)](https://areatu.github.io/SonoForge/tour.html) | Recorded interface clips: tabs, LV contours, tool panel, layout, calipers, calculators |
 | [docs/superpowers/specs/](docs/superpowers/specs/) | Technical specifications (DICOMweb, M-Mode, etc.) |
 | [build/presenter/README.md](build/presenter/README.md) | SonoForge Presenter: portable USB-stick edition — packaging, profile flags, portable storage |
 
