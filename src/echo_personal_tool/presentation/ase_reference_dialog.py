@@ -188,7 +188,7 @@ class _DocTab(QWidget):
             # PR2: text-on-accent from the palette, not hardcoded white, so the
             # active tab stays contrast in every theme (dark/light/vscode).
             self._btn_label.setStyleSheet(
-                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p['progress_text']}; font-weight: bold; }}"
+                f"QPushButton {{ border: none; padding: 0; background: transparent; color: {p.get('progress_text', 'white')}; font-weight: bold; }}"
             )
         else:
             self._btn_label.setStyleSheet(

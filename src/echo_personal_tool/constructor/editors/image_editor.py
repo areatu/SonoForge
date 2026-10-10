@@ -81,7 +81,7 @@ class ImageEditor(BaseEditor):
         self._list.setStyleSheet(
             f"QListWidget {{ border: none; color: {p['text']}; background: {p['bg_panel']}; }}"
             f"QListWidget::item {{ padding: 4px 8px; border-bottom: 1px solid {p['border']}; }}"
-            f"QListWidget::item:selected {{ background: {p['accent']}; color: {p['progress_text']}; }}"
+            f"QListWidget::item:selected {{ background: {p['accent']}; color: {p.get('progress_text', 'white')}; }}"
             f"QListWidget::item:hover {{ background: {p['bg_button_hover']}; }}"
         )
         self._list.currentItemChanged.connect(self._on_item_changed)
