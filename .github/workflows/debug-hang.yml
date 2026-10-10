@@ -21,6 +21,10 @@ on:
         description: "Seconds of no log growth before a dump is taken"
         required: false
         default: "120"
+  # workflow_dispatch is only available once this file is on the default branch;
+  # until then, run it by pushing to the debug branch.
+  push:
+    branches: [debug/ci-hang-dump]
 
 concurrency:
   group: debug-hang-${{ github.ref }}
