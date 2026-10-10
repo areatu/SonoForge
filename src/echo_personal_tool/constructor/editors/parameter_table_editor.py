@@ -179,12 +179,12 @@ class ParameterTableEditor(BaseEditor):
             f"gridline-color: {p['border']}; font-size: {self._font_size}px; "
             f"font-family: {self._font_family}; selection-background-color: {p['accent']}; }}"
             f"QTableWidget::item {{ padding: 4px; }}"
-            f"QTableWidget::item:selected {{ background: {p['accent']}; color: white; }}"
+            f"QTableWidget::item:selected {{ background: {p['accent']}; color: {p.get('progress_text', 'white')}; }}"
             f"QHeaderView::section {{ background: {p['bg_control']}; color: {p['text']}; "
             f"border: 1px solid {p['border']}; padding: 4px; font-weight: bold; "
             f"border-bottom: 2px solid {p['accent']}; }}"
             f"QHeaderView::section:hover {{ background: {p['bg_button_hover']}; }}"
-            f"QHeaderView::section:pressed {{ background: {p['accent_tab']}; color: white; }}"
+            f"QHeaderView::section:pressed {{ background: {p['accent_tab']}; color: {p.get('progress_text', 'white')}; }}"
         )
 
     # ── Public API ──

@@ -1108,6 +1108,24 @@ class ViewerWidget(QWidget):
         self._ecg_strip.hide()
         layout.addWidget(self._ecg_strip)
 
+        # PR2: hint bar for the active tool, living in the ~60px strip between
+        # the image viewport (letterboxed by lockAspect) and the timeline.
+        # System status bar keeps file name / load states; tool prompts that
+        # previously only reached the hidden _measurement_label now show here.
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        _hp = get_theme_palette()
+        self._hint_bar = QLabel("", self)
+        self._hint_bar.setObjectName("viewerHintBar")
+        self._hint_bar.setWordWrap(True)
+        self._hint_bar.setStyleSheet(
+            f"QLabel#viewerHintBar {{ background: {_hp['bg_panel']}; color: {_hp['text_dim']};"
+            f" border-top: 1px solid {_hp['border']}; padding: 2px 8px; font-size: 12px; }}"
+        )
+        self._hint_bar.setFixedHeight(22)
+        self._hint_bar.hide()
+        layout.addWidget(self._hint_bar)
+
         layout.addLayout(controls)
         self._graphics.setMouseTracking(True)
         self._graphics.setViewportUpdateMode(
@@ -2992,16 +3010,44 @@ class ViewerWidget(QWidget):
         prompt = self._doppler.workflow_prompt()
         if prompt:
             self._measurement_label.setText(prompt)
+            self.set_hint(prompt)
         return True
+
+    def set_hint(self, text: str) -> None:
+        """PR2: show a tool prompt in the hint bar under the viewport.
+
+        Empty text hides the bar (idle state keeps the 60px strip free).
+        """
+        bar = getattr(self, "_hint_bar", None)
+        if bar is None:
+            return
+        bar.setText(text)
+        bar.setVisible(bool(text))
+
+    def refresh_hint_theme(self) -> None:
+        """Re-apply palette to the hint bar after a theme switch."""
+        bar = getattr(self, "_hint_bar", None)
+        if bar is None:
+            return
+        from echo_personal_tool.presentation.dark_theme import get_theme_palette
+
+        _hp = get_theme_palette()
+        bar.setStyleSheet(
+            f"QLabel#viewerHintBar {{ background: {_hp['bg_panel']}; color: {_hp['text_dim']};"
+            f" border-top: 1px solid {_hp['border']}; padding: 2px 8px; font-size: 12px; }}"
+        )
 
     def _on_doppler_workflow_step_changed(self, prompt: str) -> None:
         self._measurement_label.setText(prompt)
+        self.set_hint(prompt)
 
     def _on_doppler_workflow_completed(self) -> None:
         self._measurement_label.setText(tr("viewer.mitral_inflow_done"))
+        self.set_hint(tr("viewer.mitral_inflow_done"))
 
     def _on_doppler_trace_prompt_changed(self, prompt: str) -> None:
         self._measurement_label.setText(prompt)
+        self.set_hint(prompt)
 
     def _on_autovti_region_selected(self, t_start_ms: float, t_end_ms: float, direction: str) -> None:
         trace_label = self._doppler.trace_label()
