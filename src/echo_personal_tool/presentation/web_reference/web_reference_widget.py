@@ -25,6 +25,16 @@ log = logging.getLogger(__name__)
 _WEB_DIR = Path(__file__).parent / "web"
 
 
+def _is_alive(obj: object) -> bool:
+    """PR1 stability: JS/timer callbacks must not touch a dead C++ object."""
+    try:
+        import shiboken6
+
+        return shiboken6.isValid(obj)
+    except ImportError:
+        return True
+
+
 class WebReferenceWidget(QWidget):
     """Drop-in replacement for StructuredReferenceWidget using QWebEngineView."""
 
@@ -87,6 +97,8 @@ class WebReferenceWidget(QWidget):
         self._fallback_timer.start(5000)
 
     def _on_load_finished(self, ok: bool) -> None:
+        if not _is_alive(self):
+            return
         if not ok:
             self._fallback_timer.stop()
             self._status_label.setText(tr("web_ref.load_error"))
@@ -99,6 +111,8 @@ class WebReferenceWidget(QWidget):
 
     def _apply_theme_to_web(self) -> None:
         """Inject current theme name, palette colors and locale strings."""
+        if not _is_alive(self):
+            return
         from echo_personal_tool.presentation.dark_theme import (
             _current_theme_mode,
             _is_system_dark,
@@ -143,9 +157,23 @@ class WebReferenceWidget(QWidget):
             f"var _v={vars_js};var _s=document.documentElement.style;"
             f"Object.keys(_v).forEach(function(k){{_s.setProperty(k,_v[k]);}});"
         )
-        self._web_view.page().runJavaScript(js)
+        try:
+            self._web_view.page().runJavaScript(js)
+        except RuntimeError:
+            return
+
+    def hideEvent(self, event) -> None:  # type: ignore[override]
+        # PR1 stability: stop pending bridge retries while hidden so tab
+        # switches during load cannot fire into a half-dead page.
+        try:
+            self._fallback_timer.stop()
+        except RuntimeError:
+            pass
+        super().hideEvent(event)
 
     def _try_init_bridge(self) -> None:
+        if not _is_alive(self):
+            return
         self._init_attempts += 1
         if self._init_attempts > 30:
             log.warning("Bridge init timed out")
@@ -160,6 +188,8 @@ class WebReferenceWidget(QWidget):
         )
 
     def _on_bridge_check(self, result: str) -> None:
+        if not _is_alive(self):
+            return
         if result == "ok":
             log.info("Bridge found, initializing (attempt %d)", self._init_attempts)
             self._bridge_ready = True
@@ -173,6 +203,8 @@ class WebReferenceWidget(QWidget):
             QTimer.singleShot(150, self._try_init_bridge)
 
     def _on_fallback(self) -> None:
+        if not _is_alive(self):
+            return
         if not self._bridge_ready:
             log.warning("Web fallback triggered")
             self._init_attempts = 999  # stop retry loop
@@ -212,8 +244,14 @@ class WebReferenceWidget(QWidget):
 
     def apply_theme(self) -> None:
         """Apply current theme to the web view without full reload."""
+        if not _is_alive(self):
+            return
+        try:
+            page = self._web_view.page()
+        except RuntimeError:
+            return
         p = get_theme_palette()
-        self._web_view.page().setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
+        page.setBackgroundColor(QColor(p.get("bg_dark", "#102135")))
         if self._bridge_ready:
             self._apply_theme_to_web()
             # Force web view to re-render with new theme
