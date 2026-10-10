@@ -152,14 +152,18 @@ Measurement inputs are associated with the current SOP Instance and frame where 
 
 ### 2.6 Tabs
 
-Each open study (folder or server download) gets **its own tab** above the system bar. Switching tabs reloads that tab's study; measurements come back from the local store by UID. At most 8 tabs are open. An empty tab (`+`) shows a placeholder until a study is loaded.
+When **Settings → Interface → Tabs** is enabled (the default), opening a folder or a server study creates **a separate tab**. The tab strip sits **below the system bar and above the viewer**; its height follows the Caliper control's font metrics. The system bar and window buttons stay on top. There is no `+` button: use **Open folder…** or **Load from server…** to open another study. The initial empty tab is filled by the first load. At most 8 tabs are open.
 
-- `+` — a new empty tab; the next load fills it.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` — next / previous tab; `Ctrl+W` — close the active tab.
-- While a study loads, switching and new tabs are unavailable (a message appears in the status bar).
-- Closing a tab does not delete measurements. A server download with several studies opens each in its own tab; they share one cache, which is removed when the last of these tabs closes.
+- When switching between loaded tabs, the system bar, tab strip, and tools stay in place. A loading indicator temporarily covers the viewer; the previous image cannot be measured, and input to this window is blocked until the study list arrives. For a tab without a previously selected clip, choose a thumbnail after loading. Initial loads and new sources still use the placeholder. Switching and closing tabs are unavailable during loading.
+- Switching reloads the tab's study. Saved measurements are restored from the local store by UID; closing a tab does not delete saved measurements.
+- A server download with several studies opens each in its own tab. They share one cache, which is removed only after the last tab using it closes and the viewer releases its files.
 - With eight tabs open, the app asks whether to close the oldest inactive tab.
 - Multiview and M-mode end when you switch tabs. Comparing clips across tabs comes later.
+
+**Disabling Tabs** keeps only the **first tab**, makes it active, and hides the strip. If any of the tabs being closed contain session measurements, one confirmation lists the tabs to close; unsaved measurements may be lost. Choosing No leaves tabs enabled and keeps all tabs. Closing extra tabs is also refused while loading or if pending measurements cannot be saved.
+
+With Tabs off, a new folder or study **replaces the current study**, and a whole PACS download batch loads into the same tab (not one tab per study). `Ctrl+W`, `Ctrl+Tab`, and `Ctrl+Shift+Tab` do nothing. Re-enabling Tabs shows the remaining tab; subsequent loads open new tabs again. The preference is saved and takes effect on OK without a restart.
 
 ## 3. Local files and folders
 

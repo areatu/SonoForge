@@ -56,6 +56,7 @@ class TabSession:
     frame_index: int = 0
     viewer_state_json: str = "{}"
     created_at: float = 0.0
+    has_measurements: bool = False  # captured before the controller leaves this tab
 
     @property
     def clip_count(self) -> int:
@@ -247,7 +248,7 @@ class TabSessionManager:
         root: str = "",
         cache_session_id: str = "",
     ) -> TabSession:
-        """Give an empty tab (the « + » tab) the source of a new load.
+        """Give the initial empty tab the source of a new load.
 
         A tab that already holds studies is never retargeted: opening another
         study always gets its own tab (D-29).
@@ -260,6 +261,30 @@ class TabSessionManager:
         tab.root = root
         tab.cache_session_id = cache_session_id
         return tab
+
+    def replace_active(self, *, origin: str, root: str = "", cache_session_id: str = "") -> str:
+        """Replace the active source in single-tab mode; return a cache id to purge.
+
+        The caller must flush measurements first and defer the purge until the
+        controller no longer uses the old files. Keep tab identity and order,
+        but discard all parked view state belonging to the previous study set.
+        """
+        self._validate_source(origin, root, cache_session_id)
+        tab = self.active
+        if tab is None:
+            raise TabSessionError("no active tab to replace")
+        previous_cache = tab.cache_session_id
+        tab.origin = origin
+        tab.root = root
+        tab.cache_session_id = cache_session_id
+        tab.studies = []
+        tab.active_instance_uid = ""
+        tab.frame_index = 0
+        tab.viewer_state_json = "{}"
+        tab.has_measurements = False
+        if previous_cache and not self.cache_session_users(previous_cache):
+            return previous_cache
+        return ""
 
     @staticmethod
     def _validate_source(origin: str, root: str, cache_session_id: str) -> None:

@@ -334,3 +334,16 @@ class TestMeasurementPersistenceDefault:
         assert up_mod.measurement_persistence_notice_shown() is False
         up_mod.mark_measurement_persistence_notice_shown()
         assert up_mod.measurement_persistence_notice_shown() is True
+
+
+def test_tabs_enabled_defaults_true(isolated_qsettings) -> None:
+    assert default_user_preferences().tabs_enabled
+    assert load_user_preferences().tabs_enabled
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_tabs_enabled_round_trip(isolated_qsettings, enabled) -> None:
+    preferences = default_user_preferences()
+    preferences.tabs_enabled = enabled
+    save_user_preferences(preferences)
+    assert load_user_preferences().tabs_enabled is enabled
