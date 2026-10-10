@@ -13,43 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  recover-linux-log:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          name: pytest-linux-log
-          path: downloaded-log
-          run-id: 38040356649
-          github-token: ${{ github.token }}
-      - name: Publish the crash window
-        run: |
-          python3 - << 'PY'
-          import pathlib
-          root = pathlib.Path("downloaded-log")
-          files = [path for path in root.rglob("*") if path.is_file()]
-          log_path = max(files, key=lambda path: path.stat().st_size)
-          lines = log_path.read_text(errors="replace").splitlines()
-          markers = ("Fatal Python error", "Segmentation fault", "Current thread", "Timeout")
-          idx = next((i for i, line in enumerate(lines) if any(token in line for token in markers)), None)
-          if idx is None:
-              chosen = lines[-10:]
-          else:
-              chosen = lines[max(0, idx - 8) : idx + 2]
-          last_node = ""
-          for line in lines:
-              stripped = line.strip()
-              if stripped.startswith("tests/") and "::" in stripped:
-                  last_node = stripped.split()[0]
-          print(f"::error title=pytest last node::{last_node[:700]}")
-          for index, line in enumerate(chosen[:9]):
-              safe = line.replace("%", "%25").replace("\r", "")[:700]
-              print(f"::error title=crash {index}::{safe}")
-          PY
-
   lint:
     runs-on: ubuntu-latest
     steps:

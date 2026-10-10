@@ -721,10 +721,11 @@ class _LoupeKeyRelay(QObject):
     delivering the event.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, parent: QApplication | None = None) -> None:
+        # Parent to the application so between-test gc.collect() does not
+        # destroy an active event filter (that segfaults on Linux).
+        super().__init__(parent)
         self._viewers: list[weakref.ref[QWidget]] = []
-        self._installed_on: QApplication | None = None
 
     def track(self, viewer: QWidget) -> None:
         self._viewers = [ref for ref in self._viewers if ref() is not None and ref() is not viewer]
@@ -758,21 +759,17 @@ _shared_loupe_relay: _LoupeKeyRelay | None = None
 
 
 def shared_loupe_key_relay() -> _LoupeKeyRelay:
-    """Return the process-wide loupe filter, installed on the current application."""
+    """Return the process-wide loupe filter, owned by the current application."""
     global _shared_loupe_relay
     app = QApplication.instance()
-    if _shared_loupe_relay is None or not isValid(_shared_loupe_relay):
-        _shared_loupe_relay = _LoupeKeyRelay()
     relay = _shared_loupe_relay
-    if isinstance(app, QApplication) and relay._installed_on is not app:
-        previous = relay._installed_on
-        if previous is not None and isValid(previous):
-            try:
-                previous.removeEventFilter(relay)
-            except RuntimeError:
-                pass
+    if isinstance(app, QApplication) and (relay is None or not isValid(relay) or relay.parent() is not app):
+        relay = _LoupeKeyRelay(app)
         app.installEventFilter(relay)
-        relay._installed_on = app
+        _shared_loupe_relay = relay
+    elif relay is None or not isValid(relay):
+        relay = _LoupeKeyRelay()
+        _shared_loupe_relay = relay
     return relay
 
 

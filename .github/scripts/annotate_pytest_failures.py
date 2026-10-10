@@ -101,8 +101,10 @@ def main() -> int:
         # No FAILED summary. A native abort or pytest-timeout's os._exit(1)
         # both look like this. Publish the banner window and the log tail so
         # the hung test is visible without downloading the job log.
-        _emit_named_lines("pytest log tail", list(last_lines)[-25:])
-        _emit_abort_frames(list(last_lines))
+        # GitHub keeps about 10 error annotations per step. The crash stack
+        # follows "Fatal Python error" / the timeout banner; the log tail is
+        # only the pytest entry point and must not crowd that window out.
+        _emit_named_lines("pytest crash", _crash_window(list(last_lines)))
     return 0
 
 
@@ -113,36 +115,28 @@ def _emit_named_lines(title: str, lines: list[str]) -> None:
             _emit(f"::error title={title} {index}::{safe}")
 
 
-def _emit_abort_frames(tail: list[str]) -> None:
+def _crash_window(tail: list[str]) -> list[str]:
     log_path = Path("/tmp/pytest.log")
     lines = log_path.read_text(errors="replace").splitlines() if log_path.is_file() else tail
-    timeout_at = next(
+    marker_at = next(
         (
             index
             for index, line in enumerate(lines)
-            if "timeout" in line.lower() and "+" in line
+            if "Fatal Python error" in line
+            or "Segmentation fault" in line
+            or ("timeout" in line.lower() and "+" in line)
         ),
         None,
     )
-    if timeout_at is not None:
-        _emit_named_lines("pytest timeout", lines[timeout_at : timeout_at + 45])
-        return
-    fatal_at = next((index for index, line in enumerate(lines) if "Fatal Python error" in line), None)
-    if fatal_at is not None:
-        for index, line in enumerate(lines[max(0, fatal_at - 25) : fatal_at]):
-            safe = line.replace("%", "%25").replace("\r", "")[:700]
-            _emit(f"::error title=pytest before fatal {index}::{safe}")
-    start = next(
-        (index for index, line in enumerate(lines) if "Fatal Python error" in line or "Current thread" in line),
-        0,
-    )
-    window = lines[start : start + 35] or lines[:35]
-    for index, line in enumerate(window):
-        safe = line.replace("%", "%25").replace("\r", "")[:700]
-        _emit(f"::error title=pytest frame {index}::{safe}")
-    for index, line in enumerate(lines[:12]):
-        safe = line.replace("%", "%25").replace("\r", "")[:700]
-        _emit(f"::notice title=pytest log {index}::{safe}")
+    if marker_at is None:
+        return lines[-8:]
+    window = lines[marker_at : marker_at + 40]
+    useful = [
+        line
+        for line in window
+        if any(token in line for token in ("echo_personal_tool", "tests/", "Fatal", "Segmentation", "Timeout", "File "))
+    ]
+    return (useful or window)[:8]
 
 
 if __name__ == "__main__":
