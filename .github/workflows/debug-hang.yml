@@ -2,13 +2,11 @@ name: Debug hang (manual)
 
 # One-off diagnostic workflow for the Linux pytest hang that aborts inside
 # test_simpson_live_feedback (viewer_widget._update_simpson_lines). It never
-# runs automatically — start it by hand from the Actions tab and pick a ref.
-#
-# Why a separate workflow: the hang only reproduces on the GitHub runner, and
-# faulthandler only dumps Python threads (the Qt worker/C++ threads that are
-# the prime suspects are invisible to it). This job disables pytest-timeout so
-# the process hangs instead of being killed, watches the log for a stall, and
-# captures native backtraces of *every* thread with gdb, then uploads them.
+# runs on PRs — only by hand (workflow_dispatch) or on a push to the debug
+# branch. faulthandler only dumps Python threads; the Qt worker/C++ threads
+# that are the prime suspects are invisible to it, so this job disables
+# pytest-timeout (--timeout=0) to let the process hang, watches the log for a
+# stall, and captures native backtraces of *every* thread with gdb.
 
 on:
   workflow_dispatch:
@@ -21,19 +19,17 @@ on:
         description: "Seconds of no log growth before a dump is taken"
         required: false
         default: "120"
-  # workflow_dispatch is only available once this file is on the default branch;
-  # until then, run it by pushing to the debug branch.
   push:
     branches: [debug/ci-hang-dump]
 
 concurrency:
   group: debug-hang-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   hang:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,8 +58,8 @@ jobs:
       - name: Run tests with stall + gdb watchdog
         shell: bash
         env:
-          TARGET: ${{ github.event.inputs.test_target }}
-          STALL_SECONDS: ${{ github.event.inputs.stall_seconds }}
+          TARGET: ${{ github.event.inputs.test_target || 'tests/unit/' }}
+          STALL_SECONDS: ${{ github.event.inputs.stall_seconds || '120' }}
         run: |
           set +e
           export PYTHONFAULTHANDLER=1
@@ -73,19 +69,20 @@ jobs:
           : > /tmp/pytest.log
           : > /tmp/gdb.log
 
-          # --timeout=0 disables pytest-timeout: the hang must persist so the
-          # watchdog can attach before the process is killed.
-          xvfb-run -a pytest "$TARGET" -q -p pytest_current_node --tb=line --no-header --timeout=0 \
+          # setsid puts the whole xvfb-run + pytest tree in its own process
+          # group so the watchdog can kill it reliably (killing only the
+          # xvfb-run wrapper leaks the hung pytest child).
+          setsid xvfb-run -a pytest "$TARGET" -q -p pytest_current_node --tb=line --no-header --timeout=0 \
             > /tmp/pytest.log 2>&1 &
-          PYTEST_WRAPPER_PID=$!
+          WRAPPER_PID=$!
 
-          (
+          watchdog() {
             interval=15
             stall_ticks=$(( STALL_SECONDS / interval ))
             last=0
             stall=0
             dumps=0
-            while kill -0 "$PYTEST_WRAPPER_PID" 2>/dev/null; do
+            while kill -0 "$WRAPPER_PID" 2>/dev/null; do
               sleep "$interval"
               cur=$(wc -c < /tmp/pytest.log 2>/dev/null || echo 0)
               if [ "$cur" = "$last" ]; then stall=$(( stall + 1 )); else stall=0; last=$cur; fi
@@ -95,29 +92,34 @@ jobs:
                   dumps=$(( dumps + 1 ))
                   {
                     echo "=== HANG dump #$dumps at $(date -Is) log_bytes=$cur pytest_pid=$pid ==="
-                    timeout 90 gdb -batch -p "$pid" \
+                    timeout 60 gdb -batch -p "$pid" \
                       -ex 'set pagination off' \
                       -ex 'thread apply all bt 40' 2>&1
                     echo
                   } >> /tmp/gdb.log
                 fi
                 stall=0
-                # Two dumps ~30s apart capture whether the stack is frozen
-                # (lock/block) or moving (spin loop), then stop hanging the job.
                 if [ "$dumps" -ge 2 ]; then
-                  echo "=== killing hung pytest after $dumps dumps ===" >> /tmp/gdb.log
-                  kill -9 "$PYTEST_WRAPPER_PID" 2>/dev/null
+                  echo "=== killing hung process group after $dumps dumps ===" >> /tmp/gdb.log
+                  kill -9 -- "-$WRAPPER_PID" 2>/dev/null
                   pkill -9 -f "pytest $TARGET" 2>/dev/null
+                  kill -9 "$WRAPPER_PID" 2>/dev/null
                   break
                 fi
               fi
             done
-          ) &
+          }
+          watchdog &
           WATCHDOG_PID=$!
 
-          wait "$PYTEST_WRAPPER_PID"
+          # Hard cap so a stuck gdb or an unkillable child can never hold the
+          # job to the 90-minute limit without producing artifacts.
+          ( sleep 4200; pkill -9 -f "pytest $TARGET"; kill -9 -- "-$WRAPPER_PID" 2>/dev/null; kill -9 "$WRAPPER_PID" 2>/dev/null ) &
+          CAP_PID=$!
+
+          wait "$WRAPPER_PID"
           status=$?
-          kill "$WATCHDOG_PID" 2>/dev/null
+          kill "$WATCHDOG_PID" "$CAP_PID" 2>/dev/null
 
           echo "==================== pytest exit=$status ===================="
           echo "---------------- pytest.log (tail) ----------------"
