@@ -777,6 +777,18 @@ The Server tab contains DICOMweb, authentication, HTTP headers, DIMSE, retrieval
 
 ---
 
+### 15.6 `Tools`
+
+This tab customizes the tool panel of the `Measures` tab: which tools are shown, which section each one sits in, and the order of the sections.
+
+- The checkbox shows or hides a tool; dragging moves a tool to another section.
+- The `↑` and `↓` buttons in a section header change the section order. The order is saved and applied to the panel after a restart.
+- `Add section` creates a user section: the name is entered right away (up to 40 characters) and the section is added to the end of the list. You can have up to 12 user sections.
+- A user section has `Rename` and `Delete`. Deleting it returns its tools to their default sections, keeping their checkbox state.
+- Built-in sections (`General`, `Aorta`, `LV`, etc.) can be reordered but not deleted or renamed. Tools that the layout does not place stay in their default section.
+- `Reset to defaults` restores the default set and order.
+
+
 ## 16. Servers, DICOMweb, Orthanc, and PACS
 
 Configure these fields in `Settings → Server`. SonoForge supports DICOMweb/QIDO-WADO-STOW, Orthanc-like DICOMweb endpoints, and native DIMSE. The `Load from server…` dialog has its own query-source selector.

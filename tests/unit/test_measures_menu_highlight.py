@@ -89,3 +89,24 @@ def test_menu_rebuild_stops_blink() -> None:
     _flush_deferred_deletes()
     menu._toggle_blink()
     menu.clear_highlight()
+
+
+def test_highlight_works_after_sections_are_reordered() -> None:
+    import copy
+
+    from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
+    from echo_personal_tool.presentation.measures_menu import default_tool_layout, encode_tool_layout
+
+    layout = list(reversed(copy.deepcopy(default_tool_layout())))
+    preferences = default_user_preferences()
+    preferences.tool_panel_layout_json = encode_tool_layout(layout)
+    menu = MeasuresMenuWidget()
+    menu.set_preferences(preferences)
+
+    menu.highlight_action(MeasurementAction.LV2D_ES)
+
+    es_button = next(btn for btn, spec in menu._tool_buttons if spec.action == MeasurementAction.LV2D_ES)
+    assert menu._blink_target is es_button
+    owner = next(section for section in menu._sections if section.contains_button(es_button))
+    assert owner.is_expanded()
+    menu.clear_highlight()

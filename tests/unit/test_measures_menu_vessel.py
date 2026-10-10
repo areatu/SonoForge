@@ -76,3 +76,26 @@ def test_vessel_buttons_enabled_with_calibration(menu):
 def test_set_vessel_status(menu):
     menu.set_vessel_status("Готово")
     assert menu._vessel_status_label.text() == "Готово"
+
+
+def test_vessel_block_stays_enabled_after_sections_are_reordered() -> None:
+    import copy
+
+    from echo_personal_tool.infrastructure.user_preferences import default_user_preferences
+    from echo_personal_tool.presentation.measures_menu import (
+        MeasuresMenuWidget,
+        default_tool_layout,
+        encode_tool_layout,
+    )
+
+    layout = list(reversed(copy.deepcopy(default_tool_layout())))
+    preferences = default_user_preferences()
+    preferences.tool_panel_layout_json = encode_tool_layout(layout)
+    menu = MeasuresMenuWidget()
+    menu.set_preferences(preferences)
+
+    menu.set_doppler_tool_availability(time_ok=False, vessel_ok=True)
+
+    vessel_buttons = [button for button, spec in menu._tool_buttons if spec.vessel]
+    assert vessel_buttons
+    assert all(button.isEnabled() for button in vessel_buttons)
