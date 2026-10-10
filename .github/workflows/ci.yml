@@ -13,6 +13,81 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Temporary: the Linux log of run 37996251510 is only on blob storage.
+  # A runner can download it and publish the hang as annotations.
+  recover-linux-log:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: pytest-linux-log
+          path: downloaded-log
+          run-id: 37996251510
+          github-token: ${{ github.token }}
+      - name: Publish the saved pytest log
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          find downloaded-log -type f -print
+          python3 - << 'PY'
+          import os
+          import pathlib
+          import subprocess
+
+          root = pathlib.Path("downloaded-log")
+          files = [path for path in root.rglob("*") if path.is_file()]
+          if not files:
+              raise SystemExit("artifact contained no files")
+          log_path = max(files, key=lambda path: path.stat().st_size)
+          lines = log_path.read_text(errors="replace").splitlines()
+          interesting = []
+          for index, line in enumerate(lines):
+              lowered = line.lower()
+              if any(
+                  token in lowered
+                  for token in (
+                      "timeout",
+                      "failed",
+                      "error",
+                      "fatal",
+                      "segmentation",
+                      "internalerror",
+                      "traceback",
+                  )
+              ):
+                  interesting.append(f"{index}: {line}")
+          tail = lines[-80:]
+          for index, line in enumerate((interesting[:25] + tail[-20:])[:40]):
+              safe = line.replace("%", "%25").replace("\r", "")[:700]
+              print(f"::error title=saved pytest log {index}::{safe}")
+          body = "\n".join(
+              [
+                  f"source: {log_path} ({log_path.stat().st_size} bytes, {len(lines)} lines)",
+                  "",
+                  "=== matching lines ===",
+                  *interesting[:80],
+                  "",
+                  "=== tail ===",
+                  *tail,
+              ]
+          )
+          comment_path = pathlib.Path("/tmp/pytest-log-comment.md")
+          comment_path.write_text(
+              "Saved Linux pytest log from run 37996251510:\n\n```\n" + body[:60000] + "\n```\n",
+              encoding="utf-8",
+          )
+          subprocess.run(
+              ["gh", "pr", "comment", "131", "--body-file", str(comment_path)],
+              check=True,
+          )
+          PY
+
   lint:
     runs-on: ubuntu-latest
     steps:
