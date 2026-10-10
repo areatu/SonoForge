@@ -1,0 +1,135 @@
+name: Debug hang (manual)
+
+# One-off diagnostic workflow for the Linux pytest hang that aborts inside
+# test_simpson_live_feedback (viewer_widget._update_simpson_lines). It never
+# runs automatically — start it by hand from the Actions tab and pick a ref.
+#
+# Why a separate workflow: the hang only reproduces on the GitHub runner, and
+# faulthandler only dumps Python threads (the Qt worker/C++ threads that are
+# the prime suspects are invisible to it). This job disables pytest-timeout so
+# the process hangs instead of being killed, watches the log for a stall, and
+# captures native backtraces of *every* thread with gdb, then uploads them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_target:
+        description: "pytest target"
+        required: false
+        default: "tests/unit/"
+      stall_seconds:
+        description: "Seconds of no log growth before a dump is taken"
+        required: false
+        default: "120"
+
+concurrency:
+  group: debug-hang-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  hang:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        timeout-minutes: 16
+        run: |
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=120"
+          for attempt in 1 2 3; do
+            if sudo timeout 180 apt-get $apt_opts update \
+              && sudo timeout 240 apt-get $apt_opts install -y \
+                xvfb libxkbcommon-x11-0 libxcb-xinerama0 libxcb-cursor0 libegl1 gdb; then
+              exit 0
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out; retrying"
+            sleep 10
+          done
+          exit 1
+
+      - run: pip install -e ".[dev]" "PySide6!=6.12.0"
+
+      - name: Run tests with stall + gdb watchdog
+        shell: bash
+        env:
+          TARGET: ${{ github.event.inputs.test_target }}
+          STALL_SECONDS: ${{ github.event.inputs.stall_seconds }}
+        run: |
+          set +e
+          export PYTHONFAULTHANDLER=1
+          export PYTHONUNBUFFERED=1
+          export PYTHONPATH="${PWD}/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+
+          : > /tmp/pytest.log
+          : > /tmp/gdb.log
+
+          # --timeout=0 disables pytest-timeout: the hang must persist so the
+          # watchdog can attach before the process is killed.
+          xvfb-run -a pytest "$TARGET" -q -p pytest_current_node --tb=line --no-header --timeout=0 \
+            > /tmp/pytest.log 2>&1 &
+          PYTEST_WRAPPER_PID=$!
+
+          (
+            interval=15
+            stall_ticks=$(( STALL_SECONDS / interval ))
+            last=0
+            stall=0
+            dumps=0
+            while kill -0 "$PYTEST_WRAPPER_PID" 2>/dev/null; do
+              sleep "$interval"
+              cur=$(wc -c < /tmp/pytest.log 2>/dev/null || echo 0)
+              if [ "$cur" = "$last" ]; then stall=$(( stall + 1 )); else stall=0; last=$cur; fi
+              if [ "$stall" -ge "$stall_ticks" ] && [ "$cur" -gt 2000 ]; then
+                pid=$(pgrep -f "pytest $TARGET" | head -n 1)
+                if [ -n "$pid" ]; then
+                  dumps=$(( dumps + 1 ))
+                  {
+                    echo "=== HANG dump #$dumps at $(date -Is) log_bytes=$cur pytest_pid=$pid ==="
+                    timeout 90 gdb -batch -p "$pid" \
+                      -ex 'set pagination off' \
+                      -ex 'thread apply all bt 40' 2>&1
+                    echo
+                  } >> /tmp/gdb.log
+                fi
+                stall=0
+                # Two dumps ~30s apart capture whether the stack is frozen
+                # (lock/block) or moving (spin loop), then stop hanging the job.
+                if [ "$dumps" -ge 2 ]; then
+                  echo "=== killing hung pytest after $dumps dumps ===" >> /tmp/gdb.log
+                  kill -9 "$PYTEST_WRAPPER_PID" 2>/dev/null
+                  pkill -9 -f "pytest $TARGET" 2>/dev/null
+                  break
+                fi
+              fi
+            done
+          ) &
+          WATCHDOG_PID=$!
+
+          wait "$PYTEST_WRAPPER_PID"
+          status=$?
+          kill "$WATCHDOG_PID" 2>/dev/null
+
+          echo "==================== pytest exit=$status ===================="
+          echo "---------------- pytest.log (tail) ----------------"
+          tail -n 300 /tmp/pytest.log
+          echo "---------------- gdb.log ----------------"
+          cat /tmp/gdb.log 2>/dev/null || echo "(no gdb dumps captured)"
+          echo "---------------- last test node ----------------"
+          cat /tmp/pytest-last-node 2>/dev/null || true
+          exit 0
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hang-diagnostics
+          path: |
+            /tmp/pytest.log
+            /tmp/gdb.log
+          retention-days: 14
