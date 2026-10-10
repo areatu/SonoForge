@@ -189,3 +189,52 @@ class LandingPageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TourPageTests(unittest.TestCase):
+    """The feature-tour page: recorded GIFs exist, stay small and every text has both languages."""
+
+    ROOT = Path(__file__).resolve().parents[2]
+    TOUR = ROOT / "site" / "tour.html"
+    MEDIA = ROOT / "site" / "media" / "tour"
+    MAX_FILE_BYTES = 8 * 1024 * 1024
+
+    def test_referenced_gifs_are_valid_and_small_when_present(self):
+        # The maintainer records the GIFs by hand; a missing file is allowed (the page shows no animation).
+        html = self.TOUR.read_text(encoding="utf-8")
+        refs = re.findall(r'src="(media/tour/[^"]+\.gif)"', html)
+        self.assertGreaterEqual(len(set(refs)), 7)
+        for ref in set(refs):
+            path = self.ROOT / "site" / ref
+            if not path.is_file():
+                continue
+            self.assertIn(path.read_bytes()[:6], (b"GIF87a", b"GIF89a"), f"not a GIF: {ref}")
+            self.assertLessEqual(path.stat().st_size, self.MAX_FILE_BYTES, f"too large: {ref}")
+
+    def test_no_synthetic_or_phantom_content_on_the_tour_page(self):
+        html = self.TOUR.read_text(encoding="utf-8").lower()
+        self.assertNotIn("phantom", html)
+        self.assertNotIn("фантом", html)
+
+    def test_every_gif_on_disk_is_linked_from_the_page(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for path in self.MEDIA.glob("*.gif"):
+            self.assertIn(f"media/tour/{path.name}", html, f"unused GIF: {path.name}")
+
+    def test_bilingual_siblings_for_every_visible_block(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for tag in ("span", "p", "h2", "h3", "figcaption"):
+            en = len(re.findall(rf'<{tag}[^>]*\blang="en"', html))
+            ru = len(re.findall(rf'<{tag}[^>]*\blang="ru"', html))
+            self.assertEqual(en, ru, f"<{tag}> blocks: {en} English vs {ru} Russian")
+
+    def test_local_links_resolve(self):
+        html = self.TOUR.read_text(encoding="utf-8")
+        for href in re.findall(r'href="([^"#?]+)', html):
+            if href.startswith(("http", "mailto:", "media/tour/")):
+                continue  # GIFs are added by hand; checked by the GIF test instead
+            self.assertTrue((self.ROOT / "site" / href).exists(), f"broken local link: {href}")
+
+    def test_index_links_to_tour(self):
+        html = (self.ROOT / "site" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="tour.html"', html)

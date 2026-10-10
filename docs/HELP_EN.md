@@ -335,6 +335,8 @@ Check view (A4C/A2C), ED/ES, both annulus points, apex, scale, and contour direc
 
 The three-point workflow provides an initial/preliminary boundary that can be dragged and refined. It is not a guarantee of correct anatomy or segmentation. Review the entire contour before accepting it.
 
+**Freehand trace.** `Settings → Measurement → Manual LV contour → Trace (freehand)` switches the manual LV contour to a freehand stroke. Press the left mouse button and drag along the endocardium; releasing the button pauses the stroke, and pressing again continues it. `Enter` finishes the open arc. The stroke is simplified to a finite set of points. Magnetic snap, auto-snap, and optical-flow correction are not applied to a freehand stroke, so the line stays where it was drawn; click-based contours still snap when magnetic snap is on. Check the trace against the same criteria as the landmark contour, because a traced line can look plausible and still give a wrong volume.
+
 ### 7.3 LV automatic workflow
 
 `LV Auto` starts an LV automatic session. Only then does `I` request automatic segmentation of the current frame. `I` outside that session, during a Doppler tool, or while playback is active does not start the calculation. The current workflow primarily starts with A4C; continuation for A2C is not a promise of an independent one-click result. `Enter` accepts a pending preliminary contour and `Esc` rejects it.
