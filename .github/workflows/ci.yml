@@ -96,11 +96,15 @@ jobs:
           set +e
           export PYTHONFAULTHANDLER=1
           export PYTHONUNBUFFERED=1
-          xvfb-run -a pytest tests/unit/ -v --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
+          # addopts starts at -q, which cancels a single -v. -vv nets to verbose
+          # node ids, and the plugin flushes the current node before each test
+          # so a pytest-timeout os._exit still leaves a name on disk.
+          export PYTHONPATH="${PWD}/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          xvfb-run -a pytest tests/unit/ -vv -p pytest_current_node --tb=line --no-header --cov=src/echo_personal_tool --cov-report=xml --cov-report=html:htmlcov \
             > /tmp/pytest.log 2>&1
           status=$?
           cat /tmp/pytest.log
-          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node < /tmp/pytest.log
+          python .github/scripts/annotate_pytest_failures.py /tmp/pytest-last-node "$status" < /tmp/pytest.log
           if [ "$status" -ne 0 ]; then
             # A hang (pytest-timeout thread method calls os._exit(1)) or an
             # INTERNALERROR dies without any FAILED summary lines, leaving the

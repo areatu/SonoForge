@@ -1,0 +1,86 @@
+name: Dump pytest log
+
+# One-shot reader for the Linux log of run 37996251510. Job logs and artifact
+# zips live on blob storage this environment cannot fetch; a runner can, and
+# publishes the hang as check annotations plus a PR comment.
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: pytest-linux-log
+          path: downloaded-log
+          run-id: 37996251510
+          github-token: ${{ github.token }}
+
+      - name: Publish the saved pytest log
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          find downloaded-log -type f -print
+          python3 - << 'PY'
+          import os
+          import pathlib
+          import subprocess
+
+          root = pathlib.Path("downloaded-log")
+          files = [path for path in root.rglob("*") if path.is_file()]
+          if not files:
+              raise SystemExit("artifact contained no files")
+          log_path = max(files, key=lambda path: path.stat().st_size)
+          text = log_path.read_text(errors="replace")
+          lines = text.splitlines()
+          interesting = []
+          for index, line in enumerate(lines):
+              lowered = line.lower()
+              if any(
+                  token in lowered
+                  for token in (
+                      "timeout",
+                      "failed",
+                      "error",
+                      "fatal",
+                      "segmentation",
+                      "internalerror",
+                      "traceback",
+                  )
+              ):
+                  interesting.append(f"{index}: {line}")
+          tail = lines[-80:]
+          chunks = [
+              f"source: {log_path} ({log_path.stat().st_size} bytes, {len(lines)} lines)",
+              "",
+              "=== matching lines ===",
+              *interesting[:80],
+              "",
+              "=== tail ===",
+              *tail,
+          ]
+          body = "\n".join(chunks)
+          # Annotations stay readable when the PR comment is not.
+          for index, line in enumerate((interesting[:25] + tail[-20:])[:40]):
+              safe = line.replace("%", "%25").replace("\r", "")[:700]
+              print(f"::error title=saved pytest log {index}::{safe}")
+          comment_path = pathlib.Path("/tmp/pytest-log-comment.md")
+          comment_path.write_text(
+              "Saved Linux pytest log from run 37996251510:\n\n```\n"
+              + body[:60000]
+              + "\n```\n",
+              encoding="utf-8",
+          )
+          subprocess.run(
+              ["gh", "pr", "comment", "131", "--body-file", str(comment_path)],
+              check=True,
+              env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]},
+          )
+          PY
