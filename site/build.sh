@@ -38,7 +38,7 @@ cp "$SITE/index.html" "$SITE/tour.html" "$SITE/404.html" "$SITE/styles.css" "$SI
 # Small, prebuilt card animations; no image-generation dependency in the Pages build.
 cp -R "$SITE/media/features" "$OUT/media/features"
 
-# Feature-tour GIFs recorded from the real UI by tools/record_tour.py (see the tour page).
+# Feature-tour GIFs recorded by hand from the real UI (see site/README.md, "Feature tour").
 cp -R "$SITE/media/tour" "$OUT/media/tour"
 
 # ---------------------------------------------------------------- demo media
