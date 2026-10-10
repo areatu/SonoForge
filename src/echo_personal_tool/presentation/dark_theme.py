@@ -1102,10 +1102,18 @@ def _fade_theme_transition(widget: QWidget, font_size: int, theme: str) -> None:
             return
     except ImportError:
         pass
-    # PR1 stability: never attach a GraphicsEffect to a top-level/main window.
-    # With a live QWebEngineView/video surface this is a known SIGSEGV path
-    # (theme switch or tab switch then crashes, spawn pool leaks semaphores).
-    if isinstance(widget, QMainWindow) or widget.isWindow():
+    # PR1 stability: never attach a GraphicsEffect to a main window or any
+    # window hosting a WebEngine view. With a live QWebEngineView/video
+    # surface this is a known SIGSEGV path (theme switch then crashes, spawn
+    # pool leaks semaphores). Plain widgets keep the fade (covered by
+    # test_fade_theme_transition).
+    if isinstance(widget, QMainWindow):
+        return
+    try:
+        for child in widget.findChildren(QWidget):
+            if "WebEngine" in type(child).__name__:
+                return
+    except RuntimeError:
         return
     try:
         effect = QGraphicsOpacityEffect(widget)
