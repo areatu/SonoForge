@@ -421,3 +421,27 @@ def test_tabs_checkbox_first_interface_row_and_saved(qtbot, initial):
         dlg._on_accept()
     assert load_user_preferences().tabs_enabled is (not initial)
     assert applied[0].tabs_enabled is (not initial)
+
+
+class TestToolSectionsInDialog:
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_server_settings")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.save_user_preferences")
+    @patch("echo_personal_tool.presentation.user_preferences_dialog.load_user_preferences")
+    def test_add_button_creates_section_saved_in_layout(self, mock_load, mock_save_pref, mock_save_srv):
+        import json
+
+        from PySide6.QtWidgets import QInputDialog
+
+        mock_load.return_value = _default_prefs()
+        from echo_personal_tool.presentation.user_preferences_dialog import UserPreferencesDialog
+
+        dlg = UserPreferencesDialog()
+        with patch.object(QInputDialog, "getText", return_value=("Мои", True)):
+            dlg._tool_panel_settings._add_button.click()
+        with patch.object(dlg, "accept"):
+            dlg._on_accept()
+
+        saved = mock_save_pref.call_args.args[0].tool_panel_layout_json
+        data = json.loads(saved)
+        assert data["version"] == 2
+        assert [section["title"] for section in data["sections"] if section["key"].startswith("custom:")] == ["Мои"]

@@ -26,6 +26,11 @@ from echo_personal_tool.presentation.ui_metrics import control_height, text_widt
 _MENU_BUTTON_HEIGHT_PX = 24
 _ACCORDION_ANIM_MS = 180
 
+CUSTOM_SECTION_PREFIX = "custom:"
+TOOL_LAYOUT_VERSION = 2
+MAX_CUSTOM_SECTIONS = 12
+MAX_CUSTOM_SECTION_TITLE = 40
+
 
 @dataclass(frozen=True)
 class _MenuButton:
@@ -256,6 +261,9 @@ _MENU: tuple[tuple[str, tuple[_MenuButton, ...]], ...] = (
     ),
 )
 
+# Keys of every built-in section, including ones a build may hide (see _filter_profile).
+_BUILTIN_SECTION_ORDER: dict[str, int] = {key: index for index, (key, _buttons) in enumerate(_MENU)}
+
 # Map group keys to preference flags for experimental features (only LV strain)
 _EXPERIMENTAL_GROUPS: dict[str, str] = {
     "menu.strain_group": "show_strain",
@@ -315,7 +323,8 @@ def _filter_experimental(
                     continue
             visible_buttons.append(btn)
 
-        if visible_buttons:
+        # User sections stay even when every tool in them is hidden.
+        if visible_buttons or is_custom_section_key(group_key):
             filtered.append((group_key, tuple(visible_buttons)))
     return tuple(filtered)
 
@@ -338,11 +347,17 @@ def tool_menu_catalog() -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
     return _filter_profile(_MENU)
 
 
+def is_custom_section_key(key: str) -> bool:
+    """User-created sections carry the ``custom:`` prefix; built-ins use catalog keys."""
+    return key.startswith(CUSTOM_SECTION_PREFIX) and len(key) > len(CUSTOM_SECTION_PREFIX)
+
+
 def default_tool_layout() -> list[dict[str, object]]:
-    """Default section/tool layout (every tool enabled)."""
+    """Default section/tool layout (every tool enabled, built-in titles)."""
     return [
         {
             "key": group_key,
+            "title": None,
             "items": [{"id": spec.tool_id, "enabled": True} for spec in buttons],
         }
         for group_key, buttons in tool_menu_catalog()
@@ -350,24 +365,54 @@ def default_tool_layout() -> list[dict[str, object]]:
 
 
 def decode_tool_layout(raw: object) -> list[dict[str, object]]:
-    """Parse a persisted layout string, tolerating anything malformed."""
+    """Parse a persisted layout string, tolerating anything malformed.
+
+    Two formats are understood:
+
+    * version 1 — a bare list of ``{key, items}``; sections come in catalog
+      order and have no titles;
+    * version 2 — ``{"version": 2, "sections": [{key, title, items}]}``, where
+      the array order is the display order and ``title`` is set only for
+      user sections.
+
+    Unknown built-in keys are dropped, and a ``custom:`` section without a
+    non-empty title is skipped.  Duplicate section keys keep the first entry.
+    """
     if not isinstance(raw, str) or not raw.strip():
         return []
     try:
         data = json.loads(raw)
     except (TypeError, ValueError):
         return []
-    if not isinstance(data, list):
+    if isinstance(data, dict):
+        if data.get("version") != TOOL_LAYOUT_VERSION:
+            return []
+        entries = data.get("sections")
+    else:
+        entries = data  # version 1: bare list
+    if not isinstance(entries, list):
         return []
 
     layout: list[dict[str, object]] = []
-    for entry in data:
+    seen: set[str] = set()
+    for entry in entries:
         if not isinstance(entry, dict):
             continue
         key = entry.get("key")
         items = entry.get("items")
         if not isinstance(key, str) or not isinstance(items, list):
             continue
+        title: str | None = None
+        if is_custom_section_key(key):
+            raw_title = entry.get("title")
+            title = raw_title.strip()[:MAX_CUSTOM_SECTION_TITLE] if isinstance(raw_title, str) else ""
+            if not title:
+                continue
+        elif key not in _BUILTIN_SECTION_ORDER:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
         clean_items: list[dict[str, object]] = []
         for item in items:
             if not isinstance(item, dict):
@@ -376,12 +421,89 @@ def decode_tool_layout(raw: object) -> list[dict[str, object]]:
             if not isinstance(tool_id, str) or not tool_id:
                 continue
             clean_items.append({"id": tool_id, "enabled": bool(item.get("enabled", True))})
-        layout.append({"key": key, "items": clean_items})
+        layout.append({"key": key, "title": title, "items": clean_items})
+    if not isinstance(data, dict):
+        # Version 1 has no explicit order: its sections always followed the catalog.
+        layout.sort(key=lambda entry: _BUILTIN_SECTION_ORDER.get(str(entry["key"]), len(_MENU)))
     return layout
 
 
 def encode_tool_layout(layout: list[dict[str, object]]) -> str:
-    return json.dumps(layout, ensure_ascii=False)
+    """Serialize sections (in display order) as a version-2 layout."""
+    sections: list[dict[str, object]] = []
+    for entry in layout:
+        key = str(entry.get("key", ""))
+        title = entry.get("title") if is_custom_section_key(key) else None
+        sections.append({"key": key, "title": title, "items": entry.get("items", [])})
+    return json.dumps({"version": TOOL_LAYOUT_VERSION, "sections": sections}, ensure_ascii=False)
+
+
+def custom_section_titles(preferences: UserPreferences | None) -> dict[str, str]:
+    """Titles of the user-created sections saved in the preferences."""
+    raw = getattr(preferences, "tool_panel_layout_json", "") if preferences is not None else ""
+    titles: dict[str, str] = {}
+    for entry in decode_tool_layout(raw):
+        key = str(entry["key"])
+        if is_custom_section_key(key):
+            titles.setdefault(key, str(entry["title"]))
+    return titles
+
+
+def normalize_tool_layout(
+    catalog: tuple[tuple[str, tuple[_MenuButton, ...]], ...],
+    layout: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Complete, ordered view of a layout: every section and tool exactly once.
+
+    * Sections follow the stored order; user sections are always present.
+    * Built-in sections missing from the layout (new in the catalog, or an
+      empty layout) are appended at the end in catalog order.
+    * Tools that the layout does not place go to their default section.
+    * Items keep their ``enabled`` flag, so hidden tools stay listed.
+    """
+    catalog_keys = [key for key, _buttons in catalog]
+    catalog_key_set = set(catalog_keys)
+    spec_by_id = {spec.tool_id: spec for _key, buttons in catalog for spec in buttons}
+
+    sections: list[dict[str, object]] = []
+    by_key: dict[str, dict[str, object]] = {}
+    placed: set[str] = set()
+
+    def add_section(key: str, title: str | None) -> dict[str, object]:
+        section: dict[str, object] = {"key": key, "title": title, "items": []}
+        sections.append(section)
+        by_key[key] = section
+        return section
+
+    for entry in layout:
+        key = entry.get("key")
+        if not isinstance(key, str) or key in by_key:
+            continue
+        if is_custom_section_key(key):
+            title = entry.get("title")
+            section = add_section(key, title if isinstance(title, str) else key)
+        elif key in catalog_key_set:
+            section = add_section(key, None)
+        else:
+            continue
+        for item in entry.get("items", []):  # type: ignore[union-attr]
+            if not isinstance(item, dict):
+                continue
+            tool_id = item.get("id")
+            if not isinstance(tool_id, str) or tool_id not in spec_by_id or tool_id in placed:
+                continue
+            placed.add(tool_id)
+            section["items"].append({"id": tool_id, "enabled": bool(item.get("enabled", True))})  # type: ignore[union-attr]
+
+    for key in catalog_keys:
+        if key not in by_key:
+            add_section(key, None)
+    for key, buttons in catalog:
+        for spec in buttons:
+            if spec.tool_id not in placed:
+                placed.add(spec.tool_id)
+                by_key[key]["items"].append({"id": spec.tool_id, "enabled": True})  # type: ignore[union-attr]
+    return sections
 
 
 def apply_tool_layout(
@@ -390,45 +512,24 @@ def apply_tool_layout(
 ) -> tuple[tuple[str, tuple[_MenuButton, ...]], ...]:
     """Regroup/reorder/hide tools according to a saved layout.
 
-    Sections keep their catalog order; only the assignment of tools to
-    sections and their per-tool visibility come from the layout.  Tools added
-    to the catalog after the layout was saved fall back to their default
-    section so an upgrade never silently drops them.
+    Section order, tool assignment and per-tool visibility come from the
+    layout.  Built-in sections left without visible tools are omitted; user
+    sections are kept even when empty so they show up where the user put them.
     """
     if not layout:
         return catalog
 
     spec_by_id = {spec.tool_id: spec for _key, buttons in catalog for spec in buttons}
-    assigned: set[str] = set()
-    stored: dict[str, list[dict[str, object]]] = {}
-    for entry in layout:
-        key = entry.get("key")
-        if not isinstance(key, str):
-            continue
-        items = entry.get("items", [])
-        stored.setdefault(key, items)
-        for item in items:
-            tool_id = item.get("id")
-            if isinstance(tool_id, str):
-                assigned.add(tool_id)
-
-    seen: set[str] = set()
     result: list[tuple[str, tuple[_MenuButton, ...]]] = []
-    for group_key, buttons in catalog:
-        specs: list[_MenuButton] = []
-        for item in stored.get(group_key, []):
-            spec = spec_by_id.get(str(item.get("id")))
-            if spec is None or spec.tool_id in seen:
-                continue
-            seen.add(spec.tool_id)
-            if item.get("enabled", True):
-                specs.append(spec)
-        for spec in buttons:
-            if spec.tool_id not in assigned and spec.tool_id not in seen:
-                seen.add(spec.tool_id)
-                specs.append(spec)
-        if specs:
-            result.append((group_key, tuple(specs)))
+    for section in normalize_tool_layout(catalog, layout):
+        key = str(section["key"])
+        specs = tuple(
+            spec_by_id[str(item["id"])]  # type: ignore[index]
+            for item in section["items"]  # type: ignore[union-attr]
+            if item["enabled"]  # type: ignore[index]
+        )
+        if specs or is_custom_section_key(key):
+            result.append((key, specs))
     return tuple(result)
 
 
@@ -439,6 +540,11 @@ def build_measure_menu(
     raw = getattr(preferences, "tool_panel_layout_json", "") if preferences is not None else ""
     menu = apply_tool_layout(tool_menu_catalog(), decode_tool_layout(raw))
     return _filter_experimental(menu, preferences)
+
+
+def _mnemonic_safe(text: str) -> str:
+    """Keep ``&`` literal in user-typed titles (Qt treats it as a shortcut marker)."""
+    return text.replace("&", "&&")
 
 
 def style_menu_button(button: QPushButton) -> None:
@@ -457,14 +563,17 @@ class MeasuresAccordionSection(QWidget):
         buttons: tuple[_MenuButton, ...],
         emit_handler: Callable[[_MenuButton], Callable[[], None]],
         *,
+        title: str | None = None,
         button_registry: list[tuple[QPushButton, _MenuButton]] | None = None,
         parent: QWidget | None = None,
     ) -> None:
+        """``title_key`` names a built-in section; pass ``title`` for a user section."""
         super().__init__(parent)
         self.setObjectName("measuresSection")
         self._expanded = False
         self._content_height = 0
         self._title_key = title_key
+        self._custom_title = title
 
         # Header with chevron indicator
         header_layout = QHBoxLayout()
@@ -477,7 +586,7 @@ class MeasuresAccordionSection(QWidget):
         self._chevron.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(self._chevron)
 
-        self._header = QPushButton(tr(title_key))
+        self._header = QPushButton(_mnemonic_safe(title) if title is not None else tr(title_key))
         self._header.setObjectName("measuresSectionTitle")
         self._header.setFlat(True)
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -563,7 +672,8 @@ class MeasuresAccordionSection(QWidget):
         return button in self._body.findChildren(QPushButton)
 
     def reload_text(self) -> None:
-        self._header.setText(tr(self._title_key))
+        if self._custom_title is None:
+            self._header.setText(tr(self._title_key))
         buttons = self._body.findChildren(QPushButton)
         for i, button in enumerate(buttons):
             if i < len(self._button_specs):
@@ -618,12 +728,14 @@ class MeasuresMenuWidget(QWidget):
         layout.setSpacing(2)
 
         filtered_menu = build_measure_menu(self._preferences)
+        custom_titles = custom_section_titles(self._preferences)
 
-        for group_title, buttons in filtered_menu:
+        for group_key, buttons in filtered_menu:
             section = MeasuresAccordionSection(
-                group_title,
+                group_key,
                 buttons,
                 self._make_handler,
+                title=custom_titles.get(group_key, group_key) if is_custom_section_key(group_key) else None,
                 button_registry=self._tool_buttons,
                 parent=inner,
             )
