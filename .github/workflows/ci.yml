@@ -38,7 +38,6 @@ jobs:
           python3 - << 'PY'
           import os
           import pathlib
-          import subprocess
 
           root = pathlib.Path("downloaded-log")
           files = [path for path in root.rglob("*") if path.is_file()]
@@ -46,46 +45,38 @@ jobs:
               raise SystemExit("artifact contained no files")
           log_path = max(files, key=lambda path: path.stat().st_size)
           lines = log_path.read_text(errors="replace").splitlines()
-          interesting = []
-          for index, line in enumerate(lines):
-              lowered = line.lower()
+          banners = [
+              index
+              for index, line in enumerate(lines)
+              if "timeout" in line.lower() and "+" in line
+          ]
+          start = banners[0] if banners else max(0, len(lines) - 80)
+          end = banners[1] if len(banners) > 1 else min(len(lines), start + 80)
+          window = lines[start : end + 1]
+          useful = [
+              f"{start + offset}: {line}"
+              for offset, line in enumerate(window)
               if any(
-                  token in lowered
+                  token in line
                   for token in (
-                      "timeout",
-                      "failed",
-                      "error",
-                      "fatal",
-                      "segmentation",
-                      "internalerror",
-                      "traceback",
+                      "echo_personal_tool",
+                      "tests/",
+                      "Timeout",
+                      ".exec",
+                      "MainWindow",
+                      "simpson",
+                      "QMessageBox",
                   )
-              ):
-                  interesting.append(f"{index}: {line}")
-          tail = lines[-80:]
-          for index, line in enumerate((interesting[:25] + tail[-20:])[:40]):
+              )
+          ]
+          # GitHub keeps about 10 error annotations per step. Put the hang
+          # frames first; the pytest runner frames are not useful.
+          chosen = useful[:10] or window[:10]
+          for index, line in enumerate(chosen):
               safe = line.replace("%", "%25").replace("\r", "")[:700]
               print(f"::error title=saved pytest log {index}::{safe}")
-          body = "\n".join(
-              [
-                  f"source: {log_path} ({log_path.stat().st_size} bytes, {len(lines)} lines)",
-                  "",
-                  "=== matching lines ===",
-                  *interesting[:80],
-                  "",
-                  "=== tail ===",
-                  *tail,
-              ]
-          )
-          comment_path = pathlib.Path("/tmp/pytest-log-comment.md")
-          comment_path.write_text(
-              "Saved Linux pytest log from run 37996251510:\n\n```\n" + body[:60000] + "\n```\n",
-              encoding="utf-8",
-          )
-          subprocess.run(
-              ["gh", "pr", "comment", "131", "--body-file", str(comment_path)],
-              check=True,
-          )
+          summary = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
+          summary.write_text("```\n" + "\n".join(window[:120]) + "\n```\n", encoding="utf-8")
           PY
 
   lint:
