@@ -53,6 +53,16 @@ _MAX_FONT_SIZE = 28
 _PDF_DPI_BASE = 150
 
 
+def _widget_alive(obj: object) -> bool:
+    """PR1 stability: skip layout widgets pending deleteLater."""
+    try:
+        import shiboken6
+
+        return shiboken6.isValid(obj)
+    except ImportError:
+        return True
+
+
 def _load_icon(name: str) -> QPixmap:
     """Load an SVG icon from the resources/icons directory, recolored to theme text."""
     import sys
@@ -724,7 +734,7 @@ class AseReferenceDialog(QDialog):
         self._btn_structured_tab.setChecked(False)
         for i in range(self._tabs_layout.count()):
             widget = self._tabs_layout.itemAt(i).widget()
-            if isinstance(widget, _DocTab):
+            if isinstance(widget, _DocTab) and _widget_alive(widget):
                 widget.set_active(self._tab_index_of(widget) == index)
 
         name, path, kind = self._documents[index]
@@ -747,7 +757,7 @@ class AseReferenceDialog(QDialog):
         count = 0
         for i in range(tab_layout_pos):
             widget = self._tabs_layout.itemAt(i).widget()
-            if isinstance(widget, _DocTab):
+            if isinstance(widget, _DocTab) and _widget_alive(widget):
                 count += 1
         return count
 
@@ -770,6 +780,7 @@ class AseReferenceDialog(QDialog):
         tab_widget = self._tab_widget_at_doc_index(index)
         if tab_widget is not None:
             self._tabs_layout.removeWidget(tab_widget)
+            tab_widget.setParent(None)
             tab_widget.deleteLater()
 
         del self._documents[index]
@@ -787,9 +798,17 @@ class AseReferenceDialog(QDialog):
         # Re-index remaining tab click signals
         self._reconnect_tab_signals()
 
-        # Switch to adjacent tab
+        # Switch to adjacent tab deferred: the removed widget is still alive
+        # until deleteLater runs, so switching synchronously can iterate it
+        # (use-after-free crash when closing reference tabs fast).
         if self._active_doc_index >= 0:
-            self._switch_to_doc(self._active_doc_index)
+            target = self._active_doc_index
+
+            def _deferred_switch(idx: int = target) -> None:
+                if _widget_alive(self):
+                    self._switch_to_doc(idx)
+
+            QTimer.singleShot(0, _deferred_switch)
         else:
             self._active_doc_index = -1
             self._browser.hide()
@@ -802,7 +821,7 @@ class AseReferenceDialog(QDialog):
         count = 0
         for i in range(self._tabs_layout.count()):
             widget = self._tabs_layout.itemAt(i).widget()
-            if isinstance(widget, _DocTab):
+            if isinstance(widget, _DocTab) and _widget_alive(widget):
                 if count == doc_index:
                     return widget
                 count += 1
@@ -813,7 +832,7 @@ class AseReferenceDialog(QDialog):
         doc_idx = 0
         for i in range(self._tabs_layout.count()):
             widget = self._tabs_layout.itemAt(i).widget()
-            if isinstance(widget, _DocTab):
+            if isinstance(widget, _DocTab) and _widget_alive(widget):
                 # Disconnect old signals
                 try:
                     widget._btn_label.clicked.disconnect()
@@ -1080,7 +1099,7 @@ class AseReferenceDialog(QDialog):
         self._apply_add_button_style()
         for i in range(self._tabs_layout.count()):
             widget = self._tabs_layout.itemAt(i).widget()
-            if isinstance(widget, _DocTab):
+            if isinstance(widget, _DocTab) and _widget_alive(widget):
                 widget._apply_style(widget._btn_label.isChecked())
         if self._web_ref_widget is not None:
             self._web_ref_widget.apply_theme()
