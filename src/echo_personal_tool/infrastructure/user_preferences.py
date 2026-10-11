@@ -140,6 +140,11 @@ class UserPreferences:
     # DICOM export dialog.  Off by default: the detector is calibrated on a
     # corpus, not proven, and it never changes the mask by itself.
     phi_text_detector: bool = False
+    #: Override the top PHI mask band as a fraction of the frame height.
+    #: 0 (default) keeps the measured vendor profile; a positive value shrinks
+    #: or grows the band for layouts the profile over-masks (e.g. strain
+    #: screens where the header is only the top few percent).
+    phi_mask_top_percent: float = 0.0
     thumbnail_scale: str = "medium"
     #: Thumbnail panel order: "created" (as performed, earliest first) or "filename".
     thumbnail_sort_mode: str = "created"
@@ -347,6 +352,7 @@ def load_user_preferences() -> UserPreferences:
         show_doppler_calibration_roi=_read_bool(store.value("show_doppler_calibration_roi"), False),
         anonymize_frames=_read_bool(store.value("anonymize_frames"), True),
         phi_text_detector=_read_bool(store.value("phi_text_detector"), False),
+        phi_mask_top_percent=_clamp_float(store.value("phi_mask_top_percent"), 0.0, 0.0, 0.30),
         thumbnail_scale=_read_choice(
             store.value("thumbnail_scale"),
             "medium",

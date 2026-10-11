@@ -9,6 +9,7 @@ to switch the whole thing off at runtime.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -49,10 +50,21 @@ class AnonymizationFilter:
 
     def __init__(self, enabled: bool = True) -> None:
         self._enabled = bool(enabled)
+        self._top_percent = 0.0
         self._last_plan: MaskPlan = MaskPlan(reason="disabled")
         self._fills: tuple[np.ndarray | int, ...] = ()
         self._fills_key: tuple[str, tuple[MaskRect, ...], tuple[int, ...]] | None = None
         self._fills_age = 0
+
+    def set_top_percent(self, percent: float) -> None:
+        """Override the top band as a frame-height fraction; 0 keeps the profile."""
+        self._top_percent = float(percent) if percent and percent > 0 else 0.0
+
+    def _spec_for(self, context: PhiMaskContext, height: int, width: int):  # type: ignore[no-untyped-def]
+        spec = resolve_mask_spec(context.vendor, height, width)
+        if self._top_percent > 0:
+            spec = replace(spec, top=self._top_percent)
+        return spec
 
     @property
     def enabled(self) -> bool:
@@ -75,7 +87,7 @@ class AnonymizationFilter:
         context = phi_mask_context(source_path)
         if masks_disabled_by_header(context):
             return MaskPlan(reason="burned-in-annotation-no")
-        spec = resolve_mask_spec(context.vendor, height, width)
+        spec = self._spec_for(context, height, width)
         return resolve_mask_plan(spec, height, width, panel_top=context.panel_top)
 
     def apply(
@@ -99,7 +111,7 @@ class AnonymizationFilter:
             self._last_plan = MaskPlan(reason="burned-in-annotation-no")
             return pixels
 
-        spec = resolve_mask_spec(context.vendor, height, width)
+        spec = self._spec_for(context, height, width)
         plan = resolve_mask_plan(spec, height, width, panel_top=context.panel_top)
         self._last_plan = plan
         if plan.is_empty:

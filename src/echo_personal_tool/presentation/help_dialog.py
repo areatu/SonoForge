@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QMarginsF, QUrl
+from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout, QWidget
 
 from echo_personal_tool.infrastructure.i18n import get_language, tr
@@ -58,3 +60,49 @@ class HelpDialog(QDialog):
 def show_help_dialog(parent: QWidget | None = None) -> None:
     dialog = HelpDialog(parent)
     dialog.exec()
+
+
+def export_help_pdf(language: str | None = None, *, target: Path | None = None) -> Path | None:
+    """Render the bundled HELP document to a PDF with in-document links.
+
+    The Markdown is laid out by ``QTextDocument`` and printed through
+    ``QPrinter`` into a PDF file, so the guide opens in the platform PDF viewer
+    instead of only on GitHub. Returns ``None`` when the guide file is missing.
+    """
+    language = language or get_language()
+    path = help_document_path(language)
+    if not path.is_file():
+        return None
+    from PySide6.QtPrintSupport import QPrinter
+
+    document = QTextDocument()
+    document.setBaseUrl(QUrl.fromLocalFile(str(path.parent) + "/"))
+    document.setMarkdown(path.read_text(encoding="utf-8"))
+
+    suffix = "RU" if language == "ru" else "EN"
+    output = target or Path(tempfile.gettempdir()) / f"SonoForge-HELP-{suffix}.pdf"
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    printer.setOutputFileName(str(output))
+    printer.setPageLayout(
+        QPageLayout(
+            QPageSize(QPageSize.PageSizeId.A4),
+            QPageLayout.Orientation.Portrait,
+            QMarginsF(12.0, 12.0, 12.0, 12.0),
+            QPageLayout.Unit.Millimeter,
+        )
+    )
+    document.print_(printer)
+    return output if output.is_file() else None
+
+
+def open_help_pdf(parent: QWidget | None = None) -> Path | None:
+    """Export the guide to PDF (if needed) and open it in the system viewer."""
+    from PySide6.QtGui import QDesktopServices
+
+    pdf = export_help_pdf()
+    if pdf is None:
+        show_help_dialog(parent)
+        return None
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(pdf)))
+    return pdf

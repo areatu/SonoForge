@@ -1008,6 +1008,7 @@ class ViewerWidget(QWidget):
         self._show_caliper_labels_on_frame = True
         self._show_caliper_inline_labels = False
         self._doppler_auto_calibration_enabled = True
+        self._doppler_hint_in_strip = False
         self._length_display_unit = "mm"
         self._interesting_dicom_tags: tuple[str, ...] = ()
         self._panel_frame_items: list[pg.PlotDataItem] = []
@@ -1304,6 +1305,16 @@ class ViewerWidget(QWidget):
             if event.type() == QEvent.Type.MouseMove:
                 if self._drag_session is None and hasattr(event, "globalPosition"):
                     self._handle_contour_hover_at_global(event.globalPosition())
+                # Keep the loupe glued to the cursor while Z is held: some
+                # platforms do not deliver scene.sigMouseMoved reliably.
+                if (
+                    self._magnifier_lens is not None
+                    and (self._magnifier_held or self._magnifier_persistent_active)
+                    and hasattr(event, "position")
+                ):
+                    self._update_magnifier_loupe(
+                        self._graphics.mapToScene(event.position().toPoint())
+                    )
             if event.type() == QEvent.Type.Resize:
                 self._position_hint_bar()
             if (
@@ -1335,12 +1346,12 @@ class ViewerWidget(QWidget):
 
     def _update_magnifier_loupe(self, scene_pos) -> None:  # type: ignore[no-untyped-def]
         if not self._magnifier_enabled or not (self._magnifier_held or self._magnifier_persistent_active):
-            if self._magnifier_lens is not None and self._magnifier_lens.isVisible():
+            if self._magnifier_lens is not None and isValid(self._magnifier_lens) and self._magnifier_lens.isVisible():
                 self._magnifier_lens.hide_animated(instant=True)
             return
         try:
             display = self._image_item.image
-        except AttributeError:
+        except (AttributeError, RuntimeError):
             display = None
         if display is None:
             return
@@ -1348,25 +1359,30 @@ class ViewerWidget(QWidget):
         if mapped is None:
             return
         lens = self._ensure_magnifier_lens()
-        lens.set_lens_diameter(int(self._magnifier_radius_px) * 2)
-        lens.set_crop(np.asarray(display), float(mapped.x()), float(mapped.y()))
-        # Offset loupe left-above: cursor point stays visible, lens floats aside.
+        if lens is None or not isValid(lens):
+            self._magnifier_lens = None
+            return
         try:
+            lens.set_lens_diameter(int(self._magnifier_radius_px) * 2)
+            lens.set_crop(np.asarray(display), float(mapped.x()), float(mapped.y()))
+            # Offset loupe left-above: cursor point stays visible, lens floats aside.
             cursor_global = QCursor.pos()
             local = self.mapFromGlobal(cursor_global)
+            offset = QPoint(-lens.width() + 12, -lens.height() + 16)
+            pos = local + offset
+            pos.setX(max(0, min(pos.x(), max(0, self.width() - lens.width()))))
+            pos.setY(max(0, min(pos.y(), max(0, self.height() - lens.height()))))
+            lens.move(pos)
+            center = QPoint(pos.x() + lens.width() // 2, pos.y() + lens.height() // 2)
+            lens.set_anchor_delta(local - center)
+            if not lens.isVisible():
+                lens.show_animated()
+            else:
+                lens.update()
         except RuntimeError:
-            return
-        offset = QPoint(-lens.width() + 12, -lens.height() + 16)
-        pos = local + offset
-        pos.setX(max(0, min(pos.x(), max(0, self.width() - lens.width()))))
-        pos.setY(max(0, min(pos.y(), max(0, self.height() - lens.height()))))
-        lens.move(pos)
-        center = QPoint(pos.x() + lens.width() // 2, pos.y() + lens.height() // 2)
-        lens.set_anchor_delta(local - center)
-        if not lens.isVisible():
-            lens.show_animated()
-        else:
-            lens.update()
+            # The lens C++ object went away underneath us (viewer teardown or
+            # a between-test gc pass); drop the reference instead of crashing.
+            self._magnifier_lens = None
 
     def _hide_magnifier_on_point(self) -> None:
         # Point placed (click): drop the hold so the loupe closes; user can
@@ -1558,6 +1574,7 @@ class ViewerWidget(QWidget):
             )
         )
         self._phi_filter.set_enabled(preferences.anonymize_frames)
+        self._phi_filter.set_top_percent(preferences.phi_mask_top_percent)
         self._show_crosshair = preferences.show_crosshair
         self._magnifier_enabled = preferences.magnifier_enabled
         self._magnifier_zoom = preferences.magnifier_zoom
@@ -3016,6 +3033,22 @@ class ViewerWidget(QWidget):
         self._doppler.set_calibration_active(active)
         self._doppler.set_hint_roi(roi)
         self._doppler.set_manual_calibration_hint_visible(wanted)
+        # F6: a Doppler strip opened without an automatic vertical scale must
+        # never fail silently — mirror the state into the hint strip so the
+        # notification is visible even when the ROI overlay cannot be placed.
+        logger.debug(
+            "[F6] doppler calibration hint wanted=%s roi=%s scale_set=%s active=%s",
+            wanted,
+            roi is not None,
+            self._doppler_velocity_scale_is_set(),
+            active,
+        )
+        if wanted:
+            self._doppler_hint_in_strip = True
+            self.set_hint(tr("viewer.doppler_vertical_scale_missing"))
+        elif getattr(self, "_doppler_hint_in_strip", False):
+            self._doppler_hint_in_strip = False
+            self.set_hint("")
 
     def start_mitral_inflow_workflow(self) -> bool:
         if self._current_frame is None:

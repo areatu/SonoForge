@@ -832,7 +832,7 @@ class TestOnExportMp4Requested:
         assert callable(mask)
         frame = np.full((200, 120), 20, dtype=np.uint8)
         frame[0:20, 10:40] = 250  # a burned-in header line
-        assert mask(frame)[0:20].max() == 20
+        assert mask(frame)[0:20].max() == 0
 
     def test_export_without_masking_leaves_the_dicom_pixels_alone(self, main_window, tmp_path):
         instance = self._instance(tmp_path)
