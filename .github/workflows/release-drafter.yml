@@ -3,8 +3,10 @@ name: Release Drafter
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [opened, reopened, synchronize]
+  # No `pull_request` trigger: on pull_request events Release Drafter runs
+  # against the ephemeral refs/pull/N/merge, which stops resolving once the PR
+  # is merged and fails with "did not resolve to a commit". The draft is kept
+  # current on pushes to main.
 
 permissions:
   contents: write
