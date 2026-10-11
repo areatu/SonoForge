@@ -157,6 +157,9 @@ CALIBRATION_SUCCESS_OVERLAY_KEY = "viewer.calibration.auto_ok"
 _DOPPLER_CAL_BASELINE_KEY = "viewer.doppler.cal_baseline"
 _DOPPLER_CAL_VELOCITY_KEY = "viewer.doppler.cal_velocity"
 
+#: Points removed per freehand rollback (Backspace / right-click).
+_FREEHAND_ROLLBACK_POINTS = 8
+
 
 def _hint_bar_style() -> str:
     """Tool-hint overlay style: readable on the viewer's black letterbox."""
@@ -1292,6 +1295,10 @@ class ViewerWidget(QWidget):
         if graphics_target:
             if event.type() == QEvent.Type.MouseButtonPress:
                 if event.button() == Qt.MouseButton.RightButton:
+                    # Freehand: right-click rolls back the last segment (B)
+                    # instead of opening the save menu while a stroke is drawn.
+                    if self.rollback_freehand_segment():
+                        return True
                     self._show_save_context_menu(event)
                     return True
             if event.type() == QEvent.Type.MouseMove:
@@ -5104,6 +5111,26 @@ class ViewerWidget(QWidget):
         self._clear_active_contour_drawing()
         self.set_contour_from_domain(contour)
         self.contour_completed.emit(contour)
+        return True
+
+    def rollback_freehand_segment(self) -> bool:
+        """Undo the last drawn segment of an in-progress freehand stroke.
+
+        Bound to Backspace and right-click while a freehand stroke is being
+        recorded (A+B). Returns False when no freehand stroke is active so the
+        key/button can fall through to its normal handler.
+        """
+        if not self._freehand_recording or not self._contour_mode_active:
+            return False
+        if len(self._freehand_points) <= 3:
+            # Nothing meaningful left: cancel the whole stroke.
+            self._freehand_points = []
+            self._freehand_recording = False
+            self._freehand_open_arc = False
+            self.cancel_active_tool()
+            return True
+        del self._freehand_points[-_FREEHAND_ROLLBACK_POINTS:]
+        self._update_freehand_preview()
         return True
 
     def _finish_freehand_contour(self) -> bool:

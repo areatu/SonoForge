@@ -4425,6 +4425,9 @@ class MainWindow(QMainWindow):
             if v.finish_contour():
                 event.accept()
                 return True
+        if event.key() == Qt.Key.Key_Backspace and v.rollback_freehand_segment():
+            event.accept()
+            return True
         if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             if v._delete_selected_caliper():
                 self._show_status(tr("status.caliper_deleted"))
