@@ -42,7 +42,7 @@ jobs:
           ls -la dist/
 
       - name: Attest source tarball provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/*.tar.gz
 
@@ -108,7 +108,7 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: |
           set -euo pipefail
-          python -m pip install --quiet --upgrade cyclonedx-bom
+          python -m pip install --quiet "cyclonedx-bom==7.4.0"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-${version}-linux-amd64.sbom.cdx.json"
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
@@ -122,19 +122,28 @@ jobs:
             --output-format JSON \
             --output-reproducible \
             --output-file "$out"
-          python - "$out" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1]))
-          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}")
+          python - "$out" "$version" <<'PY'
+          import json, sys, uuid
+          path, ver = sys.argv[1], sys.argv[2]
+          d = json.load(open(path))
+          # actions/attest only accepts CycloneDX that carries a serialNumber
+          # (checkIsCycloneDX), but --output-reproducible omits it. Add a
+          # deterministic serialNumber so the SBOM stays byte-stable.
+          if not d.get("serialNumber"):
+              d["serialNumber"] = "urn:uuid:" + str(
+                  uuid.uuid5(uuid.NAMESPACE_URL, f"https://github.com/areatu/SonoForge/releases/tag/v{ver}")
+              )
+              json.dump(d, open(path, "w"), indent=2)
+          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}, serial={d['serialNumber']}")
           PY
 
       - name: Attest .deb provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/sonoforge_*.deb
 
       - name: Attest .deb SBOM
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/sonoforge_*.deb
           sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-linux-amd64.sbom.cdx.json
@@ -267,7 +276,7 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install --quiet --upgrade cyclonedx-bom
+          python -m pip install --quiet "cyclonedx-bom==7.4.0"
           if ($LASTEXITCODE -ne 0) { throw "cyclonedx-bom install failed" }
           $version = "${{ steps.version.outputs.version }}"
           $out = "dist/SonoForge-$version-windows-x64.sbom.cdx.json"
@@ -278,9 +287,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed" }
           $sbom = Get-Content $out -Raw | ConvertFrom-Json
           Write-Host "SBOM: $($sbom.components.Count) components, spec $($sbom.specVersion), format $($sbom.bomFormat)"
+          # actions/attest only accepts CycloneDX with a serialNumber, but
+          # --output-reproducible omits it; add a deterministic one.
+          python -c "import json,sys,uuid; p,v=sys.argv[1],sys.argv[2]; d=json.load(open(p)); d.setdefault('serialNumber','urn:uuid:'+str(uuid.uuid5(uuid.NAMESPACE_URL,'https://github.com/areatu/SonoForge/releases/tag/v'+v))); json.dump(d,open(p,'w'),indent=2); print('SBOM serialNumber', d['serialNumber'])" $out $version
+          if ($LASTEXITCODE -ne 0) { throw "SBOM serialNumber injection failed" }
 
       - name: Attest Windows package provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           # dist\SonoForge.exe is a byte-identical copy of the portable exe, so
           # it shares the same digest. gh attestation verify resolves subjects by
@@ -291,7 +304,7 @@ jobs:
             dist/SonoForge-*-portable.exe
 
       - name: Attest Windows package SBOM
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: |
             dist/SonoForge-Setup-*-x64.exe
@@ -397,7 +410,7 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: |
           set -euo pipefail
-          python -m pip install --quiet --upgrade cyclonedx-bom
+          python -m pip install --quiet "cyclonedx-bom==7.4.0"
           version="${{ steps.version.outputs.version }}"
           out="dist/SonoForge-${version}-macos-arm64.sbom.cdx.json"
           # --spec-version is pinned deliberately: actions/attest sniffs the SBOM
@@ -409,14 +422,23 @@ jobs:
             --output-format JSON \
             --output-reproducible \
             --output-file "$out"
-          python - "$out" <<'PY'
-          import json, sys
-          d = json.load(open(sys.argv[1]))
-          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}")
+          python - "$out" "$version" <<'PY'
+          import json, sys, uuid
+          path, ver = sys.argv[1], sys.argv[2]
+          d = json.load(open(path))
+          # actions/attest only accepts CycloneDX that carries a serialNumber
+          # (checkIsCycloneDX), but --output-reproducible omits it. Add a
+          # deterministic serialNumber so the SBOM stays byte-stable.
+          if not d.get("serialNumber"):
+              d["serialNumber"] = "urn:uuid:" + str(
+                  uuid.uuid5(uuid.NAMESPACE_URL, f"https://github.com/areatu/SonoForge/releases/tag/v{ver}")
+              )
+              json.dump(d, open(path, "w"), indent=2)
+          print(f"SBOM: {len(d.get('components', []))} components, spec {d['specVersion']}, format {d['bomFormat']}, serial={d['serialNumber']}")
           PY
 
       - name: Attest DMG provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           # dist/SonoForge-macos-arm64.dmg is a byte-identical alias of the
           # versioned DMG, so it shares its digest and is covered by this
@@ -424,7 +446,7 @@ jobs:
           subject-path: dist/SonoForge-*-macos-arm64.dmg
 
       - name: Attest DMG SBOM
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           subject-path: dist/SonoForge-*-macos-arm64.dmg
           sbom-path: dist/SonoForge-${{ steps.version.outputs.version }}-macos-arm64.sbom.cdx.json
@@ -541,7 +563,7 @@ jobs:
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
       - name: Attest release checksum manifest provenance
-        uses: actions/attest@v4
+        uses: actions/attest@v4.2.2
         with:
           # The manifest is the only release asset that binds file *names*
           # (and therefore the version) to digests; attestations themselves are
