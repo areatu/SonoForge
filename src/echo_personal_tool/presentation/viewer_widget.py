@@ -170,6 +170,7 @@ def _hint_bar_style() -> str:
         " border: none; }"
     )
 
+
 _CALIBRATION_OVERLAY_STYLE = (
     "background-color: rgba(0, 0, 0, 210);"
     " color: #ffffff;"
@@ -1312,9 +1313,7 @@ class ViewerWidget(QWidget):
                     and (self._magnifier_held or self._magnifier_persistent_active)
                     and hasattr(event, "position")
                 ):
-                    self._update_magnifier_loupe(
-                        self._graphics.mapToScene(event.position().toPoint())
-                    )
+                    self._update_magnifier_loupe(self._graphics.mapToScene(event.position().toPoint()))
             if event.type() == QEvent.Type.Resize:
                 self._position_hint_bar()
             if (
