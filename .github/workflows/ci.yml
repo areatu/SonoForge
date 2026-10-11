@@ -194,5 +194,9 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+        # PyPI trusted publishing must be configured first (project + publisher).
+        # Gate on a repository variable so an unconfigured PyPI does not turn a
+        # release tag red; set vars.PYPI_PUBLISH=true to enable uploading.
+        if: vars.PYPI_PUBLISH == 'true'
         with:
           skip-existing: true
