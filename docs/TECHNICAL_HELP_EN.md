@@ -334,7 +334,7 @@ Values below are the current preference bounds/defaults where defined in code. A
 | Caliper line width | 1–6 px, default 2; rendered caliper only. |
 | Cine speed multiplier | 0.25–4.0×, default 1.0×; playback timing only. |
 | Playback cache | 8–512 MB, default 64 MB; decode/cache behavior, not a measurement formula. |
-| W/L | Soft `(70, 40, 35)`, Contrast `(140, 55, 65)`, or last-used values; image display only. |
+| W/L | Last-used window/level/DR values (the Soft/Contrast presets were removed); image display only. |
 | Thumbnail size | Small/Medium/Large; gallery layout only. |
 | Crosshair, panel frames, frame/inline labels | display only; labels do not change stored geometry. |
 | Reduce motion | animation/accessibility behavior. |

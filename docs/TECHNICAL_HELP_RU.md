@@ -335,7 +335,7 @@ Structured reference store загружает встроенный YAML и, ес
 | Caliper line width | 1–6 px, default 2; только отрисовка калипера. |
 | Cine speed multiplier | 0.25–4.0×, default 1.0×; только playback. |
 | Playback cache | 8–512 MB, default 64 MB; decode/cache, не формула. |
-| W/L | Soft `(70, 40, 35)`, Contrast `(140, 55, 65)` или last-used; только изображение. |
+| W/L | Последние использованные значения window/level/DR (пресеты Soft/Contrast удалены); только изображение. |
 | Thumbnail size | Small/Medium/Large; только layout галереи. |
 | Crosshair, panel frames, frame/inline labels | только отображение; labels не меняют geometry. |
 | Reduce motion | animation/accessibility. |
