@@ -129,6 +129,38 @@ def _gc_per_test():
     gc.collect()
 
 
+#: First non-empty application stylesheet seen, treated as the canonical theme.
+_CANONICAL_APP_SHEET: str | None = None
+
+
+@pytest.fixture(autouse=True)
+def _restore_canonical_app_sheet(_gc_per_test):
+    """Undo global theme changes a test leaves behind.
+
+    The suite keeps ~90k widgets alive (a C++/Python signal+event-filter cycle
+    the Python GC cannot see), so an application-wide ``setStyleSheet`` that
+    actually changes the sheet repolishes all of them. The theme tests in
+    ``test_presentation_extended`` switched the sheet and left it changed, so
+    the next ``MainWindow`` build (~``test_simpson_live_feedback``) paid that
+    repolish: ~42s locally and ~62s on CI, past the 60s pytest timeout. Pinning
+    the sheet back to the canonical theme keeps later builds a no-op.
+    """
+    global _CANONICAL_APP_SHEET
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        yield
+        return
+    yield
+    sheet = app.styleSheet()
+    if _CANONICAL_APP_SHEET is None:
+        if sheet:
+            _CANONICAL_APP_SHEET = sheet
+    elif sheet != _CANONICAL_APP_SHEET:
+        app.setStyleSheet(_CANONICAL_APP_SHEET)
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Fake / Mock helpers
 # ═══════════════════════════════════════════════════════════════════
